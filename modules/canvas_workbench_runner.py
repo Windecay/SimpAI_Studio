@@ -14,6 +14,7 @@ import modules.constants as constants
 import modules.flags as flags
 from modules import canvas_workbench_assets
 from modules import canvas_workbench_director
+from enhanced import parameter_profiles
 from modules.access_mode import user_can_generate
 
 try:
@@ -957,6 +958,19 @@ def _state_identity(payload, state_params):
     }
 
 
+def _payload_with_parameter_profile(payload, state_params):
+    preset_node = payload.get("preset_node") if isinstance(payload.get("preset_node"), dict) else {}
+    identity = _state_identity(payload, state_params)
+    context = dict(state_params) if isinstance(state_params, dict) else {}
+    context["user_did"] = identity.get("user_did") or "guest"
+    applied = parameter_profiles.apply_profile_to_canvas_node(preset_node, context)
+    if not applied.get("ok"):
+        return None, applied
+    normalized = copy.deepcopy(payload)
+    normalized["preset_node"] = applied.get("preset_node")
+    return normalized, None
+
+
 def _default_api_args():
     if api_params is None:
         return None
@@ -1181,6 +1195,14 @@ def build_canvas_async_task_args(api_arg_overrides, enabled_loras, materialized_
     for item in materialized_inputs:
         slot = item.get("slot")
         if slot:
+            legacy_classic_enhance_source = (
+                defaults.get("current_tab") == "enhance"
+                and defaults.get("enhance_input_image") is not None
+                and slot == "scene_canvas_image"
+                and not params_backend.get("scene_frontend")
+            )
+            if legacy_classic_enhance_source:
+                continue
             params_backend[slot] = _task_backend_value(item) if load_images else _normalization_backend_value(item)
             if slot == "scene_video":
                 params_backend["scene_original_video_path"] = params_backend[slot]
@@ -1419,7 +1441,7 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     enhance_ctrls = None
     if current_tab == "enhance":
         enhance_checkbox = True
-        item = materialized_by_slot.get("enhance_image")
+        item = materialized_by_slot.get("enhance_image") or materialized_by_slot.get("scene_canvas_image")
         if item and item.get("asset_ref") and item["asset_ref"].get("path"):
             enhance_input_image = item["asset_ref"]["path"]  # path for preview
         enhance_uov_method = (
@@ -1592,7 +1614,9 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
         warnings.append("UOV mode: no source image connected")
     if current_tab == "inpaint" and not materialized_by_slot.get("inpaint_image"):
         warnings.append("Inpaint mode: no source image connected")
-    if current_tab == "enhance" and not materialized_by_slot.get("enhance_image"):
+    if current_tab == "enhance" and not (
+        materialized_by_slot.get("enhance_image") or materialized_by_slot.get("scene_canvas_image")
+    ):
         warnings.append("Enhance mode: no source image connected")
     if director_runtime and not director_runtime.get("prompt_override"):
         warnings.append("director prompt_override is empty")
@@ -1639,6 +1663,9 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
 
 
 def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
+    payload, profile_error = _payload_with_parameter_profile(payload, state_params)
+    if profile_error:
+        raise ValueError(profile_error.get("error") or "parameter profile is unavailable")
     # Dispatch to classic builder if node_type is classic
     preset_node = payload.get("preset_node") if isinstance(payload.get("preset_node"), dict) else {}
     if str(preset_node.get("node_type") or "").strip() == "classic" or str(preset_node.get("type") or "").strip() == "classic":
@@ -1930,6 +1957,9 @@ def _build_task_preview(preset_node, materialized_inputs):
 def dry_run_node(payload, state_params):
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
+    payload, profile_error = _payload_with_parameter_profile(payload, state_params)
+    if profile_error:
+        return profile_error
 
     run_id = payload.get("run_id") or ""
     placeholder_node_id = payload.get("placeholder_node_id") or ""
@@ -2345,6 +2375,9 @@ def run_node(payload, state_params):
             "error": "generation_not_allowed",
             "details": "Current identity is not allowed to generate images.",
         }
+    payload, profile_error = _payload_with_parameter_profile(payload, state_params)
+    if profile_error:
+        return profile_error
 
     run_id = str(payload.get("run_id") or f"canvas-run-{time.time_ns()}").strip()[:240]
     if not run_id:
@@ -2514,7 +2547,13 @@ def control_run(payload, state_params):
             return {"ok": False, "error": "run not found", "run_id": run_id}
         if not _run_record_owned_by(record, identity):
             return {"ok": False, "error": "run not found", "run_id": run_id}
+
+        # A finish yield may already be waiting when the stop request arrives.
+        # Publish that completed result before marking the task for interruption.
+        _apply_task_yields(record)
         if record.get("state") in TERMINAL_RUN_STATES:
+            with CANVAS_RUNS_LOCK:
+                CANVAS_RUNS[run_id] = record
             return _public_run_record(record)
 
         task = record.get("task")

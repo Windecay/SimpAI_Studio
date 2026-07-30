@@ -49,6 +49,36 @@ _SCENE_PROFILE_CONTROL_KEYS = (
     "scene_image_number",
 )
 
+_CANVAS_PROFILE_PARAM_KEYS = (
+    "negative_prompt",
+    "seed_random",
+    "inpaint_advanced_masking_checkbox",
+    "mixing_image_prompt_and_vary_upscale",
+    "mixing_image_prompt_and_inpaint",
+    "backfill_prompt",
+    "translation_methods",
+    "enhance_checkbox",
+    "enhance_enabled_1",
+    "enhance_enabled_2",
+    "enhance_enabled_3",
+    "enhance_uov_method",
+    "enhance_uov_strength",
+    *_SCENE_PROFILE_CONTROL_KEYS,
+)
+
+_CANVAS_PROFILE_GENERATION_KEYS = {
+    "guidance_scale": "guidance_scale",
+    "sharpness": "sharpness",
+    "sampler": "sampler_name",
+    "scheduler": "scheduler_name",
+    "performance": "performance_selection",
+    "output_format": "output_format",
+    "refiner_switch": "refiner_switch",
+    "adaptive_cfg": "adaptive_cfg",
+    "steps": "overwrite_step",
+    "overwrite_switch": "overwrite_switch",
+}
+
 
 def _clean_name(value: Any) -> str:
     return str(value or "").replace(_MISSING_MODEL_MARKER, "").strip()
@@ -799,6 +829,245 @@ def load_profile_metadata(name: Any, context: Any = None) -> tuple[dict[str, Any
             _warn_profile_load(warnings)
             return metadata, payload
     return None, None
+
+
+def _all_user_profile_payloads(context: Any = None) -> list[dict[str, Any]]:
+    user_did = _get_user_did(context)
+    root = _profiles_root(user_did)
+    entries: list[dict[str, Any]] = []
+    if not os.path.isdir(root):
+        return entries
+    for folder_name in sorted(os.listdir(root)):
+        folder = os.path.join(root, folder_name)
+        if not os.path.isdir(folder):
+            continue
+        for filename in sorted(os.listdir(folder)):
+            if not filename.lower().endswith(".json"):
+                continue
+            path = os.path.join(folder, filename)
+            payload = _load_json(path)
+            metadata = payload.get("metadata") if isinstance(payload, dict) else None
+            if not isinstance(metadata, dict):
+                continue
+            name = _clean_name(payload.get("name")) or os.path.splitext(filename)[0]
+            preset_name = _clean_name(payload.get("preset_name") or metadata.get("preset"))
+            if not name or not preset_name:
+                continue
+            entries.append({
+                "name": name,
+                "preset_name": preset_name,
+                "path": path,
+                "schema": _clean_name(payload.get("schema")),
+                "updated_at": _clean_name(payload.get("updated_at") or payload.get("created_at")),
+                "payload": payload,
+                "metadata": metadata,
+            })
+    entries.sort(key=lambda item: (item["preset_name"].casefold(), item["name"].casefold()))
+    return entries
+
+
+def _profile_capability(entry: dict[str, Any]) -> dict[str, Any]:
+    metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+    manifest = regen_manifest.extract(metadata)
+    ui_values = manifest.get("ui_values") if isinstance(manifest, dict) and isinstance(manifest.get("ui_values"), dict) else {}
+    return {
+        "name": _clean_name(entry.get("name")),
+        "preset": _clean_name(entry.get("preset_name")),
+        "scene_theme": _clean_name(metadata.get("scene_theme") or ui_values.get("scene_theme")),
+        "task_method": _clean_name(metadata.get("task_method") or ui_values.get("task_method")),
+        "engine_type": _clean_name(metadata.get("engine_type")) or "image",
+        "updated_at": _clean_name(entry.get("updated_at")),
+    }
+
+
+def list_agent_profile_capabilities(context: Any = None, preset_names: Any = None) -> list[dict[str, Any]]:
+    """Return private profile names and routing metadata without exposing saved parameters."""
+    allowed = {
+        _clean_name(name).casefold()
+        for name in (preset_names if isinstance(preset_names, (list, tuple, set)) else [])
+        if _clean_name(name)
+    }
+    seen = set()
+    result = []
+    for entry in _all_user_profile_payloads(context):
+        capability = _profile_capability(entry)
+        if allowed and capability["preset"].casefold() not in allowed:
+            continue
+        key = (capability["preset"].casefold(), capability["name"].casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(capability)
+    return result
+
+
+def _find_user_profile(name: Any, preset_name: Any = None, context: Any = None) -> tuple[dict[str, Any] | None, str]:
+    profile_name = _clean_name(name)
+    wanted_preset = _clean_name(preset_name)
+    if not profile_name:
+        return None, "parameter_profile_missing"
+    matches = [
+        entry for entry in _all_user_profile_payloads(context)
+        if entry["name"].casefold() == profile_name.casefold()
+        and (not wanted_preset or entry["preset_name"].casefold() == wanted_preset.casefold())
+    ]
+    if not matches:
+        return None, "parameter_profile_missing"
+    if len(matches) > 1:
+        return None, "parameter_profile_ambiguous"
+    return matches[0], ""
+
+
+def _task_method_key(value: Any) -> str:
+    text = _clean_name(value).lower()
+    return text[len("scene_"):] if text.startswith("scene_") else text
+
+
+def _profile_loras(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    result = []
+    max_loras = max(1, int(getattr(config, "default_max_lora_number", 10) or 10))
+    for index in range(1, max_loras + 1):
+        key = f"lora_combined_{index}"
+        if key not in metadata:
+            continue
+        enabled, model, weight = _split_lora_entry(metadata.get(key))
+        result.append({"enabled": bool(enabled), "model": model or "None", "weight": weight})
+    return result
+
+
+def _profile_resolution_overrides(metadata: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    resolution = _clean_name(metadata.get("resolution") or metadata.get("Resolution"))
+    size = re.search(r"(\d{3,5})\s*[xX*×]\s*(\d{3,5})", resolution)
+    if size:
+        result["aspect_ratio"] = f"{size.group(1)}*{size.group(2)}"
+    width = _as_int(metadata.get("overwrite_width"), -1)
+    height = _as_int(metadata.get("overwrite_height"), -1)
+    if width > 0 and height > 0:
+        result.update({"width": width, "height": height, "aspect_ratio": f"{width}*{height}"})
+    aliases = {
+        "resolution_quantize_step": "quantize",
+        "resolution_multiplier": "multiplier",
+        "resolution_edit_mode": "edit_mode",
+        "random_aspect_ratio": "random_aspect_ratio",
+    }
+    for source, target in aliases.items():
+        if source in metadata:
+            result[target] = copy.deepcopy(metadata.get(source))
+    return result
+
+
+def apply_profile_to_canvas_node(preset_node: Any, context: Any = None) -> dict[str, Any]:
+    """Resolve and apply a private profile to a Canvas node using the current user identity."""
+    if not isinstance(preset_node, dict):
+        return {"ok": False, "error": "parameter_profile_invalid", "details": "Preset node is invalid."}
+    reference = preset_node.get("parameter_profile")
+    if isinstance(reference, str):
+        profile_name = _clean_name(reference)
+        reference_preset = ""
+    elif isinstance(reference, dict):
+        profile_name = _clean_name(reference.get("name"))
+        reference_preset = _clean_name(reference.get("preset"))
+    else:
+        profile_name = ""
+        reference_preset = ""
+    if not profile_name:
+        return {"ok": True, "preset_node": copy.deepcopy(preset_node), "profile": None}
+
+    node = copy.deepcopy(preset_node)
+    preset = node.get("preset") if isinstance(node.get("preset"), dict) else {}
+    node_preset = _clean_name(preset.get("name") or preset.get("display_name") or node.get("title"))
+    if reference_preset and node_preset.casefold() != reference_preset.casefold():
+        return {
+            "ok": False,
+            "error": "parameter_profile_incompatible",
+            "details": "The parameter profile belongs to another Preset.",
+        }
+    entry, error = _find_user_profile(profile_name, node_preset, context)
+    if not entry:
+        return {"ok": False, "error": error, "details": "The private parameter profile is unavailable."}
+
+    state_params = dict(context) if isinstance(context, dict) else {}
+    state_params.update({"__preset": node_preset, "preset": node_preset})
+    runtime = node.get("runtime") if isinstance(node.get("runtime"), dict) else {}
+    if runtime.get("scene_theme"):
+        state_params["scene_theme"] = runtime.get("scene_theme")
+    if runtime.get("task_method"):
+        state_params["task_method"] = runtime.get("task_method")
+    metadata, warnings = prepare_metadata_for_load(entry["metadata"], entry["payload"], state_params)
+
+    saved_theme = _clean_name(metadata.get("scene_theme"))
+    active_theme = _clean_name(runtime.get("scene_theme"))
+    saved_task_method = _task_method_key(metadata.get("task_method"))
+    active_task_method = _task_method_key(runtime.get("task_method"))
+    if saved_theme and active_theme and saved_theme != active_theme:
+        return {
+            "ok": False,
+            "error": "parameter_profile_incompatible",
+            "details": "The parameter profile belongs to another Preset method.",
+        }
+    if saved_task_method and active_task_method and saved_task_method != active_task_method:
+        return {
+            "ok": False,
+            "error": "parameter_profile_incompatible",
+            "details": "The parameter profile task method no longer matches this route.",
+        }
+
+    params = node.setdefault("params", {})
+    if not isinstance(params, dict):
+        params = {}
+        node["params"] = params
+    for key in _CANVAS_PROFILE_PARAM_KEYS:
+        if key in metadata:
+            params[key] = copy.deepcopy(metadata.get(key))
+    if not _as_bool(metadata.get("seed_random", True)) and metadata.get("seed") is not None:
+        params["image_seed"] = metadata.get("seed")
+
+    models_config = node.setdefault("models_config", {})
+    model_defaults = models_config.setdefault("defaults", {}) if isinstance(models_config, dict) else {}
+    if not isinstance(model_defaults, dict):
+        model_defaults = {}
+        models_config["defaults"] = model_defaults
+    model_aliases = {
+        "base_model": "base_model",
+        "refiner_model": "refiner_model",
+        "clip_model": "clip_model",
+        "vae": "vae",
+        "upscale_model": "upscale_model",
+    }
+    for source, target in model_aliases.items():
+        if metadata.get(source) not in (None, ""):
+            model_defaults[target] = copy.deepcopy(metadata.get(source))
+    loras = _profile_loras(metadata)
+    if loras:
+        model_defaults["loras"] = loras
+    models_config["mode"] = "parameter_profile"
+
+    styles_config = node.setdefault("styles_config", {})
+    style_defaults = styles_config.setdefault("defaults", {}) if isinstance(styles_config, dict) else {}
+    styles = metadata.get("styles")
+    if isinstance(styles, list):
+        style_defaults["style_selections"] = copy.deepcopy(styles)
+
+    resolution_config = node.setdefault("resolution_config", {})
+    resolution_defaults = resolution_config.setdefault("defaults", {}) if isinstance(resolution_config, dict) else {}
+    resolution_defaults.update(_profile_resolution_overrides(metadata))
+
+    generation_config = node.setdefault("generation_config", {})
+    generation_defaults = generation_config.setdefault("defaults", {}) if isinstance(generation_config, dict) else {}
+    for source, target in _CANVAS_PROFILE_GENERATION_KEYS.items():
+        if metadata.get(source) not in (None, ""):
+            generation_defaults[target] = copy.deepcopy(metadata.get(source))
+
+    capability = _profile_capability(entry)
+    node["parameter_profile"] = {
+        "name": capability["name"],
+        "preset": capability["preset"],
+        "source": "private",
+        "updated_at": capability["updated_at"],
+    }
+    node["parameter_profile_warnings"] = warnings[:_PROFILE_WARNING_LIMIT]
+    return {"ok": True, "preset_node": node, "profile": capability}
 
 
 def resolution_extra_updates(metadata: dict[str, Any] | None):

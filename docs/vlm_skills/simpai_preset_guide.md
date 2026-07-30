@@ -51,10 +51,13 @@ SimpAI UI guide skill:
 
 ## Prompt Language / Model Routing
 
-- For Chinese prompts, prefer Z-image, Wan-series, Qwen-series, or
-  Flux2-Klein-series. For Chinese text rendering/output inside generated images,
-  Qwen2512 is the strongest choice; other models are secondary.
-- For English natural-language prompts, prefer Krea2-Turbo or the Flux family.
+- Krea2-Turbo uses a multilingual Qwen3-VL 4B text encoder and accepts fluent
+  Chinese or English natural-language prompts. Keep the user's request language;
+  do not translate Chinese prompts to English just because Krea2 is selected.
+- For Chinese text rendering/output inside generated images, Qwen2512 is the
+  strongest choice; other models are secondary.
+- Flux/T5 workflows may prefer English natural-language prompts when their
+  workflow contract says so.
 - For Danbooru tag workflows, recommend SDXL, Illustrious / 光辉, NoobAI, Tile,
   SD1.5, or ChenkinXL.
 - For the Anima branch, use Danbooru tags plus lightweight English natural
@@ -146,7 +149,10 @@ SimpAI UI guide skill:
 
 ## Face, Body, Pose, And Camera
 
-- For face swap on still images, recommend Swapface or Swap+.
+- For face swap on still images, recommend QwenFaceSwap first. It accepts
+  exactly two images in target/base then source-identity order and detects the
+  target face without requiring a painted mask. Use Swapface as an alternative
+  when its models are the available ready route.
 - For expression editing on still portraits, recommend LivePortrait Exp. It
   edits face rotation, eyes, mouth, smile, and optional reference-expression
   strength; treat it as an expression editor, not an identity face-swap route.
@@ -280,3 +286,113 @@ SimpAI UI guide skill:
 - QwenGaussianStudio is the advanced Gaussian-splatting viewpoint-change route
   using image2 to reproject/repair image1 perspective and missing regions.
 - identity/permission state.
+
+## 2026-07-30 Classic AIO Enhance Routing
+
+- Treat automatic repair of hands, fingers, faces, facial features, eyes, or
+  local anatomy/detail defects as `image_detail_enhance`, not general
+  `image_edit` and not old-photo `image_restore`.
+- The request needs exactly one referenced source image. Studio binds it to the
+  classic `enhance_image` input and runs the selected Preset with
+  `classic_mode: enhance`.
+- Use `enhance_targets` to select only the requested regions: `hand` for hands
+  and fingers, `face` for face/facial features, and `eye` for eyes. Use all
+  three only for a generic detail-enhancement request or when the user asks for
+  all of them.
+- Keep the user's active style Preset when it supports
+  `image_detail_enhance`. This preserves anime/realistic model intent. With
+  automatic selection and no compatible preference, use the application
+  priority order rather than inventing a Preset.
+- Eligible built-in Classic Presets are Anima, ChenkinXL, Flux1-dev,
+  Flux2-Klein, Illustrious(MiaoKa), Illustrious(OB), NunFlux_fp4,
+  NunFlux_int4, Qwen2512, SD1.5, Wan(T2I), and Z-imageT. Their local AIO
+  workflows contain a complete three-region Enhance path.
+- Do not route Classic Enhance through Krea2-Turbo. Its current AIO workflow
+  has only the Enhance UOV input and no complete face/hand/eye detail path.
+  Tile and GeneralAPIImage are also outside this local Classic AIO route.
+- Clothing changes, object replacement/removal, pose changes, relighting,
+  style transfer, and broad instruction editing still use their specialized
+  Scene Presets. Classic Enhance is for automatic detected-region repair.
+- In user-facing replies, follow `state.__lang`: explain this as
+  `Detail enhancement` in English and `细节增强` in Chinese. Do not claim the
+  image has started until the UI reports a queued or running state.
+
+## 2026-07-30 Preset Family Routing And Follow-up Edits
+
+- The VLM identifies the task and may repeat an explicitly named Preset, while
+  Studio validates the live Preset catalog and chooses the executable route.
+  Do not invent names from a presumed complete catalog.
+- Treat an explicit `Krea` request as a product-family preference. Use
+  Krea2-Turbo for text-to-image and Krea2-ImageEdit when one or more source
+  images need editing. Preserve this family intent during later edits in the
+  same conversation.
+- A generated image is available to a follow-up edit only when it is attached
+  to that user turn. Automatic previous-image attachment normally supplies the
+  newest finished result; otherwise the user must reference the result image.
+  Do not claim to edit `the previous image` from text history alone.
+- When the latest message and attached image express a follow-up such as
+  `continue editing the previous image`, keep the new instruction and bind the
+  attached result media ref as the source. Re-evaluate task compatibility; a
+  text-to-image family member may change to its image-edit member.
+
+## 2026-07-30 Missing-media Recovery
+
+- Keep an image-edit request as `needs_media` when no source image is attached;
+  do not convert it to text-to-image and do not ask the user to rewrite it.
+- The generation card accepts source images directly. After the required count
+  is reached, reuse the existing instruction and let the user confirm the same
+  task.
+- If a finished result is visible, its image/reference control can satisfy the
+  newest waiting edit. Multi-image tasks continue requesting images until their
+  declared minimum is reached.
+
+## 2026-07-30 Private Parameter Profiles
+
+- A private parameter profile is a user's saved parameter snapshot for one
+  Preset method. It can include model, LoRA, sampler, scheduler, CFG,
+  resolution, negative prompt, and scene settings.
+- The Agent receives only the current user's compact profile catalog: exact
+  name, parent Preset, scene theme, task method, engine type, and update time.
+  It does not receive the full saved parameters or filesystem paths.
+- Select a profile when the latest user message explicitly names it, such as
+  `用我的电商白底参数生成 3 张`, or when it is already selected as the Creative
+  session preference. Do not invent a profile name or select one from a model
+  hint alone.
+- A selected profile also selects its parent Preset. The requested task must
+  still be supported by that Preset and must match the saved scene theme and
+  task method.
+- Keep the current request's prompt, media refs, image count, and task-card
+  overrides. Apply the private profile beneath those values and above Preset
+  defaults.
+- If the profile was deleted, is inaccessible, or its name is ambiguous, report
+  that the private parameter profile is unavailable. If its Preset method does
+  not match the task, report that it is incompatible and keep the task pending.
+- Canvas Runner reloads the saved profile for the current user immediately
+  before checking models and generating. Never treat browser catalog data as
+  the saved parameter source.
+- Follow `state.__lang` for all visible names, status text, and errors:
+  `Private parameter profile` / `私人参数预设` and
+  `Parameter profile` / `参数预设`.
+
+## 2026-07-31 Qwen Face Swap
+
+- Recommend `QwenFaceSwap` / `Qwen 换脸` for a still-image face swap that uses
+  Qwen-Edit-2511 and keeps the target image's hair, pose, lighting, background,
+  composition, and non-face content.
+- It requires exactly two images. The canvas image is the target; the first
+  prompt image is the face-identity reference. Do not present it as a one-image
+  edit route.
+- An optional painted mask on the canvas can restrict the target face area. If
+  there is no painted mask, the workflow detects the target face automatically.
+- Creative mode automatically prefers `QwenFaceSwap` when its models are ready.
+  Use `Swapface` as an alternative when QwenFaceSwap models are missing. `Swap+`
+  is a painted-mask feature/object transfer route and is not the automatic
+  still-image face-swap choice.
+- Display the theme as `Qwen Face Swap` for English and `Qwen 换脸` for Chinese,
+  based on `state.__lang`.
+- Keep `Qwen Face Swap` as the Preset's English localization key. Its Chinese
+  UI translation belongs in `language/cn.json`; do not store a bilingual slash
+  value in `theme_title`.
+- Keep the structured `theme_labels.en` and `theme_labels.zh` values for VLM
+  Chat and Canvas catalog display. These labels are selected from
+  `state.__lang` and are separate from ordinary `theme_title` localization.

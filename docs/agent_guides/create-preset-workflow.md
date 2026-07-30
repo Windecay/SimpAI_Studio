@@ -624,3 +624,192 @@ Use the narrowest relevant checks for the target:
 | `modules/async_worker.py:2341-2375` | Parameter assembly for Comfy tasks |
 | `{active Python env}/site-packages/simpleai_base/comfyclient_pipeline.py` | process_flow, queue_prompt, get_images |
 | `{active Python env}/site-packages/simpleai_base/params_mapper.py` | ComfyTaskParams Python wrapper |
+
+## Creative Agent Capability Contract
+
+A Preset can work in the main UI and still be unavailable to VLM Chat or Canvas
+Director. Built-in Presets must expose machine-readable capability data that
+matches the workflow they actually execute.
+
+### Responsibility Boundary
+
+The VLM identifies the task and writes the executable prompt. Studio selects and
+validates the Preset, theme, `task_method`, media slots, interaction
+requirements, parameter profile, and model readiness.
+
+Do not put routing policy into `agent_prompt` or `multimodal_prompt`. Those
+fields rewrite prompts after a workflow is selected. Routing comes from the
+Preset schema and the application priority tables.
+
+### Supported Tasks
+
+Every built-in `presets/*.json` must have a non-empty top-level
+`supported_tasks` array. New built-in Presets must not depend on name-based
+inference; inference in `modules/config.py` is compatibility behavior for older
+user Presets.
+
+Common image task ids are:
+
+- generation/edit: `text_to_image`, `image_edit`, `multi_image_edit`;
+- automatic enhancement: `image_detail_enhance`;
+- specialized editing: `image_upscale`, `image_restore`,
+  `image_background_removal`, `image_object_removal`, `image_object_transfer`,
+  `image_outpaint`, `image_relight`, `image_style_transfer`,
+  `image_face_swap`, `image_pose_transfer`, `image_pose_extraction`,
+  `image_anime_to_real`, `image_view_synthesis`, `image_depth_estimation`, and
+  `image_expression_transfer`.
+
+Video and audio task ids are validated by
+`tests/test_preset_supported_tasks_contract.py`. Use the ids already present in
+that contract rather than creating a synonym in one Preset.
+
+Declare only complete executable routes. A model family being theoretically
+capable is not enough. A partial graph, hidden required input, missing output,
+or UI-only control must not be advertised.
+
+```json
+{
+  "supported_tasks": [
+    "image_edit",
+    "multi_image_edit",
+    "image_object_transfer"
+  ]
+}
+```
+
+### Interaction Requirements
+
+Use top-level `interaction_requirements` only when the workflow cannot start
+from the prompt and attached media:
+
+```json
+{
+  "supported_tasks": ["image_object_transfer"],
+  "interaction_requirements": ["mask"]
+}
+```
+
+Keep requirement ids in lowercase `snake_case`. Do not declare `mask` when a
+painted mask is optional. Automatic AIO routes must be preferred to routes that
+require manual painting.
+
+### Scene Themes And Labels
+
+When every Scene theme supports the same tasks, top-level `supported_tasks` is
+enough. When themes implement different specialized routes, add
+`scene_frontend.theme_supported_tasks`.
+
+- Keys in `theme_supported_tasks` must exist in `scene_frontend.theme`.
+- Its task ids must also appear in the Preset-wide `supported_tasks` union.
+- `theme`, `task_method`, `prompt`, `agent_prompt`, defaults, and other
+  per-theme dictionaries must use the same internal keys.
+- Keep internal `theme` and `theme_title` keys in English.
+- Put bilingual display names in `theme_labels` with non-empty `en` and `zh`.
+- Frontend-visible text must select language from `state.__lang`.
+
+```json
+{
+  "theme": ["General Edit", "Object insertion"],
+  "theme_labels": {
+    "General Edit": {"en": "General edit", "zh": "通用编辑"},
+    "Object insertion": {"en": "Insert an object", "zh": "插入物体"}
+  },
+  "task_method": {
+    "General Edit": "general_edit_cn",
+    "Object insertion": "object_insert_cn"
+  },
+  "theme_supported_tasks": {
+    "Object insertion": ["image_object_transfer"]
+  }
+}
+```
+
+### Media Slots And Counts
+
+Creative mode reads Scene image inputs in this order:
+
+1. `scene_canvas_image`
+2. `scene_input_image1`
+3. `scene_input_image2`
+4. `scene_input_image3`
+5. `scene_input_image4`
+
+A slot in `scene_frontend.disvisible` is unavailable. Specialized image-input
+tasks require at least one image; tasks in the multi-image set require at least
+two. `director_capability.min_images` and `max_images` may narrow the visible
+slot count but cannot create slots that the UI does not expose.
+
+For identity or feature transfer, document image roles and keep binding order
+unambiguous. For example, automatic face swap uses target/base first and the
+source identity image second.
+
+### Classic AIO Enhance
+
+Declare `image_detail_enhance` only for a non-Scene Preset whose real local AIO
+workflow performs automatic face, hand, or eye enhancement.
+
+The workflow must contain `GeneralInput` and one complete implementation:
+
+- modern: `SimpAIAIOEnhanceUOVConfig` plus a
+  `SimpAIAIOImproveDetail*` node;
+- legacy: `EnhanceUovInput` plus at least three `EnhanceRegionInput` nodes.
+
+The Creative capability uses `enhance_image`,
+`task_modes.image_detail_enhance = "enhance"`, and targets limited to `face`,
+`hand`, and `eye`. Do not add the task for a half-built workflow that merely
+contains an Enhance control or one incomplete region chain.
+
+### Specialized Route Registration
+
+Adding a specialized task to a Preset is only the first step. Keep route
+selection synchronized in:
+
+- server priorities: `GENERATION_PRESET_PRIORITIES` in
+  `modules/describe_vlm_chat.py`;
+- browser rebuild priorities: `taskPriorities` in
+  `javascript/describe_vlm_chat.js`;
+- Preset task declarations and capability tests.
+
+Place complete automatic workflows before manual interaction workflows. For
+clothing transfer, the current automatic family order is Qwen Edit (including
+its Nunchaku variants), Flux2 Klein Edit, Krea2 Image Edit, Bernini Image Edit,
+then OneKeyKontext. `Swap+` and its Nunchaku variants require a painted mask and
+remain after the automatic routes.
+
+Explicit Preset names and product-family aliases are resolved by Studio against
+the live capability catalog. A model-provided hint is not trusted unless the
+latest user message explicitly names that Preset or family.
+
+### Prompt Language
+
+The actual text encoder determines prompt language behavior:
+
+- use a `_cn` `task_method` only when the workflow accepts Chinese directly;
+- multilingual Qwen, UMT5, and Qwen3-VL encoders may keep Chinese requests in
+  Chinese;
+- older English-only CLIP or workflow-specific FLUX/T5 contracts should use an
+  English-target route;
+- do not infer prompt language from the Preset brand alone.
+
+Keep this aligned with the earlier workflow naming section and verify the
+encoder nodes in the imported API JSON.
+
+### Capability Validation
+
+For every new or changed built-in Preset:
+
+```powershell
+python -m json.tool presets\MyPreset.json > $null
+python -m pytest tests\test_preset_supported_tasks_contract.py -q
+python -m pytest tests\test_describe_vlm_chat_contract.py -q
+node --check javascript\describe_vlm_chat.js
+```
+
+Also inspect the generated catalog and confirm:
+
+- `supported_tasks` matches the real workflow;
+- media slots and input counts match visible controls;
+- theme routes resolve to the intended `task_method`;
+- required interactions are accurate;
+- bilingual labels follow `state.__lang`;
+- automatic and manual route priorities agree between server and browser.

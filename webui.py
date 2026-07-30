@@ -11428,19 +11428,29 @@ with shared.gradio_root:
         queue=False,
         show_progress=False,
     )
-    parameter_profile_save.click(
+    parameter_profile_save_evt = parameter_profile_save.click(
         save_parameter_profile,
         inputs=[parameter_profile_select] + parameter_profile_snapshot_inputs,
         outputs=parameter_profile_select,
         queue=False,
         show_progress=False,
     )
-    parameter_profile_delete.click(
+    parameter_profile_save_evt.then(
+        None,
+        inputs=parameter_profile_select,
+        js="(name)=>{window.dispatchEvent(new CustomEvent('simpai:parameter-profiles-changed',{detail:{operation:'save',name:String(name||'')}}));}",
+    )
+    parameter_profile_delete_evt = parameter_profile_delete.click(
         parameter_profiles.delete_profile,
         inputs=[parameter_profile_select, system_params],
         outputs=parameter_profile_select,
         queue=False,
         show_progress=False,
+    )
+    parameter_profile_delete_evt.then(
+        None,
+        inputs=parameter_profile_select,
+        js="(name)=>{window.dispatchEvent(new CustomEvent('simpai:parameter-profiles-changed',{detail:{operation:'delete',name:String(name||'')}}));}",
     )
     parameter_profile_load_outputs = reset_image_params_outputs + [model_params_state, random_aspect_ratio_checkbox, use_resolution_override_checkbox, resolution_original_input_checkbox]
     parameter_profile_load_evt = parameter_profile_select.change(
@@ -11456,7 +11466,7 @@ with shared.gradio_root:
 
     params_note_regen_button.click(reset_image_params_model_bridge_safe, inputs=[state_topbar, state_is_generating, inpaint_mode], outputs=reset_image_params_outputs + [model_params_state], show_progress=False) \
             .then(regen_update_system_params, inputs=state_topbar, outputs=system_params, queue=False, show_progress=False) \
-            .then(lambda x: None, inputs=system_params, queue=False, show_progress=False, js='(params)=>{try{if(typeof refresh_topbar_status_js_for_preset_nav==="function") refresh_topbar_status_js_for_preset_nav(params); else refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] regen_topbar_status_sync_failed", e);} try{if(typeof scheduleSceneAndAdvancedSync==="function") scheduleSceneAndAdvancedSync("regen_reset", !!(params && params.__is_scene_frontend));}catch(e){console.warn("[UI-TRACE] regen_scene_sync_failed", e);}}') \
+            .then(lambda x: None, inputs=system_params, queue=False, show_progress=False, js='(params)=>{try{if(typeof refresh_topbar_status_js_for_preset_nav==="function") refresh_topbar_status_js_for_preset_nav(params); else refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] regen_topbar_status_sync_failed", e);} try{if(typeof scheduleSceneAndAdvancedSync==="function") scheduleSceneAndAdvancedSync("regen_reset", !!(params && params.__is_scene_frontend));}catch(e){console.warn("[UI-TRACE] regen_scene_sync_failed", e);} try{if(typeof window.simpleaiRehydrateModelsTabAfterPresetNav==="function") window.simpleaiRehydrateModelsTabAfterPresetNav();}catch(e){console.warn("[UI-TRACE] regen_models_tab_rehydrate_failed", e);}}') \
             .then(toggle_image_input_panel, inputs=[input_image_checkbox, qwen_tts_checkbox], outputs=[image_input_panel, engine_class_display] + layout_image_tab + [tts_panel, qwen_tts_checkbox], queue=False, show_progress=False) \
             .then(toolbox.close_note_box, inputs=state_topbar, outputs=note_box_outputs, show_progress=False)
 
@@ -13503,7 +13513,11 @@ async def canvas_workbench_preset_catalog_endpoint(payload: dict = Body(...)):
                 entry["name"] = str(name)
                 entry["display_name"] = str(name)
                 entries.append(entry)
-            return {"ok": True, "presets": entries}
+            profiles = parameter_profiles.list_agent_profile_capabilities(
+                state_params,
+                [entry.get("name") for entry in entries],
+            )
+            return {"ok": True, "presets": entries, "parameter_profiles": profiles}
 
         result = await run_in_threadpool(safe_process)
         return JSONResponse(result, status_code=200)

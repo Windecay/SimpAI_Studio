@@ -267,6 +267,8 @@ def normalize_preset_supported_tasks(value):
         "upscale": "image_upscale",
         "super_resolution": "image_upscale",
         "restore": "image_restore",
+        "detail_enhance": "image_detail_enhance",
+        "enhance_details": "image_detail_enhance",
         "remove_background": "image_background_removal",
         "background_removal": "image_background_removal",
         "remove_object": "image_object_removal",

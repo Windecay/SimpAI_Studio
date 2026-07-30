@@ -2414,7 +2414,7 @@ document.addEventListener("DOMContentLoaded", function() {
     function modelsTabButton() {
         const tabs = queryInteractionNode('#advanced_tabs');
         if (!tabs) return null;
-        return Array.from(tabs.querySelectorAll('button, [role="tab"]')).find((button) => {
+        return Array.from(tabs.querySelectorAll('[role="tab"]')).find((button) => {
             const label = [
                 button.getAttribute?.('data-original-text'),
                 button.getAttribute?.('aria-label'),
@@ -2469,8 +2469,10 @@ document.addEventListener("DOMContentLoaded", function() {
     function interactionKindFromTarget(target) {
         if (!target?.closest) return '';
         if (target.closest('#bar_store')) return STORE_KIND;
-        const button = target.closest('button, [role="tab"]');
-        if (!button || !button.closest('#advanced_tabs')) return '';
+        if (target.closest('.sai-gradio-hidden-bridge')) return '';
+        const tabs = queryInteractionNode('#advanced_tabs');
+        const button = target.closest('[role="tab"]');
+        if (!tabs || !button || !tabs.contains(button)) return '';
         const label = [
             button.getAttribute?.('data-original-text'),
             button.getAttribute?.('aria-label'),

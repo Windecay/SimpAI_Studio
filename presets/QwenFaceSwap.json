@@ -1,0 +1,113 @@
+{
+    "supported_tasks": ["image_face_swap"],
+    "default_engine": {
+        "backend_engine": "Qwen",
+        "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "available_aspect_ratios_selection": "Flux",
+        "scene_frontend": {
+            "version": "m1.1",
+            "theme": ["Qwen Face Swap"],
+            "theme_labels": {
+                "Qwen Face Swap": {
+                    "en": "Qwen Face Swap",
+                    "zh": "Qwen 换脸"
+                }
+            },
+            "theme_title": "Qwen Face Swap [Upload Face Image to Second Slot, Optional Mask]",
+            "disvisible": [
+                "scene_additional_prompt",
+                "scene_additional_prompt_2",
+                "scene_input_image2",
+                "scene_input_image3",
+                "scene_input_image4",
+                "scene_video",
+                "scene_audio",
+                "scene_var_number",
+                "scene_var_number2",
+                "scene_var_number4",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number7",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_steps",
+                "scene_refiner_model",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "task_method": {
+                "Qwen Face Swap": "qwen_faceswap_cn"
+            },
+            "prompt": {
+                "Qwen Face Swap": "face_swap: Use Picture 1 as the base image. Replace only the face identity in Picture 1 with the face identity from Picture 2. Preserve Picture 1's hairstyle, headwear, expression, pose, lighting, environment, background, composition, and all non-face details. Preserve Picture 2's facial identity, including eye shape and color, nose, mouth, and facial structure. Blend the swapped face naturally with consistent skin tone and sharp details."
+            },
+            "var_number3_title": "CFGNorm Texture Fine-tune",
+            "var_number3_min": 0.95,
+            "var_number3_max": 1.05,
+            "var_number3": {
+                "Qwen Face Swap": 0.98
+            },
+            "director_capability": {
+                "image_policy": "required",
+                "audio_policy": "forbidden",
+                "video_policy": "forbidden",
+                "min_images": 2,
+                "max_images": 2
+            },
+            "resolution_control": {
+                "mode": "image_keep_input_area",
+                "source": "scene_canvas",
+                "base_width": 1024,
+                "base_height": 1024,
+                "quantize": 16,
+                "interactive": true,
+                "frontend_preprocess": true,
+                "preprocess_target": "image",
+                "preprocess_fit": "proportional"
+            },
+            "aspect_ratio": ["origin|Original", "1024|1:1", "1536|1:1", "2048|1:1"]
+        }
+    },
+    "default_model": "qwen_image_edit_2511_fp8mixed.safetensors",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_vae": "qwen_image_vae.safetensors",
+    "default_clip_model": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "default_loras": [
+        ["Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", 1.0],
+        ["bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors", 1.0],
+        ["None", 1.0],
+        ["None", 1.0],
+        ["None", 1.0]
+    ],
+    "default_cfg_scale": 1,
+    "default_sample_sharpness": 2,
+    "default_sampler": "euler",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "origin|Original",
+    "default_image_number": 1,
+    "default_overwrite_step": 8,
+    "default_prompt": "face_swap: Use Picture 1 as the base image. Replace only the face identity in Picture 1 with the face identity from Picture 2. Preserve Picture 1's hairstyle, headwear, expression, pose, lighting, environment, background, composition, and all non-face details. Preserve Picture 2's facial identity, including eye shape and color, nose, mouth, and facial structure. Blend the swapped face naturally with consistent skin tone and sharp details.",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "diffusion_models,qwen_image_edit_2511_fp8mixed.safetensors,20533762817,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+        "loras,Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors,849608296,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        "loras,bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors,307464216,0,https://www.modelscope.cn/models/Alissonerdx/BFS-Best-Face-Swap/resolve/20260309043408/bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors,https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors",
+        "text_encoders,qwen_2.5_vl_7b_fp8_scaled.safetensors,9384670680,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "vae,qwen_image_vae.safetensors,253806246,0,",
+        "detection,mediapipe_face_fp32.safetensors,5423900,0,https://www.modelscope.cn/models/Comfy-Org/mediapipe/resolve/master/detection/mediapipe_face_fp32.safetensors,https://huggingface.co/Comfy-Org/mediapipe/resolve/main/detection/mediapipe_face_fp32.safetensors"
+    ]
+}

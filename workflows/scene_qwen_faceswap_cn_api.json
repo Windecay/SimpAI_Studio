@@ -1,0 +1,987 @@
+{
+  "3": {
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "6": {
+    "inputs": {
+      "seed": [
+        "117",
+        0
+      ],
+      "steps": [
+        "121",
+        0
+      ],
+      "cfg": [
+        "115",
+        8
+      ],
+      "sampler_name": [
+        "115",
+        30
+      ],
+      "scheduler": [
+        "115",
+        31
+      ],
+      "denoise": 1,
+      "model": [
+        "61",
+        0
+      ],
+      "positive": [
+        "148",
+        0
+      ],
+      "negative": [
+        "64",
+        1
+      ],
+      "latent_image": [
+        "64",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "16": {
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "130",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_1"
+    }
+  },
+  "61": {
+    "inputs": {
+      "strength": [
+        "115",
+        12
+      ],
+      "pre_cfg": false,
+      "model": [
+        "129",
+        0
+      ]
+    },
+    "class_type": "CFGNorm",
+    "_meta": {
+      "title": "CFGNorm"
+    }
+  },
+  "62": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "64": {
+    "inputs": {
+      "prompt": [
+        "115",
+        0
+      ],
+      "mode": "2_image",
+      "batch_size": 1,
+      "width": [
+        "82",
+        0
+      ],
+      "height": [
+        "82",
+        1
+      ],
+      "clip": [
+        "133",
+        0
+      ],
+      "vae": [
+        "108",
+        0
+      ],
+      "image1_mask": [
+        "109",
+        2
+      ],
+      "image1": [
+        "109",
+        1
+      ],
+      "image2": [
+        "101",
+        0
+      ]
+    },
+    "class_type": "PainterQwenImageEditPlus",
+    "_meta": {
+      "title": "Painter Qwen Image Edit Plus"
+    }
+  },
+  "81": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "82": {
+    "inputs": {
+      "image": [
+        "109",
+        1
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "98": {
+    "inputs": {
+      "prompt": "去掉角色的头发和帽子，变成光头，保持角色的面部特征并高清化",
+      "mode": "1_image",
+      "batch_size": 1,
+      "width": [
+        "102",
+        0
+      ],
+      "height": [
+        "102",
+        1
+      ],
+      "clip": [
+        "133",
+        0
+      ],
+      "vae": [
+        "108",
+        0
+      ],
+      "image1": [
+        "113",
+        1
+      ]
+    },
+    "class_type": "PainterQwenImageEditPlus",
+    "_meta": {
+      "title": "Painter Qwen Image Edit Plus"
+    }
+  },
+  "99": {
+    "inputs": {
+      "seed": [
+        "117",
+        0
+      ],
+      "steps": [
+        "120",
+        0
+      ],
+      "cfg": [
+        "115",
+        8
+      ],
+      "sampler_name": [
+        "115",
+        30
+      ],
+      "scheduler": [
+        "115",
+        31
+      ],
+      "denoise": 1,
+      "model": [
+        "60",
+        0
+      ],
+      "positive": [
+        "98",
+        0
+      ],
+      "negative": [
+        "98",
+        1
+      ],
+      "latent_image": [
+        "98",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "101": {
+    "inputs": {
+      "samples": [
+        "99",
+        0
+      ],
+      "vae": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "102": {
+    "inputs": {
+      "image": [
+        "113",
+        1
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "105": {
+    "inputs": {
+      "regions": "all",
+      "face_landmarks": [
+        "106",
+        0
+      ]
+    },
+    "class_type": "MediaPipeFaceMask",
+    "_meta": {
+      "title": "Draw Face Mask (MediaPipe)"
+    }
+  },
+  "106": {
+    "inputs": {
+      "detector_variant": "both",
+      "num_faces": 1,
+      "min_confidence": 0.4,
+      "missing_frame_fallback": "empty",
+      "face_detection_model": [
+        "107",
+        0
+      ],
+      "image": [
+        "118",
+        0
+      ]
+    },
+    "class_type": "MediaPipeFaceLandmarker",
+    "_meta": {
+      "title": "Detect Face Landmarks (MediaPipe)"
+    }
+  },
+  "107": {
+    "inputs": {
+      "model_name": "mediapipe_face_fp32.safetensors"
+    },
+    "class_type": "LoadMediaPipeFaceLandmarker",
+    "_meta": {
+      "title": "Load Face Detection Model (MediaPipe)"
+    }
+  },
+  "108": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "109": {
+    "inputs": {
+      "downscale_algorithm": "lanczos",
+      "upscale_algorithm": "lanczos",
+      "preresize": false,
+      "preresize_mode": "ensure minimum resolution",
+      "preresize_min_width": 1024,
+      "preresize_min_height": 1024,
+      "preresize_max_width": 16384,
+      "preresize_max_height": 16384,
+      "mask_fill_holes": true,
+      "mask_expand_pixels": 0,
+      "mask_invert": false,
+      "mask_blend_pixels": 32,
+      "mask_hipass_filter": 0.1,
+      "extend_for_outpainting": false,
+      "extend_up_factor": 1,
+      "extend_down_factor": 1,
+      "extend_left_factor": 1,
+      "extend_right_factor": 1,
+      "context_from_mask_extend_factor": 1,
+      "output_resize_to_target_size": true,
+      "output_target_width": 1024,
+      "output_target_height": 1024,
+      "output_padding": "32",
+      "image": [
+        "118",
+        0
+      ],
+      "mask": [
+        "142",
+        0
+      ]
+    },
+    "class_type": "InpaintCropImproved",
+    "_meta": {
+      "title": "✂️ Inpaint Crop (Improved)"
+    }
+  },
+  "110": {
+    "inputs": {
+      "stitcher": [
+        "109",
+        0
+      ],
+      "inpainted_image": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "InpaintStitchImproved",
+    "_meta": {
+      "title": "✂️ Inpaint Stitch (Improved)"
+    }
+  },
+  "111": {
+    "inputs": {
+      "detector_variant": "short",
+      "num_faces": 1,
+      "min_confidence": 0.5,
+      "missing_frame_fallback": "empty",
+      "face_detection_model": [
+        "107",
+        0
+      ],
+      "image": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "MediaPipeFaceLandmarker",
+    "_meta": {
+      "title": "Detect Face Landmarks (MediaPipe)"
+    }
+  },
+  "113": {
+    "inputs": {
+      "downscale_algorithm": "lanczos",
+      "upscale_algorithm": "lanczos",
+      "preresize": false,
+      "preresize_mode": "ensure minimum resolution",
+      "preresize_min_width": 1024,
+      "preresize_min_height": 1024,
+      "preresize_max_width": 16384,
+      "preresize_max_height": 16384,
+      "mask_fill_holes": true,
+      "mask_expand_pixels": 0,
+      "mask_invert": false,
+      "mask_blend_pixels": 32,
+      "mask_hipass_filter": 0.1,
+      "extend_for_outpainting": false,
+      "extend_up_factor": 1,
+      "extend_down_factor": 1,
+      "extend_left_factor": 1,
+      "extend_right_factor": 1,
+      "context_from_mask_extend_factor": 1.2,
+      "output_resize_to_target_size": true,
+      "output_target_width": 1024,
+      "output_target_height": 1024,
+      "output_padding": "32",
+      "image": [
+        "119",
+        0
+      ],
+      "mask": [
+        "114",
+        0
+      ]
+    },
+    "class_type": "InpaintCropImproved",
+    "_meta": {
+      "title": "✂️ Inpaint Crop (Improved)"
+    }
+  },
+  "114": {
+    "inputs": {
+      "regions": "all",
+      "face_landmarks": [
+        "111",
+        0
+      ]
+    },
+    "class_type": "MediaPipeFaceMask",
+    "_meta": {
+      "title": "Draw Face Mask (MediaPipe)"
+    }
+  },
+  "115": {
+    "inputs": {
+      "prompt": "face_swap: Use Picture 1 as the base image. Replace only the face identity in Picture 1 with the face identity from Picture 2. Preserve Picture 1's hairstyle, headwear, expression, pose, lighting, environment, background, composition, and all non-face details. Preserve Picture 2's facial identity, including eye shape and color, nose, mouth, and facial structure. Blend the swapped face naturally with consistent skin tone and sharp details.",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 1024,
+      "height": 1024,
+      "cfg": 1,
+      "steps": 8,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 0.98,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 0
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "116": {
+    "inputs": {
+      "images": [
+        "110",
+        0
+      ]
+    },
+    "class_type": "SaveImageWebsocket",
+    "_meta": {
+      "title": "Save Image (Websocket)"
+    }
+  },
+  "117": {
+    "inputs": {
+      "seed": 0
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "118": {
+    "inputs": {
+      "image_name": [
+        "115",
+        4
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "LoadInputImage"
+    }
+  },
+  "119": {
+    "inputs": {
+      "image_name": [
+        "115",
+        2
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "LoadInputImage"
+    }
+  },
+  "120": {
+    "inputs": {
+      "value": "a/2",
+      "a": [
+        "115",
+        9
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math"
+    }
+  },
+  "121": {
+    "inputs": {
+      "value": "a-b",
+      "a": [
+        "115",
+        9
+      ],
+      "b": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math"
+    }
+  },
+  "122": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "81",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "123": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "124": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "125": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "124",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "126": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "127": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "126",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "128": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "129": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "128",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
+    }
+  },
+  "130": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "62",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "131": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "132": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "qwen_image"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "133": {
+    "inputs": {
+      "boolean": [
+        "134",
+        0
+      ],
+      "on_true": [
+        "4",
+        0
+      ],
+      "on_false": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "134": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "115",
+        26
+      ],
+      "b": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "135": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "115",
+        24
+      ],
+      "b": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "136": {
+    "inputs": {
+      "boolean": [
+        "135",
+        0
+      ],
+      "on_true": [
+        "3",
+        0
+      ],
+      "on_false": [
+        "137",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "137": {
+    "inputs": {
+      "unet_name": "placeholder.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "base_model_gguf"
+    }
+  },
+  "138": {
+    "inputs": {
+      "image_name": [
+        "115",
+        5
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "LoadInputImage"
+    }
+  },
+  "139": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "138",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "140": {
+    "inputs": {
+      "mask": [
+        "139",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "141": {
+    "inputs": {
+      "boolean": [
+        "140",
+        0
+      ],
+      "on_true": [
+        "105",
+        0
+      ],
+      "on_false": [
+        "139",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "142": {
+    "inputs": {
+      "expand": 128,
+      "tapered_corners": true,
+      "mask": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "GrowMask",
+    "_meta": {
+      "title": "Grow Mask"
+    }
+  },
+  "143": {
+    "inputs": {
+      "pixels": [
+        "109",
+        1
+      ],
+      "vae": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "144": {
+    "inputs": {
+      "start": [
+        "145",
+        0
+      ],
+      "end": 1,
+      "conditioning": [
+        "64",
+        0
+      ]
+    },
+    "class_type": "ConditioningSetTimestepRange",
+    "_meta": {
+      "title": "ConditioningSetTimestepRange"
+    }
+  },
+  "145": {
+    "inputs": {
+      "value": 0.1
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "Float"
+    }
+  },
+  "146": {
+    "inputs": {
+      "start": 0,
+      "end": [
+        "145",
+        0
+      ],
+      "conditioning": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ConditioningSetTimestepRange",
+    "_meta": {
+      "title": "ConditioningSetTimestepRange"
+    }
+  },
+  "147": {
+    "inputs": {
+      "conditioning": [
+        "64",
+        0
+      ],
+      "latent": [
+        "143",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "148": {
+    "inputs": {
+      "conditioning_1": [
+        "146",
+        0
+      ],
+      "conditioning_2": [
+        "144",
+        0
+      ]
+    },
+    "class_type": "ConditioningCombine",
+    "_meta": {
+      "title": "Conditioning (Combine)"
+    }
+  }
+}

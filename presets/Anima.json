@@ -1,6 +1,6 @@
 
 {
-    "supported_tasks": ["text_to_image"],
+    "supported_tasks": ["text_to_image", "image_detail_enhance"],
     "default_engine": {
         "backend_engine": "Comfy",
         "disvisible": ["backend_selection", "performance_selection", "refiner_model"],

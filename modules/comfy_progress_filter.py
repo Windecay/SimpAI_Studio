@@ -1,3 +1,25 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+
+_PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES = ContextVar(
+    "simpai_profile_known_total_sampler_classes",
+    default=frozenset(),
+)
+
+
+@contextmanager
+def use_progress_profile(profile):
+    profile_classes = getattr(profile, "known_total_sampler_classes", ()) if profile is not None else ()
+    classes = frozenset(str(class_type) for class_type in profile_classes if class_type)
+    active_classes = _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.get()
+    token = _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.set(active_classes | classes)
+    try:
+        yield
+    finally:
+        _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.reset(token)
+
+
 def _int_like(value):
     if isinstance(value, bool) or value is None:
         return None
@@ -69,6 +91,8 @@ def install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline):
         return False
 
     def should_use_dynamic_stage_total(class_type):
+        if class_type in _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.get():
+            return False
         if class_type in _KNOWN_TOTAL_ADVANCED_SAMPLERS:
             return False
         return original(class_type)

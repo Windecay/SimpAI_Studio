@@ -5,6 +5,7 @@ import time
 import shared
 import modules.config as config
 import modules.model_loader as model_loader
+from enhanced import parameter_profiles
 from modules.access_mode import is_local_mode, user_can_download_models
 
 
@@ -396,12 +397,20 @@ def _missing_model_dicts(missing_models):
 def get_preset_model_status(payload):
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
+    user_did = _user_did_from_payload(payload)
+    applied = parameter_profiles.apply_profile_to_canvas_node(
+        payload.get("preset_node"),
+        {"user_did": user_did},
+    )
+    if not applied.get("ok"):
+        return applied
+    payload = copy.deepcopy(payload)
+    payload["preset_node"] = applied.get("preset_node")
     preset_node = _preset_node_from_payload(payload)
     preset_name = _preset_name_from_node(preset_node)
     if not preset_name:
         return {"ok": False, "error": "preset name is empty"}
 
-    user_did = _user_did_from_payload(payload)
     can_download = user_can_download_models(user_did) and not bool(getattr(shared.args, "disable_backend", False))
     selected_status = _selected_model_config_status(preset_node)
     if selected_status is not None:

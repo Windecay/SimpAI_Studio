@@ -15,6 +15,7 @@ class ProgressProfile:
     pass_count: int
     total_steps: int
     source_duration: float | None = None
+    known_total_sampler_classes: tuple[str, ...] = ()
 
     def accumulator(self):
         return ProgressAccumulator(self)
@@ -93,6 +94,8 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None)
     probe = duration_probe or probe_media_duration
     if "infinitetalk" in method:
         return _build_infinitetalk_profile(method, params, steps, probe)
+    if "qwen_faceswap" in method:
+        return _build_qwen_faceswap_profile(steps)
     if "wan_animate" in method:
         return _build_wan_animate_profile(method, params, steps, probe)
     if "wan_scail2" in method:
@@ -100,6 +103,18 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None)
     if "bernini_video_edit" in method:
         return _build_bernini_video_edit_profile(params, steps, probe)
     return None
+
+
+def _build_qwen_faceswap_profile(steps):
+    if steps < 2:
+        return None
+    return ProgressProfile(
+        name="qwen_faceswap_two_stage",
+        pass_steps=max(1, steps // 2),
+        pass_count=2,
+        total_steps=steps,
+        known_total_sampler_classes=("KSampler",),
+    )
 
 
 def _build_infinitetalk_profile(method, params, steps, probe):

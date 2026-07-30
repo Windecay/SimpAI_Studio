@@ -956,14 +956,36 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         state_params["engine_type"] = engine_type
         state_params["__gallery_engine_type"] = "video" if engine_type == "video" else "image"
 
-    state_params["__preset_prepared"] = copy.deepcopy(preset_prepared)
-
     restored = copy.deepcopy(preset_prepared)
     restored.update({
         key: value
         for key, value in parsed_parameters.items()
         if key not in (regen_manifest.KEY, regen_manifest.LABEL, "SimpleAI Regen Manifest")
     })
+
+    backend_params = manifest.get("backend_params", {})
+    if not isinstance(backend_params, dict):
+        backend_params = {}
+    for index in range(1, config.default_max_lora_number + 1):
+        canonical_key = f"lora_combined_{index}"
+        metadata_key = f"LoRA {index}"
+        if canonical_key in parsed_parameters:
+            combined = parsed_parameters.get(canonical_key)
+        elif metadata_key in parsed_parameters:
+            combined = parsed_parameters.get(metadata_key)
+        else:
+            model_name = backend_params.get(f"lora_{index}")
+            strength = backend_params.get(f"lora_{index}_strength", 1.0)
+            if model_name and str(model_name).strip().casefold() not in ("none", "placeholder.safetensors"):
+                combined = f"{model_name} : {strength}"
+            else:
+                combined = "None : 1.0"
+        if not isinstance(combined, str) or not combined.strip():
+            combined = "None : 1.0"
+        restored[canonical_key] = combined
+        preset_prepared[canonical_key] = combined
+
+    state_params["__preset_prepared"] = copy.deepcopy(preset_prepared)
 
     def _metadata_prompt_value(*keys):
         empty_value = None

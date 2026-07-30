@@ -9,6 +9,7 @@ import args_manager
 from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
+from modules.comfy_progress_filter import use_progress_profile
 import modules.config
 
 patch_all()
@@ -404,6 +405,11 @@ class AsyncTask:
                 modules.config.default_max_lora_number,
                 lora_filenames=modules.config.lora_filenames,
             )
+        regen_manifest.sync_lora_backend_params(
+            self.simpleai_regen_manifest,
+            self.params_backend,
+            modules.config.default_max_lora_number,
+        )
 
         if self.task_class != 'Fooocus':
             is_custom_vae = self.vae_name not in (None, '', default_vae, 'auto')
@@ -926,16 +932,17 @@ def worker():
                 if async_task.content_type == 'video':
                     extra_data['is_vhs'] = True
 
-                imgs = comfypipeline.process_flow(
-                    client_id,
-                    comfy_task.name,
-                    comfy_task.params,
-                    comfy_task.images,
-                    callback=callback,
-                    total_steps=comfy_task.steps,
-                    extra_data=extra_data,
-                    prompt_accepted_callback=mark_comfy_prompt_accepted,
-                )
+                with use_progress_profile(comfy_task.progress_profile):
+                    imgs = comfypipeline.process_flow(
+                        client_id,
+                        comfy_task.name,
+                        comfy_task.params,
+                        comfy_task.images,
+                        callback=callback,
+                        total_steps=comfy_task.steps,
+                        extra_data=extra_data,
+                        prompt_accepted_callback=mark_comfy_prompt_accepted,
+                    )
                 
                 if inpaint_worker.current_task is not None:
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
@@ -1456,6 +1463,11 @@ def worker():
                 loras,
                 modules.config.default_max_lora_number,
                 lora_filenames=lora_filenames,
+            )
+            regen_manifest.sync_lora_backend_params(
+                async_task.simpleai_regen_manifest,
+                async_task.params_backend,
+                modules.config.default_max_lora_number,
             )
         loras += async_task.performance_loras
         if advance_progress:

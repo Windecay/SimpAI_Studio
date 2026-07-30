@@ -18,6 +18,36 @@ def ensure_api_params_backend_arg(api_params_module):
                 backend_args.append(key)
 
 
+def sync_lora_backend_params(manifest, backend_params, max_lora_number):
+    if not isinstance(manifest, dict) or not isinstance(backend_params, dict):
+        return manifest
+
+    try:
+        max_lora_number = max(0, int(max_lora_number))
+    except (TypeError, ValueError):
+        max_lora_number = 0
+
+    snapshot = manifest.get("backend_params")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+        manifest["backend_params"] = snapshot
+
+    for index in range(1, max_lora_number + 1):
+        for suffix in ("", "_strength"):
+            key = f"lora_{index}{suffix}"
+            if key in backend_params:
+                snapshot[key] = json_safe(backend_params.get(key))
+            else:
+                snapshot.pop(key, None)
+
+    for key in ("loras", "use_lora"):
+        if key in backend_params:
+            snapshot[key] = json_safe(backend_params.get(key))
+        else:
+            snapshot.pop(key, None)
+    return manifest
+
+
 def _is_data_url(value):
     return isinstance(value, str) and value.lstrip().startswith("data:")
 

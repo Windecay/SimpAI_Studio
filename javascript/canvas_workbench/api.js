@@ -120,6 +120,12 @@
         const prompt = hasPrompt ? String(opts.prompt || '').trim() : promptDefaults.prompt;
         const negativePrompt = hasNegativePrompt ? String(opts.negativePrompt || '').trim() : promptDefaults.negativePrompt;
         const imageNumber = Math.max(1, Math.min(16, Math.round(Number(opts.imageNumber || entry.default_image_number || 1) || 1)));
+        const requestedClassicMode = String(opts.classicMode || '').trim().toLowerCase();
+        const classicMode = !isScene && requestedClassicMode === 'enhance' ? 'enhance' : 't2i';
+        const currentTab = classicMode === 'enhance' ? 'enhance' : 'ip';
+        const declaredEnhanceTargets = Array.isArray(opts.enhanceTargets) ? opts.enhanceTargets.map((value) => String(value || '').trim().toLowerCase()) : [];
+        const enhanceTargets = new Set(declaredEnhanceTargets.filter((value) => ['face', 'hand', 'eye'].includes(value)));
+        if (classicMode === 'enhance' && !enhanceTargets.size) ['face', 'hand', 'eye'].forEach((value) => enhanceTargets.add(value));
         const params = isScene ? themeDefaults : {
             uov_method: 'Upscale (1.5x)',
             inpaint_mode: 'Inpaint or Outpaint (default)',
@@ -203,13 +209,13 @@
             || backendParams.task_method
             || '';
         const nodeId = String(opts.id || `preset_run_${Date.now().toString(36)}`);
-        return {
+        const node = {
             id: nodeId,
             type: isScene ? 'preset' : 'classic',
             node_type: isScene ? 'preset' : 'classic',
             title: entry.display_name || cleanName,
-            classic_mode: 't2i',
-            current_tab: 'ip',
+            classic_mode: classicMode,
+            current_tab: currentTab,
             classic_ip_count: 1,
             preset: {
                 name: cleanName,
@@ -229,6 +235,13 @@
             },
             schema,
             params,
+            enhance_params: classicMode === 'enhance' ? {
+                regions: ['face', 'hand', 'eye'].map((target) => ({
+                    enabled: enhanceTargets.has(target),
+                    dino_prompt: target,
+                    prompt: enhanceTargets.has(target) ? prompt : ''
+                }))
+            } : {},
             upload_slots: {},
             upload_slot_sources: {},
             models_config: {
@@ -257,6 +270,11 @@
                 source: entry.source || ''
             }
         };
+        const parameterProfile = String(opts.parameterProfile || '').trim().slice(0, 200);
+        if (parameterProfile) {
+            node.parameter_profile = { name: parameterProfile, preset: cleanName, source: 'private' };
+        }
+        return node;
     }
 
     async function postJson(endpoint, payload, options) {

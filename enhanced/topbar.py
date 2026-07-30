@@ -1664,6 +1664,12 @@ def _build_canvas_media_capability(
         or (task == "image_edit" and max_images >= 1)
         or (task == "multi_image_edit" and max_images >= 2)
     ]
+    task_modes = {}
+    if output_type == "image" and "image_detail_enhance" in supported_tasks and not schema and not image_slots:
+        image_slots = ["enhance_image"]
+        min_images = 0
+        max_images = 1
+        task_modes["image_detail_enhance"] = "enhance"
     interaction_requirements = []
     for raw_requirement in explicit_interaction_requirements if isinstance(explicit_interaction_requirements, (list, tuple)) else []:
         requirement = str(raw_requirement or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -1677,6 +1683,8 @@ def _build_canvas_media_capability(
         "max_images": max_images,
         "supported_tasks": supported_tasks,
     }
+    if task_modes:
+        capability["task_modes"] = task_modes
     if interaction_requirements:
         capability["interaction_requirements"] = interaction_requirements
     return capability
@@ -1744,7 +1752,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v7",
+        "canvas_preset_meta_media_capability_v8",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples

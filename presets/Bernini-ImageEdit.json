@@ -1,5 +1,5 @@
 {
-    "supported_tasks": ["image_edit", "multi_image_edit"],
+    "supported_tasks": ["image_edit", "multi_image_edit", "image_object_transfer"],
     "default_engine": {
         "backend_engine": "Wan",
             "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
