@@ -511,6 +511,28 @@ def _localized_default_reply(action_type, lang):
     return "已整理可写入主提示词框的内容。"
 
 
+def _localized_creative_generation_reply(actions, lang, auto_generate=False):
+    generation = next(
+        (
+            action for action in (actions or [])
+            if isinstance(action, dict) and action.get("type") == "generate_image"
+        ),
+        None,
+    )
+    if not generation:
+        return ""
+    plan = generation.get("execution_plan") if isinstance(generation.get("execution_plan"), dict) else {}
+    task = str(plan.get("task") or generation.get("task") or "text_to_image").strip().lower()
+    editing = task != "text_to_image"
+    if _normalize_lang(lang) == "en":
+        if auto_generate:
+            return "I prepared the image-editing plan and am starting it now." if editing else "I prepared the image-generation plan and am starting it now."
+        return "I prepared an image-editing proposal. Review the source image and options, then confirm." if editing else _localized_default_reply("generate_image", "en")
+    if auto_generate:
+        return "已准备修图方案，正在开始处理。" if editing else "已准备生图方案，正在开始生成。"
+    return "已准备修图方案，请检查输入图片和选项后确认。" if editing else _localized_default_reply("generate_image", "cn")
+
+
 def _history_image_placeholder(item):
     image_count = item.get("image_count")
     if image_count is None and isinstance(item.get("images"), list):
@@ -1517,7 +1539,7 @@ def _normalize_generation_media_refs(value, available_media_refs=None):
 
 
 SPECIALIZED_IMAGE_TASK_PATTERNS = (
-    ("image_detail_enhance", re.compile(r"(?:修手|修脸|修眼|精修.{0,4}(?:手|脸|眼|细节)|修(?!改|图)(?:一下)?.{0,12}(?:手部|手指|手|面部|脸部|脸|五官|眼睛|眼部|眼)|(?:修复|改善|优化).{0,6}(?:手部|手指|面部|脸部|五官|眼睛|眼部)|(?:手部|手指|面部|脸部|五官|眼睛|眼部).{0,6}(?:修复|改善|优化)|(?:fix|repair|enhance).{0,10}(?:hand|finger|face|eye)|detail enhancement)", re.I)),
+    ("image_detail_enhance", re.compile(r"(?:修手|修脸|修眼|精修.{0,4}(?:手|脸|眼|细节)|修(?!改|图)(?:一下)?.{0,12}(?:手部|手指|手|面部|脸部|脸|五官|眼睛|眼部|眼)|(?:修复|改善|优化).{0,6}(?:手部|手指|面部|脸部|五官|眼睛|眼部)|(?:手部|手指|面部|脸部|五官|眼睛|眼部|眼).{0,8}(?:修(?:得|一下)?|精修|修复|改善|优化)|(?:fix|repair|enhance).{0,10}(?:hand|finger|face|eye)|detail enhancement)", re.I)),
     ("image_background_removal", re.compile(r"(?:\u53bb(?:\u6389)?|\u79fb\u9664|\u5220\u9664).{0,8}(?:\u80cc\u666f|\u5e95\u8272)|\u62a0\u56fe|remov(?:e|ing).{0,12}background", re.I)),
     ("image_outpaint", re.compile(r"\u6269\u56fe|\u6269\u5c55.{0,6}(?:\u753b\u5e03|\u753b\u9762|\u8fb9\u7f18)|outpaint", re.I)),
     ("image_upscale", re.compile(r"\u8d85\u5206|\u9ad8\u6e05\u5316|(?:\u653e\u5927|\u63d0\u9ad8|\u63d0\u5347).{0,8}(?:\u5206\u8fa8\u7387|\u6e05\u6670\u5ea6|\u50cf\u7d20)|upscal|super[-_ ]?resolution", re.I)),
@@ -1890,17 +1912,20 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
         source.get("media_refs") or source.get("input_refs"),
         available_media_refs,
     )
+    intent_text = "\n".join(part for part in (user_message, instruction) if part)
     task = _normalize_generation_task(
         source.get("task") or source.get("task_type"),
         refs,
-        "\n".join(part for part in (user_message, instruction) if part),
+        intent_text,
     )
+    if task == "text_to_image" and CREATIVE_EDIT_INTENT_RE.search(intent_text):
+        task = "multi_image_edit" if len(available) > 1 else "image_edit"
     if task != "text_to_image" and not refs:
         refs = available[:5]
         task = _normalize_generation_task(task, refs, user_message or instruction)
     outpaint = _normalize_outpaint_intent(
         source.get("outpaint") or source.get("outpaint_percentages"),
-        "\n".join(part for part in (user_message, instruction) if part),
+        intent_text,
     ) if task == "image_outpaint" else {}
     request = {
         "task": task,
@@ -1920,7 +1945,7 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
     if task == "image_detail_enhance":
         request["enhance_targets"] = _normalize_enhance_targets(
             source.get("enhance_targets") or source.get("targets"),
-            "\n".join(part for part in (user_message, instruction) if part),
+            intent_text,
         )
     return request
 
@@ -2916,6 +2941,13 @@ def run_describe_vlm_chat(payload):
                 payload.get("lang") or payload.get("__lang"),
             ),
         )
+        creative_reply = _localized_creative_generation_reply(
+            parsed.get("actions"),
+            payload.get("lang") or payload.get("__lang"),
+            auto_generate=bool(params.get("describe_creative_auto_generate")),
+        )
+        if creative_reply:
+            parsed["reply"] = creative_reply
     result = dict(result)
     original_text = str(result.get("text") or "")
     result["text"] = parsed.get("reply") or original_text

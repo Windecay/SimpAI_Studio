@@ -280,6 +280,7 @@
     }
 
     function setCreativePreference(value, source = 'user') {
+        const commitsRoute = value && ['style', 'preset', 'parameter_profile'].some((key) => Object.prototype.hasOwnProperty.call(value, key));
         const requested = Object.assign({}, state.creativePreference || {}, value || {});
         const selectedProfile = creativeParameterProfileEntry(requested.parameter_profile, requested.preset);
         if (selectedProfile) requested.preset = selectedProfile.preset;
@@ -290,6 +291,7 @@
             updated_at: new Date().toISOString()
         }));
         state.creativePreference = next;
+        if (commitsRoute) state.creativePreferenceExpanded = false;
         applyCreativePreferenceToPendingActions(next);
         state.persistenceDirty = true;
         saveConversationSnapshot();
@@ -3883,8 +3885,14 @@
         generation.error = '';
         persistCreativeAction(true);
 
-        const required = creativeRequiredImageCount(entry, found.action.task);
-        const remaining = Math.max(0, required - found.action.media_inputs.length);
+        const plannedTask = String(found.action.execution_plan?.task || creativeActionTask(
+            found.action,
+            found.action.media_inputs.length
+        ));
+        const required = creativeRequiredImageCount(entry, plannedTask);
+        const remaining = found.action.execution_plan.status === 'needs_media'
+            ? Math.max(0, required - found.action.media_inputs.length)
+            : 0;
         setStatus(remaining
             ? localText(`Image added. Select ${remaining} more to continue.`, `图片已添加，还需选择 ${remaining} 张。`)
             : localText('Image added to the current edit. You can generate with the existing request.', '图片已加入当前修图任务，可按原请求直接生成。'));
@@ -4810,6 +4818,10 @@
         if (selectedMode === 'creative') {
             await ensureCreativePresetCatalog();
             if (requestToken !== state.requestToken) return;
+            if (state.creativePreferenceExpanded) {
+                state.creativePreferenceExpanded = false;
+                renderCreativePreferenceMount(modal);
+            }
         }
 
         state.busy = true;
