@@ -18,12 +18,14 @@ import modules.canvas_workbench_assets as canvas_workbench_assets
 import modules.describe_media as describe_media
 import modules.model_loader as model_loader
 import modules.util as util
+import modules.vlm_api_profiles as vlm_api_profiles
 import shared
 from enhanced.vlm import VLM, vlm
 from modules.access_mode import user_can_download_models
 from modules.custom_llm_api import (
     api_format_supported,
     custom_llm_url,
+    extract_response_metadata,
     extract_response_text,
     models_url,
     prepare_completion_request,
@@ -112,18 +114,26 @@ def _canvas_vlm_cancelled_response(project_id="", node_id="", conversation_id=""
 
 def _canvas_vlm_resolve_version(value):
     text = str(value or "").strip()
+    if vlm_api_profiles.is_profile_version(text):
+        return text
     if text == "Custom" or "Custom" in text.split():
         return "Custom"
     if text in VLM.VERSIONS:
         return text
+    item = VLM.get_version_catalog_item(text) if text else None
+    if item:
+        return str(item.get("id") or text)
     if text.endswith("-Thinking"):
         base_version = text[:-len("-Thinking")]
         if base_version in VLM.VERSIONS:
             return base_version
-    for version in sorted(VLM.VERSIONS.keys(), key=len, reverse=True):
-        if version in text:
+    catalog_items = VLM.get_model_catalog().get("items") or []
+    for catalog_item in sorted(catalog_items, key=lambda row: len(str(row.get("id") or "")), reverse=True):
+        version = str(catalog_item.get("id") or "")
+        label = str(catalog_item.get("display_label") or catalog_item.get("label") or "")
+        if version and (version in text or (label and label in text)):
             return version
-    return VLM.resolve_version(text)
+    return text or VLM.DEFAULT_VERSION
 
 def _canvas_vlm_runtime_timings(params):
     if not isinstance(params, dict):
@@ -167,10 +177,19 @@ def canvas_vlm_model_status(payload):
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     user_context = payload.get("user_context") if isinstance(payload.get("user_context"), dict) else {}
     version_name = _canvas_vlm_resolve_version(params.get("version") or VLM.current_version or VLM.DEFAULT_VERSION)
-    if version_name == "Custom":
+    profile = vlm_api_profiles.apply_profile_to_params(params, version_name)
+    if vlm_api_profiles.is_profile_version(version_name) and not profile:
+        return {
+            "ok": False,
+            "ready": False,
+            "state": "error",
+            "version": version_name,
+            "error": "Unknown VLM API profile",
+            "message": "The selected VLM API profile no longer exists.",
+        }
+    if version_name == "Custom" or profile:
         base_url = str(params.get("custom_base_url") or "").strip()
         model = str(params.get("custom_model") or "").strip()
-        api_key = str(payload.get("api_key") or params.get("custom_api_key") or "").strip()
         api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
         missing = []
         if not base_url:
@@ -189,9 +208,15 @@ def canvas_vlm_model_status(payload):
             "missing_count": 0,
             "missing_models": [],
             "can_download": False,
-            "message": "Custom API is ready." if ready else f"Custom API settings incomplete: {', '.join(missing)}.",
+            "message": (
+                f"API profile {profile.get('name')} is ready."
+                if ready and profile
+                else "Custom API is ready."
+                if ready
+                else f"Custom API settings incomplete: {', '.join(missing)}."
+            ),
         }
-    config_data = VLM.VERSIONS.get(version_name)
+    config_data = VLM.get_version_config(version_name)
     if not config_data:
         return {
             "ok": False,
@@ -203,6 +228,7 @@ def canvas_vlm_model_status(payload):
         }
 
     model_name = config_data.get("model") or version_name
+    backend = str(config_data.get("backend") or ("llamacpp" if config_data.get("is_llamacpp") else "transformers"))
     missing = []
 
     def add_missing(cata, path_file, url="", size=0):
@@ -217,7 +243,16 @@ def canvas_vlm_model_status(payload):
         })
 
     model_urls = config_data.get("model_urls") or {}
-    if model_urls:
+    if backend == "comfy_textgen":
+        clip_name = str(config_data.get("clip_name") or config_data.get("model_file") or model_name)
+        if not find_model_in_dirs(VLM._text_encoder_roots(), clip_name):
+            add_missing(
+                "text_encoders",
+                clip_name.replace("\\", "/"),
+                url=config_data.get("model_url") or "",
+                size=config_data.get("model_size") or 0,
+            )
+    elif model_urls:
         for file_name, url in model_urls.items():
             rel = os.path.join(model_name, file_name)
             if not find_model_in_dirs(modules.config.paths_LLM, rel):
@@ -225,15 +260,24 @@ def canvas_vlm_model_status(payload):
     else:
         model_file_name = config_data.get("model_file")
         rel = os.path.join(model_name, model_file_name) if model_file_name else os.path.join(model_name, model_name)
-        search_dirs = modules.config.paths_LLM if config_data.get("is_llamacpp") else modules.config.paths_llms
+        search_dirs = modules.config.paths_LLM if backend == "llamacpp" else modules.config.paths_llms
+        if backend == "llamacpp" and model_file_name:
+            rel = str(model_file_name)
         if not find_model_in_dirs(search_dirs, rel):
             if config_data.get("model_url") and str(config_data.get("model_url")).endswith(".zip"):
                 add_missing("llms", f"[{model_name}]", url=config_data.get("model_url"))
             else:
-                add_missing("llms", rel.replace("\\", "/"), url=config_data.get("model_url") or "")
+                add_missing("LLM" if backend == "llamacpp" else "llms", rel.replace("\\", "/"), url=config_data.get("model_url") or "")
+        mmproj_file = str(config_data.get("mmproj_file") or "").strip()
+        if backend == "llamacpp" and mmproj_file and not find_model_in_dirs(search_dirs, mmproj_file):
+            add_missing("LLM", mmproj_file.replace("\\", "/"))
 
     user_did = user_context.get("user_did") or payload.get("user_did")
-    can_download = user_can_download_models(user_did) and not bool(getattr(shared.args, "disable_backend", False))
+    can_download = (
+        user_can_download_models(user_did)
+        and not bool(getattr(shared.args, "disable_backend", False))
+        and all(str(item.get("url") or "").strip() for item in missing)
+    )
     ready = len(missing) == 0
     return {
         "ok": True,
@@ -430,12 +474,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     else:
         messages.append({"role": "user", "content": prompt})
 
+    max_tokens = int(params.get("max_tokens", 1024))
     request_payload = {
         "model": model,
         "messages": messages,
         "temperature": float(params.get("temperature", 0.8)),
         "top_p": float(params.get("top_p", 0.9)),
-        "max_tokens": int(params.get("max_tokens", 1024)),
+        "max_tokens": max_tokens,
     }
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
@@ -448,6 +493,8 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         timeout=180,
     )
     _canvas_vlm_add_timing(params, "custom_main_api_call", time.monotonic() - main_started)
+    completion = extract_response_metadata(response)
+    completion.update({"api_format": api_format, "max_tokens": max_tokens})
     text = canvas_extract_openai_text(response).strip()
 
     def review_llm_fn(messages, review_payload):
@@ -481,12 +528,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             retry_messages.append({"role": "user", "content": [{"type": "text", "text": retry_prompt}] + image_parts})
         else:
             retry_messages.append({"role": "user", "content": retry_prompt})
+        retry_max_tokens = max(max_tokens, 1024)
         retry_request = {
             "model": model,
             "messages": retry_messages,
             "temperature": 0.2,
             "top_p": 0.8,
-            "max_tokens": max(int(params.get("max_tokens", 1024)), 1024),
+            "max_tokens": retry_max_tokens,
         }
         retry_response = canvas_custom_llm_completion_request(
             base_url,
@@ -497,6 +545,8 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         )
         _canvas_vlm_add_timing(params, "custom_draft_retry_api_call", time.monotonic() - retry_started)
         retry_text = canvas_extract_openai_text(retry_response).strip()
+        retry_completion = extract_response_metadata(retry_response)
+        retry_completion.update({"api_format": api_format, "max_tokens": retry_max_tokens})
         retry_actions = canvas_vlm_agent.extract_vlm_agent_actions(retry_text)
         retry_validation = canvas_vlm_agent.validate_llm_draft_response(retry_text, retry_actions, payload, params, prompt)
         draft_retry_meta = {
@@ -506,7 +556,9 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             "retry_valid": bool(retry_validation.get("valid")),
             "retry_required": True,
         }
-        text = retry_text or text
+        if retry_text:
+            text = retry_text
+            completion = retry_completion
         agent_actions = retry_actions if retry_validation.get("valid") else []
     elif draft_validation.get("issues"):
         draft_repair_meta = {
@@ -547,10 +599,28 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     response_params = {
         "prompt": prompt,
         "model": model,
-        "base_url": base_url,
         "supports_images": supports_images,
+        "max_tokens": max_tokens,
         "rolling_context": history_stats,
     }
+    if params.get("custom_profile_id"):
+        response_params["profile_id"] = str(params.get("custom_profile_id") or "")
+        response_params["profile_name"] = str(params.get("custom_api_name") or "")
+    else:
+        response_params["base_url"] = base_url
+    usage = completion.get("usage") if isinstance(completion.get("usage"), dict) else {}
+    logger.info(
+        "Custom VLM completion: status=%s, finish_reason=%s, reason=%s, output_limited=%s, max_tokens=%s, result_chars=%s, input_tokens=%s, output_tokens=%s, total_tokens=%s",
+        completion.get("status"),
+        completion.get("finish_reason"),
+        completion.get("reason"),
+        bool(completion.get("output_limited")),
+        completion.get("max_tokens"),
+        len(text),
+        usage.get("input_tokens", usage.get("prompt_tokens")),
+        usage.get("output_tokens", usage.get("completion_tokens")),
+        usage.get("total_tokens"),
+    )
     _canvas_vlm_add_timing(params, "custom_total", time.monotonic() - custom_started)
     timings = _canvas_vlm_timing_snapshot(params)
     if timings:
@@ -573,13 +643,14 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         "text": display_text,
         "raw_text": text if display_text != text else "",
         "agent_actions": agent_actions,
-        "version": "Custom",
+        "version": str(params.get("custom_profile_version") or "Custom"),
         "provider": params.get("custom_provider") or "custom",
         "model": model,
         "asset_refs": asset_refs,
         "used_images": len(image_parts),
         "mode": mode,
         "conversation_id": conversation_id if mode == "chat" else None,
+        "completion": completion,
         "params": response_params,
     }
 
@@ -609,7 +680,14 @@ def canvas_vlm_run(payload):
     _canvas_vlm_runtime_timings(params)
     stage_started = time.monotonic()
     version_name = _canvas_vlm_resolve_version(params.get("version") or VLM.current_version or VLM.DEFAULT_VERSION)
-    is_custom_api = version_name == "Custom"
+    profile = vlm_api_profiles.apply_profile_to_params(params, version_name)
+    if vlm_api_profiles.is_profile_version(version_name) and not profile:
+        return {
+            "ok": False,
+            "error": "Unknown VLM API profile",
+            "details": "The selected VLM API profile no longer exists.",
+        }
+    is_custom_api = version_name == "Custom" or bool(profile)
     model_status = canvas_vlm_model_status(payload)
     _canvas_vlm_add_timing(params, "model_status_gate", time.monotonic() - stage_started)
     if not model_status.get("ready"):
@@ -658,7 +736,7 @@ def canvas_vlm_run(payload):
         return str(mime or "").startswith("video/") or ext in [".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"]
 
     def is_llama_cpp_vlm_version():
-        return bool(VLM.VERSIONS.get(version_name, {}).get("is_llamacpp"))
+        return bool((VLM.get_version_config(version_name) or {}).get("is_llamacpp"))
 
     def prepare_vlm_image_array(image_array):
         if image_array is None:
@@ -706,9 +784,9 @@ def canvas_vlm_run(payload):
         return frames
 
     def llama_cpp_video_frame_budget(requested_frames):
-        if not bool(VLM.VERSIONS.get(version_name, {}).get("is_llamacpp")):
+        if not bool((VLM.get_version_config(version_name) or {}).get("is_llamacpp")):
             return int(requested_frames)
-        version_cfg = VLM.VERSIONS.get(version_name, {})
+        version_cfg = VLM.get_version_config(version_name) or {}
         n_ctx = int(version_cfg.get("n_ctx", 8192) or 8192)
         image_tokens = int(version_cfg.get("image_min_tokens", 0) or version_cfg.get("image_max_tokens", 0) or 0)
         if image_tokens <= 0:
@@ -777,7 +855,7 @@ def canvas_vlm_run(payload):
 
     image_input = None
     if images:
-        image_input = images if VLM.is_llamacpp and len(images) > 1 else images[0]
+        image_input = images if (VLM.is_llamacpp or VLM.backend == "comfy_textgen") and len(images) > 1 else images[0]
 
     stage_started = time.monotonic()
     max_tokens = clamp_int(params.get("max_tokens", 1024), 1024, 64, 8192)
@@ -864,13 +942,13 @@ def canvas_vlm_run(payload):
         if len(current_prompt) > max(800, text_budget // 3):
             current_prompt = current_prompt[-max(800, text_budget // 3):].lstrip()
         sections = []
+        system_text = ""
         system_prompt = params.get("system_prompt")
         if system_prompt is not None and str(system_prompt).strip():
             system_text = str(system_prompt).strip()
             max_system = max(1200, min(5000, text_budget // 2))
             if len(system_text) > max_system:
                 system_text = system_text[:max_system].rstrip() + "\n... system prompt truncated for context window"
-            sections.append(system_text)
         if isolate_history:
             sections.append(
                 "This is a standalone current image-generation request. Ignore earlier chat visual traits, old prompt tags, "
@@ -886,7 +964,7 @@ def canvas_vlm_run(payload):
         if lines:
             sections.append("\n".join(lines))
         sections.append(f"Current user request:\n{current_prompt}")
-        return "\n\n".join(sections), bool(lines), stats
+        return "\n\n".join(sections), bool(lines), stats, system_text
 
     stateless_llamacpp_chat = bool(
         mode == "chat"
@@ -895,6 +973,7 @@ def canvas_vlm_run(payload):
         and not bool(params.get("force_stateful_image_chat"))
     )
     stateless_prompt_includes_text_history = False
+    stateless_system_prompt = ""
     rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
     stage_started = time.monotonic()
     if mode == "chat" and not stateless_llamacpp_chat:
@@ -920,7 +999,7 @@ def canvas_vlm_run(payload):
         inference_prompt = prompt
         if stateless_llamacpp_chat:
             stateless_started = time.monotonic()
-            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats = build_stateless_llamacpp_chat_prompt(prompt)
+            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt)
             _canvas_vlm_add_timing(params, "stateless_prompt_prepare", time.monotonic() - stateless_started)
             logger.warning(
                 "Canvas VLM llama.cpp chat is using rolling stateless inference to avoid context-shift failures: version=%s, conversation_id=%s, context=%s",
@@ -937,7 +1016,7 @@ def canvas_vlm_run(payload):
             top_k=top_k,
             repetition_penalty=repetition_penalty,
             seed=seed,
-            system_prompt="" if stateless_llamacpp_chat else None,
+            system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
         )
         if (
             stateless_llamacpp_chat
@@ -946,7 +1025,7 @@ def canvas_vlm_run(payload):
             and int(rolling_context_stats.get("budget") or 0) > 1600
         ):
             retry_budget = max(1200, int((rolling_context_stats.get("budget") or 2400) * 0.45))
-            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats = build_stateless_llamacpp_chat_prompt(prompt, retry_budget)
+            inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt, retry_budget)
             logger.warning("Retrying Canvas VLM llama.cpp chat with smaller rolling context: %s", rolling_context_stats)
             text = vlm.inference(
                 image_input,
@@ -957,7 +1036,7 @@ def canvas_vlm_run(payload):
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
                 seed=seed,
-                system_prompt="",
+                system_prompt=stateless_system_prompt,
             )
     if text is None:
         text = ""

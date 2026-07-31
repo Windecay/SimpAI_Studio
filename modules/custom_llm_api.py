@@ -113,6 +113,48 @@ def _content_text(content):
     return "\n".join(part for part in parts if part)
 
 
+def strip_reasoning_text(text):
+    output = str(text or "").strip()
+    if not output:
+        return ""
+
+    final_channel = re.search(r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b", output)
+    message_marker = re.search(r"(?is)<\|message\|>", output)
+    if final_channel:
+        output = output[final_channel.end():]
+    elif message_marker and re.search(r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b", output[:message_marker.start()]):
+        output = output[message_marker.end():]
+    else:
+        output = re.sub(
+            r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b.*?(?=<\|channel\|?>\s*(?:final|answer|response)\b|<\|message\|>|$)",
+            "",
+            output,
+        )
+
+    output = re.sub(r"(?is)<think\b[^>]*>.*?</think>", "", output)
+    output = re.sub(
+        r"(?is)^\s*<think\b[^>]*>.*$",
+        "",
+        output,
+    )
+    output = re.sub(
+        r"(?is)<\|channel\|?>\s*(?:final|answer|response|thought|analysis|thinking|reasoning)\b",
+        "",
+        output,
+    )
+    output = re.sub(
+        r"(?is)<(?:/)?(?:think|thinking|analysis|reasoning)\b[^>]*>",
+        "",
+        output,
+    )
+    output = re.sub(
+        r"(?is)<(?:\|)?(?:channel|message|turn)(?:\|)?>|<(?:channel|turn)\|>",
+        "",
+        output,
+    )
+    return output.strip()
+
+
 def _responses_content(content):
     if not isinstance(content, list):
         return content
@@ -182,11 +224,13 @@ def extract_response_text(response):
 
     output_text = response.get("output_text")
     if isinstance(output_text, str) and output_text.strip():
-        return output_text
+        return strip_reasoning_text(output_text)
 
     parts = []
     for output in response.get("output") or []:
         if not isinstance(output, dict):
+            continue
+        if str(output.get("type") or "").lower() == "reasoning":
             continue
         content = output.get("content")
         if isinstance(content, str):
@@ -195,12 +239,15 @@ def extract_response_text(response):
         for item in content or []:
             if not isinstance(item, dict):
                 continue
-            if item.get("type") in ("output_text", "text") and isinstance(item.get("text"), str):
+            item_type = str(item.get("type") or "")
+            if item_type.lower() == "reasoning":
+                continue
+            if item_type in ("output_text", "text") and isinstance(item.get("text"), str):
                 parts.append(item["text"])
             elif isinstance(item.get("content"), str):
                 parts.append(item["content"])
     if any(part.strip() for part in parts):
-        return "\n".join(part for part in parts if part)
+        return strip_reasoning_text("\n".join(part for part in parts if part))
 
     choices = response.get("choices")
     if not choices:
@@ -209,9 +256,49 @@ def extract_response_text(response):
     content = message.get("content") if isinstance(message, dict) else ""
     text = _content_text(content)
     if text.strip():
-        return text
-    for key in ("reasoning_content", "reasoning"):
-        reasoning = message.get(key) if isinstance(message, dict) else ""
-        if isinstance(reasoning, str) and reasoning.strip() and reasoning.strip() != "None":
-            return reasoning
+        return strip_reasoning_text(text)
     return str(content or "")
+
+
+def extract_response_metadata(response):
+    if not isinstance(response, dict):
+        return {"output_limited": False}
+
+    choices = response.get("choices")
+    choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+    status = str(response.get("status") or choice.get("status") or "").strip()
+    finish_reason = str(choice.get("finish_reason") or response.get("finish_reason") or "").strip()
+    stop_reason = str(choice.get("stop_reason") or response.get("stop_reason") or "").strip()
+    incomplete_details = response.get("incomplete_details")
+    incomplete_reason = ""
+    if isinstance(incomplete_details, dict):
+        incomplete_reason = str(incomplete_details.get("reason") or "").strip()
+    elif incomplete_details not in (None, ""):
+        incomplete_reason = str(incomplete_details).strip()
+
+    reason = incomplete_reason or finish_reason or stop_reason
+    normalized_reason = reason.lower().replace("-", "_").replace(" ", "_")
+    output_limited = normalized_reason in {
+        "length",
+        "max_tokens",
+        "max_output_tokens",
+        "max_completion_tokens",
+        "token_limit",
+    }
+
+    metadata = {
+        "output_limited": output_limited,
+    }
+    if status:
+        metadata["status"] = status
+    if finish_reason:
+        metadata["finish_reason"] = finish_reason
+    if stop_reason:
+        metadata["stop_reason"] = stop_reason
+    if reason:
+        metadata["reason"] = reason
+    if incomplete_details not in (None, ""):
+        metadata["incomplete_details"] = incomplete_details
+    if isinstance(response.get("usage"), dict):
+        metadata["usage"] = response["usage"]
+    return metadata

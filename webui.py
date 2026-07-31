@@ -39,6 +39,7 @@ import modules.canvas_vlm_runtime as canvas_vlm_runtime
 import modules.describe_vlm_chat as describe_vlm_chat
 import modules.describe_media as describe_media
 import modules.cloud_image as cloud_image
+import modules.vlm_api_profiles as vlm_api_profiles
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 import modules.canvas_workbench_media_gallery as canvas_workbench_media_gallery
 import modules.canvas_workbench_danbooru_gallery as canvas_workbench_danbooru_gallery
@@ -116,6 +117,7 @@ _REFRESH_FILES_CACHE_KEY = "__refresh_files_cache"
 _REFRESH_FILES_CHOICES_KEY = "__refresh_files_choices_signature"
 MAIN_VLM_USER_VERSION_KEY = "main_vlm_version"
 MAIN_VLM_LOCAL_SETTINGS_KEY = "main_vlm_custom_api"
+MAIN_VLM_EMPTY_PROFILE_VALUE = "__empty_vlm_api_profile__"
 MAIN_VLM_CUSTOM_KEYS = {
     "api_name": "vlm_custom_api_name",
     "provider": "vlm_custom_provider",
@@ -125,7 +127,7 @@ MAIN_VLM_CUSTOM_KEYS = {
     "api_format": "vlm_custom_api_format",
     "supports_images": "vlm_custom_supports_images",
 }
-MAIN_VLM_LOCAL_SETTING_KEYS = tuple(MAIN_VLM_CUSTOM_KEYS.keys()) + ("version",)
+MAIN_VLM_LOCAL_SETTING_KEYS = ("version",)
 MAIN_VLM_LEGACY_LOCAL_KEYS = tuple(MAIN_VLM_CUSTOM_KEYS.values()) + (MAIN_VLM_USER_VERSION_KEY,)
 
 import modules.scene_director_webui as scene_director_webui
@@ -235,6 +237,10 @@ def _main_vlm_ui_texts(state=None):
         "support_image_label": _main_vlm_text(state, "Support Image", "支持图像输入"),
         "fetch_models": _main_vlm_text(state, "Fetch Models", "拉取模型"),
         "test_api": _main_vlm_text(state, "Test API", "测试 API"),
+        "profile_label": _main_vlm_text(state, "Saved API configurations", "已保存 API 配置"),
+        "new_profile": _main_vlm_text(state, "New", "新建"),
+        "save_profile": _main_vlm_text(state, "Save configuration", "保存配置"),
+        "delete_profile": _main_vlm_text(state, "Delete configuration", "删除配置"),
     }
 
 
@@ -258,13 +264,22 @@ def _main_vlm_custom_help_html(state=None):
 
 def _vlm_resolve_version(value):
     value = str(value or "").strip()
+    if vlm_api_profiles.is_profile_version(value):
+        return value
     if value == VLM.CUSTOM_VERSION or re.search(r"(^|\s)Custom($|\s)", value):
         return VLM.CUSTOM_VERSION
     if value in VLM.VERSIONS or value.endswith("-Thinking"):
         return VLM.resolve_version(value)
-    for version in sorted(VLM.VERSIONS.keys(), key=len, reverse=True):
-        if version in value:
+    item = VLM.get_version_catalog_item(value) if value else None
+    if item:
+        return str(item.get("id") or value)
+    for item in sorted(VLM.get_model_catalog().get("items") or [], key=lambda row: len(str(row.get("id") or "")), reverse=True):
+        version = str(item.get("id") or "")
+        label = str(item.get("display_label") or item.get("label") or "")
+        if version and (version in value or (label and label in value)):
             return version
+    if value.startswith(("llamacpp:", "comfy:")):
+        return value
     return VLM.DEFAULT_VERSION
 
 
@@ -274,19 +289,73 @@ def _vlm_custom_model_choice_name(settings=None):
     return model or VLM.CUSTOM_VERSION
 
 
-def _vlm_model_choice_label(version):
+def _main_vlm_can_manage_profiles(state=None, request=None):
+    state = _main_vlm_state_from_request(state, request)
+    user_did = identity_access.current_user_did(state) or _get_request_identity_did(request)
+    return vlm_api_profiles.can_manage(state, user_did=user_did)
+
+
+def _main_vlm_profile_choices(state=None):
+    choices = vlm_api_profiles.profile_choices()
+    empty_label = _main_vlm_text(
+        state,
+        "New configuration (unsaved)" if choices else "No saved configurations",
+        "新配置（未保存）" if choices else "暂无已保存配置",
+    )
+    return [(empty_label, MAIN_VLM_EMPTY_PROFILE_VALUE), *choices]
+
+
+def _main_vlm_model_catalog(state=None, request=None, refresh=False):
+    return vlm_api_profiles.merge_catalog(
+        VLM.get_model_catalog(refresh=bool(refresh)),
+        allow_raw_custom=_main_vlm_can_manage_profiles(state, request),
+    )
+
+
+def _main_vlm_catalog_item(version, state=None, request=None):
+    target = str(version or "").strip()
+    for item in _main_vlm_model_catalog(state, request).get("items") or []:
+        if str(item.get("id") or "") == target:
+            return item
+    return None
+
+
+def _vlm_model_choice_label(version, state=None, request=None):
     version = _vlm_resolve_version(version)
-    status = VLM.get_version_status(version)
-    label = _vlm_custom_model_choice_name() if version == VLM.CUSTOM_VERSION else version
+    profile = vlm_api_profiles.profile_by_version(version)
+    status = {"icon": "✓" if vlm_api_profiles.profile_ready(profile) else "⚠"} if profile else VLM.get_version_status(version)
+    item = _main_vlm_catalog_item(version, state, request)
+    label = str(item.get("display_label") or item.get("label") or version) if item else version
+    if version == VLM.CUSTOM_VERSION:
+        label = _vlm_custom_model_choice_name()
     return f'{status["icon"]} {label}'
 
 
-def _vlm_model_choices():
-    return [(_vlm_model_choice_label(version), version) for version in VLM.VERSIONS.keys()] + [(_vlm_model_choice_label(VLM.CUSTOM_VERSION), VLM.CUSTOM_VERSION)]
+def _vlm_model_choices(current=None, state=None, request=None):
+    choices = [
+        (_vlm_model_choice_label(item.get("id"), state, request), item.get("id"))
+        for item in _main_vlm_model_catalog(state, request).get("items") or []
+        if item.get("id")
+    ]
+    current = _vlm_resolve_version(current) if current else ""
+    if current and current not in {value for _, value in choices}:
+        choices.insert(0, (_vlm_model_choice_label(current, state, request), current))
+    return choices
 
 
 def _vlm_model_status_html(version):
     version = _vlm_resolve_version(version)
+    profile = vlm_api_profiles.profile_by_version(version)
+    if profile:
+        ready = vlm_api_profiles.profile_ready(profile)
+        label = str(vlm_api_profiles.public_catalog_item(profile).get("label") or profile.get("name") or version)
+        title = "Shared API profile is ready." if ready else "Shared API profile settings are incomplete."
+        return (
+            f'<div class="describe-vlm-model-state {"ready" if ready else "missing"}" title="{html.escape(title)}">'
+            f'<span class="describe-vlm-model-state-icon">{"✓" if ready else "⚠"}</span>'
+            f'<span>{html.escape(label)}</span>'
+            '</div>'
+        )
     status = VLM.get_version_status(version)
     state_class = "ready" if status["exists"] else "missing"
     if version == VLM.CUSTOM_VERSION and status["exists"]:
@@ -311,21 +380,14 @@ def _vlm_model_status_html(version):
 
 def _main_vlm_custom_settings_from_state(state, request=None):
     state = _main_vlm_state_from_request(state, request)
-    local_settings = _main_vlm_read_local_settings()
-
-    def setting_value(name, default):
-        return local_settings.get(name, default)
-
-    provider_key = str(setting_value("provider", "custom") or "custom").strip() or "custom"
-    provider = _main_vlm_provider_by_key(provider_key)
     return {
-        "api_name": str(setting_value("api_name", "Custom") or "Custom").strip() or "Custom",
-        "provider": provider["key"],
-        "base_url": str(setting_value("base_url", "") or "").strip(),
-        "model": str(setting_value("model", "") or "").strip(),
-        "api_key": str(setting_value("api_key", "") or "").strip(),
-        "api_format": str(setting_value("api_format", provider.get("format") or "openai_compatible") or "openai_compatible").strip() or "openai_compatible",
-        "supports_images": _as_bool(setting_value("supports_images", True), True),
+        "api_name": "Custom",
+        "provider": "custom",
+        "base_url": "",
+        "model": "",
+        "api_key": "",
+        "api_format": "openai_compatible",
+        "supports_images": True,
     }
 
 
@@ -341,12 +403,38 @@ def _apply_main_vlm_custom_settings(settings):
     )
 
 
+def _activate_main_vlm_version(version, custom_settings=None):
+    version = _vlm_resolve_version(version)
+    profile = vlm_api_profiles.profile_by_version(version)
+    if profile:
+        settings = vlm_api_profiles.runtime_settings(profile)
+        _apply_main_vlm_custom_settings(settings)
+        vlm.set_version(VLM.CUSTOM_VERSION)
+        return version, settings, profile
+    if version == VLM.CUSTOM_VERSION:
+        settings = custom_settings if isinstance(custom_settings, dict) else {}
+        _apply_main_vlm_custom_settings(settings)
+        vlm.set_version(VLM.CUSTOM_VERSION)
+        return version, settings, None
+    vlm.set_version(version)
+    return version, custom_settings if isinstance(custom_settings, dict) else {}, None
+
+
 def _main_vlm_selected_version_from_state(state, request=None):
     state = _main_vlm_state_from_request(state, request)
-    local_settings = _main_vlm_read_local_settings()
-    saved = local_settings.get("version")
+    if is_local_mode():
+        saved = _main_vlm_read_local_settings().get("version")
+    else:
+        saved = ads.get_user_default(MAIN_VLM_USER_VERSION_KEY, state, None)
+        if str(saved or "").strip() in {"", "None", "Unknown"}:
+            saved = None
     if saved:
-        return _vlm_resolve_version(saved)
+        version = _vlm_resolve_version(saved)
+        if version == VLM.CUSTOM_VERSION:
+            profile = vlm_api_profiles.default_profile()
+            if profile:
+                return vlm_api_profiles.profile_version(profile["id"])
+        return version
     return _vlm_resolve_version(ads.get_admin_default('vlm_version'))
 
 
@@ -376,7 +464,10 @@ def _main_vlm_save_admin_version(version, state, request=None):
 
 def _main_vlm_save_selected_version(version, state, persist_admin=False, request=None):
     version = _vlm_resolve_version(version)
-    _main_vlm_write_local_settings({"version": version})
+    if is_local_mode():
+        _main_vlm_write_local_settings({"version": version})
+    else:
+        _main_vlm_save_user_default(MAIN_VLM_USER_VERSION_KEY, version, state, request=request)
     if persist_admin:
         _main_vlm_save_admin_version(version, state, request=request)
     return version
@@ -445,6 +536,8 @@ def _main_vlm_write_local_settings(settings):
     if not isinstance(stored, dict):
         stored = {}
     merged = _main_vlm_merge_legacy_local_settings(data, stored)
+    for key in MAIN_VLM_CUSTOM_KEYS:
+        merged.pop(key, None)
     for key in MAIN_VLM_LOCAL_SETTING_KEYS:
         if key not in settings:
             continue
@@ -475,20 +568,6 @@ def _main_vlm_custom_message_html(message="", state="info"):
         return ""
     state_class = html.escape(str(state or "info"))
     return f'<div class="describe-vlm-custom-message {state_class}">{html.escape(str(message))}</div>'
-
-
-def _main_vlm_custom_save_message(saved, state=None):
-    if saved is False:
-        message = _main_vlm_text(
-            state,
-            "Custom API settings were not saved because local_settings.json could not be written.",
-            "Custom API 设置未保存：local_settings.json 写入失败。",
-        )
-        return _main_vlm_custom_message_html(message, "missing")
-    if saved is True:
-        message = _main_vlm_text(state, "Custom API settings saved to local_settings.json.", "Custom API 设置已保存到 local_settings.json。")
-        return _main_vlm_custom_message_html(message, "ready")
-    return ""
 
 
 def build_resolution_video_meta(video_path, source_id, active_source):
@@ -2673,10 +2752,31 @@ logo_imag_path = os.path.abspath(f'./presets/image/simpai_logo.jpg')
 logo_imag_url = f'/file={logo_imag_path}'
 _initial_main_vlm_lang_state = {"__lang": args_manager.args.language}
 _initial_main_vlm_texts = _main_vlm_ui_texts(_initial_main_vlm_lang_state)
-_initial_main_vlm_custom_settings = _main_vlm_custom_settings_from_state({})
-_apply_main_vlm_custom_settings(_initial_main_vlm_custom_settings)
+_initial_main_vlm_legacy_settings = _main_vlm_read_local_settings()
+_initial_main_vlm_profile = vlm_api_profiles.default_profile()
+_initial_main_vlm_legacy_profile = None
+if _initial_main_vlm_profile is None:
+    _initial_main_vlm_legacy_profile = vlm_api_profiles.ensure_legacy_profile(_initial_main_vlm_legacy_settings)
+    _initial_main_vlm_profile = vlm_api_profiles.default_profile()
+_initial_main_vlm_legacy_version = _initial_main_vlm_legacy_settings.get("version")
+_main_vlm_write_local_settings({"version": _initial_main_vlm_legacy_version} if _initial_main_vlm_legacy_version else {})
+_initial_main_vlm_custom_settings = (
+    _main_vlm_custom_settings_from_state({})
+    if is_local_mode()
+    else {
+        "api_name": "Custom",
+        "provider": "custom",
+        "base_url": "",
+        "model": "",
+        "api_key": "",
+        "api_format": "openai_compatible",
+        "supports_images": True,
+    }
+)
 _initial_main_vlm_version = _main_vlm_selected_version_from_state({})
-VLM.set_version(_initial_main_vlm_version)
+if is_local_mode():
+    _main_vlm_write_local_settings({"version": _initial_main_vlm_version})
+_activate_main_vlm_version(_initial_main_vlm_version, _initial_main_vlm_custom_settings)
 _initial_preview_welcome_image = get_welcome_image(
     modules.config.preset,
     False,
@@ -7014,8 +7114,8 @@ with shared.gradio_root:
                                         unload_btn = gr.Button(value='🗑️Unload Models', min_width=150)
                                     with gr.Row(visible=True, elem_id='describe_vlm_model_bar') as vlm_describe_col:
                                         describe_vlm_model = gr.Dropdown(
-                                            choices=_vlm_model_choices(),
-                                            value=_vlm_resolve_version(VLM.current_version),
+                                            choices=_vlm_model_choices(_initial_main_vlm_version),
+                                            value=_initial_main_vlm_version,
                                             show_label=False,
                                             container=False,
                                             interactive=True,
@@ -7029,6 +7129,18 @@ with shared.gradio_root:
                                             value=_main_vlm_custom_help_html(_initial_main_vlm_lang_state),
                                             elem_id='describe_vlm_custom_help',
                                         )
+                                        with gr.Column(elem_id='describe_vlm_custom_profile_section'):
+                                            describe_vlm_custom_profile = gr.Dropdown(
+                                                label=_initial_main_vlm_texts["profile_label"],
+                                                choices=_main_vlm_profile_choices(_initial_main_vlm_lang_state),
+                                                value=_initial_main_vlm_profile.get("id") if isinstance(_initial_main_vlm_profile, dict) else MAIN_VLM_EMPTY_PROFILE_VALUE,
+                                                interactive=True,
+                                                elem_id='describe_vlm_custom_profile',
+                                            )
+                                            with gr.Row(elem_id='describe_vlm_custom_profile_actions'):
+                                                describe_vlm_custom_new = gr.Button(value=_initial_main_vlm_texts["new_profile"], size='sm', min_width=0, elem_id='describe_vlm_custom_new')
+                                                describe_vlm_custom_save = gr.Button(value=_initial_main_vlm_texts["save_profile"], size='sm', min_width=0, elem_id='describe_vlm_custom_save')
+                                                describe_vlm_custom_delete = gr.Button(value=_initial_main_vlm_texts["delete_profile"], size='sm', min_width=0, elem_id='describe_vlm_custom_delete')
                                         with gr.Row():
                                             describe_vlm_custom_api_name = gr.Textbox(
                                                 label=_initial_main_vlm_texts["api_name_label"],
@@ -8101,7 +8213,7 @@ with shared.gradio_root:
                                                 vlm_checkbox = gr.Checkbox(label='Enable VLM', value=True, info='Enable it for describe, translate and expand.', elem_id='vlm_checkbox', visible=False)
                                                 advanced_logs = gr.Checkbox(label='Enable advanced logs', value=ads.get_admin_default('advanced_logs'), info='Enabling with more infomation in logs.', visible=False)
                                                 with gr.Column():
-                                                    vlm_version = gr.Dropdown(label='VLM Version', choices=list(VLM.VERSIONS.keys()) + [VLM.CUSTOM_VERSION], value=_initial_main_vlm_version, info='Select the VLM model version to use')
+                                                    vlm_version = gr.Dropdown(label='VLM Version', choices=_vlm_model_choices(_initial_main_vlm_version), value=_initial_main_vlm_version, info='Select the VLM model version to use')
                                             with gr.Column(visible=True if not args_manager.args.disable_backend else False):
                                                 reserved_vram = gr.Slider(label='Reserved VRAM(GB)', minimum=0, maximum=24, step=0.1, value=ads.get_admin_default('reserved_vram'), info='Reserve VRAM to prevent OOM or Slow inference.')
                                                 cache_ram_enable = gr.Checkbox(label='Enable Cache RAM', value=ads.get_admin_default('cache_ram_enable'), info='When disabled, always use Classic cache mode.')
@@ -8274,15 +8386,10 @@ with shared.gradio_root:
                         "supports_images": _as_bool(supports_images, True),
                     }
 
-                def _persist_main_vlm_custom_settings(settings, state, request=None):
-                    return _main_vlm_write_local_settings(settings)
-
-                def _main_vlm_custom_hint(state=None, saved=None):
-                    if saved is False:
-                        return _main_vlm_custom_save_message(saved, state)
+                def _main_vlm_custom_hint(state=None):
                     missing = VLM.get_custom_missing_settings()
                     if not missing:
-                        return _main_vlm_custom_save_message(saved, state)
+                        return ""
                     text = _main_vlm_text(
                         state,
                         "Fill API Base URL and Model. API Key can stay empty for Ollama/LM Studio.",
@@ -8293,78 +8400,100 @@ with shared.gradio_root:
                         "missing",
                     )
 
-                def _describe_vlm_dropdown_update(version):
-                    return dropdown_update(choices=_vlm_model_choices(), value=_vlm_resolve_version(version))
+                def _describe_vlm_dropdown_update(version, state=None, request=None):
+                    return dropdown_update(
+                        choices=_vlm_model_choices(version, state, request),
+                        value=_vlm_resolve_version(version),
+                    )
 
                 def load_main_vlm_user_settings(state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
+                    can_manage = _main_vlm_can_manage_profiles(state, request)
                     settings = _main_vlm_custom_settings_from_state(state, request=request)
-                    _apply_main_vlm_custom_settings(settings)
                     version = _main_vlm_selected_version_from_state(state, request=request)
-                    vlm.set_version(version)
-                    model_choices = [settings["model"]] if settings["model"] else []
+                    if version == VLM.CUSTOM_VERSION and not can_manage:
+                        default_profile = vlm_api_profiles.default_profile()
+                        version = vlm_api_profiles.profile_version(default_profile["id"]) if default_profile else VLM.DEFAULT_VERSION
+                    version, active_settings, profile = _activate_main_vlm_version(version, settings)
+                    editor_settings = active_settings if profile else settings
+                    model_choices = [editor_settings["model"]] if editor_settings["model"] else []
                     texts = _main_vlm_ui_texts(state)
+                    selected_profile = profile or vlm_api_profiles.default_profile()
                     return (
-                        _describe_vlm_dropdown_update(version),
+                        _describe_vlm_dropdown_update(version, state, request),
                         _vlm_model_status_html(version),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION),
+                        gr_update(visible=version == VLM.CUSTOM_VERSION and can_manage),
                         gr_update(value=_main_vlm_custom_help_html(state)),
-                        gr_update(value=settings["api_name"], label=texts["api_name_label"], placeholder=texts["api_name_placeholder"]),
-                        dropdown_update(choices=_main_vlm_provider_choices(state), value=settings["provider"], label=texts["provider_label"]),
-                        dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=settings["api_format"], label=texts["api_format_label"], visible=True),
-                        gr_update(value=settings["base_url"], label=texts["base_url_label"], placeholder=texts["base_url_placeholder"]),
-                        dropdown_update(choices=model_choices, value=settings["model"] or None, allow_custom_value=True, label=texts["model_label"]),
-                        gr_update(value=settings["api_key"], label=texts["api_key_label"], placeholder=texts["api_key_placeholder"]),
-                        gr_update(value=settings["supports_images"], label=texts["support_image_label"]),
+                        dropdown_update(
+                            choices=_main_vlm_profile_choices(state),
+                            value=selected_profile.get("id") if isinstance(selected_profile, dict) else MAIN_VLM_EMPTY_PROFILE_VALUE,
+                            label=texts["profile_label"],
+                            interactive=can_manage,
+                        ),
+                        gr_update(value=editor_settings["api_name"], label=texts["api_name_label"], placeholder=texts["api_name_placeholder"]),
+                        dropdown_update(choices=_main_vlm_provider_choices(state), value=editor_settings["provider"], label=texts["provider_label"]),
+                        dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=editor_settings["api_format"], label=texts["api_format_label"], visible=True),
+                        gr_update(value=editor_settings["base_url"], label=texts["base_url_label"], placeholder=texts["base_url_placeholder"]),
+                        dropdown_update(choices=model_choices, value=editor_settings["model"] or None, allow_custom_value=True, label=texts["model_label"]),
+                        gr_update(value=editor_settings["api_key"], label=texts["api_key_label"], placeholder=texts["api_key_placeholder"]),
+                        gr_update(value=editor_settings["supports_images"], label=texts["support_image_label"]),
+                        gr_update(value=texts["new_profile"], interactive=can_manage),
+                        gr_update(value=texts["save_profile"], interactive=can_manage),
+                        gr_update(value=texts["delete_profile"], interactive=can_manage),
                         gr_update(value=texts["fetch_models"]),
                         gr_update(value=texts["test_api"]),
                         _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
-                        gr_update(value=version),
+                        _describe_vlm_dropdown_update(version, state, request),
                     )
 
                 def set_describe_vlm_version(version, state, api_name, provider, api_format, base_url, model, api_key, supports_images, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
-                    _apply_main_vlm_custom_settings(settings)
-                    version = _vlm_resolve_version(version)
-                    vlm.set_version(version)
+                    version, settings, profile = _activate_main_vlm_version(version, settings)
                     _main_vlm_save_selected_version(version, state, request=request)
-                    saved = None
-                    if version == VLM.CUSTOM_VERSION:
-                        saved = _persist_main_vlm_custom_settings(settings, state, request=request)
+                    can_manage = _main_vlm_can_manage_profiles(state, request)
                     return (
-                        _describe_vlm_dropdown_update(version),
+                        _describe_vlm_dropdown_update(version, state, request),
                         _vlm_model_status_html(version),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION),
-                        _main_vlm_custom_hint(state, saved=saved) if version == VLM.CUSTOM_VERSION else "",
-                        gr_update(value=version),
+                        gr_update(visible=version == VLM.CUSTOM_VERSION and can_manage),
+                        _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
+                        _describe_vlm_dropdown_update(version, state, request),
                     )
 
                 def set_admin_vlm_version(version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
-                    version = _vlm_resolve_version(version)
-                    vlm.set_version(version)
+                    settings = _main_vlm_custom_settings_from_state(state, request=request)
+                    version, settings, profile = _activate_main_vlm_version(version, settings)
                     _main_vlm_save_selected_version(version, state, persist_admin=True, request=request)
                     return (
                         _vlm_model_status_html(version),
-                        _describe_vlm_dropdown_update(version),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION),
+                        _describe_vlm_dropdown_update(version, state, request),
+                        gr_update(visible=version == VLM.CUSTOM_VERSION and _main_vlm_can_manage_profiles(state, request)),
                         _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
                     )
 
                 def sync_main_vlm_custom_settings(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     _apply_main_vlm_custom_settings(settings)
-                    saved = _persist_main_vlm_custom_settings(settings, state, request=request)
                     version = _vlm_resolve_version(version)
                     if version == VLM.CUSTOM_VERSION:
                         vlm.set_version(version)
-                        _main_vlm_save_selected_version(version, state, request=request)
-                    return _describe_vlm_dropdown_update(version), _vlm_model_status_html(version), _main_vlm_custom_hint(state, saved=saved) if version == VLM.CUSTOM_VERSION else ""
+                    return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else ""
 
                 def sync_main_vlm_custom_provider(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return (
+                            gr_update(), dropdown_update(), gr_update(), gr_update(),
+                            _describe_vlm_dropdown_update(version, state, request),
+                            _vlm_model_status_html(version),
+                            _main_vlm_custom_message_html(text, "missing"),
+                        )
                     provider_data = _main_vlm_provider_by_key(provider)
                     selected_api_format = api_format if provider_data["key"] == "custom" else provider_data.get("format")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, selected_api_format, base_url, model, api_key, supports_images)
@@ -8373,43 +8502,34 @@ with shared.gradio_root:
                         settings["base_url"] = provider_data.get("base_url") or ""
                         settings["supports_images"] = provider_data.get("supports_images", True) is not False
                     _apply_main_vlm_custom_settings(settings)
-                    saved = _persist_main_vlm_custom_settings(settings, state, request=request)
                     version = _vlm_resolve_version(version)
                     if version == VLM.CUSTOM_VERSION:
                         vlm.set_version(version)
-                        _main_vlm_save_selected_version(version, state, request=request)
                     return (
                         gr_update(value=settings["api_name"]),
                         dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=settings["api_format"], visible=True),
                         gr_update(value=settings["base_url"]),
                         gr_update(value=settings["supports_images"]),
-                        _describe_vlm_dropdown_update(version),
+                        _describe_vlm_dropdown_update(version, state, request),
                         _vlm_model_status_html(version),
-                        _main_vlm_custom_hint(state, saved=saved) if version == VLM.CUSTOM_VERSION else "",
+                        _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
                     )
 
-                def fetch_main_vlm_custom_models(api_name, provider, api_format, base_url, model, api_key, supports_images, state, request: gr.Request):
+                def fetch_main_vlm_custom_models(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
+                    version = _vlm_resolve_version(version)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
-                    _apply_main_vlm_custom_settings(settings)
-                    saved = _persist_main_vlm_custom_settings(settings, state, request=request)
-                    vlm.set_version(VLM.CUSTOM_VERSION)
-                    _main_vlm_save_selected_version(VLM.CUSTOM_VERSION, state, request=request)
-                    if not saved:
-                        return (
-                            dropdown_update(choices=[settings["model"]] if settings["model"] else [], value=settings["model"] or None, allow_custom_value=True),
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
-                            _main_vlm_custom_hint(state, saved=saved),
-                        )
                     result = VLM.list_custom_models(settings["base_url"], settings["api_key"])
                     if not result.get("ok"):
                         message = result.get("details") or result.get("error") or "unknown error"
                         text = _main_vlm_text(state, f"Fetch models failed: {message}", f"拉取模型失败：{message}")
                         return (
                             dropdown_update(choices=[settings["model"]] if settings["model"] else [], value=settings["model"] or None, allow_custom_value=True),
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
+                            _describe_vlm_dropdown_update(version, state, request),
+                            _vlm_model_status_html(version),
                             _main_vlm_custom_message_html(text, "missing"),
                         )
                     models = result.get("models") or []
@@ -8418,39 +8538,34 @@ with shared.gradio_root:
                         models = [selected] + models
                     if selected != settings["model"]:
                         settings["model"] = selected
-                        _apply_main_vlm_custom_settings(settings)
-                        _persist_main_vlm_custom_settings(settings, state, request=request)
                     model_count = len(result.get('models') or [])
                     message = _main_vlm_text(state, f"Fetched {model_count} model(s).", f"已拉取 {model_count} 个模型。")
                     return (
                         dropdown_update(choices=models, value=selected or None, allow_custom_value=True),
-                        _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                        _vlm_model_status_html(VLM.CUSTOM_VERSION),
+                        _describe_vlm_dropdown_update(version, state, request),
+                        _vlm_model_status_html(version),
                         _main_vlm_custom_message_html(message, "ready"),
                     )
 
-                def test_main_vlm_custom_api(api_name, provider, api_format, base_url, model, api_key, supports_images, state, request: gr.Request):
+                def test_main_vlm_custom_api(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
+                    version = _vlm_resolve_version(version)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
-                    _apply_main_vlm_custom_settings(settings)
-                    saved = _persist_main_vlm_custom_settings(settings, state, request=request)
-                    vlm.set_version(VLM.CUSTOM_VERSION)
-                    _main_vlm_save_selected_version(VLM.CUSTOM_VERSION, state, request=request)
-                    if not saved:
-                        return (
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
-                            _main_vlm_custom_hint(state, saved=saved),
-                        )
-                    missing = VLM.get_custom_missing_settings()
-                    if missing:
-                        text = _main_vlm_text(state, f"Custom API settings incomplete: {', '.join(missing)}", f"Custom API 设置不完整：{', '.join(missing)}")
-                        return (
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
-                            _main_vlm_custom_message_html(text, "missing"),
-                        )
+                    previous_custom_settings = VLM.get_custom_settings()
                     try:
+                        _apply_main_vlm_custom_settings(settings)
+                        vlm.set_version(VLM.CUSTOM_VERSION)
+                        missing = VLM.get_custom_missing_settings()
+                        if missing:
+                            text = _main_vlm_text(state, f"Custom API settings incomplete: {', '.join(missing)}", f"Custom API 设置不完整：{', '.join(missing)}")
+                            return (
+                                _describe_vlm_dropdown_update(version, state, request),
+                                _vlm_model_status_html(version),
+                                _main_vlm_custom_message_html(text, "missing"),
+                            )
                         response = vlm.inference(
                             None,
                             "Reply with OK.",
@@ -8463,17 +8578,98 @@ with shared.gradio_root:
                         text = str(response or "OK").strip()[:80]
                         message = _main_vlm_text(state, f"Custom API test succeeded: {text}", f"Custom API 测试成功：{text}")
                         return (
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
+                            _describe_vlm_dropdown_update(version, state, request),
+                            _vlm_model_status_html(version),
                             _main_vlm_custom_message_html(message, "ready"),
                         )
                     except Exception as exc:
                         message = _main_vlm_text(state, f"Custom API test failed: {exc}", f"Custom API 测试失败：{exc}")
                         return (
-                            _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION),
-                            _vlm_model_status_html(VLM.CUSTOM_VERSION),
+                            _describe_vlm_dropdown_update(version, state, request),
+                            _vlm_model_status_html(version),
                             _main_vlm_custom_message_html(message, "missing"),
                         )
+                    finally:
+                        _activate_main_vlm_version(version, previous_custom_settings)
+
+                def _main_vlm_profile_editor_values(profile, state, message=""):
+                    settings = vlm_api_profiles.runtime_settings(profile) if isinstance(profile, dict) else {
+                        "api_name": "Custom",
+                        "provider": "custom",
+                        "api_format": "openai_compatible",
+                        "base_url": "",
+                        "model": "",
+                        "api_key": "",
+                        "supports_images": True,
+                    }
+                    model_choices = [settings["model"]] if settings["model"] else []
+                    return (
+                        dropdown_update(
+                            choices=_main_vlm_profile_choices(state),
+                            value=profile.get("id") if isinstance(profile, dict) else MAIN_VLM_EMPTY_PROFILE_VALUE,
+                        ),
+                        gr_update(value=settings["api_name"]),
+                        dropdown_update(choices=_main_vlm_provider_choices(state), value=settings["provider"]),
+                        dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=settings["api_format"]),
+                        gr_update(value=settings["base_url"]),
+                        dropdown_update(choices=model_choices, value=settings["model"] or None, allow_custom_value=True),
+                        gr_update(value=settings["api_key"]),
+                        gr_update(value=settings["supports_images"]),
+                        message,
+                    )
+
+                def load_main_vlm_api_profile(profile_id, state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return _main_vlm_profile_editor_values(None, state, _main_vlm_custom_message_html(text, "missing"))
+                    profile = vlm_api_profiles.profile_by_id(profile_id)
+                    message = _main_vlm_text(state, "Configuration loaded.", "配置已载入。") if profile else ""
+                    return _main_vlm_profile_editor_values(profile, state, _main_vlm_custom_message_html(message, "ready") if message else "")
+
+                def new_main_vlm_api_profile(state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
+                        return _main_vlm_profile_editor_values(None, state, _main_vlm_custom_message_html(text, "missing"))
+                    return _main_vlm_profile_editor_values(None, state)
+
+                def save_main_vlm_api_profile(profile_id, api_name, provider, api_format, base_url, model, api_key, supports_images, state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can save shared VLM API configurations.", "只有管理员可以保存共享 VLM API 配置。")
+                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
+                    settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
+                    _apply_main_vlm_custom_settings(settings)
+                    missing = VLM.get_custom_missing_settings()
+                    if missing:
+                        text = _main_vlm_text(state, f"Configuration is incomplete: {', '.join(missing)}", f"配置不完整：{', '.join(missing)}")
+                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION, state, request), _vlm_model_status_html(VLM.CUSTOM_VERSION), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.CUSTOM_VERSION)
+                    profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
+                    profile = vlm_api_profiles.upsert_profile(settings, profile_id=profile_id)
+                    version = vlm_api_profiles.profile_version(profile["id"])
+                    _activate_main_vlm_version(version, settings)
+                    _main_vlm_save_selected_version(version, state, request=request)
+                    text = _main_vlm_text(state, "Shared API configuration saved.", "共享 API 配置已保存。")
+                    return (
+                        dropdown_update(choices=_main_vlm_profile_choices(state), value=profile["id"]),
+                        _describe_vlm_dropdown_update(version, state, request),
+                        _vlm_model_status_html(version),
+                        gr_update(visible=False),
+                        _main_vlm_custom_message_html(text, "ready"),
+                        _describe_vlm_dropdown_update(version, state, request),
+                    )
+
+                def delete_main_vlm_api_profile(profile_id, state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        text = _main_vlm_text(state, "Only the administrator can delete shared VLM API configurations.", "只有管理员可以删除共享 VLM API 配置。")
+                        return _main_vlm_profile_editor_values(None, state, _main_vlm_custom_message_html(text, "missing"))
+                    profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
+                    vlm_api_profiles.delete_profile(profile_id)
+                    next_profile = vlm_api_profiles.default_profile()
+                    text = _main_vlm_text(state, "Shared API configuration deleted.", "共享 API 配置已删除。")
+                    return _main_vlm_profile_editor_values(next_profile, state, _main_vlm_custom_message_html(text, "ready"))
 
                 translation_methods.change(lambda x,y: ads.set_admin_default_value('translation_methods',x,y), inputs=[translation_methods, state_topbar])
                 backfill_prompt.change(lambda x,y: ads.set_user_default_value("backfill_prompt",x,y), inputs=[backfill_prompt, state_topbar])
@@ -8572,23 +8768,20 @@ with shared.gradio_root:
                 )
                 describe_vlm_custom_fetch_models.click(
                     fetch_main_vlm_custom_models,
-                    inputs=main_vlm_custom_inputs + [state_topbar],
+                    inputs=main_vlm_custom_inputs + [describe_vlm_model, state_topbar],
                     outputs=[describe_vlm_custom_model, describe_vlm_model, vlm_status_info, describe_vlm_custom_message],
                     queue=True,
                     show_progress=True,
                 )
                 describe_vlm_custom_test.click(
                     test_main_vlm_custom_api,
-                    inputs=main_vlm_custom_inputs + [state_topbar],
+                    inputs=main_vlm_custom_inputs + [describe_vlm_model, state_topbar],
                     outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_message],
                     queue=True,
                     show_progress=True,
                 )
-                main_vlm_load_outputs = [
-                    describe_vlm_model,
-                    vlm_status_info,
-                    describe_vlm_custom_panel,
-                    describe_vlm_custom_help,
+                main_vlm_profile_editor_outputs = [
+                    describe_vlm_custom_profile,
                     describe_vlm_custom_api_name,
                     describe_vlm_custom_provider,
                     describe_vlm_custom_api_format,
@@ -8596,6 +8789,67 @@ with shared.gradio_root:
                     describe_vlm_custom_model,
                     describe_vlm_custom_api_key,
                     describe_vlm_custom_supports_images,
+                    describe_vlm_custom_message,
+                ]
+                describe_vlm_custom_profile.input(
+                    load_main_vlm_api_profile,
+                    inputs=[describe_vlm_custom_profile, state_topbar],
+                    outputs=main_vlm_profile_editor_outputs,
+                    queue=False,
+                    show_progress=False,
+                )
+                describe_vlm_custom_new.click(
+                    new_main_vlm_api_profile,
+                    inputs=[state_topbar],
+                    outputs=main_vlm_profile_editor_outputs,
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_profile_save_evt = describe_vlm_custom_save.click(
+                    save_main_vlm_api_profile,
+                    inputs=[describe_vlm_custom_profile] + main_vlm_custom_inputs + [state_topbar],
+                    outputs=[
+                        describe_vlm_custom_profile,
+                        describe_vlm_model,
+                        vlm_status_info,
+                        describe_vlm_custom_panel,
+                        describe_vlm_custom_message,
+                        vlm_version,
+                    ],
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_profile_save_evt.then(
+                    None,
+                    js="()=>{window.SimpAICanvasWorkbenchRegistry?.refreshVlmModelCatalog?.(true);}",
+                )
+                main_vlm_profile_delete_evt = describe_vlm_custom_delete.click(
+                    delete_main_vlm_api_profile,
+                    inputs=[describe_vlm_custom_profile, state_topbar],
+                    outputs=main_vlm_profile_editor_outputs,
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_profile_delete_evt.then(
+                    None,
+                    js="()=>{window.SimpAICanvasWorkbenchRegistry?.refreshVlmModelCatalog?.(true);}",
+                )
+                main_vlm_load_outputs = [
+                    describe_vlm_model,
+                    vlm_status_info,
+                    describe_vlm_custom_panel,
+                    describe_vlm_custom_help,
+                    describe_vlm_custom_profile,
+                    describe_vlm_custom_api_name,
+                    describe_vlm_custom_provider,
+                    describe_vlm_custom_api_format,
+                    describe_vlm_custom_base_url,
+                    describe_vlm_custom_model,
+                    describe_vlm_custom_api_key,
+                    describe_vlm_custom_supports_images,
+                    describe_vlm_custom_new,
+                    describe_vlm_custom_save,
+                    describe_vlm_custom_delete,
                     describe_vlm_custom_fetch_models,
                     describe_vlm_custom_test,
                     describe_vlm_custom_message,
@@ -10577,9 +10831,8 @@ with shared.gradio_root:
 
             version = _vlm_resolve_version(version)
             custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
-            _apply_main_vlm_custom_settings(custom_settings)
-            vlm.set_version(version)
-            if img is not None and version == VLM.CUSTOM_VERSION and not bool(custom_settings.get("supports_images")):
+            version, custom_settings, profile = _activate_main_vlm_version(version, custom_settings)
+            if img is not None and (version == VLM.CUSTOM_VERSION or profile) and not bool(custom_settings.get("supports_images")):
                 gr.Warning("The configured custom model does not accept image or video input.")
                 return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
             if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
@@ -10808,8 +11061,7 @@ with shared.gradio_root:
                     img = img['image']
                 version = _vlm_resolve_version(version)
                 custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
-                _apply_main_vlm_custom_settings(custom_settings)
-                vlm.set_version(version)
+                version, custom_settings, profile = _activate_main_vlm_version(version, custom_settings)
                 if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
                     missing_model_outputs = _describe_vlm_missing_model_outputs(state_params, version, custom_settings)
                     if missing_model_outputs is not None:
@@ -13587,6 +13839,26 @@ async def canvas_workbench_preset_model_downloads_endpoint(payload: dict = Body(
 
 _canvas_vlm_model_status = canvas_vlm_runtime.canvas_vlm_model_status
 _canvas_queue_vlm_model_downloads = canvas_vlm_runtime.canvas_queue_vlm_model_downloads
+
+@app.get("/vlm-model-catalog")
+async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False):
+    try:
+        result = await run_in_threadpool(
+            lambda: _main_vlm_model_catalog({}, request=request, refresh=bool(refresh))
+        )
+        return JSONResponse(result, status_code=200)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "VLM model catalog failed",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
 @app.post("/canvas-workbench/vlm-model-status")
 async def canvas_workbench_vlm_model_status_endpoint(payload: dict = Body(...)):
     try:

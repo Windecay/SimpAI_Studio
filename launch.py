@@ -31,6 +31,10 @@ from modules.launch_util import (
     extra_index_url,
     target_path_install,
 )
+from modules.llama_cpp_runtime import (
+    llama_cpp_version_matches,
+    select_llama_cpp_wheel,
+)
 from enhanced.logger import setup_logger, now_string, get_log_file
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 os.environ["RUST_LOG"] = os.environ.get("SIMPAI_RUST_LOG", "off")
@@ -302,6 +306,178 @@ def _installed_package_version(package):
         logger.debug(f"读取 {package} 已安装版本失败: {e}")
         return None
 
+
+def _llama_cpp_runtime_probe():
+    code = r"""
+import ctypes
+import json
+from pathlib import Path
+
+required_handlers = [
+    "Gemma3ChatHandler",
+    "Gemma4ChatHandler",
+    "MiniCPMv45ChatHandler",
+    "MiniCPMV46ChatHandler",
+    "MTMDChatHandler",
+    "Qwen3VLChatHandler",
+    "Qwen35ChatHandler",
+]
+result = {
+    "ok": False,
+    "handlers": [],
+    "missing_handlers": [],
+    "gpu_offload": False,
+    "cuda_backend_present": False,
+}
+try:
+    import llama_cpp
+    import llama_cpp.llama_cpp as llama_cpp_lib
+    import llama_cpp.llama_chat_format as chat_format
+
+    result["version"] = getattr(llama_cpp, "__version__", "")
+    result["handlers"] = [name for name in required_handlers if hasattr(chat_format, name)]
+    result["missing_handlers"] = [name for name in required_handlers if not hasattr(chat_format, name)]
+    lib_dir = Path(llama_cpp_lib.__file__).resolve().parent / "lib"
+    result["cuda_backend_present"] = any(
+        path.is_file()
+        for pattern in ("ggml-cuda.dll", "libggml-cuda.so", "libggml-cuda.dylib")
+        for path in lib_dir.glob(pattern)
+    )
+    backend_init = getattr(llama_cpp, "llama_backend_init", None)
+    if callable(backend_init):
+        backend_init()
+    backend_loader = getattr(llama_cpp, "ggml_backend_load_all_from_path", None)
+    if callable(backend_loader) and lib_dir.is_dir():
+        backend_loader(ctypes.c_char_p(str(lib_dir).encode("utf-8")))
+    registry_count = getattr(llama_cpp, "ggml_backend_reg_count", None)
+    if callable(registry_count):
+        result["backend_registry_count"] = int(registry_count())
+    gpu_probe = getattr(llama_cpp, "llama_supports_gpu_offload", None)
+    result["gpu_offload"] = bool(gpu_probe()) if callable(gpu_probe) else False
+    result["ok"] = not result["missing_handlers"] and result["gpu_offload"]
+    if result["missing_handlers"]:
+        result["error"] = "missing handlers: " + ", ".join(result["missing_handlers"])
+    elif not result["gpu_offload"]:
+        result["error"] = "llama.cpp library was built without GPU offload"
+except Exception as exc:
+    result["error"] = f"{type(exc).__name__}: {exc}"
+print("SIMPAI_LLAMA_CPP_PROBE=" + json.dumps(result, ensure_ascii=False))
+"""
+    try:
+        result = subprocess.run(
+            [python, "-s", "-X", "utf8", "-c", code],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_make_pip_env(),
+            timeout=60,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    output = f"{result.stdout or ''}\n{result.stderr or ''}"
+    for line in output.splitlines():
+        if not line.startswith("SIMPAI_LLAMA_CPP_PROBE="):
+            continue
+        try:
+            return json.loads(line.split("=", 1)[1])
+        except Exception:
+            break
+    return {"ok": False, "error": output.strip()[-1200:]}
+
+
+def _cleanup_legacy_llama_cpp_wheel_cache():
+    cache_dir = os.path.join(root, "cache", "llama_cpp")
+    if not os.path.isdir(cache_dir):
+        return
+    for name in os.listdir(cache_dir):
+        lowered = name.lower()
+        if not lowered.startswith("llama_cpp_python-") or not lowered.endswith((".whl", ".whl.part")):
+            continue
+        path = os.path.join(cache_dir, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+        except Exception as exc:
+            logger.warning("Could not remove legacy llama.cpp wheel cache %s: %s", path, exc)
+    try:
+        os.rmdir(cache_dir)
+    except OSError:
+        pass
+
+
+def ensure_llama_cpp_runtime(runtime_profile):
+    if os.environ.get("SIMPAI_SKIP_LLAMA_CPP_RUNTIME", "").strip().lower() in {"1", "true", "yes"}:
+        logger.info("SIMPAI_SKIP_LLAMA_CPP_RUNTIME is enabled; llama.cpp runtime check skipped.")
+        return False
+    _cleanup_legacy_llama_cpp_wheel_cache()
+    if bool(getattr(shared.args, "disable_backend", False)):
+        return False
+    if (
+        getattr(runtime_profile, "profile_name", "") != "nvidia_cuda"
+        or getattr(runtime_profile, "backend_kind", None) != "cuda"
+    ):
+        logger.info("llama.cpp CUDA runtime is unavailable in the current runtime profile.")
+        return False
+
+    artifact = select_llama_cpp_wheel()
+    if not artifact:
+        logger.warning(
+            "llama.cpp 0.3.44 has no packaged wheel for this platform: system=%s, machine=%s, Python=%s.%s",
+            platform.system(),
+            platform.machine(),
+            sys.version_info.major,
+            sys.version_info.minor,
+        )
+        return False
+
+    installed_version = _installed_package_version("llama-cpp-python")
+    if llama_cpp_version_matches(installed_version, artifact):
+        probe = _llama_cpp_runtime_probe()
+        if probe.get("ok"):
+            logger.info("llama.cpp VLM runtime ready: %s (%s)", installed_version, artifact["cuda_tag"])
+            return True
+        if probe.get("cuda_backend_present") and not probe.get("missing_handlers"):
+            logger.error(
+                "llama.cpp CUDA backend is installed but failed to initialize; skipping identical reinstall: %s",
+                probe.get("error") or "runtime probe failed",
+            )
+            return False
+        logger.warning("llama.cpp %s handler probe failed; reinstalling: %s", installed_version, probe.get("error"))
+    else:
+        logger.info("Updating llama.cpp VLM runtime: %s -> %s", installed_version or "missing", artifact["version"])
+
+    try:
+        install_url = f'{artifact["url"]}#sha256={artifact["sha256"]}'
+        run(
+            f'"{python}" -s -m pip install --no-deps --force-reinstall --no-cache-dir "{install_url}"',
+            f'Installing llama.cpp VLM runtime {artifact["version"]}',
+            f'Could not install llama.cpp VLM runtime {artifact["version"]}',
+            custom_env=_make_pip_env(),
+            live=True,
+        )
+    except Exception as exc:
+        logger.error("llama.cpp VLM runtime installation failed: %s", exc)
+        return False
+
+    installed_version = _installed_package_version("llama-cpp-python")
+    probe = _llama_cpp_runtime_probe()
+    ready = llama_cpp_version_matches(installed_version, artifact) and bool(probe.get("ok"))
+    if not ready:
+        verification_error = probe.get("error")
+        if not llama_cpp_version_matches(installed_version, artifact):
+            verification_error = f"package version mismatch ({installed_version or 'missing'})"
+        logger.error(
+            "llama.cpp VLM runtime verification failed: version=%s, expected=%s, error=%s",
+            installed_version,
+            artifact["version"],
+            verification_error or "runtime probe failed",
+        )
+        return False
+    logger.info("llama.cpp VLM runtime installed: %s", installed_version)
+    return True
+
 def _package_requirement_met(package, pkg_version=None, version_specifier=None):
     version_installed = _installed_package_version(package)
     if version_installed is None:
@@ -511,6 +687,8 @@ def check_base_environment():
         logger.info(
             "Detected a non-NVIDIA compatibility runtime. CUDA 13 specific launch steps are skipped and the current environment is preserved."
         )
+
+    ensure_llama_cpp_runtime(runtime_profile)
 
     update_pkgs = [
         ('comfyui-frontend-package', '1.45.21', None),

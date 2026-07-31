@@ -28,13 +28,98 @@
         sam3_mask_video: t('SAM3 Mask Video', 'SAM3 遮罩视频'),
         scene_audio: t('Scene Audio', '场景音频')
     };
-    const VLM_VERSION_CHOICES = [
+    const BUILTIN_VLM_VERSION_CHOICES = Object.freeze([
         'Qwen3.5-9B-abliterated-Q4_K_M',
         'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
+        'Gemma4-12B-it-heretic-Q4_K_XL',
+        'Gemma3-12B-TextEncoder',
+        'Qwen3VL-4B-TextEncoder',
         'Custom'
-    ];
+    ]);
+    const VLM_VERSION_CHOICES = BUILTIN_VLM_VERSION_CHOICES.slice();
+    const BUILTIN_VLM_CONTEXT_WINDOWS = Object.freeze({
+        'Qwen3.5-9B-abliterated-Q4_K_M': 8192,
+        'Qwen3.5-9B-abliterated-Q2_K': 8192,
+        'Qwen3.5-9B-abliterated-Q6_K': 8192,
+        'Qwen3.5-9B-abliterated-Q8_0': 8192,
+        'Gemma4-12B-it-heretic-Q4_K_XL': 8192,
+        'Gemma3-12B-TextEncoder': 32768,
+        'Qwen3VL-4B-TextEncoder': 32768,
+        'Custom': 32768
+    });
+    const VLM_CONTEXT_WINDOWS = Object.assign({}, BUILTIN_VLM_CONTEXT_WINDOWS);
+    const VLM_MODEL_LABELS = {};
+    const VLM_MODEL_CATALOG = [];
+    let vlmAllowCustom = true;
+
+    function vlmModelLabel(version) {
+        return VLM_MODEL_LABELS[String(version || '')] || String(version || '');
+    }
+
+    function mergeVlmModelChoices(catalogChoices) {
+        const merged = [];
+        const seen = new Set();
+        const add = (value) => {
+            const text = String(value || '').trim();
+            if (!text || seen.has(text)) return;
+            seen.add(text);
+            merged.push(text);
+        };
+        BUILTIN_VLM_VERSION_CHOICES
+            .filter((value) => value !== 'Custom')
+            .forEach(add);
+        (Array.isArray(catalogChoices) ? catalogChoices : [])
+            .filter((value) => String(value || '').trim() !== 'Custom')
+            .forEach(add);
+        if (vlmAllowCustom) add('Custom');
+        return merged;
+    }
+
+    function syncVlmModelSelects() {
+        const selectors = [
+            'select[data-vlm-param="version"]',
+            'select[data-canvas-agent-setting="rewriteModel"]'
+        ];
+        document.querySelectorAll(selectors.join(',')).forEach((select) => {
+            const current = String(select.value || '').trim();
+            const values = VLM_VERSION_CHOICES.slice();
+            if (current && !values.includes(current) && (current !== 'Custom' || vlmAllowCustom)) values.unshift(current);
+            select.replaceChildren(...values.map((value) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = VLM_MODEL_LABELS[value] || (value === current && !VLM_VERSION_CHOICES.includes(value) ? `⚠ ${value}` : value);
+                return option;
+            }));
+            if (current && values.includes(current)) select.value = current;
+            else if (values.length) select.value = values[0];
+        });
+    }
+
+    async function refreshVlmModelCatalog(refresh = false) {
+        try {
+            const response = await fetch(`/vlm-model-catalog${refresh ? '?refresh=true' : ''}`, { cache: 'no-store' });
+            const data = await response.json();
+            if (!response.ok || !data?.ok || !Array.isArray(data.items)) throw new Error(data?.details || data?.error || `HTTP ${response.status}`);
+            const choices = Array.isArray(data.choices) ? data.choices.filter(Boolean) : data.items.map((item) => item?.id).filter(Boolean);
+            vlmAllowCustom = data.allow_custom === true;
+            const mergedChoices = mergeVlmModelChoices(choices);
+            if (mergedChoices.length) VLM_VERSION_CHOICES.splice(0, VLM_VERSION_CHOICES.length, ...mergedChoices);
+            Object.keys(VLM_CONTEXT_WINDOWS).forEach((key) => delete VLM_CONTEXT_WINDOWS[key]);
+            Object.assign(VLM_CONTEXT_WINDOWS, BUILTIN_VLM_CONTEXT_WINDOWS, data.context_windows || {});
+            Object.keys(VLM_MODEL_LABELS).forEach((key) => delete VLM_MODEL_LABELS[key]);
+            Object.assign(VLM_MODEL_LABELS, data.labels || {});
+            VLM_MODEL_CATALOG.splice(0, VLM_MODEL_CATALOG.length, ...data.items);
+            if (window.SimpAICanvasWorkbenchRegistry) window.SimpAICanvasWorkbenchRegistry.VLM_ALLOW_CUSTOM = vlmAllowCustom;
+            syncVlmModelSelects();
+            window.dispatchEvent(new CustomEvent('simpai:vlm-model-catalog', { detail: data }));
+            return data;
+        } catch (error) {
+            console.warn('[SimpAI VLM] Model catalog unavailable:', error);
+            return null;
+        }
+    }
     const VLM_IMAGE_SLOTS = [
         { key: 'image_1', label: t('Image 1', '图像 1') },
         { key: 'image_2', label: t('Image 2', '图像 2') },
@@ -197,6 +282,12 @@
         SLOT_ORDER,
         SLOT_LABELS,
         VLM_VERSION_CHOICES,
+        VLM_CONTEXT_WINDOWS,
+        VLM_MODEL_LABELS,
+        VLM_MODEL_CATALOG,
+        VLM_ALLOW_CUSTOM: vlmAllowCustom,
+        vlmModelLabel,
+        refreshVlmModelCatalog,
         VLM_IMAGE_SLOTS,
         DEFAULT_NODE_SIZES,
         /* Classic constants */
@@ -222,4 +313,5 @@
         getNodeType,
         listNodeTypes: () => Array.from(nodeTypes.values())
     };
+    setTimeout(() => refreshVlmModelCatalog(false), 0);
 })();

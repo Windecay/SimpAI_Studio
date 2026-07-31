@@ -10,6 +10,8 @@ const previewOriginalPath = "C:/outputs/portrait-original.png";
 const previewOriginalToken = Buffer.from(previewOriginalPath, "utf8").toString("base64url");
 const previewImageUrl = `http://simpai.test/simpleai/gallery-preview/simpai_gprev__${previewOriginalToken}__0123456789abcdef.jpg`;
 const expectedPreviewOriginalUrl = `http://simpai.test/gradio_api/file=${previewOriginalPath}`;
+const originalImagePath = "C:/outputs/small-original.png";
+const originalImageUrl = `http://simpai.test/gradio_api/file=${originalImagePath}`;
 
 async function loadPlaywright() {
   try {
@@ -48,8 +50,9 @@ try {
       </head>
       <body>
         <div id="finished_gallery">
-          <div class="gallery-item"><img id="gallery_image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAFElEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAB4GgABAAHn7QAAAABJRU5ErkJggg=="></div>
+          <div class="gallery-item"><img id="gallery_image" src="${originalImageUrl}"></div>
           <div id="preview_gallery_item" class="gallery-item"><img id="preview_gallery_image" src="${previewImageUrl}"></div>
+          <div class="gallery-item" style="display:none"><img id="data_gallery_image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAFElEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAB4GgABAAHn7QAAAABJRU5ErkJggg=="></div>
         </div>
         <div id="input_image"><input type="file" accept="image/*"></div>
       </body>
@@ -83,15 +86,15 @@ try {
       window.__nativeDragBehavior.drops.push(Array.from(event.dataTransfer?.types || []));
     });
     document.addEventListener("dragstart", (event) => {
-      if (!["gallery_image", "preview_gallery_image"].includes(event.target?.id)) return;
+      if (!["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(event.target?.id)) return;
       window.__nativeDragBehavior.nativeStarts += 1;
     }, true);
     document.addEventListener("dragend", (event) => {
-      if (["gallery_image", "preview_gallery_image"].includes(event.target?.id)) window.__nativeDragBehavior.nativeEnds += 1;
+      if (["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(event.target?.id)) window.__nativeDragBehavior.nativeEnds += 1;
     }, true);
   });
   await page.addScriptTag({ content: source });
-  await page.waitForFunction(() => ["gallery_image", "preview_gallery_image"].every((id) => {
+  await page.waitForFunction(() => ["gallery_image", "preview_gallery_image", "data_gallery_image"].every((id) => {
     const img = document.getElementById(id);
     return img?.complete && img.naturalWidth > 0 && img.getAttribute("draggable") === "true";
   }));
@@ -123,8 +126,19 @@ try {
       img.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: transfer }));
       return result;
     }
+    const originalImage = document.getElementById("gallery_image");
+    Object.defineProperty(originalImage, "naturalWidth", { configurable: true, value: 1168 });
+    Object.defineProperty(originalImage, "naturalHeight", { configurable: true, value: 1704 });
+    const original = dragSnapshot("gallery_image");
+    Object.defineProperty(originalImage, "naturalWidth", { configurable: true, value: 3552 });
+    Object.defineProperty(originalImage, "naturalHeight", { configurable: true, value: 4736 });
+    const dataImage = document.getElementById("data_gallery_image");
+    Object.defineProperty(dataImage, "naturalWidth", { configurable: true, value: 3552 });
+    Object.defineProperty(dataImage, "naturalHeight", { configurable: true, value: 4736 });
     return {
-      original: dragSnapshot("gallery_image"),
+      original,
+      largeOriginal: dragSnapshot("gallery_image"),
+      largeData: dragSnapshot("data_gallery_image"),
       preview: dragSnapshot("preview_gallery_image"),
     };
   });
@@ -156,6 +170,8 @@ try {
     "text/plain",
   ];
   const originalSynthetic = synthetic.original;
+  const largeOriginalSynthetic = synthetic.largeOriginal;
+  const largeDataSynthetic = synthetic.largeData;
   const previewSynthetic = synthetic.preview;
   const ok = originalSynthetic.prevented === false
     && originalSynthetic.draggable
@@ -166,12 +182,48 @@ try {
     && Boolean(originalSynthetic.uri)
     && Boolean(originalSynthetic.plain)
     && !originalSynthetic.downloadUrl
-    && originalSynthetic.diagnostic?.display_source_kind === "data-image"
+    && originalSynthetic.diagnostic?.display_source_kind === "gradio-file"
     && originalSynthetic.diagnostic?.preview_original_found === false
+    && originalSynthetic.diagnostic?.large_original_download === false
+    && originalSynthetic.diagnostic?.download_reason === ""
     && originalSynthetic.diagnostic?.original_url?.set_ok === true
     && originalSynthetic.diagnostic?.original_url?.readback_matches === true
     && originalSynthetic.diagnostic?.download_url?.attempted === false
     && originalSynthetic.externalHandleCount === 0
+    && largeOriginalSynthetic.prevented === false
+    && largeOriginalSynthetic.draggable
+    && largeOriginalSynthetic.attr === "true"
+    && largeOriginalSynthetic.marked
+    && requiredTypes.every((type) => largeOriginalSynthetic.types.includes(type))
+    && largeOriginalSynthetic.custom === originalImageUrl
+    && largeOriginalSynthetic.uri === originalImageUrl
+    && largeOriginalSynthetic.plain === originalImageUrl
+    && largeOriginalSynthetic.downloadUrl === `image/png:small-original.png:${originalImageUrl}`
+    && largeOriginalSynthetic.diagnostic?.display_source_kind === "gradio-file"
+    && largeOriginalSynthetic.diagnostic?.preview_original_found === false
+    && largeOriginalSynthetic.diagnostic?.loaded_width === 3552
+    && largeOriginalSynthetic.diagnostic?.loaded_height === 4736
+    && largeOriginalSynthetic.diagnostic?.large_original_download === true
+    && largeOriginalSynthetic.diagnostic?.download_reason === "large-original"
+    && largeOriginalSynthetic.diagnostic?.download_url?.attempted === true
+    && largeOriginalSynthetic.diagnostic?.download_url?.set_ok === true
+    && largeOriginalSynthetic.diagnostic?.download_url?.readback_matches === true
+    && largeOriginalSynthetic.diagnostic?.transfer_types.some((type) => type.toLowerCase() === "downloadurl")
+    && largeOriginalSynthetic.externalHandleCount === 0
+    && largeDataSynthetic.prevented === false
+    && largeDataSynthetic.draggable
+    && largeDataSynthetic.attr === "true"
+    && largeDataSynthetic.marked
+    && requiredTypes.every((type) => largeDataSynthetic.types.includes(type))
+    && !largeDataSynthetic.downloadUrl
+    && largeDataSynthetic.diagnostic?.display_source_kind === "data-image"
+    && largeDataSynthetic.diagnostic?.original_source_kind === "data-image"
+    && largeDataSynthetic.diagnostic?.loaded_width === 3552
+    && largeDataSynthetic.diagnostic?.loaded_height === 4736
+    && largeDataSynthetic.diagnostic?.large_original_download === false
+    && largeDataSynthetic.diagnostic?.download_reason === ""
+    && largeDataSynthetic.diagnostic?.download_url?.attempted === false
+    && largeDataSynthetic.externalHandleCount === 0
     && previewSynthetic.prevented === false
     && previewSynthetic.draggable
     && previewSynthetic.attr === "true"
@@ -184,6 +236,8 @@ try {
     && previewSynthetic.diagnostic?.display_source_kind === "gallery-preview"
     && previewSynthetic.diagnostic?.original_source_kind === "gradio-file"
     && previewSynthetic.diagnostic?.preview_original_found === true
+    && previewSynthetic.diagnostic?.large_original_download === false
+    && previewSynthetic.diagnostic?.download_reason === "gallery-preview"
     && previewSynthetic.diagnostic?.loaded_width > 0
     && previewSynthetic.diagnostic?.loaded_height > 0
     && previewSynthetic.diagnostic?.download_url?.attempted === true
@@ -191,8 +245,8 @@ try {
     && previewSynthetic.diagnostic?.download_url?.readback_matches === true
     && previewSynthetic.diagnostic?.transfer_types.some((type) => type.toLowerCase() === "downloadurl")
     && previewSynthetic.externalHandleCount === 0
-    && finalState.nativeStarts >= 4
-    && finalState.nativeEnds >= 4
+    && finalState.nativeStarts >= 6
+    && finalState.nativeEnds >= 6
     && requiredTypes.every((type) => finalState.nativeTypes.includes(type))
     && finalState.drops.length >= 2
     && finalState.drops.every((types) => requiredTypes.every((type) => types.includes(type)))

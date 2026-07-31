@@ -4,6 +4,7 @@ import gc
 import json
 import base64
 import random
+import re
 import torch
 
 import numpy as np
@@ -23,13 +24,15 @@ from llama_cpp.llama_chat_format import (
     NanoLlavaChatHandler, Llama3VisionAlphaChatHandler, MiniCPMv26ChatHandler
 )
 
+chat_handlers = ["None", "LLaVA-1.5", "LLaVA-1.6", "Moondream2", "nanoLLaVA", "llama3-Vision-Alpha", "MiniCPM-v2.6"]
+
 try:
     from llama_cpp.llama_chat_format import MTMDChatHandler
+    chat_handlers += ["DeepSeek-OCR"]
     _MTMD = True
-except:
+except Exception:
+    MTMDChatHandler = None
     _MTMD = False
-
-chat_handlers = ["None", "LLaVA-1.5", "LLaVA-1.6", "Moondream2", "nanoLLaVA", "llama3-Vision-Alpha", "MiniCPM-v2.6", "MiniCPM-v4.5", "MiniCPM-v4.5-Thinking"]
 
 try:
     from llama_cpp.llama_chat_format import Gemma3ChatHandler
@@ -40,12 +43,12 @@ except:
 try:
     from llama_cpp.llama_chat_format import Gemma4ChatHandler
     chat_handlers += ["Gemma4"]
-except:
-    Gemma3ChatHandler = None
+except Exception:
+    Gemma4ChatHandler = None
 
 try:
     from llama_cpp.llama_chat_format import Qwen25VLChatHandler
-    chat_handlers += ["Qwen2.5-VL"]
+    chat_handlers += ["Qwen2.5-VL", "MinerU2.5-Pro"]
 except:
     Qwen25VLChatHandler = None
 
@@ -57,7 +60,7 @@ except:
     
 try:
     from llama_cpp.llama_chat_format import Qwen35ChatHandler
-    chat_handlers += ["Qwen3.5", "Qwen3.5-Thinking"]
+    chat_handlers += ["Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking"]
 except:
     Qwen35ChatHandler = None
     
@@ -74,12 +77,42 @@ try:
     chat_handlers += ["LFM2.5-VL"]
 except:
     LFM25VLChatHandler = None
-    
+
 try:
     from llama_cpp.llama_chat_format import GraniteDoclingChatHandler
     chat_handlers += ["Granite-Docling"]
 except:
     GraniteDoclingChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import MiniCPMv45ChatHandler
+    chat_handlers += ["MiniCPM-v4.5", "MiniCPM-v4.5-Thinking"]
+except:
+    MiniCPMv45ChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import MiniCPMV46ChatHandler
+    chat_handlers += ["MiniCPM-v4.6", "MiniCPM-v4.6-Thinking"]
+except Exception:
+    MiniCPMV46ChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import PaddleOCRChatHandler
+    chat_handlers += ["PaddleOCR-VL-1.5"]
+except:
+    PaddleOCRChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import Qwen3ASRChatHandler
+    chat_handlers += ["Qwen3-ASR"]
+except:
+    Qwen3ASRChatHandler = None
+
+try:
+    from llama_cpp.llama_chat_format import Step3VLChatHandler
+    chat_handlers += ["Step3-VL"]
+except:
+    Step3VLChatHandler = None
 
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
@@ -129,11 +162,13 @@ class LLAMA_CPP_STORAGE:
     def load_model(cls, config):
         def get_chat_handler(chat_handler):
             match chat_handler:
-                case "Qwen3.5"|"Qwen3.5-Thinking":
+                case "Qwen3.5"|"Qwen3.5-Thinking"|"Qwen3.6"|"Qwen3.6-Thinking":
                     return Qwen35ChatHandler
                 case "Qwen3-VL"|"Qwen3-VL-Thinking":
                     return Qwen3VLChatHandler
-                case "Qwen2.5-VL":
+                case "Qwen3-ASR":
+                    return Qwen3ASRChatHandler
+                case "Qwen2.5-VL"|"MinerU2.5-Pro":
                     return Qwen25VLChatHandler
                 case "LLaVA-1.5":
                     return Llava15ChatHandler
@@ -148,7 +183,9 @@ class LLAMA_CPP_STORAGE:
                 case "MiniCPM-v2.6":
                     return MiniCPMv26ChatHandler
                 case "MiniCPM-v4.5"|"MiniCPM-v4.5-Thinking":
-                    return MiniCPMv26ChatHandler
+                    return MiniCPMv45ChatHandler
+                case "MiniCPM-v4.6"|"MiniCPM-v4.6-Thinking":
+                    return MiniCPMV46ChatHandler
                 case "Gemma3":
                     return Gemma3ChatHandler
                 case "Gemma4":
@@ -163,6 +200,12 @@ class LLAMA_CPP_STORAGE:
                     return LFM25VLChatHandler
                 case "Granite-Docling":
                     return GraniteDoclingChatHandler
+                case "DeepSeek-OCR":
+                    return MTMDChatHandler
+                case "PaddleOCR-VL-1.5":
+                    return PaddleOCRChatHandler
+                case "Step3-VL":
+                    return Step3VLChatHandler
                 case "None":
                     return None
                 case _:
@@ -203,15 +246,22 @@ class LLAMA_CPP_STORAGE:
             print(f"[llama-cpp_vlm] Loading clip:  {mmproj}")
             
             think_mode = "Thinking" in chat_handler
-            kwargs = {"clip_model_path": mmproj_path, "verbose": False}
+            kwargs = {"mmproj_path": mmproj_path, "verbose": False}
             if chat_handler in ["Qwen3-VL", "Qwen3-VL-Thinking"]:
                 kwargs["force_reasoning"] = think_mode
                 kwargs["image_max_tokens"] = image_max_tokens
                 kwargs["image_min_tokens"] = image_min_tokens
-            elif chat_handler in ["MiniCPM-v4.5", "GLM-4.6V", "Qwen3.5"]:
+            elif chat_handler in [
+                "MiniCPM-v4.5", "MiniCPM-v4.5-Thinking",
+                "MiniCPM-v4.6", "MiniCPM-v4.6-Thinking",
+                "GLM-4.6V", "GLM-4.6V-Thinking",
+                "Qwen3.5", "Qwen3.5-Thinking",
+                "Qwen3.6", "Qwen3.6-Thinking",
+                "Gemma4",
+            ]:
                 kwargs["enable_thinking"] = think_mode
 
-            if _MTMD:
+            if handler is MTMDChatHandler:
                 kwargs["image_max_tokens"] = image_max_tokens
                 kwargs["image_min_tokens"] = image_min_tokens
 
@@ -224,7 +274,20 @@ class LLAMA_CPP_STORAGE:
             if vram_limit != -1:
                 n_gpu_layers = max(1, int(vram_limit / gguf_layer_size))
             if handler is not None:
-                cls.chat_handler = handler(verbose=False)
+                think_mode = "Thinking" in chat_handler
+                kwargs = {"verbose": False}
+                if chat_handler in [
+                    "MiniCPM-v4.5", "MiniCPM-v4.5-Thinking",
+                    "MiniCPM-v4.6", "MiniCPM-v4.6-Thinking",
+                    "GLM-4.6V", "GLM-4.6V-Thinking",
+                    "Qwen3.5", "Qwen3.5-Thinking",
+                    "Qwen3.6", "Qwen3.6-Thinking",
+                    "Gemma4",
+                ]:
+                    kwargs["enable_thinking"] = think_mode
+                elif chat_handler in ["Qwen3-VL", "Qwen3-VL-Thinking"]:
+                    kwargs["force_reasoning"] = think_mode
+                cls.chat_handler = handler(**kwargs)
             else:
                 cls.chat_handler = None
         
@@ -284,6 +347,35 @@ def parse_json(json_str):
     except Exception as e:
         raise ValueError(f"Unable to load JSON data!\n{e}")
     return parsed
+
+def strip_reasoning_text(text):
+    output = str(text or "").strip()
+    if not output:
+        return ""
+
+    final_channel = re.search(r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b", output)
+    message_marker = re.search(r"(?is)<\|message\|>", output)
+    if final_channel:
+        output = output[final_channel.end():]
+    elif message_marker and re.search(r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b", output[:message_marker.start()]):
+        output = output[message_marker.end():]
+    else:
+        output = re.sub(
+            r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b.*?(?=<\|channel\|?>\s*(?:final|answer|response)\b|<\|message\|>|$)",
+            "",
+            output,
+        )
+
+    output = re.sub(r"(?is)<think\b[^>]*>.*?</think>", "", output)
+    output = re.sub(r"(?is)^\s*<think\b[^>]*>.*$", "", output)
+    output = re.sub(
+        r"(?is)<\|channel\|?>\s*(?:final|answer|response|thought|analysis|thinking|reasoning)\b",
+        "",
+        output,
+    )
+    output = re.sub(r"(?is)<(?:/)?(?:think|thinking|analysis|reasoning)\b[^>]*>", "", output)
+    output = re.sub(r"(?is)<(?:\|)?(?:channel|message|turn)(?:\|)?>|<(?:channel|turn)\|>", "", output)
+    return output.strip()
 
 def scale_image(image: torch.Tensor, max_size: int = 128):
     resized_frames = []
@@ -476,23 +568,10 @@ class llama_cpp_instruct_adv:
             #raise RuntimeError("The model has been unloaded or failed to load!")
         
         if parameters is None:
-            parameters = {
-                "max_tokens": 1024,
-                "top_k": 30,
-                "top_p": 0.9,
-                "min_p": 0.05,
-                "typical_p": 1.0,
-                "temperature": 0.8,
-                "repeat_penalty": 1.0,
-                "frequency_penalty": 0.0,
-                "presence_penalty": 1.0,
-                "mirostat_mode": 0,
-                "mirostat_eta": 0.1,
-                "mirostat_tau": 5.0
-            }
+            parameters = {}
         
         if _MTMD:
-            parameters.pop("presence_penalty", None)
+            parameters.pop("present_penalty", None)
             
         _uid = parameters.get("state_uid", None)
         _parameters = parameters.copy()
@@ -528,7 +607,12 @@ class llama_cpp_instruct_adv:
             user_content.append({"type": "text", "text": p})
             
         if images is not None:
-            if not hasattr(LLAMA_CPP_STORAGE.chat_handler, "clip_model_path") or LLAMA_CPP_STORAGE.chat_handler.clip_model_path is None:
+            mmproj_path = getattr(
+                LLAMA_CPP_STORAGE.chat_handler,
+                "mmproj_path",
+                getattr(LLAMA_CPP_STORAGE.chat_handler, "clip_model_path", None),
+            )
+            if mmproj_path is None:
                  raise ValueError("Image input detected, but the loaded model is not configured with a mmproj module.")
                 
             frames = images
@@ -555,7 +639,7 @@ class llama_cpp_instruct_adv:
                             item["image_url"]["url"] = f"data:image/jpeg;base64,{data}"
                             break
                     output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=messages, seed=seed, **_parameters)
-                    text = output['choices'][0]['message']['content'].removeprefix(": ").lstrip()
+                    text = strip_reasoning_text(output['choices'][0]['message']['content'].removeprefix(": ").lstrip())
                     out2.append(text)
                     if len(frames) > 1:
                         tmp_list.append(f"====== Image {i+1} ======")
@@ -576,12 +660,12 @@ class llama_cpp_instruct_adv:
                     
                 messages.append({"role": "user", "content": user_content})
                 output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=messages, seed=seed, **_parameters)
-                out1 = output['choices'][0]['message']['content'].removeprefix(": ").lstrip()
+                out1 = strip_reasoning_text(output['choices'][0]['message']['content'].removeprefix(": ").lstrip())
                 out2 = [out1]
         else:
             messages.append({"role": "user", "content": user_content})
             output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=messages, seed=seed, **_parameters)
-            out1 = output['choices'][0]['message']['content'].removeprefix(": ").lstrip()
+            out1 = strip_reasoning_text(output['choices'][0]['message']['content'].removeprefix(": ").lstrip())
             out2 = [out1]
             
         if save_states:
@@ -597,7 +681,9 @@ class llama_cpp_instruct_adv:
         if force_offload:
             LLAMA_CPP_STORAGE.clean()
         else:
-            if LLAMA_CPP_STORAGE.current_config["chat_handler"] in ["Qwen3.5", "Qwen3.5-Thinking"]:
+            if LLAMA_CPP_STORAGE.current_config["chat_handler"] in [
+                "Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking"
+            ]:
                 LLAMA_CPP_STORAGE.llm.n_tokens = 0
                 LLAMA_CPP_STORAGE.llm._ctx.memory_clear(True)
                 if LLAMA_CPP_STORAGE.llm.is_hybrid and LLAMA_CPP_STORAGE.llm._hybrid_cache_mgr is not None:
@@ -620,8 +706,9 @@ class llama_cpp_parameters:
                 "temperature": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.01}),
                 "repeat_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "frequency_penalty": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "presence_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
+                "present_penalty": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01}),
                 #"tfs_z": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+                #"penalty_last_n": ("INT", {"default": 64, "min": -1, "max": 8192, "step": 1}),
                 "mirostat_mode": ("INT", {"default": 0, "min": 0, "max": 2, "step": 1}),
                 "mirostat_eta": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "mirostat_tau": ("FLOAT", {"default": 5.0, "min": 0.0, "max": 10.0, "step": 0.01}),

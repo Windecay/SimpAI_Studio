@@ -10,6 +10,9 @@
         'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
+        'Gemma4-12B-it-heretic-Q4_K_XL',
+        'Gemma3-12B-TextEncoder',
+        'Qwen3VL-4B-TextEncoder',
         'Custom'
     ];
 
@@ -40,6 +43,9 @@
 
     window.SimpAICanvasWorkbenchVlm = Object.assign({}, window.SimpAICanvasWorkbenchVlm || {}, {
         VLM_VERSION_CHOICES,
+        VLM_MODEL_LABELS: REGISTRY.VLM_MODEL_LABELS || {},
+        VLM_MODEL_CATALOG: REGISTRY.VLM_MODEL_CATALOG || [],
+        vlmModelLabel: REGISTRY.vlmModelLabel || ((value) => String(value || '')),
         VLM_IMAGE_SLOTS,
         VLM_SINGLE_NODE_SIZE: { w: 360, h: 520 },
         VLM_CHAT_NODE_SIZE: { w: 500, h: 720 },
@@ -48,11 +54,14 @@
         VLM_CHAT_CONTEXT_CHARS_MIN: 1200,
         VLM_CHAT_DEFAULT_CONTEXT_CHARS: 6000,
         VLM_CHAT_CONTEXT_CHARS_HARD_MAX: 18000,
-        VLM_CONTEXT_WINDOWS: {
+        VLM_CONTEXT_WINDOWS: REGISTRY.VLM_CONTEXT_WINDOWS || {
             'Qwen3.5-9B-abliterated-Q4_K_M': 8192,
             'Qwen3.5-9B-abliterated-Q2_K': 8192,
             'Qwen3.5-9B-abliterated-Q6_K': 8192,
             'Qwen3.5-9B-abliterated-Q8_0': 8192,
+            'Gemma4-12B-it-heretic-Q4_K_XL': 8192,
+            'Gemma3-12B-TextEncoder': 32768,
+            'Qwen3VL-4B-TextEncoder': 32768,
             'Custom': 32768
         },
         VLM_CUSTOM_API_STORAGE_KEY: 'simpai.canvas.vlmCustomApiProfiles.v1',

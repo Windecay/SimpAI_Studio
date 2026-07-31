@@ -325,6 +325,8 @@ const SIMPLEAI_GALLERY_ORIGINAL_CONTEXT_RESTORE_MS = 30000;
 const SIMPLEAI_GALLERY_PREVIEW_OPEN_PENDING_MS = 10;
 const SIMPLEAI_GALLERY_PREVIEW_STABLE_MS = 150;
 const SIMPLEAI_GALLERY_PREVIEW_THUMBNAIL_SWITCH_MS = 1200;
+const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_PIXEL_LIMIT = 2000000;
+const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT = 2048;
 let simpleaiGalleryNativeDragSyncFrame = 0;
 let simpleaiGalleryNativeDragVersion = 0;
 let simpleaiGalleryOriginalDragClearTimer = 0;
@@ -401,15 +403,21 @@ function simpleaiHandleGalleryNativeDragStart(event) {
     const displaySrc = simpleaiMediaSrc(img);
     const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
     const originalSrc = simpleaiOriginalGalleryImageSrc(img);
+    const originalSourceKind = simpleaiGalleryDragSourceKind(originalSrc);
     const url = simpleaiAbsoluteGalleryImageSrc(originalSrc);
     const loadedWidth = Math.round(Number(img.naturalWidth || 0));
     const loadedHeight = Math.round(Number(img.naturalHeight || 0));
     const declaredDimensions = simpleaiGalleryDeclaredDragDimensions(img);
+    const dragWidth = Math.max(loadedWidth, Number(declaredDimensions?.width || 0));
+    const dragHeight = Math.max(loadedHeight, Number(declaredDimensions?.height || 0));
+    const largeOriginalDownload = !previewOriginalSrc
+        && (originalSourceKind === 'gradio-file' || originalSourceKind === 'http-image')
+        && simpleaiGalleryNeedsExternalOriginalDownload(dragWidth, dragHeight);
     const diagnostic = {
         trusted: Boolean(event.isTrusted),
         surface_id: img.closest?.(SIMPLEAI_GALLERY_NATIVE_DRAG_CONTAINER_SELECTOR)?.id || '',
         display_source_kind: simpleaiGalleryDragSourceKind(displaySrc),
-        original_source_kind: simpleaiGalleryDragSourceKind(originalSrc),
+        original_source_kind: originalSourceKind,
         preview_original_found: Boolean(previewOriginalSrc),
         original_source_found: Boolean(originalSrc),
         transfer_found: Boolean(transfer),
@@ -419,6 +427,8 @@ function simpleaiHandleGalleryNativeDragStart(event) {
         declared_width: declaredDimensions?.width || null,
         declared_height: declaredDimensions?.height || null,
         declared_pixels: declaredDimensions ? declaredDimensions.width * declaredDimensions.height : null,
+        large_original_download: largeOriginalDownload,
+        download_reason: previewOriginalSrc ? 'gallery-preview' : largeOriginalDownload ? 'large-original' : '',
         original_mime_type: originalSrc ? simpleaiGalleryImageMimeType(originalSrc) : '',
         original_url: { attempted: false, set_ok: false, readback_matches: null },
         uri_list: { attempted: false, set_ok: false, readback_matches: null },
@@ -436,7 +446,9 @@ function simpleaiHandleGalleryNativeDragStart(event) {
     diagnostic.original_url = simpleaiSetGalleryDragTransferData(transfer, SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url);
     diagnostic.uri_list = simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url);
     diagnostic.plain_text = simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url);
-    if (previewOriginalSrc) diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    if (previewOriginalSrc || largeOriginalDownload) {
+        diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    }
     try {
         diagnostic.transfer_types = Array.from(transfer.types || [])
             .slice(0, 20)
@@ -511,6 +523,15 @@ function simpleaiGalleryDeclaredDragDimensions(img) {
         if (width > 0 && height > 0) return { width, height };
     }
     return null;
+}
+
+function simpleaiGalleryNeedsExternalOriginalDownload(width, height) {
+    const imageWidth = Math.round(Number(width || 0));
+    const imageHeight = Math.round(Number(height || 0));
+    if (imageWidth <= 0 || imageHeight <= 0) return false;
+    return imageWidth * imageHeight > SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_PIXEL_LIMIT
+        || imageWidth >= SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT
+        || imageHeight >= SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT;
 }
 
 function simpleaiSetGalleryDragTransferData(transfer, type, value) {

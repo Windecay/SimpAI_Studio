@@ -5,6 +5,7 @@ import numpy as np
 import logging
 import threading
 import time
+import inspect
 from PIL import Image
 
 from enhanced.logger import format_name
@@ -115,9 +116,12 @@ MoondreamChatHandler = None
 NanoLlavaChatHandler = None
 Llama3VisionAlphaChatHandler = None
 MiniCPMv26ChatHandler = None
+MiniCPMv45ChatHandler = None
+MiniCPMV46ChatHandler = None
 Qwen25VLChatHandler = None
 Qwen3VLChatHandler = None
 Qwen35ChatHandler = None
+Qwen3ASRChatHandler = None
 MTMDChatHandler = None
 Gemma3ChatHandler = None
 Gemma4ChatHandler = None
@@ -126,6 +130,8 @@ GLM41VChatHandler = None
 LFM2VLChatHandler = None
 LFM25VLChatHandler = None
 GraniteDoclingChatHandler = None
+PaddleOCRChatHandler = None
+Step3VLChatHandler = None
 
 LLAMA_CPP_AVAILABLE = False
 try:
@@ -191,8 +197,29 @@ if LLAMA_CPP_AVAILABLE:
     except Exception:
         GraniteDoclingChatHandler = None
 
+    try:
+        from llama_cpp.llama_chat_format import MiniCPMv45ChatHandler, MiniCPMV46ChatHandler
+    except Exception:
+        MiniCPMv45ChatHandler = None
+        MiniCPMV46ChatHandler = None
+
+    try:
+        from llama_cpp.llama_chat_format import PaddleOCRChatHandler, Qwen3ASRChatHandler, Step3VLChatHandler
+    except Exception:
+        PaddleOCRChatHandler = None
+        Qwen3ASRChatHandler = None
+        Step3VLChatHandler = None
+
 import modules.config as config
+from modules.custom_llm_api import strip_reasoning_text
+from modules.llama_cpp_runtime import (
+    estimate_llama_cpp_kv_cache_gb,
+    is_llama_cpp_memory_error,
+    llama_cpp_gpu_budget,
+    llama_cpp_gpu_layer_attempts,
+)
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
+from modules.vlm_model_catalog import gguf_int_values
 import ldm_patched.modules.model_management
 
 class LlamaCppVLM:
@@ -201,6 +228,7 @@ class LlamaCppVLM:
         self.chat_handler = None
         self.lock = threading.RLock()
         self.current_model_path = None
+        self.current_mmproj_path = None
         self.current_chat_handler_name = None
         self.current_n_ctx = None
         self.current_image_min_tokens = None
@@ -208,6 +236,9 @@ class LlamaCppVLM:
         self.current_n_gpu_layers = None
         self.current_total_layers = None
         self.current_gpu_layer_size_gb = None
+        self.current_kv_cache_gb = None
+        self.current_mmproj_size_gb = None
+        self.current_offload_kqv = None
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
 
@@ -216,8 +247,12 @@ class LlamaCppVLM:
             "Qwen3-VL": Qwen3VLChatHandler,
             "Qwen3-VL-Thinking": Qwen3VLChatHandler,
             "Qwen2.5-VL": Qwen25VLChatHandler,
+            "MinerU2.5-Pro": Qwen25VLChatHandler,
             "Qwen3.5": Qwen35ChatHandler,
             "Qwen3.5-Thinking": Qwen35ChatHandler,
+            "Qwen3.6": Qwen35ChatHandler,
+            "Qwen3.6-Thinking": Qwen35ChatHandler,
+            "Qwen3-ASR": Qwen3ASRChatHandler,
             "LLaVA-1.5": Llava15ChatHandler,
             "LLaVA-1.6": Llava16ChatHandler,
             "Moondream2": MoondreamChatHandler,
@@ -225,8 +260,10 @@ class LlamaCppVLM:
             "llama3-Vision-Alpha": Llama3VisionAlphaChatHandler,
             "MiniCPM-v2.6": MiniCPMv26ChatHandler,
             "MiniCPM-v4": MiniCPMv26ChatHandler,
-            "MiniCPM-v4.5": MiniCPMv26ChatHandler,
-            "MiniCPM-v4.5-Thinking": MiniCPMv26ChatHandler,
+            "MiniCPM-v4.5": MiniCPMv45ChatHandler,
+            "MiniCPM-v4.5-Thinking": MiniCPMv45ChatHandler,
+            "MiniCPM-v4.6": MiniCPMV46ChatHandler,
+            "MiniCPM-v4.6-Thinking": MiniCPMV46ChatHandler,
             "Gemma3": Gemma3ChatHandler,
             "Gemma4": Gemma4ChatHandler,
             "GLM-4.6V": GLM46VChatHandler,
@@ -235,6 +272,9 @@ class LlamaCppVLM:
             "LFM2-VL": LFM2VLChatHandler,
             "LFM2.5-VL": LFM25VLChatHandler,
             "Granite-Docling": GraniteDoclingChatHandler,
+            "DeepSeek-OCR": MTMDChatHandler,
+            "PaddleOCR-VL-1.5": PaddleOCRChatHandler,
+            "Step3-VL": Step3VLChatHandler,
         }
         return handlers.get(name)
 
@@ -245,15 +285,30 @@ class LlamaCppVLM:
         think_mode = "Thinking" in (chat_handler_name or "")
         kwargs = {"verbose": False}
         if mmproj_path:
-            kwargs["clip_model_path"] = mmproj_path
+            try:
+                signature = inspect.signature(handler_class.__init__)
+                parameters = signature.parameters
+            except Exception:
+                parameters = {}
+            if "mmproj_path" in parameters or any(
+                getattr(parameter, "kind", None) == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            ):
+                kwargs["mmproj_path"] = mmproj_path
+            else:
+                kwargs["clip_model_path"] = mmproj_path
 
         if chat_handler_name in ("Qwen3-VL", "Qwen3-VL-Thinking"):
             kwargs["force_reasoning"] = think_mode
             kwargs["image_max_tokens"] = int(image_max_tokens or 0)
             kwargs["image_min_tokens"] = int(image_min_tokens or 0)
-        elif chat_handler_name in ("Qwen3.5", "Qwen3.5-Thinking"):
+        elif chat_handler_name in ("Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking", "Gemma4"):
             kwargs["enable_thinking"] = think_mode
-        elif chat_handler_name in ("MiniCPM-v4.5", "MiniCPM-v4.5-Thinking", "GLM-4.6V", "GLM-4.6V-Thinking"):
+        elif chat_handler_name in (
+            "MiniCPM-v4.5", "MiniCPM-v4.5-Thinking",
+            "MiniCPM-v4.6", "MiniCPM-v4.6-Thinking",
+            "GLM-4.6V", "GLM-4.6V-Thinking",
+        ):
             kwargs["enable_thinking"] = think_mode
         elif think_mode and (chat_handler_name or "").startswith("MiniCPM-v4"):
             kwargs["enable_thinking"] = True
@@ -265,10 +320,10 @@ class LlamaCppVLM:
         try:
             return handler_class(**kwargs)
         except TypeError:
-            for key in ("enable_thinking", "force_reasoning", "image_max_tokens", "image_min_tokens", "clip_model_path"):
+            reduced = dict(kwargs)
+            for key in ("enable_thinking", "force_reasoning", "image_max_tokens", "image_min_tokens", "mmproj_path", "clip_model_path"):
                 if key not in kwargs:
                     continue
-                reduced = dict(kwargs)
                 reduced.pop(key, None)
                 try:
                     return handler_class(**reduced)
@@ -355,11 +410,14 @@ class LlamaCppVLM:
             for key in reader.fields.keys():
                 k = key.lower()
                 if k.endswith(".embedding_length") or k == "embedding_length":
-                    embedding_length = int(reader.get_field(key).parts[-1][0])
+                    values = gguf_int_values(reader.get_field(key))
+                    embedding_length = values[0] if values else None
                 elif k.endswith(".head_count") or k == "head_count":
-                    head_count = int(reader.get_field(key).parts[-1][0])
+                    values = gguf_int_values(reader.get_field(key))
+                    head_count = values[0] if values else None
                 elif k.endswith(".head_count_kv") or k == "head_count_kv":
-                    head_count_kv = int(reader.get_field(key).parts[-1][0])
+                    values = gguf_int_values(reader.get_field(key))
+                    head_count_kv = values if len(values) > 1 else (values[0] if values else None)
 
             return {
                 "embedding_length": embedding_length,
@@ -369,13 +427,31 @@ class LlamaCppVLM:
         except Exception:
             return {}
 
-    def _resolve_mmproj_path(self, model_path):
+    def _resolve_mmproj_path(self, model_path, mmproj_name=None):
         model_dir = os.path.dirname(model_path)
         if not os.path.exists(model_dir):
             return None
-        for f in os.listdir(model_dir):
-            if "mmproj" in f.lower() and f.endswith(".gguf"):
-                return os.path.join(model_dir, f)
+        if mmproj_name:
+            resolved = find_model_in_dirs(config.paths_LLM, mmproj_name)
+            if resolved and os.path.isfile(resolved):
+                return resolved
+            candidate = os.path.join(model_dir, os.path.basename(str(mmproj_name)))
+            if os.path.isfile(candidate):
+                return candidate
+            logger.warning("Configured mmproj file not found: %s", mmproj_name)
+            return None
+        candidates = sorted(
+            (
+                os.path.join(model_dir, name)
+                for name in os.listdir(model_dir)
+                if "mmproj" in name.lower() and name.lower().endswith(".gguf")
+            ),
+            key=lambda value: value.lower(),
+        )
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            logger.warning("Multiple mmproj files found beside %s; select one in the model catalog.", model_path)
         return None
 
     def _prepare_chat_handler(self, handler_class, mmproj_path, model_path, chat_handler_name, image_min_tokens=0, image_max_tokens=0):
@@ -386,22 +462,13 @@ class LlamaCppVLM:
         model_dir = os.path.dirname(model_path)
         if mmproj_path:
             logger.info(f"Using mmproj: {mmproj_path}")
-            try:
-                self.chat_handler = self._create_chat_handler(
-                    handler_class,
-                    mmproj_path=mmproj_path,
-                    chat_handler_name=chat_handler_name,
-                    image_min_tokens=image_min_tokens,
-                    image_max_tokens=image_max_tokens,
-                )
-            except Exception:
-                self.chat_handler = self._create_chat_handler(
-                    handler_class,
-                    mmproj_path=None,
-                    chat_handler_name=chat_handler_name,
-                    image_min_tokens=image_min_tokens,
-                    image_max_tokens=image_max_tokens,
-                )
+            self.chat_handler = self._create_chat_handler(
+                handler_class,
+                mmproj_path=mmproj_path,
+                chat_handler_name=chat_handler_name,
+                image_min_tokens=image_min_tokens,
+                image_max_tokens=image_max_tokens,
+            )
         else:
             logger.warning(f"No mmproj file found in {model_dir}. Some models may fail to load.")
             self.chat_handler = self._create_chat_handler(
@@ -424,60 +491,83 @@ class LlamaCppVLM:
     def _estimate_current_gpu_layer_credit_gb(self, model_path):
         if self.llm is None or self.current_model_path != model_path:
             return 0.0
-        if not self.current_gpu_layer_size_gb:
-            return 0.0
-        if self.current_n_gpu_layers in (None, -1):
-            return 0.0
+        credit_gb = 0.0
         try:
-            return max(0.0, float(self.current_n_gpu_layers) * float(self.current_gpu_layer_size_gb))
+            if self.current_gpu_layer_size_gb and self.current_n_gpu_layers not in (None, -1):
+                credit_gb += max(0.0, float(self.current_n_gpu_layers) * float(self.current_gpu_layer_size_gb))
+            if self.current_offload_kqv and self.current_kv_cache_gb:
+                credit_gb += max(0.0, float(self.current_kv_cache_gb))
+            if self.current_mmproj_size_gb:
+                credit_gb += max(0.0, float(self.current_mmproj_size_gb))
+            return credit_gb
         except Exception:
             return 0.0
 
     def _calculate_auto_n_gpu_layers(self, model_path, mmproj_path, n_ctx, loaded_model_credit_gb=0.0):
-        free_vram_bytes = ldm_patched.modules.model_management.get_free_memory()
-        vram_limit_gb = (free_vram_bytes / (1024 ** 3)) + max(0.0, float(loaded_model_credit_gb or 0.0))
-
-        vram_buffer = 0.6
+        memory_management = ldm_patched.modules.model_management
+        memory_management.soft_empty_cache(True)
+        budget = llama_cpp_gpu_budget(
+            memory_management.get_free_memory(),
+            memory_management.get_total_memory(),
+            reclaimable_gb=loaded_model_credit_gb,
+        )
         total_layers = self._get_layer_count(model_path)
 
-        kv_cache_gb = 0.0
         hparams = self._get_gguf_hparams(model_path)
         n_embd = hparams.get("embedding_length")
         n_head = hparams.get("head_count")
-        n_kv_head = hparams.get("head_count_kv") or n_head
-        if n_embd and n_head and n_kv_head:
-            head_dim = n_embd // n_head
-            kv_bytes = int(n_ctx) * int(total_layers) * int(n_kv_head) * int(head_dim) * 2 * 2
-            kv_cache_gb = (kv_bytes / (1024 ** 3)) * 1.2
+        n_kv_heads = hparams.get("head_count_kv") or n_head
+        kv_cache_gb, kv_cache_from_metadata = estimate_llama_cpp_kv_cache_gb(
+            n_ctx,
+            total_layers,
+            n_embd,
+            n_head,
+            n_kv_heads,
+        )
+        offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
+        available_vram_gb = budget["gpu_budget_gb"] - (kv_cache_gb if offload_kqv else 0.0)
 
-        available_vram_gb = vram_limit_gb - vram_buffer - kv_cache_gb
+        weight_overhead = 1.15
+        mmproj_size_gb = 0.0
+        if mmproj_path:
+            mmproj_size_gb = os.path.getsize(mmproj_path) * weight_overhead / (1024 ** 3)
         estimate = {
-            "free_vram_gb": vram_limit_gb,
+            **budget,
             "loaded_model_credit_gb": max(0.0, float(loaded_model_credit_gb or 0.0)),
             "kv_cache_gb": kv_cache_gb,
+            "kv_cache_from_metadata": kv_cache_from_metadata,
+            "offload_kqv": offload_kqv,
+            "mmproj_size_gb": mmproj_size_gb,
             "available_vram_gb": available_vram_gb,
             "total_layers": total_layers,
             "layer_size_gb": None,
         }
-        logger.debug(
-            "Auto n_gpu_layers: free=%.2fGB, loaded_credit=%.2fGB, kv_cache=%.2fGB, avail=%.2fGB",
-            vram_limit_gb,
-            estimate["loaded_model_credit_gb"],
+        logger.info(
+            "llama.cpp VRAM budget: free=%.2fGB, total=%.2fGB, reserve=%.2fGB, "
+            "budget=%.2fGB, kv_cache=%.2fGB (%s), offload_kqv=%s, weights=%.2fGB",
+            budget["free_vram_gb"],
+            budget["total_vram_gb"],
+            budget["reserve_gb"],
+            budget["gpu_budget_gb"],
             kv_cache_gb,
+            "metadata" if kv_cache_from_metadata else "fallback",
+            offload_kqv,
             available_vram_gb,
+        )
+        logger.debug(
+            "llama.cpp reclaimable GPU memory: %.2fGB",
+            estimate["loaded_model_credit_gb"],
         )
 
         if available_vram_gb <= 0:
-            logger.warning(f"Not enough VRAM available ({vram_limit_gb:.2f}GB). Using CPU.")
+            logger.warning("No VRAM remains for model layers after the llama.cpp reserve. Using CPU layers.")
             return 0, estimate
 
-        weight_overhead = 1.15
         gguf_size_gb = os.path.getsize(model_path) * weight_overhead / (1024 ** 3)
         layer_size_gb = gguf_size_gb / total_layers
         estimate["layer_size_gb"] = layer_size_gb
 
-        if mmproj_path:
-            mmproj_size_gb = os.path.getsize(mmproj_path) * weight_overhead / (1024 ** 3)
+        if mmproj_size_gb:
             n_gpu_layers = max(0, int((available_vram_gb - mmproj_size_gb) / layer_size_gb))
         else:
             n_gpu_layers = max(0, int(available_vram_gb / layer_size_gb))
@@ -486,7 +576,7 @@ class LlamaCppVLM:
         logger.info(f"Result: n_gpu_layers = {n_gpu_layers}")
         return n_gpu_layers, estimate
 
-    def load_model(self, model_name, chat_handler_name, n_gpu_layers=-1, n_ctx=8192, image_min_tokens=0, image_max_tokens=0):
+    def load_model(self, model_name, chat_handler_name, n_gpu_layers=-1, n_ctx=8192, image_min_tokens=0, image_max_tokens=0, mmproj_name=None):
         if not LLAMA_CPP_AVAILABLE:
             logger.error("llama-cpp-python is not correctly installed or CUDA libraries are missing.")
             return
@@ -494,10 +584,11 @@ class LlamaCppVLM:
         with self.lock:
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
-            mmproj_path = self._resolve_mmproj_path(model_path) if handler_class else None
+            mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
             same_loaded_model = (
                 self.llm is not None
                 and self.current_model_path == model_path
+                and self.current_mmproj_path == mmproj_path
                 and self.current_chat_handler_name == chat_handler_name
                 and self.current_n_ctx == int(n_ctx)
                 and self.current_image_min_tokens == int(image_min_tokens or 0)
@@ -516,8 +607,12 @@ class LlamaCppVLM:
                         loaded_model_credit_gb=current_credit_gb,
                     )
                 except Exception as e:
-                    logger.warning(f"Calculation failed: {e}. Using default -1.")
-                    n_gpu_layers = -1
+                    logger.warning(f"llama.cpp VRAM calculation failed: {e}. Using CPU memory settings.")
+                    n_gpu_layers = 0
+                    auto_estimate = {
+                        "total_layers": self._get_layer_count(model_path),
+                        "offload_kqv": False,
+                    }
 
             if same_loaded_model:
                 current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
@@ -550,21 +645,60 @@ class LlamaCppVLM:
                 image_max_tokens=image_max_tokens,
             )
 
-            self.llm = Llama(
-                model_path=model_path,
-                chat_handler=self.chat_handler,
-                n_gpu_layers=n_gpu_layers,
-                n_ctx=n_ctx,
-                verbose=False
-            )
+            total_layers = auto_estimate.get("total_layers") or self._get_layer_count(model_path)
+            offload_kqv = bool(auto_estimate.get("offload_kqv", True))
+            load_attempts = [
+                (layer_count, offload_kqv)
+                for layer_count in llama_cpp_gpu_layer_attempts(n_gpu_layers, total_layers)
+            ]
+            if offload_kqv and (0, False) not in load_attempts:
+                load_attempts.append((0, False))
+
+            loaded_layers = None
+            loaded_offload_kqv = None
+            oom_type = getattr(ldm_patched.modules.model_management, "OOM_EXCEPTION", None)
+            for attempt_index, (attempt_layers, attempt_offload_kqv) in enumerate(load_attempts):
+                try:
+                    self.llm = Llama(
+                        model_path=model_path,
+                        chat_handler=self.chat_handler,
+                        n_gpu_layers=attempt_layers,
+                        n_ctx=n_ctx,
+                        offload_kqv=attempt_offload_kqv,
+                        verbose=False,
+                    )
+                    loaded_layers = attempt_layers
+                    loaded_offload_kqv = attempt_offload_kqv
+                    break
+                except Exception as e:
+                    self.llm = None
+                    has_next_attempt = attempt_index + 1 < len(load_attempts)
+                    if not has_next_attempt or not is_llama_cpp_memory_error(e, oom_type):
+                        raise
+                    next_layers, next_offload_kqv = load_attempts[attempt_index + 1]
+                    logger.warning(
+                        "llama.cpp memory allocation failed with n_gpu_layers=%s, offload_kqv=%s; "
+                        "retrying with n_gpu_layers=%s, offload_kqv=%s",
+                        attempt_layers,
+                        attempt_offload_kqv,
+                        next_layers,
+                        next_offload_kqv,
+                    )
+                    gc.collect()
+                    ldm_patched.modules.model_management.soft_empty_cache(True)
+
             self.current_model_path = model_path
+            self.current_mmproj_path = mmproj_path
             self.current_chat_handler_name = chat_handler_name
             self.current_n_ctx = int(n_ctx)
             self.current_image_min_tokens = int(image_min_tokens or 0)
             self.current_image_max_tokens = int(image_max_tokens or 0)
-            self.current_n_gpu_layers = n_gpu_layers
-            self.current_total_layers = auto_estimate.get("total_layers") or self._get_layer_count(model_path)
+            self.current_n_gpu_layers = loaded_layers
+            self.current_total_layers = total_layers
             self.current_gpu_layer_size_gb = auto_estimate.get("layer_size_gb")
+            self.current_kv_cache_gb = auto_estimate.get("kv_cache_gb")
+            self.current_mmproj_size_gb = auto_estimate.get("mmproj_size_gb")
+            self.current_offload_kqv = loaded_offload_kqv
             ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
 
     def free_model(self, clear_conversations=False):
@@ -579,6 +713,7 @@ class LlamaCppVLM:
                     pass
             self.chat_handler = None
             self.current_model_path = None
+            self.current_mmproj_path = None
             self.current_chat_handler_name = None
             self.current_n_ctx = None
             self.current_image_min_tokens = None
@@ -586,6 +721,9 @@ class LlamaCppVLM:
             self.current_n_gpu_layers = None
             self.current_total_layers = None
             self.current_gpu_layer_size_gb = None
+            self.current_kv_cache_gb = None
+            self.current_mmproj_size_gb = None
+            self.current_offload_kqv = None
             if clear_conversations:
                 self.clear_conversation()
             gc.collect()
@@ -684,7 +822,7 @@ class LlamaCppVLM:
                 clean_msg["content"] = clean_content
             else:
                 clean_msg["content"] = content
-                clean_messages.append(clean_msg)
+            clean_messages.append(clean_msg)
         return clean_messages
 
     def _message_text_length(self, value):
@@ -712,7 +850,11 @@ class LlamaCppVLM:
         return system_messages + rest
 
     def _clear_hybrid_cache_if_needed(self):
-        if self.current_chat_handler_name not in ("Qwen3-VL", "Qwen3-VL-Thinking", "Qwen3.5", "Qwen3.5-Thinking"):
+        if self.current_chat_handler_name not in (
+            "Qwen3-VL", "Qwen3-VL-Thinking",
+            "Qwen3.5", "Qwen3.5-Thinking",
+            "Qwen3.6", "Qwen3.6-Thinking",
+        ):
             return
         try:
             if hasattr(self.llm, "n_tokens"):
@@ -729,11 +871,11 @@ class LlamaCppVLM:
         handler_name = str(self.current_chat_handler_name or "")
         if not handler_name or "Thinking" in handler_name:
             return system_msg
-        if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM")):
+        if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM", "Gemma")):
             return system_msg
         guard = (
             "Do not output thinking, reasoning traces, chain-of-thought, analysis notes, "
-            "'Thinking Process' sections, or <think> blocks. Return only the final requested result."
+            "'Thinking Process' sections, <think> blocks, or thought channels. Return only the final requested result."
         )
         system_msg = str(system_msg or "").strip()
         if guard in system_msg:
@@ -749,6 +891,7 @@ class LlamaCppVLM:
 
             conversation_key = str(conversation_id or "default")
             system_msg = self._default_system_prompt() if system_prompt is None else str(system_prompt)
+            system_msg = self._with_non_thinking_guard(system_msg)
             cached_system = self.conversation_system_prompts.get(conversation_key)
             if save_state and cached_system == system_msg:
                 messages = self.conversation_messages.get(conversation_key, [])
@@ -774,7 +917,7 @@ class LlamaCppVLM:
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None
                 )
-                result = output['choices'][0]['message']['content'].strip()
+                result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
                 logger.info(
                     "LlamaCpp Chat stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",
@@ -864,8 +1007,7 @@ class LlamaCppVLM:
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None
                 )
-                result = output['choices'][0]['message']['content']
-                result = result.strip()
+                result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
                 logger.info(
                     "LlamaCpp Inference stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",

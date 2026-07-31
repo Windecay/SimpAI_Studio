@@ -35,6 +35,9 @@
         'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
+        'Gemma4-12B-it-heretic-Q4_K_XL',
+        'Gemma3-12B-TextEncoder',
+        'Qwen3VL-4B-TextEncoder',
         'Custom'
     ];
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
@@ -195,6 +198,12 @@
         systemPromptTemplates: [],
         systemPromptTemplatesLoaded: false,
         systemPromptTemplatesLoading: false,
+        vlmModelChoices: DESCRIBE_VLM_MODEL_CHOICES.slice(),
+        vlmModelLabels: {},
+        vlmAllowCustom: true,
+        vlmModelCatalogLoaded: false,
+        vlmModelCatalogLoading: false,
+        vlmModelCatalogPromise: null,
         creativePresetCatalog: [],
         creativePresetCatalogLoaded: false,
         creativePresetCatalogLoading: false,
@@ -982,24 +991,94 @@
             .filter(Boolean);
     }
 
+    function mergeDescribeVlmModelChoices(catalogChoices) {
+        const merged = [];
+        const seen = new Set();
+        const add = (value) => {
+            const text = String(value || '').trim();
+            if (!text || seen.has(text)) return;
+            seen.add(text);
+            merged.push(text);
+        };
+        DESCRIBE_VLM_MODEL_CHOICES
+            .filter((value) => value !== 'Custom')
+            .forEach(add);
+        (Array.isArray(catalogChoices) ? catalogChoices : [])
+            .filter((value) => String(value || '').trim() !== 'Custom')
+            .forEach(add);
+        if (state.vlmAllowCustom) add('Custom');
+        return merged;
+    }
+
+    function applyDescribeVlmModelCatalog(data) {
+        if (!data || typeof data !== 'object') return false;
+        const catalogChoices = Array.isArray(data.choices)
+            ? data.choices.filter(Boolean)
+            : Array.isArray(data.items)
+                ? data.items.map((item) => item?.id).filter(Boolean)
+                : [];
+        if (!catalogChoices.length) return false;
+        state.vlmAllowCustom = data.allow_custom === true;
+        state.vlmModelChoices = mergeDescribeVlmModelChoices(catalogChoices);
+        state.vlmModelLabels = Object.assign({}, data.labels || {});
+        state.vlmModelCatalogLoaded = true;
+        return true;
+    }
+
+    async function refreshDescribeVlmModelCatalog(refresh = false) {
+        if (state.vlmModelCatalogLoading && state.vlmModelCatalogPromise) return state.vlmModelCatalogPromise;
+        const registry = window.SimpAICanvasWorkbenchRegistry || {};
+        if (!refresh && Array.isArray(registry.VLM_MODEL_CATALOG) && registry.VLM_MODEL_CATALOG.length) {
+            applyDescribeVlmModelCatalog({
+                items: registry.VLM_MODEL_CATALOG,
+                choices: registry.VLM_VERSION_CHOICES || [],
+                labels: registry.VLM_MODEL_LABELS || {},
+                allow_custom: registry.VLM_ALLOW_CUSTOM === true
+            });
+            updateAnswerModelIndicator();
+            return true;
+        }
+        state.vlmModelCatalogLoading = true;
+        state.vlmModelCatalogPromise = fetch(`/vlm-model-catalog${refresh ? '?refresh=true' : ''}`, { cache: 'no-store' })
+            .then((response) => response.json().then((data) => ({ response, data })))
+            .then(({ response, data }) => {
+                if (!response.ok || !data?.ok) throw new Error(data?.details || data?.error || `HTTP ${response.status}`);
+                const applied = applyDescribeVlmModelCatalog(data);
+                updateAnswerModelIndicator();
+                return applied;
+            })
+            .catch((error) => {
+                console.warn('[SimpAI Describe VLM] Model catalog unavailable:', error);
+                return false;
+            })
+            .finally(() => {
+                state.vlmModelCatalogLoading = false;
+                state.vlmModelCatalogPromise = null;
+            });
+        return state.vlmModelCatalogPromise;
+    }
+
     function registryVlmDropdownOptions() {
         const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
-        const choices = Array.isArray(registry.VLM_VERSION_CHOICES) && registry.VLM_VERSION_CHOICES.length
+        const choices = Array.isArray(state.vlmModelChoices) && state.vlmModelChoices.length
+            ? state.vlmModelChoices
+            : Array.isArray(registry.VLM_VERSION_CHOICES) && registry.VLM_VERSION_CHOICES.length
             ? registry.VLM_VERSION_CHOICES
             : DESCRIBE_VLM_MODEL_CHOICES;
-        return choices.map((choice) => ({ value: cleanVlmVersion(choice), label: String(choice || '').trim() }))
+        const labels = Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
+        return choices.map((choice) => ({ value: cleanVlmVersion(choice), label: String(labels[choice] || choice || '').trim() }))
             .filter((choice) => choice.value);
     }
 
     function describeVlmModelOptions() {
         const options = [];
+        registryVlmDropdownOptions().forEach((option) => addUniqueVlmModelOption(options, option));
         nativeVlmDropdownOptions('describe_vlm_model_dropdown').forEach((option) => addUniqueVlmModelOption(options, option));
         nativeVlmDropdownOptions('describe_vlm_model').forEach((option) => addUniqueVlmModelOption(options, option));
-        registryVlmDropdownOptions().forEach((option) => addUniqueVlmModelOption(options, option));
         const current = cleanVlmVersion(readSelectedVlmVersion());
         if (current) addUniqueVlmModelOption(options, { value: current, label: current });
-        addUniqueVlmModelOption(options, { value: 'Custom', label: customVlmModelOptionLabel() });
-        return options;
+        if (state.vlmAllowCustom) addUniqueVlmModelOption(options, { value: 'Custom', label: customVlmModelOptionLabel() });
+        return state.vlmAllowCustom ? options : options.filter((option) => option.value !== 'Custom');
     }
 
     function syncHeaderVlmModelSelect(select, selectedVersion) {
@@ -1211,7 +1290,9 @@
             if (customModel) return `${apiName || 'Custom'} · ${customModel}`;
             return apiName || 'Custom';
         }
-        return version || t('No model selected', '未选择模型');
+        const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
+        const labels = Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
+        return labels[version] || version || t('No model selected', '未选择模型');
     }
 
     function updateAnswerModelIndicator(modal = document.getElementById('describe_vlm_chat_modal')) {
@@ -1757,6 +1838,7 @@
         renderMessages();
         renderPendingImages();
         ensureSystemPromptTemplates(modal).catch(() => {});
+        refreshDescribeVlmModelCatalog(false).catch(() => {});
         return modal;
     }
 
@@ -1769,6 +1851,7 @@
         syncChatSettingsControls(modal);
         renderMessages();
         ensureSystemPromptTemplates(modal).catch(() => {});
+        refreshDescribeVlmModelCatalog(false).catch(() => {});
         modal.hidden = false;
         autoReferenceDescribeInputMedia().catch(() => {});
         installDescribeFloatingLayer(modal);
@@ -1923,6 +2006,51 @@
         };
     }
 
+    function normalizeChatCompletion(value, fallbackMaxTokens = 0) {
+        const source = value && typeof value === 'object' ? value : {};
+        const incompleteDetails = source.incomplete_details && typeof source.incomplete_details === 'object'
+            ? source.incomplete_details
+            : {};
+        const status = String(source.status || '').trim().slice(0, 80);
+        const finishReason = String(source.finish_reason || '').trim().slice(0, 80);
+        const stopReason = String(source.stop_reason || '').trim().slice(0, 80);
+        const reason = String(source.reason || incompleteDetails.reason || finishReason || stopReason || '').trim().slice(0, 80);
+        const normalizedReason = reason.toLowerCase().replace(/[- ]/g, '_');
+        const outputLimited = source.output_limited === true || [
+            'length',
+            'max_tokens',
+            'max_output_tokens',
+            'max_completion_tokens',
+            'token_limit'
+        ].includes(normalizedReason);
+        const usage = source.usage && typeof source.usage === 'object' ? source.usage : {};
+        const maxTokens = Math.max(0, Math.round(Number(source.max_tokens || fallbackMaxTokens) || 0));
+        const outputTokens = Math.max(0, Math.round(Number(usage.output_tokens ?? usage.completion_tokens) || 0));
+        if (!outputLimited && !status && !reason && !outputTokens) return null;
+        return {
+            output_limited: outputLimited,
+            status,
+            reason,
+            finish_reason: finishReason,
+            stop_reason: stopReason,
+            max_tokens: maxTokens,
+            output_tokens: outputTokens
+        };
+    }
+
+    function chatCompletionLimitMessage(completion) {
+        const limit = Math.max(0, Math.round(Number(completion?.max_tokens) || 0));
+        return limit > 0
+            ? t(
+                `Reply reached the ${limit} token output limit and may be incomplete. Send “continue” to resume.`,
+                `回答达到 ${limit} token 输出上限，内容可能不完整。可发送“继续输出”。`
+            )
+            : t(
+                'Reply reached the output token limit and may be incomplete. Send “continue” to resume.',
+                '回答达到 token 输出上限，内容可能不完整。可发送“继续输出”。'
+            );
+    }
+
     function normalizePersistedMessage(message, options = {}) {
         if (!message || typeof message !== 'object') return null;
         const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
@@ -1941,8 +2069,11 @@
                 { includeEmbedded: false }
             )).filter(Boolean)
             : [];
+        const completion = normalizeChatCompletion(message.completion);
         if (!content && !images.length && !actions.length && !mediaAssets.length) return null;
-        return { id, role, content, actions, images, media_assets: mediaAssets, image_count: Math.max(0, Number(message.image_count) || images.length || mediaAssets.length) };
+        const normalized = { id, role, content, actions, images, media_assets: mediaAssets, image_count: Math.max(0, Number(message.image_count) || images.length || mediaAssets.length) };
+        if (completion) normalized.completion = completion;
+        return normalized;
     }
 
     function normalizePersistedMessages(messages) {
@@ -4354,6 +4485,10 @@
 </div>`;
             }).join('')}</div>` : '';
             const label = role === 'assistant' ? t('Assistant', '助手') : t('You', '你');
+            const completion = normalizeChatCompletion(message.completion);
+            const completionWarningHtml = completion?.output_limited
+                ? `<div class="describe-vlm-chat-completion-warning" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(chatCompletionLimitMessage(completion))}</span></div>`
+                : '';
             return `<div class="describe-vlm-chat-msg is-${role} ${pending ? 'is-pending' : ''}" data-describe-vlm-chat-message="${messageIndex}">
   <div class="describe-vlm-chat-msg-head"><b>${escapeHtml(label)}</b><span>
     <button type="button" data-describe-vlm-chat-copy-message="${messageIndex}" title="${escapeHtml(t('Copy message', '复制消息'))}" aria-label="${escapeHtml(t('Copy message', '复制消息'))}"><i class="fa-solid fa-copy"></i></button>
@@ -4363,6 +4498,7 @@
   </span></div>
   ${renderMessageImages(message.images)}
   ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
+  ${completionWarningHtml}
   ${actionHtml}
 </div>`;
         }).join('');
@@ -4928,10 +5064,15 @@
         const reply = response?.ok
             ? (response.text || t('Done.', '完成。'))
             : (response?.details || response?.error || t('VLM/LLM AI chat failed.', 'VLM/LLM AI对话失败。'));
+        const completion = normalizeChatCompletion(
+            response?.completion || response?.params?.completion,
+            response?.params?.max_tokens
+        );
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             role: 'assistant',
             content: reply,
+            completion,
             actions: response?.ok && Array.isArray(response.limited_actions)
                 ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets)
                 : []
@@ -4956,6 +5097,8 @@
         }
         if (!response?.ok) {
             setStatus(reply, true);
+        } else if (completion?.output_limited) {
+            setStatus(chatCompletionLimitMessage(completion), true);
         } else if (estimatedUploadBytes > 0) {
             setStatus(imageUploadStatus(images, true));
         } else if (requestedImagesButUnsupported) {
@@ -4970,6 +5113,7 @@
             response?.ok
             && selectedMode === 'creative'
             && !response?.creative_director_suppressed
+            && !completion?.output_limited
             && !messageHasCreativeImageAction(assistant)
         ) {
             maybeRequestCreativeOffer({
@@ -5407,6 +5551,11 @@
     window.addEventListener('simpai:parameter-profiles-changed', () => {
         refreshCreativePresetCatalogAfterProfileChange().catch(() => {});
     });
+    window.addEventListener('simpai:vlm-model-catalog', (evt) => {
+        applyDescribeVlmModelCatalog(evt?.detail);
+        updateAnswerModelIndicator();
+    });
+    setTimeout(() => refreshDescribeVlmModelCatalog(false).catch(() => {}), 0);
 
     function labelOpenButton() {
         anchorOpenButton();

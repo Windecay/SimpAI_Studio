@@ -852,8 +852,11 @@ class BaseLlama:
 class BaseGenerate:
     def logits(self, x):
         input = x[:, -1:]
-        if hasattr(self.model, "lm_head"):
-            module = self.model.lm_head
+        lm_head = getattr(self.model, "lm_head", None)
+        if self.model.config.lm_head:
+            if getattr(lm_head, "weight", None) is None:
+                raise RuntimeError("Selected Text Encoder is missing model.lm_head.weight and cannot be used for TextGenerate.")
+            module = lm_head
         else:
             module = self.model.embed_tokens
 
@@ -861,7 +864,7 @@ class BaseGenerate:
         if module.comfy_cast_weights:
             weight, _, offload_stream = comfy.ops.cast_bias_weight(module, input, offloadable=True)
         else:
-            weight = self.model.embed_tokens.weight.to(x)
+            weight = module.weight.to(x)
 
         x = torch.nn.functional.linear(input, weight, None)
 
@@ -994,16 +997,19 @@ class BaseGenerate:
 class BaseQwen3:
     def logits(self, x):
         input = x[:, -1:]
+        lm_head = getattr(self.model, "lm_head", None)
         if self.model.config.lm_head:
-            return self.model.lm_head(input)
-
-        module = self.model.embed_tokens
+            if getattr(lm_head, "weight", None) is None:
+                raise RuntimeError("Selected Text Encoder is missing model.lm_head.weight and cannot be used for TextGenerate.")
+            module = lm_head
+        else:
+            module = self.model.embed_tokens
 
         offload_stream = None
         if module.comfy_cast_weights:
             weight, _, offload_stream = comfy.ops.cast_bias_weight(module, input, offloadable=True)
         else:
-            weight = self.model.embed_tokens.weight.to(x)
+            weight = module.weight.to(x)
 
         x = torch.nn.functional.linear(input, weight, None)
 

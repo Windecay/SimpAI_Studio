@@ -19,6 +19,7 @@ import enhanced.all_parameters as ads
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
+from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
 
@@ -45,6 +46,14 @@ HUIHUI_QWEN35_MODELSCOPE_BASE = (
     "SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated"
 )
 HUIHUI_QWEN35_MMPROJ = "Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf"
+GEMMA4_HERETIC_MODEL_DIR = "gemma-4-12B-it-heretic"
+GEMMA4_HERETIC_MODELSCOPE_BASE = (
+    "https://modelscope.cn/models/SC117/gemma-4-12B-it-heretic-QAT-GGUF/resolve/master"
+)
+GEMMA4_HERETIC_GGUF = "gemma-4-12B-it-heretic-QAT-UD-Q4_K_XL.gguf"
+GEMMA4_HERETIC_MMPROJ = "mmproj-BF16.gguf"
+COMFY_GEMMA3_12B_FILE = "gemma_3_12B_it_fpmixed.safetensors"
+COMFY_QWEN3VL_4B_FILE = "qwen3vl_4b_fp8_scaled.safetensors"
 
 
 def _safe_stop_comfyd_for_vlm():
@@ -65,12 +74,58 @@ def _huihui_qwen35_vlm_config(quant):
         "model": HUIHUI_QWEN35_MODEL_DIR,
         "chat_handler": "Qwen3.5",
         "gguf_file": gguf_file,
+        "mmproj_file": HUIHUI_QWEN35_MMPROJ,
         "n_ctx": 8192,
         "model_urls": {
             gguf_file: f"{HUIHUI_QWEN35_MODELSCOPE_BASE}/{gguf_file}",
             HUIHUI_QWEN35_MMPROJ: f"{HUIHUI_QWEN35_MODELSCOPE_BASE}/{HUIHUI_QWEN35_MMPROJ}",
         },
         "is_llamacpp": True,
+        "backend": "llamacpp",
+        "source_catalog": "LLM",
+        "architecture": "qwen3.5",
+        "capabilities": ["text", "image"],
+        "recommended": True,
+    }
+
+
+def _gemma4_heretic_vlm_config():
+    return {
+        "label": "Gemma 4 12B Heretic Q4_K_XL",
+        "model": GEMMA4_HERETIC_MODEL_DIR,
+        "chat_handler": "Gemma4",
+        "gguf_file": GEMMA4_HERETIC_GGUF,
+        "mmproj_file": GEMMA4_HERETIC_MMPROJ,
+        "n_ctx": 8192,
+        "model_urls": {
+            GEMMA4_HERETIC_GGUF: f"{GEMMA4_HERETIC_MODELSCOPE_BASE}/{GEMMA4_HERETIC_GGUF}",
+            GEMMA4_HERETIC_MMPROJ: f"{GEMMA4_HERETIC_MODELSCOPE_BASE}/{GEMMA4_HERETIC_MMPROJ}",
+        },
+        "is_llamacpp": True,
+        "backend": "llamacpp",
+        "source_catalog": "LLM",
+        "architecture": "gemma4",
+        "capabilities": ["text", "image"],
+        "recommended": True,
+    }
+
+
+def _comfy_textgen_vlm_config(label, clip_name, clip_type, architecture, model_url, model_size):
+    return {
+        "label": label,
+        "model": clip_name,
+        "model_file": clip_name,
+        "clip_name": clip_name,
+        "clip_type": clip_type,
+        "backend": "comfy_textgen",
+        "source_catalog": "text_encoders",
+        "architecture": architecture,
+        "capabilities": ["text", "image"],
+        "n_ctx": 32768,
+        "model_url": model_url,
+        "model_size": int(model_size),
+        "is_llamacpp": False,
+        "recommended": True,
     }
 
 
@@ -199,7 +254,7 @@ def _superprompt_image_input(input_images):
         images = [image for image in input_images if image is not None]
         if not images:
             return None
-        supports_multiple = VLM.is_llamacpp or VLM.is_custom_version()
+        supports_multiple = VLM.is_llamacpp or VLM.backend == "comfy_textgen" or VLM.is_custom_version()
         return images if supports_multiple and len(images) > 1 else images[0]
     return input_images
 
@@ -399,6 +454,23 @@ class VLM:
         "Qwen3.5-9B-abliterated-Q2_K": _huihui_qwen35_vlm_config("Q2_K"),
         "Qwen3.5-9B-abliterated-Q6_K": _huihui_qwen35_vlm_config("Q6_K"),
         "Qwen3.5-9B-abliterated-Q8_0": _huihui_qwen35_vlm_config("Q8_0"),
+        "Gemma4-12B-it-heretic-Q4_K_XL": _gemma4_heretic_vlm_config(),
+        "Gemma3-12B-TextEncoder": _comfy_textgen_vlm_config(
+            "Gemma 3 12B · Reuse Text Encoder",
+            COMFY_GEMMA3_12B_FILE,
+            "ltxv",
+            "gemma3_12b",
+            "https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
+            13708659515,
+        ),
+        "Qwen3VL-4B-TextEncoder": _comfy_textgen_vlm_config(
+            "Qwen 3 VL 4B · Reuse Text Encoder",
+            COMFY_QWEN3VL_4B_FILE,
+            "krea2",
+            "qwen3vl_4b",
+            "https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+            5242467968,
+        ),
     }
 
     # 运行时参数（由 set_version 统一管理）
@@ -406,9 +478,15 @@ class VLM:
     model_file = ""
     model_url = None
     model_urls = {}
+    backend = ""
+    source_catalog = ""
     is_llamacpp = False
     chat_handler = ""
     gguf_file = ""
+    mmproj_file = ""
+    clip_name = ""
+    clip_type = ""
+    capabilities = ["text"]
     n_ctx = 8192
     image_min_tokens = 0
     image_max_tokens = 0
@@ -439,7 +517,8 @@ class VLM:
     def resolve_version(cls, version):
         if not version or version == 'None':
             return cls.DEFAULT_VERSION
-        if str(version).strip() == cls.CUSTOM_VERSION:
+        version = str(version).strip()
+        if version == cls.CUSTOM_VERSION:
             return cls.CUSTOM_VERSION
         if version in cls.VERSIONS:
             return version
@@ -447,7 +526,56 @@ class VLM:
             base_version = version[:-len("-Thinking")]
             if base_version in cls.VERSIONS:
                 return base_version
+        try:
+            item = cls.get_version_catalog_item(version)
+            if item:
+                return str(item.get("id") or version)
+        except Exception:
+            pass
+        if version.startswith(("llamacpp:", "comfy:")):
+            return version
         return cls.DEFAULT_VERSION
+
+    @classmethod
+    def _text_encoder_roots(cls):
+        roots = []
+        for value in (config.paths_text_encoders, config.paths_clip):
+            if isinstance(value, (list, tuple, set)):
+                roots.extend(value)
+            elif value:
+                roots.append(value)
+        return roots
+
+    @classmethod
+    def get_model_catalog(cls, refresh=False):
+        from modules.vlm_model_catalog import build_model_catalog
+
+        return build_model_catalog(
+            curated_configs=cls.VERSIONS,
+            default_version=cls.DEFAULT_VERSION,
+            custom_version=cls.CUSTOM_VERSION,
+            llm_roots=config.paths_LLM,
+            text_encoder_roots=cls._text_encoder_roots(),
+            refresh=refresh,
+        )
+
+    @classmethod
+    def get_version_catalog_item(cls, version, refresh=False):
+        from modules.vlm_model_catalog import catalog_item
+
+        return catalog_item(cls.get_model_catalog(refresh=refresh), version)
+
+    @classmethod
+    def get_version_config(cls, version):
+        if version in cls.VERSIONS:
+            return cls.VERSIONS[version]
+        if isinstance(version, str) and version.endswith("-Thinking"):
+            base_version = version[:-len("-Thinking")]
+            if base_version in cls.VERSIONS:
+                return cls.VERSIONS[base_version]
+        item = cls.get_version_catalog_item(version)
+        runtime_config = item.get("runtime_config") if isinstance(item, dict) else None
+        return runtime_config if isinstance(runtime_config, dict) and runtime_config else None
 
     @classmethod
     def is_custom_version(cls, version=None):
@@ -515,14 +643,41 @@ class VLM:
                 cls.model_file = ""
                 cls.model_url = None
                 cls.model_urls = {}
+                cls.backend = "custom_api"
+                cls.source_catalog = "custom"
                 cls.is_llamacpp = False
                 cls.chat_handler = ""
                 cls.gguf_file = ""
+                cls.mmproj_file = ""
+                cls.clip_name = ""
+                cls.clip_type = ""
+                cls.capabilities = ["text", "image"] if cls.custom_supports_images else ["text"]
             logger.debug("设置 VLM 模型: 版本=Custom, backend=%s", cls.custom_api_format)
             return
 
-        config_data = cls.VERSIONS.get(version)
+        config_data = cls.get_version_config(version)
         if not config_data:
+            if str(version).startswith(("llamacpp:", "comfy:")):
+                with cls.lock:
+                    cls.current_version = str(version)
+                    cls.model = ""
+                    cls.model_file = ""
+                    cls.model_url = None
+                    cls.model_urls = {}
+                    cls.backend = ""
+                    cls.source_catalog = ""
+                    cls.is_llamacpp = False
+                    cls.chat_handler = ""
+                    cls.gguf_file = ""
+                    cls.mmproj_file = ""
+                    cls.clip_name = ""
+                    cls.clip_type = ""
+                    cls.capabilities = ["text"]
+                    cls.n_ctx = 8192
+                    cls.image_min_tokens = 0
+                    cls.image_max_tokens = 0
+                logger.warning("Selected local VLM model is unavailable: %s", version)
+                return
             logger.warning(f"Unknown VLM version: {original_version}. Falling back to {cls.DEFAULT_VERSION}")
             version = cls.DEFAULT_VERSION
             config_data = cls.VERSIONS[version]
@@ -530,16 +685,24 @@ class VLM:
         with cls.lock:
             cls.current_version = version
             cls.model = config_data["model"]
+            cls.backend = str(config_data.get("backend") or ("llamacpp" if config_data.get("is_llamacpp") else "transformers"))
+            cls.source_catalog = str(config_data.get("source_catalog") or "")
             cls.is_llamacpp = config_data.get("is_llamacpp", False)
             cls.chat_handler = config_data.get("chat_handler", "")
             cls.gguf_file = config_data.get("gguf_file", "")
+            cls.mmproj_file = config_data.get("mmproj_file", "")
+            cls.clip_name = config_data.get("clip_name", "")
+            cls.clip_type = config_data.get("clip_type", "")
+            cls.capabilities = list(config_data.get("capabilities") or ["text"])
             cls.n_ctx = int(config_data.get("n_ctx", 8192) or 8192)
             cls.image_min_tokens = int(config_data.get("image_min_tokens", 0) or 0)
             cls.image_max_tokens = int(config_data.get("image_max_tokens", 0) or 0)
             cls.model_url = config_data.get("model_url")
             cls.model_urls = config_data.get("model_urls", {})
             model_file_name = config_data.get("model_file")
-            if model_file_name:
+            if cls.backend in ("llamacpp", "comfy_textgen") and model_file_name:
+                cls.model_file = str(model_file_name)
+            elif model_file_name:
                 cls.model_file = os.path.join(cls.model, model_file_name)
             else:
                 cls.model_file = os.path.join(cls.model, cls.model)
@@ -560,15 +723,24 @@ class VLM:
 
     @classmethod
     def get_version_missing_files(cls, version):
+        original_version = str(version or "").strip()
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+            return ["Unknown or removed VLM model"]
         version = cls.resolve_version(version)
         if cls.is_custom_version(version):
             return cls.get_custom_missing_settings()
-        config_data = cls.VERSIONS.get(version)
+        config_data = cls.get_version_config(version)
         if not config_data:
             return []
 
         model_name = config_data.get("model") or version
         missing = []
+        backend = str(config_data.get("backend") or ("llamacpp" if config_data.get("is_llamacpp") else "transformers"))
+        if backend == "comfy_textgen":
+            clip_name = str(config_data.get("clip_name") or config_data.get("model_file") or model_name)
+            if not find_model_in_dirs(cls._text_encoder_roots(), clip_name):
+                missing.append(clip_name.replace("\\", "/"))
+            return missing
         model_urls = config_data.get("model_urls") or {}
         if model_urls:
             for file_name in model_urls:
@@ -578,14 +750,23 @@ class VLM:
             return missing
 
         model_file_name = config_data.get("model_file")
-        rel_path = os.path.join(model_name, model_file_name) if model_file_name else os.path.join(model_name, model_name)
-        search_dirs = config.paths_LLM if config_data.get("is_llamacpp") else config.paths_llms
+        if backend == "llamacpp" and model_file_name:
+            rel_path = str(model_file_name)
+        else:
+            rel_path = os.path.join(model_name, model_file_name) if model_file_name else os.path.join(model_name, model_name)
+        search_dirs = config.paths_LLM if backend == "llamacpp" else config.paths_llms
         if not find_model_in_dirs(search_dirs, rel_path):
             missing.append(rel_path.replace("\\", "/"))
+        mmproj_file = str(config_data.get("mmproj_file") or "").strip()
+        if backend == "llamacpp" and mmproj_file and not find_model_in_dirs(search_dirs, mmproj_file):
+            missing.append(mmproj_file.replace("\\", "/"))
         return missing
 
     @classmethod
     def model_exists_for_version(cls, version):
+        original_version = str(version or "").strip()
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+            return False
         version = cls.resolve_version(version)
         if cls.is_custom_version(version):
             return cls.custom_config_ready()
@@ -593,6 +774,15 @@ class VLM:
 
     @classmethod
     def get_version_status(cls, version):
+        original_version = str(version or "").strip()
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+            return {
+                "version": original_version,
+                "exists": False,
+                "icon": "⚠",
+                "label": "Unavailable",
+                "missing_files": ["Unknown or removed VLM model"],
+            }
         version = cls.resolve_version(version)
         if cls.is_custom_version(version):
             missing = cls.get_custom_missing_settings()
@@ -603,6 +793,15 @@ class VLM:
                 "icon": "✓" if exists else "⚠",
                 "label": "Ready" if exists else "Missing",
                 "missing_files": missing,
+            }
+        config_data = cls.get_version_config(version)
+        if not config_data:
+            return {
+                "version": str(version or ""),
+                "exists": False,
+                "icon": "⚠",
+                "label": "Unavailable",
+                "missing_files": ["Unknown or removed VLM model"],
             }
         missing_files = cls.get_version_missing_files(version)
         exists = len(missing_files) == 0
@@ -616,6 +815,9 @@ class VLM:
 
     @classmethod
     def ensure_model_files_ready(cls, version=None):
+        original_version = str(version or cls.current_version or cls.DEFAULT_VERSION).strip()
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+            raise RuntimeError(f"Unknown or removed VLM model: {original_version}")
         version = cls.resolve_version(version or cls.current_version or cls.DEFAULT_VERSION)
         if cls.is_custom_version(version):
             if not cls.custom_config_ready():
@@ -644,6 +846,8 @@ class VLM:
             return cls.is_processing
     def load_model(self, download=False):
         if VLM.is_custom_version():
+            return
+        if VLM.backend == "comfy_textgen":
             return
         if VLM.is_llamacpp:
             model_dir = ""
@@ -725,13 +929,14 @@ class VLM:
                 selected_gguf = gguf_files[0]
 
             model_file = os.path.join(VLM.model, selected_gguf)
-            chat_handler_name = VLM.chat_handler or ("Qwen3-VL" if "Qwen3-VL" in VLM.current_version else "Qwen3.5")
+            chat_handler_name = VLM.chat_handler or "None"
             llamacpp_vlm.load_model(
                 model_file,
                 chat_handler_name,
                 n_ctx=VLM.n_ctx,
                 image_min_tokens=VLM.image_min_tokens,
                 image_max_tokens=VLM.image_max_tokens,
+                mmproj_name=VLM.mmproj_file or None,
             )
             return
 
@@ -754,6 +959,9 @@ class VLM:
 
     def free_model(self):
         llamacpp_vlm.free_model()
+        if VLM.backend == "comfy_textgen":
+            comfy_textgen_vlm.free_model()
+            return
         if VLM.model_runtime is None and VLM.tokenizer is None:
             return
         with VLM.lock:
@@ -882,6 +1090,8 @@ class VLM:
     def clear_conversation(self, conversation_id=None):
         if VLM.is_llamacpp:
             llamacpp_vlm.clear_conversation(conversation_id)
+        elif VLM.backend == "comfy_textgen":
+            comfy_textgen_vlm.clear_conversation(conversation_id)
 
     def reset_runtime_context(self):
         if VLM.is_llamacpp:
@@ -930,6 +1140,30 @@ class VLM:
             self.set_processing_status(True)
             logger.debug("VLM chat_local started")
 
+            if VLM.backend == "comfy_textgen":
+                VLM.ensure_model_files_ready(VLM.current_version)
+                if image is not None and "image" not in VLM.capabilities:
+                    raise RuntimeError(f"{VLM.current_version} supports text input only.")
+                llamacpp_vlm.free_model()
+                pipeline.free_everything()
+                return comfy_textgen_vlm.chat(
+                    clip_name=VLM.clip_name or VLM.model_file,
+                    clip_type=VLM.clip_type or "stable_diffusion",
+                    image=image,
+                    prompt=prompt,
+                    conversation_id=conversation_id,
+                    system_prompt=system_prompt,
+                    save_state=save_state,
+                    max_history=max_history,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    thinking=str(VLM.current_version).endswith("-Thinking"),
+                )
+
             _safe_stop_comfyd_for_vlm()
             pipeline.free_everything()
             ldm_patched.modules.model_management.print_vram_info_by_nvml("before vlm chat inference")
@@ -965,6 +1199,27 @@ class VLM:
             # 设置处理状态为True
             self.set_processing_status(True)
             logger.debug("VLM inference_local started")
+
+            if VLM.backend == "comfy_textgen":
+                VLM.ensure_model_files_ready(VLM.current_version)
+                if image is not None and "image" not in VLM.capabilities:
+                    raise RuntimeError(f"{VLM.current_version} supports text input only.")
+                llamacpp_vlm.free_model()
+                pipeline.free_everything()
+                return comfy_textgen_vlm.inference(
+                    clip_name=VLM.clip_name or VLM.model_file,
+                    clip_type=VLM.clip_type or "stable_diffusion",
+                    image=image,
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=system_prompt,
+                    thinking=str(VLM.current_version).endswith("-Thinking"),
+                )
 
             _safe_stop_comfyd_for_vlm()
             pipeline.free_everything()

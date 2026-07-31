@@ -3330,7 +3330,7 @@ def _canvas_vlm_int(value, default, min_value=None, max_value=None):
     return number
 
 def _canvas_vlm_text_budget(params, version_name=None):
-    version_cfg = VLM.VERSIONS.get(str(version_name or params.get("version") or ""), {})
+    version_cfg = VLM.get_version_config(str(version_name or params.get("version") or "")) or {}
     n_ctx = int(version_cfg.get("n_ctx", 8192) or 8192)
     default_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     max_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))

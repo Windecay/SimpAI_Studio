@@ -6,22 +6,20 @@ gguf
 tqdm
 
 # for Windows
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-win-20260406/llama_cpp_python-0.3.35+cu128.basic-cp310-cp310-win_amd64.whl; python_version == "3.10" and platform_system == "Windows"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-win-20260406/llama_cpp_python-0.3.35+cu128.basic-cp311-cp311-win_amd64.whl; python_version == "3.11" and platform_system == "Windows"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-win-20260406/llama_cpp_python-0.3.35+cu128.basic-cp312-cp312-win_amd64.whl; python_version == "3.12" and platform_system == "Windows"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-win-20260406/llama_cpp_python-0.3.35+cu128.basic-cp313-cp313-win_amd64.whl; python_version == "3.13" and platform_system == "Windows"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-win-20260406/llama_cpp_python-0.3.35+cu128.basic-cp314-cp314-win_amd64.whl; python_version == "3.14" and platform_system == "Windows"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu130-cp311-cp311-win_amd64.whl ; python_version == "3.11" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu130-cp312-cp312-win_amd64.whl ; python_version == "3.12" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu130-cp313-cp313-win_amd64.whl ; python_version == "3.13" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu130-cp314-cp314-win_amd64.whl ; python_version == "3.14" and platform_system == "Windows" and platform_machine == "AMD64"
 
 # for Linux
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-linux-20260406/llama_cpp_python-0.3.35+cu128.basic-cp310-cp310-linux_x86_64.whl; python_version == "3.10" and platform_system == "Linux"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-linux-20260406/llama_cpp_python-0.3.35+cu128.basic-cp311-cp311-linux_x86_64.whl; python_version == "3.11" and platform_system == "Linux"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-linux-20260406/llama_cpp_python-0.3.35+cu128.basic-cp312-cp312-linux_x86_64.whl; python_version == "3.12" and platform_system == "Linux"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-linux-20260406/llama_cpp_python-0.3.35+cu128.basic-cp313-cp313-linux_x86_64.whl; python_version == "3.13" and platform_system == "Linux"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-cu128-Basic-linux-20260406/llama_cpp_python-0.3.35+cu128.basic-cp314-cp314-linux_x86_64.whl; python_version == "3.14" and platform_system == "Linux"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu128-cp311-cp311-linux_x86_64.whl ; python_version == "3.11" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu128-cp312-cp312-linux_x86_64.whl ; python_version == "3.12" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu128-cp313-cp313-linux_x86_64.whl ; python_version == "3.13" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.44+cu128-cp314-cp314-linux_x86_64.whl ; python_version == "3.14" and platform_system == "Linux" and platform_machine == "x86_64"
 
 # for macOS
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-Metal-macos-20260406/llama_cpp_python-0.3.35-cp310-cp310-macosx_11_0_arm64.whl; python_version == "3.10" and platform_system == "Darwin"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-Metal-macos-20260406/llama_cpp_python-0.3.35-cp311-cp311-macosx_11_0_arm64.whl; python_version == "3.11" and platform_system == "Darwin"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-Metal-macos-20260406/llama_cpp_python-0.3.35-cp312-cp312-macosx_11_0_arm64.whl; python_version == "3.12" and platform_system == "Darwin"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-Metal-macos-20260406/llama_cpp_python-0.3.35-cp313-cp313-macosx_11_0_arm64.whl; python_version == "3.13" and platform_system == "Darwin"
-llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.35-Metal-macos-20260406/llama_cpp_python-0.3.35-cp314-cp314-macosx_11_0_arm64.whl; python_version == "3.14" and platform_system == "Darwin"
+llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.40-Metal-macos-20260607/llama_cpp_python-0.3.40-cp310-cp310-macosx_11_0_arm64.whl ; python_version == "3.10" and platform_system == "Darwin"
+llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.40-Metal-macos-20260607/llama_cpp_python-0.3.40-cp311-cp311-macosx_11_0_arm64.whl ; python_version == "3.11" and platform_system == "Darwin"
+llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.40-Metal-macos-20260607/llama_cpp_python-0.3.40-cp312-cp312-macosx_11_0_arm64.whl ; python_version == "3.12" and platform_system == "Darwin"
+llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.40-Metal-macos-20260607/llama_cpp_python-0.3.40-cp313-cp313-macosx_11_0_arm64.whl ; python_version == "3.13" and platform_system == "Darwin"
+llama-cpp-python @ https://github.com/JamePeng/llama-cpp-python/releases/download/v0.3.40-Metal-macos-20260607/llama_cpp_python-0.3.40-cp314-cp314-macosx_11_0_arm64.whl ; python_version == "3.14" and platform_system == "Darwin"

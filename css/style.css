@@ -5278,6 +5278,24 @@ html.describe-vlm-chat-resizing * {
   opacity: 0.72;
 }
 
+.describe-vlm-chat-completion-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 7px;
+  color: #fbbf24;
+  background: rgba(120, 53, 15, 0.2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.describe-vlm-chat-completion-warning i {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
 .describe-vlm-chat-actions {
   display: grid;
   gap: 8px;
@@ -6464,16 +6482,28 @@ html.describe-vlm-chat-resizing * {
   font-size: 13px !important;
 }
 
+#describe_vlm_custom_profile_section {
+  gap: 0 !important;
+}
+
+#describe_vlm_custom_profile_actions,
 #describe_vlm_custom_action_row {
   display: grid !important;
-  grid-template-columns: minmax(140px, 1fr) minmax(132px, 1fr) minmax(132px, 1fr) !important;
-  gap: 8px !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0 !important;
   align-items: stretch !important;
 }
 
+#describe_vlm_custom_profile_actions > *,
 #describe_vlm_custom_action_row > * {
   min-width: 0 !important;
   width: 100% !important;
+}
+
+#describe_vlm_custom_profile_actions button {
+  width: 100% !important;
+  min-width: 0 !important;
+  justify-content: center !important;
 }
 
 #describe_vlm_custom_supports_images {
@@ -6504,10 +6534,8 @@ html.describe-vlm-chat-resizing * {
   justify-content: center !important;
 }
 
-@media (max-width: 720px) {
-  #describe_vlm_custom_action_row {
-    grid-template-columns: 1fr !important;
-  }
+#describe_vlm_custom_message:has(.html-container .prose:empty) {
+  display: none !important;
 }
 
 .infobox_group {

@@ -351,6 +351,15 @@ const IMAGEVIEWER_NATIVE_DRAG_SOURCE_CONTRACT = Object.freeze({
       requiredSnippets: ["'#preview_generating img'", "'#finished_gallery img'", "'#final_gallery img'", "'#comparison_box img'"],
     },
     {
+      code: "native-drag-large-image-threshold",
+      anchor: "SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_PIXEL_LIMIT",
+      lookaheadLines: 2,
+      requiredSnippets: [
+        "const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_PIXEL_LIMIT = 2000000",
+        "const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT = 2048",
+      ],
+    },
+    {
       code: "native-drag-image-source",
       anchor: "function simpleaiEnableNativeGalleryImageDrag(img)",
       lookaheadLines: 18,
@@ -368,7 +377,8 @@ const IMAGEVIEWER_NATIVE_DRAG_SOURCE_CONTRACT = Object.freeze({
         "simpleaiSetGalleryDragTransferData(transfer, SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url)",
         "simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url)",
         "simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url)",
-        "if (previewOriginalSrc) diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url)",
+        "if (previewOriginalSrc || largeOriginalDownload)",
+        "diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url)",
         "window.SimpAIStudioPerformance?.mark('gallery.native_drag_start', diagnostic)",
       ],
       forbiddenSnippets: ["clearData", "setDragImage", "preventDefault", "stopPropagation"],
@@ -2891,7 +2901,7 @@ const ACTION_RECOMMENDATION_RULES = Object.freeze([
     implementation: [
       "keep gallery images draggable=true without adding visible drag controls",
       "preserve the browser native payload while adding original URL text types",
-      "use DownloadURL only for memory-preview images so Windows folders receive the original file",
+      "use DownloadURL for memory previews and direct images above the large-image threshold so Windows folders receive the original file",
       "avoid source replacement, setDragImage, clearData, pointer capture, and layout writes during dragstart",
     ],
   },
@@ -4802,6 +4812,18 @@ async function runNativeDragSynthetic(page, label) {
           return false;
         }
       }
+      function isLargeOriginalImage(img) {
+        const width = Number(img?.naturalWidth || 0);
+        const height = Number(img?.naturalHeight || 0);
+        return width > 0 && height > 0 && (width * height > 2000000 || width >= 2048 || height >= 2048);
+      }
+      function isExternalOriginalSource(src) {
+        try {
+          return /^https?:$/i.test(new URL(String(src || ""), document.baseURI || location.href).protocol);
+        } catch {
+          return false;
+        }
+      }
       function isVisible(node) {
         if (!node) return false;
         const rect = node.getBoundingClientRect();
@@ -4840,6 +4862,8 @@ async function runNativeDragSynthetic(page, label) {
           const img = candidates[index];
           if (!img?.isConnected) continue;
           const previewBacked = isGalleryDisplayPreview(mediaSrc(img));
+          const largeOriginal = !previewBacked && isExternalOriginalSource(mediaSrc(img)) && isLargeOriginalImage(img);
+          const expectsDownloadUrl = previewBacked || largeOriginal;
           let transfer = null;
           try {
             transfer = new DataTransfer();
@@ -4877,13 +4901,13 @@ async function runNativeDragSynthetic(page, label) {
           if (!customUrl || !uri || !plain) {
             failures.push({ code: "native_drag_missing_original_url_payload", round, index, types, customUrl, uri, plain });
           }
-          if (previewBacked && (!downloadUrl || !typesLower.includes("downloadurl"))) {
+          if (expectsDownloadUrl && (!downloadUrl || !typesLower.includes("downloadurl"))) {
             failures.push({ code: "native_drag_preview_missing_original_download", round, index, types, downloadUrl, customUrl });
           }
-          if (previewBacked && downloadUrl && (!customUrl || !downloadUrl.endsWith(`:${customUrl}`) || downloadUrl.includes("simpai_gprev__"))) {
+          if (expectsDownloadUrl && downloadUrl && (!customUrl || !downloadUrl.endsWith(`:${customUrl}`) || downloadUrl.includes("simpai_gprev__"))) {
             failures.push({ code: "native_drag_preview_download_not_original", round, index, types, downloadUrl, customUrl });
           }
-          if (!previewBacked && (downloadUrl || typesLower.includes("downloadurl"))) {
+          if (!expectsDownloadUrl && (downloadUrl || typesLower.includes("downloadurl"))) {
             failures.push({ code: "native_drag_unexpected_downloadurl", round, index, types, downloadUrl });
           }
           if (afterStart.externalHandleCount) {
@@ -4910,6 +4934,7 @@ async function runNativeDragSynthetic(page, label) {
             hasPlain: !!plain,
             hasDownloadUrl: !!downloadUrl,
             previewBacked,
+            largeOriginal,
             afterStart,
             afterEnd,
           });

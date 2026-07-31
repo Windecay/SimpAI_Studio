@@ -58,8 +58,12 @@
         'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
+        'Gemma4-12B-it-heretic-Q4_K_XL',
+        'Gemma3-12B-TextEncoder',
+        'Qwen3VL-4B-TextEncoder',
         'Custom'
     ];
+    const VLM_MODEL_LABELS = WORKBENCH_VLM.VLM_MODEL_LABELS || WORKBENCH_REGISTRY.VLM_MODEL_LABELS || {};
     const VLM_IMAGE_SLOTS = WORKBENCH_VLM.VLM_IMAGE_SLOTS || WORKBENCH_REGISTRY.VLM_IMAGE_SLOTS || [
         { key: 'image_1', label: t('Image 1', '图像 1') },
         { key: 'image_2', label: t('Image 2', '图像 2') },
@@ -77,13 +81,26 @@
     const COLLAPSED_PROMPT_NODE_MAX_HEIGHT = 520;
     const COLLAPSED_PROMPT_PORT_ROW_HEIGHT = 32;
     const COLLAPSED_PROMPT_TEXT_BLOCK_HEIGHT = 150;
-    const VLM_CONTEXT_WINDOWS = WORKBENCH_VLM.VLM_CONTEXT_WINDOWS || {
+    const VLM_CONTEXT_WINDOWS = WORKBENCH_VLM.VLM_CONTEXT_WINDOWS || WORKBENCH_REGISTRY.VLM_CONTEXT_WINDOWS || {
         'Qwen3.5-9B-abliterated-Q4_K_M': 8192,
-        'Qwen3.5-9B-abliterated-Q2_K': 8192,
-        'Qwen3.5-9B-abliterated-Q6_K': 8192,
-        'Qwen3.5-9B-abliterated-Q8_0': 8192,
         'Custom': 32768
     };
+
+    function vlmModelChoicesFor(current) {
+        const value = String(current || '').trim();
+        return value && !VLM_VERSION_CHOICES.includes(value)
+            ? [value, ...VLM_VERSION_CHOICES]
+            : VLM_VERSION_CHOICES.slice();
+    }
+
+    function vlmModelOptionsHtml(current) {
+        const selected = String(current || '').trim();
+        return vlmModelChoicesFor(selected).map((model) => {
+            const missing = model === selected && !VLM_VERSION_CHOICES.includes(model);
+            const label = VLM_MODEL_LABELS[model] || (missing ? `⚠ ${model}` : model);
+            return `<option value="${escapeHtml(model)}" ${model === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
+    }
     const VLM_CUSTOM_API_STORAGE_KEY = WORKBENCH_VLM.VLM_CUSTOM_API_STORAGE_KEY || 'simpai.canvas.vlmCustomApiProfiles.v1';
     const VLM_AGENT_MODE_CHOICES = WORKBENCH_VLM.VLM_AGENT_MODE_CHOICES || [
         { key: 'raw', label: t('Raw Model', '原始模型') },
@@ -5376,10 +5393,11 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             };
         }
         const model = settings.rewriteModel || canvasAgentDefaultLocalRewriteModel();
+        const modelLabel = VLM_MODEL_LABELS[model] || vlmMissingModelLabel(model);
         return {
             icon: 'fa-microchip',
-            label: model,
-            title: `${t('Local VLM', '本地 VLM')} · ${model}`
+            label: modelLabel,
+            title: `${t('Local VLM', '本地 VLM')} · ${modelLabel}`
         };
     }
 
@@ -5397,7 +5415,10 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const selectedLocalModel = custom ? canvasAgentDefaultLocalRewriteModel() : (settings.rewriteModel || canvasAgentDefaultLocalRewriteModel());
         const provider = getVlmCustomProvider(settings.customProvider || 'openai');
         const modelChoices = Array.isArray(canvasAgentCustomModelChoices) ? canvasAgentCustomModelChoices : [];
-        const localModelOptions = localModels.map(model => `<option value="${escapeHtml(model)}" ${model === selectedLocalModel ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('');
+        const localModelOptions = localModels.map(model => {
+            const label = VLM_MODEL_LABELS[model] || vlmMissingModelLabel(model);
+            return `<option value="${escapeHtml(model)}" ${model === selectedLocalModel ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('');
         const providerOptions = VLM_CUSTOM_API_PROVIDERS.map(item => `<option value="${escapeHtml(item.key)}" ${item.key === (settings.customProvider || 'openai') ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
         const customModelControl = modelChoices.length
             ? `<select data-canvas-agent-setting="customModel" ${disabled ? 'disabled' : ''}><option value="">${escapeHtml(t('Select model...', '选择模型...'))}</option>${modelChoices.map(item => `<option value="${escapeHtml(item)}" ${item === settings.customModel ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select>`
@@ -18274,7 +18295,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
 
     function getVlmCustomRuntimeParams(node) {
         const params = cloneRunValue(node?.params || {}, {});
-        if (params.version !== 'Custom' && !VLM_VERSION_CHOICES.includes(params.version)) {
+        if (!String(params.version || '').trim()) {
             params.version = VLM_VERSION_CHOICES[0];
         }
         if (params.version === 'Custom') {
@@ -18477,11 +18498,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
     function buildDefaultVlmParamsFromAgentSettings() {
         const settings = getCanvasAgentSettings();
         const rewriteModel = String(settings.rewriteModel || CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel || '').trim();
-        const version = VLM_VERSION_CHOICES.includes(rewriteModel)
-            ? rewriteModel
-            : (VLM_VERSION_CHOICES.includes(CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel)
-                ? CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel
-                : (VLM_VERSION_CHOICES[0] || 'Qwen3.5-9B-abliterated-Q4_K_M'));
+        const version = rewriteModel || VLM_VERSION_CHOICES[0] || 'Qwen3.5-9B-abliterated-Q4_K_M';
         if (version === 'Custom') {
             return Object.assign({ agent_mode: 'persona' }, canvasAgentCustomParamsFromSettings(settings, false));
         }
@@ -18799,7 +18816,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
     function renderVlmNodeHtml(node) {
         const params = node.params || {};
         const state = node.status?.state || 'idle';
-        const version = VLM_VERSION_CHOICES.includes(params.version) || params.version === 'Custom' ? params.version : VLM_VERSION_CHOICES[0];
+        const version = String(params.version || '').trim() || VLM_VERSION_CHOICES[0];
         const mode = params.mode || 'single';
         const isChat = mode === 'chat';
         const agentMode = normalizeVlmAgentMode(params);
@@ -18810,7 +18827,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         const resetButton = (key, title) => `<button type="button" class="sai-vlm-inline-reset" data-vlm-param-reset="${escapeHtml(key)}" title="${escapeHtml(title)}"><i class="fa-solid fa-rotate-left"></i></button>`;
         const defaultPrompt = 'Write a detailed caption and generation prompt for this image. Output only the result.';
         const prompt = params.prompt != null ? params.prompt : (isChat ? '' : defaultPrompt);
-        const modelSelect = `<label class="sai-node-field"><span>${escapeHtml(t('Model', '模型'))}</span><select data-vlm-param="version">${VLM_VERSION_CHOICES.map(item => `<option value="${escapeHtml(item)}" ${item === version ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></label>`;
+        const modelSelect = `<label class="sai-node-field"><span>${escapeHtml(t('Model', '模型'))}</span><select data-vlm-param="version">${vlmModelOptionsHtml(version)}</select></label>`;
         const modeSelect = `<label class="sai-node-field"><span>${escapeHtml(t('Mode', '模式'))}</span><select data-vlm-param="mode"><option value="single" ${mode !== 'chat' ? 'selected' : ''}>${escapeHtml(t('Single Analysis', '单次分析'))}</option><option value="chat" ${mode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Chat Context', '上下文聊天'))}</option></select></label>`;
         const identitySelect = renderVlmAgentModeSelect(params);
         const commandHints = agentMode === 'raw' ? '' : `<div class="sai-vlm-command-hints">${VLM_CHAT_TOOL_COMMANDS.map(item => `<button type="button" data-vlm-command="${escapeHtml(item.command)}"><b>${escapeHtml(item.command)}</b><span>${escapeHtml(item.label)}</span></button>`).join('')}</div>`;
@@ -25696,7 +25713,7 @@ function renderVlmInspector(node) {
         const params = node.params || {};
         const state = node.status?.state || 'idle';
         const imageInputs = node.image_inputs || {};
-        const version = VLM_VERSION_CHOICES.includes(params.version) || params.version === 'Custom' ? params.version : VLM_VERSION_CHOICES[0];
+        const version = String(params.version || '').trim() || VLM_VERSION_CHOICES[0];
         const mode = params.mode || 'single';
         const isChat = mode === 'chat';
         const isBusy = isVlmNodeBusy(node);
@@ -25718,7 +25735,7 @@ function renderVlmInspector(node) {
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Parameters', '参数'))}</h3>
-  <label>${escapeHtml(t('Model', '模型'))}<select data-vlm-param="version">${VLM_VERSION_CHOICES.map(item => `<option value="${escapeHtml(item)}" ${item === version ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}</select></label>
+  <label>${escapeHtml(t('Model', '模型'))}<select data-vlm-param="version">${vlmModelOptionsHtml(version)}</select></label>
   <label>${escapeHtml(t('Mode', '模式'))}<select data-vlm-param="mode"><option value="single" ${mode !== 'chat' ? 'selected' : ''}>${escapeHtml(t('Single Run', '单次运行'))}</option><option value="chat" ${mode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Chat Context', '上下文聊天'))}</option></select></label>
   ${isChat ? renderVlmAgentModeSelect(params) : ''}
   ${version === 'Custom' ? renderVlmCustomApiConfig(node) : ''}
@@ -29095,7 +29112,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             ['uov_auto', t('Use T2I preset UOV auto', '使用文生图 preset 的 UOV Auto')],
             ['dedicated_preset', t('Dedicated upscale preset', '专用放大 preset')]
         ];
-        const rewriteOptions = VLM_VERSION_CHOICES.map(model => `<option value="${escapeHtml(model)}" ${model === settings.rewriteModel ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('');
+        const rewriteOptions = vlmModelOptionsHtml(settings.rewriteModel);
         const selectOptions = (list, value) => list.map(([key, label]) => `<option value="${escapeHtml(key)}" ${key === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
         canvasSettingsPanel.innerHTML = `
 <div class="sai-canvas-settings-head">
@@ -46746,6 +46763,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     window.addEventListener('simpai:status-monitor-updated', () => {
         if (!root || root.hidden) return;
         renderSystemInfo();
+    });
+    window.addEventListener('simpai:vlm-model-catalog', () => {
+        if (!root || root.hidden) return;
+        renderCanvasAgentPanel();
+        if (selectedNodeId) renderInspector();
     });
     window.addEventListener('simpai:backend-request-failed', (evt) => {
         if (!root || root.hidden) return;
