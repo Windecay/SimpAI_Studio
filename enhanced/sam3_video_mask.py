@@ -346,8 +346,6 @@ def generate_mask_by_points(
     unload_callback=None,
     cancel_token: str | None = "webui",
 ):
-    import modules.async_worker as worker
-
     effective_video_path = resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
     if effective_video_path is None:
         gr.Warning("Please upload a video first.")
@@ -357,6 +355,30 @@ def generate_mask_by_points(
             return uploaded_mask_path
         gr.Warning("Please click the video and select targets in the popup, or upload a mask video directly.")
         return uploaded_mask_path
+    editor_payload = _parse_editor_payload(editor_payload_json)
+    if _editor_payload_uses_static_mask(editor_payload):
+        reset_sam3_cancel(cancel_token)
+        try:
+            out_path = run_static_mask(
+                video_path=effective_video_path,
+                editor_payload_json=editor_payload_json,
+                invert_mask=bool(invert_mask),
+                cancel_check=make_sam3_cancel_check(cancel_token),
+            )
+            gr.Info("Polygon mask created!")
+            return out_path
+        except Sam3Cancelled as e:
+            gr.Warning(str(e))
+            return uploaded_mask_path
+        except Exception as e:
+            logger.exception("Static mask generation failed")
+            gr.Warning(f"Polygon mask failed: {e}")
+            return uploaded_mask_path
+        finally:
+            clear_sam3_cancel(cancel_token)
+
+    import modules.async_worker as worker
+
     with worker.external_exclusive_task():
         reset_sam3_cancel(cancel_token)
         cleanup_translator_and_vram()
@@ -820,6 +842,13 @@ def _parse_editor_payload(payload_json: str) -> dict:
         return {}
 
 
+def _editor_payload_uses_static_mask(payload: dict) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    mode = str(payload.get("mode", "") or "").strip().lower()
+    return mode in {"static_boxes", "static_polygons"}
+
+
 def _normalize_points(points: list, width: int, height: int) -> list[list[float]]:
     out: list[list[float]] = []
     if not points:
@@ -879,6 +908,68 @@ def _normalize_bbox(bbox: object, width: int, height: int) -> list[list[float]] 
         return [[xmin, ymin, w, h]]
     except Exception:
         return None
+
+
+def _normalize_static_boxes(boxes: object, width: int, height: int) -> list[tuple[float, float, float, float]]:
+    if not isinstance(boxes, (list, tuple)):
+        return []
+    normalized: list[tuple[float, float, float, float]] = []
+    for box in boxes:
+        bbox_xywh = _normalize_bbox(box, width, height)
+        if not bbox_xywh:
+            continue
+        x, y, box_width, box_height = bbox_xywh[0]
+        normalized.append((float(x), float(y), float(box_width), float(box_height)))
+    return normalized
+
+
+def _normalize_static_polygons(
+    polygons: object,
+    width: int,
+    height: int,
+) -> list[list[tuple[float, float]]]:
+    if not isinstance(polygons, (list, tuple)):
+        return []
+
+    normalized_polygons: list[list[tuple[float, float]]] = []
+    for polygon in polygons:
+        points = polygon.get("points", []) if isinstance(polygon, dict) else polygon
+        if not isinstance(points, (list, tuple)):
+            continue
+
+        normalized_points: list[tuple[float, float]] = []
+        for point in points:
+            try:
+                if isinstance(point, dict):
+                    x = float(point.get("x", 0.0))
+                    y = float(point.get("y", 0.0))
+                elif isinstance(point, (list, tuple)) and len(point) >= 2:
+                    x = float(point[0])
+                    y = float(point[1])
+                else:
+                    continue
+                if not np.isfinite(x) or not np.isfinite(y):
+                    continue
+                if -0.5 <= x <= 1.5 and -0.5 <= y <= 1.5:
+                    nx, ny = x, y
+                elif width > 0 and height > 0:
+                    nx = x / width
+                    ny = y / height
+                else:
+                    continue
+                nx = max(-0.5, min(1.5, nx))
+                ny = max(-0.5, min(1.5, ny))
+                point_xy = (float(nx), float(ny))
+                if not normalized_points or point_xy != normalized_points[-1]:
+                    normalized_points.append(point_xy)
+            except Exception:
+                continue
+
+        if len(normalized_points) >= 2 and normalized_points[0] == normalized_points[-1]:
+            normalized_points.pop()
+        if len(normalized_points) >= 3:
+            normalized_polygons.append(normalized_points)
+    return normalized_polygons
 
 
 def _select_binary_mask_from_outputs(
@@ -1469,6 +1560,7 @@ def _write_mask_video_from_frames(
     force_browser_compatible_output: bool,
     invert_mask: bool,
     debug_print: bool,
+    default_mask: np.ndarray | None = None,
     cancel_check=None,
 ) -> str:
     out_dir = sam3_mask_output_dir()
@@ -1494,7 +1586,7 @@ def _write_mask_video_from_frames(
         for i in range(int(total)):
             if cancel_check is not None and (i % 8) == 0:
                 cancel_check()
-            mask = masks_by_frame.get(i, None)
+            mask = masks_by_frame.get(i, default_mask)
             if mask is None:
                 frame = np.zeros((height, width), dtype=np.uint8)
             else:
@@ -1533,6 +1625,70 @@ def _write_mask_video_from_frames(
     return raw_out_path
 
 
+def run_static_mask(
+    video_path: str,
+    editor_payload_json: str,
+    force_browser_compatible_output: bool = True,
+    invert_mask: bool = False,
+    debug_print: bool = False,
+    cancel_check=None,
+) -> str:
+    if video_path is None or not str(video_path).strip():
+        raise ValueError("video_path is empty")
+    video_path = os.path.abspath(str(video_path))
+    if cancel_check is not None:
+        cancel_check()
+
+    fps, frame_count, width, height = _get_video_meta(video_path)
+    if frame_count <= 0 or width <= 0 or height <= 0:
+        raise RuntimeError("Could not read source video dimensions or frame count.")
+
+    payload = _parse_editor_payload(editor_payload_json)
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mode = str(payload.get("mode", "") or "").strip().lower()
+    if mode == "static_polygons":
+        polygons = _normalize_static_polygons(payload.get("polygons", []), width, height)
+        if not polygons:
+            raise ValueError("No static polygons were provided.")
+        for polygon in polygons:
+            pixel_polygon = np.asarray(
+                [
+                    [
+                        int(round(x * width)),
+                        int(round(y * height)),
+                    ]
+                    for x, y in polygon
+                ],
+                dtype=np.int32,
+            )
+            cv2.fillPoly(mask, [pixel_polygon], 255, lineType=cv2.LINE_8)
+    else:
+        boxes = _normalize_static_boxes(payload.get("boxes", []), width, height)
+        if not boxes:
+            raise ValueError("No static boxes were provided.")
+        for x, y, box_width, box_height in boxes:
+            left = max(0, min(width - 1, int(np.floor(x * width))))
+            top = max(0, min(height - 1, int(np.floor(y * height))))
+            right = max(left + 1, min(width, int(np.ceil((x + box_width) * width))))
+            bottom = max(top + 1, min(height, int(np.ceil((y + box_height) * height))))
+            mask[top:bottom, left:right] = 255
+
+    return _write_mask_video_from_frames(
+        masks_by_frame={},
+        default_mask=mask,
+        fps=fps,
+        frame_count=frame_count,
+        width=width,
+        height=height,
+        postprocess_strength=0,
+        postprocess_min_area=0,
+        force_browser_compatible_output=force_browser_compatible_output,
+        invert_mask=invert_mask,
+        debug_print=debug_print,
+        cancel_check=cancel_check,
+    )
+
+
 def run_sam3_video_mask(
     video_path: str,
     editor_payload_json: str,
@@ -1560,8 +1716,18 @@ def run_sam3_video_mask(
     if cancel_check is not None:
         cancel_check()
 
-    fps, frame_count, width, height = _get_video_meta(video_path)
     payload = _parse_editor_payload(editor_payload_json)
+    if _editor_payload_uses_static_mask(payload):
+        return run_static_mask(
+            video_path=video_path,
+            editor_payload_json=editor_payload_json,
+            force_browser_compatible_output=force_browser_compatible_output,
+            invert_mask=invert_mask,
+            debug_print=debug_print,
+            cancel_check=cancel_check,
+        )
+
+    fps, frame_count, width, height = _get_video_meta(video_path)
     payload_frame_index = None
     if payload.get("frame_index", None) is not None:
         try:
@@ -2263,8 +2429,13 @@ def get_viewer_html() -> str:
     mode: "point",
     pointsPos: [],
     pointsNeg: [],
-    box: null,
-    boxDraft: null,
+    polygons: [],
+    polygonDraft: [],
+    polygonHover: null,
+    polygonSnapToStart: false,
+    selectedPolygonIndex: -1,
+    polygonDrag: null,
+    polygonHoverTarget: null,
     history: [],
     historyIndex: -1,
     duration: 0,
@@ -2281,11 +2452,14 @@ def get_viewer_html() -> str:
   const hiddenVideo = $("sam3_hidden_video");
   const slider = $("sam3_time_slider");
   const label = $("sam3_frame_label");
+  const hint = $("sam3_frames_hint");
+  const hintMode = $("sam3_hint_mode");
+  const hintAction = $("sam3_hint_action");
   const btnUndo = $("sam3_undo");
   const btnRedo = $("sam3_redo");
   const btnClear = $("sam3_clear");
   const btnModePoint = $("sam3_mode_point");
-  const btnModeBox = $("sam3_mode_box");
+  const btnModePolygon = $("sam3_mode_polygon");
   const btnCancel = $("sam3_cancel");
   const btnConfirm = $("sam3_confirm");
   const body = $("sam3_frames_body");
@@ -2300,7 +2474,12 @@ def get_viewer_html() -> str:
 
   const forceCloseModal = () => {
     state.open = false;
-    state.boxDraft = null;
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
     if (backdrop) {
       backdrop.style.setProperty("display", "none", "important");
       backdrop.style.removeProperty("visibility");
@@ -2316,7 +2495,7 @@ def get_viewer_html() -> str:
   };
   window.closeSam3FramesEditor = forceCloseModal;
 
-  if (!backdrop || !modal || !canvas || !ctx || !hiddenVideo || !slider || !label || !btnUndo || !btnRedo || !btnClear || !btnModePoint || !btnModeBox || !btnCancel || !btnConfirm || !body) {
+  if (!backdrop || !modal || !canvas || !ctx || !hiddenVideo || !slider || !label || !hint || !hintMode || !hintAction || !btnUndo || !btnRedo || !btnClear || !btnModePoint || !btnModePolygon || !btnCancel || !btnConfirm || !body) {
     return;
   }
 
@@ -2334,12 +2513,34 @@ def get_viewer_html() -> str:
 
   ensureModalPortal();
 
+  const editorGeometry = () => {
+    const frameWidth = Math.max(1, state.videoWidth || 1);
+    const frameHeight = Math.max(1, state.videoHeight || 1);
+    const padding = Math.max(24, Math.min(32, Math.round(Math.min(frameWidth, frameHeight) * 0.05)));
+    return {
+      padding,
+      frameWidth,
+      frameHeight,
+      canvasWidth: frameWidth + padding * 2,
+      canvasHeight: frameHeight + padding * 2,
+    };
+  };
+
+  const pointToCanvas = (point) => {
+    const geometry = editorGeometry();
+    return {
+      x: geometry.padding + point.x * geometry.frameWidth,
+      y: geometry.padding + point.y * geometry.frameHeight,
+    };
+  };
+
   const layoutCanvas = () => {
     if (!state.open) return;
     if (state.videoWidth <= 0 || state.videoHeight <= 0) return;
     const bw = Math.max(1, body.clientWidth || 1);
     const bh = Math.max(1, body.clientHeight || 1);
-    const aspect = state.videoWidth / state.videoHeight;
+    const geometry = editorGeometry();
+    const aspect = geometry.canvasWidth / geometry.canvasHeight;
     let w = bw;
     let h = Math.round(w / aspect);
     if (h > bh) {
@@ -2357,43 +2558,205 @@ def get_viewer_html() -> str:
     btnRedo.style.pointerEvents = state.historyIndex < state.history.length - 1 ? "auto" : "none";
   };
 
+  const updateHint = (message, isError) => {
+    const modeText = state.mode === "polygon"
+      ? "Polygon Mask · 固定遮罩 · 不运行 SAM3 · 所有帧共用 · 多边形按并集合并"
+      : "Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧";
+    hintMode.textContent = modeText;
+    hintMode.title = modeText;
+    hintAction.style.color = isError ? "#fca5a5" : "#aaa";
+    const writeAction = (value, asHtml) => {
+      if (asHtml) hintAction.innerHTML = value;
+      else hintAction.textContent = value;
+      hintAction.title = hintAction.textContent;
+    };
+    if (message) {
+      writeAction(message, false);
+      return;
+    }
+    if (state.mode === "polygon") {
+      if (state.polygonDraft.length) {
+        writeAction(`左键添加顶点，靠近首点或双击闭合（已完成 ${state.polygons.length} 个，当前 ${state.polygonDraft.length} 点）`, false);
+        return;
+      }
+      if (state.selectedPolygonIndex >= 0 && state.selectedPolygonIndex < state.polygons.length) {
+        writeAction(`多边形 ${state.selectedPolygonIndex + 1}：拖动锚点调整，单击边线增加锚点；右键锚点删除，右键内部删除多边形`, false);
+        return;
+      }
+      writeAction(`左键开始绘制，单击已有多边形可编辑（已完成 ${state.polygons.length} 个）`, false);
+      return;
+    }
+    writeAction('左键<span class="sam3_hint_dot" style="color:#22c55e;">●</span>选取，右键<span class="sam3_hint_dot" style="color:#ef4444;">●</span>排除', true);
+  };
+
   const draw = () => {
     if (!state.open) return;
     if (state.videoWidth <= 0 || state.videoHeight <= 0) return;
-    canvas.width = state.videoWidth;
-    canvas.height = state.videoHeight;
-    ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
+    const geometry = editorGeometry();
+    canvas.width = geometry.canvasWidth;
+    canvas.height = geometry.canvasHeight;
+    ctx.fillStyle = "#181a1d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(
+      hiddenVideo,
+      geometry.padding,
+      geometry.padding,
+      geometry.frameWidth,
+      geometry.frameHeight,
+    );
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = Math.max(1, canvas.width * 0.0015);
+    ctx.strokeRect(
+      geometry.padding,
+      geometry.padding,
+      geometry.frameWidth,
+      geometry.frameHeight,
+    );
 
-    const drawBox = (b, color) => {
-      const x0 = b.x0 * canvas.width;
-      const y0 = b.y0 * canvas.height;
-      const x1 = b.x1 * canvas.width;
-      const y1 = b.y1 * canvas.height;
-      const x = Math.min(x0, x1);
-      const y = Math.min(y0, y1);
-      const w = Math.abs(x1 - x0);
-      const h = Math.abs(y1 - y0);
-      if (w <= 0 || h <= 0) return;
+    const drawPolygon = (points, color, fill, dashed, index, closed, showVertices, hoveredVertexIndex) => {
+      if (!points.length) return;
+      ctx.save();
       ctx.lineWidth = Math.max(2, canvas.width * 0.003);
       ctx.strokeStyle = color;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "rgba(45, 212, 191, 0.12)";
-      ctx.fillRect(x, y, w, h);
+      ctx.setLineDash(dashed ? [Math.max(6, canvas.width * 0.008), Math.max(4, canvas.width * 0.005)] : []);
+      ctx.beginPath();
+      const firstCanvasPoint = pointToCanvas(points[0]);
+      ctx.moveTo(firstCanvasPoint.x, firstCanvasPoint.y);
+      for (let index = 1; index < points.length; index += 1) {
+        const canvasPoint = pointToCanvas(points[index]);
+        ctx.lineTo(canvasPoint.x, canvasPoint.y);
+      }
+      if (closed && points.length >= 3) ctx.closePath();
+      ctx.fillStyle = fill;
+      if (closed && points.length >= 3) ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (showVertices) {
+        const vertexRadius = Math.max(4, canvas.width * 0.005);
+        points.forEach((point, vertexIndex) => {
+          const canvasPoint = pointToCanvas(point);
+          const hovered = vertexIndex === hoveredVertexIndex;
+          ctx.beginPath();
+          ctx.arc(canvasPoint.x, canvasPoint.y, hovered ? vertexRadius * 1.45 : vertexRadius, 0, Math.PI * 2);
+          ctx.fillStyle = hovered ? "rgba(34,197,94,1)" : "rgba(255,255,255,0.98)";
+          ctx.fill();
+          ctx.lineWidth = Math.max(1, canvas.width * 0.0015);
+          ctx.strokeStyle = hovered ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.7)";
+          ctx.stroke();
+        });
+      }
+      if (Number.isInteger(index)) {
+        ctx.font = `${Math.max(14, canvas.width * 0.018)}px sans-serif`;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(
+          String(index + 1),
+          firstCanvasPoint.x + Math.max(7, canvas.width * 0.008),
+          firstCanvasPoint.y + Math.max(18, canvas.width * 0.022),
+        );
+      }
+      ctx.restore();
     };
 
     const drawPoint = (p, color) => {
+      const canvasPoint = pointToCanvas(p);
       ctx.beginPath();
-      ctx.arc(p.x * canvas.width, p.y * canvas.height, Math.max(6, canvas.width * 0.008), 0, Math.PI * 2);
+      ctx.arc(canvasPoint.x, canvasPoint.y, Math.max(6, canvas.width * 0.008), 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = "rgba(0,0,0,0.6)";
       ctx.stroke();
     };
-    state.pointsPos.forEach(p => drawPoint(p, "#70FF81"));
-    state.pointsNeg.forEach(p => drawPoint(p, "#FF6B6B"));
-    if (state.box) drawBox(state.box, "rgba(45, 212, 191, 1)");
-    if (state.boxDraft) drawBox(state.boxDraft, "rgba(45, 212, 191, 0.9)");
+
+    const drawPolygonDraftGuide = () => {
+      if (!state.polygonDraft.length) return;
+      const firstPoint = state.polygonDraft[0];
+      const lastPoint = state.polygonDraft[state.polygonDraft.length - 1];
+      const targetPoint = state.polygonSnapToStart ? firstPoint : state.polygonHover;
+      if (targetPoint) {
+        const lastCanvasPoint = pointToCanvas(lastPoint);
+        const targetCanvasPoint = pointToCanvas(targetPoint);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(lastCanvasPoint.x, lastCanvasPoint.y);
+        ctx.lineTo(targetCanvasPoint.x, targetCanvasPoint.y);
+        ctx.lineWidth = Math.max(2, canvas.width * 0.003);
+        ctx.strokeStyle = state.polygonSnapToStart ? "rgba(34,197,94,0.98)" : "rgba(255,255,255,0.8)";
+        ctx.setLineDash([Math.max(6, canvas.width * 0.008), Math.max(4, canvas.width * 0.005)]);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (state.polygonDraft.length < 3) return;
+      const firstCanvasPoint = pointToCanvas(firstPoint);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(
+        firstCanvasPoint.x,
+        firstCanvasPoint.y,
+        Math.max(11, canvas.width * 0.015),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fillStyle = state.polygonSnapToStart ? "rgba(34,197,94,0.24)" : "rgba(255,255,255,0.12)";
+      ctx.fill();
+      ctx.lineWidth = Math.max(2, canvas.width * 0.003);
+      ctx.strokeStyle = state.polygonSnapToStart ? "rgba(34,197,94,1)" : "rgba(255,255,255,0.75)";
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const drawSelectedPolygonGuide = () => {
+      const target = state.polygonHoverTarget;
+      if (!target || target.type !== "edge") return;
+      if (state.selectedPolygonIndex < 0 || state.selectedPolygonIndex >= state.polygons.length) return;
+      const polygon = state.polygons[state.selectedPolygonIndex];
+      const startPoint = polygon[target.edgeIndex];
+      const endPoint = polygon[(target.edgeIndex + 1) % polygon.length];
+      if (!startPoint || !endPoint) return;
+      const startCanvasPoint = pointToCanvas(startPoint);
+      const endCanvasPoint = pointToCanvas(endPoint);
+      const insertCanvasPoint = pointToCanvas(target.point);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(startCanvasPoint.x, startCanvasPoint.y);
+      ctx.lineTo(endCanvasPoint.x, endCanvasPoint.y);
+      ctx.lineWidth = Math.max(3, canvas.width * 0.0045);
+      ctx.strokeStyle = "rgba(34,197,94,0.95)";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(insertCanvasPoint.x, insertCanvasPoint.y, Math.max(5, canvas.width * 0.006), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(34,197,94,1)";
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, canvas.width * 0.0015);
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    if (state.mode === "polygon") {
+      state.polygons.forEach((polygon, index) => {
+        const selected = index === state.selectedPolygonIndex;
+        const hoveredVertexIndex = (
+          selected && state.polygonHoverTarget?.type === "vertex"
+        ) ? state.polygonHoverTarget.vertexIndex : -1;
+        drawPolygon(
+          polygon,
+          selected ? "rgba(34,197,94,0.98)" : "rgba(255,255,255,0.98)",
+          selected ? "rgba(255,255,255,0.34)" : "rgba(255,255,255,0.3)",
+          false,
+          index,
+          true,
+          selected,
+          hoveredVertexIndex,
+        );
+      });
+      drawSelectedPolygonGuide();
+      drawPolygon(state.polygonDraft, "rgba(255,255,255,0.95)", "rgba(255,255,255,0.15)", true, null, false, true, -1);
+      drawPolygonDraftGuide();
+    } else {
+      state.pointsPos.forEach(p => drawPoint(p, "#70FF81"));
+      state.pointsNeg.forEach(p => drawPoint(p, "#FF6B6B"));
+    }
   };
 
   const seekToTime = (t, skipSliderUpdate) => {
@@ -2412,7 +2775,8 @@ def get_viewer_html() -> str:
       mode: state.mode,
       pointsPos: state.pointsPos.map(p => ({x:p.x,y:p.y})),
       pointsNeg: state.pointsNeg.map(p => ({x:p.x,y:p.y})),
-      box: state.box ? {x0:state.box.x0,y0:state.box.y0,x1:state.box.x1,y1:state.box.y1} : null,
+      polygons: state.polygons.map(polygon => polygon.map(point => ({x:point.x,y:point.y}))),
+      polygonDraft: state.polygonDraft.map(point => ({x:point.x,y:point.y})),
       time: state.time,
     };
     if (state.historyIndex < state.history.length - 1) {
@@ -2428,13 +2792,21 @@ def get_viewer_html() -> str:
     state.mode = s.mode || "point";
     state.pointsPos = (s.pointsPos || []).map(p => ({x:p.x,y:p.y}));
     state.pointsNeg = (s.pointsNeg || []).map(p => ({x:p.x,y:p.y}));
-    state.box = s.box ? {x0:s.box.x0,y0:s.box.y0,x1:s.box.x1,y1:s.box.y1} : null;
-    state.boxDraft = null;
+    state.polygons = (s.polygons || []).map(polygon => polygon.map(point => ({x:point.x,y:point.y})));
+    state.polygonDraft = (s.polygonDraft || []).map(point => ({x:point.x,y:point.y}));
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
     state.time = s.time || 0;
     seekToTime(state.time, true);
     updateUndoRedo();
     btnModePoint.classList.toggle("active", state.mode === "point");
-    btnModeBox.classList.toggle("active", state.mode === "box");
+    btnModePolygon.classList.toggle("active", state.mode === "polygon");
+    updateHint();
+    draw();
   };
 
   slider.addEventListener("input", () => {
@@ -2458,66 +2830,358 @@ def get_viewer_html() -> str:
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   const getCanvasNormPos = (e) => {
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+    const geometry = editorGeometry();
+    const canvasX = ((e.clientX - rect.left) / rect.width) * geometry.canvasWidth;
+    const canvasY = ((e.clientY - rect.top) / rect.height) * geometry.canvasHeight;
+    return {
+      x: (canvasX - geometry.padding) / geometry.frameWidth,
+      y: (canvasY - geometry.padding) / geometry.frameHeight,
+    };
   };
 
-  let dragActive = false;
+  const clampPointToEditor = (point) => {
+    const geometry = editorGeometry();
+    const marginX = geometry.padding / geometry.frameWidth;
+    const marginY = geometry.padding / geometry.frameHeight;
+    return {
+      x: Math.max(-marginX, Math.min(1 + marginX, point.x)),
+      y: Math.max(-marginY, Math.min(1 + marginY, point.y)),
+    };
+  };
+
+  const snapPointOutsideFrame = (point) => {
+    const geometry = editorGeometry();
+    const scale = editorDisplayScale();
+    const thresholdX = 8 / Math.max(1, scale.x);
+    const thresholdY = 8 / Math.max(1, scale.y);
+    const overscanX = 2 / geometry.frameWidth;
+    const overscanY = 2 / geometry.frameHeight;
+    const snapped = {x:point.x, y:point.y};
+    if (point.x >= -overscanX && point.x <= thresholdX) snapped.x = -overscanX;
+    else if (point.x <= 1 + overscanX && point.x >= 1 - thresholdX) snapped.x = 1 + overscanX;
+    if (point.y >= -overscanY && point.y <= thresholdY) snapped.y = -overscanY;
+    else if (point.y <= 1 + overscanY && point.y >= 1 - thresholdY) snapped.y = 1 + overscanY;
+    return snapped;
+  };
+
+  const preparePolygonPoint = (point) => snapPointOutsideFrame(clampPointToEditor(point));
+
+  const pointInsideFrame = (point) => {
+    return point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1;
+  };
+
+  const editorDisplayScale = () => {
+    const rect = canvas.getBoundingClientRect();
+    const geometry = editorGeometry();
+    return {
+      x: rect.width * geometry.frameWidth / geometry.canvasWidth,
+      y: rect.height * geometry.frameHeight / geometry.canvasHeight,
+    };
+  };
+
+  const shouldSnapToPolygonStart = (point) => {
+    if (state.polygonDraft.length < 3) return false;
+    const rect = canvas.getBoundingClientRect();
+    const scale = editorDisplayScale();
+    const firstPoint = state.polygonDraft[0];
+    const dx = (point.x - firstPoint.x) * scale.x;
+    const dy = (point.y - firstPoint.y) * scale.y;
+    const snapRadius = Math.max(14, Math.min(22, Math.min(rect.width, rect.height) * 0.04));
+    return Math.hypot(dx, dy) <= snapRadius;
+  };
+
+  const pointNearSegment = (point, start, end, tolerance) => {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq <= 0) return Math.hypot(point.x - start.x, point.y - start.y) <= tolerance;
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+    const nearestX = start.x + t * dx;
+    const nearestY = start.y + t * dy;
+    return Math.hypot(point.x - nearestX, point.y - nearestY) <= tolerance;
+  };
+
+  const nearestPointOnSegment = (point, start, end) => {
+    const scale = editorDisplayScale();
+    const dx = (end.x - start.x) * scale.x;
+    const dy = (end.y - start.y) * scale.y;
+    const px = (point.x - start.x) * scale.x;
+    const py = (point.y - start.y) * scale.y;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq > 0 ? Math.max(0, Math.min(1, (px * dx + py * dy) / lengthSq)) : 0;
+    const nearest = {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+    };
+    return {
+      point: nearest,
+      distance: Math.hypot((point.x - nearest.x) * scale.x, (point.y - nearest.y) * scale.y),
+    };
+  };
+
+  const findPolygonVertex = (point, polygon, tolerance = 13) => {
+    const scale = editorDisplayScale();
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    polygon.forEach((vertex, index) => {
+      const distance = Math.hypot((point.x - vertex.x) * scale.x, (point.y - vertex.y) * scale.y);
+      if (distance <= tolerance && distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
+  };
+
+  const findPolygonEdge = (point, polygon, tolerance = 10) => {
+    let best = null;
+    for (let index = 0; index < polygon.length; index += 1) {
+      const nearest = nearestPointOnSegment(point, polygon[index], polygon[(index + 1) % polygon.length]);
+      if (nearest.distance <= tolerance && (!best || nearest.distance < best.distance)) {
+        best = {edgeIndex:index, point:nearest.point, distance:nearest.distance};
+      }
+    }
+    return best;
+  };
+
+  const pointInPolygon = (point, polygon) => {
+    if (!polygon || polygon.length < 3) return false;
+    let inside = false;
+    for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+      const currentPoint = polygon[index];
+      const previousPoint = polygon[previous];
+      if (pointNearSegment(point, previousPoint, currentPoint, 0.008)) return true;
+      const intersects = (
+        (currentPoint.y > point.y) !== (previousPoint.y > point.y) &&
+        point.x < ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) / (previousPoint.y - currentPoint.y) + currentPoint.x
+      );
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  };
+
+  const findPolygonIndexAt = (point) => {
+    for (let index = state.polygons.length - 1; index >= 0; index -= 1) {
+      const polygon = state.polygons[index];
+      if (pointInPolygon(point, polygon) || findPolygonEdge(point, polygon, 10)) return index;
+    }
+    return -1;
+  };
+
+  const closePolygonDraft = () => {
+    if (state.polygonDraft.length < 3) {
+      updateHint("多边形至少需要 3 个顶点", true);
+      return false;
+    }
+    state.polygons.push(state.polygonDraft.map(point => ({x:point.x, y:point.y})));
+    state.selectedPolygonIndex = state.polygons.length - 1;
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
+    pushHistory();
+    updateHint();
+    draw();
+    return true;
+  };
 
   canvas.addEventListener("mousedown", (e) => {
     if (!state.open) return;
     if (state.videoWidth <= 0 || state.videoHeight <= 0) return;
-    const p = getCanvasNormPos(e);
+    const rawPoint = getCanvasNormPos(e);
 
-    if (state.mode === "box") {
+    if (state.mode === "polygon") {
+      const hitPoint = clampPointToEditor(rawPoint);
+      const polygonPoint = preparePolygonPoint(rawPoint);
       if (e.button === 2) {
-        state.box = null;
-        state.boxDraft = null;
-        pushHistory();
+        if (state.polygonDraft.length) {
+          state.polygonDraft.pop();
+          state.polygonHover = null;
+          state.polygonSnapToStart = false;
+          pushHistory();
+          updateHint();
+          draw();
+          return;
+        }
+        if (state.selectedPolygonIndex >= 0 && state.selectedPolygonIndex < state.polygons.length) {
+          const selectedPolygon = state.polygons[state.selectedPolygonIndex];
+          const vertexIndex = findPolygonVertex(hitPoint, selectedPolygon);
+          if (vertexIndex >= 0) {
+            if (selectedPolygon.length <= 3) {
+              updateHint("多边形至少需要保留 3 个锚点", true);
+              return;
+            }
+            selectedPolygon.splice(vertexIndex, 1);
+            state.polygonHoverTarget = null;
+            pushHistory();
+            updateHint();
+            draw();
+            return;
+          }
+        }
+        const polygonIndex = findPolygonIndexAt(hitPoint);
+        if (polygonIndex >= 0) {
+          state.polygons.splice(polygonIndex, 1);
+          if (state.selectedPolygonIndex === polygonIndex) state.selectedPolygonIndex = -1;
+          else if (state.selectedPolygonIndex > polygonIndex) state.selectedPolygonIndex -= 1;
+          state.polygonHoverTarget = null;
+          pushHistory();
+        }
+        updateHint();
         draw();
         return;
       }
       if (e.button !== 0) return;
-      dragActive = true;
-      state.boxDraft = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+      if (state.polygonDraft.length) {
+        if (shouldSnapToPolygonStart(polygonPoint)) {
+          e.preventDefault();
+          closePolygonDraft();
+          return;
+        }
+        if (e.detail >= 2) {
+          e.preventDefault();
+          if (state.polygonDraft.length >= 3) closePolygonDraft();
+          return;
+        }
+        state.polygonDraft.push(polygonPoint);
+        state.polygonHover = polygonPoint;
+        state.polygonSnapToStart = false;
+        pushHistory();
+        updateHint();
+        draw();
+        return;
+      }
+
+      if (state.selectedPolygonIndex >= 0 && state.selectedPolygonIndex < state.polygons.length) {
+        const selectedPolygon = state.polygons[state.selectedPolygonIndex];
+        const vertexIndex = findPolygonVertex(hitPoint, selectedPolygon);
+        if (vertexIndex >= 0) {
+          state.polygonDrag = {
+            polygonIndex: state.selectedPolygonIndex,
+            vertexIndex,
+            moved: false,
+          };
+          state.polygonHoverTarget = {type:"vertex", vertexIndex};
+          canvas.style.cursor = "grabbing";
+          return;
+        }
+        const edge = findPolygonEdge(hitPoint, selectedPolygon);
+        if (edge) {
+          const insertIndex = edge.edgeIndex + 1;
+          selectedPolygon.splice(insertIndex, 0, edge.point);
+          state.polygonHoverTarget = {type:"vertex", vertexIndex:insertIndex};
+          pushHistory();
+          updateHint();
+          draw();
+          return;
+        }
+      }
+
+      const polygonIndex = findPolygonIndexAt(hitPoint);
+      if (polygonIndex >= 0) {
+        state.selectedPolygonIndex = polygonIndex;
+        state.polygonHoverTarget = null;
+        canvas.style.cursor = "pointer";
+        updateHint();
+        draw();
+        return;
+      }
+
+      state.selectedPolygonIndex = -1;
+      state.polygonHoverTarget = null;
+      state.polygonDraft.push(polygonPoint);
+      state.polygonHover = polygonPoint;
+      state.polygonSnapToStart = false;
+      pushHistory();
+      updateHint();
       draw();
       return;
     }
 
-    if (e.button === 2) state.pointsNeg.push(p);
-    else state.pointsPos.push(p);
+    if (!pointInsideFrame(rawPoint)) return;
+    if (e.button === 2) state.pointsNeg.push(rawPoint);
+    else if (e.button === 0) state.pointsPos.push(rawPoint);
+    else return;
     pushHistory();
     draw();
   });
 
-  window.addEventListener("mousemove", (e) => {
-    if (!state.open) return;
-    if (!dragActive) return;
-    if (state.mode !== "box") return;
-    if (!state.boxDraft) return;
-    const p = getCanvasNormPos(e);
-    state.boxDraft.x1 = p.x;
-    state.boxDraft.y1 = p.y;
+  canvas.addEventListener("mousemove", (e) => {
+    if (!state.open || state.mode !== "polygon" || state.polygonDrag) return;
+    const rawPoint = getCanvasNormPos(e);
+    const hitPoint = clampPointToEditor(rawPoint);
+    if (state.polygonDraft.length) {
+      const polygonPoint = preparePolygonPoint(rawPoint);
+      state.polygonHover = polygonPoint;
+      state.polygonSnapToStart = shouldSnapToPolygonStart(polygonPoint);
+      state.polygonHoverTarget = null;
+      canvas.style.cursor = state.polygonSnapToStart ? "pointer" : "crosshair";
+      draw();
+      return;
+    }
+
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.polygonHoverTarget = null;
+    if (state.selectedPolygonIndex >= 0 && state.selectedPolygonIndex < state.polygons.length) {
+      const selectedPolygon = state.polygons[state.selectedPolygonIndex];
+      const vertexIndex = findPolygonVertex(hitPoint, selectedPolygon);
+      if (vertexIndex >= 0) {
+        state.polygonHoverTarget = {type:"vertex", vertexIndex};
+        canvas.style.cursor = "grab";
+        draw();
+        return;
+      }
+      const edge = findPolygonEdge(hitPoint, selectedPolygon);
+      if (edge) {
+        state.polygonHoverTarget = {type:"edge", edgeIndex:edge.edgeIndex, point:edge.point};
+        canvas.style.cursor = "copy";
+        draw();
+        return;
+      }
+    }
+    canvas.style.cursor = findPolygonIndexAt(hitPoint) >= 0 ? "pointer" : "crosshair";
     draw();
   });
 
-  window.addEventListener("mouseup", (e) => {
-    if (!state.open) return;
-    if (!dragActive) return;
-    dragActive = false;
-    if (state.mode !== "box") return;
-    if (!state.boxDraft) return;
-    const b = state.boxDraft;
-    state.boxDraft = null;
-    const w = Math.abs(b.x1 - b.x0);
-    const h = Math.abs(b.y1 - b.y0);
-    if (w > 0.002 && h > 0.002) {
-      state.box = b;
-      pushHistory();
-    }
+  canvas.addEventListener("mouseleave", () => {
+    if (!state.open || state.mode !== "polygon" || state.polygonDrag) return;
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
     draw();
   });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!state.open || state.mode !== "polygon" || !state.polygonDrag) return;
+    const drag = state.polygonDrag;
+    if (drag.polygonIndex < 0 || drag.polygonIndex >= state.polygons.length) return;
+    const polygon = state.polygons[drag.polygonIndex];
+    if (drag.vertexIndex < 0 || drag.vertexIndex >= polygon.length) return;
+    const point = preparePolygonPoint(getCanvasNormPos(e));
+    const previousPoint = polygon[drag.vertexIndex];
+    if (Math.abs(previousPoint.x - point.x) > 0.000001 || Math.abs(previousPoint.y - point.y) > 0.000001) {
+      drag.moved = true;
+      polygon[drag.vertexIndex] = point;
+    }
+    state.polygonHoverTarget = {type:"vertex", vertexIndex:drag.vertexIndex};
+    canvas.style.cursor = "grabbing";
+    draw();
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!state.polygonDrag) return;
+    const drag = state.polygonDrag;
+    state.polygonDrag = null;
+    canvas.style.cursor = "grab";
+    if (drag.moved) pushHistory();
+    updateHint();
+    draw();
+  });
+
+  canvas.addEventListener("dblclick", (e) => e.preventDefault());
 
   btnUndo.addEventListener("click", () => {
     if (state.historyIndex >= 0) {
@@ -2526,7 +3190,16 @@ def get_viewer_html() -> str:
       else {
         state.pointsPos = [];
         state.pointsNeg = [];
+        state.polygons = [];
+        state.polygonDraft = [];
+        state.polygonHover = null;
+        state.polygonSnapToStart = false;
+        state.selectedPolygonIndex = -1;
+        state.polygonDrag = null;
+        state.polygonHoverTarget = null;
+        canvas.style.cursor = "crosshair";
         updateUndoRedo();
+        updateHint();
         draw();
       }
     }
@@ -2540,25 +3213,48 @@ def get_viewer_html() -> str:
   btnClear.addEventListener("click", () => {
     state.pointsPos = [];
     state.pointsNeg = [];
-    state.box = null;
-    state.boxDraft = null;
+    state.polygons = [];
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
     pushHistory();
+    updateHint();
     draw();
   });
 
   btnModePoint.addEventListener("click", () => {
     state.mode = "point";
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
     btnModePoint.classList.add("active");
-    btnModeBox.classList.remove("active");
+    btnModePolygon.classList.remove("active");
     pushHistory();
+    updateHint();
     draw();
   });
 
-  btnModeBox.addEventListener("click", () => {
-    state.mode = "box";
-    btnModeBox.classList.add("active");
+  btnModePolygon.addEventListener("click", () => {
+    state.mode = "polygon";
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
+    btnModePolygon.classList.add("active");
     btnModePoint.classList.remove("active");
     pushHistory();
+    updateHint();
     draw();
   });
 
@@ -2571,12 +3267,37 @@ def get_viewer_html() -> str:
   backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) closeModal(); });
 
   btnConfirm.addEventListener("click", () => {
-    const payload = {
-      frame_time: state.time,
-      positive_coords: state.pointsPos.map(p => ({x:p.x, y:p.y})),
-      negative_coords: state.pointsNeg.map(p => ({x:p.x, y:p.y})),
-      bbox: state.box ? {x0:state.box.x0,y0:state.box.y0,x1:state.box.x1,y1:state.box.y1} : null,
-    };
+    let payload;
+    if (state.mode === "polygon") {
+      if (state.polygonDraft.length > 0 && state.polygonDraft.length < 3) {
+        updateHint("当前多边形至少需要 3 个顶点", true);
+        return;
+      }
+      if (state.polygonDraft.length >= 3) {
+        state.polygons.push(state.polygonDraft.map(point => ({x:point.x, y:point.y})));
+        state.polygonDraft = [];
+        state.polygonHover = null;
+        state.polygonSnapToStart = false;
+        state.polygonHoverTarget = null;
+      }
+      if (!state.polygons.length) {
+        updateHint("请先绘制至少一个多边形遮罩", true);
+        return;
+      }
+      payload = {
+        mode: "static_polygons",
+        apply_to_all_frames: true,
+        frame_time: state.time,
+        polygons: state.polygons.map(polygon => polygon.map(point => ({x:point.x, y:point.y}))),
+      };
+    } else {
+      payload = {
+        mode: "sam3_points",
+        frame_time: state.time,
+        positive_coords: state.pointsPos.map(p => ({x:p.x, y:p.y})),
+        negative_coords: state.pointsNeg.map(p => ({x:p.x, y:p.y})),
+      };
+    }
     const value = JSON.stringify(payload);
     window.SimpAISam3PendingEditorPayload = value;
     const hidden = document.querySelector("#sam3_editor_payload textarea, #sam3_editor_payload input");
@@ -2879,13 +3600,20 @@ def get_viewer_html() -> str:
     state.mode = "point";
     state.pointsPos = [];
     state.pointsNeg = [];
-    state.box = null;
-    state.boxDraft = null;
+    state.polygons = [];
+    state.polygonDraft = [];
+    state.polygonHover = null;
+    state.polygonSnapToStart = false;
+    state.selectedPolygonIndex = -1;
+    state.polygonDrag = null;
+    state.polygonHoverTarget = null;
+    canvas.style.cursor = "crosshair";
     state.history = [];
     state.historyIndex = -1;
     updateUndoRedo();
     btnModePoint.classList.toggle("active", state.mode === "point");
-    btnModeBox.classList.toggle("active", state.mode === "box");
+    btnModePolygon.classList.toggle("active", state.mode === "polygon");
+    updateHint();
     hiddenVideo.src = src;
     hiddenVideo.load();
     state.open = true;
@@ -2973,7 +3701,7 @@ def get_viewer_html() -> str:
     box-shadow: 0 26px 80px rgba(0,0,0,0.65);
   }
   #sam3_frames_toolbar{
-    flex: 0 0 36px;
+    flex: 0 0 52px;
     width: 100%;
     background: #222;
     display: flex;
@@ -2987,13 +3715,28 @@ def get_viewer_html() -> str:
     flex: 1;
     min-width: 0;
     text-align: center;
-    color: #bbb;
-    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     user-select: none;
+    padding: 0 8px;
+  }
+  #sam3_hint_mode,
+  #sam3_hint_action{
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 0 8px;
+  }
+  #sam3_hint_mode{
+    color: #f0f0f0;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 17px;
+  }
+  #sam3_hint_action{
+    color: #aaa;
+    font-size: 11px;
+    line-height: 15px;
   }
   .sam3_hint_dot{
     display: inline-block;
@@ -3085,14 +3828,15 @@ def get_viewer_html() -> str:
         </div>
       </div>
       <div id="sam3_frames_hint">
-        左键<span class="sam3_hint_dot" style="color:#22c55e;">●</span>选取，右键<span class="sam3_hint_dot" style="color:#ef4444;">●</span>排除
+        <div id="sam3_hint_mode" title="Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧">Point Mode · SAM3 跟踪 · 当前帧点选 · 自动跟踪其他帧</div>
+        <div id="sam3_hint_action" title="左键选取，右键排除">左键<span class="sam3_hint_dot" style="color:#22c55e;">●</span>选取，右键<span class="sam3_hint_dot" style="color:#ef4444;">●</span>排除</div>
       </div>
       <div style="display:flex; gap:6px; align-items:center;">
-        <div class="sam3_btn active" id="sam3_mode_point" title="Point Mode">
+        <div class="sam3_btn active" id="sam3_mode_point" title="Point Mode：运行 SAM3 跟踪" aria-label="Point Mode：运行 SAM3 跟踪">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         </div>
-        <div class="sam3_btn" id="sam3_mode_box" title="Box Mode">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5z"/></svg>
+        <div class="sam3_btn" id="sam3_mode_polygon" title="Polygon Mask：固定到所有帧，不运行 SAM3" aria-label="Polygon Mask：固定到所有帧，不运行 SAM3">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2 2 9l4 13h12l4-13-10-7zm0 2.4 7.6 5.3-3 10.3H7.4l-3-10.3L12 4.4z"/></svg>
         </div>
       </div>
     </div>

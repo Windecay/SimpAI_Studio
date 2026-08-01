@@ -8448,7 +8448,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
-:is(#scene_audio, #scene_video, #sam3_input_video).simpai-media-replacement-drag-over {
+:is(#scene_audio, #scene_video, #sam3_input_video, #sam3_output_mask_video).simpai-media-replacement-drag-over {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
@@ -11450,6 +11450,17 @@ html.simpai-main-layout-stacked #advanced_column,
   color: #fca5a5;
 }
 
+.simpleai-prompt-action-status-model {
+  display: inline-block;
+  max-width: min(360px, 58%);
+  overflow: hidden;
+  color: currentColor;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
 .simpleai-prompt-action-empty {
   grid-column: 1 / -1;
   padding: 28px 12px;
@@ -11479,6 +11490,13 @@ html.simpai-main-layout-stacked #advanced_column,
 
 .simpleai-prompt-action-toast.is-open {
   display: flex;
+}
+
+.simpleai-prompt-action-toast [data-role="message"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .simpleai-prompt-action-toast button {

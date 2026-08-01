@@ -7,6 +7,7 @@
     let boundButton = null;
     let pending = false;
     let pendingActionId = "";
+    let pendingAgentService = null;
     let previousPrompt = "";
     let lastFocused = null;
     let activePromptField = null;
@@ -265,8 +266,116 @@
         const node = ensureModal().querySelector('[data-role="status"]');
         if (!node) return;
         node.textContent = String(message || "");
+        node.classList.remove("has-agent-service");
         node.classList.toggle("is-error", kind === "error");
         node.classList.toggle("is-busy", kind === "busy");
+        node.removeAttribute("title");
+    }
+
+    function readControlValue(id) {
+        const root = rootById(id);
+        const control = root?.matches?.("input, select, textarea")
+            ? root
+            : root?.querySelector?.("input, select, textarea");
+        return String(control?.value || "").trim();
+    }
+
+    function currentAgentService(item) {
+        const serviceKind = String(
+            item?.service_kind || (item?.id === "toggle_tag_separators" ? "local_script" : "agent")
+        ).trim();
+        if (serviceKind === "local_script") {
+            return {
+                agent_service_kind: "local_script",
+                agent_model: "",
+                agent_provider: text("Local script", "本地脚本"),
+            };
+        }
+
+        const rawSelection = readControlValue("describe_vlm_model_dropdown")
+            || readControlValue("describe_vlm_model");
+        const modelUnavailable = /[⚠⬇↓]/.test(rawSelection);
+        if (item?.id === "smart_expand" && !isSceneMode() && (!isVlmEnabled() || modelUnavailable)) {
+            return {
+                agent_service_kind: "agent",
+                agent_model: "superprompt-v1",
+                agent_provider: text("Local", "本地"),
+            };
+        }
+
+        let display = rawSelection.replace(/[✓✔⚠⬇↓]/g, "").trim();
+        let provider = "";
+        const apiMatch = display.match(/^\[API\]\s*(.*)$/i);
+        if (apiMatch) {
+            const parts = apiMatch[1].split(/\s+·\s+/).map((part) => part.trim()).filter(Boolean);
+            if (parts.length > 1) {
+                provider = parts.shift() || "";
+                display = parts.join(" · ");
+            } else {
+                display = parts[0] || "";
+            }
+        } else {
+            display = display.replace(/^\[[^\]]+\]\s*/, "").trim();
+            provider = text("Local VLM", "本地 VLM");
+        }
+        return {
+            agent_service_kind: "agent",
+            agent_model: display || text("Current Agent model", "当前 Agent 模型"),
+            agent_provider: provider,
+        };
+    }
+
+    function resolvedAgentService(result, fallback) {
+        const source = result && typeof result === "object" ? result : {};
+        const kind = String(source.agent_service_kind || fallback?.agent_service_kind || "agent").trim();
+        if (kind === "local_script") {
+            return {
+                agent_service_kind: "local_script",
+                agent_model: "",
+                agent_provider: text("Local script", "本地脚本"),
+            };
+        }
+        return {
+            agent_service_kind: "agent",
+            agent_model: String(source.agent_model || fallback?.agent_model || text("Current Agent model", "当前 Agent 模型")).trim(),
+            agent_provider: String(source.agent_provider || fallback?.agent_provider || "").trim(),
+        };
+    }
+
+    function agentServiceLabel(service) {
+        if (service?.agent_service_kind === "local_script") return text("Local script", "本地脚本");
+        return String(service?.agent_model || text("Current Agent model", "当前 Agent 模型")).trim();
+    }
+
+    function agentServiceTitle(service) {
+        const label = agentServiceLabel(service);
+        const provider = String(service?.agent_provider || "").trim();
+        return provider && provider !== label ? `${provider} · ${label}` : label;
+    }
+
+    function setAgentStatus(service, phase, detail = "") {
+        const node = ensureModal().querySelector('[data-role="status"]');
+        if (!node) return;
+        const label = agentServiceLabel(service);
+        const isEnglish = currentLang() === "en";
+        let prefix = "";
+        let suffix = "";
+        if (phase === "error") {
+            prefix = isEnglish ? "“" : "「";
+            suffix = isEnglish ? `” failed: ${detail}` : `」处理失败：${detail}`;
+        } else {
+            prefix = isEnglish ? "Using “" : "正在使用「";
+            suffix = isEnglish ? "” to process the prompt..." : "」处理提示词…";
+        }
+        const model = document.createElement("span");
+        model.className = "simpleai-prompt-action-status-model";
+        model.textContent = label;
+        model.setAttribute("title", agentServiceTitle(service));
+        node.replaceChildren(document.createTextNode(prefix), model, document.createTextNode(suffix));
+        node.classList.add("has-agent-service");
+        node.classList.toggle("is-error", phase === "error");
+        node.classList.toggle("is-busy", phase !== "error");
+        node.setAttribute("title", `${prefix}${label}${suffix}${service?.agent_provider ? ` · ${service.agent_provider}` : ""}`);
     }
 
     function renderModal() {
@@ -375,7 +484,8 @@
 
         pending = true;
         pendingActionId = actionId;
-        setStatus(text("Processing the prompt...", "正在处理提示词…"), "busy");
+        pendingAgentService = currentAgentService(item);
+        setAgentStatus(pendingAgentService, "busy");
         renderModal();
         trigger.click();
     }
@@ -399,12 +509,16 @@
         return toast;
     }
 
-    function showSuccessToast(result) {
+    function showSuccessToast(result, service) {
         const node = ensureToast();
         const frames = Number(result?.media?.sampled_frames || 0);
-        node.querySelector('[data-role="message"]').textContent = frames > 0
-            ? text(`Prompt updated · read ${frames} video frames`, `提示词已更新 · 已读取 ${frames} 帧视频`)
-            : text("Prompt updated", "提示词已更新");
+        const label = agentServiceLabel(service);
+        const message = frames > 0
+            ? text(`“${label}” finished · Prompt updated · read ${frames} video frames`, `「${label}」处理完成 · 提示词已更新 · 已读取 ${frames} 帧视频`)
+            : text(`“${label}” finished · Prompt updated`, `「${label}」处理完成 · 提示词已更新`);
+        const messageNode = node.querySelector('[data-role="message"]');
+        messageNode.textContent = message;
+        messageNode.setAttribute("title", `${message} · ${agentServiceTitle(service)}`);
         node.querySelector('[data-role="undo"]').textContent = text("Undo", "撤销");
         node.classList.add("is-open");
         window.clearTimeout(node.__simpleaiHideTimer);
@@ -424,20 +538,22 @@
     window.completeSimpleAIPromptAction = function completeSimpleAIPromptAction(value) {
         const result = parseResult(value);
         const target = pendingPromptField;
+        const service = resolvedAgentService(result, pendingAgentService);
         pending = false;
         pendingActionId = "";
+        pendingAgentService = null;
         if (result.ok) {
             if (!setPromptFieldValue(target, String(result.text ?? previousPrompt))) {
                 pendingPromptField = null;
                 renderModal();
-                setStatus(text("The target prompt is no longer available.", "目标提示词已不可用。"), "error");
+                setAgentStatus(service, "error", text("The target prompt is no longer available.", "目标提示词已不可用。"));
                 return;
             }
             lastAppliedPromptField = target;
             lastAppliedPreviousPrompt = previousPrompt;
             pendingPromptField = null;
             closeModal();
-            showSuccessToast(result);
+            showSuccessToast(result, service);
             if (typeof syncPositivePromptMetaState === "function") {
                 try { syncPositivePromptMetaState(); } catch (error) {}
             }
@@ -445,7 +561,7 @@
         }
         pendingPromptField = null;
         renderModal();
-        setStatus(result.error || text("Prompt action failed.", "提示词处理失败。"), "error");
+        setAgentStatus(service, "error", result.error || text("Prompt action failed.", "提示词处理失败。"));
     };
 
     function setButtonLabel() {

@@ -91,12 +91,12 @@
       "incremental_expandrate": 0,
       "tapered_corners": false,
       "flip_input": false,
-      "blur_radius": 2,
+      "blur_radius": 0,
       "lerp_alpha": 1,
       "decay_factor": 1,
       "fill_holes": false,
       "mask": [
-        "221",
+        "250",
         0
       ]
     },
@@ -519,6 +519,19 @@
     "class_type": "ImageToMask",
     "_meta": {
       "title": "Convert Image to Mask"
+    }
+  },
+  "250": {
+    "inputs": {
+      "mask": [
+        "221",
+        0
+      ],
+      "threshold": 128
+    },
+    "class_type": "ToBinaryMask",
+    "_meta": {
+      "title": "Binary Mask (Threshold 0.5)"
     }
   },
   "222": {

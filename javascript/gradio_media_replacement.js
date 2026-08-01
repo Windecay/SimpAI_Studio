@@ -5,12 +5,14 @@
         ['scene_audio', { kind: 'audio' }],
         ['scene_video', { kind: 'video' }],
         ['sam3_input_video', { kind: 'video' }],
+        ['sam3_output_mask_video', { kind: 'video', claimDrop: false, dropKinds: ['video', 'image'] }],
     ]);
     const DRAG_OVER_CLASS = 'simpai-media-replacement-drag-over';
     const FILE_INPUT_WAIT_MS = 2000;
     const activeReplacements = new Set();
     const EXTENSIONS = {
         audio: /\.(?:aac|aiff?|flac|m4a|mp3|ogg|opus|wav|wma)$/i,
+        image: /\.(?:bmp|gif|jpe?g|png|webp)$/i,
         video: /\.(?:avi|m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i,
     };
 
@@ -48,6 +50,13 @@
             const mime = String(item.type || '').toLowerCase();
             return !mime || mime.startsWith(`${kind}/`);
         });
+    }
+
+    function transferMayMatchTarget(dataTransfer, config) {
+        const kinds = Array.isArray(config?.dropKinds) && config.dropKinds.length
+            ? config.dropKinds
+            : [config?.kind];
+        return kinds.filter(Boolean).some((kind) => transferMayMatch(dataTransfer, kind));
     }
 
     function targetForEvent(event) {
@@ -190,8 +199,8 @@
     function handleDrag(event) {
         const target = targetForEvent(event);
         if (!target || !transferContainsFile(event.dataTransfer)) return;
-        stopNativeDrop(event);
-        if (transferMayMatch(event.dataTransfer, target.config.kind)) {
+        if (target.config.claimDrop !== false) stopNativeDrop(event);
+        if (transferMayMatchTarget(event.dataTransfer, target.config)) {
             target.root.classList.add(DRAG_OVER_CLASS);
         }
     }
@@ -205,8 +214,9 @@
     document.addEventListener('drop', (event) => {
         const target = targetForEvent(event);
         if (!target || !transferContainsFile(event.dataTransfer)) return;
-        stopNativeDrop(event);
         clearDragStates();
+        if (target.config.claimDrop === false) return;
+        stopNativeDrop(event);
         const file = transferFiles(event.dataTransfer)
             .find((candidate) => fileMatchesKind(candidate, target.config.kind));
         window.SimpAIStudioPerformance?.mark('media_replacement.drop_claimed', {

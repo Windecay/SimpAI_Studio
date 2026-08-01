@@ -186,7 +186,7 @@
   "Lock Timbre (clone from first segment)": "锁定音色（从第一段落克隆）:建议生成长音频时开启",
   "Styles": "风格",
   "🎨 Style Selector": "🎨 风格选择器",
-  "🎞️ SAM3 Video Mask (Double Click to Open Frames Editor)": "🎞️ SAM3 视频蒙版（左侧上传视频后双击视频打开点编辑器）",
+  "🎞️ SAM3 Video Mask (Double Click to Open Frames Editor)": "🎞️ SAM3 视频蒙版（左侧上传视频后双击视频打开遮罩编辑器）",
   "💬 SAM3 Prompt Segmentation": "💬 SAM3 语义分割",
   "Segmentation Prompt": "语义分割提示词（使用英语，单数名词）",
   "✅ Generate Mask": "✅ 语义分割生成遮罩",

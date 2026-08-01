@@ -55,11 +55,17 @@ def register_prompt_action(spec, *, replace=False):
     action_id = str(data.get("id") or "").strip()
     if not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", action_id):
         raise ValueError(f"Invalid prompt action id: {action_id!r}")
-    if not str(data.get("handler") or "").strip():
+    handler = str(data.get("handler") or "").strip()
+    if not handler:
         raise ValueError(f"Prompt action {action_id!r} has no handler")
     data["id"] = action_id
+    data["handler"] = handler
     data["modes"] = list(data.get("modes") or ["classic", "scene"])
     data["media_policy"] = str(data.get("media_policy") or "none")
+    data["service_kind"] = str(
+        data.get("service_kind")
+        or ("local_script" if handler == "tag_separator_toggle" else "agent")
+    ).strip()
     with _ACTION_LOCK:
         if action_id in _ACTIONS and not replace:
             raise ValueError(f"Prompt action already registered: {action_id}")
@@ -87,6 +93,7 @@ def prompt_action_catalog():
         "requires_vlm",
         "requires_vlm_scene",
         "media_policy",
+        "service_kind",
         "featured",
     )
     with _ACTION_LOCK:

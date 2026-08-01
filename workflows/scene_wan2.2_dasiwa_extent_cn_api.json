@@ -1,7 +1,7 @@
 {
   "1": {
     "inputs": {
-      "value": "(a*4+((a*4)%1>0)-((a*4)%1))*4+1",
+      "value": "(a*4+((a*4)%1>0)-((a*4)%1))*4+5",
       "a": [
         "150",
         32
@@ -19,7 +19,7 @@
         0
       ],
       "clip": [
-        "222",
+        "220",
         0
       ]
     },
@@ -35,13 +35,23 @@
         29
       ],
       "clip": [
-        "222",
+        "220",
         0
       ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "negative_prompt"
+    }
+  },
+  "7": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
     }
   },
   "8": {
@@ -645,7 +655,7 @@
       "frame_load_cap": 0,
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "format": "Wan"
+      "format": "None"
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
@@ -677,7 +687,7 @@
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
-      "switch_option2": true,
+      "switch_option2": false,
       "switch_option3": false,
       "switch_option4": false,
       "model_type": 2,
@@ -755,7 +765,7 @@
   },
   "156": {
     "inputs": {
-      "overlap": 9,
+      "overlap": 5,
       "overlap_side": "source",
       "overlap_mode": "linear_blend",
       "source_images": [
@@ -763,7 +773,7 @@
         0
       ],
       "new_images": [
-        "176",
+        "225",
         0
       ]
     },
@@ -1025,7 +1035,7 @@
         0
       ],
       "anchor_samples": [
-        "218",
+        "223",
         0
       ],
       "prev_samples": [
@@ -1051,10 +1061,44 @@
     },
     "class_type": "VAEEncode",
     "_meta": {
-      "title": "VAE Encode"
+      "title": "Encode Tail Motion Frames"
     }
   },
   "219": {
+    "inputs": {
+      "batch_index": 0,
+      "length": 1,
+      "image": [
+        "191",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Source First Frame"
+    }
+  },
+  "220": {
+    "inputs": {
+      "boolean": [
+        "222",
+        0
+      ],
+      "on_true": [
+        "221",
+        0
+      ],
+      "on_false": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "221": {
     "inputs": {
       "clip_name": "placeholder.safetensors",
       "type": "wan",
@@ -1065,46 +1109,7 @@
       "title": "clip_model"
     }
   },
-  "220": {
-    "inputs": {
-      "clip_name": "placeholder.safetensors",
-      "type": "wan"
-    },
-    "class_type": "CLIPLoaderGGUF",
-    "_meta": {
-      "title": "clip_model"
-    }
-  },
-  "221": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "int"
-    }
-  },
   "222": {
-    "inputs": {
-      "boolean": [
-        "223",
-        0
-      ],
-      "on_true": [
-        "219",
-        0
-      ],
-      "on_false": [
-        "220",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "223": {
     "inputs": {
       "comparison": "a == b",
       "a": [
@@ -1112,13 +1117,64 @@
         26
       ],
       "b": [
-        "221",
+        "138",
         0
       ]
     },
     "class_type": "easy compare",
     "_meta": {
       "title": "Compare"
+    }
+  },
+  "223": {
+    "inputs": {
+      "pixels": [
+        "219",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "Encode Source First Frame"
+    }
+  },
+  "224": {
+    "inputs": {
+      "num_frames": 1,
+      "images": [
+        "191",
+        0
+      ]
+    },
+    "class_type": "WanAdvancedExtractLastImages",
+    "_meta": {
+      "title": "Source Color Reference"
+    }
+  },
+  "225": {
+    "inputs": {
+      "reference_image": [
+        "224",
+        0
+      ],
+      "edited_image": [
+        "176",
+        0
+      ],
+      "strength": 1.0,
+      "sample_fraction": 0.35,
+      "analysis_size": 512,
+      "mask_sensitivity": 3.0,
+      "mask_expand": 8,
+      "confidence_threshold": 0.55
+    },
+    "class_type": "SimpAIAutoProtectedColorMatch",
+    "_meta": {
+      "title": "Match Extension Color To Source"
     }
   }
 }

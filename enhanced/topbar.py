@@ -2195,15 +2195,33 @@ def _clean_scene_reference_video_path(value):
     return text
 
 
-def _effective_scene_reference_video(state_params, scene_theme, scene_reference_video, scene_reference_video_original_path):
-    del state_params, scene_theme
-    component_path = _clean_scene_reference_video_path(scene_reference_video)
+def _resolve_scene_video_trim(component_path, original_path, trim_payload):
+    from enhanced import sam3_video_mask as _sam3_video_mask
+
+    return _sam3_video_mask.resolve_sam3_backend_video_path(component_path, original_path, trim_payload)
+
+
+def _effective_scene_video(scene_video, scene_original_video_path, trim_payload=None):
+    component_path = _clean_scene_reference_video_path(scene_video)
     if not component_path:
         return None
-    original_path = _clean_scene_reference_video_path(scene_reference_video_original_path)
+    original_path = _clean_scene_reference_video_path(scene_original_video_path)
+    if trim_payload:
+        try:
+            resolved = _resolve_scene_video_trim(component_path, original_path, trim_payload)
+            if resolved:
+                return resolved
+        except Exception:
+            logger.warning("[VideoTrim] failed to prepare the original-quality trimmed video", exc_info=True)
+        return component_path
     if original_path:
         return original_path
     return component_path
+
+
+def _effective_scene_reference_video(state_params, scene_theme, scene_reference_video, scene_reference_video_original_path, trim_payload=None):
+    del state_params, scene_theme
+    return _effective_scene_video(scene_reference_video, scene_reference_video_original_path, trim_payload)
 
 
 def _apply_scene_reference_video_backend_param(backend_params, reference_video):
@@ -2219,7 +2237,7 @@ def _apply_scene_video_backend_params(backend_params, video, mask_video, referen
     _apply_scene_reference_video_backend_param(backend_params, reference_video)
 
 
-def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None):
+def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None):
     regen_scene_additional_prompt = scene_additional_prompt
     regen_scene_additional_prompt_2 = scene_additional_prompt_2
     user_did = _state_user_did(state_params)
@@ -2270,11 +2288,13 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         if 'scene_video' in disvisible:
             scene_video = None
             scene_original_video_path = None
+            scene_video_trim_payload = ""
             if active_video_source == "scene":
                 active_video_source = None
         if 'scene_reference_video' in disvisible:
             scene_reference_video = None
             scene_reference_video_original_path = None
+            scene_reference_video_trim_payload = ""
         if 'scene_audio' in disvisible:
             scene_audio = None
         sam3_hidden = not meta_parser.scene_sam3_inputs_enabled(scene_frontend, scene_theme)
@@ -2427,7 +2447,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                     mask[:, :, 2] = alpha
             scene_canvas_image['mask'] = util.resize_image_by_max_area(util.HWC3(mask), max_area=1024 * 1024) if resize_image_flag else mask
 
-        scene_video_effective = scene_original_video_path if scene_original_video_path else scene_video
+        scene_video_effective = _effective_scene_video(scene_video, scene_original_video_path, scene_video_trim_payload)
         try:
             from enhanced import sam3_video_mask as _sam3_video_mask
 
@@ -2445,6 +2465,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_theme,
             scene_reference_video,
             scene_reference_video_original_path,
+            scene_reference_video_trim_payload,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
         try:
@@ -2637,7 +2658,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_switch_option4,
         scene_aspect_ratio,
         scene_image_number,
-        scene_video,
+        scene_video_effective if 'scene_frontend' in state_params else scene_video,
         reference_video_effective if 'scene_frontend' in state_params else scene_reference_video,
         scene_audio,
         scene_original_video_path,

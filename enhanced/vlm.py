@@ -617,6 +617,61 @@ class VLM:
         }
 
     @classmethod
+    def current_agent_service_info(cls):
+        if cls.is_custom_version():
+            settings = cls.get_custom_settings()
+            return {
+                "agent_service_kind": "agent",
+                "agent_model": str(settings.get("model") or "Custom").strip() or "Custom",
+                "agent_provider": str(settings.get("api_name") or "Custom API").strip() or "Custom API",
+            }
+
+        version = str(cls.current_version or cls.DEFAULT_VERSION).strip() or cls.DEFAULT_VERSION
+        label = version
+        config_data = cls.VERSIONS.get(version)
+        if config_data is None and version.endswith("-Thinking"):
+            config_data = cls.VERSIONS.get(version[:-len("-Thinking")])
+        if isinstance(config_data, dict):
+            label = str(config_data.get("label") or version).strip() or version
+        else:
+            try:
+                item = cls.get_version_catalog_item(version)
+                if isinstance(item, dict):
+                    label = str(item.get("label") or version).strip() or version
+            except Exception:
+                pass
+        return {
+            "agent_service_kind": "agent",
+            "agent_model": label,
+            "agent_provider": "Local VLM",
+        }
+
+    def prompt_action_service_info(self, action_id, state=None):
+        action = prompt_actions.get_prompt_action(action_id)
+        if not action:
+            return {}
+        if str(action.get("service_kind") or "agent").strip() == "local_script":
+            return {
+                "agent_service_kind": "local_script",
+                "agent_model": "",
+                "agent_provider": "Local script",
+            }
+
+        mode = prompt_actions.prompt_action_mode(state if isinstance(state, dict) else {})
+        if str(action.get("handler") or "") == "smart_expand" and mode == "classic":
+            try:
+                use_selected_agent = VLM.get_enable() and self.model_exists()
+            except Exception:
+                use_selected_agent = False
+            if not use_selected_agent:
+                return {
+                    "agent_service_kind": "agent",
+                    "agent_model": "superprompt-v1",
+                    "agent_provider": "Local",
+                }
+        return VLM.current_agent_service_info()
+
+    @classmethod
     def get_custom_missing_settings(cls):
         missing = []
         if not str(cls.custom_base_url or "").strip():
@@ -1461,6 +1516,38 @@ class VLM:
         return _superprompt_clean_output(result, fallback=input_text)
 
     def run_prompt_action(
+        self,
+        action_id,
+        input_text,
+        prompt_prefix,
+        input_images,
+        state,
+        translation_methods='Third APIs',
+        options=None,
+        video_path="",
+        video_first_frame_path="",
+        scene_resources=None,
+    ):
+        service_info = self.prompt_action_service_info(action_id, state)
+        result = self._run_prompt_action(
+            action_id,
+            input_text,
+            prompt_prefix,
+            input_images,
+            state,
+            translation_methods,
+            options=options,
+            video_path=video_path,
+            video_first_frame_path=video_first_frame_path,
+            scene_resources=scene_resources,
+        )
+        if not isinstance(result, dict):
+            return result
+        result = dict(result)
+        result.update(service_info)
+        return result
+
+    def _run_prompt_action(
         self,
         action_id,
         input_text,

@@ -2807,6 +2807,155 @@ document.addEventListener("DOMContentLoaded", function() {
     }, true);
 })();
 
+(function initSceneVideoTrimPayloadBridge() {
+    if (window.__simpaiSceneVideoTrimPayloadBridgeStarted) return;
+    window.__simpaiSceneVideoTrimPayloadBridgeStarted = true;
+
+    const bindings = [
+        { componentId: 'scene_video', payloadId: 'scene_video_trim_payload' },
+        { componentId: 'scene_reference_video', payloadId: 'scene_reference_video_trim_payload' },
+    ];
+    const trimHandleSelector = [
+        'button[aria-label="start drag handle for trimming video"]',
+        'button[aria-label="end drag handle for trimming video"]',
+    ].join(', ');
+
+    function payloadField(payloadId) {
+        const root = document.getElementById(payloadId);
+        return root?.querySelector ? root.querySelector('textarea, input') : null;
+    }
+
+    function readPayload(payloadId) {
+        const field = payloadField(payloadId);
+        const text = field ? String(field.value || '').trim() : '';
+        if (!text) return null;
+        try {
+            const payload = JSON.parse(text);
+            return payload && typeof payload === 'object' ? payload : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writePayload(payloadId, payload) {
+        const field = payloadField(payloadId);
+        if (!field) return false;
+        const text = payload ? JSON.stringify(payload) : '';
+        const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(field, text);
+        else field.value = text;
+        try {
+            field.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text }));
+        } catch (e) {
+            field.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+        field.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        return true;
+    }
+
+    function buttonLabel(button) {
+        if (!button) return '';
+        return [
+            button.textContent || '',
+            button.getAttribute('aria-label') || '',
+            button.getAttribute('title') || '',
+        ].join(' ').trim().toLowerCase();
+    }
+
+    function isTrimSubmitButton(button) {
+        const label = buttonLabel(button);
+        return label === 'trim' || label.includes('trim video') || label.includes('裁剪');
+    }
+
+    function isResetButton(button) {
+        const label = buttonLabel(button);
+        return label.includes('reset video to initial value') || label.includes('reset video');
+    }
+
+    function trimPct(handle, fallback) {
+        const raw = handle?.style ? String(handle.style.left || '') : '';
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function buildTrimPayload(binding, root) {
+        const video = root?.querySelector ? root.querySelector('video') : null;
+        const duration = Number(video?.duration || 0);
+        if (!Number.isFinite(duration) || duration <= 0) return null;
+
+        const handles = root.querySelectorAll(trimHandleSelector);
+        const leftHandle = Array.from(handles).find((handle) => String(handle.getAttribute('aria-label') || '').startsWith('start '));
+        const rightHandle = Array.from(handles).find((handle) => String(handle.getAttribute('aria-label') || '').startsWith('end '));
+        if (!leftHandle || !rightHandle) return null;
+
+        const leftPct = Math.max(0, Math.min(100, trimPct(leftHandle, 0)));
+        const rightPct = Math.max(0, Math.min(100, trimPct(rightHandle, 100)));
+        const relStart = Math.max(0, Math.min(duration, duration * Math.min(leftPct, rightPct) / 100));
+        const relEnd = Math.max(0, Math.min(duration, duration * Math.max(leftPct, rightPct) / 100));
+        if (relEnd <= relStart + 0.001) return null;
+
+        const previous = readPayload(binding.payloadId);
+        const previousStart = Number(previous?.trim_start);
+        const previousDuration = Number(previous?.duration);
+        const previousSourceDuration = Number(previous?.video_duration);
+        const chainsPreviousTrim = (
+            previous
+            && Number.isFinite(previousStart)
+            && Number.isFinite(previousDuration)
+            && previousDuration > 0
+            && Math.abs(previousDuration - duration) < 0.35
+        );
+        const baseStart = chainsPreviousTrim ? previousStart : 0;
+        const sourceDuration = (
+            chainsPreviousTrim && Number.isFinite(previousSourceDuration) && previousSourceDuration > 0
+        ) ? previousSourceDuration : duration;
+        const start = Math.max(0, Math.min(sourceDuration, baseStart + relStart));
+        const end = Math.max(0, Math.min(sourceDuration, baseStart + relEnd));
+        if (end <= start + 0.001) return null;
+
+        return {
+            source: 'gradio_video_trim',
+            component: binding.componentId,
+            trim_start: Math.round(start * 1000) / 1000,
+            trim_end: Math.round(end * 1000) / 1000,
+            duration: Math.round((end - start) * 1000) / 1000,
+            video_duration: Math.round(sourceDuration * 1000) / 1000,
+            preview_duration: Math.round(duration * 1000) / 1000,
+        };
+    }
+
+    function bind(binding) {
+        const root = document.getElementById(binding.componentId);
+        if (!root) return false;
+
+        const rootFlag = `simpaiTrimRecorderBound${binding.componentId}`;
+        if (root.dataset[rootFlag] === '1') return true;
+        root.dataset[rootFlag] = '1';
+        root.addEventListener('click', (event) => {
+            const button = event.target?.closest ? event.target.closest('button') : null;
+            if (!button || !root.contains(button)) return;
+            if (isTrimSubmitButton(button)) {
+                const payload = buildTrimPayload(binding, root);
+                if (payload) writePayload(binding.payloadId, payload);
+            } else if (isResetButton(button)) {
+                writePayload(binding.payloadId, null);
+            }
+        }, true);
+        return true;
+    }
+
+    function bindAll() {
+        bindings.forEach(bind);
+    }
+
+    const observer = new MutationObserver(bindAll);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    onUiLoaded(bindAll);
+    onAfterUiUpdate(bindAll);
+    bindAll();
+})();
+
 (function initGradio6MountedVisibilityHelpers() {
     if (window.__simpaiGradio6MountedVisibilityHelpersStarted) return;
     window.__simpaiGradio6MountedVisibilityHelpersStarted = true;
