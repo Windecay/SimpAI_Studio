@@ -10,8 +10,11 @@ const previewOriginalPath = "C:/outputs/portrait-original.png";
 const previewOriginalToken = Buffer.from(previewOriginalPath, "utf8").toString("base64url");
 const previewImageUrl = `http://simpai.test/simpleai/gallery-preview/simpai_gprev__${previewOriginalToken}__0123456789abcdef.jpg`;
 const expectedPreviewOriginalUrl = `http://simpai.test/gradio_api/file=${previewOriginalPath}`;
+const expectedPreviewDownloadUrl = `http://simpai.test/simpleai/gallery-download/simpai_gdownload__${previewOriginalToken}__0123456789abcdef`;
 const originalImagePath = "C:/outputs/small-original.png";
 const originalImageUrl = `http://simpai.test/gradio_api/file=${originalImagePath}`;
+const originalDownloadToken = Buffer.from(originalImagePath, "utf8").toString("base64url");
+const expectedOriginalDownloadUrl = `http://simpai.test/simpleai/gallery-download/simpai_gdownload_path__${originalDownloadToken}`;
 
 async function loadPlaywright() {
   try {
@@ -50,9 +53,9 @@ try {
       </head>
       <body>
         <div id="finished_gallery">
-          <div class="gallery-item"><img id="gallery_image" src="${originalImageUrl}"></div>
+          <div id="gallery_item" class="gallery-item"><img id="gallery_image" src="${originalImageUrl}"></div>
           <div id="preview_gallery_item" class="gallery-item"><img id="preview_gallery_image" src="${previewImageUrl}"></div>
-          <div class="gallery-item" style="display:none"><img id="data_gallery_image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAFElEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAB4GgABAAHn7QAAAABJRU5ErkJggg=="></div>
+          <div id="data_gallery_item" class="gallery-item" style="display:none"><img id="data_gallery_image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAFElEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAB4GgABAAHn7QAAAABJRU5ErkJggg=="></div>
         </div>
         <div id="input_image"><input type="file" accept="image/*"></div>
       </body>
@@ -86,34 +89,48 @@ try {
       window.__nativeDragBehavior.drops.push(Array.from(event.dataTransfer?.types || []));
     });
     document.addEventListener("dragstart", (event) => {
-      if (!["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(event.target?.id)) return;
+      const img = event.target?.matches?.("img") ? event.target : event.target?.querySelector?.("img");
+      if (!["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(img?.id)) return;
       window.__nativeDragBehavior.nativeStarts += 1;
+      window.__nativeDragBehavior.nativeTypes = Array.from(event.dataTransfer?.types || []);
     }, true);
     document.addEventListener("dragend", (event) => {
-      if (["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(event.target?.id)) window.__nativeDragBehavior.nativeEnds += 1;
+      const img = event.target?.matches?.("img") ? event.target : event.target?.querySelector?.("img");
+      if (["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(img?.id)) window.__nativeDragBehavior.nativeEnds += 1;
     }, true);
   });
   await page.addScriptTag({ content: source });
-  await page.waitForFunction(() => ["gallery_image", "preview_gallery_image", "data_gallery_image"].every((id) => {
-    const img = document.getElementById(id);
-    return img?.complete && img.naturalWidth > 0 && img.getAttribute("draggable") === "true";
-  }));
   await page.evaluate(() => {
-    document.getElementById("gallery_image").addEventListener("dragstart", (event) => {
+    document.addEventListener("dragstart", (event) => {
+      const img = event.target?.matches?.("img") ? event.target : event.target?.querySelector?.("img");
+      if (!["gallery_image", "preview_gallery_image", "data_gallery_image"].includes(img?.id)) return;
       window.__nativeDragBehavior.nativeTypes = Array.from(event.dataTransfer?.types || []);
     });
   });
+  await page.waitForFunction(() => {
+    const small = document.getElementById("gallery_image");
+    const preview = document.getElementById("preview_gallery_image");
+    const previewSource = document.getElementById("preview_gallery_item");
+    return small?.complete && small.naturalWidth > 0 && small.getAttribute("draggable") === "true"
+      && preview?.complete && preview.naturalWidth > 0 && preview.getAttribute("draggable") === "false"
+      && previewSource?.getAttribute("draggable") === "true";
+  });
 
   const synthetic = await page.evaluate(() => {
-    function dragSnapshot(id) {
+    function dragSnapshot(id, end = true) {
       const img = document.getElementById(id);
+      const source = img.closest('[data-simpleai-managed-native-image-drag-source="1"]') || img;
       const transfer = new DataTransfer();
       const event = new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: transfer });
-      img.dispatchEvent(event);
+      source.dispatchEvent(event);
       const result = {
         prevented: event.defaultPrevented,
-        draggable: img.draggable,
-        attr: img.getAttribute("draggable"),
+        draggable: source.draggable,
+        attr: source.getAttribute("draggable"),
+        imageDraggable: img.draggable,
+        imageAttr: img.getAttribute("draggable"),
+        sourceTag: source.tagName.toLowerCase(),
+        dedicatedSource: source !== img,
         marked: img.dataset.simpleaiGalleryNativeDragImage === "1",
         types: Array.from(transfer.types || []),
         custom: transfer.getData("application/x-simpleai-gallery-original-url"),
@@ -123,21 +140,45 @@ try {
         externalHandleCount: document.querySelectorAll(".simpleai-gallery-external-drag-handle").length,
         diagnostic: window.__nativeDragBehavior.diagnostics.at(-1) || null,
       };
-      img.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: transfer }));
+      if (end) source.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: transfer }));
       return result;
     }
     const originalImage = document.getElementById("gallery_image");
     Object.defineProperty(originalImage, "naturalWidth", { configurable: true, value: 1168 });
     Object.defineProperty(originalImage, "naturalHeight", { configurable: true, value: 1704 });
+    simpleaiSyncGalleryNativeDragImages();
     const original = dragSnapshot("gallery_image");
     Object.defineProperty(originalImage, "naturalWidth", { configurable: true, value: 3552 });
     Object.defineProperty(originalImage, "naturalHeight", { configurable: true, value: 4736 });
+    simpleaiSyncGalleryNativeDragImages();
+    const largeOriginal = dragSnapshot("gallery_image", false);
+    const staleBeforePrepare = {
+      dedicatedSource: Boolean(originalImage.closest('[data-simpleai-managed-native-image-drag-source="1"]')),
+      imageDraggable: originalImage.draggable,
+      imageAttr: originalImage.getAttribute("draggable"),
+      originalUrl: window.__simpleaiGalleryOriginalDragUrl || "",
+    };
+    Object.defineProperty(originalImage, "naturalWidth", { configurable: true, value: 1168 });
+    Object.defineProperty(originalImage, "naturalHeight", { configurable: true, value: 1704 });
+    originalImage.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    const preparedAfterFailedLarge = {
+      dedicatedSource: Boolean(originalImage.closest('[data-simpleai-managed-native-image-drag-source="1"]')),
+      imageDraggable: originalImage.draggable,
+      imageAttr: originalImage.getAttribute("draggable"),
+      originalUrl: window.__simpleaiGalleryOriginalDragUrl || "",
+      nativePreview: Boolean(document.getElementById("simpleai-native-image-drag-preview")),
+    };
+    const smallAfterFailedLarge = dragSnapshot("gallery_image");
     const dataImage = document.getElementById("data_gallery_image");
     Object.defineProperty(dataImage, "naturalWidth", { configurable: true, value: 3552 });
     Object.defineProperty(dataImage, "naturalHeight", { configurable: true, value: 4736 });
+    simpleaiSyncGalleryNativeDragImages();
     return {
       original,
-      largeOriginal: dragSnapshot("gallery_image"),
+      largeOriginal,
+      staleBeforePrepare,
+      preparedAfterFailedLarge,
+      smallAfterFailedLarge,
       largeData: dragSnapshot("data_gallery_image"),
       preview: dragSnapshot("preview_gallery_image"),
     };
@@ -162,6 +203,7 @@ try {
   const finalState = await page.evaluate(() => ({
     ...window.__nativeDragBehavior,
     pointerPreview: Boolean(document.getElementById("simpleai-gallery-pointer-drag-preview")),
+    nativePreview: Boolean(document.getElementById("simpleai-native-image-drag-preview")),
     externalHandleCount: document.querySelectorAll(".simpleai-gallery-external-drag-handle").length,
   }));
   const requiredTypes = [
@@ -171,6 +213,7 @@ try {
   ];
   const originalSynthetic = synthetic.original;
   const largeOriginalSynthetic = synthetic.largeOriginal;
+  const smallAfterFailedLargeSynthetic = synthetic.smallAfterFailedLarge;
   const largeDataSynthetic = synthetic.largeData;
   const previewSynthetic = synthetic.preview;
   const ok = originalSynthetic.prevented === false
@@ -194,11 +237,15 @@ try {
     && largeOriginalSynthetic.draggable
     && largeOriginalSynthetic.attr === "true"
     && largeOriginalSynthetic.marked
-    && requiredTypes.every((type) => largeOriginalSynthetic.types.includes(type))
     && largeOriginalSynthetic.custom === originalImageUrl
-    && largeOriginalSynthetic.uri === originalImageUrl
-    && largeOriginalSynthetic.plain === originalImageUrl
-    && largeOriginalSynthetic.downloadUrl === `image/png:small-original.png:${originalImageUrl}`
+    && !largeOriginalSynthetic.uri
+    && !largeOriginalSynthetic.plain
+    && largeOriginalSynthetic.downloadUrl === `image/png:small-original.png:${expectedOriginalDownloadUrl}`
+    && largeOriginalSynthetic.dedicatedSource === true
+    && largeOriginalSynthetic.imageDraggable === false
+    && largeOriginalSynthetic.diagnostic?.dedicated_drag_source === true
+    && largeOriginalSynthetic.diagnostic?.download_source_kind === "gallery-download"
+    && largeOriginalSynthetic.diagnostic?.files_type_after === false
     && largeOriginalSynthetic.diagnostic?.display_source_kind === "gradio-file"
     && largeOriginalSynthetic.diagnostic?.preview_original_found === false
     && largeOriginalSynthetic.diagnostic?.loaded_width === 3552
@@ -208,8 +255,29 @@ try {
     && largeOriginalSynthetic.diagnostic?.download_url?.attempted === true
     && largeOriginalSynthetic.diagnostic?.download_url?.set_ok === true
     && largeOriginalSynthetic.diagnostic?.download_url?.readback_matches === true
+    && largeOriginalSynthetic.diagnostic?.drag_preview?.set_ok === true
+    && largeOriginalSynthetic.diagnostic?.drag_preview?.width === 120
+    && largeOriginalSynthetic.diagnostic?.drag_preview?.height >= 48
+    && largeOriginalSynthetic.diagnostic?.drag_preview?.height <= 160
     && largeOriginalSynthetic.diagnostic?.transfer_types.some((type) => type.toLowerCase() === "downloadurl")
     && largeOriginalSynthetic.externalHandleCount === 0
+    && synthetic.staleBeforePrepare.dedicatedSource === true
+    && synthetic.staleBeforePrepare.imageDraggable === false
+    && synthetic.staleBeforePrepare.imageAttr === "false"
+    && synthetic.staleBeforePrepare.originalUrl === originalImageUrl
+    && synthetic.preparedAfterFailedLarge.dedicatedSource === false
+    && synthetic.preparedAfterFailedLarge.imageDraggable === true
+    && synthetic.preparedAfterFailedLarge.imageAttr === "true"
+    && !synthetic.preparedAfterFailedLarge.originalUrl
+    && !synthetic.preparedAfterFailedLarge.nativePreview
+    && smallAfterFailedLargeSynthetic.dedicatedSource === false
+    && smallAfterFailedLargeSynthetic.imageDraggable === true
+    && requiredTypes.every((type) => smallAfterFailedLargeSynthetic.types.includes(type))
+    && smallAfterFailedLargeSynthetic.custom === originalImageUrl
+    && smallAfterFailedLargeSynthetic.uri === originalImageUrl
+    && smallAfterFailedLargeSynthetic.plain === originalImageUrl
+    && !smallAfterFailedLargeSynthetic.downloadUrl
+    && smallAfterFailedLargeSynthetic.diagnostic?.dedicated_drag_source === false
     && largeDataSynthetic.prevented === false
     && largeDataSynthetic.draggable
     && largeDataSynthetic.attr === "true"
@@ -228,11 +296,15 @@ try {
     && previewSynthetic.draggable
     && previewSynthetic.attr === "true"
     && previewSynthetic.marked
-    && requiredTypes.every((type) => previewSynthetic.types.includes(type))
     && previewSynthetic.custom === expectedPreviewOriginalUrl
-    && previewSynthetic.uri === expectedPreviewOriginalUrl
-    && previewSynthetic.plain === expectedPreviewOriginalUrl
-    && previewSynthetic.downloadUrl === `image/png:portrait-original.png:${expectedPreviewOriginalUrl}`
+    && !previewSynthetic.uri
+    && !previewSynthetic.plain
+    && previewSynthetic.downloadUrl === `image/png:portrait-original.png:${expectedPreviewDownloadUrl}`
+    && previewSynthetic.dedicatedSource === true
+    && previewSynthetic.imageDraggable === false
+    && previewSynthetic.diagnostic?.dedicated_drag_source === true
+    && previewSynthetic.diagnostic?.download_source_kind === "gallery-download"
+    && previewSynthetic.diagnostic?.files_type_after === false
     && previewSynthetic.diagnostic?.display_source_kind === "gallery-preview"
     && previewSynthetic.diagnostic?.original_source_kind === "gradio-file"
     && previewSynthetic.diagnostic?.preview_original_found === true
@@ -243,15 +315,32 @@ try {
     && previewSynthetic.diagnostic?.download_url?.attempted === true
     && previewSynthetic.diagnostic?.download_url?.set_ok === true
     && previewSynthetic.diagnostic?.download_url?.readback_matches === true
+    && previewSynthetic.diagnostic?.drag_preview?.set_ok === true
+    && previewSynthetic.diagnostic?.drag_preview?.width === 120
     && previewSynthetic.diagnostic?.transfer_types.some((type) => type.toLowerCase() === "downloadurl")
     && previewSynthetic.externalHandleCount === 0
     && finalState.nativeStarts >= 6
     && finalState.nativeEnds >= 6
-    && requiredTypes.every((type) => finalState.nativeTypes.includes(type))
+    && finalState.diagnostics.filter((item) => item.trusted && item.dedicated_drag_source).length >= 1
+    && finalState.diagnostics.filter((item) => item.trusted && item.dedicated_drag_source)
+      .every((item) => item.effect_allowed_after === "copy"
+        && item.files_type_after === false
+        && item.uri_list?.attempted === false
+        && item.plain_text?.attempted === false
+        && item.drag_preview?.set_ok === true)
+    && finalState.diagnostics.some((item) => item.trusted
+      && !item.dedicated_drag_source
+      && item.files_type_after === true
+      && item.uri_list?.set_ok === true
+      && item.plain_text?.set_ok === true)
     && finalState.drops.length >= 2
-    && finalState.drops.every((types) => requiredTypes.every((type) => types.includes(type)))
+    && finalState.drops.some((types) => requiredTypes.every((type) => types.includes(type)))
+    && finalState.drops.some((types) => types.includes("application/x-simpleai-gallery-original-url")
+      && !types.includes("text/uri-list")
+      && !types.includes("text/plain"))
     && finalState.clicks === 2
     && !finalState.pointerPreview
+    && !finalState.nativePreview
     && finalState.externalHandleCount === 0
     && pageErrors.length === 0;
 

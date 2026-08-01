@@ -21,6 +21,7 @@ try:
     _patch_gradio_processing_utils_for_missing_ffprobe()
 except Exception:
     pass
+from extras.media_normalize import normalize_imageslider_pair
 import shared
 import modules.config
 import modules.canvas_workbench_project as canvas_workbench_project
@@ -220,9 +221,10 @@ def _main_vlm_provider_choices(state=None):
 
 def _main_vlm_ui_texts(state=None):
     return {
-        "help_title": _main_vlm_text(state, "Custom API", "自定义 API"),
-        "help_aria": _main_vlm_text(state, "Custom VLM help", "Custom VLM 帮助"),
-        "help_heading": _main_vlm_text(state, "Custom VLM", "自定义 VLM"),
+        "settings_button": _main_vlm_text(state, "API Settings", "API 设置"),
+        "help_title": _main_vlm_text(state, "API Settings", "API 设置"),
+        "help_aria": _main_vlm_text(state, "API settings help", "API 设置帮助"),
+        "help_heading": _main_vlm_text(state, "API Settings", "API 设置"),
         "help_endpoint": _main_vlm_text(state, "Supports OpenAI Chat Completions and Responses APIs.", "支持 OpenAI Chat Completions 和 Responses API。"),
         "help_key": _main_vlm_text(state, "API Key is optional for local Ollama/LM Studio.", "本机 Ollama/LM Studio 可不填 API Key。"),
         "api_name_label": _main_vlm_text(state, "API Name", "接口名称"),
@@ -283,10 +285,14 @@ def _vlm_resolve_version(value):
     return VLM.DEFAULT_VERSION
 
 
-def _vlm_custom_model_choice_name(settings=None):
-    settings = settings if isinstance(settings, dict) else VLM.get_custom_settings()
-    model = str(settings.get("model") or "").strip()
-    return model or VLM.CUSTOM_VERSION
+def _main_vlm_selectable_version(value):
+    version = _vlm_resolve_version(value)
+    if version != VLM.CUSTOM_VERSION:
+        return version
+    profile = vlm_api_profiles.default_profile()
+    if profile:
+        return vlm_api_profiles.profile_version(profile["id"])
+    return VLM.DEFAULT_VERSION
 
 
 def _main_vlm_can_manage_profiles(state=None, request=None):
@@ -308,7 +314,7 @@ def _main_vlm_profile_choices(state=None):
 def _main_vlm_model_catalog(state=None, request=None, refresh=False):
     return vlm_api_profiles.merge_catalog(
         VLM.get_model_catalog(refresh=bool(refresh)),
-        allow_raw_custom=_main_vlm_can_manage_profiles(state, request),
+        allow_raw_custom=False,
     )
 
 
@@ -327,7 +333,7 @@ def _vlm_model_choice_label(version, state=None, request=None):
     item = _main_vlm_catalog_item(version, state, request)
     label = str(item.get("display_label") or item.get("label") or version) if item else version
     if version == VLM.CUSTOM_VERSION:
-        label = _vlm_custom_model_choice_name()
+        label = _main_vlm_text(state, "API Settings", "API 设置")
     return f'{status["icon"]} {label}'
 
 
@@ -337,7 +343,7 @@ def _vlm_model_choices(current=None, state=None, request=None):
         for item in _main_vlm_model_catalog(state, request).get("items") or []
         if item.get("id")
     ]
-    current = _vlm_resolve_version(current) if current else ""
+    current = _main_vlm_selectable_version(current) if current else ""
     if current and current not in {value for _, value in choices}:
         choices.insert(0, (_vlm_model_choice_label(current, state, request), current))
     return choices
@@ -359,10 +365,10 @@ def _vlm_model_status_html(version):
     status = VLM.get_version_status(version)
     state_class = "ready" if status["exists"] else "missing"
     if version == VLM.CUSTOM_VERSION and status["exists"]:
-        title = "Custom OpenAI API is ready."
+        title = "API settings are ready."
     elif version == VLM.CUSTOM_VERSION:
         missing = ", ".join(status["missing_files"][:3])
-        title = f'Custom API settings incomplete: {missing}'
+        title = f'API settings incomplete: {missing}'
     elif status["exists"]:
         title = "All required model files exist."
     else:
@@ -429,13 +435,8 @@ def _main_vlm_selected_version_from_state(state, request=None):
         if str(saved or "").strip() in {"", "None", "Unknown"}:
             saved = None
     if saved:
-        version = _vlm_resolve_version(saved)
-        if version == VLM.CUSTOM_VERSION:
-            profile = vlm_api_profiles.default_profile()
-            if profile:
-                return vlm_api_profiles.profile_version(profile["id"])
-        return version
-    return _vlm_resolve_version(ads.get_admin_default('vlm_version'))
+        return _main_vlm_selectable_version(saved)
+    return _main_vlm_selectable_version(ads.get_admin_default('vlm_version'))
 
 
 def _main_vlm_save_user_default(key, value, state, request=None):
@@ -1236,6 +1237,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     comparison_state_sent = None
     last_progress_gallery_key = None
     last_progress_gallery_resend_time = 0.0
+    last_progress_gallery_display_results = None
 
     def tracked_component_update(name, visible=None, value=_NO_UPDATE_VALUE, **kwargs):
         update_kwargs = {}
@@ -1258,9 +1260,10 @@ def generate_clicked(task: worker.AsyncTask, state):
         )
 
     def progress_gallery_clear_update(preserve_layout=True):
-        nonlocal last_progress_gallery_key, last_progress_gallery_resend_time
+        nonlocal last_progress_gallery_key, last_progress_gallery_resend_time, last_progress_gallery_display_results
         last_progress_gallery_key = None
         last_progress_gallery_resend_time = 0.0
+        last_progress_gallery_display_results = None
         return tracked_component_update(
             "progress_gallery",
             visible="hidden" if preserve_layout else False,
@@ -1268,7 +1271,7 @@ def generate_clicked(task: worker.AsyncTask, state):
         )
 
     def progress_gallery_results_update(results, force=False):
-        nonlocal last_progress_gallery_key, last_progress_gallery_resend_time
+        nonlocal last_progress_gallery_key, last_progress_gallery_resend_time, last_progress_gallery_display_results
         if not results:
             return progress_gallery_clear_update(preserve_layout=True)
         has_video_result = any(
@@ -1290,6 +1293,16 @@ def generate_clicked(task: worker.AsyncTask, state):
             last_progress_gallery_resend_time = now
         else:
             last_progress_gallery_resend_time = time.time()
+        if same_result_key and not force and last_progress_gallery_display_results is not None:
+            display_results = last_progress_gallery_display_results
+        else:
+            display_engine_type = "video" if has_video_result else "image"
+            display_results = [
+                gallery_util.gallery_display_path_for_progress(path, display_engine_type, user_did, state)
+                if isinstance(path, (str, os.PathLike)) else path
+                for path in results
+            ]
+            last_progress_gallery_display_results = display_results
         last_progress_gallery_key = result_key
         force_visible_update = bool(results) and not force
         if force or force_visible_update:
@@ -1307,7 +1320,7 @@ def generate_clicked(task: worker.AsyncTask, state):
         return tracked_component_update(
             "progress_gallery",
             visible=True,
-            value=results,
+            value=display_results,
             label="Finished Videos" if has_video_result else "Finished Images",
             allow_preview=True,
             preview=preview_single_result,
@@ -2816,7 +2829,7 @@ def load_welcome_media_ui(state_params, is_generating=False):
 
 def replace_welcome_media_file(file_value, kind, state_params, is_generating):
     if not file_value:
-        return skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update()
+        return skip_component_update(), skip_component_update(), skip_component_update(), gr_update(value=None)
     try:
         welcome_media.replace_media(file_value, kind, state_params)
         gr.Info(welcome_media.localized_message(state_params, welcome_media.saved_message_key(kind)), duration=3)
@@ -2853,6 +2866,7 @@ def restore_welcome_media_default(kind, state_params, is_generating):
 with shared.gradio_root:
     state_topbar = gr.State({})
     cached_input_image = gr.State(None)
+    comparison_output_paths = gr.State([])
     params_backend = gr.State(get_initial_params_backend())
     model_params_state = gr.State(get_initial_model_params_state())
     system_params = gr.JSON({}, visible=False)
@@ -4005,7 +4019,7 @@ with shared.gradio_root:
                             replace_welcome_media_file,
                             inputs=[welcome_media_upload, welcome_media_target, state_topbar, state_is_generating],
                             outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window, welcome_media_upload],
-                            js="(file,kind,state,isGenerating)=>{try{if(file&&window.SimpAIWelcomeMedia) window.SimpAIWelcomeMedia.begin(kind);}catch(e){} return [file,kind,state,isGenerating];}",
+                            js="(file,kind,state,isGenerating)=>{try{const media=window.SimpAIWelcomeMedia;if(!media?.consumePickerSelection(file)) return [null,kind,state,isGenerating];media.begin(kind);}catch(e){return [null,kind,state,isGenerating];}return [file,kind,state,isGenerating];}",
                             queue=False,
                             show_progress=False,
                         )
@@ -4055,7 +4069,7 @@ with shared.gradio_root:
                                 elem_id="gallery_delete_target",
                                 elem_classes=["sai-gradio-hidden-bridge"],
                             )
-                            prompt_info_evt = prompt_info_button.click(toolbox.toggle_prompt_info, inputs=state_topbar, outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar], show_progress=False)
+                            prompt_info_evt = prompt_info_button.click(toolbox.toggle_prompt_info, inputs=state_topbar, outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar], show_progress=False, js='(state)=>{try{return typeof simpleaiSyncGallerySelectionIntoState==="function"?simpleaiSyncGallerySelectionIntoState(state):state;}catch(e){console.warn("[UI-TRACE] gallery_metadata.selection_sync_failed",e);return state;}}')
                             prompt_info_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showPromptInfoOverlayFromInfobox(); traceResultPanelStateSoon("prompt_info.click.after");}catch(e){console.warn("[UI-TRACE] prompt_info.dom_trace_failed", e);}}')
                             prompt_info_close_evt = prompt_info_close_btn.click(toolbox.close_prompt_info, inputs=state_topbar, outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar], show_progress=False)
                             prompt_info_close_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{hidePromptInfoOverlay(); traceResultPanelStateSoon("prompt_info.close.after");}catch(e){console.warn("[UI-TRACE] prompt_info_close.dom_trace_failed", e);}}')
@@ -5324,6 +5338,7 @@ with shared.gradio_root:
                 state_prompt_history = gr.State([])
                 with gr.Accordion(label='Prompt History', visible=True, open=True, elem_id='prompt_history', elem_classes=['simpai-mounted-hidden']) as prompt_history:
                     history_prompts = gr.Dataset(components=[prompt],label='Click to reuse:',samples=[[p] for p in state_prompt_history.value[-5:]],type='index')
+                prompt_history_data = gr.Textbox(value='[]', visible='hidden', container=False, elem_id='prompt_history_data', elem_classes=['sai-gradio-hidden-bridge'])
                 history_prompts.click(lambda x, y: y[x] if 0 <= x < len(y) else "",
                                       inputs=[history_prompts, state_prompt_history],
                                       outputs=prompt,show_progress=False,queue=False)
@@ -7123,8 +7138,22 @@ with shared.gradio_root:
                                             elem_classes=['describe-vlm-model-select'],
                                             min_width=140,
                                         )
+                                        describe_vlm_api_settings_btn = gr.Button(
+                                            value=_initial_main_vlm_texts["settings_button"],
+                                            size='sm',
+                                            min_width=40,
+                                            visible=True if is_local_mode() else 'hidden',
+                                            elem_id='describe_vlm_api_settings_btn',
+                                            elem_classes=['describe-vlm-api-settings-button'],
+                                        )
                                         vlm_status_info = gr.HTML(value=_vlm_model_status_html(VLM.current_version), visible=False, elem_id='describe_vlm_model_status')
-                                    with gr.Group(visible=_initial_main_vlm_version == VLM.CUSTOM_VERSION, elem_id='describe_vlm_custom_panel') as describe_vlm_custom_panel:
+                                    describe_vlm_api_settings_open_bridge = gr.Textbox(
+                                        value='',
+                                        visible='hidden',
+                                        elem_id='describe_vlm_api_settings_open_bridge',
+                                        elem_classes=['sai-gradio-hidden-bridge'],
+                                    )
+                                    with gr.Group(visible=False, elem_id='describe_vlm_custom_panel') as describe_vlm_custom_panel:
                                         describe_vlm_custom_help = gr.HTML(
                                             value=_main_vlm_custom_help_html(_initial_main_vlm_lang_state),
                                             elem_id='describe_vlm_custom_help',
@@ -8401,28 +8430,27 @@ with shared.gradio_root:
                     )
 
                 def _describe_vlm_dropdown_update(version, state=None, request=None):
+                    version = _main_vlm_selectable_version(version)
                     return dropdown_update(
                         choices=_vlm_model_choices(version, state, request),
-                        value=_vlm_resolve_version(version),
+                        value=version,
                     )
 
                 def load_main_vlm_user_settings(state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     can_manage = _main_vlm_can_manage_profiles(state, request)
                     settings = _main_vlm_custom_settings_from_state(state, request=request)
-                    version = _main_vlm_selected_version_from_state(state, request=request)
-                    if version == VLM.CUSTOM_VERSION and not can_manage:
-                        default_profile = vlm_api_profiles.default_profile()
-                        version = vlm_api_profiles.profile_version(default_profile["id"]) if default_profile else VLM.DEFAULT_VERSION
-                    version, active_settings, profile = _activate_main_vlm_version(version, settings)
-                    editor_settings = active_settings if profile else settings
-                    model_choices = [editor_settings["model"]] if editor_settings["model"] else []
+                    version = _main_vlm_selectable_version(_main_vlm_selected_version_from_state(state, request=request))
+                    version, _, profile = _activate_main_vlm_version(version, settings)
                     texts = _main_vlm_ui_texts(state)
-                    selected_profile = profile or vlm_api_profiles.default_profile()
+                    selected_profile = (profile or vlm_api_profiles.default_profile()) if can_manage else None
+                    editor_settings = vlm_api_profiles.runtime_settings(selected_profile) if selected_profile else settings
+                    model_choices = [editor_settings["model"]] if editor_settings["model"] else []
                     return (
                         _describe_vlm_dropdown_update(version, state, request),
                         _vlm_model_status_html(version),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION and can_manage),
+                        gr_update(visible=False),
+                        gr_update(value=texts["settings_button"], visible=can_manage, interactive=can_manage),
                         gr_update(value=_main_vlm_custom_help_html(state)),
                         dropdown_update(
                             choices=_main_vlm_profile_choices(state),
@@ -8449,27 +8477,28 @@ with shared.gradio_root:
                 def set_describe_vlm_version(version, state, api_name, provider, api_format, base_url, model, api_key, supports_images, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
+                    version = _main_vlm_selectable_version(version)
                     version, settings, profile = _activate_main_vlm_version(version, settings)
                     _main_vlm_save_selected_version(version, state, request=request)
-                    can_manage = _main_vlm_can_manage_profiles(state, request)
                     return (
                         _describe_vlm_dropdown_update(version, state, request),
                         _vlm_model_status_html(version),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION and can_manage),
-                        _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
+                        gr_update(visible=False),
+                        "",
                         _describe_vlm_dropdown_update(version, state, request),
                     )
 
                 def set_admin_vlm_version(version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     settings = _main_vlm_custom_settings_from_state(state, request=request)
+                    version = _main_vlm_selectable_version(version)
                     version, settings, profile = _activate_main_vlm_version(version, settings)
                     _main_vlm_save_selected_version(version, state, persist_admin=True, request=request)
                     return (
                         _vlm_model_status_html(version),
                         _describe_vlm_dropdown_update(version, state, request),
-                        gr_update(visible=version == VLM.CUSTOM_VERSION and _main_vlm_can_manage_profiles(state, request)),
-                        _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
+                        gr_update(visible=False),
+                        "",
                     )
 
                 def sync_main_vlm_custom_settings(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
@@ -8560,7 +8589,7 @@ with shared.gradio_root:
                         vlm.set_version(VLM.CUSTOM_VERSION)
                         missing = VLM.get_custom_missing_settings()
                         if missing:
-                            text = _main_vlm_text(state, f"Custom API settings incomplete: {', '.join(missing)}", f"Custom API 设置不完整：{', '.join(missing)}")
+                            text = _main_vlm_text(state, f"API settings incomplete: {', '.join(missing)}", f"API 设置不完整：{', '.join(missing)}")
                             return (
                                 _describe_vlm_dropdown_update(version, state, request),
                                 _vlm_model_status_html(version),
@@ -8576,14 +8605,14 @@ with shared.gradio_root:
                             system_prompt="You are an API connectivity tester. Reply with OK only.",
                         )
                         text = str(response or "OK").strip()[:80]
-                        message = _main_vlm_text(state, f"Custom API test succeeded: {text}", f"Custom API 测试成功：{text}")
+                        message = _main_vlm_text(state, f"API test succeeded: {text}", f"API 测试成功：{text}")
                         return (
                             _describe_vlm_dropdown_update(version, state, request),
                             _vlm_model_status_html(version),
                             _main_vlm_custom_message_html(message, "ready"),
                         )
                     except Exception as exc:
-                        message = _main_vlm_text(state, f"Custom API test failed: {exc}", f"Custom API 测试失败：{exc}")
+                        message = _main_vlm_text(state, f"API test failed: {exc}", f"API 测试失败：{exc}")
                         return (
                             _describe_vlm_dropdown_update(version, state, request),
                             _vlm_model_status_html(version),
@@ -8618,6 +8647,27 @@ with shared.gradio_root:
                         message,
                     )
 
+                def open_main_vlm_api_settings(was_visible, version, state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    unchanged = [skip_component_update()] * 10
+                    if not _main_vlm_can_manage_profiles(state, request):
+                        return gr_update(visible=False), *unchanged
+                    if _as_bool(was_visible, False):
+                        return gr_update(visible=False), *unchanged
+                    version = _main_vlm_selectable_version(version)
+                    profile = vlm_api_profiles.profile_by_version(version) or vlm_api_profiles.default_profile()
+                    return (
+                        gr_update(visible=True),
+                        gr_update(value=_main_vlm_custom_help_html(state)),
+                        *_main_vlm_profile_editor_values(profile, state),
+                    )
+
+                def check_selected_main_vlm_model(version, state, request: gr.Request):
+                    state = _main_vlm_state_from_request(state, request)
+                    version = _main_vlm_selectable_version(version)
+                    payload = json.dumps({"kind": "vlm", "version": version})
+                    return check_and_show_missing_models(payload, state)
+
                 def load_main_vlm_api_profile(profile_id, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     if not _main_vlm_can_manage_profiles(state, request):
@@ -8643,8 +8693,9 @@ with shared.gradio_root:
                     _apply_main_vlm_custom_settings(settings)
                     missing = VLM.get_custom_missing_settings()
                     if missing:
+                        version = _main_vlm_selected_version_from_state(state, request=request)
                         text = _main_vlm_text(state, f"Configuration is incomplete: {', '.join(missing)}", f"配置不完整：{', '.join(missing)}")
-                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.CUSTOM_VERSION, state, request), _vlm_model_status_html(VLM.CUSTOM_VERSION), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.CUSTOM_VERSION)
+                        return dropdown_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
                     profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
                     profile = vlm_api_profiles.upsert_profile(settings, profile_id=profile_id)
                     version = vlm_api_profiles.profile_version(profile["id"])
@@ -8706,17 +8757,67 @@ with shared.gradio_root:
                     describe_vlm_custom_api_key,
                     describe_vlm_custom_supports_images,
                 ]
-                describe_vlm_model.input(
+                main_vlm_profile_editor_outputs = [
+                    describe_vlm_custom_profile,
+                    describe_vlm_custom_api_name,
+                    describe_vlm_custom_provider,
+                    describe_vlm_custom_api_format,
+                    describe_vlm_custom_base_url,
+                    describe_vlm_custom_model,
+                    describe_vlm_custom_api_key,
+                    describe_vlm_custom_supports_images,
+                    describe_vlm_custom_message,
+                ]
+                main_vlm_api_settings_evt = describe_vlm_api_settings_btn.click(
+                    open_main_vlm_api_settings,
+                    inputs=[describe_vlm_api_settings_open_bridge, describe_vlm_model, state_topbar],
+                    outputs=[describe_vlm_custom_panel, describe_vlm_custom_help] + main_vlm_profile_editor_outputs,
+                    queue=False,
+                    show_progress=False,
+                    js="""(wasVisible, version, state)=>{
+                        const anchor = document.getElementById('describe_vlm_custom_help');
+                        const style = anchor ? window.getComputedStyle(anchor) : null;
+                        const visible = !!(anchor && style && style.display !== 'none' && style.visibility !== 'hidden' && anchor.getBoundingClientRect().height > 0);
+                        return [visible ? 'open' : '', version, state];
+                    }""",
+                )
+                main_vlm_api_settings_evt.then(
+                    None,
+                    js="""()=>{
+                        window.setTimeout(()=>{
+                            const anchor = document.getElementById('describe_vlm_custom_help');
+                            if (!anchor || anchor.getBoundingClientRect().height <= 0) return;
+                            anchor.scrollIntoView({behavior: 'smooth', block: 'start'});
+                        }, 80);
+                    }""",
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_model_select_evt = describe_vlm_model.input(
                     set_describe_vlm_version,
                     inputs=[describe_vlm_model, state_topbar] + main_vlm_custom_inputs,
                     outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_panel, describe_vlm_custom_message, vlm_version],
                     queue=False,
                     show_progress=False,
                 )
-                describe_vlm_model_select_btn.click(
+                main_vlm_model_select_evt.then(
+                    check_selected_main_vlm_model,
+                    inputs=[describe_vlm_model, state_topbar],
+                    outputs=[missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_header_model_select_evt = describe_vlm_model_select_btn.click(
                     set_describe_vlm_version,
                     inputs=[describe_vlm_model_select_bridge, state_topbar] + main_vlm_custom_inputs,
                     outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_panel, describe_vlm_custom_message, vlm_version],
+                    queue=False,
+                    show_progress=False,
+                )
+                main_vlm_header_model_select_evt.then(
+                    check_selected_main_vlm_model,
+                    inputs=[describe_vlm_model, state_topbar],
+                    outputs=[missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
                     queue=False,
                     show_progress=False,
                 )
@@ -8780,17 +8881,6 @@ with shared.gradio_root:
                     queue=True,
                     show_progress=True,
                 )
-                main_vlm_profile_editor_outputs = [
-                    describe_vlm_custom_profile,
-                    describe_vlm_custom_api_name,
-                    describe_vlm_custom_provider,
-                    describe_vlm_custom_api_format,
-                    describe_vlm_custom_base_url,
-                    describe_vlm_custom_model,
-                    describe_vlm_custom_api_key,
-                    describe_vlm_custom_supports_images,
-                    describe_vlm_custom_message,
-                ]
                 describe_vlm_custom_profile.input(
                     load_main_vlm_api_profile,
                     inputs=[describe_vlm_custom_profile, state_topbar],
@@ -8838,6 +8928,7 @@ with shared.gradio_root:
                     describe_vlm_model,
                     vlm_status_info,
                     describe_vlm_custom_panel,
+                    describe_vlm_api_settings_btn,
                     describe_vlm_custom_help,
                     describe_vlm_custom_profile,
                     describe_vlm_custom_api_name,
@@ -9775,10 +9866,15 @@ with shared.gradio_root:
                     len(existing_history_raw),
                     len(updated_history),
                 )
-                return updated_history, dataset_update(samples=[[v] for v in updated_history])
+                return (
+                    updated_history,
+                    dataset_update(samples=[[v] for v in updated_history]),
+                    json.dumps(updated_history, ensure_ascii=False),
+                )
             except Exception as e:
                 logger.warning(f"[PromptHistory] update failed: {type(e).__name__}: {e}")
-                return existing_history[-MAX_HISTORY:], skip_component_update()
+                fallback_history = existing_history[-MAX_HISTORY:]
+                return fallback_history, skip_component_update(), json.dumps(fallback_history, ensure_ascii=False)
 
         image_input_panel_ctrls = [engine_class_display, uov_method, enhance_checkbox, enhance_input_image]
         reset_preset_layout = [params_backend, advanced_checkbox, performance_selection, scheduler_name, sampler_name, input_image_checkbox, prompt_panel_checkbox, enhance_checkbox, base_model, refiner_model, overwrite_step, guidance_scale, negative_prompt, preset_instruction, identity_dialog] + image_input_panel_ctrls + lora_ctrls
@@ -10078,7 +10174,7 @@ with shared.gradio_root:
             )
             return processed
 
-        def toggle_comparison(is_comp, input_img, gallery_output, final_gallery, state_params, scene1, scene_canvas):
+        def toggle_comparison(is_comp, input_img, result_paths, state_params, scene1, scene_canvas):
             state_params = dict(state_params or {})
 
             def mark_compare_state_ready(ready, cleared):
@@ -10178,20 +10274,22 @@ with shared.gradio_root:
 
             output_img = None
             if gallery_util.selected_media_is_post_generation_output(state_params) is True:
-                output_img = process_image_for_slider(state_params.get("__selected_gallery_media_path"))
+                selected_path = state_params.get("__selected_gallery_media_path")
+                if isinstance(selected_path, (str, os.PathLike)) and os.path.isfile(os.fspath(selected_path)):
+                    output_img = process_image_for_slider(selected_path)
 
             if output_img is None:
-                for output in [gallery_output, final_gallery]:
+                for output in [result_paths, state_params.get("__post_generation_image_paths")]:
                     output_img = first_gallery_image_for_slider(output)
                     if output_img is not None:
                         break
 
-            if not output_img:
+            if output_img is None:
                 util.log_ui_trace(
                     logger,
-                    "[UI-TRACE] compare.toggle_missing_output | progress=%r, final=%r",
-                    describe_slider_image_source(gallery_output),
-                    describe_slider_image_source(final_gallery),
+                    "[UI-TRACE] compare.toggle_missing_output | results=%r, state_paths=%r",
+                    describe_slider_image_source(result_paths),
+                    describe_slider_image_source(state_params.get("__post_generation_image_paths")),
                 )
                 return (
                     False,
@@ -10204,6 +10302,7 @@ with shared.gradio_root:
                     skip_component_update(),
                     state_params,
                 )
+            input_img, output_img = normalize_imageslider_pair(input_img, output_img, max_side=2048)
             had_main_gallery_browser_state = bool(state_params.get("gallery_state") == "main_browser")
             gallery_util.clear_main_gallery_browser_state(state_params)
             if had_main_gallery_browser_state or state_params.get("gallery_state") == "main_browser":
@@ -10230,7 +10329,7 @@ with shared.gradio_root:
                 state_params,
             )
 
-        def check_comparison_visibility(input_img, generation_task, gallery_output, video_output, state_topbar, image_tools_enabled, scene1, scene_canvas):
+        def check_comparison_visibility(input_img, generation_task, state_topbar, image_tools_enabled, scene1, scene_canvas):
             state_topbar = dict(state_topbar or {})
             image_tools_enabled = bool(image_tools_enabled)
             state_topbar["__image_tools_enabled"] = image_tools_enabled
@@ -10238,15 +10337,6 @@ with shared.gradio_root:
             engine_type = state_topbar.get('engine_type')
             if not engine_type:
                 engine_type = state_topbar.get('default_engine', {}).get('engine_type')
-
-            def _has_component_output(value):
-                if value is None:
-                    return False
-                if isinstance(value, dict):
-                    return any(value.get(key) for key in ("name", "data", "value", "path"))
-                if isinstance(value, (list, tuple, set)):
-                    return len(value) > 0
-                return bool(value)
 
             def _first_image_output(value):
                 if value is None:
@@ -10286,25 +10376,34 @@ with shared.gradio_root:
                     return None
 
             task_results = getattr(generation_task, 'results', None)
-            try:
-                task_has_output = bool(task_results and len(task_results) > 0)
-            except Exception:
-                task_has_output = bool(task_results)
-            gallery_has_output = _has_component_output(gallery_output)
-            video_has_output = _has_component_output(video_output)
+            if isinstance(task_results, (list, tuple, set)):
+                task_result_values = [value for value in task_results if value is not None]
+            elif task_results is not None:
+                task_result_values = [task_results]
+            else:
+                task_result_values = []
+            task_has_output = bool(task_result_values)
+            task_media_paths = image_output_paths(task_results)
             output_list = state_topbar.get("__output_list") or []
             task_content_type = getattr(generation_task, 'content_type', None)
-            catalog_has_video_output = False
-            has_output = task_has_output or gallery_has_output or video_has_output
-            is_video_context = bool(engine_type == 'video' or task_content_type == 'video' or video_has_output)
+            video_has_output = bool(
+                task_has_output
+                and (
+                    task_content_type == 'video'
+                    or any(str(path).lower().endswith(('.mp4', '.webm')) for path in task_result_values)
+                )
+            )
+            gallery_has_output = bool(task_has_output and not video_has_output)
+            has_output = task_has_output
+            is_video_context = bool(engine_type == 'video' or video_has_output)
             input_for_compare = resolve_comparison_input(input_img, state_topbar, scene1, scene_canvas)
             compare_input_ok = input_for_compare is not None
             state_topbar["__post_generation_has_output"] = bool(has_output)
             state_topbar["__post_generation_gallery_output"] = bool(gallery_has_output)
             state_topbar["__post_generation_video_output"] = bool(video_has_output)
             state_topbar["__post_generation_compare_input_ok"] = bool(compare_input_ok)
-            preview_url = _file_url_for_output(task_results) or _file_url_for_output(gallery_output)
-            post_generation_image_paths = image_output_paths(task_results) or image_output_paths(gallery_output)
+            preview_url = _file_url_for_output(task_results)
+            post_generation_image_paths = task_media_paths
             if preview_url and not video_has_output:
                 state_topbar["__post_generation_image_url"] = preview_url
                 state_topbar["__post_generation_image_paths"] = post_generation_image_paths
@@ -10320,7 +10419,7 @@ with shared.gradio_root:
                 state_topbar["__post_generation_compare_visible"] = False
                 state_topbar["__post_generation_compare_ready"] = False
                 state_topbar["__post_generation_compare_cleared"] = True
-                return compare_button_gr_update(visible=False, ready=False), gr_update(visible=False), state_topbar
+                return compare_button_gr_update(visible=False, ready=False), gr_update(visible=False), state_topbar, []
 
             latest_choice = output_list[0] if output_list else None
             state_topbar["gallery_preview_open"] = True
@@ -10329,7 +10428,7 @@ with shared.gradio_root:
                 state_topbar["prompt_info"] = [latest_choice, 0]
 
             toolbox_visible = bool(gallery_util._should_show_image_toolbox(image_tools_enabled, state_topbar))
-            comparable_output_visible = bool((not is_video_context) and has_output and (task_has_output or gallery_has_output))
+            comparable_output_visible = bool((not is_video_context) and task_has_output)
             compare_button_visible = bool(toolbox_visible)
             compare_ready = bool(toolbox_visible and comparable_output_visible and compare_input_ok)
             state_topbar["__post_generation_compare_visible"] = bool(compare_button_visible)
@@ -10341,7 +10440,7 @@ with shared.gradio_root:
                 state_topbar.pop("__post_generation_compare_choice", None)
             util.log_ui_trace(
                 logger,
-                "[UI-TRACE] post_generation_toolbox_sync | engine_type=%r, task_type=%r, video_context=%r, has_output=%r, task_output=%r, gallery_output=%r, video_output=%r, catalog_video=%r, toolbox=%r, choice=%r, image_tools=%r, image_url=%r, input=%r, input_ok=%r, compare_visible=%r, compare_ready=%r",
+                "[UI-TRACE] post_generation_toolbox_sync | engine_type=%r, task_type=%r, video_context=%r, has_output=%r, task_output=%r, gallery_output=%r, video_output=%r, toolbox=%r, choice=%r, image_tools=%r, image_url=%r, input=%r, input_ok=%r, compare_visible=%r, compare_ready=%r",
                 engine_type,
                 task_content_type,
                 is_video_context,
@@ -10349,7 +10448,6 @@ with shared.gradio_root:
                 task_has_output,
                 gallery_has_output,
                 video_has_output,
-                catalog_has_video_output,
                 toolbox_visible,
                 latest_choice,
                 image_tools_enabled,
@@ -10360,9 +10458,9 @@ with shared.gradio_root:
                 compare_ready,
             )
             compare_update = compare_button_gr_update(visible=toolbox_visible, ready=compare_ready)
-            return compare_update, gr_update(visible=toolbox_visible), state_topbar
+            return compare_update, gr_update(visible=toolbox_visible), state_topbar, post_generation_image_paths
 
-        compare_btn.click(toggle_comparison, inputs=[comparison_state, cached_input_image, progress_gallery, gallery, state_topbar, scene_input_image1, scene_canvas_image], outputs=[comparison_state, comparison_box, progress_gallery, gallery, progress_window, progress_video, compare_btn, image_toolbox, state_topbar], show_progress=False, js='(isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas)=>{try{window.__simpleAIComparisonOpeningUntil=isComp?0:(Date.now()+2500); if(!isComp&&typeof preparePostGenerationComparisonSurfaceState==="function"){const prepared=preparePostGenerationComparisonSurfaceState(state,"comparison_click_before"); if(prepared&&typeof prepared==="object") state=prepared;}}catch(e){console.warn("[UI-TRACE] comparison_click_prepare_failed", e);} return [isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas];}') \
+        compare_btn.click(toggle_comparison, inputs=[comparison_state, cached_input_image, comparison_output_paths, state_topbar, scene_input_image1, scene_canvas_image], outputs=[comparison_state, comparison_box, progress_gallery, gallery, progress_window, progress_video, compare_btn, image_toolbox, state_topbar], show_progress=False, js='(isComp,input,resultPaths,state,scene1,sceneCanvas)=>{try{window.__simpleAIComparisonOpeningUntil=isComp?0:(Date.now()+2500); if(!isComp&&typeof preparePostGenerationComparisonSurfaceState==="function"){const prepared=preparePostGenerationComparisonSurfaceState(state,"comparison_click_before"); if(prepared&&typeof prepared==="object") state=prepared;}}catch(e){console.warn("[UI-TRACE] comparison_click_prepare_failed", e);} return [isComp,input,resultPaths,state,scene1,sceneCanvas];}') \
             .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(state&&state.__post_generation_compare_cleared){if(typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("comparison_click_cleared"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); return;} if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click"); syncPostGenerationResultControls(state); setTimeout(()=>{if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click+60"); syncPostGenerationResultControls(state);},60); setTimeout(()=>syncPostGenerationResultControls(state),180); setTimeout(()=>syncPostGenerationResultControls(state),420);}catch(e){console.warn("[UI-TRACE] comparison_preview_sync_failed", e);}}')
         protections = [random_button, super_prompter, background_theme, image_tools_checkbox] + nav_bars
         from extras.media_normalize import stash_scene_media_before_generation as _stash_scene_media_before_generation
@@ -10642,9 +10740,9 @@ with shared.gradio_root:
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
-        generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts], show_progress=False)
-        generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask, progress_gallery, progress_video], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, progress_gallery, progress_video, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar], show_progress=False))
+        generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
+        generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths], show_progress=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}'))
         generate_event = bind_generation_failure_cleanup(generate_event.success(finalize_generation_gallery_surface, inputs=[currentTask], outputs=[progress_window, progress_gallery, progress_video, gallery], show_progress=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(_restore_scene_media_after_generation, inputs=[state_topbar, scene_video_backup, scene_audio_backup, scene_original_video_backup], outputs=[scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder], show_progress=False))
@@ -10687,8 +10785,8 @@ with shared.gradio_root:
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_cloud_image_params, inputs=[params_backend, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_theme], outputs=params_backend, show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls_preview + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=generate_clicked, inputs=[currentTask, state_topbar], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask, progress_gallery, progress_video], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, progress_gallery, progress_video, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar], show_progress=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(check_comparison_visibility, inputs=[cached_input_image, currentTask, state_topbar, image_tools_checkbox, scene_input_image1, scene_canvas_image], outputs=[compare_btn, image_toolbox, state_topbar, comparison_output_paths], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] compare_ready_sync_failed", e);}}'))
         preview_event = bind_generation_failure_cleanup(preview_event.success(finalize_generation_gallery_surface, inputs=[currentTask], outputs=[progress_window, progress_gallery, progress_video, gallery], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(_restore_scene_media_after_generation, inputs=[state_topbar, scene_video_backup, scene_audio_backup, scene_original_video_backup], outputs=[scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder], show_progress=False))
@@ -11192,7 +11290,7 @@ with shared.gradio_root:
         )
         return topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)[0]
     
-    prompt_regen_evt = prompt_regen_button.click(toolbox.toggle_note_box_regen, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False)
+    prompt_regen_evt = prompt_regen_button.click(toolbox.toggle_note_box_regen, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False, js='(...args)=>{try{const index=args.length-1;if(index>=0&&typeof simpleaiSyncGallerySelectionIntoState==="function")args[index]=simpleaiSyncGallerySelectionIntoState(args[index]);}catch(e){console.warn("[UI-TRACE] gallery_regen.selection_sync_failed",e);}return args;}')
     prompt_regen_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("regen");}catch(e){console.warn("[UI-TRACE] toolbox_note.regen_overlay_failed", e);}}')
     prompt_preset_evt = prompt_preset_button.click(toolbox.toggle_note_box_preset_overlay, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False)
     prompt_preset_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("preset");}catch(e){console.warn("[UI-TRACE] toolbox_note.preset_overlay_failed", e);}}')
@@ -12312,6 +12410,25 @@ async def simpleai_gallery_preview(preview_name: str):
         )
     except Exception as e:
         return JSONResponse({"ok": False, "error": "Gallery Preview Error", "details": str(e)}, status_code=500)
+
+
+@app.api_route("/simpleai/gallery-download/{download_name}", methods=["GET", "HEAD"])
+async def simpleai_gallery_download(download_name: str):
+    try:
+        path = await run_in_threadpool(lambda: gallery_util.get_gallery_original_download_path(download_name))
+        if not path:
+            return JSONResponse({"ok": False, "error": "Gallery download not found"}, status_code=404)
+        return FileResponse(
+            path,
+            filename=os.path.basename(path),
+            content_disposition_type="attachment",
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": "Gallery Download Error", "details": str(e)}, status_code=500)
 
 @app.get("/canvas-workbench/app")
 async def canvas_workbench_standalone_app(request: Request):

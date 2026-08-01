@@ -67,6 +67,43 @@ function selected_gallery_index() {
     return all_gallery_buttons().findIndex(elem => elem.classList.contains('selected'));
 }
 
+function simpleaiSyncGallerySelectionIntoState(state) {
+    const targetState = state && typeof state === 'object' ? state : {};
+    const app = typeof gradioApp === 'function' ? gradioApp() : document;
+    const roots = ['#finished_gallery', '#final_gallery']
+        .map((selector) => app.querySelector(selector))
+        .filter(Boolean);
+    let root = roots.find((node) => node.offsetParent !== null && node.querySelector('.thumbnail-item.thumbnail-small.selected'));
+    if (!root) root = roots.find((node) => node.querySelector('.thumbnail-item.thumbnail-small.selected'));
+    if (!root) return targetState;
+
+    const buttons = Array.from(root.querySelectorAll('.thumbnail-item.thumbnail-small'));
+    const button = root.querySelector('.thumbnail-item.thumbnail-small.selected');
+    const selectedIndex = button ? buttons.indexOf(button) : -1;
+    if (selectedIndex < 0) return targetState;
+
+    const liveState = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
+        ? window.simpleaiTopbarSystemParams
+        : targetState;
+    const browserPaths = Array.isArray(liveState.__main_gallery_browser_paths)
+        ? liveState.__main_gallery_browser_paths
+        : (Array.isArray(targetState.__main_gallery_browser_paths) ? targetState.__main_gallery_browser_paths : []);
+    const media = simpleaiGalleryButtonMedia(button);
+    const mediaSrc = simpleaiMediaSrc(media);
+    let mediaPath = simpleaiGalleryFilePathFromSrc(mediaSrc);
+    if (!mediaPath) mediaPath = simpleaiGalleryFilePathFromSrc(simpleaiGalleryDisplayPreviewOriginalSrc(mediaSrc));
+    if (!mediaPath && selectedIndex < browserPaths.length) mediaPath = String(browserPaths[selectedIndex] || '');
+
+    const livePromptInfo = Array.isArray(liveState.prompt_info) ? liveState.prompt_info : [];
+    const statePromptInfo = Array.isArray(targetState.prompt_info) ? targetState.prompt_info : [];
+    const choice = livePromptInfo.length ? livePromptInfo[0] : (statePromptInfo.length ? statePromptInfo[0] : null);
+    targetState.prompt_info = [choice, selectedIndex];
+    if (mediaPath) targetState.__selected_gallery_media_path = mediaPath;
+    window.simpleaiTopbarSystemParams = targetState;
+    if (typeof topbarLastSystemParams !== 'undefined') topbarLastSystemParams = targetState;
+    return targetState;
+}
+
 function simpleaiGalleryFilePathFromSrc(src) {
     const value = String(src || '');
     if (!value) return '';
@@ -137,6 +174,9 @@ function simpleaiMediaSrc(elem) {
 
 const SIMPLEAI_GALLERY_DISPLAY_PREVIEW_PREFIX = 'simpai_gprev__';
 const SIMPLEAI_GALLERY_DISPLAY_PREVIEW_ROUTE = '/simpleai/gallery-preview/';
+const SIMPLEAI_GALLERY_ORIGINAL_DOWNLOAD_PREFIX = 'simpai_gdownload__';
+const SIMPLEAI_GALLERY_OUTPUT_DOWNLOAD_PREFIX = 'simpai_gdownload_path__';
+const SIMPLEAI_GALLERY_ORIGINAL_DOWNLOAD_ROUTE = '/simpleai/gallery-download/';
 const SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE = 'application/x-simpleai-gallery-original-url';
 
 function simpleaiBase64UrlDecodeUtf8(value) {
@@ -173,9 +213,69 @@ function simpleaiGalleryDisplayPreviewOriginalSrc(src) {
     return `${url.origin}${basePath}/gradio_api/file=${encodedPath}`;
 }
 
+function simpleaiGallerySignedOriginalDownloadSrc(src) {
+    const value = String(src || '');
+    if (!value) return '';
+    try {
+        const url = new URL(value, document.baseURI || window.location?.href || location.href);
+        const fileName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '');
+        const match = fileName.match(new RegExp(`^${SIMPLEAI_GALLERY_DISPLAY_PREVIEW_PREFIX}([A-Za-z0-9_-]+)__([0-9a-f]{16})\\.jpg$`));
+        if (!match) return '';
+        const routeIndex = url.pathname.indexOf(SIMPLEAI_GALLERY_DISPLAY_PREVIEW_ROUTE);
+        const basePath = routeIndex >= 0 ? url.pathname.slice(0, routeIndex) : '';
+        const downloadName = `${SIMPLEAI_GALLERY_ORIGINAL_DOWNLOAD_PREFIX}${match[1]}__${match[2]}`;
+        return `${url.origin}${basePath}${SIMPLEAI_GALLERY_ORIGINAL_DOWNLOAD_ROUTE}${downloadName}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+function simpleaiGalleryOutputDownloadSrc(src) {
+    const value = String(src || '');
+    const mediaPath = simpleaiGalleryFilePathFromSrc(value);
+    if (!value || !mediaPath) return '';
+    try {
+        const url = new URL(value, document.baseURI || window.location?.href || location.href);
+        let routeIndex = -1;
+        for (const marker of ['/gradio_api/file=', '/file=']) {
+            routeIndex = url.pathname.indexOf(marker);
+            if (routeIndex >= 0) break;
+        }
+        const basePath = routeIndex >= 0 ? url.pathname.slice(0, routeIndex) : '';
+        const encodedPath = simpleaiBase64UrlEncodeUtf8(mediaPath.replace(/\\/g, '/'));
+        if (!encodedPath) return '';
+        return `${url.origin}${basePath}${SIMPLEAI_GALLERY_ORIGINAL_DOWNLOAD_ROUTE}${SIMPLEAI_GALLERY_OUTPUT_DOWNLOAD_PREFIX}${encodedPath}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+function simpleaiGalleryOriginalDownloadSrc(displaySrc, originalSrc) {
+    const signedSrc = simpleaiGallerySignedOriginalDownloadSrc(displaySrc);
+    if (signedSrc) return signedSrc;
+    const outputSrc = simpleaiGalleryOutputDownloadSrc(originalSrc);
+    if (outputSrc) return outputSrc;
+    return simpleaiGalleryDragSourceKind(originalSrc) === 'http-image'
+        ? simpleaiAbsoluteGalleryImageSrc(originalSrc)
+        : '';
+}
+
 function simpleaiOriginalGalleryImageSrc(img) {
     const src = simpleaiMediaSrc(img);
     return simpleaiGalleryDisplayPreviewOriginalSrc(src) || src;
+}
+
+function simpleaiBase64UrlEncodeUtf8(value) {
+    const text = String(value || '');
+    if (!text) return '';
+    try {
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    } catch (e) {
+        return '';
+    }
 }
 
 function simpleaiGalleryOriginalSourceIsVideo(src) {
@@ -327,6 +427,7 @@ const SIMPLEAI_GALLERY_PREVIEW_STABLE_MS = 150;
 const SIMPLEAI_GALLERY_PREVIEW_THUMBNAIL_SWITCH_MS = 1200;
 const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_PIXEL_LIMIT = 2000000;
 const SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT = 2048;
+const SIMPLEAI_GALLERY_NATIVE_DRAG_PREVIEW_WIDTH = 120;
 let simpleaiGalleryNativeDragSyncFrame = 0;
 let simpleaiGalleryNativeDragVersion = 0;
 let simpleaiGalleryOriginalDragClearTimer = 0;
@@ -364,22 +465,125 @@ function simpleaiGalleryNativeDragImageFromEvent(event) {
     return img;
 }
 
-function simpleaiEnableNativeGalleryImageDrag(img) {
-    if (!img?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) return;
+function simpleaiGalleryDedicatedDownloadDragSource(img) {
+    if (!img?.closest?.('#finished_gallery, #final_gallery, #lightboxModal')) return null;
+    return img.closest('.thumbnail-item, .gallery-item, .media-button, .image-container, .image-frame, button');
+}
+
+function simpleaiRemoveNativeGalleryDragPreview() {
+    document.getElementById('simpleai-native-image-drag-preview')?.remove();
+}
+
+function simpleaiSetSmallGalleryDragPreview(transfer, img) {
+    const result = { attempted: false, set_ok: false, width: null, height: null };
+    if (!transfer || !img) return result;
+    const src = simpleaiMediaSrc(img);
+    if (!src) return result;
+
+    simpleaiRemoveNativeGalleryDragPreview();
+    const preview = document.createElement('div');
+    preview.id = 'simpleai-native-image-drag-preview';
+    const naturalWidth = Number(img.naturalWidth || 0);
+    const naturalHeight = Number(img.naturalHeight || 0);
+    const ratio = naturalWidth > 0 && naturalHeight > 0 ? naturalHeight / naturalWidth : 1;
+    const width = SIMPLEAI_GALLERY_NATIVE_DRAG_PREVIEW_WIDTH;
+    const height = Math.max(48, Math.min(160, Math.round(width * ratio)));
+    preview.style.position = 'fixed';
+    preview.style.left = '-10000px';
+    preview.style.top = '-10000px';
+    preview.style.width = `${width}px`;
+    preview.style.height = `${height}px`;
+    preview.style.pointerEvents = 'none';
+    preview.style.opacity = '0.95';
+    preview.style.borderRadius = '8px';
+    preview.style.backgroundColor = '#111827';
+    preview.style.backgroundImage = `url("${String(src).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
+    preview.style.backgroundPosition = 'center';
+    preview.style.backgroundRepeat = 'no-repeat';
+    preview.style.backgroundSize = 'cover';
+    preview.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.35)';
+    preview.style.zIndex = '2147483647';
+    document.body.appendChild(preview);
+
+    result.attempted = true;
+    result.width = preview.offsetWidth || width;
+    result.height = preview.offsetHeight || height;
+    try {
+        transfer.setDragImage(preview, Math.round(result.width / 2), Math.round(result.height / 2));
+        result.set_ok = true;
+    } catch (e) {}
+    setTimeout(simpleaiRemoveNativeGalleryDragPreview, 0);
+    return result;
+}
+
+function simpleaiRestoreManagedNativeGalleryDragSource(source) {
+    if (!source || source.dataset?.simpleaiManagedNativeImageDragSource !== '1') return;
+    const previous = source.dataset.simpleaiManagedNativeImageDragPrevious;
+    try {
+        if (previous === '__missing__' || previous === undefined) {
+            source.removeAttribute('draggable');
+            source.draggable = false;
+        } else {
+            source.setAttribute('draggable', previous);
+            source.draggable = previous === 'true';
+        }
+    } catch (e) {}
+    try { delete source.dataset.simpleaiManagedNativeImageDragSource; } catch (e) {}
+    try { delete source.dataset.simpleaiManagedNativeImageDragPrevious; } catch (e) {}
+}
+
+function simpleaiResetManagedNativeGalleryImageDrag(img) {
+    const managedSource = img?.closest?.('[data-simpleai-managed-native-image-drag-source="1"]');
+    simpleaiRestoreManagedNativeGalleryDragSource(managedSource);
     try { if (!img.draggable) img.draggable = true; } catch (e) {}
     try { if (img.getAttribute('draggable') !== 'true') img.setAttribute('draggable', 'true'); } catch (e) {}
+    try { delete img.dataset.simpleaiManagedNativeImageDragImage; } catch (e) {}
+}
+
+function simpleaiEnableNativeGalleryImageDrag(img) {
+    if (!img?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) return;
     try { if (img.dataset.simpleaiGalleryNativeDragImage !== '1') img.dataset.simpleaiGalleryNativeDragImage = '1'; } catch (e) {}
     try {
         if (img.dataset.simpleaiGalleryPointerDragImage !== undefined) delete img.dataset.simpleaiGalleryPointerDragImage;
     } catch (e) {}
-
-    const oldManagedSource = img.closest?.('.thumbnail-item, .gallery-item, .image-container, .image-frame, .preview, button');
-    if (oldManagedSource?.dataset?.simpleaiManagedNativeImageDragSource === '1') {
-        try { oldManagedSource.draggable = false; } catch (e) {}
-        try { oldManagedSource.setAttribute('draggable', 'false'); } catch (e) {}
-        try { delete oldManagedSource.dataset.simpleaiManagedNativeImageDragSource; } catch (e) {}
+    if (img.dataset.simpleaiGalleryNativeDragLoadSync !== '1') {
+        img.dataset.simpleaiGalleryNativeDragLoadSync = '1';
+        img.addEventListener('load', simpleaiScheduleGalleryNativeDragImageSync, { passive: true });
     }
-    try { delete img.dataset.simpleaiManagedNativeImageDragImage; } catch (e) {}
+
+    const plan = simpleaiGalleryDownloadDragPlan(img);
+    const source = plan.useDownload ? simpleaiGalleryDedicatedDownloadDragSource(img) : null;
+    if (!source) {
+        simpleaiResetManagedNativeGalleryImageDrag(img);
+        return;
+    }
+
+    const oldManagedSource = img.closest?.('[data-simpleai-managed-native-image-drag-source="1"]');
+    if (oldManagedSource && oldManagedSource !== source) {
+        simpleaiRestoreManagedNativeGalleryDragSource(oldManagedSource);
+    }
+    if (source.dataset.simpleaiManagedNativeImageDragSource !== '1') {
+        const previous = source.getAttribute('draggable');
+        source.dataset.simpleaiManagedNativeImageDragPrevious = previous === null ? '__missing__' : previous;
+        source.dataset.simpleaiManagedNativeImageDragSource = '1';
+    }
+    try { source.draggable = true; } catch (e) {}
+    try { source.setAttribute('draggable', 'true'); } catch (e) {}
+    try { img.draggable = false; } catch (e) {}
+    try { img.setAttribute('draggable', 'false'); } catch (e) {}
+    try { img.dataset.simpleaiManagedNativeImageDragImage = '1'; } catch (e) {}
+}
+
+function simpleaiPrepareGalleryNativeDragSource(event) {
+    if (event?.button !== undefined && event.button !== 0) return;
+    simpleaiRemoveNativeGalleryDragPreview();
+    if (simpleaiGalleryOriginalDragClearTimer) {
+        clearTimeout(simpleaiGalleryOriginalDragClearTimer);
+        simpleaiGalleryOriginalDragClearTimer = 0;
+    }
+    try { delete window.__simpleaiGalleryOriginalDragUrl; } catch (e) {}
+    const img = simpleaiGalleryNativeDragImageFromEvent(event);
+    if (img) simpleaiEnableNativeGalleryImageDrag(img);
 }
 
 function simpleaiSyncGalleryNativeDragImages() {
@@ -388,6 +592,12 @@ function simpleaiSyncGalleryNativeDragImages() {
     try { scope = typeof gradioApp === 'function' ? (gradioApp() || document) : document; } catch (e) {}
     scope.querySelectorAll?.('.simpleai-gallery-external-drag-handle').forEach((handle) => handle.remove());
     document.getElementById('simpleai-gallery-external-drag-style')?.remove();
+    scope.querySelectorAll?.('[data-simpleai-managed-native-image-drag-source="1"]').forEach((source) => {
+        const img = source.querySelector?.('img[data-simpleai-managed-native-image-drag-image="1"]');
+        if (!img?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) {
+            simpleaiRestoreManagedNativeGalleryDragSource(source);
+        }
+    });
     scope.querySelectorAll?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR).forEach(simpleaiEnableNativeGalleryImageDrag);
 }
 
@@ -400,26 +610,36 @@ function simpleaiHandleGalleryNativeDragStart(event) {
     const img = simpleaiGalleryNativeDragImageFromEvent(event);
     if (!img) return;
     const transfer = event.dataTransfer;
-    const displaySrc = simpleaiMediaSrc(img);
-    const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
-    const originalSrc = simpleaiOriginalGalleryImageSrc(img);
-    const originalSourceKind = simpleaiGalleryDragSourceKind(originalSrc);
+    const plan = simpleaiGalleryDownloadDragPlan(img);
+    const displaySrc = plan.displaySrc;
+    const previewOriginalSrc = plan.previewOriginalSrc;
+    const originalSrc = plan.originalSrc;
+    const originalSourceKind = plan.originalSourceKind;
     const url = simpleaiAbsoluteGalleryImageSrc(originalSrc);
-    const loadedWidth = Math.round(Number(img.naturalWidth || 0));
-    const loadedHeight = Math.round(Number(img.naturalHeight || 0));
-    const declaredDimensions = simpleaiGalleryDeclaredDragDimensions(img);
-    const dragWidth = Math.max(loadedWidth, Number(declaredDimensions?.width || 0));
-    const dragHeight = Math.max(loadedHeight, Number(declaredDimensions?.height || 0));
-    const largeOriginalDownload = !previewOriginalSrc
-        && (originalSourceKind === 'gradio-file' || originalSourceKind === 'http-image')
-        && simpleaiGalleryNeedsExternalOriginalDownload(dragWidth, dragHeight);
+    const loadedWidth = plan.loadedWidth;
+    const loadedHeight = plan.loadedHeight;
+    const declaredDimensions = plan.declaredDimensions;
+    const largeOriginalDownload = plan.largeOriginalDownload;
+    const managedSource = simpleaiGalleryDedicatedDownloadDragSource(img);
+    const dedicatedDragSource = Boolean(
+        plan.useDownload
+        && managedSource?.dataset?.simpleaiManagedNativeImageDragSource === '1'
+        && event.target === managedSource
+    );
+    const transferTypesBefore = simpleaiGalleryTransferTypes(transfer);
+    let effectAllowedBefore = '';
+    try { effectAllowedBefore = String(transfer?.effectAllowed || ''); } catch (e) {}
     const diagnostic = {
         trusted: Boolean(event.isTrusted),
         surface_id: img.closest?.(SIMPLEAI_GALLERY_NATIVE_DRAG_CONTAINER_SELECTOR)?.id || '',
+        drag_source_tag: String(event.target?.tagName || '').toLowerCase(),
+        dedicated_drag_source: dedicatedDragSource,
         display_source_kind: simpleaiGalleryDragSourceKind(displaySrc),
         original_source_kind: originalSourceKind,
+        download_source_kind: simpleaiGalleryDragSourceKind(plan.downloadSrc),
         preview_original_found: Boolean(previewOriginalSrc),
         original_source_found: Boolean(originalSrc),
+        download_source_found: Boolean(plan.downloadSrc),
         transfer_found: Boolean(transfer),
         loaded_width: loadedWidth || null,
         loaded_height: loadedHeight || null,
@@ -430,10 +650,15 @@ function simpleaiHandleGalleryNativeDragStart(event) {
         large_original_download: largeOriginalDownload,
         download_reason: previewOriginalSrc ? 'gallery-preview' : largeOriginalDownload ? 'large-original' : '',
         original_mime_type: originalSrc ? simpleaiGalleryImageMimeType(originalSrc) : '',
+        effect_allowed_before: effectAllowedBefore,
+        effect_allowed_after: effectAllowedBefore,
+        files_type_before: transferTypesBefore.some((type) => type.toLowerCase() === 'files'),
+        files_type_after: false,
         original_url: { attempted: false, set_ok: false, readback_matches: null },
         uri_list: { attempted: false, set_ok: false, readback_matches: null },
         plain_text: { attempted: false, set_ok: false, readback_matches: null },
         download_url: { attempted: false, set_ok: false, readback_matches: null },
+        drag_preview: { attempted: false, set_ok: false, width: null, height: null },
         transfer_types: [],
         outcome: !transfer ? 'missing-transfer' : !originalSrc ? 'missing-original-source' : 'prepared',
     };
@@ -442,23 +667,28 @@ function simpleaiHandleGalleryNativeDragStart(event) {
         return;
     }
     const dragVersion = ++simpleaiGalleryNativeDragVersion;
+    if (dedicatedDragSource) {
+        try { transfer.effectAllowed = 'copy'; } catch (e) {}
+        diagnostic.drag_preview = simpleaiSetSmallGalleryDragPreview(transfer, img);
+    }
     try { window.__simpleaiGalleryOriginalDragUrl = url; } catch (e) {}
     diagnostic.original_url = simpleaiSetGalleryDragTransferData(transfer, SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url);
-    diagnostic.uri_list = simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url);
-    diagnostic.plain_text = simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url);
-    if (previewOriginalSrc || largeOriginalDownload) {
-        diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    if (!dedicatedDragSource) {
+        diagnostic.uri_list = simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url);
+        diagnostic.plain_text = simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url);
     }
-    try {
-        diagnostic.transfer_types = Array.from(transfer.types || [])
-            .slice(0, 20)
-            .map((type) => String(type).slice(0, 120));
-    } catch (e) {}
+    if (plan.useDownload) {
+        diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url, plan.downloadSrc);
+    }
+    diagnostic.transfer_types = simpleaiGalleryTransferTypes(transfer);
+    diagnostic.files_type_after = diagnostic.transfer_types.some((type) => type.toLowerCase() === 'files');
+    try { diagnostic.effect_allowed_after = String(transfer.effectAllowed || ''); } catch (e) {}
     try { window.SimpAIStudioPerformance?.mark('gallery.native_drag_start', diagnostic); } catch (e) {}
     simpleaiClearGalleryOriginalDragUrl(30000, dragVersion);
 }
 
 function simpleaiHandleGalleryNativeDragEnd() {
+    simpleaiRemoveNativeGalleryDragPreview();
     simpleaiClearGalleryOriginalDragUrl(200);
 }
 
@@ -502,6 +732,7 @@ function simpleaiGalleryDragSourceKind(src) {
         const url = new URL(value, document.baseURI || window.location?.href || location.href);
         const path = String(url.pathname || '').toLowerCase();
         if (path.includes('/simpleai/gallery-preview/')) return 'gallery-preview';
+        if (path.includes('/simpleai/gallery-download/')) return 'gallery-download';
         if (path.includes('/gradio_api/file=') || path.includes('/file=')) return 'gradio-file';
         return /^https?:$/i.test(url.protocol) ? 'http-image' : 'other-url';
     } catch (e) {
@@ -534,6 +765,45 @@ function simpleaiGalleryNeedsExternalOriginalDownload(width, height) {
         || imageHeight >= SIMPLEAI_GALLERY_LARGE_NATIVE_DRAG_EDGE_LIMIT;
 }
 
+function simpleaiGalleryDownloadDragPlan(img) {
+    const displaySrc = simpleaiMediaSrc(img);
+    const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
+    const originalSrc = previewOriginalSrc || displaySrc;
+    const originalSourceKind = simpleaiGalleryDragSourceKind(originalSrc);
+    const loadedWidth = Math.round(Number(img?.naturalWidth || 0));
+    const loadedHeight = Math.round(Number(img?.naturalHeight || 0));
+    const declaredDimensions = simpleaiGalleryDeclaredDragDimensions(img);
+    const dragWidth = Math.max(loadedWidth, Number(declaredDimensions?.width || 0));
+    const dragHeight = Math.max(loadedHeight, Number(declaredDimensions?.height || 0));
+    const largeOriginalDownload = !previewOriginalSrc
+        && (originalSourceKind === 'gradio-file' || originalSourceKind === 'http-image')
+        && simpleaiGalleryNeedsExternalOriginalDownload(dragWidth, dragHeight);
+    const useDownload = Boolean(previewOriginalSrc || largeOriginalDownload);
+    const downloadSrc = useDownload ? simpleaiGalleryOriginalDownloadSrc(displaySrc, originalSrc) : '';
+    return {
+        displaySrc,
+        previewOriginalSrc,
+        originalSrc,
+        originalSourceKind,
+        loadedWidth,
+        loadedHeight,
+        declaredDimensions,
+        largeOriginalDownload,
+        useDownload: Boolean(useDownload && downloadSrc),
+        downloadSrc,
+    };
+}
+
+function simpleaiGalleryTransferTypes(transfer) {
+    try {
+        return Array.from(transfer?.types || [])
+            .slice(0, 20)
+            .map((type) => String(type).slice(0, 120));
+    } catch (e) {
+        return [];
+    }
+}
+
 function simpleaiSetGalleryDragTransferData(transfer, type, value) {
     const result = { attempted: true, set_ok: false, readback_matches: null };
     try {
@@ -548,11 +818,11 @@ function simpleaiSetGalleryDragTransferData(transfer, type, value) {
     return result;
 }
 
-function simpleaiSetGalleryPreviewOriginalDownload(transfer, originalSrc) {
-    if (!transfer || !originalSrc) return { attempted: false, set_ok: false, readback_matches: null };
+function simpleaiSetGalleryPreviewOriginalDownload(transfer, originalSrc, downloadSrc = originalSrc) {
+    if (!transfer || !originalSrc || !downloadSrc) return { attempted: false, set_ok: false, readback_matches: null };
     const fileName = simpleaiGalleryImageFileName(originalSrc);
     const mimeType = simpleaiGalleryImageMimeType(originalSrc);
-    return simpleaiSetGalleryDragTransferData(transfer, 'DownloadURL', `${mimeType}:${fileName}:${originalSrc}`);
+    return simpleaiSetGalleryDragTransferData(transfer, 'DownloadURL', `${mimeType}:${fileName}:${downloadSrc}`);
 }
 
 function simpleaiClearGalleryOriginalDragUrl(delay = 0, expectedVersion = simpleaiGalleryNativeDragVersion) {
@@ -1542,6 +1812,8 @@ document.addEventListener('pointerdown', simpleaiPrepareGalleryOriginalContextPo
 document.addEventListener('mousedown', simpleaiPrepareGalleryOriginalContextPointerDown, true);
 document.addEventListener('pointerover', simpleaiTrackGalleryOriginalCopyImage, true);
 document.addEventListener('pointerdown', simpleaiTrackGalleryOriginalCopyImage, true);
+document.addEventListener('pointerdown', simpleaiPrepareGalleryNativeDragSource, true);
+document.addEventListener('mousedown', simpleaiPrepareGalleryNativeDragSource, true);
 document.addEventListener('dragstart', simpleaiHandleGalleryNativeDragStart, true);
 document.addEventListener('dragend', simpleaiHandleGalleryNativeDragEnd, true);
 document.addEventListener('drop', simpleaiHandleGalleryNativeDragEnd, true);

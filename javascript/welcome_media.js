@@ -5,8 +5,17 @@
         busy: false,
         observer: null,
         observedPreview: null,
+        pickerInput: null,
+        pickerResetTimer: 0,
         scheduled: false,
     };
+
+    const RESULT_SURFACE_SELECTOR = [
+        "#preview_generating",
+        "#finished_gallery",
+        "#final_gallery",
+        "#simpleai_gallery_welcome_guard_placeholder",
+    ].join(", ");
 
     function appRoot() {
         try {
@@ -149,14 +158,80 @@
         });
     }
 
+    function clearPickerIntent(input) {
+        if (input && state.pickerInput !== input) return;
+        state.pickerInput = null;
+        if (state.pickerResetTimer) {
+            window.clearTimeout(state.pickerResetTimer);
+            state.pickerResetTimer = 0;
+        }
+    }
+
+    function armPicker(input) {
+        clearPickerIntent();
+        state.pickerInput = input;
+        state.pickerResetTimer = window.setTimeout(() => clearPickerIntent(input), 5 * 60 * 1000);
+    }
+
+    function consumePickerSelection(file) {
+        const input = bindUploadInput();
+        const accepted = !!file && !!input && state.pickerInput === input;
+        clearPickerIntent();
+        return accepted;
+    }
+
+    function transferContainsGalleryMedia(dataTransfer) {
+        if (!dataTransfer) return false;
+        if (dataTransfer.files && dataTransfer.files.length) return true;
+        const types = Array.from(dataTransfer.types || []).map((value) => String(value).toLowerCase());
+        return types.includes("files") || types.includes("application/x-simpleai-gallery-original-url");
+    }
+
+    function resultSurfaceForEvent(event) {
+        const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+        for (const node of path) {
+            if (node instanceof Element && node.matches(RESULT_SURFACE_SELECTOR)) return node;
+        }
+        const target = event.target instanceof Element ? event.target : null;
+        return target ? target.closest(RESULT_SURFACE_SELECTOR) : null;
+    }
+
+    function blockResultSurfaceDrop(event) {
+        if (!transferContainsGalleryMedia(event.dataTransfer) || !resultSurfaceForEvent(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    }
+
+    function welcomeUploadInputForEvent(event) {
+        const input = event.target;
+        if (!input || input.tagName !== "INPUT" || input.type !== "file") return null;
+        const root = byId("welcome_media_upload");
+        return root && root.contains(input) ? input : null;
+    }
+
+    function blockUnrequestedUploadChange(event) {
+        const input = welcomeUploadInputForEvent(event);
+        if (!input || state.pickerInput === input) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+        try {
+            input.value = "";
+        } catch (e) {
+        }
+        setBusy(false);
+    }
+
     function bindUploadInput() {
         const root = byId("welcome_media_upload");
         const input = root && root.querySelector ? root.querySelector("input[type='file']") : null;
         if (!input || input.dataset.simpleaiWelcomeMediaBound === "1") return input;
         input.dataset.simpleaiWelcomeMediaBound = "1";
         input.addEventListener("change", () => {
-            if (input.files && input.files.length) setBusy(true);
+            if (state.pickerInput === input && input.files && input.files.length) setBusy(true);
         }, true);
+        input.addEventListener("cancel", () => clearPickerIntent(input), true);
         return input;
     }
 
@@ -168,7 +243,12 @@
             input.value = "";
         } catch (e) {
         }
-        input.click();
+        armPicker(input);
+        try {
+            input.click();
+        } catch (e) {
+            clearPickerIntent(input);
+        }
     }
 
     function restoreDefault(kind) {
@@ -335,6 +415,7 @@
 
     window.SimpAIWelcomeMedia = {
         begin,
+        consumePickerSelection,
         finish,
         sync: scheduleSync,
         getSource: bridgeSource,
@@ -347,6 +428,9 @@
     window.isStudioWelcomeMediaSource = function (source, kind) {
         return classifySource(source) === kind;
     };
+
+    window.addEventListener("change", blockUnrequestedUploadChange, true);
+    window.addEventListener("drop", blockResultSurfaceDrop, true);
 
     if (typeof onUiLoaded === "function") onUiLoaded(scheduleSync);
     if (typeof onAfterUiUpdate === "function") onAfterUiUpdate(scheduleSync);

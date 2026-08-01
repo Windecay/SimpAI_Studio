@@ -423,6 +423,26 @@ def _commit_asset(temp_path: str, root: str, kind: str, variant: str) -> tuple[s
     return final_path, True
 
 
+def _copy_webp_variant(info: MediaInfo, root: str, kind: str, variant: str) -> tuple[str, bool]:
+    temp_path = _temp_webp(root)
+    try:
+        shutil.copyfile(info.path, temp_path)
+        return _commit_asset(temp_path, root, kind, variant)
+    except Exception:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _can_copy_webp_directly(info: MediaInfo) -> bool:
+    if info.image_format != "WEBP":
+        return False
+    byte_limit = ANIMATED_MOBILE_MAX_BYTES if info.animated else STATIC_MOBILE_MAX_BYTES
+    return info.file_size <= byte_limit
+
+
 def _static_base_image(path: str) -> Image.Image:
     try:
         with Image.open(path) as source:
@@ -585,7 +605,14 @@ def replace_media(value: Any, kind: str, state_params: Any) -> SavedWelcomeMedia
         root = media_root(state_params, create=True)
         created_paths: list[str] = []
         try:
-            if info.animated:
+            if _can_copy_webp_directly(info):
+                desktop_path, desktop_created = _copy_webp_variant(info, root, kind, "desktop")
+                if desktop_created:
+                    created_paths.append(desktop_path)
+                mobile_path, mobile_created = _copy_webp_variant(info, root, kind, "mobile")
+                if mobile_created:
+                    created_paths.append(mobile_path)
+            elif info.animated:
                 desktop_path, desktop_created = _encode_animated_variant(
                     info,
                     root,

@@ -3053,6 +3053,213 @@ document.addEventListener("DOMContentLoaded", function() {
     onUiTabChange(() => scheduleInpaintModePromptVisibilitySync());
 })();
 
+(function registerPromptHistoryTooltip() {
+    const itemSelector = '#prompt_history .gallery > .gallery-item';
+    const tooltipId = 'simpai-prompt-history-tooltip';
+    let pointerItem = null;
+    let focusItem = null;
+    let activeItem = null;
+    let describedItem = null;
+    let previousDescribedBy = null;
+    let tooltipHovered = false;
+    let hideTimer = 0;
+    let positionFrame = 0;
+    let tooltip = null;
+
+    function promptHistoryItem(target) {
+        const element = target?.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+        return element?.closest?.(itemSelector) || null;
+    }
+
+    function promptHistoryValues() {
+        const root = document.getElementById('prompt_history_data')
+            || (typeof gradioApp === 'function' ? gradioApp().getElementById?.('prompt_history_data') : null);
+        const field = root?.querySelector?.('textarea, input');
+        try {
+            const values = JSON.parse(field?.value || '[]');
+            return Array.isArray(values) ? values : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function promptHistoryText(item) {
+        const renderedText = String(item?.textContent || '').replace(/\r\n?/g, '\n').trim();
+        const renderedPrefix = renderedText.replace(/\.\.\.$/, '');
+        const items = Array.from(item?.parentElement?.querySelectorAll?.(':scope > .gallery-item') || []);
+        const values = promptHistoryValues();
+        const indexedValue = values[items.indexOf(item)];
+        if (typeof indexedValue === 'string' && (!renderedPrefix || indexedValue.startsWith(renderedPrefix))) {
+            return indexedValue.trim();
+        }
+        const prefixMatch = values.find((value) => (
+            typeof value === 'string' && renderedPrefix && value.startsWith(renderedPrefix)
+        ));
+        return String(prefixMatch || renderedText || indexedValue || '').trim();
+    }
+
+    function restoreDescription() {
+        if (!describedItem) return;
+        if (previousDescribedBy == null) describedItem.removeAttribute('aria-describedby');
+        else describedItem.setAttribute('aria-describedby', previousDescribedBy);
+        describedItem = null;
+        previousDescribedBy = null;
+    }
+
+    function describeItem(item) {
+        if (describedItem === item) return;
+        restoreDescription();
+        describedItem = item;
+        previousDescribedBy = item.getAttribute('aria-describedby');
+        const ids = new Set(String(previousDescribedBy || '').split(/\s+/).filter(Boolean));
+        ids.add(tooltipId);
+        item.setAttribute('aria-describedby', Array.from(ids).join(' '));
+    }
+
+    function positionTooltip() {
+        positionFrame = 0;
+        if (!tooltip || tooltip.hidden || !activeItem?.isConnected) return;
+        const itemRect = activeItem.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+        const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+        const padding = 12;
+        const gap = 8;
+        const roomBelow = viewportHeight - itemRect.bottom - gap - padding;
+        const roomAbove = itemRect.top - gap - padding;
+        const showBelow = roomBelow >= tooltipRect.height || roomBelow >= roomAbove;
+        const preferredTop = showBelow
+            ? itemRect.bottom + gap
+            : itemRect.top - tooltipRect.height - gap;
+        const maxLeft = Math.max(padding, viewportWidth - tooltipRect.width - padding);
+        const maxTop = Math.max(padding, viewportHeight - tooltipRect.height - padding);
+
+        tooltip.style.left = `${Math.max(padding, Math.min(itemRect.left, maxLeft))}px`;
+        tooltip.style.top = `${Math.max(padding, Math.min(preferredTop, maxTop))}px`;
+        tooltip.style.visibility = 'visible';
+    }
+
+    function schedulePosition() {
+        if (positionFrame || !activeItem) return;
+        positionFrame = window.requestAnimationFrame(positionTooltip);
+    }
+
+    function hideTooltip() {
+        if (positionFrame) window.cancelAnimationFrame(positionFrame);
+        positionFrame = 0;
+        activeItem = null;
+        restoreDescription();
+        if (!tooltip) return;
+        tooltip.hidden = true;
+        tooltip.setAttribute('aria-hidden', 'true');
+    }
+
+    function showTooltip(item) {
+        const promptText = promptHistoryText(item);
+        if (!promptText) {
+            hideTooltip();
+            return;
+        }
+        activeItem = item;
+        describeItem(item);
+        tooltip.textContent = promptText;
+        tooltip.style.visibility = 'hidden';
+        tooltip.hidden = false;
+        tooltip.setAttribute('aria-hidden', 'false');
+        positionTooltip();
+    }
+
+    function syncTooltip(delay = 0) {
+        window.clearTimeout(hideTimer);
+        hideTimer = 0;
+        const nextItem = pointerItem || focusItem || (tooltipHovered ? activeItem : null);
+        if (nextItem?.isConnected) {
+            showTooltip(nextItem);
+            return;
+        }
+        if (delay > 0) {
+            hideTimer = window.setTimeout(() => {
+                hideTimer = 0;
+                const delayedItem = pointerItem || focusItem || (tooltipHovered ? activeItem : null);
+                if (delayedItem?.isConnected) showTooltip(delayedItem);
+                else hideTooltip();
+            }, delay);
+            return;
+        }
+        hideTooltip();
+    }
+
+    function initPromptHistoryTooltip() {
+        if (window.__simpaiPromptHistoryTooltipStarted) {
+            if (activeItem && !activeItem.isConnected) hideTooltip();
+            return;
+        }
+        if (!document.body) return;
+        window.__simpaiPromptHistoryTooltipStarted = true;
+
+        tooltip = document.createElement('div');
+        tooltip.id = tooltipId;
+        tooltip.className = 'simpai-prompt-history-tooltip';
+        tooltip.setAttribute('role', 'tooltip');
+        tooltip.setAttribute('aria-hidden', 'true');
+        tooltip.hidden = true;
+        document.body.appendChild(tooltip);
+
+        document.addEventListener('pointerover', (event) => {
+            if (event.pointerType === 'touch') return;
+            const item = promptHistoryItem(event.target);
+            if (!item || item === pointerItem) return;
+            pointerItem = item;
+            syncTooltip();
+        }, true);
+
+        document.addEventListener('pointerout', (event) => {
+            const item = promptHistoryItem(event.target);
+            if (!item || item !== pointerItem || promptHistoryItem(event.relatedTarget) === item) return;
+            pointerItem = null;
+            syncTooltip(120);
+        }, true);
+
+        document.addEventListener('focusin', (event) => {
+            const item = promptHistoryItem(event.target);
+            if (!item?.matches?.(':focus-visible')) return;
+            focusItem = item;
+            syncTooltip();
+        }, true);
+
+        document.addEventListener('focusout', (event) => {
+            const item = promptHistoryItem(event.target);
+            if (!item || item !== focusItem || promptHistoryItem(event.relatedTarget) === item) return;
+            focusItem = null;
+            syncTooltip(80);
+        }, true);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || !activeItem) return;
+            pointerItem = null;
+            focusItem = null;
+            tooltipHovered = false;
+            hideTooltip();
+        }, true);
+
+        tooltip.addEventListener('pointerenter', (event) => {
+            if (event.pointerType === 'touch') return;
+            tooltipHovered = true;
+            syncTooltip();
+        });
+        tooltip.addEventListener('pointerleave', () => {
+            tooltipHovered = false;
+            syncTooltip(80);
+        });
+
+        window.addEventListener('resize', schedulePosition);
+        document.addEventListener('scroll', schedulePosition, true);
+    }
+
+    onUiLoaded(initPromptHistoryTooltip);
+    onAfterUiUpdate(initPromptHistoryTooltip);
+})();
+
 (function initGradio6MountedDynamicVisibilitySync() {
     if (window.__simpaiGradio6MountedDynamicVisibilitySyncStarted) return;
     window.__simpaiGradio6MountedDynamicVisibilitySyncStarted = true;

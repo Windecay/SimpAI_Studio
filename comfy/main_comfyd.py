@@ -9,6 +9,21 @@ os.chdir(target_dir)
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+
+def _load_llama_cpp_runtime_helpers():
+    import importlib.util
+
+    module_path = os.path.join(target_dir, "modules", "llama_cpp_runtime.py")
+    spec = importlib.util.spec_from_file_location("simpai_llama_cpp_runtime", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load llama.cpp runtime helpers: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.llama_cpp_version_matches, module.select_llama_cpp_wheel
+
+
+llama_cpp_version_matches, select_llama_cpp_wheel = _load_llama_cpp_runtime_helpers()
+
 ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
     "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
@@ -45,22 +60,38 @@ def _pip_env():
     return env
 
 
-def _torch_version_noimport():
+def _torch_package_dirs_noimport():
     try:
         import importlib.util
         torch_spec = importlib.util.find_spec("torch")
         if torch_spec is None:
-            return ""
-        for folder in torch_spec.submodule_search_locations or []:
+            return []
+        return [os.path.abspath(folder) for folder in torch_spec.submodule_search_locations or []]
+    except Exception:
+        return []
+
+
+def _torch_version_noimport():
+    try:
+        for folder in _torch_package_dirs_noimport():
             version_path = os.path.join(folder, "version.py")
             if not os.path.isfile(version_path):
                 continue
+            import importlib.util
             spec = importlib.util.spec_from_file_location("simpai_torch_version", version_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return str(getattr(module, "__version__", ""))
     except Exception:
         return ""
+    return ""
+
+
+def _torch_lib_dir_noimport():
+    for folder in _torch_package_dirs_noimport():
+        lib_dir = os.path.join(folder, "lib")
+        if os.path.isdir(lib_dir):
+            return lib_dir
     return ""
 
 
@@ -203,6 +234,203 @@ def install_onnxruntime_gpu_cuda13_for_comfyd():
     return None
 
 
+def _llama_cpp_runtime_probe_for_comfyd():
+    import json
+    import subprocess
+
+    code = r"""
+import ctypes
+import json
+from pathlib import Path
+
+required_handlers = [
+    "Gemma3ChatHandler",
+    "Gemma4ChatHandler",
+    "MiniCPMv45ChatHandler",
+    "MiniCPMV46ChatHandler",
+    "MTMDChatHandler",
+    "Qwen3VLChatHandler",
+    "Qwen35ChatHandler",
+]
+result = {
+    "ok": False,
+    "handlers": [],
+    "missing_handlers": [],
+    "gpu_offload": False,
+    "cuda_backend_present": False,
+}
+try:
+    import llama_cpp
+    import llama_cpp.llama_cpp as llama_cpp_lib
+    import llama_cpp.llama_chat_format as chat_format
+
+    result["version"] = getattr(llama_cpp, "__version__", "")
+    result["handlers"] = [name for name in required_handlers if hasattr(chat_format, name)]
+    result["missing_handlers"] = [name for name in required_handlers if not hasattr(chat_format, name)]
+    lib_dir = Path(llama_cpp_lib.__file__).resolve().parent / "lib"
+    result["cuda_backend_present"] = any(
+        path.is_file()
+        for pattern in ("ggml-cuda.dll", "libggml-cuda.so", "libggml-cuda.dylib")
+        for path in lib_dir.glob(pattern)
+    )
+    backend_init = getattr(llama_cpp, "llama_backend_init", None)
+    if callable(backend_init):
+        backend_init()
+    backend_loader = getattr(llama_cpp, "ggml_backend_load_all_from_path", None)
+    if callable(backend_loader) and lib_dir.is_dir():
+        backend_loader(ctypes.c_char_p(str(lib_dir).encode("utf-8")))
+    registry_count = getattr(llama_cpp, "ggml_backend_reg_count", None)
+    if callable(registry_count):
+        result["backend_registry_count"] = int(registry_count())
+    gpu_probe = getattr(llama_cpp, "llama_supports_gpu_offload", None)
+    result["gpu_offload"] = bool(gpu_probe()) if callable(gpu_probe) else False
+    result["ok"] = not result["missing_handlers"] and result["gpu_offload"]
+    if result["missing_handlers"]:
+        result["error"] = "missing handlers: " + ", ".join(result["missing_handlers"])
+    elif not result["gpu_offload"]:
+        result["error"] = "llama.cpp library was built without GPU offload"
+except Exception as exc:
+    result["error"] = f"{type(exc).__name__}: {exc}"
+print("SIMPAI_LLAMA_CPP_PROBE=" + json.dumps(result, ensure_ascii=False))
+"""
+    probe_env = _pip_env()
+    if platform.system() == "Windows":
+        torch_lib = _torch_lib_dir_noimport()
+        if torch_lib:
+            current_path = probe_env.get("PATH", "")
+            probe_env["PATH"] = torch_lib + (os.pathsep + current_path if current_path else "")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-s", "-X", "utf8", "-c", code],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=probe_env,
+            timeout=60,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+    output = f"{result.stdout or ''}\n{result.stderr or ''}"
+    for line in output.splitlines():
+        if not line.startswith("SIMPAI_LLAMA_CPP_PROBE="):
+            continue
+        try:
+            return json.loads(line.split("=", 1)[1])
+        except Exception:
+            break
+    return {"ok": False, "error": output.strip()[-1200:]}
+
+
+def _cleanup_legacy_llama_cpp_wheel_cache_for_comfyd():
+    cache_dir = os.path.join(target_dir, "cache", "llama_cpp")
+    if not os.path.isdir(cache_dir):
+        return
+    for name in os.listdir(cache_dir):
+        lowered = name.lower()
+        if not lowered.startswith("llama_cpp_python-") or not lowered.endswith((".whl", ".whl.part")):
+            continue
+        path = os.path.join(cache_dir, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+        except Exception as exc:
+            print(f"[Comfyd] Could not remove legacy llama.cpp wheel cache / 无法清理旧 llama.cpp wheel 缓存: {path} / {exc}")
+    try:
+        os.rmdir(cache_dir)
+    except OSError:
+        pass
+
+
+def install_llama_cpp_runtime_for_comfyd():
+    if os.environ.get("SIMPAI_SKIP_LLAMA_CPP_RUNTIME", "").strip().lower() in {"1", "true", "yes"}:
+        print("[Comfyd] llama.cpp runtime check skipped / 已跳过 llama.cpp 运行环境检查。")
+        return False
+
+    _cleanup_legacy_llama_cpp_wheel_cache_for_comfyd()
+    torch_version = _torch_version_noimport()
+    if "+cu" not in torch_version.lower():
+        print("[Comfyd] NVIDIA CUDA runtime is unavailable; skipping llama.cpp CUDA wheel / 当前不是 NVIDIA CUDA 运行环境，已跳过 llama.cpp CUDA wheel。")
+        return False
+
+    artifact = select_llama_cpp_wheel()
+    if not artifact:
+        print(
+            "[Comfyd] No packaged llama.cpp wheel for this platform / 当前平台没有可用的 llama.cpp wheel: "
+            f"system={platform.system()}, machine={platform.machine()}, Python={sys.version_info.major}.{sys.version_info.minor}"
+        )
+        return False
+
+    installed_version = _installed_package_version("llama-cpp-python")
+    if llama_cpp_version_matches(installed_version, artifact):
+        probe = _llama_cpp_runtime_probe_for_comfyd()
+        if probe.get("ok"):
+            print(
+                "[Comfyd] llama.cpp VLM runtime is ready / llama.cpp VLM 运行环境已就绪: "
+                f"{installed_version} ({artifact['cuda_tag']})"
+            )
+            return True
+        if probe.get("cuda_backend_present") and not probe.get("missing_handlers"):
+            print(
+                "[Comfyd] llama.cpp CUDA backend failed to initialize; identical reinstall skipped / "
+                "llama.cpp CUDA backend 初始化失败，已跳过相同 wheel 的重复安装: "
+                f"{probe.get('error') or 'runtime probe failed'}"
+            )
+            return False
+        print(
+            "[Comfyd] llama.cpp runtime verification failed; reinstalling / "
+            f"llama.cpp 运行环境检查失败，正在重新安装: {probe.get('error') or 'runtime probe failed'}"
+        )
+    else:
+        print(
+            "[Comfyd] Updating llama.cpp VLM runtime / 正在更新 llama.cpp VLM 运行环境: "
+            f"{installed_version or 'missing'} -> {artifact['version']}"
+        )
+
+    import subprocess
+
+    install_url = f"{artifact['url']}#sha256={artifact['sha256']}"
+    command = [
+        sys.executable,
+        "-s",
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "--force-reinstall",
+        "--no-cache-dir",
+        install_url,
+    ]
+    result = subprocess.run(command, check=False, env=_pip_env())
+    if result.returncode != 0:
+        print(
+            "[Comfyd] llama.cpp VLM runtime installation failed / llama.cpp VLM 运行环境安装失败: "
+            f"exit_code={result.returncode}"
+        )
+        return False
+
+    installed_version = _installed_package_version("llama-cpp-python")
+    probe = _llama_cpp_runtime_probe_for_comfyd()
+    ready = llama_cpp_version_matches(installed_version, artifact) and bool(probe.get("ok"))
+    if not ready:
+        verification_error = probe.get("error")
+        if not llama_cpp_version_matches(installed_version, artifact):
+            verification_error = f"package version mismatch ({installed_version or 'missing'})"
+        print(
+            "[Comfyd] llama.cpp VLM runtime verification failed / llama.cpp VLM 运行环境安装后检查失败: "
+            f"version={installed_version}, expected={artifact['version']}, error={verification_error or 'runtime probe failed'}"
+        )
+        return False
+
+    print(
+        "[Comfyd] llama.cpp VLM runtime installed / llama.cpp VLM 运行环境安装完成: "
+        f"{installed_version}"
+    )
+    return True
+
+
 def install_requirements_sequential():
     requirements_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
     if not os.path.isfile(requirements_path):
@@ -302,6 +530,10 @@ if __name__ == "__main__":
         install_onnxruntime_gpu_cuda13_for_comfyd()
     except Exception as e:
         print(f"[Comfyd] ONNX Runtime CUDA 13 install step failed: {e}")
+    try:
+        install_llama_cpp_runtime_for_comfyd()
+    except Exception as e:
+        print(f"[Comfyd] llama.cpp runtime install step failed / llama.cpp 运行环境安装步骤失败: {e}")
 
 import comfy.options
 comfy.options.enable_args_parsing()

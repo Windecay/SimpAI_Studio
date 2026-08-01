@@ -52,6 +52,9 @@ _main_gallery_browser_request_lock = threading.Lock()
 _main_gallery_browser_invalidated_after = {}
 GALLERY_DISPLAY_PREVIEW_PREFIX = "simpai_gprev__"
 GALLERY_DISPLAY_PREVIEW_ROUTE = "/simpleai/gallery-preview"
+GALLERY_ORIGINAL_DOWNLOAD_PREFIX = "simpai_gdownload__"
+GALLERY_OUTPUT_DOWNLOAD_PREFIX = "simpai_gdownload_path__"
+GALLERY_ORIGINAL_DOWNLOAD_ROUTE = "/simpleai/gallery-download"
 GALLERY_DISPLAY_PREVIEW_MAX_EDGE = 1600
 GALLERY_DISPLAY_PREVIEW_PIXEL_LIMIT = 2000000
 GALLERY_DISPLAY_PREVIEW_EDGE_LIMIT = 2048
@@ -141,6 +144,55 @@ def _gallery_display_preview_original_path_from_name(preview_name):
         return ""
 
 
+def _gallery_original_download_name(media_path):
+    preview_name = _gallery_display_preview_name(media_path)
+    match = re.match(
+        rf"^{re.escape(GALLERY_DISPLAY_PREVIEW_PREFIX)}([A-Za-z0-9_-]+)__([0-9a-f]{{16}})\.jpg$",
+        str(preview_name or ""),
+    )
+    if not match:
+        return ""
+    return f"{GALLERY_ORIGINAL_DOWNLOAD_PREFIX}{match.group(1)}__{match.group(2)}"
+
+
+def _gallery_output_download_name(media_path):
+    if not media_path:
+        return ""
+    normalized_path = os.path.abspath(str(media_path or "")).replace("\\", "/")
+    encoded = base64.urlsafe_b64encode(normalized_path.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{GALLERY_OUTPUT_DOWNLOAD_PREFIX}{encoded}"
+
+
+def _gallery_output_download_path_from_name(download_name):
+    name = str(download_name or "")
+    signed_match = re.match(
+        rf"^{re.escape(GALLERY_ORIGINAL_DOWNLOAD_PREFIX)}([A-Za-z0-9_-]+)__([0-9a-f]{{16}})$",
+        name,
+    )
+    if signed_match:
+        preview_name = (
+            f"{GALLERY_DISPLAY_PREVIEW_PREFIX}{signed_match.group(1)}"
+            f"__{signed_match.group(2)}.jpg"
+        )
+        media_path = _gallery_display_preview_original_path_from_name(preview_name)
+        if not media_path or _gallery_original_download_name(media_path) != name:
+            return ""
+        return media_path
+
+    path_match = re.match(
+        rf"^{re.escape(GALLERY_OUTPUT_DOWNLOAD_PREFIX)}([A-Za-z0-9_-]+)$",
+        name,
+    )
+    if not path_match:
+        return ""
+    encoded = path_match.group(1)
+    try:
+        padded = encoded + ("=" * ((4 - len(encoded) % 4) % 4))
+        return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+    except Exception:
+        return ""
+
+
 def _gallery_display_preview_path_allowed(media_path):
     if not media_path:
         return False
@@ -153,6 +205,24 @@ def _gallery_display_preview_path_allowed(media_path):
         return "outputs" in parts
     except Exception:
         return False
+
+
+def get_gallery_original_download_path(download_name):
+    media_path = _gallery_output_download_path_from_name(download_name)
+    if not media_path or not _gallery_display_preview_path_allowed(media_path):
+        return ""
+    try:
+        media_path = os.path.realpath(os.path.abspath(str(media_path)))
+        userhome = os.path.realpath(os.path.abspath(config.path_userhome))
+        if os.path.normcase(os.path.commonpath([media_path, userhome])) != os.path.normcase(userhome):
+            return ""
+    except Exception:
+        return ""
+    if not os.path.isfile(media_path):
+        return ""
+    if os.path.splitext(media_path)[1].lower() not in image_types + video_types:
+        return ""
+    return media_path
 
 
 def _gallery_display_preview_webroot():
@@ -732,6 +802,27 @@ def _gallery_media_path_identity(media_path):
         return os.path.normcase(os.path.abspath(text.replace("/", os.sep)))
     except Exception:
         return os.path.normcase(text)
+
+
+def restore_selected_gallery_media_path(state_params, media_paths):
+    media_paths = list(media_paths or [])
+    if not media_paths:
+        set_selected_gallery_media_path(state_params, None)
+        return 0, None
+
+    selected_index = 0
+    selected_identity = _gallery_media_path_identity(
+        state_params.get("__selected_gallery_media_path") if isinstance(state_params, dict) else None
+    )
+    if selected_identity:
+        for index, media_path in enumerate(media_paths):
+            if _gallery_media_path_identity(media_path) == selected_identity:
+                selected_index = index
+                break
+
+    selected_path = media_paths[selected_index]
+    set_selected_gallery_media_path(state_params, selected_path)
+    return selected_index, selected_path
 
 
 def selected_media_is_post_generation_output(state_params):
@@ -1630,11 +1721,11 @@ def switch_gallery_engine_type(target_engine_type, *args):
         state_params["__finished_nums_pages"] = refresh_finished_nums_pages_for_browser(state_params, target_engine_type)
 
         choice = _catalog_choice_from_folder(folder) if folder else None
-        state_params["prompt_info"] = [choice, 0]
-        set_selected_gallery_media_path(state_params, media_paths[0] if media_paths else None)
+        selected_index, selected_path = restore_selected_gallery_media_path(state_params, media_paths)
+        state_params["prompt_info"] = [choice, selected_index]
 
         infobox_state = state_params.get("infobox_state", False)
-        prompt_meta = read_embedded_metadata_from_file(media_paths[0], target_engine_type) if media_paths else None
+        prompt_meta = read_embedded_metadata_from_file(selected_path, target_engine_type) if selected_path else None
         prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
         label = _gallery_media_label(target_engine_type, state_params)
         progress_window_update = gr_update(visible=False) if media_paths else _empty_gallery_welcome_update(state_params)
@@ -2071,10 +2162,10 @@ def load_main_gallery_browser_page(payload_json, image_tools_checkbox, state_par
     state_params.update({"note_box_state": ["", 0, 0]})
 
     choice = _catalog_choice_from_folder(folder) if folder else None
-    state_params["prompt_info"] = [choice, 0]
-    set_selected_gallery_media_path(state_params, media_paths[0] if media_paths else None)
+    selected_index, selected_path = restore_selected_gallery_media_path(state_params, media_paths)
+    state_params["prompt_info"] = [choice, selected_index]
     infobox_state = state_params.get("infobox_state", False)
-    prompt_meta = read_embedded_metadata_from_file(media_paths[0], media_type) if media_paths else None
+    prompt_meta = read_embedded_metadata_from_file(selected_path, media_type) if selected_path else None
     prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
     label = _gallery_media_label(media_type, state_params)
     state_json = _main_gallery_browser_state_json(
@@ -2229,10 +2320,10 @@ def _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params
     state_params.update({"note_box_state": ["", 0, 0]})
 
     choice = _catalog_choice_from_folder(folder) if folder else None
-    state_params["prompt_info"] = [choice, 0]
-    set_selected_gallery_media_path(state_params, media_paths[0] if media_paths else None)
+    selected_index, selected_path = restore_selected_gallery_media_path(state_params, media_paths)
+    state_params["prompt_info"] = [choice, selected_index]
     infobox_state = state_params.get("infobox_state", False)
-    prompt_meta = read_embedded_metadata_from_file(media_paths[0], media_type) if media_paths else None
+    prompt_meta = read_embedded_metadata_from_file(selected_path, media_type) if selected_path else None
     prompt_info_value = toolbox.make_infobox_markdown(prompt_meta, state_params.get("__theme", "dark"))
     label = _gallery_media_label(media_type, state_params)
     status = _gallery_browser_count_status(len(media_paths), media_type, state_params)

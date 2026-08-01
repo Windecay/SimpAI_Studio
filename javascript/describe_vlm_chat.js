@@ -37,8 +37,7 @@
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
         'Gemma3-12B-TextEncoder',
-        'Qwen3VL-4B-TextEncoder',
-        'Custom'
+        'Qwen3VL-4B-TextEncoder'
     ];
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
@@ -200,7 +199,7 @@
         systemPromptTemplatesLoading: false,
         vlmModelChoices: DESCRIBE_VLM_MODEL_CHOICES.slice(),
         vlmModelLabels: {},
-        vlmAllowCustom: true,
+        vlmAllowCustom: false,
         vlmModelCatalogLoaded: false,
         vlmModelCatalogLoading: false,
         vlmModelCatalogPromise: null,
@@ -940,27 +939,8 @@
         return text;
     }
 
-    function currentCustomVlmModelName() {
-        return String(readComponentValue('describe_vlm_custom_model') || '').trim();
-    }
-
-    function customVlmModelOptionLabel() {
-        return currentCustomVlmModelName() || 'Custom';
-    }
-
-    function customVlmModelLabelIsBetter(nextLabel, currentLabel) {
-        const next = String(nextLabel || '').replace(/[✓✔⚠⬇↓]/g, '').trim();
-        const current = String(currentLabel || '').replace(/[✓✔⚠⬇↓]/g, '').trim();
-        return !!next && !/(^|\s)Custom($|\s)/i.test(next) && ((/^Custom$/i).test(current) || !current);
-    }
-
     function customVlmOptionValue(rawValue, label) {
-        const value = cleanVlmVersion(rawValue || label);
-        if (value === 'Custom') return value;
-        const customModel = currentCustomVlmModelName();
-        const cleanLabel = String(label || rawValue || '').replace(/[✓✔⚠⬇↓]/g, '').trim();
-        if (customModel && (cleanLabel === customModel || cleanLabel.endsWith(`· ${customModel}`))) return 'Custom';
-        return value;
+        return cleanVlmVersion(rawValue || label);
     }
 
     function addUniqueVlmModelOption(options, option) {
@@ -968,8 +948,6 @@
         if (!value) return;
         const existing = options.find((item) => item.value === value);
         if (existing) {
-            const label = String(option?.label || option?.value || value).trim() || value;
-            if (value === 'Custom' && customVlmModelLabelIsBetter(label, existing.label)) existing.label = label;
             return;
         }
         options.push({
@@ -1006,7 +984,6 @@
         (Array.isArray(catalogChoices) ? catalogChoices : [])
             .filter((value) => String(value || '').trim() !== 'Custom')
             .forEach(add);
-        if (state.vlmAllowCustom) add('Custom');
         return merged;
     }
 
@@ -1077,8 +1054,7 @@
         nativeVlmDropdownOptions('describe_vlm_model').forEach((option) => addUniqueVlmModelOption(options, option));
         const current = cleanVlmVersion(readSelectedVlmVersion());
         if (current) addUniqueVlmModelOption(options, { value: current, label: current });
-        if (state.vlmAllowCustom) addUniqueVlmModelOption(options, { value: 'Custom', label: customVlmModelOptionLabel() });
-        return state.vlmAllowCustom ? options : options.filter((option) => option.value !== 'Custom');
+        return options.filter((option) => option.value !== 'Custom');
     }
 
     function syncHeaderVlmModelSelect(select, selectedVersion) {
@@ -1111,20 +1087,9 @@
         return clicked;
     }
 
-    function isVisible(element) {
-        if (!element) return false;
-        const style = window.getComputedStyle(element);
-        return style.display !== 'none' && style.visibility !== 'hidden' && element.offsetParent !== null;
-    }
-
     function readSelectedVlmVersion() {
         const raw = readComponentValue('describe_vlm_model_dropdown') || readComponentValue('describe_vlm_model');
-        const version = cleanVlmVersion(raw);
-        const customPanel = componentHost('describe_vlm_custom_panel');
-        if (version === 'Custom' || isVisible(customPanel)) return 'Custom';
-        const customModel = String(readComponentValue('describe_vlm_custom_model') || '').trim();
-        if (customModel && version === customModel) return 'Custom';
-        return version;
+        return cleanVlmVersion(raw);
     }
 
     function cleanPresetName(value) {

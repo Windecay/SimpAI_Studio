@@ -582,9 +582,9 @@ async function probePostDragState(page, config, report, detail) {
       row.ok = false;
       pushFailure(report, "post_drag_preview_leftover", "Native drag preview node remained after drag.", { ...detail, snapshot });
     }
-    if (snapshot.managedSourceCount || snapshot.managedImageCount || snapshot.externalHandleCount) {
+    if (snapshot.externalHandleCount) {
       row.ok = false;
-      pushFailure(report, "post_drag_legacy_state_leftover", "Legacy drag source or external handle remained after drag.", { ...detail, snapshot });
+      pushFailure(report, "post_drag_legacy_state_leftover", "An obsolete external drag handle remained after drag.", { ...detail, snapshot });
     }
     if (snapshot.maxFrameGapMs > config.maxFrameGapMs) {
       row.ok = false;
@@ -732,10 +732,17 @@ async function runSyntheticStress(page, config, report) {
         const previewBacked = isGalleryDisplayPreview(mediaSrc(img));
         const largeOriginal = !previewBacked && isExternalOriginalSource(mediaSrc(img)) && isLargeOriginalImage(img);
         const expectsDownloadUrl = previewBacked || largeOriginal;
+        const dedicatedHost = img.closest?.("#finished_gallery, #final_gallery, #lightboxModal")
+          ? img.closest?.(".thumbnail-item, .gallery-item, .media-button, .image-container, .image-frame, button")
+          : null;
+        const expectsDedicatedSource = expectsDownloadUrl && !!dedicatedHost;
         dispatchMouse("pointerover", img);
+        dispatchMouse("pointerdown", img);
         dispatchMouse("mousedown", img);
+        const managedSource = img.closest?.('[data-simpleai-managed-native-image-drag-source="1"]');
+        const dragSource = managedSource || img;
         const dataTransfer = new DataTransfer();
-        const startEvent = dispatchDrag("dragstart", img, dataTransfer);
+        const startEvent = dispatchDrag("dragstart", dragSource, dataTransfer);
         const types = Array.from(dataTransfer.types || []);
         const typesLower = types.map((type) => String(type).toLowerCase());
         const customUrl = dataTransfer.getData(customType);
@@ -746,11 +753,26 @@ async function runSyntheticStress(page, config, report) {
           imgDraggable: !!img.draggable,
           imgDraggableAttr: img.getAttribute("draggable"),
           imgMarked: img.dataset?.simpleaiGalleryNativeDragImage === "1",
+          sourceTag: String(dragSource?.tagName || "").toLowerCase(),
+          sourceDraggable: !!dragSource?.draggable,
+          sourceDraggableAttr: dragSource?.getAttribute?.("draggable"),
+          dedicatedSource: dragSource !== img,
+          nativePreviewWidth: document.getElementById("simpleai-native-image-drag-preview")?.offsetWidth || 0,
+          nativePreviewHeight: document.getElementById("simpleai-native-image-drag-preview")?.offsetHeight || 0,
           externalHandleCount: document.querySelectorAll(".simpleai-gallery-external-drag-handle").length,
           managedSourceCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-source="1"]').length,
           managedImageCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-image="1"]').length,
         };
-        if (!afterStart.imgDraggable || afterStart.imgDraggableAttr !== "true") {
+        if (expectsDedicatedSource && (
+          !afterStart.dedicatedSource
+          || !afterStart.sourceDraggable
+          || afterStart.sourceDraggableAttr !== "true"
+          || afterStart.imgDraggable
+          || afterStart.imgDraggableAttr !== "false"
+        )) {
+          failures.push({ code: "native_image_not_draggable", round, index, afterStart });
+        }
+        if (!expectsDedicatedSource && (!afterStart.imgDraggable || afterStart.imgDraggableAttr !== "true")) {
           failures.push({ code: "native_image_not_draggable", round, index, afterStart });
         }
         if (!afterStart.imgMarked) {
@@ -759,14 +781,31 @@ async function runSyntheticStress(page, config, report) {
         if (startEvent.defaultPrevented) {
           failures.push({ code: "native_drag_default_prevented", round, index });
         }
-        if (!customUrl || !uri || !plain) {
+        if (!customUrl || (!expectsDedicatedSource && (!uri || !plain))) {
           failures.push({ code: "native_drag_missing_url_payload", round, index, types, customUrl, uri, plain });
+        }
+        if (expectsDedicatedSource && (uri || plain || typesLower.includes("text/uri-list") || typesLower.includes("text/plain"))) {
+          failures.push({ code: "native_drag_download_source_contains_text_url", round, index, types, uri, plain, afterStart });
+        }
+        if (expectsDedicatedSource && (
+          afterStart.nativePreviewWidth !== 120
+          || afterStart.nativePreviewHeight < 48
+          || afterStart.nativePreviewHeight > 160
+        )) {
+          failures.push({ code: "native_drag_download_preview_invalid", round, index, types, afterStart });
         }
         if (expectsDownloadUrl && (!downloadUrl || !typesLower.includes("downloadurl"))) {
           failures.push({ code: "native_drag_preview_missing_original_download", round, index, types, downloadUrl, customUrl });
         }
-        if (expectsDownloadUrl && downloadUrl && (!customUrl || !downloadUrl.endsWith(`:${customUrl}`) || downloadUrl.includes("simpai_gprev__"))) {
+        if (expectsDownloadUrl && downloadUrl && (
+          !customUrl
+          || (!downloadUrl.includes("/simpleai/gallery-download/") && !downloadUrl.endsWith(`:${customUrl}`))
+          || downloadUrl.includes("simpai_gprev__")
+        )) {
           failures.push({ code: "native_drag_preview_download_not_original", round, index, types, downloadUrl, customUrl });
+        }
+        if (expectsDedicatedSource && typesLower.includes("files")) {
+          failures.push({ code: "native_drag_download_source_contains_files", round, index, types, afterStart });
         }
         if (!expectsDownloadUrl && (downloadUrl || typesLower.includes("downloadurl"))) {
           failures.push({ code: "native_drag_unexpected_downloadurl", round, index, types, downloadUrl });
@@ -774,10 +813,7 @@ async function runSyntheticStress(page, config, report) {
         if (afterStart.externalHandleCount) {
           failures.push({ code: "native_drag_external_handle_present", round, index, afterStart });
         }
-        if (afterStart.managedSourceCount || afterStart.managedImageCount) {
-          failures.push({ code: "native_drag_legacy_state_present", round, index, afterStart });
-        }
-        dispatchDrag("dragend", img, dataTransfer);
+        dispatchDrag("dragend", dragSource, dataTransfer);
         dispatchMouse("mouseup", img);
         const afterEnd = {
           pointerPreview: !!document.getElementById("simpleai-gallery-pointer-drag-preview"),
@@ -786,7 +822,7 @@ async function runSyntheticStress(page, config, report) {
           managedSourceCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-source="1"]').length,
           managedImageCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-image="1"]').length,
         };
-        if (Object.values(afterEnd).some((value) => Boolean(value))) {
+        if (afterEnd.pointerPreview || afterEnd.nativePreview || afterEnd.externalHandleCount) {
           failures.push({ code: "native_drag_state_residue", round, index, afterEnd });
         }
         runs.push({
@@ -800,6 +836,7 @@ async function runSyntheticStress(page, config, report) {
           hasDownloadUrl: !!downloadUrl,
           previewBacked,
           largeOriginal,
+          expectsDedicatedSource,
           afterStart,
           afterEnd,
         });
@@ -883,6 +920,9 @@ function runSelfTest(config) {
     "native_drag_missing_url_payload",
     "native_drag_preview_missing_original_download",
     "native_drag_preview_download_not_original",
+    "native_drag_download_source_contains_files",
+    "native_drag_download_source_contains_text_url",
+    "native_drag_download_preview_invalid",
     "native_image_not_draggable",
     "native_image_not_marked",
     "native_drag_external_handle_present",

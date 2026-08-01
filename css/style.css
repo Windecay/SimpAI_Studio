@@ -1130,6 +1130,35 @@ html.simpai-hide-refiner-model .models-grid #model_dropdown_base {
   box-shadow: none !important;
 }
 
+.simpai-prompt-history-tooltip {
+  position: fixed;
+  z-index: 2147483600;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  padding: 10px 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-color-primary, #4b5563);
+  border-radius: 6px;
+  background: var(--block-background-fill, #202124);
+  color: var(--body-text-color, #f3f4f6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.simpai-prompt-history-tooltip[hidden] {
+  display: none !important;
+}
+
 .resizable_area {
   resize: vertical;
   overflow: auto !important;
@@ -6387,6 +6416,48 @@ html.describe-vlm-chat-resizing * {
   line-height: 22px !important;
 }
 
+#describe_vlm_api_settings_btn {
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  margin: 0 !important;
+}
+
+#describe_vlm_api_settings_btn:is(button),
+#describe_vlm_api_settings_btn button {
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--border-color-primary, #6b7280) 72%, transparent) !important;
+  border-radius: 5px !important;
+  background: color-mix(in srgb, var(--button-secondary-background-fill, #34363d) 90%, #ffffff 10%) !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  box-shadow: none !important;
+}
+
+#describe_vlm_api_settings_btn:is(button)::before,
+#describe_vlm_api_settings_btn button::before {
+  content: "\f013";
+  color: var(--body-text-color, #f8fafc);
+  font-family: "Font Awesome 6 Free";
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+#describe_vlm_api_settings_btn:is(button):hover,
+#describe_vlm_api_settings_btn button:hover,
+#describe_vlm_api_settings_btn:is(button):focus-visible,
+#describe_vlm_api_settings_btn button:focus-visible {
+  border-color: #2196f3 !important;
+  background: color-mix(in srgb, #2196f3 18%, var(--button-secondary-background-fill, #34363d)) !important;
+}
+
 #describe_vlm_model_status .describe-vlm-model-state {
   display: none !important;
   align-items: center !important;
@@ -6476,6 +6547,11 @@ html.describe-vlm-chat-resizing * {
 #describe_vlm_custom_panel .form,
 #describe_vlm_custom_panel .block {
   min-width: 0 !important;
+}
+
+#describe_vlm_custom_panel,
+#describe_vlm_custom_help {
+  scroll-margin-top: 12px;
 }
 
 #describe_vlm_custom_panel label span {

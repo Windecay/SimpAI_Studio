@@ -363,6 +363,13 @@ except Exception as exc:
     result["error"] = f"{type(exc).__name__}: {exc}"
 print("SIMPAI_LLAMA_CPP_PROBE=" + json.dumps(result, ensure_ascii=False))
 """
+    probe_env = _make_pip_env()
+    if platform.system() == "Windows":
+        torch_file = getattr(torch, "__file__", "")
+        torch_lib = os.path.join(os.path.dirname(os.path.abspath(torch_file)), "lib") if torch_file else ""
+        if os.path.isdir(torch_lib):
+            current_path = probe_env.get("PATH", "")
+            probe_env["PATH"] = torch_lib + (os.pathsep + current_path if current_path else "")
     try:
         result = subprocess.run(
             [python, "-s", "-X", "utf8", "-c", code],
@@ -370,7 +377,7 @@ print("SIMPAI_LLAMA_CPP_PROBE=" + json.dumps(result, ensure_ascii=False))
             text=True,
             encoding="utf-8",
             errors="replace",
-            env=_make_pip_env(),
+            env=probe_env,
             timeout=60,
         )
     except Exception as exc:

@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 import numpy as np
 import gradio as gr
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def patch_gradio_processing_utils_for_missing_ffprobe():
@@ -619,3 +619,62 @@ def compose_full_mask(mask_preview, full_image):
         h, w = full_image.shape[:2]
         return _resize_np(mask_preview, w, h, Image.Resampling.NEAREST)
     return mask_preview
+
+
+def _comparison_image_to_rgb(value):
+    try:
+        if isinstance(value, Image.Image):
+            image = value.copy()
+        elif isinstance(value, np.ndarray):
+            image = Image.fromarray(value)
+        elif isinstance(value, (str, os.PathLike)) and os.path.isfile(os.fspath(value)):
+            with Image.open(os.fspath(value)) as source:
+                image = source.copy()
+        else:
+            return None
+
+        image = ImageOps.exif_transpose(image)
+        if image.mode == "RGBA":
+            background = Image.new("RGBA", image.size, (255, 255, 255, 255))
+            return Image.alpha_composite(background, image).convert("RGB")
+        if image.mode != "RGB":
+            return image.convert("RGB")
+        return image
+    except Exception:
+        return None
+
+
+def normalize_imageslider_pair(input_image, output_image, max_side=2048):
+    input_pil = _comparison_image_to_rgb(input_image)
+    output_pil = _comparison_image_to_rgb(output_image)
+    if input_pil is None or output_pil is None:
+        return input_image, output_image
+
+    try:
+        max_side = max(1, int(max_side))
+    except (TypeError, ValueError):
+        max_side = 2048
+
+    output_width, output_height = output_pil.size
+    scale = min(1.0, float(max_side) / float(max(output_width, output_height)))
+    target_size = (
+        max(1, int(round(output_width * scale))),
+        max(1, int(round(output_height * scale))),
+    )
+    if output_pil.size != target_size:
+        output_pil = output_pil.resize(target_size, Image.Resampling.LANCZOS)
+
+    input_ratio = input_pil.width / max(1, input_pil.height)
+    output_ratio = output_width / max(1, output_height)
+    ratio_delta = abs(input_ratio - output_ratio) / max(output_ratio, 1e-9)
+    if ratio_delta <= 0.01:
+        input_pil = input_pil.resize(target_size, Image.Resampling.LANCZOS)
+    else:
+        input_pil = ImageOps.pad(
+            input_pil,
+            target_size,
+            method=Image.Resampling.LANCZOS,
+            color=(0, 0, 0),
+            centering=(0.5, 0.5),
+        )
+    return input_pil, output_pil

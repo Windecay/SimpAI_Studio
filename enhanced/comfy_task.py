@@ -8,6 +8,18 @@ from shared import modelsinfo
 from enhanced.simpleai import ComfyTaskParams, comfyclient_pipeline
 
 
+AIO_UOV_PREVIEW_NODE_CLASS_TYPES = {
+    "SimpAIAIOUOVFlux",
+    "SimpAIAIOUOVSDXL",
+    "SimpAIAIOUOVQwen",
+    "SimpAIAIOUOVWan",
+    "SimpAIAIOUOVZImage",
+    "SimpAIAIOUOVFlux2",
+    "SimpAIAIOUOVAnima",
+    "SimpAIAIOUOVChenkin",
+}
+
+
 def _register_runtime_preview_nodes():
     node_name = "SimpAIWanAnimateLoop"
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add(node_name)
@@ -25,6 +37,8 @@ def _register_runtime_preview_nodes():
         "SimpAIAIOInpaintZImage",
         "SimpAIAIOInpaintAnima",
     })
+    # Dynamic UltimateSDUpscale events use the outer AIO node as display_node.
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update(AIO_UOV_PREVIEW_NODE_CLASS_TYPES)
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
     install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
 

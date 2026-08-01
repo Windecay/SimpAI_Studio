@@ -966,6 +966,21 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
     backend_params = manifest.get("backend_params", {})
     if not isinstance(backend_params, dict):
         backend_params = {}
+
+    metadata_base_model = None
+    for key in ("base_model", "Base Model"):
+        value = parsed_parameters.get(key)
+        if isinstance(value, str) and value.strip():
+            metadata_base_model = value.strip()
+            break
+    if metadata_base_model is None:
+        value = backend_params.get("base_model")
+        if isinstance(value, str) and value.strip():
+            metadata_base_model = value.strip()
+    if metadata_base_model is not None:
+        restored["base_model"] = metadata_base_model
+        preset_prepared["base_model"] = metadata_base_model
+
     for index in range(1, config.default_max_lora_number + 1):
         canonical_key = f"lora_combined_{index}"
         metadata_key = f"LoRA {index}"
