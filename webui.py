@@ -266,8 +266,9 @@ def _main_vlm_custom_help_html(state=None):
 
 def _vlm_resolve_version(value):
     value = str(value or "").strip()
-    if vlm_api_profiles.is_profile_version(value):
-        return value
+    profile_version = vlm_api_profiles.resolve_profile_version(value)
+    if profile_version:
+        return profile_version
     if value == VLM.CUSTOM_VERSION or re.search(r"(^|\s)Custom($|\s)", value):
         return VLM.CUSTOM_VERSION
     if value in VLM.VERSIONS or value.endswith("-Thinking"):

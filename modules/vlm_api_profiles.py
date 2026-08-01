@@ -281,6 +281,26 @@ def public_catalog_item(profile):
     }
 
 
+def resolve_profile_version(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if is_profile_version(text):
+        return text
+
+    normalized = text.lstrip("✓✔⚠⬇↓ \t").strip().casefold()
+    matches = []
+    for profile in load_profiles()["items"]:
+        item = public_catalog_item(profile)
+        labels = {
+            str(item.get("label") or "").strip().casefold(),
+            str(item.get("display_label") or "").strip().casefold(),
+        }
+        if normalized in labels:
+            matches.append(str(item.get("id") or "").strip())
+    return matches[0] if len(matches) == 1 else ""
+
+
 def merge_catalog(catalog, allow_raw_custom=False):
     result = copy.deepcopy(catalog if isinstance(catalog, dict) else {})
     base_items = [item for item in result.get("items") or [] if isinstance(item, dict)]

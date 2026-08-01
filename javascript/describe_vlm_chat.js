@@ -939,8 +939,24 @@
         return text;
     }
 
+    function vlmModelLabels() {
+        const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
+        return Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
+    }
+
+    function resolveVlmVersion(value) {
+        const cleaned = cleanVlmVersion(value);
+        if (!cleaned) return '';
+        const labels = vlmModelLabels();
+        if (Object.prototype.hasOwnProperty.call(labels, cleaned)) return cleaned;
+        const matches = Object.entries(labels)
+            .filter(([, label]) => cleanVlmVersion(label) === cleaned)
+            .map(([version]) => cleanVlmVersion(version));
+        return matches.length === 1 ? matches[0] : cleaned;
+    }
+
     function customVlmOptionValue(rawValue, label) {
-        return cleanVlmVersion(rawValue || label);
+        return resolveVlmVersion(rawValue || label);
     }
 
     function addUniqueVlmModelOption(options, option) {
@@ -1043,7 +1059,7 @@
             ? registry.VLM_VERSION_CHOICES
             : DESCRIBE_VLM_MODEL_CHOICES;
         const labels = Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
-        return choices.map((choice) => ({ value: cleanVlmVersion(choice), label: String(labels[choice] || choice || '').trim() }))
+        return choices.map((choice) => ({ value: resolveVlmVersion(choice), label: String(labels[choice] || choice || '').trim() }))
             .filter((choice) => choice.value);
     }
 
@@ -1052,7 +1068,7 @@
         registryVlmDropdownOptions().forEach((option) => addUniqueVlmModelOption(options, option));
         nativeVlmDropdownOptions('describe_vlm_model_dropdown').forEach((option) => addUniqueVlmModelOption(options, option));
         nativeVlmDropdownOptions('describe_vlm_model').forEach((option) => addUniqueVlmModelOption(options, option));
-        const current = cleanVlmVersion(readSelectedVlmVersion());
+        const current = resolveVlmVersion(readSelectedVlmVersion());
         if (current) addUniqueVlmModelOption(options, { value: current, label: current });
         return options.filter((option) => option.value !== 'Custom');
     }
@@ -1067,14 +1083,14 @@
                 .join('');
             select.dataset.describeVlmModelChoices = signature;
         }
-        const version = cleanVlmVersion(selectedVersion || readSelectedVlmVersion());
+        const version = resolveVlmVersion(selectedVersion || readSelectedVlmVersion());
         if (version && Array.from(select.options || []).some((option) => option.value === version) && select.value !== version) {
             select.value = version;
         }
     }
 
     function setDescribeVlmVersionFromHeader(rawValue) {
-        const version = cleanVlmVersion(rawValue);
+        const version = resolveVlmVersion(rawValue);
         if (!version) return false;
         const clicked = setComponentValue('describe_vlm_model_select_bridge', version)
             && clickComponentButton('describe_vlm_model_select_btn');
@@ -1089,7 +1105,7 @@
 
     function readSelectedVlmVersion() {
         const raw = readComponentValue('describe_vlm_model_dropdown') || readComponentValue('describe_vlm_model');
-        return cleanVlmVersion(raw);
+        return resolveVlmVersion(raw);
     }
 
     function cleanPresetName(value) {
@@ -1150,7 +1166,7 @@
     }
 
     function readDescribeCustomApi(version) {
-        if (cleanVlmVersion(version) !== 'Custom') return null;
+        if (resolveVlmVersion(version) !== 'Custom') return null;
         return {
             api_name: readComponentValue('describe_vlm_custom_api_name') || 'Custom',
             provider: readComponentValue('describe_vlm_custom_provider') || 'custom',
@@ -1163,7 +1179,7 @@
     }
 
     function buildVlmModelStatusPayload(version) {
-        const cleanVersion = cleanVlmVersion(version);
+        const cleanVersion = resolveVlmVersion(version);
         const customApi = readDescribeCustomApi(cleanVersion);
         const params = { version: cleanVersion };
         if (customApi) {
@@ -1186,7 +1202,7 @@
     }
 
     function triggerVlmMissingModelPopup(version, customApi) {
-        const cleanVersion = cleanVlmVersion(version);
+        const cleanVersion = resolveVlmVersion(version);
         if (!cleanVersion || cleanVersion === 'Custom') return false;
         const request = {
             kind: 'vlm',
@@ -1215,7 +1231,7 @@
             : t('Click the button to open the download panel.', '点击按钮打开下载面板。');
         const message = `${baseMessage} ${actionMessage}`;
         state.missingVlmModelRequest = {
-            version: cleanVlmVersion(version),
+            version: resolveVlmVersion(version),
             customApi: customApi || null
         };
         status.classList.add('is-error', 'is-actionable');
@@ -1228,6 +1244,8 @@
     }
 
     async function ensureSelectedVlmModelReady(version) {
+        if (!state.vlmModelCatalogLoaded) await refreshDescribeVlmModelCatalog(false);
+        version = resolveVlmVersion(version);
         const { payload, customApi } = buildVlmModelStatusPayload(version);
         const response = await postJson('/canvas-workbench/vlm-model-status', payload);
         if (response?.ok && response.ready) {
@@ -1248,7 +1266,7 @@
     }
 
     function currentAnswerModelLabel() {
-        const version = cleanVlmVersion(readSelectedVlmVersion());
+        const version = resolveVlmVersion(readSelectedVlmVersion());
         if (version === 'Custom') {
             const apiName = readComponentValue('describe_vlm_custom_api_name').trim();
             const customModel = readComponentValue('describe_vlm_custom_model').trim();

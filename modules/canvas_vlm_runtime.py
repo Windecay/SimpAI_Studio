@@ -114,8 +114,9 @@ def _canvas_vlm_cancelled_response(project_id="", node_id="", conversation_id=""
 
 def _canvas_vlm_resolve_version(value):
     text = str(value or "").strip()
-    if vlm_api_profiles.is_profile_version(text):
-        return text
+    profile_version = vlm_api_profiles.resolve_profile_version(text)
+    if profile_version:
+        return profile_version
     if text == "Custom" or "Custom" in text.split():
         return "Custom"
     if text in VLM.VERSIONS:
