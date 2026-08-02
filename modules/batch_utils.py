@@ -250,6 +250,10 @@ def _scene_batch_lang_is_cn(state_params):
     return lang.startswith("cn") or lang.startswith("zh") or lang in {"中文", "chinese"}
 
 
+def _batch_text(state_params, en, cn):
+    return cn if _scene_batch_lang_is_cn(state_params) else en
+
+
 def _scene_batch_disvisible(state_params):
     scenes = state_params.get("scene_frontend", {}) if isinstance(state_params, dict) else {}
     disvisible = scenes.get("disvisible", []) if isinstance(scenes, dict) else []
@@ -359,7 +363,7 @@ def clear_batch(batch_id):
             pass
 
 
-def stop_batch(batch_id, worker=None):
+def stop_batch(batch_id, state_params=None, worker=None):
     evt = BATCH_EVENTS.get(batch_id)
     if evt is not None:
         evt.set()
@@ -369,7 +373,7 @@ def stop_batch(batch_id, worker=None):
                 worker.worker.interrupt_processing()
         except Exception:
             pass
-    return "Stopping..." if batch_id else ""
+    return _batch_text(state_params, "Stopping...", "正在停止...") if batch_id else ""
 
 
 def fill_backend_meta(args_norm, state):
@@ -503,15 +507,18 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
 
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
-        yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
+        message = _batch_text(state, "Batch: folder is empty or invalid.", "批处理：文件夹为空或无效。")
+        yield gr_update(visible=True, value=html.make_progress_html(1, message)), \
             gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-            gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
+            gr_update(interactive=True), False, message, ""
         return
 
     batch_id, evt = create_batch()
-    yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: 0/{len(files)}")), \
+    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
         gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, f"Batch started: {len(files)} files", batch_id
+        gr_update(interactive=False), True, started_message, batch_id
 
     base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
     base_args = copy.deepcopy(base_task.args)
@@ -528,9 +535,12 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
         try:
             img = load_rgba(path)
         except Exception as e:
-            yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: failed to load {os.path.basename(path)} ({e})")), \
+            filename = os.path.basename(path)
+            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
                 gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, f"Batch: failed to load {os.path.basename(path)}", batch_id
+                gr_update(interactive=False), True, status_message, batch_id
             continue
 
         args_i = copy.deepcopy(base_args)
@@ -541,7 +551,11 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
         args_i[19] = img
         task = worker.AsyncTask(args=args_i)
 
-        status = f"Batch UOV: {i + 1}/{len(files)} - {os.path.basename(path)}"
+        status = _batch_text(
+            state,
+            f"Batch UOV: {i + 1}/{len(files)} - {os.path.basename(path)}",
+            f"UOV 批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+        )
         for out in generate_clicked(task, state):
             yield (*out, gr_update(interactive=False), True, status, batch_id)
         completed = i + 1
@@ -554,12 +568,12 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, f"Batch stopped: {completed}/{len(files)} files", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
     else:
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, "Batch finished.", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
 
 
 def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_with_resolution_multiplier, generate_clicked, worker, constants, html, get_welcome_image):
@@ -574,15 +588,18 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
 
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
-        yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
+        message = _batch_text(state, "Batch: folder is empty or invalid.", "批处理：文件夹为空或无效。")
+        yield gr_update(visible=True, value=html.make_progress_html(1, message)), \
             gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-            gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
+            gr_update(interactive=True), False, message, ""
         return
 
     batch_id, evt = create_batch()
-    yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: 0/{len(files)}")), \
+    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
         gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, f"Batch started: {len(files)} files", batch_id
+        gr_update(interactive=False), True, started_message, batch_id
 
     base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
     base_args = copy.deepcopy(base_task.args)
@@ -599,9 +616,12 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
         try:
             img = load_rgba(path)
         except Exception as e:
-            yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: failed to load {os.path.basename(path)} ({e})")), \
+            filename = os.path.basename(path)
+            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
                 gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, f"Batch: failed to load {os.path.basename(path)}", batch_id
+                gr_update(interactive=False), True, status_message, batch_id
             continue
 
         args_i = copy.deepcopy(base_args)
@@ -612,7 +632,11 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
         args_i[75] = img
         task = worker.AsyncTask(args=args_i)
 
-        status = f"Batch Enhance: {i + 1}/{len(files)} - {os.path.basename(path)}"
+        status = _batch_text(
+            state,
+            f"Batch Enhance: {i + 1}/{len(files)} - {os.path.basename(path)}",
+            f"增强批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+        )
         for out in generate_clicked(task, state):
             yield (*out, gr_update(interactive=False), True, status, batch_id)
         completed = i + 1
@@ -625,12 +649,12 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, f"Batch stopped: {completed}/{len(files)} files", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
     else:
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, "Batch finished.", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id
 
 
 def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2,
@@ -675,15 +699,18 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
 
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
-        yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
+        message = _batch_text(state, "Batch: folder is empty or invalid.", "批处理：文件夹为空或无效。")
+        yield gr_update(visible=True, value=html.make_progress_html(1, message)), \
             gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-            gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
+            gr_update(interactive=True), False, message, ""
         return
 
     batch_id, evt = create_batch()
-    yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: 0/{len(files)}")), \
+    progress_message = _batch_text(state, f"Batch: 0/{len(files)}", f"批处理：0/{len(files)}")
+    started_message = _batch_text(state, f"Batch started: {len(files)} files", f"批处理已开始：{len(files)} 个文件")
+    yield gr_update(visible=True, value=html.make_progress_html(1, progress_message)), \
         gr_update(), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
-        gr_update(interactive=False), True, f"Batch started: {len(files)} files", batch_id
+        gr_update(interactive=False), True, started_message, batch_id
 
     base_task = get_task_with_resolution_multiplier(*ctrls_values, resolution_multiplier, resolution_quantize_step)
     base_args = copy.deepcopy(base_task.args)
@@ -704,9 +731,12 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         try:
             img = load_rgba(path)
         except Exception as e:
-            yield gr_update(visible=True, value=html.make_progress_html(1, f"Batch: failed to load {os.path.basename(path)} ({e})")), \
+            filename = os.path.basename(path)
+            detail_message = _batch_text(state, f"Batch: failed to load {filename} ({e})", f"批处理：无法读取 {filename}（{e}）")
+            status_message = _batch_text(state, f"Batch: failed to load {filename}", f"批处理：无法读取 {filename}")
+            yield gr_update(visible=True, value=html.make_progress_html(1, detail_message)), \
                 gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), gr_update(), gr_update(), \
-                gr_update(interactive=False), True, f"Batch: failed to load {os.path.basename(path)}", batch_id
+                gr_update(interactive=False), True, status_message, batch_id
             continue
 
         scene_canvas_image_v = copy.deepcopy(scene_canvas_image) if isinstance(scene_canvas_image, dict) else scene_canvas_image
@@ -791,7 +821,11 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
             pass
 
         task = worker.AsyncTask(args=args_i)
-        status = f"Batch Scene: {i + 1}/{len(files)} - {os.path.basename(path)}"
+        status = _batch_text(
+            state,
+            f"Batch Scene: {i + 1}/{len(files)} - {os.path.basename(path)}",
+            f"场景批处理：{i + 1}/{len(files)} - {os.path.basename(path)}",
+        )
         for out in generate_clicked(task, state):
             yield (*out, gr_update(interactive=False), True, status, batch_id)
         completed = i + 1
@@ -804,9 +838,9 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, f"Batch stopped: {completed}/{len(files)} files", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, f"Batch stopped: {completed}/{len(files)} files", f"批处理已停止：{completed}/{len(files)} 个文件"), batch_id
     else:
         yield gr_update(visible=False), \
             gr_update(), gr_update(), gr_update(), gr_update(), False, gr_update(), gr_update(), \
             gr_update(visible=False, interactive=False), gr_update(visible=False, interactive=False), \
-            gr_update(visible=True, interactive=True), False, "Batch finished.", batch_id
+            gr_update(visible=True, interactive=True), False, _batch_text(state, "Batch finished.", "批处理已完成。"), batch_id

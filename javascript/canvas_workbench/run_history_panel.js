@@ -66,6 +66,23 @@
         return `${minutes}m ${seconds % 60}s`;
     }
 
+    function runStateLabel(value) {
+        const state = String(value || 'unknown').toLowerCase();
+        const labels = {
+            queued: t('queued', '排队中'),
+            running: t('running', '运行中'),
+            waiting: t('waiting', '等待中'),
+            cancelling: t('cancelling', '正在取消'),
+            cancelled: t('cancelled', '已取消'),
+            stopped: t('stopped', '已停止'),
+            finished: t('finished', '已完成'),
+            completed: t('completed', '已完成'),
+            failed: t('failed', '失败'),
+            unknown: t('unknown', '未知')
+        };
+        return labels[state] || value || labels.unknown;
+    }
+
     function openPanel(runId, context) {
         const panel = getPanel(context);
         if (!panel) return;
@@ -108,7 +125,9 @@
         const selectedRun = runs.find(run => run.id === selectedId) || runs[0];
         const selectedNode = getRunResultNode(selectedRun, context);
         const selectedPreset = getRunPresetNode(selectedRun, context);
-        const selectedProducerActionLabel = selectedRun.producer_type === 'qwen_tts' ? 'Select Qwen TTS' : 'Select Preset';
+        const selectedProducerActionLabel = selectedRun.producer_type === 'qwen_tts'
+            ? t('Select Qwen TTS', '选择 Qwen TTS')
+            : t('Select Preset', '选择预设');
         const selectedProducerIcon = selectedRun.producer_type === 'qwen_tts' ? 'fa-microphone-lines' : 'fa-diagram-project';
         const response = selectedRun.last_response || {};
         const preview = response.task_preview || selectedRun.task_preview || {};
@@ -130,22 +149,22 @@
         const state = run.state || node?.status?.state || 'unknown';
         const active = !context.isTerminalRunState(state);
         return `<button type="button" data-run-history-select="${escapeHtml(run.id)}" class="${run.id === selectedRun.id ? 'is-active' : ''}">
-          <span><b data-state="${escapeHtml(state)}">${escapeHtml(state)}</b>${active ? `<i>${escapeHtml(t('live', '实时'))}</i>` : ''}</span>
-          <strong>${escapeHtml(preset?.title || itemPreview.display_name || itemPreview.preset || (run.producer_type === 'qwen_tts' ? 'Qwen TTS' : 'Preset'))}</strong>
+          <span><b data-state="${escapeHtml(state)}">${escapeHtml(runStateLabel(state))}</b>${active ? `<i>${escapeHtml(t('live', '实时'))}</i>` : ''}</span>
+          <strong>${escapeHtml(preset?.title || itemPreview.display_name || itemPreview.preset || (run.producer_type === 'qwen_tts' ? 'Qwen TTS' : t('Preset', '预设')))}</strong>
           <small>${escapeHtml(context.formatLocalTime(run.updated_at || run.created_at))}</small>
         </button>`;
     }).join('')}
   </div>
   <div class="sai-run-history-detail">
     <div class="sai-run-history-title">
-      <h3>${escapeHtml(selectedPreset?.title || preview.display_name || preview.preset || (selectedRun.producer_type === 'qwen_tts' ? 'Qwen TTS Run' : 'Canvas Run'))}</h3>
-      <span data-state="${escapeHtml(selectedRun.state || 'unknown')}">${escapeHtml(selectedRun.state || 'unknown')}</span>
+      <h3>${escapeHtml(selectedPreset?.title || preview.display_name || preview.preset || (selectedRun.producer_type === 'qwen_tts' ? t('Qwen TTS Run', 'Qwen TTS 运行记录') : t('Canvas Run', '画布运行记录')))}</h3>
+      <span data-state="${escapeHtml(selectedRun.state || 'unknown')}">${escapeHtml(runStateLabel(selectedRun.state))}</span>
     </div>
     <div class="sai-run-history-grid">
-      <div><span>Run ID</span><code>${escapeHtml(selectedRun.id || '')}</code></div>
-      <div><span>Task ID</span><code>${escapeHtml(selectedRun.task_id || response.task_id || '')}</code></div>
-      <div><span>Task Method</span><b>${escapeHtml(preview.task_method || '')}</b></div>
-      <div><span>Seed</span><b>${escapeHtml(selectedRun.resolved_seed ?? response.resolved_seed ?? '')}</b></div>
+      <div><span>${escapeHtml(t('Run ID', '运行 ID'))}</span><code>${escapeHtml(selectedRun.id || '')}</code></div>
+      <div><span>${escapeHtml(t('Task ID', '任务 ID'))}</span><code>${escapeHtml(selectedRun.task_id || response.task_id || '')}</code></div>
+      <div><span>${escapeHtml(t('Task Method', '任务方式'))}</span><b>${escapeHtml(preview.task_method || '')}</b></div>
+      <div><span>${escapeHtml(t('Seed', '种子'))}</span><b>${escapeHtml(selectedRun.resolved_seed ?? response.resolved_seed ?? '')}</b></div>
       <div><span>${escapeHtml(t('Inputs', '输入'))}</span><b>${escapeHtml(inputCount)}</b></div>
       <div><span>${escapeHtml(t('Outputs', '输出'))}</span><b>${escapeHtml(outputCount)}</b></div>
       <div><span>${escapeHtml(t('Started', '开始时间'))}</span><b>${escapeHtml(context.formatLocalTime(selectedRun.created_at))}</b></div>
@@ -154,7 +173,7 @@
     <div class="sai-run-history-message">${escapeHtml(selectedRun.message || selectedNode?.status?.message || response.message || '')}</div>
     ${errorText ? `<div class="sai-run-history-error"><div><strong>${escapeHtml(t('Error Details', '错误详情'))}</strong><button type="button" data-run-history-action="copy-error" title="${escapeHtml(t('Copy error', '复制错误'))}"><i class="fa-solid fa-copy"></i></button></div><pre>${escapeHtml(errorText)}</pre></div>` : ''}
     <div class="sai-run-history-actions">
-      <button type="button" data-run-history-action="locate" ${selectedNode ? '' : 'disabled'}><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(t('Locate Result', '定位 Result'))}</span></button>
+      <button type="button" data-run-history-action="locate" ${selectedNode ? '' : 'disabled'}><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(t('Locate Result', '定位结果'))}</span></button>
       <button type="button" data-run-history-action="select-preset" ${selectedPreset ? '' : 'disabled'}><i class="fa-solid ${selectedProducerIcon}"></i><span>${escapeHtml(selectedProducerActionLabel)}</span></button>
     </div>
     <div class="sai-run-history-events">

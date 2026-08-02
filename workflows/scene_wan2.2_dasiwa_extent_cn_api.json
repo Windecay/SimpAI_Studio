@@ -80,8 +80,8 @@
         0
       ],
       "latent": [
-        "217",
-        2
+        "231",
+        0
       ]
     },
     "class_type": "WanVideoEnhanceAVideoKJ",
@@ -188,16 +188,16 @@
         0
       ],
       "positive": [
-        "217",
+        "228",
         0
       ],
       "negative": [
-        "217",
-        1
+        "230",
+        0
       ],
       "latent_image": [
-        "217",
-        2
+        "231",
+        0
       ]
     },
     "class_type": "KSamplerAdvanced",
@@ -734,12 +734,12 @@
         0
       ],
       "positive": [
-        "217",
+        "229",
         0
       ],
       "negative": [
-        "217",
-        1
+        "230",
+        0
       ],
       "latent_image": [
         "22",
@@ -1021,11 +1021,6 @@
   },
   "217": {
     "inputs": {
-      "length": [
-        "1",
-        0
-      ],
-      "motion_latent_count": 1,
       "positive": [
         "2",
         0
@@ -1034,18 +1029,49 @@
         "5",
         0
       ],
-      "anchor_samples": [
-        "223",
+      "vae": [
+        "10",
         0
       ],
-      "prev_samples": [
+      "width": [
+        "191",
+        1
+      ],
+      "height": [
+        "191",
+        2
+      ],
+      "length": [
+        "1",
+        0
+      ],
+      "batch_size": 1,
+      "motion_influence": 1.0,
+      "overlap_frames": 4,
+      "motion_boost": 1.0,
+      "detail_boost": 1.0,
+      "start_image": [
+        "219",
+        0
+      ],
+      "enable_start_frame": true,
+      "high_noise_start_strength": 1.0,
+      "low_noise_start_strength": 1.0,
+      "enable_middle_frame": false,
+      "middle_frame_ratio": 0.5,
+      "high_noise_mid_strength": 0.8,
+      "low_noise_mid_strength": 0.2,
+      "enable_end_frame": false,
+      "low_noise_end_strength": 1.0,
+      "prev_latent": [
         "218",
         0
-      ]
+      ],
+      "video_frame_offset": 0
     },
-    "class_type": "WanImageToVideoSVIPro",
+    "class_type": "WanSVIProAdvancedI2V",
     "_meta": {
-      "title": "WanImageToVideoSVIPro"
+      "title": "SVI Pro Advanced (No Target Frame)"
     }
   },
   "218": {
@@ -1128,18 +1154,15 @@
   },
   "223": {
     "inputs": {
-      "pixels": [
-        "219",
-        0
+      "image_name": [
+        "150",
+        2
       ],
-      "vae": [
-        "10",
-        0
-      ]
+      "image": "None"
     },
-    "class_type": "VAEEncode",
+    "class_type": "LoadInputImage",
     "_meta": {
-      "title": "Encode Source First Frame"
+      "title": "Load Optional Target Last Frame"
     }
   },
   "224": {
@@ -1175,6 +1198,159 @@
     "class_type": "SimpAIAutoProtectedColorMatch",
     "_meta": {
       "title": "Match Extension Color To Source"
+    }
+  },
+  "226": {
+    "inputs": {
+      "positive": [
+        "2",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ],
+      "width": [
+        "191",
+        1
+      ],
+      "height": [
+        "191",
+        2
+      ],
+      "length": [
+        "1",
+        0
+      ],
+      "batch_size": 1,
+      "motion_influence": 1.0,
+      "overlap_frames": 4,
+      "motion_boost": 1.0,
+      "detail_boost": 1.0,
+      "start_image": [
+        "219",
+        0
+      ],
+      "enable_start_frame": true,
+      "high_noise_start_strength": 1.0,
+      "low_noise_start_strength": 1.0,
+      "enable_middle_frame": false,
+      "middle_frame_ratio": 0.5,
+      "high_noise_mid_strength": 0.8,
+      "low_noise_mid_strength": 0.2,
+      "end_image": [
+        "223",
+        0
+      ],
+      "enable_end_frame": true,
+      "low_noise_end_strength": 1.0,
+      "prev_latent": [
+        "218",
+        0
+      ],
+      "video_frame_offset": 0
+    },
+    "class_type": "WanSVIProAdvancedI2V",
+    "_meta": {
+      "title": "SVI Pro Advanced (Target Last Frame)"
+    }
+  },
+  "227": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "150",
+        2
+      ],
+      "b": "None"
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Target Last Frame Is Empty"
+    }
+  },
+  "228": {
+    "inputs": {
+      "boolean": [
+        "227",
+        0
+      ],
+      "on_true": [
+        "217",
+        0
+      ],
+      "on_false": [
+        "226",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select High-Noise Positive"
+    }
+  },
+  "229": {
+    "inputs": {
+      "boolean": [
+        "227",
+        0
+      ],
+      "on_true": [
+        "217",
+        1
+      ],
+      "on_false": [
+        "226",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Low-Noise Positive"
+    }
+  },
+  "230": {
+    "inputs": {
+      "boolean": [
+        "227",
+        0
+      ],
+      "on_true": [
+        "217",
+        2
+      ],
+      "on_false": [
+        "226",
+        2
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Negative Conditioning"
+    }
+  },
+  "231": {
+    "inputs": {
+      "boolean": [
+        "227",
+        0
+      ],
+      "on_true": [
+        "217",
+        3
+      ],
+      "on_false": [
+        "226",
+        3
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select SVI Latent"
     }
   }
 }

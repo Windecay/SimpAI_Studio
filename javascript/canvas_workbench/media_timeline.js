@@ -421,8 +421,11 @@
         const missing = !source || !asset;
         const icon = clip.kind === 'audio' ? 'fa-wave-square' : (clip.kind === 'video' ? 'fa-film' : 'fa-image');
         const meta = clip.kind === 'audio'
-            ? `vol ${Math.round(Number(clip.volume ?? 1) * 100)}%`
-            : `op ${Math.round(Number(clip.opacity ?? 1) * 100)}% / scale ${Number(clip.scale ?? 1).toFixed(2)}`;
+            ? t(`vol ${Math.round(Number(clip.volume ?? 1) * 100)}%`, `音量 ${Math.round(Number(clip.volume ?? 1) * 100)}%`)
+            : t(
+                `op ${Math.round(Number(clip.opacity ?? 1) * 100)}% / scale ${Number(clip.scale ?? 1).toFixed(2)}`,
+                `不透明度 ${Math.round(Number(clip.opacity ?? 1) * 100)}% / 缩放 ${Number(clip.scale ?? 1).toFixed(2)}`
+            );
         const selected = clip.id && clip.id === node?.params?.selected_clip_id;
         const row = Math.max(0, Number(layout?.row || 0));
         const rows = Math.max(1, Number(layout?.rows || 1));
@@ -431,11 +434,11 @@
         return `<div class="sai-timeline-clip sai-timeline-clip-${escapeHtml(clip.kind)} ${selected ? 'is-selected' : ''} ${missing ? 'is-missing' : ''}" data-timeline-clip-id="${escapeHtml(clip.id)}" style="left:${left}%;width:${width}%;--timeline-clip-row:${row};--timeline-track-rows:${rows}">
   ${mediaStrip}
   ${keyframeMarkers}
-  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-start" data-timeline-trim="start" title="Trim start"></button>
+  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-start" data-timeline-trim="start" title="${escapeHtml(t('Trim start', '裁剪起点'))}"></button>
   <i class="fa-solid ${icon}"></i>
-  <span>${escapeHtml(clip.title || 'Clip')}</span>
+  <span>${escapeHtml(clip.title || t('Clip', '片段'))}</span>
   <small>${escapeHtml(formatDuration(clip.duration))} / ${escapeHtml(meta)}</small>
-  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-end" data-timeline-trim="end" title="Trim end"></button>
+  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-end" data-timeline-trim="end" title="${escapeHtml(t('Trim end', '裁剪终点'))}"></button>
 </div>`;
     }
 
@@ -470,7 +473,9 @@
                 const time = Number(frame.time || 0);
                 const pct = clamp(((time - start) / duration) * 100, 0, 100);
                 const active = Math.abs(time - playhead) < KEYFRAME_TIME_EPSILON;
-                return `<button type="button" class="sai-timeline-keyframe-marker ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="Keyframe ${escapeHtml(formatDuration(time))}" aria-label="Jump to keyframe ${escapeHtml(formatDuration(time))}"></button>`;
+                const title = t(`Keyframe ${formatDuration(time)}`, `关键帧 ${formatDuration(time)}`);
+                const ariaLabel = t(`Jump to keyframe ${formatDuration(time)}`, `跳转到关键帧 ${formatDuration(time)}`);
+                return `<button type="button" class="sai-timeline-keyframe-marker ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="${escapeHtml(title)}" aria-label="${escapeHtml(ariaLabel)}"></button>`;
             });
         return markers.length ? `<div class="sai-timeline-clip-keyframes" aria-hidden="false">${markers.join('')}</div>` : '';
     }
@@ -480,8 +485,8 @@
         const layout = buildTrackClipLayout(clips);
         return `<div class="sai-timeline-track sai-timeline-track-${escapeHtml(track.type || 'video')}" data-timeline-track="${escapeHtml(track.id)}" style="--timeline-track-rows:${layout.rows}">
   <button type="button" class="sai-node-handle sai-node-handle-in sai-timeline-track-port" data-timeline-track-in="${escapeHtml(track.id)}" title="${escapeHtml(t('Connect media to this track', '连接素材到该轨道'))}"></button>
-  <div class="sai-timeline-track-head"><b>${escapeHtml(track.name || track.id)}</b><small>${escapeHtml(track.type || '')}</small><span><button type="button" data-timeline-track-action="up" title="Move track up"><i class="fa-solid fa-arrow-up"></i></button><button type="button" data-timeline-track-action="down" title="Move track down"><i class="fa-solid fa-arrow-down"></i></button></span></div>
-  <div class="sai-timeline-track-lane">${clips.map(clip => renderClip(node, clip, context, layout.map[clip.id])).join('') || '<span class="sai-timeline-empty-lane">Drop media here</span>'}</div>
+  <div class="sai-timeline-track-head"><b>${escapeHtml(track.name || track.id)}</b><small>${escapeHtml(t(String(track.type || ''), track.type === 'video' ? '视频' : (track.type === 'audio' ? '音频' : String(track.type || ''))))}</small><span><button type="button" data-timeline-track-action="up" title="${escapeHtml(t('Move track up', '上移轨道'))}"><i class="fa-solid fa-arrow-up"></i></button><button type="button" data-timeline-track-action="down" title="${escapeHtml(t('Move track down', '下移轨道'))}"><i class="fa-solid fa-arrow-down"></i></button></span></div>
+  <div class="sai-timeline-track-lane">${clips.map(clip => renderClip(node, clip, context, layout.map[clip.id])).join('') || `<span class="sai-timeline-empty-lane">${escapeHtml(t('Drop media here', '拖入素材'))}</span>`}</div>
 </div>`;
     }
 
@@ -509,7 +514,9 @@
                 const time = Number(frame.time || 0);
                 const pct = clamp((time / duration) * 100, 0, 100);
                 const active = Math.abs(time - playhead) < KEYFRAME_TIME_EPSILON;
-                return `<button type="button" class="sai-timeline-ruler-keyframe ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="Keyframe ${escapeHtml(formatDuration(time))}" aria-label="Jump to keyframe ${escapeHtml(formatDuration(time))}"></button>`;
+                const title = t(`Keyframe ${formatDuration(time)}`, `关键帧 ${formatDuration(time)}`);
+                const ariaLabel = t(`Jump to keyframe ${formatDuration(time)}`, `跳转到关键帧 ${formatDuration(time)}`);
+                return `<button type="button" class="sai-timeline-ruler-keyframe ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="${escapeHtml(title)}" aria-label="${escapeHtml(ariaLabel)}"></button>`;
             });
         return markers.length ? `<div class="sai-timeline-ruler-keyframes">${markers.join('')}</div>` : '';
     }
@@ -559,7 +566,7 @@
             ? `<video src="${escapeHtml(mediaSrc)}" muted playsinline preload="metadata" data-timeline-preview-video></video>`
             : `<img src="${escapeHtml(mediaSrc)}" alt="" draggable="false">`;
         const selected = clip.id && clip.id === node?.params?.selected_clip_id;
-        return `<div class="sai-timeline-preview-layer ${active ? 'is-active' : ''} ${selected ? 'is-selected' : ''} ${maskSrc ? 'has-mask' : ''}" data-preview-clip="${escapeHtml(clip.id)}" data-preview-start="${escapeHtml(Number(clip.start || 0))}" data-preview-duration="${escapeHtml(Number(clip.duration || 0))}" style="${style}">${media}<div class="sai-timeline-transform-frame"></div><button type="button" data-preview-transform="scale" title="Scale"></button><button type="button" data-preview-transform="rotate" title="Rotate"></button><div class="sai-timeline-crop-box" style="${cropBoxStyle}"><button type="button" data-preview-crop="left" title="Crop left"></button><button type="button" data-preview-crop="right" title="Crop right"></button><button type="button" data-preview-crop="top" title="Crop top"></button><button type="button" data-preview-crop="bottom" title="Crop bottom"></button></div></div>`;
+        return `<div class="sai-timeline-preview-layer ${active ? 'is-active' : ''} ${selected ? 'is-selected' : ''} ${maskSrc ? 'has-mask' : ''}" data-preview-clip="${escapeHtml(clip.id)}" data-preview-start="${escapeHtml(Number(clip.start || 0))}" data-preview-duration="${escapeHtml(Number(clip.duration || 0))}" style="${style}">${media}<div class="sai-timeline-transform-frame"></div><button type="button" data-preview-transform="scale" title="${escapeHtml(t('Scale', '缩放'))}"></button><button type="button" data-preview-transform="rotate" title="${escapeHtml(t('Rotate', '旋转'))}"></button><div class="sai-timeline-crop-box" style="${cropBoxStyle}"><button type="button" data-preview-crop="left" title="${escapeHtml(t('Crop left', '裁剪左侧'))}"></button><button type="button" data-preview-crop="right" title="${escapeHtml(t('Crop right', '裁剪右侧'))}"></button><button type="button" data-preview-crop="top" title="${escapeHtml(t('Crop top', '裁剪顶部'))}"></button><button type="button" data-preview-crop="bottom" title="${escapeHtml(t('Crop bottom', '裁剪底部'))}"></button></div></div>`;
     }
 
     function renderPenOverlay(clip) {
@@ -583,7 +590,7 @@
                 const isLast = index === points.length - 1;
                 const ref = sourceKind === 'pending' ? `pending:${index}` : `${sourceIndex}:${index}`;
                 const closeTarget = !isClosedPath && isFirst && points.length >= 3;
-                const title = closeTarget ? 'Close mask path' : (isClosedPath ? 'Drag mask point' : 'Drag pen point');
+                const title = closeTarget ? t('Close mask path', '闭合遮罩路径') : (isClosedPath ? t('Drag mask point', '拖动遮罩点') : t('Drag pen point', '拖动钢笔点'));
                 allAnchors.push(`<button type="button" class="sai-timeline-pen-anchor ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''} ${closeTarget ? 'is-close-target' : ''}" data-timeline-pen-anchor="${escapeHtml(ref)}" style="left:${escapeHtml(x.toFixed(3))}%;top:${escapeHtml(y.toFixed(3))}%" title="${escapeHtml(title)}"></button>`);
             });
         };

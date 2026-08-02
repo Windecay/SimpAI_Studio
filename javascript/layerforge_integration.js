@@ -9,6 +9,24 @@
         return `${protocol}//${hostname}:8188`;
     })();
 
+    function getLayerForgeLang(source) {
+        if (window.SimpAII18n?.getUiLang) {
+            return window.SimpAII18n.getUiLang(source || window.simpleaiTopbarSystemParams);
+        }
+        const state = source || window.simpleaiTopbarSystemParams || {};
+        const raw = String(state?.__lang || state?.lang || 'en').trim().toLowerCase();
+        return raw.startsWith('en') ? 'en' : 'cn';
+    }
+
+    function layerForgeText(en, cn, source) {
+        return getLayerForgeLang(source) === 'en' ? en : cn;
+    }
+
+    function layerForgeAppUrl(sessionId, timestamp, source) {
+        const lang = getLayerForgeLang(source);
+        return `${LAYERFORGE_APP_URL}?v=${timestamp}&api_url=${encodeURIComponent(COMFY_API_URL)}&session_id=${sessionId}&__lang=${encodeURIComponent(lang)}&t=${timestamp}`;
+    }
+
     function loadImageElement(url) {
         return new Promise((resolve, reject) => {
             try {
@@ -394,7 +412,7 @@
         btn.style.display = 'flex';
         btn.style.alignItems = 'center';
         btn.style.justifyContent = 'center';
-        btn.title = "Edit in LayerForge";
+        btn.title = layerForgeText("Edit in LayerForge", "在 LayerForge 中编辑");
         btn.style.fontSize = '16px';
         
         btn.onclick = (e) => {
@@ -466,7 +484,7 @@
 
         const iframe = document.createElement('iframe');
         const timestamp = Date.now();
-        iframe.src = `${LAYERFORGE_APP_URL}?v=${timestamp}&api_url=${encodeURIComponent(COMFY_API_URL)}&session_id=${sessionId}&t=${timestamp}`;
+        iframe.src = layerForgeAppUrl(sessionId, timestamp, options.state_params || options.state);
         iframe.style.width = '95%';
         iframe.style.height = '95%';
         iframe.style.border = 'none';
@@ -532,7 +550,7 @@
 
         const img = imgContainer.querySelector('img');
         if (!img) {
-            alert("No image found to edit.");
+            alert(layerForgeText("No image found to edit.", "没有可编辑的图像。"));
             return;
         }
         
@@ -553,7 +571,7 @@
 
         const iframe = document.createElement('iframe');
         const timestamp = new Date().getTime();
-        iframe.src = `${LAYERFORGE_APP_URL}?v=${timestamp}&api_url=${encodeURIComponent(COMFY_API_URL)}&session_id=${sessionId}&t=${timestamp}`;
+        iframe.src = layerForgeAppUrl(sessionId, timestamp);
         iframe.style.width = '95%';
         iframe.style.height = '95%';
         iframe.style.border = 'none';

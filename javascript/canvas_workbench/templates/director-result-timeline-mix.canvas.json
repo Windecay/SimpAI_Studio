@@ -1,13 +1,13 @@
 {
   "schema": "simpai.canvas.workbench.v1",
   "id": "director_result_timeline_mix",
-  "title": "Director Result + Timeline Mix",
-  "created_at": "2026-06-18T00:00:00Z",
-  "updated_at": "2026-06-18T00:00:00Z",
+  "title": "Director Result + Timeline 合成",
+  "created_at": "2026-08-02T00:00:00Z",
+  "updated_at": "2026-08-02T00:00:00Z",
   "viewport": {
-    "x": 100,
+    "x": 120,
     "y": 80,
-    "zoom": 0.5
+    "zoom": 0.48
   },
   "settings": {
     "__lang": "cn",
@@ -18,57 +18,97 @@
     "reducedMotion": false,
     "inspectorCollapsed": false
   },
+  "template": {
+    "id": "director_result_timeline_mix",
+    "title": {
+      "en": "Director Result + Timeline Mix",
+      "zh": "Director Result + Timeline 合成"
+    },
+    "description": {
+      "en": "A model-free template for placing Director segment Results into Timeline and rendering a final video Result.",
+      "zh": "不依赖模型的 Director 后期模板，把分段视频 Result 放入 Timeline，并渲染最终视频 Result。"
+    },
+    "category": "video",
+    "tags": [
+      "video",
+      "director",
+      "timeline",
+      "result",
+      "mix",
+      "model-free",
+      "导演",
+      "分镜",
+      "合成"
+    ],
+    "type_label": {
+      "en": "Timeline mix",
+      "zh": "Timeline 合成"
+    },
+    "model_dependency": {
+      "mode": "model_free",
+      "label": {
+        "en": "Model-free",
+        "zh": "无模型依赖"
+      },
+      "note": {
+        "en": "Connect generated segment Results to the Timeline slots, then render Timeline.",
+        "zh": "把生成的分段 Result 连接到 Timeline 对应位置，然后渲染 Timeline。"
+      },
+      "models": []
+    },
+    "preview": ""
+  },
   "groups": [
     {
-      "id": "director_result_mix_group_plan",
-      "title": "1. Director Plan / 导演规划",
+      "id": "director_mix_group_results",
+      "title": "1. Segment Results / 分段结果",
       "x": -160,
-      "y": -120,
-      "w": 700,
-      "h": 820,
-      "color": "#14b8a6",
+      "y": -160,
+      "w": 570,
+      "h": 1240,
+      "color": "#0f766e",
       "alpha": 0.12,
       "shortcut": "1",
       "locked": false
     },
     {
-      "id": "director_result_mix_group_results",
-      "title": "2. Segment Results / 分段结果",
-      "x": 620,
-      "y": -120,
-      "w": 520,
-      "h": 820,
-      "color": "#f97316",
-      "alpha": 0.11,
+      "id": "director_mix_group_timeline",
+      "title": "2. Timeline Mix / 时间线合成",
+      "x": 590,
+      "y": -160,
+      "w": 670,
+      "h": 930,
+      "color": "#7c3aed",
+      "alpha": 0.1,
       "shortcut": "2",
       "locked": false
     },
     {
-      "id": "director_result_mix_group_mix",
-      "title": "3. Timeline Mix / Timeline 合成",
-      "x": 1220,
-      "y": -120,
-      "w": 760,
-      "h": 820,
-      "color": "#6366f1",
-      "alpha": 0.1,
+      "id": "director_mix_group_output",
+      "title": "3. Final Result / 最终结果",
+      "x": 1370,
+      "y": -160,
+      "w": 500,
+      "h": 650,
+      "color": "#ea580c",
+      "alpha": 0.11,
       "shortcut": "3",
       "locked": false
     }
   ],
   "nodes": [
     {
-      "id": "director_result_mix_note",
+      "id": "director_mix_note",
       "type": "note",
-      "x": -100,
-      "y": -64,
-      "w": 520,
-      "h": 120,
-      "title": "Director Result Mix / 导演结果合成",
-      "text": "Use this template after generation: replace the segment Result placeholders with generated videos, then render Timeline to create the final video Result. / 生成后使用这个模板：把分段 Result 占位替换为生成视频，再渲染 Timeline 得到最终视频 Result。",
+      "x": -96,
+      "y": -96,
+      "w": 440,
+      "h": 125,
+      "title": "Director Segment Results / Director 分段结果",
+      "text": "Connect generated Director segment Results in shot order, adjust clip timing in Timeline, then render the final Result. / 按镜头顺序连接 Director 生成的分段 Result，在 Timeline 中调整时间后渲染最终结果。",
       "style": {
-        "color": "#f8fafc",
-        "background": "#164e63",
+        "color": "#ecfeff",
+        "background": "#155e75",
         "font_size": 13
       },
       "source": {
@@ -76,63 +116,16 @@
       }
     },
     {
-      "id": "director_result_mix_director",
-      "type": "director_timeline",
-      "x": -100,
-      "y": 104,
-      "w": 560,
-      "h": 560,
-      "title": "Director Timeline / 导演时间轴",
-      "director": {
-        "schema": "simpai.director_timeline.v1",
-        "width": 1280,
-        "height": 720,
-        "fps": 24,
-        "duration": 8,
-        "format": "Timeline",
-        "segments": [
-          {
-            "id": "shot_1",
-            "start": 0,
-            "end": 4,
-            "unit": "seconds",
-            "type": "t2v",
-            "prompt": "Opening shot with a slow camera push and clear subject motion.",
-            "images": [],
-            "audio": []
-          },
-          {
-            "id": "shot_2",
-            "start": 4,
-            "end": 8,
-            "unit": "seconds",
-            "type": "t2v",
-            "prompt": "Second shot continues the action and resolves the movement.",
-            "images": [],
-            "audio": []
-          }
-        ]
-      },
-      "media_inputs": {},
-      "source": {
-        "kind": "director_timeline",
-        "schema": "simpai.director_timeline.v1"
-      },
-      "status": {
-        "state": "idle",
-        "message": "Use the segment timing as the Timeline edit guide."
-      }
-    },
-    {
-      "id": "director_result_mix_segment_1",
+      "id": "director_mix_result_1",
       "type": "result",
-      "x": 680,
-      "y": -64,
-      "w": 380,
-      "h": 300,
-      "title": "Shot 1 Video Result / 分镜 1 视频结果",
+      "x": -96,
+      "y": 96,
+      "w": 440,
+      "h": 270,
+      "title": "Segment Result 1 / 分段结果 1",
       "producer": {
         "preset_node_id": null,
+        "qwen_tts_node_id": null,
         "timeline_node_id": null,
         "run_id": null,
         "task_id": null
@@ -141,7 +134,7 @@
         "state": "placeholder",
         "queue_position": 0,
         "percent": 0,
-        "message": "Replace with the generated video for shot 1."
+        "message": "Connect the first generated segment Result."
       },
       "preview": null,
       "asset": null,
@@ -149,20 +142,20 @@
       "source": {
         "kind": "template_result_placeholder",
         "producer_type": "director_segment",
-        "director_node_id": "director_result_mix_director",
         "segment_id": "shot_1"
       }
     },
     {
-      "id": "director_result_mix_segment_2",
+      "id": "director_mix_result_2",
       "type": "result",
-      "x": 680,
-      "y": 328,
-      "w": 380,
-      "h": 300,
-      "title": "Shot 2 Video Result / 分镜 2 视频结果",
+      "x": -96,
+      "y": 414,
+      "w": 440,
+      "h": 270,
+      "title": "Segment Result 2 / 分段结果 2",
       "producer": {
         "preset_node_id": null,
+        "qwen_tts_node_id": null,
         "timeline_node_id": null,
         "run_id": null,
         "task_id": null
@@ -171,7 +164,7 @@
         "state": "placeholder",
         "queue_position": 0,
         "percent": 0,
-        "message": "Replace with the generated video for shot 2."
+        "message": "Connect the second generated segment Result."
       },
       "preview": null,
       "asset": null,
@@ -179,53 +172,79 @@
       "source": {
         "kind": "template_result_placeholder",
         "producer_type": "director_segment",
-        "director_node_id": "director_result_mix_director",
         "segment_id": "shot_2"
       }
     },
     {
-      "id": "director_result_mix_timeline",
+      "id": "director_mix_result_3",
+      "type": "result",
+      "x": -96,
+      "y": 732,
+      "w": 440,
+      "h": 270,
+      "title": "Segment Result 3 / 分段结果 3",
+      "producer": {
+        "preset_node_id": null,
+        "qwen_tts_node_id": null,
+        "timeline_node_id": null,
+        "run_id": null,
+        "task_id": null
+      },
+      "status": {
+        "state": "placeholder",
+        "queue_position": 0,
+        "percent": 0,
+        "message": "Connect the third generated segment Result."
+      },
+      "preview": null,
+      "asset": null,
+      "assets": [],
+      "source": {
+        "kind": "template_result_placeholder",
+        "producer_type": "director_segment",
+        "segment_id": "shot_3"
+      }
+    },
+    {
+      "id": "director_mix_timeline",
       "type": "timeline",
-      "x": 1280,
-      "y": -64,
-      "w": 560,
-      "h": 520,
-      "title": "Director Timeline Mix / 导演结果 Timeline",
+      "x": 660,
+      "y": -96,
+      "w": 540,
+      "h": 610,
+      "title": "Director Result Timeline / 分段结果时间线",
       "params": {
         "width": 1280,
         "height": 720,
         "aspect": "16:9",
-        "fps": 24,
-        "duration": 8,
+        "fps": 30,
+        "duration": 12,
         "background": "#000000",
         "zoom": 1,
         "playhead": 0,
-        "selected_clip_id": "director_result_mix_clip_1",
+        "selected_clip_id": "director_mix_clip_1",
         "size_preset": "1280x720",
-        "fps_preset": "24",
+        "fps_preset": "30",
         "preview_tool": "transform",
         "preview_playing": false,
         "snap_enabled": true,
-        "guides_enabled": true
+        "guides_enabled": true,
+        "mask_mode": "pen",
+        "mask_feather": 0
       },
       "tracks": [
         {
           "id": "v1",
           "type": "video",
-          "name": "Video"
-        },
-        {
-          "id": "a1",
-          "type": "audio",
-          "name": "Audio"
+          "name": "Director Segments"
         }
       ],
       "clips": [
         {
-          "id": "director_result_mix_clip_1",
-          "title": "Shot 1",
-          "source_node_id": "director_result_mix_segment_1",
-          "source_type": "result",
+          "id": "director_mix_clip_1",
+          "title": "Segment 1",
+          "source_node_id": "director_mix_result_1",
+          "source_type": "",
           "kind": "video",
           "track_id": "v1",
           "start": 0,
@@ -237,7 +256,7 @@
           "scale": 1,
           "opacity": 1,
           "volume": 1,
-          "fit": "contain",
+          "fit": "cover",
           "rotate": 0,
           "crop_left": 0,
           "crop_top": 0,
@@ -248,10 +267,10 @@
           "keyframes": []
         },
         {
-          "id": "director_result_mix_clip_2",
-          "title": "Shot 2",
-          "source_node_id": "director_result_mix_segment_2",
-          "source_type": "result",
+          "id": "director_mix_clip_2",
+          "title": "Segment 2",
+          "source_node_id": "director_mix_result_2",
+          "source_type": "",
           "kind": "video",
           "track_id": "v1",
           "start": 4,
@@ -263,7 +282,33 @@
           "scale": 1,
           "opacity": 1,
           "volume": 1,
-          "fit": "contain",
+          "fit": "cover",
+          "rotate": 0,
+          "crop_left": 0,
+          "crop_top": 0,
+          "crop_right": 0,
+          "crop_bottom": 0,
+          "mask": null,
+          "mask_data_url": "",
+          "keyframes": []
+        },
+        {
+          "id": "director_mix_clip_3",
+          "title": "Segment 3",
+          "source_node_id": "director_mix_result_3",
+          "source_type": "",
+          "kind": "video",
+          "track_id": "v1",
+          "start": 8,
+          "in": 0,
+          "out": 4,
+          "duration": 4,
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "opacity": 1,
+          "volume": 1,
+          "fit": "cover",
           "rotate": 0,
           "crop_left": 0,
           "crop_top": 0,
@@ -274,26 +319,22 @@
           "keyframes": []
         }
       ],
-      "status": {
-        "state": "idle",
-        "message": "Render this Timeline after replacing segment Result assets."
-      },
       "source": {
-        "kind": "director_result_timeline_mix",
-        "director_node_id": "director_result_mix_director"
+        "kind": "template_timeline"
       }
     },
     {
-      "id": "director_result_mix_final",
+      "id": "director_mix_final_result",
       "type": "result",
-      "x": 1600,
-      "y": 520,
-      "w": 360,
-      "h": 300,
-      "title": "Final Timeline Result / 最终 Timeline 结果",
+      "x": 1440,
+      "y": -96,
+      "w": 380,
+      "h": 330,
+      "title": "Final Timeline Result / 最终合成结果",
       "producer": {
-        "timeline_node_id": "director_result_mix_timeline",
         "preset_node_id": null,
+        "qwen_tts_node_id": null,
+        "timeline_node_id": "director_mix_timeline",
         "run_id": null,
         "task_id": null
       },
@@ -301,7 +342,7 @@
         "state": "placeholder",
         "queue_position": 0,
         "percent": 0,
-        "message": "Timeline render output appears here."
+        "message": "Connect segment Results, then render Timeline."
       },
       "preview": null,
       "asset": null,
@@ -309,40 +350,40 @@
       "source": {
         "kind": "template_result_placeholder",
         "producer_type": "timeline",
-        "timeline_node_id": "director_result_mix_timeline"
+        "timeline_node_id": "director_mix_timeline"
       }
     }
   ],
   "edges": [
     {
-      "id": "director_result_mix_edge_clip_1",
+      "id": "director_mix_edge_1",
       "type": "timeline",
-      "from": "director_result_mix_segment_1",
-      "to": "director_result_mix_timeline",
-      "slot": "director_result_mix_clip_1"
+      "from": "director_mix_result_1",
+      "to": "director_mix_timeline",
+      "slot": "director_mix_clip_1"
     },
     {
-      "id": "director_result_mix_edge_clip_2",
+      "id": "director_mix_edge_2",
       "type": "timeline",
-      "from": "director_result_mix_segment_2",
-      "to": "director_result_mix_timeline",
-      "slot": "director_result_mix_clip_2"
+      "from": "director_mix_result_2",
+      "to": "director_mix_timeline",
+      "slot": "director_mix_clip_2"
     },
     {
-      "id": "director_result_mix_edge_final",
+      "id": "director_mix_edge_3",
+      "type": "timeline",
+      "from": "director_mix_result_3",
+      "to": "director_mix_timeline",
+      "slot": "director_mix_clip_3"
+    },
+    {
+      "id": "director_mix_edge_output",
       "type": "generate",
-      "from": "director_result_mix_timeline",
-      "to": "director_result_mix_final",
+      "from": "director_mix_timeline",
+      "to": "director_mix_final_result",
       "slot": "timeline"
     }
   ],
   "runs": [],
-  "batch_jobs": [],
-  "template": {
-    "id": "director_result_timeline_mix",
-    "title": "Director Result + Timeline Mix",
-    "description": "A model-free template for placing Director segment Results into the existing Timeline and rendering a final video Result.",
-    "category": "video",
-    "tags": ["director", "timeline", "result", "video", "model-free"]
-  }
+  "batch_jobs": []
 }

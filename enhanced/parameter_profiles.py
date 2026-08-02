@@ -532,13 +532,33 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _warn_profile_load(warnings: list[str]):
+def _profile_lang_is_cn(context: Any = None) -> bool:
+    lang = context.get("__lang") if isinstance(context, dict) else context
+    value = str(lang or "en").strip().lower()
+    return value.startswith("cn") or value.startswith("zh") or value in {"中文", "chinese"}
+
+
+def _profile_text(context: Any, en: str, cn: str) -> str:
+    return cn if _profile_lang_is_cn(context) else en
+
+
+def _warn_profile_load(warnings: list[str], context: Any = None):
     if not warnings:
         return
     visible = warnings[:_PROFILE_WARNING_LIMIT]
-    suffix = "" if len(warnings) <= _PROFILE_WARNING_LIMIT else f"；另有 {len(warnings) - _PROFILE_WARNING_LIMIT} 项"
+    suffix = "" if len(warnings) <= _PROFILE_WARNING_LIMIT else _profile_text(
+        context,
+        f"; {len(warnings) - _PROFILE_WARNING_LIMIT} more",
+        f"；另有 {len(warnings) - _PROFILE_WARNING_LIMIT} 项",
+    )
+    separator = "; " if not _profile_lang_is_cn(context) else "；"
+    message = _profile_text(
+        context,
+        "Parameter profile loaded for the current version: ",
+        "参数预设已按当前版本读取：",
+    ) + separator.join(visible) + suffix
     try:
-        gr.Warning("参数预设已按当前版本读取：" + "；".join(visible) + suffix, duration=6)
+        gr.Warning(message, duration=6)
     except Exception:
         pass
 
@@ -588,7 +608,11 @@ def _apply_current_preset_manifest(metadata: dict[str, Any], state_params: dict[
     preset_json = _state_preset_json(state_params, user_did, preset_name)
     preset_prepared = _state_preset_prepared(state_params, preset_json)
     if not preset_prepared:
-        warnings.append("当前 preset 结构不可用，已保留可识别参数")
+        warnings.append(_profile_text(
+            state_params,
+            "The current preset structure is unavailable; recognized parameters were retained.",
+            "当前 preset 结构不可用，已保留可识别参数",
+        ))
         metadata["preset"] = preset_name
         return metadata
 
@@ -680,7 +704,11 @@ def _sanitize_model_values(metadata: dict[str, Any], state_params: dict[str, Any
             return
         raw_name = _clean_name(raw)
         if raw_name and raw_name not in (fallback, "None", "default", _default_clip_value(), _default_vae_value(), "auto"):
-            warnings.append(f"{label} 不在当前模型列表中，已改用 {fallback}")
+            warnings.append(_profile_text(
+                state_params,
+                f"{label} is not in the current model list; switched to {fallback}.",
+                f"{label} 不在当前模型列表中，已改用 {fallback}",
+            ))
         metadata[key] = fallback
 
     apply_model("base_model", "base", base_fallback, "Base Model")
@@ -701,19 +729,27 @@ def _sanitize_model_values(metadata: dict[str, Any], state_params: dict[str, Any
         if match:
             metadata[key] = _lora_entry(enabled, match, weight)
             continue
-        warnings.append(f"LoRA {index + 1} 不在当前模型列表中，已停用")
+        warnings.append(_profile_text(
+            state_params,
+            f"LoRA {index + 1} is not in the current model list and was disabled.",
+            f"LoRA {index + 1} 不在当前模型列表中，已停用",
+        ))
         metadata[key] = _lora_entry(False, "None", weight)
     return metadata
 
 
-def _sanitize_profile_values(metadata: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
+def _sanitize_profile_values(metadata: dict[str, Any], warnings: list[str], state_params: dict[str, Any] | None = None) -> dict[str, Any]:
     metadata.pop("clip_skip", None)
     default_images = _as_int(getattr(config, "default_image_number", 1), 1)
     max_images = max(1, _as_int(getattr(config, "default_max_image_number", 32), 32))
     if "image_number" in metadata:
         image_number = _as_int(metadata.get("image_number"), default_images)
         if image_number < 1 or image_number > max_images:
-            warnings.append("生成数量超出当前范围，已使用当前允许值")
+            warnings.append(_profile_text(
+                state_params,
+                "The generation count was outside the current range and was adjusted.",
+                "生成数量超出当前范围，已使用当前允许值",
+            ))
         metadata["image_number"] = min(max(1, image_number), max_images)
     metadata["max_image_number"] = max_images
 
@@ -726,12 +762,20 @@ def _sanitize_profile_values(metadata: dict[str, Any], warnings: list[str]) -> d
         if parsed_resolution is None:
             metadata.pop("resolution", None)
             metadata.pop("Resolution", None)
-            warnings.append("分辨率格式不适合当前版本，已使用当前 preset 默认值")
+            warnings.append(_profile_text(
+                state_params,
+                "The resolution format is incompatible with the current version; the current preset default was used.",
+                "分辨率格式不适合当前版本，已使用当前 preset 默认值",
+            ))
 
     output_format = _clean_name(metadata.get("output_format"))
     if output_format and output_format not in getattr(flags, "output_formats", ["png", "jpeg", "webp"]):
         fallback_format = getattr(config, "default_output_format", "png")
-        warnings.append(f"存图格式 {output_format} 不支持，已改用 {fallback_format}")
+        warnings.append(_profile_text(
+            state_params,
+            f"Output format {output_format} is unsupported; switched to {fallback_format}.",
+            f"存图格式 {output_format} 不支持，已改用 {fallback_format}",
+        ))
         metadata["output_format"] = fallback_format
 
     sampler_choices = set(getattr(flags, "sampler_list", []) or []) | set(getattr(flags, "comfy_sampler_list", []) or [])
@@ -739,12 +783,20 @@ def _sanitize_profile_values(metadata: dict[str, Any], warnings: list[str]) -> d
     sampler = _clean_name(metadata.get("sampler"))
     if sampler and sampler_choices and sampler not in sampler_choices:
         fallback_sampler = getattr(config, "default_sampler", None) or next(iter(sampler_choices))
-        warnings.append(f"Sampler {sampler} 不支持，已改用 {fallback_sampler}")
+        warnings.append(_profile_text(
+            state_params,
+            f"Sampler {sampler} is unsupported; switched to {fallback_sampler}.",
+            f"Sampler {sampler} 不支持，已改用 {fallback_sampler}",
+        ))
         metadata["sampler"] = fallback_sampler
     scheduler = _clean_name(metadata.get("scheduler"))
     if scheduler and scheduler_choices and scheduler not in scheduler_choices:
         fallback_scheduler = getattr(config, "default_scheduler", None) or next(iter(scheduler_choices))
-        warnings.append(f"Scheduler {scheduler} 不支持，已改用 {fallback_scheduler}")
+        warnings.append(_profile_text(
+            state_params,
+            f"Scheduler {scheduler} is unsupported; switched to {fallback_scheduler}.",
+            f"Scheduler {scheduler} 不支持，已改用 {fallback_scheduler}",
+        ))
         metadata["scheduler"] = fallback_scheduler
 
     step = _as_int(metadata.get("resolution_quantize_step"), getattr(flags, "default_resolution_quantize_step", 16))
@@ -763,11 +815,19 @@ def prepare_metadata_for_load(metadata: dict[str, Any], payload: dict[str, Any] 
     warnings: list[str] = []
     schema = _clean_name((payload or {}).get("schema"))
     if schema and schema != PROFILE_SCHEMA:
-        warnings.append("保存格式来自旧版本，已读取可识别字段")
+        warnings.append(_profile_text(
+            state_params,
+            "The saved format is from an older version; recognized fields were loaded.",
+            "保存格式来自旧版本，已读取可识别字段",
+        ))
     elif not schema:
-        warnings.append("保存格式缺少版本信息，已读取可识别字段")
+        warnings.append(_profile_text(
+            state_params,
+            "The saved format has no version information; recognized fields were loaded.",
+            "保存格式缺少版本信息，已读取可识别字段",
+        ))
     metadata = _apply_current_preset_manifest(metadata, state_params, warnings)
-    metadata = _sanitize_profile_values(metadata, warnings)
+    metadata = _sanitize_profile_values(metadata, warnings, state_params)
     metadata = _sanitize_model_values(metadata, state_params, warnings)
     return metadata, warnings
 
@@ -777,7 +837,7 @@ def save_profile(name: Any, values: dict[str, Any]):
     context = values.get("state_topbar") if isinstance(values, dict) else {}
     if not profile_name:
         try:
-            gr.Warning("Parameter profile name is required.", duration=3)
+            gr.Warning(_profile_text(context, "Parameter profile name is required.", "请输入参数预设名称。"), duration=3)
         except Exception:
             pass
         return refresh_dropdown(context, name)
@@ -790,7 +850,7 @@ def save_profile(name: Any, values: dict[str, Any]):
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     logger.info("Saved parameter profile %s for preset %s to %s", profile_name, payload["preset_name"], path)
     try:
-        gr.Info("Parameter profile saved.", duration=2)
+        gr.Info(_profile_text(context, "Parameter profile saved.", "参数预设已保存。"), duration=2)
     except Exception:
         pass
     return refresh_dropdown({"user_did": payload["user_did"], "__preset": payload["preset_name"]}, profile_name)
@@ -807,7 +867,7 @@ def delete_profile(name: Any, context: Any = None):
         os.remove(path)
         logger.info("Deleted parameter profile %s for preset %s from %s", profile_name, preset_name, path)
         try:
-            gr.Info("Parameter profile deleted.", duration=2)
+            gr.Info(_profile_text(context, "Parameter profile deleted.", "参数预设已删除。"), duration=2)
         except Exception:
             pass
     return refresh_dropdown(context, None)
@@ -826,7 +886,7 @@ def load_profile_metadata(name: Any, context: Any = None) -> tuple[dict[str, Any
         metadata = payload.get("metadata") if isinstance(payload, dict) else None
         if isinstance(metadata, dict):
             metadata, warnings = prepare_metadata_for_load(metadata, payload, context)
-            _warn_profile_load(warnings)
+            _warn_profile_load(warnings, context)
             return metadata, payload
     return None, None
 

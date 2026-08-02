@@ -12,6 +12,7 @@
     const MAX_AUDIO_REFS = 5;
     const MAX_VIDEO_REFS = 5;
     const PREVIOUS_SEGMENT_VIDEO_REF = 'previous_segment';
+    const PREVIOUS_SEGMENT_IMAGE_REF = 'previous_segment_last_frame';
     const IMAGE_REF_PARAM_KEYS = ['image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5'];
     const VIDEO_REF_PARAM_KEYS = ['video_ref'];
     const MEDIA_SLOT_SPECS = [
@@ -119,6 +120,20 @@
         return refs;
     }
 
+    function inheritsPreviousSegmentLastFrame(segment) {
+        return refsFromList(segment?.images).includes(PREVIOUS_SEGMENT_IMAGE_REF);
+    }
+
+    function explicitImageRefs(segment) {
+        return refsFromList(segment?.images).filter(ref => ref !== PREVIOUS_SEGMENT_IMAGE_REF);
+    }
+
+    function imageRefLabel(ref) {
+        return ref === PREVIOUS_SEGMENT_IMAGE_REF
+            ? t('Previous shot last frame', '上一段尾帧')
+            : String(ref || '');
+    }
+
     function imageLimitForType(type) {
         return SEGMENT_IMAGE_LIMITS[String(type || '').trim()] ?? 1;
     }
@@ -161,11 +176,12 @@
         const fallbackStart = index === 0 ? 0 : numberValue(timeline.segments[index - 1]?.end, index * 5, 0, 86400);
         const start = numberValue(raw.start, fallbackStart, 0, 86400);
         const end = Math.max(start, numberValue(raw.end, start + 5, 0, 86400));
-        const imageRefs = refsFromList(raw.images);
+        let imageRefs = refsFromList(raw.images);
         ['image_ref'].concat(IMAGE_REF_PARAM_KEYS).forEach((key) => {
             const ref = String(raw[key] || '').trim();
             if (ref && !imageRefs.includes(ref)) imageRefs.push(ref);
         });
+        if (index === 0) imageRefs = imageRefs.filter(ref => ref !== PREVIOUS_SEGMENT_IMAGE_REF);
         const audioRef = firstRef(raw.audio);
         const videoRef = firstRef(raw.video || raw.videos) || VIDEO_REF_PARAM_KEYS.map((key) => String(raw[key] || '').trim()).find(Boolean) || '';
         const rawTypeKey = taskMethodKey(raw.type);
@@ -355,6 +371,14 @@
     }
 
     function timelineSourcePreview(context, node, ref, kind) {
+        if (ref === PREVIOUS_SEGMENT_IMAGE_REF) {
+            return {
+                src: '',
+                label: t('Previous shot last frame', '上一段尾帧'),
+                short: t('Tail', '尾帧'),
+                icon: 'fa-clock-rotate-left'
+            };
+        }
         if (ref === PREVIOUS_SEGMENT_VIDEO_REF) {
             return {
                 src: '',
@@ -456,18 +480,19 @@
     function segmentRuleText(segment) {
         const type = typeof segment === 'string' ? segment : segment?.type;
         const refs = typeof segment === 'string' ? [] : refsFromList(segment?.images).slice(0, imageLimitForType(type));
+        const labels = refs.map(imageRefLabel);
         if (type === 'fmlf' && refs.length >= 2) {
             return t('2 images: {first} first frame / {last} last frame', '2 张图：{first} 首帧 / {last} 尾帧')
-                .replace('{first}', refs[0])
-                .replace('{last}', refs[1]);
+                .replace('{first}', labels[0])
+                .replace('{last}', labels[1]);
         }
         if (type === 'flf' && refs.length >= 1) {
             return t('1 image: {image} as first frame', '1 张图：{image} 作为首帧')
-                .replace('{image}', refs[0]);
+                .replace('{image}', labels[0]);
         }
         if (type === 'ref' && refs.length >= 3) {
             return t('3-5 images: reference set ({images})', '3-5 张图：参考图组（{images}）')
-                .replace('{images}', refs.join(', '));
+                .replace('{images}', labels.join(', '));
         }
         if (type === 'fmlf') return t('2 images: first/last frame', '2 张图：首尾帧');
         if (type === 'flf') return t('1 image: image-to-video', '1 张图：图生视频');
@@ -476,8 +501,9 @@
     }
 
     function renderImageRefField(segment, index, attr, indexAttr, node, context, slotIndex) {
-        const refs = refsFromList(segment.images);
-        const limit = imageLimitForType(segment.type);
+        const refs = explicitImageRefs(segment);
+        const inheritedCount = inheritsPreviousSegmentLastFrame(segment) ? 1 : 0;
+        const limit = Math.max(0, imageLimitForType(segment.type) - inheritedCount);
         const disabled = slotIndex >= limit;
         const value = disabled ? '' : (refs[slotIndex] || '');
         const imageIndex = slotIndex + 1;
@@ -513,6 +539,8 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
         const attr = attrName || 'data-director-segment-param';
         const indexAttr = `data-director-segment-index="${index}"`;
         const imageFieldCount = Math.max(2, Math.min(MAX_IMAGE_REFS, imageLimitForType(segment.type)));
+        const inheritPreviousTail = inheritsPreviousSegmentLastFrame(segment);
+        const inheritDisabled = index === 0 || imageLimitForType(segment.type) <= 0;
         return `
 <div class="sai-director-segment" ${indexAttr}>
   <div class="sai-director-segment-head">
@@ -530,6 +558,7 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
   </div>
   <div class="sai-node-field-row sai-director-segment-mode">
     <label class="sai-node-field"><span>${escapeHtml(t('Type', '类型'))}</span><select ${attr}="type" ${indexAttr}>${optionHtml(SEGMENT_TYPES, segment.type)}</select></label>
+    <label class="sai-node-field sai-director-inherit-tail"><span>${escapeHtml(t('Inherit previous shot last frame', '继承上段尾帧'))}</span><input ${attr}="inherit_previous_tail" ${indexAttr} type="checkbox" ${inheritPreviousTail ? 'checked' : ''} ${inheritDisabled ? 'disabled' : ''}></label>
   </div>
   <div class="sai-director-image-ref-row">
     ${Array.from({ length: imageFieldCount }, (_, slotIndex) => renderImageRefField(segment, index, attr, indexAttr, node, context, slotIndex)).join('')}
@@ -712,6 +741,7 @@ ${renderTimelinePreview(timeline, node, context)}
         SCHEMA,
         MEDIA_SLOT_SPECS,
         PREVIOUS_SEGMENT_VIDEO_REF,
+        PREVIOUS_SEGMENT_IMAGE_REF,
         MAX_AUDIO_REFS,
         MAX_VIDEO_REFS,
         MEDIA_KIND_GROUPS,

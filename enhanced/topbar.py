@@ -320,6 +320,7 @@ PRESET_STORE_ORDER = [
     "InfiniteTalk",
     "InfiniteTalk-AV2V",
     "LTX2.3(I2V)",
+    "LTX2.3(Extent)",
     "LTX2.3(IA2V)",
     "LTX2.3(T2V)",
     "LTX2.3(TA2V)",
@@ -1378,7 +1379,8 @@ def _canvas_param_schema(scene_frontend, key, title_key=None, default_key=None, 
     if key in disvisible:
         return None
     base = key[6:] if key.startswith("scene_") else key
-    title = _canvas_scene_value(scene_frontend, title_key or f"{base}_title", theme, key)
+    resolved_title_key = title_key or f"{base}_title"
+    title = _canvas_scene_value(scene_frontend, resolved_title_key, theme, key)
     default = _canvas_scene_value(scene_frontend, default_key or base, theme, None)
     item = {
         "key": key,
@@ -1388,6 +1390,10 @@ def _canvas_param_schema(scene_frontend, key, title_key=None, default_key=None, 
         "visible": True,
         "interactive": key not in disinteractive,
     }
+    for suffix in ("en", "cn"):
+        localized_title = _canvas_scene_value(scene_frontend, f"{resolved_title_key}_{suffix}", theme, None)
+        if localized_title not in (None, ""):
+            item[f"label_{suffix}"] = str(localized_title)
     min_value = _canvas_scene_value(scene_frontend, f"{base}_min", theme, None)
     max_value = _canvas_scene_value(scene_frontend, f"{base}_max", theme, None)
     step_value = _canvas_scene_value(scene_frontend, f"{base}_step", theme, None)

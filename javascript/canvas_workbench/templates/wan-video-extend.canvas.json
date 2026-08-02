@@ -3,7 +3,7 @@
   "id": "wan_video_extend",
   "title": "Wan 视频延长",
   "created_at": "2026-05-23T00:00:00Z",
-  "updated_at": "2026-06-05T06:41:51Z",
+  "updated_at": "2026-08-02T00:00:00Z",
   "viewport": {
     "x": 234,
     "y": 153,
@@ -21,11 +21,11 @@
   "groups": [
     {
       "id": "wan_extend_group_input",
-      "title": "1. Source Video / 源视频",
+      "title": "1. Source And Target / 源视频与目标尾帧",
       "x": -160,
       "y": -190,
       "w": 651,
-      "h": 1312,
+      "h": 1500,
       "color": "#14b8a6",
       "alpha": 0.12,
       "shortcut": "1",
@@ -65,7 +65,7 @@
       "w": 520,
       "h": 135,
       "title": "Video Extend / 视频延长",
-      "text": "Use Wan-Extent when you already have a generated or imported video and want to continue it. Connect a video Result from Wan T2V/I2V, or replace the placeholder video. / 已有生成或导入的视频时，用 Wan-Extent 继续延长。可以接入 Wan T2V/I2V 的视频 Result，也可以替换占位视频。",
+      "text": "Use Wan-Extent to continue a generated or imported video. Connect a video Result or replace the placeholder video; optionally add a target last frame for the end of the extension. / 使用 Wan-Extent 继续延长已生成或导入的视频。可以连接视频 Result 或替换占位视频，也可以提供延长片段结束时的可选目标尾帧。",
       "style": {
         "color": "#f8fafc",
         "background": "#164e63",
@@ -94,10 +94,29 @@
       }
     },
     {
+      "id": "wan_extend_target_last_frame",
+      "type": "image",
+      "x": -96,
+      "y": 456,
+      "w": 520,
+      "h": 285,
+      "title": "Optional Target Last Frame / 可选目标尾帧",
+      "asset": null,
+      "mask": null,
+      "status": {
+        "state": "optional",
+        "message": "Optional: add the frame that the extended segment should reach at its end. / 可选：提供延长片段结束时需要到达的画面。"
+      },
+      "source": {
+        "kind": "template_input_placeholder",
+        "slot": "scene_canvas_image"
+      }
+    },
+    {
       "id": "wan_extend_prompt_text",
       "type": "text",
       "x": -96,
-      "y": 504,
+      "y": 816,
       "w": 520,
       "h": 145,
       "title": "Continuation Prompt / 续写提示词",
@@ -113,7 +132,7 @@
       "id": "wan_extend_negative_text",
       "type": "text",
       "x": -96,
-      "y": 792,
+      "y": 1025,
       "w": 520,
       "h": 185,
       "title": "Negative Prompt / 负向提示词",
@@ -327,15 +346,16 @@
           "Basic"
         ],
         "default_theme": "Basic",
-        "theme_title": "Wan2.2 SVI-Pro Video Extend",
+        "theme_title": "Wan2.2 SVI-Pro Video Extend [Optional target last frame]",
         "director_capability": {
-          "image_policy": "forbidden",
+          "image_policy": "optional",
           "audio_policy": "forbidden",
           "video_policy": "required",
-          "max_images": 0,
+          "max_images": 1,
           "min_images": 0,
           "image_modes": [
-            "none"
+            "none",
+            "last_frame"
           ],
           "video_modes": [
             "explicit",
@@ -348,7 +368,6 @@
           "mixed_segments": false
         },
         "disvisible": [
-          "scene_canvas_image",
           "scene_input_image1",
           "scene_input_image2",
           "scene_additional_prompt",
@@ -374,7 +393,7 @@
         "disinteractive": [],
         "divisible": [],
         "image_preprocessor_method": [],
-        "disable_canvas_mask": false,
+        "disable_canvas_mask": true,
         "upload_slots": [
           {
             "key": "scene_video",
@@ -402,8 +421,8 @@
           },
           {
             "key": "scene_canvas_image",
-            "label": "Canvas Image",
-            "visible": false,
+            "label": "Target Last Frame",
+            "visible": true,
             "interactive": true
           },
           {
@@ -680,7 +699,8 @@
         "message": "Model requirements loaded from presets/Wan-Extent.json; connect a source video and check models before running."
       },
       "upload_slots": {
-        "scene_video": "wan_extend_source_video"
+        "scene_video": "wan_extend_source_video",
+        "scene_canvas_image": "wan_extend_target_last_frame"
       },
       "text_inputs": {
         "prompt": null,
@@ -760,7 +780,7 @@
         "step": 0,
         "total_steps": 6,
         "percent": 0,
-        "message": "Connect a source video, then run Wan-Extent. The extended video appears here."
+        "message": "Connect a source video, optionally add a target last frame, then run Wan-Extent. / 连接源视频，可选添加目标尾帧，然后运行 Wan-Extent。"
       },
       "preview": null,
       "asset": null,
@@ -776,7 +796,7 @@
       "w": 445,
       "h": 135,
       "title": "Chain Extension / 串联延长",
-      "text": "After a T2V or I2V run finishes, connect its Result to Wan-Extent's Source Video port. You can repeat this template to build longer clips in sections. / T2V 或 I2V 完成后，把 Result 接到 Wan-Extent 的 Source Video 接口。需要更长视频时，可以分段重复延长。",
+      "text": "After a T2V or I2V run finishes, connect its Result to Wan-Extent's Source Video port. Add a target last frame only when the extension needs a specified ending. / T2V 或 I2V 完成后，把 Result 接到 Wan-Extent 的源视频接口；只有需要指定结尾画面时才添加目标尾帧。",
       "style": {
         "color": "#052e16",
         "background": "#bbf7d0",
@@ -794,6 +814,13 @@
       "from": "wan_extend_source_video",
       "to": "wan_extend_preset",
       "slot": "scene_video"
+    },
+    {
+      "id": "wan_extend_edge_target_last_frame",
+      "type": "upload",
+      "from": "wan_extend_target_last_frame",
+      "to": "wan_extend_preset",
+      "slot": "scene_canvas_image"
     },
     {
       "id": "wan_extend_edge_models",

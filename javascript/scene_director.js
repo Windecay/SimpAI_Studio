@@ -48,6 +48,8 @@ const SCENE_DIRECTOR_TEXT = {
     "Video": "视频",
     "Upload below": "在下方上传",
     "Previous shot result": "上一段结果",
+    "Previous shot last frame": "上一段尾帧",
+    "Inherit previous shot last frame": "继承上段尾帧",
     "Generate": "生成",
     "Generate shots": "生成分镜",
     "None": "无",
@@ -77,12 +79,12 @@ const SCENE_DIRECTOR_TEXT = {
     "Current preset accepts up to {count} image(s)": "当前 preset 最多支持 {count} 张图",
     "Max {count} image(s)": "上限 {count} 张",
     "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | optional video_1 = Video reference": "0 张图 = 文生视频 | 1 张图 = 图生视频 / 首帧 | 2 张图 = 首尾帧 | 3-5 张图 = 参考图组 | 可选 video_1 = 视频参考",
-    "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result": "0 张图 = 文生视频 | 1 张图 = 图生视频 / 首帧 | 2 张图 = 首尾帧 | 3-5 张图 = 参考图组 | audio_1-5 / video_1-5 = 媒体引用 | previous_segment = 上一段结果",
+    "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result": "0 张图 = 文生视频 | 1 张图 = 图生视频 / 首帧 | 2 张图 = 首尾帧 | 3-5 张图 = 参考图组 | previous_segment_last_frame = 上一段尾帧 | audio_1-5 / video_1-5 = 媒体引用 | previous_segment = 上一段结果",
     "Audio ref": "音频引用",
     "Video ref": "视频引用"
 };
 
-const SCENE_DIRECTOR_MEDIA_RULES_TEXT = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result";
+const SCENE_DIRECTOR_MEDIA_RULES_TEXT = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result";
 const SCENE_DIRECTOR_README_TEXT = "Director README";
 
 function sceneDirectorQuery(selector) {
@@ -202,6 +204,7 @@ const SCENE_DIRECTOR_IMAGE_OPTIONS = ["", "image_1", "image_2", "image_3", "imag
 const SCENE_DIRECTOR_AUDIO_OPTIONS = ["", "audio_1", "audio_2", "audio_3", "audio_4", "audio_5"];
 const SCENE_DIRECTOR_VIDEO_OPTIONS = ["", "video_1", "video_2", "video_3", "video_4", "video_5"];
 const SCENE_DIRECTOR_PREVIOUS_VIDEO_REF = "previous_segment";
+const SCENE_DIRECTOR_PREVIOUS_IMAGE_REF = "previous_segment_last_frame";
 const SCENE_DIRECTOR_DEFAULT_ROWS = [
     [0, 5, "A slow camera move across a neon street.", "image_1", "", "", "", "", "", ""],
     [5, 10, "The subject turns toward the light.", "", "", "", "", "", "", ""],
@@ -224,7 +227,7 @@ const SCENE_DIRECTOR_CAPABILITY_KEYS = [
     "image_policy", "audio_policy", "video_policy", "max_images", "min_images", "image_modes", "video_modes",
     "timeline_format", "target_format", "chain_output", "requires_sequential", "mixed_segments", "director_supported", "segment_duration_param", "min_segment_duration", "max_segment_duration",
     "duration_strategy", "audio_output",
-    "imagePolicy", "audioPolicy", "videoPolicy", "maxImages", "minImages", "videoModes", "chainOutput",
+    "imagePolicy", "audioPolicy", "videoPolicy", "maxImages", "minImages", "imageModes", "videoModes", "chainOutput",
     "directorSupported", "segmentDurationParam", "durationStrategy", "audioOutput", "minSegmentDuration", "maxSegmentDuration",
 ];
 const SCENE_DIRECTOR_PRESET_CAPABILITY_CACHE = new Map();
@@ -1054,6 +1057,10 @@ function sceneDirectorNormalizeCapability(raw) {
     const durationStrategy = String(read("durationStrategy", "duration_strategy", "shot")).trim().toLowerCase().replace(/-/g, "_");
     const audioOutput = String(read("audioOutput", "audio_output", "silent")).trim().toLowerCase().replace(/-/g, "_");
     const directorSupportedRaw = read("directorSupported", "director_supported", true);
+    const rawImageModes = read("imageModes", "image_modes", []);
+    const imageModes = (Array.isArray(rawImageModes) ? rawImageModes : String(rawImageModes || "").split(","))
+        .map((item) => String(item).trim())
+        .filter(Boolean);
     const rawVideoModes = read("videoModes", "video_modes", "explicit");
     const videoModes = (Array.isArray(rawVideoModes) ? rawVideoModes : String(rawVideoModes || "explicit").split(","))
         .map((item) => String(item).trim())
@@ -1069,6 +1076,7 @@ function sceneDirectorNormalizeCapability(raw) {
         videoPolicy: ["required", "forbidden", "optional"].includes(videoPolicy) ? videoPolicy : "optional",
         maxImages: Number.isFinite(maxImages) ? Math.max(0, Math.min(5, Math.round(maxImages))) : 5,
         minImages: Number.isFinite(minImages) ? Math.max(0, Math.min(5, Math.round(minImages))) : 0,
+        imageModes,
         segmentDurationParam: /^[A-Za-z_][A-Za-z0-9_]*$/.test(segmentDurationParam) ? segmentDurationParam : "scene_video_duration",
         durationStrategy: normalizedDurationStrategy,
         audioOutput: ["silent", "generated", "input_audio", "source_audio"].includes(audioOutput) ? audioOutput : "silent",
@@ -1082,7 +1090,7 @@ function sceneDirectorNormalizeCapability(raw) {
 
 function sceneDirectorCapabilitySignature() {
     const capability = sceneDirectorCapability();
-    return `${capability.imagePolicy}:${capability.minImages}:${capability.maxImages}:${capability.audioPolicy}:${capability.videoPolicy}:${capability.videoModes.join(",")}:${capability.chainOutput}:${capability.segmentDurationParam}:${capability.durationStrategy}:${capability.audioOutput}:${capability.directorSupported}:${capability.minSegmentDuration}:${capability.maxSegmentDuration}`;
+    return `${capability.imagePolicy}:${capability.minImages}:${capability.maxImages}:${capability.imageModes.join(",")}:${capability.audioPolicy}:${capability.videoPolicy}:${capability.videoModes.join(",")}:${capability.chainOutput}:${capability.segmentDurationParam}:${capability.durationStrategy}:${capability.audioOutput}:${capability.directorSupported}:${capability.minSegmentDuration}:${capability.maxSegmentDuration}`;
 }
 
 function sceneDirectorEscapeHtml(value) {
@@ -1304,6 +1312,7 @@ function sceneDirectorMediaKindFromGroupKey(groupKey) {
 }
 
 function sceneDirectorImageLabel(ref) {
+    if (String(ref || "") === SCENE_DIRECTOR_PREVIOUS_IMAGE_REF) return sceneDirectorText("Previous shot last frame");
     const match = String(ref || "").match(/_(\d+)$/);
     return match ? `${sceneDirectorText("Image")} ${match[1]}` : String(ref || "");
 }
@@ -1311,6 +1320,7 @@ function sceneDirectorImageLabel(ref) {
 function sceneDirectorMediaLabel(ref) {
     const text = String(ref || "");
     if (text === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF) return sceneDirectorText("Previous shot result");
+    if (text === SCENE_DIRECTOR_PREVIOUS_IMAGE_REF) return sceneDirectorText("Previous shot last frame");
     const match = text.match(/^(image|audio|video)_(\d+)$/);
     if (!match) return text;
     const key = match[1] === "image" ? "Image" : match[1] === "audio" ? "Audio" : "Video";
@@ -1366,18 +1376,26 @@ function sceneDirectorMaxImagesForCapability(capability = sceneDirectorCapabilit
     return Number.isFinite(maxImages) ? maxImages : 0;
 }
 
+function sceneDirectorPreviousImageSupported(capability = sceneDirectorCapability()) {
+    if (capability.imagePolicy === "forbidden" || sceneDirectorMaxImagesForCapability(capability) <= 0) return false;
+    const modes = Array.isArray(capability.imageModes) ? capability.imageModes.map((item) => String(item).toLowerCase()) : [];
+    if (!modes.length) return true;
+    return modes.some((mode) => ["first_frame", "first_last", "ordered_keyframes"].includes(mode));
+}
+
 function sceneDirectorNormalizeImageRefs(refs, capability = sceneDirectorCapability()) {
     const maxImages = sceneDirectorMaxImagesForCapability(capability);
     if (maxImages <= 0) return [];
     return Array.from(new Set((Array.isArray(refs) ? refs : [])
         .map((item) => String(item || "").trim())
-        .filter(Boolean)))
+        .filter((item) => item && (item !== SCENE_DIRECTOR_PREVIOUS_IMAGE_REF || sceneDirectorPreviousImageSupported(capability)))))
         .slice(0, maxImages);
 }
 
-function sceneDirectorNormalizeRowValues(row, capability = sceneDirectorCapability()) {
+function sceneDirectorNormalizeRowValues(row, capability = sceneDirectorCapability(), rowIndex = null) {
     const values = sceneDirectorCloneRows([row])[0];
-    const refs = sceneDirectorNormalizeImageRefs(values.slice(3, 8), capability);
+    let refs = sceneDirectorNormalizeImageRefs(values.slice(3, 8), capability);
+    if (rowIndex !== null && Number(rowIndex) === 0) refs = refs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
     for (let index = 0; index < 5; index += 1) {
         values[index + 3] = refs[index] || "";
     }
@@ -1387,7 +1405,7 @@ function sceneDirectorNormalizeRowValues(row, capability = sceneDirectorCapabili
 }
 
 function sceneDirectorNormalizeRowsForCapability(rows, capability = sceneDirectorCapability()) {
-    return sceneDirectorCloneRows(rows).map((row) => sceneDirectorNormalizeRowValues(row, capability));
+    return sceneDirectorCloneRows(rows).map((row, index) => sceneDirectorNormalizeRowValues(row, capability, index));
 }
 
 function sceneDirectorSetSelectedImageRefs(rowNode, refs, capability = sceneDirectorCapability()) {
@@ -1467,6 +1485,13 @@ function sceneDirectorRenderImageRefPicker(rowNode, mediaMap = sceneDirectorMedi
     const capability = sceneDirectorCapability();
     const selectedRefs = sceneDirectorNormalizeImageRefs(sceneDirectorSelectedImageRefs(rowNode), capability);
     const changed = sceneDirectorSetSelectedImageRefs(rowNode, selectedRefs, capability);
+    const rowIndex = Number(rowNode.getAttribute("data-scene-director-index") || 0);
+    const inheritField = rowNode.querySelector("[data-scene-director-inherit-tail]");
+    if (inheritField) {
+        inheritField.checked = selectedRefs.includes(SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
+        inheritField.disabled = rowIndex <= 0 || !sceneDirectorPreviousImageSupported(capability);
+        inheritField.setAttribute("aria-disabled", inheritField.disabled ? "true" : "false");
+    }
     const noneDisabled = capability.imagePolicy === "required" || capability.imagePolicy === "forbidden";
     const noneLabel = sceneDirectorNoneChoiceLabel(capability, selectedRefs.length);
     const nextHtml = [
@@ -1760,6 +1785,7 @@ function sceneDirectorImageRefsFromRow(row) {
 function sceneDirectorRowRuleText(row) {
     const capability = sceneDirectorCapability();
     const refs = sceneDirectorImageRefsFromRow(row);
+    const labels = refs.map((ref) => sceneDirectorImageLabel(ref));
     const count = refs.length;
     const withLimit = (text) => `${text}${sceneDirectorImageLimitSuffix(capability)}`;
     if (capability.imagePolicy === "forbidden") return sceneDirectorText("Current preset does not use image refs");
@@ -1767,13 +1793,13 @@ function sceneDirectorRowRuleText(row) {
     if (count > capability.maxImages) {
         return sceneDirectorText("Current preset accepts up to {count} image(s)").replace("{count}", String(capability.maxImages));
     }
-    if (count >= 3) return withLimit(sceneDirectorText("3-5 images: Reference set ({images})").replace("{images}", refs.join(", ")));
+    if (count >= 3) return withLimit(sceneDirectorText("3-5 images: Reference set ({images})").replace("{images}", labels.join(", ")));
     if (count >= 2) {
         return withLimit(sceneDirectorText("2 images: {first} first frame / {last} last frame")
-            .replace("{first}", refs[0])
-            .replace("{last}", refs[1]));
+            .replace("{first}", labels[0])
+            .replace("{last}", labels[1]));
     }
-    if (count === 1) return withLimit(sceneDirectorText("1 image: {image} as first frame").replace("{image}", refs[0]));
+    if (count === 1) return withLimit(sceneDirectorText("1 image: {image} as first frame").replace("{image}", labels[0]));
     return withLimit(sceneDirectorText("0 images: Text-to-Video"));
 }
 
@@ -2205,12 +2231,14 @@ function sceneDirectorUpdateRule(rowNode) {
 
 function sceneDirectorRenderShot(row, index, total) {
     const capability = sceneDirectorCapability();
-    const values = sceneDirectorNormalizeRowValues(row, capability);
+    const values = sceneDirectorNormalizeRowValues(row, capability, index);
     const mediaMap = sceneDirectorMediaMap();
     const startNumber = Number(values[0]);
     const endMin = Number.isFinite(startNumber) ? Math.round((startNumber + capability.minSegmentDuration) * 1000) / 1000 : "";
     const endMax = Number.isFinite(startNumber) ? Math.round((startNumber + capability.maxSegmentDuration) * 1000) / 1000 : "";
     const imageRefs = values.slice(3, 8).map((item) => String(item || "").trim()).filter(Boolean);
+    const inheritPreviousTail = imageRefs.includes(SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
+    const inheritDisabled = index <= 0 || !sceneDirectorPreviousImageSupported(capability);
     const hiddenImageFields = [1, 2, 3, 4, 5].map((itemIndex) => (
         `<input type="hidden" data-scene-director-field="image_ref_${itemIndex}" value="${sceneDirectorEscapeHtml(imageRefs[itemIndex - 1] || "")}">`
     )).join("");
@@ -2229,7 +2257,7 @@ function sceneDirectorRenderShot(row, index, total) {
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Start"))}</span><input type="number" min="0" max="86400" step="0.1" data-scene-director-field="start" value="${sceneDirectorEscapeHtml(values[0])}"></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("End"))}</span><input type="number" min="${sceneDirectorEscapeHtml(endMin)}" max="${sceneDirectorEscapeHtml(endMax)}" step="0.1" data-scene-director-field="end" value="${sceneDirectorEscapeHtml(values[1])}"></label>
     <label class="scene-director-shot-prompt"><span class="scene-director-shot-prompt-heading"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt"))}</span><button type="button" data-scene-director-action="prompt-tools" title="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" ${String(values[2] || "").trim() ? "" : "disabled"}><i class="fa-solid fa-wand-magic-sparkles"></i><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}</span></button></span><textarea rows="2" data-scene-director-field="prompt">${sceneDirectorEscapeHtml(values[2])}</textarea></label>
-    <label class="scene-director-image-refs-field"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Image refs"))}</span>${hiddenImageFields}<div class="scene-director-ref-picker" data-scene-director-ref-picker>${SCENE_DIRECTOR_IMAGE_OPTIONS.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, imageRefs, mediaMap, capability)).join("")}</div></label>
+    <label class="scene-director-image-refs-field"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Image refs"))}</span>${hiddenImageFields}<span class="scene-director-inherit-tail"><input type="checkbox" data-scene-director-inherit-tail ${inheritPreviousTail ? "checked" : ""} ${inheritDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("Inherit previous shot last frame"))}</span></span><div class="scene-director-ref-picker" data-scene-director-ref-picker>${SCENE_DIRECTOR_IMAGE_OPTIONS.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, imageRefs, mediaMap, capability)).join("")}</div></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Audio"))}</span><select data-scene-director-field="audio_ref" ${capability.audioPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorAudioOptions(), values[8])}</select></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Video"))}</span><select data-scene-director-field="video_ref" ${capability.videoPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorVideoOptions(), values[9])}</select></label>
   </div>
@@ -2244,7 +2272,7 @@ function sceneDirectorRenderEditor(rows) {
     const sourceRows = sceneDirectorCloneRows(rows.length ? rows : SCENE_DIRECTOR_DEFAULT_ROWS);
     const capability = sceneDirectorCapability();
     const capabilitySignature = sceneDirectorCapabilitySignature();
-    const nextRows = sourceRows.map((row) => sceneDirectorNormalizeRowValues(row, capability));
+    const nextRows = sourceRows.map((row, index) => sceneDirectorNormalizeRowValues(row, capability, index));
     sceneDirectorActiveShotIndex = Math.max(0, Math.min(Math.max(0, nextRows.length - 1), sceneDirectorActiveShotIndex));
     const title = editor.querySelector("[data-scene-director-title]");
     if (title) title.textContent = sceneDirectorText("Shots");
@@ -2290,6 +2318,20 @@ function sceneDirectorBindEditor() {
         sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
     });
     editor.addEventListener("change", (event) => {
+        const inheritField = event.target.closest("[data-scene-director-inherit-tail]");
+        if (inheritField) {
+            const rowNode = inheritField.closest("[data-scene-director-shot]");
+            const capability = sceneDirectorCapability();
+            const explicitRefs = sceneDirectorSelectedImageRefs(rowNode).filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_IMAGE_REF);
+            const nextRefs = inheritField.checked
+                ? [SCENE_DIRECTOR_PREVIOUS_IMAGE_REF, ...explicitRefs].slice(0, sceneDirectorMaxImagesForCapability(capability))
+                : explicitRefs;
+            sceneDirectorSetSelectedImageRefs(rowNode, nextRefs, capability);
+            sceneDirectorRenderImageRefPicker(rowNode);
+            sceneDirectorUpdateRule(rowNode);
+            sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
+            return;
+        }
         if (!event.target.closest("[data-scene-director-field]")) return;
         const row = event.target.closest("[data-scene-director-shot]");
         sceneDirectorUpdateRule(row);

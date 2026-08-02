@@ -298,6 +298,35 @@ function refresh_qwen_tts_localization() {
             }
         } catch (e) {}
     });
+
+    const currentLang = (() => {
+        try {
+            return window.SimpAII18n?.getUiLang(window.simpleaiTopbarSystemParams) || (locale_lang === 'en' ? 'en' : 'cn');
+        } catch (e) {
+            return 'en';
+        }
+    })();
+    const roleDefaults = [
+        ['#qwen_role_1_name', 'Role 1', '角色1'],
+        ['#qwen_role_2_name', 'Role 2', '角色2'],
+        ['#qwen_role_3_name', 'Role 3', '角色3'],
+        ['#qwen_role_4_name', 'Narrator', '旁白'],
+    ];
+    roleDefaults.forEach(([selector, englishValue, chineseValue]) => {
+        try {
+            const root = gradioApp().querySelector(selector);
+            const input = root?.matches?.('input') ? root : root?.querySelector?.('input');
+            if (!input) return;
+            const current = String(input.value || '').trim();
+            const knownDefaults = new Set([englishValue, chineseValue]);
+            if (!knownDefaults.has(current)) return;
+            const next = currentLang === 'en' ? englishValue : chineseValue;
+            if (input.value === next) return;
+            input.value = next;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) {}
+    });
 }
 
 let styleGridOriginalElements = [];

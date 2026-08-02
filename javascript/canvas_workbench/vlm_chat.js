@@ -33,9 +33,9 @@
         { key: 'byteplus', label: 'BytePlus', baseUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3', format: 'openai_compatible', supportsImages: true },
         { key: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'novita', label: 'Novita', baseUrl: 'https://api.novita.ai/v3/openai', format: 'openai_compatible', supportsImages: true },
-        { key: 'siliconflow', label: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', format: 'openai_compatible', supportsImages: true },
-        { key: 'alibaba', label: '阿里云 DashScope', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', format: 'openai_compatible', supportsImages: true },
-        { key: 'tencent', label: '腾讯云', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', format: 'openai_compatible', supportsImages: true },
+        { key: 'siliconflow', label: t('SiliconFlow', '硅基流动'), baseUrl: 'https://api.siliconflow.cn/v1', format: 'openai_compatible', supportsImages: true },
+        { key: 'alibaba', label: t('Alibaba Cloud DashScope', '阿里云 DashScope'), baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', format: 'openai_compatible', supportsImages: true },
+        { key: 'tencent', label: t('Tencent Cloud', '腾讯云'), baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'ppio', label: 'PPIO', baseUrl: 'https://api.ppinfra.com/v3/openai', format: 'openai_compatible', supportsImages: true },
         { key: 'ollama_cloud', label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }

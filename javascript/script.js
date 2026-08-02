@@ -888,12 +888,14 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         replayClickAfterLazyLoad('describeVlmChat', event, '#describe_vlm_chat_button, #describe_vlm_chat_button button, .describe-vlm-chat-entry')
             || replayClickAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
             || replayClickAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
-            || replayClickAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]');
+            || replayClickAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]')
+            || replayClickAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]');
     }, true);
     document.addEventListener('keydown', (event) => {
-        replayKeydownAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
+            replayKeydownAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
             || replayKeydownAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
-            || replayKeydownAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]');
+            || replayKeydownAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]')
+            || replayKeydownAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]');
     }, true);
     document.addEventListener('pointerover', scheduleLayerForgeLazyFromPointer, { capture: true, passive: true });
     document.addEventListener('pointerout', cancelLayerForgeLazyHover, { capture: true, passive: true });
@@ -3470,6 +3472,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'pose_studio', group: 'scene-aux' },
         { id: 'gaussian_studio', group: 'scene-aux' },
         { id: 'liveportrait_expression', group: 'scene-aux' },
+        { id: 'ltx_guide_control', group: 'scene-aux' },
         { id: 'relight_light_control', group: 'scene-aux' },
         { id: 'scene_cloud_image_api', group: 'scene-aux' },
     ]);
@@ -3687,6 +3690,12 @@ document.addEventListener("DOMContentLoaded", function() {
         setVisible('scene_cloud_image_api', isScene && preset === 'GeneralAPIImage');
         if (!isScene) {
             setVisible('scene_additional_prompt', false);
+            if (typeof window.simpaiSetLtxGuideControlVisible === 'function') {
+                window.simpaiSetLtxGuideControlVisible(false, params || {});
+            } else {
+                setVisible('ltx_guide_control', false);
+                setVisible('ltx_guide_scene_control_html', false);
+            }
             if (typeof window.closeSam3FramesEditor === 'function') {
                 try { window.closeSam3FramesEditor(); } catch (e) {}
             }
@@ -3743,6 +3752,23 @@ document.addEventListener("DOMContentLoaded", function() {
         setVisible('liveportrait_expression', showLivePortraitExpression);
         if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
             try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}
+        }
+        const showLtxGuideControl = (taskMethodLower.includes('ltx2.3_i2v')
+            || taskMethodLower.includes('ltx2.3_ia2v')
+            || taskMethodLower.includes('ltx2.3_extent')
+            || /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(preset.toLowerCase()))
+            && !disvisible.has('ltx_guide_control');
+        if (typeof window.simpaiSetLtxGuideControlVisible === 'function') {
+            window.simpaiSetLtxGuideControlVisible(showLtxGuideControl, params || {});
+        } else {
+            setVisible('ltx_guide_control', showLtxGuideControl);
+            setVisible('ltx_guide_scene_control_html', showLtxGuideControl);
+            if (showLtxGuideControl && window.SimpAILTXGuideEditor?.syncSceneControl) {
+                try { window.SimpAILTXGuideEditor.syncSceneControl(params || {}); } catch (e) {}
+            }
+            if (!showLtxGuideControl && window.SimpAILTXGuideEditor?.closeScenePreset) {
+                try { window.SimpAILTXGuideEditor.closeScenePreset(); } catch (e) {}
+            }
         }
         const showRelightLight = (themeLower.includes('relight') || taskMethodLower.includes('relight')) && !disvisible.has('relight_light_control');
         setVisible('relight_light_control', showRelightLight);

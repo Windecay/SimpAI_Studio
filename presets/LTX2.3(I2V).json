@@ -19,15 +19,16 @@
             "theme": [
                 "Image-to-Video"
             ],
-            "theme_title": "LTX2.3 Image-to-Video [Upload first frame; optional last frame]",
+            "theme_title": "LTX2.3 Image-to-Video [Upload 1-5 ordered keyframes]",
             "director_capability": {
                 "image_policy": "required",
                 "video_policy": "forbidden",
-                "max_images": 2,
+                "max_images": 5,
                 "min_images": 1,
                 "image_modes": [
                     "first_frame",
-                    "first_last"
+                    "first_last",
+                    "ordered_keyframes"
                 ],
                 "mixed_segments": false,
                 "audio_policy": "forbidden",
@@ -35,20 +36,23 @@
                 "audio_output": "generated"
             },
             "disable_canvas_mask": true,
+            "divisible": [
+                "scene_input_image3",
+                "scene_input_image4"
+            ],
             "disvisible": [
                 "scene_additional_prompt",
                 "scene_additional_prompt_2",
                 "scene_video",
-                "scene_input_image2",
                 "scene_var_number",
-                "scene_var_number4",
-                "scene_steps",
-                "scene_var_number5",
-                "scene_var_number6",
                 "scene_var_number3",
+                "scene_var_number4",
+                "scene_var_number5",
                 "scene_var_number8",
                 "scene_var_number9",
                 "scene_var_number10",
+                "scene_steps",
+                "scene_var_number6",
                 "scene_switch_option3",
                 "scene_switch_option4",
                 "scene_refiner_model",

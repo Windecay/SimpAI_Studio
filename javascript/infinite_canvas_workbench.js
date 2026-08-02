@@ -410,6 +410,11 @@
         return localizeCanvasLabel(value);
     }
 
+    function localizedPresetParamLabel(param) {
+        const localized = runtimeUiLang() === 'cn' ? param?.label_cn : param?.label_en;
+        return localizeCanvasLabel(localized || param?.label || param?.key);
+    }
+
     function localizedDefaultTitle(value, defaultEn, defaultCn) {
         const text = String(value || '').trim();
         if (!text || text === defaultEn) return t(defaultEn, defaultCn);
@@ -16248,7 +16253,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
 
     function renderPresetParamControl(node, param, attrName) {
         const key = escapeHtml(param.key);
-        const label = escapeHtml(param.label || param.key);
+        const label = escapeHtml(localizedPresetParamLabel(param));
         const textSource = getPromptTextSourceNode(node, param.key);
         const disabled = param.interactive === false || textSource ? 'disabled' : '';
         const value = presetParamValue(node, param);
@@ -19281,6 +19286,34 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return text.includes('liveportrait') && text.includes('video');
     }
 
+    function isLtx23MultiGuidePresetNode(node) {
+        if (!node || node.type !== 'preset') return false;
+        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
+        if (taskMethod.includes('ltx2.3_i2v') || taskMethod.includes('ltx2.3_ia2v') || taskMethod.includes('ltx2.3_extent')) return true;
+        const text = [
+            node.title,
+            node.preset?.name,
+            node.preset?.display_name,
+            node.runtime?.scene_theme,
+            getPresetTheme(node)
+        ].filter(Boolean).join(' ').toLowerCase();
+        return /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(text);
+    }
+
+    function ltx23GuideModeForPreset(node) {
+        const taskMethod = String(getPresetThemeInfo(node).task_method || node?.runtime?.task_method || '').toLowerCase();
+        const text = [
+            node?.title,
+            node?.preset?.name,
+            node?.preset?.display_name,
+            node?.runtime?.scene_theme,
+            getPresetTheme(node)
+        ].filter(Boolean).join(' ').toLowerCase();
+        return taskMethod.includes('ltx2.3_extent') || /ltx2\.3\s*\(extent\)/.test(text)
+            ? 'video_extent'
+            : 'keyframes';
+    }
+
     function presetUploadSourceForSlot(node, slot) {
         if (!node || !slot) return null;
         const sourceId = node.upload_slots?.[slot]
@@ -19340,6 +19373,82 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 </div>`;
     }
 
+    function ltx23GuideConfigForPreset(node) {
+        const value = node?.params?.scene_additional_prompt || '';
+        const mode = ltx23GuideModeForPreset(node);
+        if (window.SimpAILTXGuideEditor?.normalize) return window.SimpAILTXGuideEditor.normalize(value, mode);
+        let source = {};
+        try {
+            source = typeof value === 'string' && value.trim() ? JSON.parse(value) : (value || {});
+        } catch (error) {
+            source = {};
+        }
+        if (!source || typeof source !== 'object' || Array.isArray(source)) source = {};
+        const middleSource = Array.isArray(source.middle) ? source.middle : [];
+        const bounded = (number, fallback, minimum, maximum) => {
+            const parsed = Number(number);
+            return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+        };
+        if (mode === 'video_extent') {
+            const guideSource = Array.isArray(source.guides) ? source.guides : [];
+            const requestedContext = Math.round(bounded(source.context_frames, 17, 1, 257));
+            return {
+                version: 1,
+                mode: 'video_extent',
+                context_frames: Math.min(257, Math.max(1, Math.round((requestedContext - 1) / 8) * 8 + 1)),
+                source_strength: bounded(source.source_strength, 1, 0, 10),
+                guides: [0, 1, 2, 3, 4].map(index => ({
+                    frame_idx: Math.round(bounded(guideSource[index]?.frame_idx, 0, 0, 9999)),
+                    strength: bounded(guideSource[index]?.strength, 0.7, 0, 10)
+                }))
+            };
+        }
+        return {
+            version: 1,
+            first_strength: bounded(source.first_strength, 1, 0, 10),
+            last_strength: bounded(source.last_strength, 1, 0, 10),
+            middle: [0, 1, 2].map(index => ({
+                frame_idx: Math.round(bounded(middleSource[index]?.frame_idx, 0, 0, 9999)),
+                strength: bounded(middleSource[index]?.strength, 0.7, 0, 10)
+            }))
+        };
+    }
+
+    function renderLtx23GuidePresetController(node) {
+        if (!isLtx23MultiGuidePresetNode(node)) return '';
+        const config = ltx23GuideConfigForPreset(node);
+        if (config.mode === 'video_extent') {
+            const guides = config.guides.map((item, index) => {
+                const frame = Number(item.frame_idx) === 0 ? t('Auto', '自动') : String(item.frame_idx);
+                const strength = Number(item.strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+                return `${t(`G${index + 1}`, `图${index + 1}`)} ${frame}/${strength}`;
+            }).join(' · ');
+            const source = Number(config.source_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+            const summary = t(
+                `Context ${config.context_frames}/${source} | ${guides}`,
+                `上下文 ${config.context_frames}/${source} | ${guides}`
+            );
+            return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
+  <i class="fa-solid fa-sliders"></i>
+  <span><b>${escapeHtml(t('LTX2.3 Extent Guides', 'LTX2.3 续写引导'))}</b><span>${escapeHtml(summary)}</span></span>
+  <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
+</div>`;
+        }
+        const middle = config.middle.map((item, index) => {
+            const frame = Number(item.frame_idx) === 0 ? t('Auto', '自动') : String(item.frame_idx);
+            const strength = Number(item.strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+            return `${t(`M${index + 1}`, `中${index + 1}`)} ${frame}/${strength}`;
+        }).join(' · ');
+        const first = Number(config.first_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const last = Number(config.last_strength).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        const summary = t(`First ${first} | ${middle} | Last ${last}`, `首帧 ${first} | ${middle} | 尾帧 ${last}`);
+        return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
+  <i class="fa-solid fa-sliders"></i>
+  <span><b>${escapeHtml(t('LTX2.3 Keyframe Guides', 'LTX2.3 关键帧引导'))}</b><span>${escapeHtml(summary)}</span></span>
+  <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
+</div>`;
+    }
+
     function renderPresetSpecialController(node) {
         const kind = getPresetSpecialControllerKind(node);
         if (!kind) return '';
@@ -19373,6 +19482,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   ${renderNodeStateBadges(node)}
   ${isStyleTransferPresetNode(node) ? `<button type="button" data-node-action="add-style-selector" title="${escapeHtml(t('Add or focus Style Selector', '添加或定位 Style Selector'))}"><i class="fa-solid fa-palette"></i></button>` : ''}
   ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
+  ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
   <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -19387,6 +19497,7 @@ ${renderPresetModelStatusHtml(node)}
 </div>
 ${renderStyleTransferPresetController(node)}
 ${renderLivePortraitVideoExpressionPresetController(node)}
+${renderLtx23GuidePresetController(node)}
 ${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
 <div class="sai-preset-slots">
 ${uploadSlots.map((slotInfo, index) => {
@@ -23661,7 +23772,7 @@ ${actions}
                         node.id,
                         Number(directorSegmentParam.getAttribute('data-director-segment-index') || 0),
                         directorSegmentParam.getAttribute('data-director-segment-param'),
-                        directorSegmentParam.value,
+                        directorSegmentParam.type === 'checkbox' ? directorSegmentParam.checked : directorSegmentParam.value,
                         directorSegmentParam.type
                     );
                     return;
@@ -26096,7 +26207,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                     selectedNodeId,
                     Number(field.getAttribute('data-director-segment-index') || 0),
                     field.getAttribute('data-inspector-director-segment-param'),
-                    field.value,
+                    field.type === 'checkbox' ? field.checked : field.value,
                     field.type
                 );
             };
@@ -28489,6 +28600,9 @@ ${renderGenerationMetadataInspectorSection(node)}
             items.push({ label: t('Run', '运行'), icon: 'fa-play', action: () => runPresetNodeFromUi(node) });
             if (isLivePortraitVideoExpressionPresetNode(node)) {
                 items.push({ label: t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'), icon: 'fa-face-smile', action: () => openLivePortraitVideoExpressionPresetEditor(node) });
+            }
+            if (isLtx23MultiGuidePresetNode(node)) {
+                items.push({ label: t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导'), icon: 'fa-sliders', action: () => openLtx23GuidePresetEditor(node) });
             }
             items.push({ label: t('X/Y/Z Plot', 'X/Y/Z 对比生成'), icon: 'fa-table-cells-large', action: () => openXyzPlotPanel(node) });
             items.push({ label: t('Check/download models', '检查/下载模型'), icon: 'fa-cloud-arrow-down', action: () => handlePresetModelAction(node) });
@@ -35662,6 +35776,12 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 nextParams[param.key] = param.default ?? '';
             }
         });
+        for (const key of ['scene_additional_prompt', 'scene_additional_prompt_2']) {
+            if (!Object.prototype.hasOwnProperty.call(nextParams, key)
+                && Object.prototype.hasOwnProperty.call(previousParams, key)) {
+                nextParams[key] = previousParams[key];
+            }
+        }
         const nextUploads = {};
         getVisibleUploadSlots({ schema: expected.schema }).forEach((slot) => {
             nextUploads[slot.key] = previousUploads[slot.key] || null;
@@ -37304,8 +37424,18 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         if (['start', 'end'].includes(key) || inputType === 'number') {
             const parsed = Number(value);
             segment[key] = Number.isFinite(parsed) ? parsed : value;
-        } else if (key === 'image_ref' || /^image_ref_[1-5]$/.test(key)) {
+        } else if (key === 'inherit_previous_tail') {
             const images = Array.isArray(segment.images) ? segment.images.slice(0, 5).map(item => Object.assign({}, item)) : [];
+            const explicitImages = images.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
+            if (value && segment.type === 'flf' && explicitImages.length) segment.type = 'fmlf';
+            if (!value && segment.type === 'fmlf' && explicitImages.length <= 1) segment.type = 'flf';
+            segment.images = value
+                ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
+                : explicitImages;
+        } else if (key === 'image_ref' || /^image_ref_[1-5]$/.test(key)) {
+            const currentImages = Array.isArray(segment.images) ? segment.images.slice(0, 5).map(item => Object.assign({}, item)) : [];
+            const inherited = currentImages.some(item => item.source_ref === DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
+            const images = currentImages.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
             const slotIndex = key === 'image_ref'
                 ? 0
                 : Math.max(0, Math.min(4, Number(String(key).split('_').pop() || 1) - 1));
@@ -37319,7 +37449,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 source_ref: value || '',
                 role: roleForIndex(slotIndex)
             });
-            segment.images = images.filter(item => item.source_ref);
+            const explicitImages = images.filter(item => item.source_ref);
+            segment.images = inherited
+                ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
+                : explicitImages;
             ['image_ref', 'image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5'].forEach((refKey) => {
                 delete segment[refKey];
             });
@@ -39710,6 +39843,50 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         });
     }
 
+    async function openLtx23GuidePresetEditor(node) {
+        if (!isLtx23MultiGuidePresetNode(node)) return null;
+        if (isNodeLocked(node)) {
+            showToast(t('Node is locked.', '节点已锁定。'));
+            return null;
+        }
+        const ready = await ensureWorkbenchLazyRuntime(
+            'ltxGuideEditor',
+            () => typeof window.SimpAILTXGuideEditor?.open === 'function',
+            t('Loading keyframe guides...', '正在加载关键帧引导...'),
+            t('Keyframe guide editor is not loaded.', '关键帧引导编辑器尚未加载。')
+        );
+        if (!ready) return null;
+        const mode = ltx23GuideModeForPreset(node);
+        return window.SimpAILTXGuideEditor.open({
+            title: mode === 'video_extent'
+                ? t('LTX2.3 Extent Guides', 'LTX2.3 续写引导')
+                : t('LTX2.3 Keyframe Guides', 'LTX2.3 关键帧引导'),
+            context: 'canvas',
+            mode,
+            guideConfig: node.params?.scene_additional_prompt || '',
+            langState: window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' },
+            modalMount: canvasOverlayHost(),
+            onConfirm: (response) => {
+                pushHistory('Update LTX2.3 keyframe guides');
+                const current = getNode(node.id) || node;
+                current.params = Object.assign({}, current.params || {}, {
+                    scene_additional_prompt: response?.guide_config || ''
+                });
+                current.ltx23_guides = Object.assign({}, response?.config || {}, { updated_at: nowIso() });
+                current.status = Object.assign({}, current.status || {}, {
+                    state: 'ready',
+                    message: t('Keyframe guides saved.', '关键帧引导已保存。')
+                });
+                selectedNodeId = current.id;
+                selectedNodeIds = new Set([current.id]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+                mutate({ inspector: true });
+                showToast(t('Keyframe guides saved.', '关键帧引导已保存。'));
+            }
+        });
+    }
+
     function qwenTtsResultBasePosition(node) {
         return {
             x: Math.round((node?.x || 0) + (node?.w || 360) + 140),
@@ -40678,6 +40855,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     }
 
     const DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF = WORKBENCH_DIRECTOR_TIMELINE_NODE.PREVIOUS_SEGMENT_VIDEO_REF || 'previous_segment';
+    const DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF = WORKBENCH_DIRECTOR_TIMELINE_NODE.PREVIOUS_SEGMENT_IMAGE_REF || 'previous_segment_last_frame';
 
     const DIRECTOR_IMAGE_REF_UPLOAD_SLOTS = [
         'scene_canvas_image',
@@ -40696,6 +40874,16 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
 
     function directorAllowsPreviousSegmentVideo(capability) {
         return directorCapabilityVideoModes(capability).includes(DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF);
+    }
+
+    function directorAllowsPreviousSegmentImage(capability) {
+        const policy = String(capability?.image_policy || 'optional').toLowerCase();
+        if (policy === 'forbidden') return false;
+        const modes = Array.isArray(capability?.image_modes)
+            ? capability.image_modes.map(item => String(item).toLowerCase())
+            : [];
+        if (!modes.length) return true;
+        return modes.some(mode => ['first_frame', 'first_last', 'ordered_keyframes'].includes(mode));
     }
 
     function directorCapabilityChainOutput(capability) {
@@ -40740,6 +40928,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         const minImages = Math.max(0, Number(capability.min_images === undefined ? (imagePolicy === 'required' ? 1 : 0) : capability.min_images));
         const maxImages = Math.max(0, Number(capability.max_images === undefined ? (imagePolicy === 'forbidden' ? 0 : DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length) : capability.max_images));
         const allowPreviousVideo = directorAllowsPreviousSegmentVideo(capability);
+        const allowPreviousImage = directorAllowsPreviousSegmentImage(capability);
         const requiresSequentialVideo = !!capability.requires_sequential || directorCapabilityChainOutput(capability) === 'last_result';
         const errors = [];
         const warnings = [];
@@ -40761,6 +40950,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                     .replace('{max}', directorCompactSeconds(maxSegmentDuration)));
             }
             const refs = directorSegmentMediaRefs(segment, 'images');
+            const usesPreviousImage = refs.includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
             if (imagePolicy === 'required' && refs.length < minImages) {
                 errors.push(t('Director shot {index} requires a first-frame image.', '分镜 {index} 需要首帧图片。').replace('{index}', shotIndex));
                 return;
@@ -40771,9 +40961,15 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             if (imagePolicy === 'forbidden' && refs.length) {
                 warnings.push(t('Director shot {index} image refs are ignored by this preset.', '当前 preset 不使用分镜 {index} 的图片引用。').replace('{index}', shotIndex));
             }
+            if (usesPreviousImage && index === 0) {
+                errors.push(t('Director shot 1 cannot inherit a previous-shot last frame.', '分镜 1 不能继承上一段尾帧。'));
+            }
+            if (usesPreviousImage && !allowPreviousImage) {
+                errors.push(t('The current preset does not support inheriting the previous-shot last frame.', '当前 preset 不支持继承上一段尾帧。'));
+            }
             if (imagePolicy === 'required') {
                 refs.forEach((ref) => {
-                    if (!directorPayloadHasMediaAsset(payload, ref)) {
+                    if (ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF && !directorPayloadHasMediaAsset(payload, ref)) {
                         errors.push(t('Director shot {index} uses {ref}, but no image source is connected.', '分镜 {index} 选择了 {ref}，但这个素材位没有图片来源。')
                             .replace('{index}', shotIndex)
                             .replace('{ref}', ref));
@@ -40913,6 +41109,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return directorSegmentFirstMediaRef(segment, 'video') === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF;
     }
 
+    function directorSegmentUsesPreviousImage(segment) {
+        return directorSegmentMediaRefs(segment, 'images').includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
+    }
+
     function directorResultAssetSource(resultNode) {
         if (!resultNode) return null;
         const source = serializeAssetSourceForRun(resultNode);
@@ -41004,6 +41204,14 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             {}
         );
         const videoRef = directorSegmentFirstMediaRef(segment, 'video');
+        const imageRefs = directorSegmentMediaRefs(segment, 'images');
+        if (imageRefs.includes(DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF)) {
+            const previousSource = directorResultAssetSource(previousResultNode);
+            if (previousSource) {
+                previousSource.transform = { kind: 'video_last_frame' };
+                mediaSources[DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF] = previousSource;
+            }
+        }
         if (videoRef === DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF) {
             const previousSource = directorResultAssetSource(previousResultNode);
             if (previousSource) mediaSources[DIRECTOR_PREVIOUS_SEGMENT_VIDEO_REF] = previousSource;
@@ -41011,7 +41219,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return applyDirectorMediaRefsToPresetPayload(
             next,
             mediaSources,
-            directorSegmentMediaRefs(segment, 'images'),
+            imageRefs,
             directorSegmentFirstMediaRef(segment, 'audio'),
             videoRef,
             plan.capability || plan.payload.director_capability
@@ -41188,6 +41396,15 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     }
 
     async function submitDirectorSegmentRun(presetNode, resultNode, plan, segment, index, previousResultNode) {
+        if (directorSegmentUsesPreviousImage(segment) && !directorResultAssetSource(previousResultNode)) {
+            const message = t('Director shot {index} needs the previous shot last frame, but the previous run has no usable video yet.', '分镜 {index} 需要继承上一段尾帧，但上一段还没有可用视频。')
+                .replace('{index}', String(index + 1));
+            resultNode.status = {
+                state: 'failed',
+                message
+            };
+            return { ok: false, error: message };
+        }
         if (directorSegmentUsesPreviousVideo(segment) && !directorResultAssetSource(previousResultNode)) {
             const message = t('Director shot {index} needs the previous shot result video, but the previous run has no usable video yet.', '分镜 {index} 需要上一段结果视频，但上一段还没有可用视频。')
                 .replace('{index}', String(index + 1));
@@ -43900,6 +44117,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             ensureStyleSelectorForPreset(node, { select: true });
         } else if (action === 'edit-liveportrait-video-expression' && node.type === 'preset') {
             openLivePortraitVideoExpressionPresetEditor(node);
+        } else if (action === 'edit-ltx23-guides' && node.type === 'preset') {
+            openLtx23GuidePresetEditor(node);
         } else if (action === 'apply-style-selector' && node.type === 'style_selector') {
             runStyleSelectorTargetPreset(node);
         } else if (action === 'check-models' && ['preset', 'classic'].includes(node.type)) {

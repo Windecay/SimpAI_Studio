@@ -1056,14 +1056,6 @@
         0
       ],
       "batch_size": 1,
-      "motion_amplitude": [
-        "114",
-        0
-      ],
-      "tile_size": 512,
-      "overlap": 64,
-      "temporal_size": 64,
-      "temporal_overlap": 8,
       "positive": [
         "2",
         0
@@ -1085,9 +1077,9 @@
         0
       ]
     },
-    "class_type": "PainterI2VTiled",
+    "class_type": "WanFirstLastFrameToVideo",
     "_meta": {
-      "title": "PainterI2V Tiled (Wan2.2 + VAE Tiled)"
+      "title": "Wan First/Last Frame to Video"
     }
   },
   "118": {

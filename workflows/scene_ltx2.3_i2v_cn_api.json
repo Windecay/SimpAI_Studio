@@ -15,12 +15,12 @@
         0
       ],
       "positive": [
-        "622",
+        "618",
         0
       ],
       "negative": [
-        "623",
-        0
+        "618",
+        1
       ]
     },
     "class_type": "LTXVConditioning",
@@ -212,28 +212,6 @@
       "title": "LTXVPreprocess"
     }
   },
-  "338": {
-    "inputs": {
-      "strength": 0.7,
-      "bypass": false,
-      "vae": [
-        "454",
-        0
-      ],
-      "image": [
-        "337",
-        0
-      ],
-      "latent": [
-        "341",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": {
-      "title": "LTXVImgToVideoInplace"
-    }
-  },
   "341": {
     "inputs": {
       "width": [
@@ -258,8 +236,8 @@
   "343": {
     "inputs": {
       "video_latent": [
-        "624",
-        0
+        "618",
+        2
       ],
       "audio_latent": [
         "421",
@@ -530,8 +508,8 @@
     "inputs": {
       "prompt": "",
       "additional_prompt": "",
-      "ip_image": "welcome.png",
-      "ip_image1": "welcome.png",
+      "ip_image": "None",
+      "ip_image1": "None",
       "ip_image2": "None",
       "ip_image3": "None",
       "inpaint_image": "welcome.png",
@@ -542,9 +520,9 @@
       "steps": 8,
       "var_number": 5,
       "var_number2": 24,
-      "var_number3": 24,
-      "var_number4": 0,
-      "var_number5": 0,
+      "var_number3": 0.7,
+      "var_number4": 0.7,
+      "var_number5": 0.7,
       "var_number6": 0,
       "var_number7": 0,
       "var_number8": 0,
@@ -799,51 +777,6 @@
       "title": "Integer to Float"
     }
   },
-  "597": {
-    "inputs": {
-      "boolean": [
-        "598",
-        0
-      ],
-      "on_true": [
-        "341",
-        0
-      ],
-      "on_false": [
-        "338",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "598": {
-    "inputs": {
-      "mask": [
-        "599",
-        0
-      ]
-    },
-    "class_type": "easy isMaskEmpty",
-    "_meta": {
-      "title": "Is Mask Empty"
-    }
-  },
-  "599": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "585",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
   "600": {
     "inputs": {
       "purge_cache": true,
@@ -959,7 +892,7 @@
   },
   "608": {
     "inputs": {
-      "text": "TEXTTEXTTEXTTEXTTEXTT",
+      "text": "TEXT",
       "font": "ShareTechMono-Regular.ttf",
       "size": 50,
       "color": "#FFFFFF",
@@ -1124,14 +1057,6 @@
   },
   "618": {
     "inputs": {
-      "num_guides": "2",
-      "num_guides.frame_idx_1": 0,
-      "num_guides.strength_1": 1,
-      "num_guides.frame_idx_2": [
-        "630",
-        0
-      ],
-      "num_guides.strength_2": 1,
       "positive": [
         "121",
         0
@@ -1148,18 +1073,50 @@
         "341",
         0
       ],
-      "num_guides.image_1": [
+      "image_1": [
         "337",
         0
       ],
-      "num_guides.image_2": [
+      "image_2": [
         "629",
         0
+      ],
+      "image_3": [
+        "637",
+        0
+      ],
+      "image_4": [
+        "643",
+        0
+      ],
+      "image_5": [
+        "649",
+        0
+      ],
+      "guide_config": [
+        "578",
+        1
+      ],
+      "image_2_source": [
+        "578",
+        2
+      ],
+      "image_3_source": [
+        "578",
+        3
+      ],
+      "image_4_source": [
+        "578",
+        27
+      ],
+      "image_5_source": [
+        "578",
+        28
       ]
     },
-    "class_type": "LTXVAddGuideMulti",
+    "class_type": "SimpAILTXVAddGuideAuto",
     "_meta": {
-      "title": "LTXVAddGuideMulti"
+      "title": "SimpAI LTX Auto Multi-Frame Guides"
     }
   },
   "619": {
@@ -1175,91 +1132,6 @@
       "title": "LoadInputImage"
     }
   },
-  "620": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "619",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "621": {
-    "inputs": {
-      "mask": [
-        "620",
-        0
-      ]
-    },
-    "class_type": "easy isMaskEmpty",
-    "_meta": {
-      "title": "Is Mask Empty"
-    }
-  },
-  "622": {
-    "inputs": {
-      "boolean": [
-        "621",
-        0
-      ],
-      "on_true": [
-        "121",
-        0
-      ],
-      "on_false": [
-        "618",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "623": {
-    "inputs": {
-      "boolean": [
-        "621",
-        0
-      ],
-      "on_true": [
-        "110",
-        0
-      ],
-      "on_false": [
-        "618",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "624": {
-    "inputs": {
-      "boolean": [
-        "621",
-        0
-      ],
-      "on_true": [
-        "597",
-        0
-      ],
-      "on_false": [
-        "618",
-        2
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
   "625": {
     "inputs": {
       "width": [
@@ -1271,7 +1143,7 @@
         2
       ],
       "upscale_method": "lanczos",
-      "keep_proportion": "stretch",
+      "keep_proportion": "crop",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
       "divisible_by": 64,
@@ -1307,7 +1179,7 @@
   },
   "627": {
     "inputs": {
-      "text": "TEXTTEXTTEXTTEXTTEXTT",
+      "text": "TEXT",
       "font": "ShareTechMono-Regular.ttf",
       "size": 50,
       "color": "#FFFFFF",
@@ -1363,19 +1235,6 @@
       "title": "LTXVPreprocess"
     }
   },
-  "630": {
-    "inputs": {
-      "value": "a-1",
-      "a": [
-        "546",
-        1
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
   "631": {
     "inputs": {
       "positive": [
@@ -1394,6 +1253,354 @@
     "class_type": "LTXVCropGuides",
     "_meta": {
       "title": "LTXVCropGuides"
+    }
+  },
+  "632": {
+    "inputs": {
+      "image_name": [
+        "578",
+        3
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "Load guide image 3"
+    }
+  },
+  "633": {
+    "inputs": {
+      "width": [
+        "576",
+        1
+      ],
+      "height": [
+        "576",
+        2
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 64,
+      "device": "cpu",
+      "image": [
+        "632",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize guide image 3"
+    }
+  },
+  "634": {
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 64,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "0, 0, 0",
+      "image": [
+        "633",
+        0
+      ]
+    },
+    "class_type": "ImagePadKJ",
+    "_meta": {
+      "title": "Pad guide image 3"
+    }
+  },
+  "635": {
+    "inputs": {
+      "text": "TEXT",
+      "font": "ShareTechMono-Regular.ttf",
+      "size": 50,
+      "color": "#FFFFFF",
+      "background_color": "#00000000",
+      "shadow_distance": 0,
+      "shadow_blur": 0,
+      "shadow_color": "#000000",
+      "horizontal_align": "center",
+      "vertical_align": "bottom",
+      "offset_x": 0,
+      "offset_y": -10,
+      "direction": "ltr",
+      "img_composite": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "DrawText+",
+    "_meta": {
+      "title": "Subtitle suppression guide 3"
+    }
+  },
+  "636": {
+    "inputs": {
+      "boolean": [
+        "578",
+        21
+      ],
+      "on_true": [
+        "635",
+        0
+      ],
+      "on_false": [
+        "633",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Guide image 3 subtitle mode"
+    }
+  },
+  "637": {
+    "inputs": {
+      "img_compression": 18,
+      "image": [
+        "636",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTX preprocess guide 3"
+    }
+  },
+  "638": {
+    "inputs": {
+      "image_name": [
+        "578",
+        27
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "Load guide image 4"
+    }
+  },
+  "639": {
+    "inputs": {
+      "width": [
+        "576",
+        1
+      ],
+      "height": [
+        "576",
+        2
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 64,
+      "device": "cpu",
+      "image": [
+        "638",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize guide image 4"
+    }
+  },
+  "640": {
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 64,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "0, 0, 0",
+      "image": [
+        "639",
+        0
+      ]
+    },
+    "class_type": "ImagePadKJ",
+    "_meta": {
+      "title": "Pad guide image 4"
+    }
+  },
+  "641": {
+    "inputs": {
+      "text": "TEXT",
+      "font": "ShareTechMono-Regular.ttf",
+      "size": 50,
+      "color": "#FFFFFF",
+      "background_color": "#00000000",
+      "shadow_distance": 0,
+      "shadow_blur": 0,
+      "shadow_color": "#000000",
+      "horizontal_align": "center",
+      "vertical_align": "bottom",
+      "offset_x": 0,
+      "offset_y": -10,
+      "direction": "ltr",
+      "img_composite": [
+        "640",
+        0
+      ]
+    },
+    "class_type": "DrawText+",
+    "_meta": {
+      "title": "Subtitle suppression guide 4"
+    }
+  },
+  "642": {
+    "inputs": {
+      "boolean": [
+        "578",
+        21
+      ],
+      "on_true": [
+        "641",
+        0
+      ],
+      "on_false": [
+        "639",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Guide image 4 subtitle mode"
+    }
+  },
+  "643": {
+    "inputs": {
+      "img_compression": 18,
+      "image": [
+        "642",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTX preprocess guide 4"
+    }
+  },
+  "644": {
+    "inputs": {
+      "image_name": [
+        "578",
+        28
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "Load guide image 5"
+    }
+  },
+  "645": {
+    "inputs": {
+      "width": [
+        "576",
+        1
+      ],
+      "height": [
+        "576",
+        2
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 64,
+      "device": "cpu",
+      "image": [
+        "644",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize guide image 5"
+    }
+  },
+  "646": {
+    "inputs": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 64,
+      "extra_padding": 0,
+      "pad_mode": "color",
+      "color": "0, 0, 0",
+      "image": [
+        "645",
+        0
+      ]
+    },
+    "class_type": "ImagePadKJ",
+    "_meta": {
+      "title": "Pad guide image 5"
+    }
+  },
+  "647": {
+    "inputs": {
+      "text": "TEXT",
+      "font": "ShareTechMono-Regular.ttf",
+      "size": 50,
+      "color": "#FFFFFF",
+      "background_color": "#00000000",
+      "shadow_distance": 0,
+      "shadow_blur": 0,
+      "shadow_color": "#000000",
+      "horizontal_align": "center",
+      "vertical_align": "bottom",
+      "offset_x": 0,
+      "offset_y": -10,
+      "direction": "ltr",
+      "img_composite": [
+        "646",
+        0
+      ]
+    },
+    "class_type": "DrawText+",
+    "_meta": {
+      "title": "Subtitle suppression guide 5"
+    }
+  },
+  "648": {
+    "inputs": {
+      "boolean": [
+        "578",
+        21
+      ],
+      "on_true": [
+        "647",
+        0
+      ],
+      "on_false": [
+        "645",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Guide image 5 subtitle mode"
+    }
+  },
+  "649": {
+    "inputs": {
+      "img_compression": 18,
+      "image": [
+        "648",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTX preprocess guide 5"
     }
   }
 }

@@ -225,6 +225,7 @@ def javascript_html():
     pose_studio_editor_path = webpath('javascript/pose_studio_editor.js')
     gaussian_studio_editor_path = webpath('javascript/gaussian_studio_editor.js')
     liveportrait_expression_editor_path = webpath('javascript/liveportrait_expression_editor.js')
+    ltx_guide_editor_path = webpath('javascript/ltx_guide_editor.js')
     canvas_workbench_sketch_adapter_path = webpath('javascript/canvas_workbench/sketch_adapter.js')
     infinite_canvas_workbench_path = webpath('javascript/infinite_canvas_workbench.js')
     tag_cart_path = webpath('javascript/tag_cart.js') 
@@ -329,6 +330,14 @@ def javascript_html():
                 ],
                 'js': [
                     liveportrait_expression_editor_path,
+                ],
+            },
+            'ltxGuideEditor': {
+                'css': [
+                    infinite_canvas_workbench_css_path,
+                ],
+                'js': [
+                    ltx_guide_editor_path,
                 ],
             },
             'tagCart': {

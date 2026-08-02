@@ -493,6 +493,63 @@ def extract_video_first_frame(input_path, output_path=None):
             pass
 
 
+def extract_video_last_frame(input_path, output_path=None):
+    """Extract the last decodable video frame into a PNG file."""
+    source = str(input_path or "").strip()
+    if not source or not os.path.exists(source):
+        return ""
+    if output_path is None:
+        _, output_path, _ = generate_temp_filename(folder=modules.config.temp_path, extension="png")
+    output_path = os.path.abspath(str(output_path))
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    cap = None
+    try:
+        cap = cv2.VideoCapture(source)
+        if not cap or not cap.isOpened():
+            return ""
+
+        frame = None
+        try:
+            frame_count = max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+        except Exception:
+            frame_count = 0
+        if frame_count > 0:
+            last_index = max(0, frame_count - 1)
+            for frame_index in range(last_index, max(-1, last_index - 16), -1):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+                ok, candidate = cap.read()
+                if ok and candidate is not None:
+                    frame = candidate
+                    break
+
+        if frame is None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            while True:
+                ok, candidate = cap.read()
+                if not ok or candidate is None:
+                    break
+                frame = candidate
+
+        if frame is None:
+            return ""
+        if len(frame.shape) == 2:
+            image = Image.fromarray(frame).convert("RGB")
+        else:
+            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        image.save(output_path)
+        return output_path
+    except Exception as e:
+        logger.warning(f"Video last frame extraction failed: {e}")
+        return ""
+    finally:
+        try:
+            if cap is not None:
+                cap.release()
+        except Exception:
+            pass
+
+
 
 def remove_empty_str(items, default=None):
     items = [x for x in items if x != ""]

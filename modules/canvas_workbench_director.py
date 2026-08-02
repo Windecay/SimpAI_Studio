@@ -108,25 +108,28 @@ def _normalize_media_items(items, kind):
     return result
 
 
-def _image_role_for_type(shot_type, index):
+def _image_role_for_type(shot_type, index, image_modes=None):
     if shot_type == "fmlf":
         return "last_frame" if index == 1 else "first_frame"
     if shot_type == "ref":
         return "reference"
+    modes = {_text(item).lower() for item in (image_modes or [])}
+    if index == 0 and "last_frame" in modes and "first_frame" not in modes:
+        return "last_frame"
     return "first_frame"
 
 
-def _limit_segment_images(shot_type, images):
+def _limit_segment_images(shot_type, images, image_modes=None):
     limit = SEGMENT_IMAGE_LIMITS.get(shot_type, 1)
     result = []
     for index, item in enumerate((images or [])[:limit]):
         next_item = dict(item)
-        next_item["role"] = _image_role_for_type(shot_type, index)
+        next_item["role"] = _image_role_for_type(shot_type, index, image_modes)
         result.append(next_item)
     return result
 
 
-def normalize_segment(segment, index=0, previous_end=0.0):
+def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
     raw = segment if isinstance(segment, dict) else {}
     start = _number(raw.get("start"), previous_end, 0, 86400)
     end = max(start, _number(raw.get("end"), start + 1, 0, 86400))
@@ -151,7 +154,7 @@ def normalize_segment(segment, index=0, previous_end=0.0):
         if raw_type in SEGMENT_TYPES
         else _segment_type_from_task_method(task_method, images, audio, video)
     )
-    images = _limit_segment_images(shot_type, images)
+    images = _limit_segment_images(shot_type, images, image_modes)
     return {
         "id": _text(raw.get("id")) or f"shot_{index + 1}",
         "start": start,
@@ -168,14 +171,16 @@ def normalize_segment(segment, index=0, previous_end=0.0):
 
 def normalize_director_payload(payload):
     raw = payload if isinstance(payload, dict) else {}
+    capability = raw.get("director_capability") if isinstance(raw.get("director_capability"), dict) else {}
+    image_modes = capability.get("image_modes") if isinstance(capability.get("image_modes"), list) else []
     segments = []
     previous_end = 0.0
     for index, segment in enumerate(raw.get("segments") if isinstance(raw.get("segments"), list) else []):
-        normalized = normalize_segment(segment, index, previous_end)
+        normalized = normalize_segment(segment, index, previous_end, image_modes)
         previous_end = normalized["end"]
         segments.append(normalized)
     if not segments:
-        segments = [normalize_segment({}, 0, 0)]
+        segments = [normalize_segment({}, 0, 0, image_modes)]
     return {
         "schema": SCHEMA,
         "width": _int(raw.get("width"), 1280, 64, 8192),

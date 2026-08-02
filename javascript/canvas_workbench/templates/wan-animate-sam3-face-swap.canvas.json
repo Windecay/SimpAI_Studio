@@ -383,6 +383,13 @@
           "scene_refiner_model",
           "scene_var_number9",
           "scene_var_number10",
+          "scene_var_number4",
+          "scene_var_number",
+          "scene_var_number5",
+          "scene_var_number6",
+          "scene_var_number8",
+          "scene_switch_option1",
+          "scene_switch_option2",
           "scene_input_image3",
           "scene_input_image4"
         ],
@@ -478,26 +485,6 @@
             "max": 30
           },
           {
-            "key": "scene_var_number5",
-            "label": "Motion reference strength",
-            "type": "number",
-            "default": 1,
-            "visible": true,
-            "interactive": true,
-            "min": 0,
-            "max": 2
-          },
-          {
-            "key": "scene_var_number6",
-            "label": "Face reference strength",
-            "type": "number",
-            "default": 1,
-            "visible": true,
-            "interactive": true,
-            "min": 0,
-            "max": 2
-          },
-          {
             "key": "scene_var_number7",
             "label": "Mask expansion",
             "type": "number",
@@ -508,36 +495,10 @@
             "max": 50
           },
           {
-            "key": "scene_var_number8",
-            "label": "Block Swap [smaller uses more VRAM]",
-            "type": "number",
-            "default": 35,
-            "visible": true,
-            "interactive": true,
-            "min": 0,
-            "max": 40
-          },
-          {
-            "key": "scene_switch_option1",
-            "label": "Use Tiled VAE Decode",
-            "type": "checkbox",
-            "default": true,
-            "visible": true,
-            "interactive": true
-          },
-          {
-            "key": "scene_switch_option2",
-            "label": "SageAttention SpeedUp",
-            "type": "checkbox",
-            "default": true,
-            "visible": true,
-            "interactive": true
-          },
-          {
             "key": "scene_switch_option3",
             "label": "Save comparison video to folder",
             "type": "checkbox",
-            "default": true,
+            "default": false,
             "visible": true,
             "interactive": true
           },
@@ -571,16 +532,11 @@
           "Wan-Animate-SAM3 Object Replacement": {
             "task_method": "wan_animate_sam3_replace_cn",
             "defaults": {
-              "scene_var_number": 0,
+              "scene_video_duration": 0,
               "scene_var_number2": 30,
               "scene_var_number3": 16,
-              "scene_var_number5": 1,
-              "scene_var_number6": 1,
               "scene_var_number7": 1,
-              "scene_var_number8": 35,
-              "scene_switch_option1": true,
-              "scene_switch_option2": true,
-              "scene_switch_option3": true,
+              "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
               "prompt": ""
@@ -596,16 +552,11 @@
           "Wan-Animate-SAM3 Face Swap": {
             "task_method": "wan_animate_sam3_face_cn",
             "defaults": {
-              "scene_var_number": 0,
+              "scene_video_duration": 0,
               "scene_var_number2": 30,
               "scene_var_number3": 16,
-              "scene_var_number5": 0.25,
-              "scene_var_number6": 0.6,
               "scene_var_number7": 5,
-              "scene_var_number8": 35,
-              "scene_switch_option1": true,
-              "scene_switch_option2": true,
-              "scene_switch_option3": true,
+              "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
               "prompt": ""
@@ -621,16 +572,11 @@
           "Wan-Animate-SAM3 Person Replacement": {
             "task_method": "wan_animate_sam3_person_cn",
             "defaults": {
-              "scene_var_number": 0,
+              "scene_video_duration": 0,
               "scene_var_number2": 30,
               "scene_var_number3": 16,
-              "scene_var_number5": 1,
-              "scene_var_number6": 0.6,
               "scene_var_number7": 5,
-              "scene_var_number8": 35,
-              "scene_switch_option1": true,
-              "scene_switch_option2": true,
-              "scene_switch_option3": true,
+              "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
               "prompt": ""
@@ -808,13 +754,8 @@
         "image_seed": 0,
         "scene_var_number2": 30,
         "scene_var_number3": 16,
-        "scene_var_number5": 0.25,
-        "scene_var_number6": 0.6,
         "scene_var_number7": 5,
-        "scene_var_number8": 35,
-        "scene_switch_option1": true,
-        "scene_switch_option2": true,
-        "scene_switch_option3": true,
+        "scene_switch_option3": false,
         "scene_switch_option4": false,
         "scene_video_duration": 0
       },

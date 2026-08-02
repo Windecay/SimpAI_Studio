@@ -1,5 +1,5 @@
 {
-    "supported_tasks": ["image_audio_to_video"],
+    "supported_tasks": ["video_extend"],
     "default_engine": {
         "backend_engine": "LTX",
         "engine_type": "video",
@@ -16,24 +16,21 @@
         "available_aspect_ratios_selection": "Flux",
         "scene_frontend": {
             "version": "v1.1",
-            "theme": [
-                "Image+Audio to Video"
-            ],
-            "theme_title": "LTX2.3 Image+Audio to Video [Upload 1-5 ordered keyframes; audio required]",
+            "theme": ["Basic"],
+            "theme_title": "LTX2.3 Video Extend [Optional 1-5 continuation keyframes]",
             "director_capability": {
-                "image_policy": "required",
-                "video_policy": "forbidden",
+                "image_policy": "optional",
+                "video_policy": "required",
                 "max_images": 5,
-                "min_images": 1,
-                "image_modes": [
-                    "first_frame",
-                    "first_last",
-                    "ordered_keyframes"
-                ],
+                "min_images": 0,
+                "image_modes": ["ordered_keyframes"],
+                "video_modes": ["explicit", "previous_segment"],
+                "chain_output": "last_result",
+                "requires_sequential": true,
                 "mixed_segments": false,
-                "audio_policy": "required",
-                "duration_strategy": "audio_min",
-                "audio_output": "input_audio"
+                "audio_policy": "forbidden",
+                "duration_strategy": "shot",
+                "audio_output": "generated"
             },
             "disable_canvas_mask": true,
             "divisible": [
@@ -43,83 +40,84 @@
             "disvisible": [
                 "scene_additional_prompt",
                 "scene_additional_prompt_2",
-                "scene_video",
                 "scene_var_number",
                 "scene_var_number3",
                 "scene_var_number4",
                 "scene_var_number5",
+                "scene_var_number6",
                 "scene_var_number8",
                 "scene_var_number9",
                 "scene_var_number10",
                 "scene_steps",
-                "scene_var_number6",
+                "scene_switch_option1",
+                "scene_switch_option2",
                 "scene_switch_option3",
                 "scene_switch_option4",
                 "scene_refiner_model",
+                "scene_audio",
                 "sam3_input_video",
-                "sam3_mask_video",
-                "scene_switch_option1"
+                "sam3_mask_video"
             ],
             "prompt": {
-                "Image+Audio to Video": ""
+                "Basic": ""
+            },
+            "additional_prompt": {
+                "Basic": "{\"version\":1,\"mode\":\"video_extent\",\"context_frames\":17,\"source_strength\":1.0,\"guides\":[{\"frame_idx\":0,\"strength\":0.7},{\"frame_idx\":0,\"strength\":0.7},{\"frame_idx\":0,\"strength\":0.7},{\"frame_idx\":0,\"strength\":0.7},{\"frame_idx\":0,\"strength\":0.7}]}"
             },
             "task_method": {
-                "Image+Audio to Video": "ltx2.3_ia2v_cn"
+                "Basic": "ltx2.3_extent_cn"
             },
             "multimodal_prompt": {
-                "Image+Audio to Video": ""
+                "Basic": ""
             },
             "agent_prompt": {
-                "Image+Audio to Video": "你是图像与音频转视频 Prompt 优化师。根据按时间顺序输入的 1-5 张关键帧（首图为首帧，末图为尾帧）和用户文字，写一个自然中文的视频生成 Prompt。\n- 保持图像中的主体身份、外观、服饰、构图、光线和环境一致，只描述随时间发生的可见变化；有多个关键帧时，让动作依次自然到达各关键帧状态。\n- 输入音频由工作流直接使用，你无法听取或分析其内容。不要声称识别音频，不要虚构台词、歌词、音效或音乐。只有用户明确提供语音、节拍或情绪信息时，才描述与其同步的可见口型、表情、动作和节奏。\n- 明确主体动作、动作先后、合理的镜头运动和需要保持不变的内容；动作遵循真实物理规律，避免无依据的切镜和场景变化。\n- 用户未要求时不要新增人物、物体、对白或剧情。保留用户给出的专有名词、对白和关键动作。\n输出一个简洁连贯的中文段落，只返回最终 Prompt，不要标题、解释、列表或时间戳。"
+                "Basic": "你是视频续写 Prompt 优化师。第一份视觉输入是源视频按时间排列的联系表，后续图片如存在，是按时间排序的续写关键帧。根据源视频最后几帧、关键帧和用户要求，写一个自然中文的续写指令，只描述源视频结束之后继续发生的内容。保持人物身份、五官、发型、服饰、物体结构、背景、光线、色彩、镜头轨迹、运动方向、速度和空间关系连续；动作从最后一帧自然延续并遵循真实物理。关键帧用于约束续写过程和尾部状态，不要把它们描述成切镜或互不相关的场景。用户未要求时保持同一场景和同一镜头，不新增人物、物体、剧情、转场或反向运动。源视频原音频会保留；续写段只描述自然延续的环境声、动作声或用户明确要求的对白和音乐。只返回一段最终 Prompt，不要标题、列表、解释或时间戳。"
             },
-            "video_duration_title": "Video Duration(s)",
-            "video_duration_min": 0.1,
-            "video_duration_max": 60,
+            "video_duration_title": "Extension duration (seconds)",
+            "video_duration_title_en": "Extension duration (seconds)",
+            "video_duration_title_cn": "续写时长（秒）",
+            "video_duration_min": 1,
+            "video_duration_max": 30,
             "video_duration": {
-                "Image+Audio to Video": 8
+                "Basic": 8
             },
-            "var_number_min": 1,
-            "var_number_max": 60,
-            "var_number": {
-                "Image+Audio to Video": 8
-            },
-            "var_number2_title": "Interpolate to total frames [no interpolation below generation FPS]",
+            "var_number2_title": "Output FPS [RIFE when higher than generation FPS]",
+            "var_number2_title_en": "Output FPS [RIFE when higher than generation FPS]",
+            "var_number2_title_cn": "输出 FPS [高于生成 FPS 时使用 RIFE]",
             "var_number2_min": 24,
             "var_number2_max": 60,
             "var_number2": {
-                "Image+Audio to Video": 30
+                "Basic": 30
             },
-            "var_number7_title": "Actual output FPS [higher uses more resources]",
+            "var_number7_title": "LTX generation FPS",
+            "var_number7_title_en": "LTX generation FPS",
+            "var_number7_title_cn": "LTX 生成 FPS",
             "var_number7_min": 24,
             "var_number7_max": 50,
             "var_number7": {
-                "Image+Audio to Video": 30
-            },
-            "switch_option1_title": "Generate with audio input [trim to configured duration]",
-            "switch_option1": true,
-            "switch_option2_title": "Disable Subtitle",
-            "switch_option2": {
-                "Image+Audio to Video": true
+                "Basic": 30
             },
             "aspect_ratio": [
+                "origin|Original",
                 "720|1:1",
                 "896|1:1",
                 "1024|1:1",
                 "1280|1:1",
                 "1408|1:1",
-                "1536|1:1",
-                "1792|1:1"
+                "1536|1:1"
             ],
             "resolution_control": {
-                "mode": "image_keep_input_area",
-                "source": "scene_canvas",
+                "mode": "video_keep_input_area",
+                "source": "scene_video",
                 "base_width": 720,
-                "base_height": 720, 
+                "base_height": 720,
                 "quantize": 64,
                 "interactive": true,
                 "frontend_preprocess": true,
-                "preprocess_target": "image",
-                "preprocess_fit": "proportional"
+                "preprocess_target": "video",
+                "preprocess_fit": "proportional",
+                "preprocess_duration_limit": false,
+                "preserve_audio": true
             }
         }
     },
@@ -132,26 +130,11 @@
     "default_upscale_model": "default",
     "default_clip_model": "gemma_3_12B_it_fpmixed.safetensors",
     "default_loras": [
-        [
-            "ltx\\ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-            0.6
-        ],
-        [
-            "None",
-            1
-        ],
-        [
-            "None",
-            1
-        ],
-        [
-            "None",
-            1
-        ],
-        [
-            "None",
-            1
-        ]
+        ["ltx\\ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors", 0.6],
+        ["None", 1],
+        ["None", 1],
+        ["None", 1],
+        ["None", 1]
     ],
     "default_cfg_scale": 1,
     "default_sample_sharpness": 2,
@@ -159,7 +142,7 @@
     "default_scheduler": "simple",
     "default_performance": "Speed",
     "default_styles": [],
-    "default_aspect_ratio": "896*896",
+    "default_aspect_ratio": "720*720",
     "default_image_number": 1,
     "default_overwrite_step": 8,
     "default_prompt": "",

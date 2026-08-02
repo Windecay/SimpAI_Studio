@@ -3927,6 +3927,7 @@ function applyOptimisticBarHighlight(barButtonEl) {
     topbarPendingPreset = nextPreset;
     topbarPendingPresetUntil = Date.now() + 10000;
     topbarLastPreset = nextPreset;
+    setLtxGuideControlVisible(false, { __preset: nextPreset });
     beginPresetNavProgress(nextPreset);
     if (topbarOptimisticRaf) {
         try { cancelAnimationFrame(topbarOptimisticRaf); } catch (e) {}
@@ -5304,6 +5305,39 @@ function setSceneAuxControlVisible(id, visible) {
     return true;
 }
 
+function isCurrentSystemParamsForLtxGuide(systemParams) {
+    if (!systemParams || typeof systemParams !== "object") return true;
+    if (isStaleSystemParamsForPreset(systemParams)) return false;
+    const incomingPreset = normalizePresetName(systemParams.__preset || systemParams.preset);
+    const pendingPreset = normalizePresetName(topbarPendingPreset);
+    if (pendingPreset && Date.now() < topbarPendingPresetUntil && incomingPreset && incomingPreset !== pendingPreset) {
+        return false;
+    }
+    const liveParams = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object"
+        ? window.simpleaiTopbarSystemParams
+        : null;
+    const livePreset = normalizePresetName(liveParams && (liveParams.__preset || liveParams.preset));
+    if (incomingPreset && livePreset && incomingPreset !== livePreset) return false;
+    return true;
+}
+
+function setLtxGuideControlVisible(requestedVisible, systemParams) {
+    const visible = !!requestedVisible && isCurrentSystemParamsForLtxGuide(systemParams);
+    try {
+        document.documentElement.classList.toggle("simpai-ltx-guide-control-active", visible);
+    } catch (e) {}
+    try { setSceneAuxControlVisible("ltx_guide_control", visible); } catch (e) {}
+    try { setSceneAuxControlVisible("ltx_guide_scene_control_html", visible); } catch (e) {}
+    if (visible && window.SimpAILTXGuideEditor?.syncSceneControl) {
+        try { window.SimpAILTXGuideEditor.syncSceneControl(systemParams || {}); } catch (e) {}
+    }
+    if (!visible && window.SimpAILTXGuideEditor?.closeScenePreset) {
+        try { window.SimpAILTXGuideEditor.closeScenePreset(); } catch (e) {}
+    }
+    return visible;
+}
+window.simpaiSetLtxGuideControlVisible = setLtxGuideControlVisible;
+
 function sceneDisvisibleSetFromValue(disvisible) {
     return Array.isArray(disvisible)
         ? new Set(disvisible.map((item) => String(item)))
@@ -6028,6 +6062,10 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const showLivePortraitExpression = !!(isScene && liveportraitMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("liveportrait_expression"));
     const showRelightLight = !!(isScene && (themeText.includes("relight") || taskText.includes("relight")) && !hidden.has("relight_light_control"));
     const presetName = String((langSource && (langSource.__preset || langSource.preset)) || "").trim();
+    const presetNameLower = presetName.toLowerCase();
+    const showLtxGuideControl = !!(isScene
+        && (taskText.includes("ltx2.3_i2v") || taskText.includes("ltx2.3_ia2v") || taskText.includes("ltx2.3_extent") || /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(presetNameLower))
+        && !hidden.has("ltx_guide_control"));
     const showCloudImageApi = !!(isScene && presetName === "GeneralAPIImage");
     const engineText = String((langSource && (langSource.backend_engine || langSource.engine)) || "").toLowerCase();
     const wanCameraMotion = ["uni3c"].some((marker) => themeText.includes(marker) || taskText.includes(marker) || engineText.includes(marker));
@@ -6042,6 +6080,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("pose_studio", showPoseStudio);
     setSceneAuxControlVisible("gaussian_studio", showGaussianStudio);
     setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
+    setLtxGuideControlVisible(showLtxGuideControl, langSource);
     setSceneAuxControlVisible("relight_light_control", showRelightLight);
     setSceneAuxControlVisible("scene_cloud_image_api", showCloudImageApi);
     setRelightLightSliderHidden(showRelightLight);

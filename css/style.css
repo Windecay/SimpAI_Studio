@@ -8249,6 +8249,10 @@ html.simpai-preset-nav-active #sam3_video_mask_accordion,
 html.simpai-preset-nav-active #pose_studio,
 html.simpai-preset-nav-active #gaussian_studio,
 html.simpai-preset-nav-active #liveportrait_expression,
+html.simpai-preset-nav-active #ltx_guide_control,
+html.simpai-preset-nav-active #ltx_guide_scene_control_html,
+html.simpai-preset-nav-active .gradio-container .styler:has(> #ltx_guide_scene_control_html),
+html.simpai-preset-nav-active .gradio-container .gr-group:has(> .styler > #ltx_guide_scene_control_html),
 html.simpai-preset-nav-active #relight_light_control,
 html.simpai-preset-nav-active #scene_cloud_image_api,
 html.simpai-preset-nav-active #scene_resolution_override_accordion {
@@ -8282,6 +8286,8 @@ html.simpai-preset-nav-active #sam3_video_mask_accordion > *,
 html.simpai-preset-nav-active #pose_studio > *,
 html.simpai-preset-nav-active #gaussian_studio > *,
 html.simpai-preset-nav-active #liveportrait_expression > *,
+html.simpai-preset-nav-active #ltx_guide_control > *,
+html.simpai-preset-nav-active #ltx_guide_scene_control_html > *,
 html.simpai-preset-nav-active #relight_light_control > *,
 html.simpai-preset-nav-active #scene_cloud_image_api > *,
 html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
@@ -9570,6 +9576,91 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     line-height: 1.35 !important;
 }
 
+#scene_director_editor .scene-director-inherit-tail {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    padding: 5px 7px !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary) 76%, transparent) !important;
+    border-radius: 5px !important;
+    background: color-mix(in srgb, var(--input-background-fill) 86%, transparent) !important;
+    color: var(--body-text-color) !important;
+    line-height: 1.25 !important;
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail:has(input:not(:disabled)) {
+    cursor: pointer !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail:has(input:checked) {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill) 82%, #ffffff) !important;
+    background: color-mix(in srgb, var(--button-primary-background-fill) 20%, var(--input-background-fill)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill) 30%, transparent) !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail:has(input:checked) > span {
+    color: var(--body-text-color) !important;
+    font-weight: 650 !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    display: inline-grid !important;
+    place-content: center !important;
+    flex: 0 0 16px !important;
+    width: 16px !important;
+    min-width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary) 88%, #ffffff) !important;
+    border-radius: 4px !important;
+    background: color-mix(in srgb, var(--input-background-fill) 90%, #000000) !important;
+    color: var(--button-primary-text-color, #ffffff) !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"]::after {
+    content: "\2713" !important;
+    color: currentColor !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+    opacity: 0 !important;
+    transform: scale(0.65) !important;
+    transition: opacity 100ms ease, transform 100ms ease !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"]:checked {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill) 82%, #ffffff) !important;
+    background: var(--button-primary-background-fill) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--button-primary-background-fill) 24%, transparent) !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"]:checked::after {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"]:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--button-primary-background-fill) 72%, #ffffff) !important;
+    outline-offset: 2px !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail:has(input:disabled) {
+    opacity: 0.48 !important;
+}
+
+#scene_director_editor .scene-director-inherit-tail input[type="checkbox"]:disabled {
+    cursor: not-allowed !important;
+}
+
 #scene_director_editor .scene-director-shot-prompt-heading {
     display: flex !important;
     align-items: center !important;
@@ -10628,6 +10719,116 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
 
 #liveportrait_expression_scene_control [data-liveportrait-expression-scene-status].is-error {
     color: #fca5a5 !important;
+}
+
+html:not(.simpai-ltx-guide-control-active) #ltx_guide_control,
+html:not(.simpai-ltx-guide-control-active) #ltx_guide_scene_control_html,
+html:not(.simpai-ltx-guide-control-active) .gradio-container .styler:has(> #ltx_guide_scene_control_html),
+html:not(.simpai-ltx-guide-control-active) .gradio-container .gr-group:has(> .styler > #ltx_guide_scene_control_html) {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+#ltx_guide_control.sai-ltx-guide-scene-entry,
+#ltx_guide_control.sai-ltx-guide-scene-entry > *,
+#ltx_guide_control.sai-ltx-guide-scene-entry :where(.styler, .html-container, .prose, .contain, .padded, .form, .block, .wrap),
+#ltx_guide_scene_control_html,
+#ltx_guide_scene_control_html > *,
+#ltx_guide_scene_control_html :where(.prose, .html-container, .styler, .block) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#ltx_guide_control.sai-ltx-guide-scene-entry {
+    margin: 8px 0 12px !important;
+}
+
+#ltx_guide_scene_control_html p {
+    margin: 0 !important;
+}
+
+.gradio-container .gr-group:has(> .styler > #ltx_guide_scene_control_html),
+.gradio-container .styler:has(> #ltx_guide_scene_control_html) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#ltx_guide_scene_control.sai-ltx-guide-scene-control {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+#ltx_guide_scene_control .sai-ltx-guide-scene-open {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 16px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 9px !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 88%, var(--button-primary-background-fill, #f97316)) !important;
+    border: 1px solid color-mix(in srgb, var(--button-primary-background-fill, #f97316) 46%, var(--border-color-primary, #4b5563)) !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    cursor: pointer !important;
+}
+
+#ltx_guide_scene_control .sai-ltx-guide-scene-open:hover,
+#ltx_guide_scene_control .sai-ltx-guide-scene-open:focus-visible {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 72%, #ffffff) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 78%, var(--button-primary-background-fill, #f97316)) !important;
+    outline: none !important;
+}
+
+#ltx_guide_scene_control .sai-ltx-guide-scene-open i {
+    width: 22px !important;
+    height: 22px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #ffffff !important;
+    background: var(--button-primary-background-fill, #f97316) !important;
+    border-radius: 50% !important;
+    font-size: 13px !important;
+}
+
+#ltx_guide_scene_control [data-ltx-guide-scene-status] {
+    width: 100% !important;
+    min-height: 18px !important;
+    display: block !important;
+    color: var(--body-text-color-subdued, #aab4c8) !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    text-align: center !important;
+    font-variant-numeric: tabular-nums !important;
 }
 
 #relight_light_control.sai-relight-light-scene-entry,

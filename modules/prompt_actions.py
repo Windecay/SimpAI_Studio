@@ -212,10 +212,14 @@ def _prompt_action_image_roles(entries, capability):
     count = len(entries)
     modes = capability.get("image_modes") if isinstance(capability, dict) else []
     modes = {str(item or "").strip().lower() for item in (modes or [])}
+    if count >= 3 and "ordered_keyframes" in modes:
+        return ["first_frame", *[f"middle_frame_{index}" for index in range(1, count - 1)], "last_frame"]
     if count >= 3 and "reference_set" in modes:
         return [f"reference_image_{index}" for index in range(1, count + 1)]
     if count == 2 and "first_last" in modes:
         return ["first_frame", "last_frame"]
+    if count == 1 and "last_frame" in modes:
+        return ["last_frame"]
     if count == 1 and "first_frame" in modes:
         return ["first_frame"]
     if "reference_set" in modes:

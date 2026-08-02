@@ -84,17 +84,17 @@ def translate_prompt_slim(prompt_text):
         return translator.normalize_prompt(prompt_text)
 
 
-def on_video_upload_with_preview(video_path):
+def on_video_upload_with_preview(video_path, state_params=None):
     if video_path is None:
         return None, None, None
     try:
         import modules.util as util
 
         preview_path = util.compress_video(video_path)
-        gr.Info("Compression completed!")
+        gr.Info(_sam3_text(state_params, "Compression completed!", "视频压缩完成！"))
         return preview_path, video_path, "sam3"
     except Exception as e:
-        gr.Warning(f"Compression failed: {e}")
+        gr.Warning(_sam3_text(state_params, f"Compression failed: {e}", f"视频压缩失败：{e}"))
         return video_path, video_path, "sam3"
 
 
@@ -325,9 +325,15 @@ def _run_failure_cleanup(unload_callback=None):
             logger.exception("SAM3 unload callback failed")
 
 
-def stop_webui_sam3_generation():
+def _sam3_text(state_params, en, cn):
+    lang = state_params.get("__lang") if isinstance(state_params, dict) else state_params
+    value = str(lang or "en").strip().lower()
+    return cn if value.startswith("cn") or value.startswith("zh") or value in {"中文", "chinese"} else en
+
+
+def stop_webui_sam3_generation(state_params=None):
     request_sam3_cancel("webui")
-    gr.Warning("SAM3 stop requested.")
+    gr.Warning(_sam3_text(state_params, "SAM3 stop requested.", "已请求停止 SAM3。"))
     return gr_update(interactive=True), gr_update(visible=False)
 
 
@@ -343,17 +349,22 @@ def generate_mask_by_points(
     recondition_every_nth_frame,
     postprocess_strength,
     invert_mask,
+    state_params=None,
     unload_callback=None,
     cancel_token: str | None = "webui",
 ):
     effective_video_path = resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
     if effective_video_path is None:
-        gr.Warning("Please upload a video first.")
+        gr.Warning(_sam3_text(state_params, "Please upload a video first.", "请先上传视频。"))
         return uploaded_mask_path
     if editor_payload_json is None or not str(editor_payload_json).strip():
         if uploaded_mask_path:
             return uploaded_mask_path
-        gr.Warning("Please click the video and select targets in the popup, or upload a mask video directly.")
+        gr.Warning(_sam3_text(
+            state_params,
+            "Please click the video and select targets in the popup, or upload a mask video directly.",
+            "请点击视频并在弹窗中选择目标，或直接上传蒙版视频。",
+        ))
         return uploaded_mask_path
     editor_payload = _parse_editor_payload(editor_payload_json)
     if _editor_payload_uses_static_mask(editor_payload):
@@ -365,14 +376,14 @@ def generate_mask_by_points(
                 invert_mask=bool(invert_mask),
                 cancel_check=make_sam3_cancel_check(cancel_token),
             )
-            gr.Info("Polygon mask created!")
+            gr.Info(_sam3_text(state_params, "Polygon mask created!", "多边形蒙版已生成！"))
             return out_path
         except Sam3Cancelled as e:
-            gr.Warning(str(e))
+            gr.Warning(_sam3_text(state_params, str(e), "SAM3 生成已取消。"))
             return uploaded_mask_path
         except Exception as e:
             logger.exception("Static mask generation failed")
-            gr.Warning(f"Polygon mask failed: {e}")
+            gr.Warning(_sam3_text(state_params, f"Polygon mask failed: {e}", f"多边形蒙版生成失败：{e}"))
             return uploaded_mask_path
         finally:
             clear_sam3_cancel(cancel_token)
@@ -396,15 +407,15 @@ def generate_mask_by_points(
                     invert_mask,
                 ),
             )
-            gr.Info("Mask generated!")
+            gr.Info(_sam3_text(state_params, "Mask generated!", "蒙版已生成！"))
             return out_path
         except Sam3Cancelled as e:
-            gr.Warning(str(e))
+            gr.Warning(_sam3_text(state_params, str(e), "SAM3 生成已取消。"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
         except Exception as e:
             logger.exception("SAM3 points mask generation failed")
-            gr.Warning(f"SAM3 failed: {e}")
+            gr.Warning(_sam3_text(state_params, f"SAM3 failed: {e}", f"SAM3 生成失败：{e}"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
         finally:
@@ -423,6 +434,7 @@ def generate_mask_by_prompt(
     recondition_every_nth_frame,
     postprocess_strength,
     invert_mask,
+    state_params=None,
     unload_callback=None,
     cancel_token: str | None = "webui",
 ):
@@ -432,12 +444,16 @@ def generate_mask_by_prompt(
 
     effective_video_path = resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
     if effective_video_path is None:
-        gr.Warning("Please upload a video first.")
+        gr.Warning(_sam3_text(state_params, "Please upload a video first.", "请先上传视频。"))
         return uploaded_mask_path
     if prompt_text is None or not str(prompt_text).strip():
         if uploaded_mask_path:
             return uploaded_mask_path
-        gr.Warning("Please enter a prompt, or upload a mask video directly.")
+        gr.Warning(_sam3_text(
+            state_params,
+            "Please enter a prompt, or upload a mask video directly.",
+            "请输入提示词，或直接上传蒙版视频。",
+        ))
         return uploaded_mask_path
     with worker.external_exclusive_task():
         reset_sam3_cancel(cancel_token)
@@ -460,15 +476,15 @@ def generate_mask_by_prompt(
                     invert_mask,
                 ),
             )
-            gr.Info("Mask generated!")
+            gr.Info(_sam3_text(state_params, "Mask generated!", "蒙版已生成！"))
             return out_path
         except Sam3Cancelled as e:
-            gr.Warning(str(e))
+            gr.Warning(_sam3_text(state_params, str(e), "SAM3 生成已取消。"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
         except Exception as e:
             logger.exception("SAM3 semantic prompt mask generation failed")
-            gr.Warning(f"SAM3 failed: {e}")
+            gr.Warning(_sam3_text(state_params, f"SAM3 failed: {e}", f"SAM3 生成失败：{e}"))
             _run_failure_cleanup(unload_callback)
             return uploaded_mask_path
         finally:

@@ -193,12 +193,16 @@ def _main_vlm_lang(state=None):
     return simpleai.normalize_ui_lang(lang or args_manager.args.language)
 
 
-def _main_vlm_text(state, en, cn):
+def _studio_text(state, en, cn):
     return en if _main_vlm_lang(state) == "en" else (cn or en)
+
+
+def _main_vlm_text(state, en, cn):
+    return _studio_text(state, en, cn)
 
 
 def _cloud_task_text(state, en, cn):
-    return en if _main_vlm_lang(state) == "en" else (cn or en)
+    return _studio_text(state, en, cn)
 
 
 def _main_vlm_provider_by_key(provider_key):
@@ -1112,7 +1116,11 @@ def refresh_files_clicked(state_params, use_model_filter: bool = True, show_info
     )
     if show_info:
         try:
-            gr.Info(f"Files refreshed. Models: {len(model_filenames)}, LoRAs: {len(lora_filenames)}, CLIP/Text Encoders: {len(clip_filenames)}, VAEs: {len(vae_filenames)}, Upscale: {len(upscale_model_filenames)}.")
+            gr.Info(_studio_text(
+                state_params,
+                f"Files refreshed. Models: {len(model_filenames)}, LoRAs: {len(lora_filenames)}, CLIP/Text Encoders: {len(clip_filenames)}, VAEs: {len(vae_filenames)}, Upscale: {len(upscale_model_filenames)}.",
+                f"文件列表已刷新。模型：{len(model_filenames)}，LoRA：{len(lora_filenames)}，CLIP / 文本编码器：{len(clip_filenames)}，VAE：{len(vae_filenames)}，放大模型：{len(upscale_model_filenames)}。",
+            ))
         except Exception as e:
             logger.info(f"[RefreshFiles] gr.Info failed: {e}")
 
@@ -1197,7 +1205,7 @@ def generate_clicked(task: worker.AsyncTask, state):
         if not effective_user_did and hasattr(shared.token, "get_default_workspace_did"):
             effective_user_did = shared.token.get_default_workspace_did()
         if not user_can_generate(effective_user_did or ""):
-            gr.Info("Current identity is not allowed to generate images.")
+            gr.Info(_studio_text(state, "Current identity is not allowed to generate images.", "当前身份没有图像生成权限。"))
             logger.info(f"[Generate] blocked by identity permission: user_did={effective_user_did}")
             return
     except Exception as e:
@@ -1698,10 +1706,14 @@ def generate_clicked(task: worker.AsyncTask, state):
                             user_cancel_action = task.last_stop
                         had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
                         cloud_error_text = str(getattr(task, "cloud_error", "") or "").strip()
-                        ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else "Generation failed: backend returned no results. Check the console log for details."
+                        ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else _studio_text(
+                            state,
+                            "Generation failed: backend returned no results. Check the console log for details.",
+                            "生成失败：后端没有返回结果。请查看控制台日志了解详情。",
+                        )
                         try:
                             if user_cancel_action in ['stop', 'skip']:
-                                gr.Info("Generation skipped or stopped by user.")
+                                gr.Info(_studio_text(state, "Generation skipped or stopped by user.", "生成已由用户跳过或停止。"))
                             else:
                                 gr.Warning(ui_error_text)
                         except Exception as e:
@@ -3689,15 +3701,19 @@ with shared.gradio_root:
                         has_download_access = user_can_download_models(user_did)
 
                         if not has_download_access:
-                            gr.Info("Current identity is not allowed to download models.")
+                            gr.Info(_studio_text(state_params, "Current identity is not allowed to download models.", "当前身份没有模型下载权限。"))
                             return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
                         if shared.args.disable_backend:
-                            gr.Info("Model download tasks are disabled because the app was started with --disable-backend.")
+                            gr.Info(_studio_text(state_params, "Model download tasks are disabled because the app was started with --disable-backend.", "应用使用 --disable-backend 启动，模型下载任务已禁用。"))
                             return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
                         if not missing_models:
                             return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
-                        gr.Info(f"Starting VLM model download: {version_name}. Please wait and check the console for progress.")
+                        gr.Info(_studio_text(
+                            state_params,
+                            f"Starting VLM model download: {version_name}. Please wait and check the console for progress.",
+                            f"开始下载 VLM 模型：{version_name}。请稍候，可在控制台查看进度。",
+                        ))
                         for cata, path_file, human_size, url, size in missing_models:
                             model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True)
                         return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
@@ -3713,13 +3729,17 @@ with shared.gradio_root:
                     has_download_access = user_can_download_models(user_did)
 
                     if not has_download_access:
-                        gr.Info("Current identity is not allowed to download models.")
+                        gr.Info(_studio_text(state_params, "Current identity is not allowed to download models.", "当前身份没有模型下载权限。"))
                         return [gr_update(visible=False), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
                     if shared.args.disable_backend:
-                        gr.Info("Model download tasks are disabled because the app was started with --disable-backend.")
+                        gr.Info(_studio_text(state_params, "Model download tasks are disabled because the app was started with --disable-backend.", "应用使用 --disable-backend 启动，模型下载任务已禁用。"))
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
-                    gr.Info(f"Starting preset model download: {preset_name}. Please wait and check the console for progress.")
+                    gr.Info(_studio_text(
+                        state_params,
+                        f"Starting preset model download: {preset_name}. Please wait and check the console for progress.",
+                        f"开始下载预设模型：{preset_name}。请稍候，可在控制台查看进度。",
+                    ))
                     model_loader.download_model_files(preset_name, user_did=user_did, async_task=True)
                     return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
@@ -3743,10 +3763,10 @@ with shared.gradio_root:
                     user_did = _get_state_user_did(state_params)
                     has_download_access = user_can_download_models(user_did)
                     if not has_download_access:
-                        gr.Info("Current identity is not allowed to download models.")
+                        gr.Info(_studio_text(state_params, "Current identity is not allowed to download models.", "当前身份没有模型下载权限。"))
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
                     if shared.args.disable_backend:
-                        gr.Info("Model download tasks are disabled because the app was started with --disable-backend.")
+                        gr.Info(_studio_text(state_params, "Model download tasks are disabled because the app was started with --disable-backend.", "应用使用 --disable-backend 启动，模型下载任务已禁用。"))
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     payload_extra = None
@@ -4235,6 +4255,19 @@ with shared.gradio_root:
                             liveportrait_expression_scene_state = gr.Textbox(value="", visible="hidden", elem_id="liveportrait_expression_scene_state", elem_classes=["sai-gradio-hidden-bridge"])
                             liveportrait_expression_scene_apply_btn = gr.Button("LivePortrait Expression Apply", visible="hidden", elem_id="liveportrait_expression_scene_apply_btn", elem_classes=["sai-gradio-hidden-bridge"])
 
+                        with gr.Group(visible=True, elem_id="ltx_guide_control", elem_classes=['simpai-mounted-hidden', 'sai-ltx-guide-scene-entry']) as ltx_guide_control:
+                            gr.HTML(
+                                value="""
+<div id="ltx_guide_scene_control" class="sai-ltx-guide-scene-control" tabindex="0">
+  <button type="button" class="sai-ltx-guide-scene-open" data-ltx-guide-scene-open title="Edit LTX2.3 keyframe guides">
+    <i class="fa-solid fa-sliders"></i><span data-ltx-guide-scene-label>Keyframe Guides / 关键帧引导</span>
+  </button>
+  <small data-ltx-guide-scene-status>First 1 | M1 Auto/0.7 · M2 Auto/0.7 · M3 Auto/0.7 | Last 1</small>
+</div>
+""",
+                                elem_id="ltx_guide_scene_control_html",
+                            )
+
                         with gr.Group(visible=True, elem_id="relight_light_control", elem_classes=['simpai-mounted-hidden', 'sai-relight-light-scene-entry']) as relight_light_control:
                             gr.HTML(
                                 value="""
@@ -4565,28 +4598,28 @@ with shared.gradio_root:
                         scene_canvas_image.change(update_qwen_image, inputs=[scene_canvas_image], outputs=[qwen_image_data], queue=False, show_progress=False)
                         scene_input_image1.change(update_qwen_image, inputs=[scene_input_image1], outputs=[qwen_image_data], queue=False, show_progress=False)
                         
-                        def on_video_upload(video_path):
+                        def on_video_upload(video_path, state_params):
                             if video_path is None:
                                 return None, None, None, "{}", "", ""
                             meta = build_resolution_video_meta(video_path, "scene_video", "scene")
                             first_frame_path = util.extract_video_first_frame(video_path)
                             try:
                                 preview_path = util.compress_video(video_path)
-                                gr.Info("Compression completed!")
+                                gr.Info(_studio_text(state_params, "Compression completed!", "视频压缩完成！"))
                                 return preview_path, video_path, "scene", meta, first_frame_path, ""
                             except Exception as e:
-                                gr.Warning(f"Compression failed: {e}")
+                                gr.Warning(_studio_text(state_params, f"Compression failed: {e}", f"视频压缩失败：{e}"))
                                 return video_path, video_path, "scene", meta, first_frame_path, ""
 
-                        def on_reference_video_upload(video_path):
+                        def on_reference_video_upload(video_path, state_params):
                             if video_path is None:
                                 return None, None, None, "", ""
                             try:
                                 preview_path = util.compress_video(video_path)
-                                gr.Info("Compression completed!")
+                                gr.Info(_studio_text(state_params, "Compression completed!", "视频压缩完成！"))
                                 return preview_path, video_path, None, "", ""
                             except Exception as e:
-                                gr.Warning(f"Compression failed: {e}")
+                                gr.Warning(_studio_text(state_params, f"Compression failed: {e}", f"视频压缩失败：{e}"))
                                 return video_path, video_path, None, "", ""
 
                         def _camera_motion_text(state, english):
@@ -4731,17 +4764,21 @@ with shared.gradio_root:
                             )
                             return generated_snapshot, status
 
-                        def on_sam3_video_upload(video_path):
-                            preview_path, original_path, source = sam3_video_mask.on_video_upload_with_preview(video_path)
+                        def on_sam3_video_upload(video_path, state_params):
+                            preview_path, original_path, source = sam3_video_mask.on_video_upload_with_preview(video_path, state_params)
                             meta = build_resolution_video_meta(original_path or video_path, "sam3_input_video", "sam3") if video_path is not None else "{}"
                             return preview_path, original_path, source, meta, ""
 
-                        def on_sam3_mask_upload(mask_path, original_video_path, video_path, trim_payload):
+                        def on_sam3_mask_upload(mask_path, original_video_path, video_path, trim_payload, state_params):
                             if mask_path is None:
                                 return None
                             source_path = sam3_video_mask.resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
                             if not source_path or not isinstance(source_path, str) or not os.path.exists(source_path):
-                                gr.Warning("Upload a SAM3 source video first to auto-match mask frames.")
+                                gr.Warning(_studio_text(
+                                    state_params,
+                                    "Upload a SAM3 source video first to auto-match mask frames.",
+                                    "请先上传 SAM3 源视频，再自动匹配蒙版帧。",
+                                ))
                                 return mask_path
                             try:
                                 mask_mime = mimetypes.guess_type(str(mask_path))[0] or "video/mp4"
@@ -4753,11 +4790,19 @@ with shared.gradio_root:
                                     out_dir,
                                     node_id="webui",
                                 )
-                                gr.Info("SAM3 mask matched to source video frames.")
+                                gr.Info(_studio_text(
+                                    state_params,
+                                    "SAM3 mask matched to source video frames.",
+                                    "SAM3 蒙版已匹配源视频帧。",
+                                ))
                                 return out_path
                             except Exception as e:
                                 logger.exception("SAM3 mask upload normalization failed")
-                                gr.Warning(f"SAM3 mask normalization failed: {e}")
+                                gr.Warning(_studio_text(
+                                    state_params,
+                                    f"SAM3 mask normalization failed: {e}",
+                                    f"SAM3 蒙版处理失败：{e}",
+                                ))
                                 return mask_path
 
                         def sam3_generation_start_updates():
@@ -4779,7 +4824,7 @@ with shared.gradio_root:
                             finally:
                                 sam3_video_mask.clear_sam3_cancel("webui")
 
-                        scene_video.upload(on_video_upload, inputs=[scene_video], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path, scene_video_trim_payload], show_progress=True, queue=False) \
+                        scene_video.upload(on_video_upload, inputs=[scene_video, state_topbar], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path, scene_video_trim_payload], show_progress=True, queue=False) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "upload");}')
                         scene_video.clear(
                             lambda: (None, None, "{}", "", ""),
@@ -4974,23 +5019,23 @@ with shared.gradio_root:
                             show_progress=False,
                         )
                         
-                        sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload], show_progress=True) \
+                        sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video, state_topbar], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload], show_progress=True) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("sam3_input_video", "upload");}')
-                        sam3_mask_video.upload(on_sam3_mask_upload, inputs=[sam3_mask_video, sam3_original_video_path, sam3_input_video, sam3_trim_payload], outputs=[sam3_mask_video], show_progress=True)
-                        sam3_mask_upload_file.upload(on_sam3_mask_upload, inputs=[sam3_mask_upload_file, sam3_original_video_path, sam3_input_video, sam3_trim_payload], outputs=[sam3_mask_video], show_progress=True)
+                        sam3_mask_video.upload(on_sam3_mask_upload, inputs=[sam3_mask_video, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video], show_progress=True)
+                        sam3_mask_upload_file.upload(on_sam3_mask_upload, inputs=[sam3_mask_upload_file, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video], show_progress=True)
                         sam3_points_evt = sam3_points_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False) \
                             .then(
                                 sam3_points_generate_wrapper,
-                                inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_editor_payload, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask],
+                                inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_editor_payload, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar],
                                 outputs=[sam3_mask_video],
                                 js='(...args)=>{try{return window.sam3PointsGeneratePayload ? window.sam3PointsGeneratePayload(...args) : args;}catch(e){console.warn("[SAM3] points payload handoff failed", e); return args;}}',
                                 show_progress=True,
                             ) \
                             .then(sam3_generation_finish_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
                         sam3_prompt_evt = sam3_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False) \
-                            .then(sam3_prompt_generate_wrapper, inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_prompt_text, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask], outputs=[sam3_mask_video], show_progress=True) \
+                            .then(sam3_prompt_generate_wrapper, inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_prompt_text, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask, state_topbar], outputs=[sam3_mask_video], show_progress=True) \
                             .then(sam3_generation_finish_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
-                        sam3_stop_btn.click(sam3_video_mask.stop_webui_sam3_generation, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
+                        sam3_stop_btn.click(sam3_video_mask.stop_webui_sam3_generation, inputs=[state_topbar], outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
 
                         with gr.Row(elem_id="scene_image_number_row"):
                             scene_image_number = gr.Slider(label='Image Number', minimum=1, maximum=5, step=1, value=1, elem_id="scene_image_number")
@@ -5044,7 +5089,7 @@ with shared.gradio_root:
                                 elem_id="camera_motion_status",
                             )
 
-                        scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video], outputs=[scene_reference_video, scene_reference_video_original_path, camera_motion_generated_snapshot, camera_motion_status, scene_reference_video_trim_payload], show_progress=True, queue=False)
+                        scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video, state_topbar], outputs=[scene_reference_video, scene_reference_video_original_path, camera_motion_generated_snapshot, camera_motion_status, scene_reference_video_trim_payload], show_progress=True, queue=False)
                         scene_reference_video.clear(lambda: (None, ""), outputs=[scene_reference_video_original_path, scene_reference_video_trim_payload], queue=False, show_progress=False)
                         scene_reference_video.clear(camera_motion_reference_cleared, inputs=[state_topbar], outputs=[camera_motion_generated_snapshot, camera_motion_status], queue=False, show_progress=False)
 
@@ -5620,7 +5665,7 @@ with shared.gradio_root:
 
                         with gr.Tab("Custom Voice"):
                             qwen_custom_text = gr.Textbox(label="Text to Speech", lines=5, placeholder="Enter text here...[pause=800ms] or [pause=0.8s] can add pause between sentences.", elem_id="qwen_custom_text")
-                            _qwen_speaker_notes = {"Serena": ("苏瑶", "中文", "其实我真的有发现，我是一个特别善于观察别人情绪的人。"), "Uncle_fu": ("福伯", "中文", "叶师傅，切他的中路"), "Vivian": ("十三", "中文", "这事情看上去很复杂，其实一点都不简单。"), "Aiden": ("艾登", "英文", "Then by the end of the movie, I got a little bit teary."), "Ryan": ("甜茶", "英文", "Then by the end of the movie, I got a little bit teary."), "Ono_anna": ("小野杏", "日语", "やばい、明日のプレゼン資料まだ完成してない… 助けて！"), "Sohee": ("素熙", "韩语", "야, 오늘 점심에 뭐 먹을지 생각해 봤어? 근처에 새로 생긴 분식집 어때?"), "Dylan": ("晓东", "中文方言-北京话", "我们就在山上啊，就是其实也没什么，就是在土坡上跑来跑去。"), "Eric": ("程川", "中文方言-四川话", "你龟儿太过分了，把我的东西都搞坏了，还晓不晓得认错。")}
+                            _qwen_speaker_notes = {"Serena": ("苏瑶", "Chinese", "其实我真的有发现，我是一个特别善于观察别人情绪的人。"), "Uncle_fu": ("福伯", "Chinese", "叶师傅，切他的中路"), "Vivian": ("十三", "Chinese", "这事情看上去很复杂，其实一点都不简单。"), "Aiden": ("艾登", "English", "Then by the end of the movie, I got a little bit teary."), "Ryan": ("甜茶", "English", "Then by the end of the movie, I got a little bit teary."), "Ono_anna": ("小野杏", "Japanese", "やばい、明日のプレゼン資料まだ完成してない… 助けて！"), "Sohee": ("素熙", "Korean", "야, 오늘 점심에 뭐 먹을지 생각해 봤어? 근처에 새로 생긴 분식집 어때?"), "Dylan": ("晓东", "Chinese (Beijing dialect)", "我们就在山上啊，就是其实也没什么，就是在土坡上跑来跑去。"), "Eric": ("程川", "Chinese (Sichuan dialect)", "你龟儿太过分了，把我的东西都搞坏了，还晓不晓得认错。")}
                             _qwen_speaker_display_to_key = {"艾登 Aiden": "Aiden", "晓东 Dylan": "Dylan", "程川 Eric": "Eric", "小野杏 Ono Anna": "Ono_anna", "甜茶 Ryan": "Ryan", "苏瑶 Serena": "Serena", "素熙 Sohee": "Sohee", "福伯 Uncle Fu": "Uncle_fu", "十三 Vivian": "Vivian"}
                             _qwen_default_speaker_display = "甜茶 Ryan"
 
@@ -5691,18 +5736,18 @@ with shared.gradio_root:
 
                         with gr.Tab("Dialogue"):
                             qwen_dialogue_script = gr.Textbox(label="Script", lines=8, placeholder="Format: Character Name: Text (one sentence per line) \n\nCharacter 1: Hello, what shall we talk about today? \nCharacter 2: I'd like to learn about Qwen3-TTS voice cloning. \nCharacter 3: Let me summarize the key points of parameter settings. \nNarrator: They started a relaxed conversation.", elem_id="qwen_dialogue_script")
-                            def _qwen_dialogue_role(role_label, default_name):
+                            def _qwen_dialogue_role(role_label, default_name, elem_id):
                                 with gr.Column():
-                                    name = gr.Textbox(label=f"{role_label} Name", value=default_name)
+                                    name = gr.Textbox(label=f"{role_label} Name", value=default_name, elem_id=elem_id)
                                     audio = gr.Audio(label=f"{role_label} Reference Audio", sources=["upload"], type="numpy")
                                     ref_text = gr.Textbox(label=f"{role_label} Reference Text", lines=2)
                                 return name, audio, ref_text
                             with gr.Row():
-                                qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text = _qwen_dialogue_role("Role 1", "角色1")
-                                qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text = _qwen_dialogue_role("Role 2", "角色2")
+                                qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text = _qwen_dialogue_role("Role 1", "Role 1", "qwen_role_1_name")
+                                qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text = _qwen_dialogue_role("Role 2", "Role 2", "qwen_role_2_name")
                             with gr.Row():
-                                qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text = _qwen_dialogue_role("Role 3", "角色3")
-                                qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text = _qwen_dialogue_role("Role 4", "旁白")
+                                qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text = _qwen_dialogue_role("Role 3", "Role 3", "qwen_role_3_name")
+                                qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text = _qwen_dialogue_role("Role 4", "Narrator", "qwen_role_4_name")
                             with gr.Row():
                                 qwen_dialogue_btn = gr.Button("Generate Dialogue Audio", elem_classes="type_row_half")
                                 qwen_dialogue_stop_btn = gr.Button("Stop", elem_classes="type_row_half", min_width=70, visible=False)
@@ -5774,7 +5819,7 @@ with shared.gradio_root:
                                     with gr.Column(scale=1):
                                         qwen_dialogue_max_tokens = gr.Slider(label="Max new tokens per line", minimum=512, maximum=8192, step=256, value=4096)
                     gr.HTML(
-                        value='项目来源：<a href="https://www.modelscope.cn/collections/Qwen/Qwen3-TTS" target="_blank" rel="noopener noreferrer">https://www.modelscope.cn/collections/Qwen/Qwen3-TTS</a>',
+                        value='Project source: <a href="https://www.modelscope.cn/collections/Qwen/Qwen3-TTS" target="_blank" rel="noopener noreferrer">https://www.modelscope.cn/collections/Qwen/Qwen3-TTS</a>',
                         elem_id="qwen_tts_source_badge",
                     )
 
@@ -5803,6 +5848,44 @@ with shared.gradio_root:
                             except Exception:
                                 return True
 
+                        def _qwen_text(state_params, en, cn):
+                            return _studio_text(state_params, en, cn)
+
+                        def _qwen_progress_message(message, state_params):
+                            text = str(message or "").strip()
+                            if not text:
+                                return ""
+                            if _main_vlm_lang(state_params) != "en":
+                                return {
+                                    "Generating...": "正在生成...",
+                                    "Stopping...": "正在停止...",
+                                    "Interrupted": "已中断",
+                                }.get(text, text)
+                            exact = {
+                                "准备参考音频": "Preparing reference audio",
+                                "生成首段（用于锁定音色）": "Generating the first segment to lock the timbre",
+                                "提取首段音色特征": "Extracting timbre features from the first segment",
+                                "准备角色音色": "Preparing role voices",
+                                "生成对话音频": "Generating dialogue audio",
+                                "生成对话音频（分段）": "Generating dialogue audio in segments",
+                                "合并输出": "Merging outputs",
+                            }
+                            if text in exact:
+                                return exact[text]
+                            patterns = [
+                                (r"^准备分段：(\d+) 段$", lambda m: f"Preparing {m.group(1)} segments"),
+                                (r"^生成音频：(.+)$", lambda m: f"Generating audio: {m.group(1)}"),
+                                (r"^锁定音色生成：(.+)$", lambda m: f"Generating with locked timbre: {m.group(1)}"),
+                                (r"^提取声音特征，准备分段：(\d+) 段$", lambda m: f"Extracting voice features and preparing {m.group(1)} segments"),
+                                (r"^准备角色音色：(.+)$", lambda m: f"Preparing role voices: {m.group(1)}"),
+                                (r"^完成，批次大小:\s*(.+)，耗时:\s*(.+)秒$", lambda m: f"Complete. Batch size: {m.group(1)}, elapsed: {m.group(2)} s"),
+                            ]
+                            for pattern, formatter in patterns:
+                                match = re.match(pattern, text)
+                                if match:
+                                    return formatter(match)
+                            return text
+
                         def _qwen_tts_set_interrupt(value: bool):
                             try:
                                 model_management.interrupt_current_processing(bool(value))
@@ -5816,19 +5899,19 @@ with shared.gradio_root:
 
                         qwen_tts_force_unload = {"flag": False}
 
-                        def _qwen_tts_begin():
+                        def _qwen_tts_begin(state_params):
                             _qwen_tts_set_interrupt(False)
                             qwen_tts_force_unload["flag"] = False
-                            return gr_update(visible=False), gr_update(visible=True), "Generating..."
+                            return gr_update(visible=False), gr_update(visible=True), _qwen_text(state_params, "Generating...", "正在生成...")
 
                         def _qwen_tts_end():
                             _qwen_tts_set_interrupt(False)
                             return gr_update(visible=True), gr_update(visible=False)
 
-                        def _qwen_tts_stop():
+                        def _qwen_tts_stop(state_params):
                             _qwen_tts_set_interrupt(True)
                             qwen_tts_force_unload["flag"] = True
-                            return "Stopping..."
+                            return _qwen_text(state_params, "Stopping...", "正在停止...")
 
                         def _qwen_is_interrupt_exception(e: Exception) -> bool:
                             if type(e).__name__ == "InterruptProcessingException":
@@ -5962,28 +6045,28 @@ with shared.gradio_root:
                             sr, wav = as_numpy
                             return _qwen_write_wav_temp(sr, wav)
 
-                        def _qwen_send_audio_to_target(output_audio, target_label):
+                        def _qwen_send_audio_to_target(output_audio, target_label, state_params):
                             outputs = [skip_component_update() for _ in range(7)]
                             if _is_blank(target_label):
-                                gr.Warning("Please select an Audio target to overwrite.")
+                                gr.Warning(_qwen_text(state_params, "Please select an Audio target to overwrite.", "请选择要写入的音频目标。"))
                                 return outputs
                             target_key = qwen_send_target_options.get(str(target_label).strip(), None)
                             if not target_key:
-                                gr.Warning("Unknown target Audio component.")
+                                gr.Warning(_qwen_text(state_params, "Unknown target Audio component.", "无法识别目标音频组件。"))
                                 return outputs
                             if output_audio is None:
-                                gr.Warning("There is no output audio available to send.")
+                                gr.Warning(_qwen_text(state_params, "There is no output audio available to send.", "当前没有可发送的输出音频。"))
                                 return outputs
                             if target_key in qwen_send_numpy_target_keys:
                                 value = _qwen_audio_to_numpy(output_audio)
                             else:
                                 value = _qwen_audio_to_filepath(output_audio)
                             if value is None:
-                                gr.Warning("Audio format conversion failed. Unable to overwrite the target.")
+                                gr.Warning(_qwen_text(state_params, "Audio format conversion failed. Unable to overwrite the target.", "音频格式转换失败，无法写入目标。"))
                                 return outputs
                             idx = qwen_send_target_key_to_index.get(target_key, None)
                             if idx is None:
-                                gr.Warning("Target Audio component index is invalid.")
+                                gr.Warning(_qwen_text(state_params, "Target Audio component index is invalid.", "目标音频组件索引无效。"))
                                 return outputs
                             outputs[idx] = value
                             if target_key == "scene_audio":
@@ -5991,7 +6074,7 @@ with shared.gradio_root:
                             return outputs
 
                         def _bind_qwen_send_audio(button, output_audio, target_dropdown):
-                            event = button.click(fn=_qwen_send_audio_to_target, inputs=[output_audio, target_dropdown], outputs=qwen_send_outputs, queue=False, show_progress=False)
+                            event = button.click(fn=_qwen_send_audio_to_target, inputs=[output_audio, target_dropdown, state_topbar], outputs=qwen_send_outputs, queue=False, show_progress=False)
                             event = event.then(
                                 switch_scene_theme_safe,
                                 inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme],
@@ -6034,22 +6117,22 @@ with shared.gradio_root:
                             name = _qwen_safe_preset_name(preset_name)
                             text = "" if style_text is None else str(style_text).strip()
                             if not name:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Preset Name cannot be empty")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Preset Name cannot be empty", "预设名称不能为空"))
                             if not text:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Style Instruction cannot be empty")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Style Instruction cannot be empty", "风格指令不能为空"))
                             preset_dir = _qwen_character_presets_dir(user_did)
                             if not preset_dir:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Save failed: unable to locate user directory")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Save failed: unable to locate user directory", "保存失败：无法定位用户目录"))
                             file_path = os.path.join(preset_dir, f"{name}.json")
                             payload = {"name": name, "instruction": text, "updated_at": int(time.time())}
                             try:
                                 with open(file_path, "w", encoding="utf-8") as f:
                                     json.dump(payload, f, ensure_ascii=False, indent=2)
                             except Exception as e:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), f"Save failed: {type(e).__name__}: {e}")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, f"Save failed: {type(e).__name__}: {e}", f"保存失败：{type(e).__name__}: {e}"))
                             dv = name if str(target) == "design" else design_value
                             cv = name if str(target) == "custom" else custom_value
-                            return _qwen_refresh_style_preset_dropdowns(state_params, dv, cv) + (gr_update(value=""), f"Saved to users/{user_did}/presets/characters/{name}.json")
+                            return _qwen_refresh_style_preset_dropdowns(state_params, dv, cv) + (gr_update(value=""), _qwen_text(state_params, f"Saved to users/{user_did}/presets/characters/{name}.json", f"已保存到 users/{user_did}/presets/characters/{name}.json"))
 
                         def _delete_user_character_preset(preset_name, state_params, design_value, custom_value, target):
                             user_did = _get_user_did_from_state(state_params)
@@ -6058,22 +6141,22 @@ with shared.gradio_root:
                             if not name:
                                 name = _qwen_safe_preset_name(selected)
                             if not name:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Preset Name cannot be empty")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Preset Name cannot be empty", "预设名称不能为空"))
                             if name in qwen_tts_style_presets:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Cannot delete built-in Preset")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Cannot delete built-in Preset", "不能删除内置预设"))
                             preset_dir = _qwen_character_presets_dir(user_did)
                             if not preset_dir:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), "Delete failed: unable to locate user directory")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, "Delete failed: unable to locate user directory", "删除失败：无法定位用户目录"))
                             file_path = os.path.join(preset_dir, f"{name}.json")
                             if not os.path.isfile(file_path):
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), f"Preset not found: {name}")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, f"Preset not found: {name}", f"未找到预设：{name}"))
                             try:
                                 os.remove(file_path)
                             except Exception as e:
-                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), f"Delete failed: {type(e).__name__}: {e}")
+                                return _qwen_refresh_style_preset_dropdowns(state_params, design_value, custom_value) + (gr_update(value=preset_name), _qwen_text(state_params, f"Delete failed: {type(e).__name__}: {e}", f"删除失败：{type(e).__name__}: {e}"))
                             dv = None if str(target) == "design" and str(design_value).strip() == name else design_value
                             cv = None if str(target) == "custom" and str(custom_value).strip() == name else custom_value
-                            return _qwen_refresh_style_preset_dropdowns(state_params, dv, cv) + (gr_update(value=""), f"Deleted users/{user_did}/presets/characters/{name}.json")
+                            return _qwen_refresh_style_preset_dropdowns(state_params, dv, cv) + (gr_update(value=""), _qwen_text(state_params, f"Deleted users/{user_did}/presets/characters/{name}.json", f"已删除 users/{user_did}/presets/characters/{name}.json"))
 
                         qwen_design_style_preset_save_btn.click(fn=lambda a, b, c, d, e: _save_user_character_preset(a, b, c, d, e, "design"), inputs=[qwen_design_style_preset_name, qwen_design_instruct, state_topbar, qwen_design_style_preset_choices, qwen_custom_style_preset_choices], outputs=[qwen_design_style_preset_choices, qwen_custom_style_preset_choices, qwen_design_style_preset_name, qwen_design_info], queue=False, show_progress=False)
                         qwen_custom_style_preset_save_btn.click(fn=lambda a, b, c, d, e: _save_user_character_preset(a, b, c, d, e, "custom"), inputs=[qwen_custom_style_preset_name, qwen_custom_instruct, state_topbar, qwen_design_style_preset_choices, qwen_custom_style_preset_choices], outputs=[qwen_design_style_preset_choices, qwen_custom_style_preset_choices, qwen_custom_style_preset_name, qwen_custom_info], queue=False, show_progress=False)
@@ -6082,20 +6165,20 @@ with shared.gradio_root:
 
                         def _expand_tts_style_instruction(style_text, state_params):
                             if _is_blank(style_text):
-                                return style_text, "Please enter Style Instruction before expanding it"
+                                return style_text, _qwen_text(state_params, "Please enter Style Instruction before expanding it", "请先填写风格指令再扩写")
                             if not VLM.get_enable():
-                                return style_text, "Please enable VLM in Identity -> Local System first"
+                                return style_text, _qwen_text(state_params, "Please enable VLM in Identity -> Local System first", "请先在身份设置 -> 本地系统中启用 VLM")
                             if not vlm.model_exists():
-                                return style_text, "VLM model is not ready. Please download/configure it first"
+                                return style_text, _qwen_text(state_params, "VLM model is not ready. Please download/configure it first", "VLM 模型尚未就绪，请先下载或配置")
                             try:
                                 with worker.external_exclusive_task():
                                     expanded = vlm.expand_tts_style_instruction(style_text)
                                 expanded = str(expanded).strip() if expanded is not None else ""
                                 if not expanded:
-                                    return style_text, "Style expansion returned no valid content"
+                                    return style_text, _qwen_text(state_params, "Style expansion returned no valid content", "风格扩写没有返回有效内容")
                                 return expanded, ""
                             except Exception as e:
-                                return style_text, f"Style expansion failed: {type(e).__name__}: {e}"
+                                return style_text, _qwen_text(state_params, f"Style expansion failed: {type(e).__name__}: {e}", f"风格扩写失败：{type(e).__name__}: {e}")
 
                         qwen_design_expand_btn.click(fn=_expand_tts_style_instruction, inputs=[qwen_design_instruct, state_topbar], outputs=[qwen_design_instruct, qwen_design_info], queue=False, show_progress=True)
                         qwen_custom_expand_btn.click(fn=_expand_tts_style_instruction, inputs=[qwen_custom_instruct, state_topbar], outputs=[qwen_custom_instruct, qwen_custom_info], queue=False, show_progress=True)
@@ -6149,7 +6232,7 @@ with shared.gradio_root:
                                 if p > 100:
                                     p = 100
                                 try:
-                                    q.put((p, str(msg or "").strip()), block=False)
+                                    q.put((p, _qwen_progress_message(msg, state_params)), block=False)
                                 except Exception:
                                     pass
 
@@ -6175,7 +6258,7 @@ with shared.gradio_root:
                             _threading.Thread(target=runner, daemon=True).start()
 
                             last_pct = 0.0
-                            last_msg = "Generating..."
+                            last_msg = _qwen_text(state_params, "Generating...", "正在生成...")
                             last_tick = _time.time()
                             last_pct_is_synthetic = False
 
@@ -6234,9 +6317,13 @@ with shared.gradio_root:
 
                             interrupted = _qwen_is_interrupt_exception(err)
                             if interrupted:
-                                yield gr_update(value=None), seed_int, "Interrupted"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Interrupted", "已中断")
                                 return
-                            yield gr_update(value=None), seed_int, f"Generation failed: {type(err).__name__}: {err}"
+                            yield gr_update(value=None), seed_int, _qwen_text(
+                                state_params,
+                                f"Generation failed: {type(err).__name__}: {err}",
+                                f"生成失败：{type(err).__name__}: {err}",
+                            )
                             return
 
                         def qwen_voice_design_fn(text, instruct, model_choice, precision, device, language, seed_random, seed, max_new_tokens, split_max_chars, split_hard_max_chars, top_p, top_k, temperature, repetition_penalty, attention, unload, lock_timbre, clone_batch_size, state_params):
@@ -6245,12 +6332,12 @@ with shared.gradio_root:
                             except Exception:
                                 seed_int = 0
                             if _is_blank(text):
-                                yield gr_update(value=None), seed_int, "Please enter \"Text to Speech\" before generating"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please enter \"Text to Speech\" before generating", "请先填写待朗读文本")
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.voice_design, seed_random, seed, unload, state_params, text=text, instruct=instruct, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload), lock_timbre_with_first_segment=bool(lock_timbre), clone_batch_size=int(clone_batch_size))
 
-                        qwen_design_btn.click(fn=_qwen_tts_begin, inputs=[], outputs=[qwen_design_btn, qwen_design_stop_btn, qwen_design_info], queue=False, show_progress=False).then(fn=qwen_voice_design_fn, inputs=[qwen_design_text, qwen_design_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_design_lock_timbre, qwen_design_clone_batch_size, state_topbar], outputs=[qwen_design_output, qwen_tts_seed, qwen_design_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_design_btn, qwen_design_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_design_stop_btn.click(fn=_qwen_tts_stop, inputs=[], outputs=[qwen_design_info], queue=False, show_progress=False)
+                        qwen_design_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_design_btn, qwen_design_stop_btn, qwen_design_info], queue=False, show_progress=False).then(fn=qwen_voice_design_fn, inputs=[qwen_design_text, qwen_design_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_design_lock_timbre, qwen_design_clone_batch_size, state_topbar], outputs=[qwen_design_output, qwen_tts_seed, qwen_design_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_design_btn, qwen_design_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
+                        qwen_design_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_design_info], queue=False, show_progress=False)
 
                         def qwen_voice_clone_fn(ref_audio, ref_text, target_text, model_choice, precision, device, language, seed_random, seed, max_new_tokens, split_max_chars, split_hard_max_chars, top_p, top_k, temperature, repetition_penalty, attention, unload, batch_size, state_params):
                             try:
@@ -6258,15 +6345,15 @@ with shared.gradio_root:
                             except Exception:
                                 seed_int = 0
                             if ref_audio is None:
-                                yield gr_update(value=None), seed_int, "Please upload \"Reference Audio\" first"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please upload \"Reference Audio\" first", "请先上传参考音频")
                                 return
                             if _is_blank(target_text):
-                                yield gr_update(value=None), seed_int, "Please enter \"Target Text to Speech\" before generating"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please enter \"Target Text to Speech\" before generating", "请先填写目标朗读文本")
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.voice_clone, seed_random, seed, unload, state_params, ref_audio=ref_audio, ref_text=ref_text, target_text=target_text, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), x_vector_only=False, attention=attention, unload_model_after_generate=bool(unload), batch_size=int(batch_size))
 
-                        qwen_clone_btn.click(fn=_qwen_tts_begin, inputs=[], outputs=[qwen_clone_btn, qwen_clone_stop_btn, qwen_clone_info], queue=False, show_progress=False).then(fn=qwen_voice_clone_fn, inputs=[qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_target_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_clone_batch_size, state_topbar], outputs=[qwen_clone_output, qwen_tts_seed, qwen_clone_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_clone_btn, qwen_clone_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_clone_stop_btn.click(fn=_qwen_tts_stop, inputs=[], outputs=[qwen_clone_info], queue=False, show_progress=False)
+                        qwen_clone_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_clone_btn, qwen_clone_stop_btn, qwen_clone_info], queue=False, show_progress=False).then(fn=qwen_voice_clone_fn, inputs=[qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_target_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_clone_batch_size, state_topbar], outputs=[qwen_clone_output, qwen_tts_seed, qwen_clone_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_clone_btn, qwen_clone_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
+                        qwen_clone_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_clone_info], queue=False, show_progress=False)
 
                         def qwen_custom_voice_fn(text, speaker, instruct, model_choice, precision, device, language, seed_random, seed, max_new_tokens, split_max_chars, split_hard_max_chars, top_p, top_k, temperature, repetition_penalty, attention, unload, batch_size, state_params):
                             try:
@@ -6274,18 +6361,18 @@ with shared.gradio_root:
                             except Exception:
                                 seed_int = 0
                             if _is_blank(text):
-                                yield gr_update(value=None), seed_int, "Please enter \"Text to Speech\" before generating"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please enter \"Text to Speech\" before generating", "请先填写待朗读文本")
                                 return
                             speaker_key = "" if speaker is None else str(speaker).strip()
                             if _is_blank(speaker_key):
-                                yield gr_update(value=None), seed_int, "Please select \"Speaker\" before generating"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please select \"Speaker\" before generating", "请先选择说话人")
                                 return
                             if speaker_key in _qwen_speaker_display_to_key:
                                 speaker_key = _qwen_speaker_display_to_key[speaker_key]
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.custom_voice, seed_random, seed, unload, state_params, text=text, speaker=speaker_key, instruct=instruct, model_choice=model_choice, device=device, precision=precision, language=language, max_new_tokens=int(max_new_tokens), max_chars=int(split_max_chars), hard_max_chars=int(split_hard_max_chars), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload), custom_model_path="", custom_speaker_name="", batch_size=int(batch_size))
 
-                        qwen_custom_btn.click(fn=_qwen_tts_begin, inputs=[], outputs=[qwen_custom_btn, qwen_custom_stop_btn, qwen_custom_info], queue=False, show_progress=False).then(fn=qwen_custom_voice_fn, inputs=[qwen_custom_text, qwen_custom_speaker, qwen_custom_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_custom_batch_size, state_topbar], outputs=[qwen_custom_output, qwen_tts_seed, qwen_custom_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_custom_btn, qwen_custom_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_custom_stop_btn.click(fn=_qwen_tts_stop, inputs=[], outputs=[qwen_custom_info], queue=False, show_progress=False)
+                        qwen_custom_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_custom_btn, qwen_custom_stop_btn, qwen_custom_info], queue=False, show_progress=False).then(fn=qwen_custom_voice_fn, inputs=[qwen_custom_text, qwen_custom_speaker, qwen_custom_instruct, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_max_new_tokens, qwen_tts_split_max_chars, qwen_tts_split_hard_max_chars, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_custom_batch_size, state_topbar], outputs=[qwen_custom_output, qwen_tts_seed, qwen_custom_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_custom_btn, qwen_custom_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
+                        qwen_custom_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_custom_info], queue=False, show_progress=False)
 
                         def qwen_dialogue_fn(script, r1n, r1a, r1t, r2n, r2a, r2t, r3n, r3a, r3t, r4n, r4a, r4t, model_choice, precision, device, language, seed_random, seed, top_p, top_k, temperature, repetition_penalty, attention, unload, pause_linebreak, period_pause, comma_pause, question_pause, hyphen_pause, merge_outputs, batch_size, max_tokens_per_line, state_params):
                             try:
@@ -6293,12 +6380,12 @@ with shared.gradio_root:
                             except Exception:
                                 seed_int = 0
                             if _is_blank(script):
-                                yield gr_update(value=None), seed_int, "Please fill in \"Script\" first (see placeholder for format)"
+                                yield gr_update(value=None), seed_int, _qwen_text(state_params, "Please fill in \"Script\" first (see placeholder for format)", "请先填写对话脚本（格式见输入框提示）")
                                 return
                             yield from _qwen_call_progress(webui_qwen_tts.qwen_tts_handler.dialogue, seed_random, seed, unload, state_params, script=script, role_1_name=r1n, role_1_audio=r1a, role_1_ref_text=r1t, role_2_name=r2n, role_2_audio=r2a, role_2_ref_text=r2t, role_3_name=r3n, role_3_audio=r3a, role_3_ref_text=r3t, role_4_name=r4n, role_4_audio=r4a, role_4_ref_text=r4t, model_choice=model_choice, device=device, precision=precision, language=language, pause_linebreak=float(pause_linebreak), period_pause=float(period_pause), comma_pause=float(comma_pause), question_pause=float(question_pause), hyphen_pause=float(hyphen_pause), merge_outputs=bool(merge_outputs), batch_size=int(batch_size), max_new_tokens_per_line=int(max_tokens_per_line), top_p=float(top_p), top_k=int(top_k), temperature=float(temperature), repetition_penalty=float(repetition_penalty), attention=attention, unload_model_after_generate=bool(unload))
 
-                        qwen_dialogue_btn.click(fn=_qwen_tts_begin, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn, qwen_dialogue_info], queue=False, show_progress=False).then(fn=qwen_dialogue_fn, inputs=[qwen_dialogue_script, qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text, qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text, qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text, qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_pause_linebreak, qwen_period_pause, qwen_comma_pause, qwen_question_pause, qwen_hyphen_pause, qwen_dialogue_merge, qwen_dialogue_batch, qwen_dialogue_max_tokens, state_topbar], outputs=[qwen_dialogue_output, qwen_tts_seed, qwen_dialogue_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
-                        qwen_dialogue_stop_btn.click(fn=_qwen_tts_stop, inputs=[], outputs=[qwen_dialogue_info], queue=False, show_progress=False)
+                        qwen_dialogue_btn.click(fn=_qwen_tts_begin, inputs=[state_topbar], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn, qwen_dialogue_info], queue=False, show_progress=False).then(fn=qwen_dialogue_fn, inputs=[qwen_dialogue_script, qwen_role_1_name, qwen_role_1_audio, qwen_role_1_ref_text, qwen_role_2_name, qwen_role_2_audio, qwen_role_2_ref_text, qwen_role_3_name, qwen_role_3_audio, qwen_role_3_ref_text, qwen_role_4_name, qwen_role_4_audio, qwen_role_4_ref_text, qwen_tts_model_size, qwen_tts_precision, qwen_tts_device, qwen_tts_language, qwen_tts_seed_random, qwen_tts_seed, qwen_tts_top_p, qwen_tts_top_k, qwen_tts_temperature, qwen_tts_repetition_penalty, qwen_tts_attention, qwen_tts_unload, qwen_pause_linebreak, qwen_period_pause, qwen_comma_pause, qwen_question_pause, qwen_hyphen_pause, qwen_dialogue_merge, qwen_dialogue_batch, qwen_dialogue_max_tokens, state_topbar], outputs=[qwen_dialogue_output, qwen_tts_seed, qwen_dialogue_info], queue=True, show_progress=False).then(fn=_qwen_tts_end, inputs=[], outputs=[qwen_dialogue_btn, qwen_dialogue_stop_btn], queue=False, show_progress=False).then(fn=_qwen_tts_cleanup, inputs=[qwen_tts_unload], queue=False, show_progress=False)
+                        qwen_dialogue_stop_btn.click(fn=_qwen_tts_stop, inputs=[state_topbar], outputs=[qwen_dialogue_info], queue=False, show_progress=False)
 
                         qwen_send_outputs = [qwen_clone_ref_audio, qwen_role_1_audio, qwen_role_2_audio, qwen_role_3_audio, qwen_role_4_audio, scene_audio, scene_audio_backup]
                         _qwen_send_audio_binder = _bind_qwen_send_audio
@@ -9590,7 +9677,7 @@ with shared.gradio_root:
 
         batch_lock_controls = [random_button, super_prompter, background_theme, image_tools_checkbox] + nav_bars
 
-        uov_batch_stop.click(fn=batch_stop_fn, inputs=[uov_batch_id], outputs=[uov_batch_status], queue=False, show_progress=False)
+        uov_batch_stop.click(fn=batch_stop_fn, inputs=[uov_batch_id, state_topbar], outputs=[uov_batch_status], queue=False, show_progress=False)
         uov_batch_evt = uov_batch_start.click(
             fn=lambda: [gr_update(interactive=False)] * len(batch_lock_controls),
             outputs=batch_lock_controls,
@@ -9609,7 +9696,7 @@ with shared.gradio_root:
             show_progress=False
         )
 
-        enhance_batch_stop.click(fn=batch_stop_fn, inputs=[enhance_batch_id], outputs=[enhance_batch_status], queue=False, show_progress=False)
+        enhance_batch_stop.click(fn=batch_stop_fn, inputs=[enhance_batch_id, state_topbar], outputs=[enhance_batch_status], queue=False, show_progress=False)
         enhance_batch_evt = enhance_batch_start.click(
             fn=lambda: [gr_update(value=True)] + [gr_update(interactive=False)] * len(batch_lock_controls),
             outputs=[enhance_checkbox] + batch_lock_controls,
@@ -9777,7 +9864,7 @@ with shared.gradio_root:
             }
         }"""
 
-        scene_batch_stop.click(fn=batch_stop_fn, inputs=[scene_batch_id], outputs=[scene_batch_status], queue=False, show_progress=False)
+        scene_batch_stop.click(fn=batch_stop_fn, inputs=[scene_batch_id, state_topbar], outputs=[scene_batch_status], queue=False, show_progress=False)
         scene_batch_evt = scene_batch_start.click(
             fn=lambda: [gr_update(interactive=False)] * len(batch_lock_controls),
             outputs=batch_lock_controls,
@@ -10574,7 +10661,11 @@ with shared.gradio_root:
 
         def generation_failure_cleanup(state_params):
             try:
-                gr.Warning("Generation failed before results were returned. Check the console log for details.")
+                gr.Warning(_studio_text(
+                    state_params,
+                    "Generation failed before results were returned. Check the console log for details.",
+                    "生成失败，未返回结果。请查看控制台日志了解详情。",
+                ))
             except Exception as e:
                 logger.info(f"[Generate] failure cleanup warning failed: {e}")
 
@@ -10937,7 +11028,11 @@ with shared.gradio_root:
             custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
             version, custom_settings, profile = _activate_main_vlm_version(version, custom_settings)
             if img is not None and (version == VLM.CUSTOM_VERSION or profile) and not bool(custom_settings.get("supports_images")):
-                gr.Warning("The configured custom model does not accept image or video input.")
+                gr.Warning(_studio_text(
+                    state_params,
+                    "The configured custom model does not accept image or video input.",
+                    "当前自定义模型不接受图像或视频输入。",
+                ))
                 return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
             if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
                 missing_model_outputs = _describe_vlm_missing_model_outputs(state_params, version, custom_settings)
@@ -11049,7 +11144,7 @@ with shared.gradio_root:
         scene_theme.select(switch_scene_theme_select, inputs=state_topbar, outputs=state_topbar, queue=False, show_progress=False) \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(modules.meta_parser.switch_scene_theme_standard_generation_defaults, inputs=[state_topbar, scene_theme], outputs=[overwrite_step], queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda: None, js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
@@ -12253,6 +12348,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/pose_studio_editor.js"),
         webpath("javascript/gaussian_studio_editor.js"),
         webpath("javascript/liveportrait_expression_editor.js"),
+        webpath("javascript/ltx_guide_editor.js"),
         webpath("javascript/canvas_workbench/registry.js"),
         webpath("javascript/canvas_workbench/vlm_chat.js"),
         webpath("javascript/canvas_workbench/canvas_agent.js"),

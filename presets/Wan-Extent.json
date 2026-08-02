@@ -9,14 +9,14 @@
         "scene_frontend": {
             "version": "v1.1",
             "theme": ["Basic"],
-            "theme_title": "Wan2.2 SVI-Pro Video Extend",
+            "theme_title": "Wan2.2 SVI-Pro Video Extend [Optional target last frame]",
             "director_capability": {
-                "image_policy": "forbidden",
+                "image_policy": "optional",
                 "audio_policy": "forbidden",
                 "video_policy": "required",
-                "max_images": 0,
+                "max_images": 1,
                 "min_images": 0,
-                "image_modes": ["none"],
+                "image_modes": ["none", "last_frame"],
                 "video_modes": ["explicit", "previous_segment"],
                 "chain_output": "last_result",
                 "requires_sequential": true,
@@ -24,7 +24,8 @@
                 "audio_output": "source_audio",
                 "mixed_segments": false
             },
-            "disvisible": ["scene_canvas_image", "scene_input_image1", "scene_input_image2","scene_additional_prompt","scene_additional_prompt_2", "scene_audio", "scene_var_number", "scene_var_number2","scene_var_number4",
+            "disable_canvas_mask": true,
+            "disvisible": ["scene_input_image1", "scene_input_image2","scene_additional_prompt","scene_additional_prompt_2", "scene_audio", "scene_var_number", "scene_var_number2","scene_var_number4",
                 "scene_var_number3", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10", "scene_batch"
                 ,"scene_switch_option2","scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "prompt": {
@@ -37,7 +38,7 @@
                 "Basic": ""
             },
             "agent_prompt": {
-                "Basic": "你是视频续写 Prompt 优化师。第一份视觉输入是源视频按时间排列的联系表。根据最后几帧的可见状态和用户要求，写一个自然中文的续写指令，只描述源视频结束之后继续发生的内容。保持人物身份、五官、发型、服饰、物体结构、背景、光线、色彩、镜头轨迹、运动方向、速度和空间关系连续；动作从最后一帧自然延续并遵循真实物理。用户未要求时保持同一场景和同一镜头，不新增人物、物体、剧情、转场或反向运动，也不要复述已经发生的片段。源视频音频由工作流保留，不要虚构对白、音效或音乐。只返回一段最终 Prompt，不要标题、列表、解释或时间戳。"
+                "Basic": "你是视频续写 Prompt 优化师。第一份视觉输入是源视频按时间排列的联系表；如另有目标尾帧图像，它表示续写片段结束时需要到达的画面状态。根据源视频最后几帧、可选目标尾帧和用户要求，写一个自然中文的续写指令，只描述源视频结束之后继续发生的内容。保持人物身份、五官、发型、服饰、物体结构、背景、光线、色彩、镜头轨迹、运动方向、速度和空间关系连续；动作从源视频最后一帧自然延续，并在提供目标尾帧时合理到达该状态，过程遵循真实物理。用户未要求时保持同一场景和同一镜头，不新增人物、物体、剧情、转场或反向运动，也不要复述已经发生的片段。源视频音频由工作流保留，不要虚构对白、音效或音乐。只返回一段最终 Prompt，不要标题、列表、解释或时间戳。"
             },
             "video_duration_title": "Video Duration(s)",
             "video_duration_min": 0.1,

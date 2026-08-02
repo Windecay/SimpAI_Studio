@@ -664,6 +664,68 @@ def register_existing_file_asset(path, project_id, state_params, node_id="", rol
     }
 
 
+def _asset_localized_text(state_params, en, cn):
+    lang = str(state_params.get("__lang") or "") if isinstance(state_params, dict) else ""
+    return en if lang.lower().startswith("en") else cn
+
+
+def _materialize_video_last_frame(project_id, state_params, source, main_ref, node_id):
+    transform = source.get("transform") if isinstance(source.get("transform"), dict) else {}
+    if str(transform.get("kind") or "").strip().lower() != "video_last_frame":
+        return main_ref, ""
+
+    source_path = str(main_ref.get("path") or "") if isinstance(main_ref, dict) else ""
+    if not source_path or not os.path.exists(source_path):
+        return None, _asset_localized_text(
+            state_params,
+            "The previous shot video is unavailable for last-frame extraction.",
+            "上一段视频不可用，无法提取尾帧。",
+        )
+
+    try:
+        stat = os.stat(source_path)
+        signature = f"{os.path.realpath(source_path)}|{stat.st_size}|{stat.st_mtime_ns}|last_frame_v1"
+        digest = hashlib.sha256(signature.encode("utf-8", errors="ignore")).hexdigest()[:24]
+        root, _ = _asset_root(project_id, state_params)
+        output_dir = os.path.join(root, "derived")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.abspath(os.path.join(output_dir, f"{digest}.last_frame.png"))
+        if not os.path.exists(output_path) or os.path.getsize(output_path) <= 0:
+            import modules.util as util
+
+            if not util.extract_video_last_frame(source_path, output_path):
+                return None, _asset_localized_text(
+                    state_params,
+                    "The previous shot's last frame could not be decoded.",
+                    "无法解码上一段尾帧。",
+                )
+        frame_ref = register_existing_file_asset(
+            output_path,
+            project_id,
+            state_params,
+            node_id=node_id,
+            role="previous_segment_last_frame",
+            metadata={"mime": "image/png"},
+            copy_to_assets=False,
+        )
+        if not frame_ref:
+            return None, _asset_localized_text(
+                state_params,
+                "The previous shot's last frame could not be registered as an image.",
+                "上一段尾帧无法登记为图片素材。",
+            )
+        frame_ref["source_video_path"] = source_path
+        frame_ref["source_asset_id"] = main_ref.get("asset_id")
+        frame_ref["transform"] = {"kind": "video_last_frame"}
+        return frame_ref, ""
+    except Exception as err:
+        return None, _asset_localized_text(
+            state_params,
+            f"Previous-shot last-frame extraction failed: {type(err).__name__}: {err}",
+            f"提取上一段尾帧失败：{type(err).__name__}: {err}",
+        )
+
+
 def materialize_node_asset(project_id, state_params, source):
     if not isinstance(source, dict):
         return {"ok": False, "error": "source is not an object"}
@@ -771,6 +833,23 @@ def materialize_node_asset(project_id, state_params, source):
                 trimmed_ref["source_path"] = path
                 trimmed_ref["edit"] = edit_range
                 main_ref = trimmed_ref
+
+    if main_ref:
+        main_ref, transform_error = _materialize_video_last_frame(
+            project_id,
+            state_params,
+            source,
+            main_ref,
+            node_id,
+        )
+        if transform_error:
+            return {
+                "ok": False,
+                "node_id": node_id,
+                "asset_ref": None,
+                "mask_ref": None,
+                "error": transform_error,
+            }
 
     mask_ref = None
     if mask.get("data_url"):

@@ -377,11 +377,11 @@
         "zh": "Wan 视频延长"
       },
       "description": {
-        "en": "A runnable Wan-Extent template for extending an existing generated or imported video, with source video input, continuation prompt, model checks, and video Result placeholder.",
-        "zh": "可运行的 Wan-Extent 视频延长模板，支持接入已生成或导入的视频，包含源视频输入、续写提示词、模型检查和视频结果占位。"
+        "en": "A runnable Wan-Extent template for extending an existing generated or imported video, with an optional target last frame, continuation prompt, model checks, and video Result placeholder.",
+        "zh": "可运行的 Wan-Extent 视频延长模板，支持接入已生成或导入的视频，并提供可选目标尾帧、续写提示词、模型检查和视频结果占位。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan2.2", "extend", "extension", "continue", "Wan-Extent", "runnable", "延长", "续写"],
+      "tags": ["video", "wan", "wan2.2", "extend", "extension", "continue", "last frame", "Wan-Extent", "runnable", "延长", "续写", "目标尾帧"],
       "type_label": {
         "en": "Video extend",
         "zh": "视频延长"
@@ -393,8 +393,8 @@
           "zh": "需要模型"
         },
         "note": {
-          "en": "Requires Wan I2V model files plus SVI extend LoRAs and a source video before Run.",
-          "zh": "运行前需要 Wan I2V 模型、SVI 延长 LoRA 和一个源视频。"
+          "en": "Requires Wan I2V model files plus SVI extend LoRAs and a source video before Run; the target last frame is optional.",
+          "zh": "运行前需要 Wan I2V 模型、SVI 延长 LoRA 和一个源视频；目标尾帧可选。"
         },
         "models": [
           "Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf",

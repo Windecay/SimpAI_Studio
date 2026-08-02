@@ -28,7 +28,7 @@ SCENE_DIRECTOR_DEFAULT_ROWS = [
     [0, 5, "A slow camera move across a neon street.", "image_1", "", "", "", "", "", ""],
     [5, 10, "The subject turns toward the light.", "", "", "", "", "", "", ""],
 ]
-SCENE_DIRECTOR_MEDIA_RULES = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result"
+SCENE_DIRECTOR_MEDIA_RULES = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result"
 SCENE_DIRECTOR_README_LABEL = "Director README"
 SCENE_DIRECTOR_README_PATH = os.path.join("docs", "director-workspace", "README.md")
 SCENE_DIRECTOR_IMAGE_SLOTS = [
@@ -53,6 +53,7 @@ SCENE_DIRECTOR_VIDEO_SLOTS = [
     ("video_5", "Director video 5"),
 ]
 SCENE_DIRECTOR_PREVIOUS_VIDEO_REF = "previous_segment"
+SCENE_DIRECTOR_PREVIOUS_IMAGE_REF = "previous_segment_last_frame"
 SCENE_DIRECTOR_IMAGE_REFS = {ref for ref, _label in SCENE_DIRECTOR_IMAGE_SLOTS}
 SCENE_DIRECTOR_AUDIO_REFS = {ref for ref, _label in SCENE_DIRECTOR_AUDIO_SLOTS}
 SCENE_DIRECTOR_VIDEO_REFS = {ref for ref, _label in SCENE_DIRECTOR_VIDEO_SLOTS}
@@ -587,6 +588,15 @@ def _scene_director_ref(value, kind):
     if kind == "video" and compact in video_aliases:
         return video_aliases[compact]
     if kind == "image":
+        if compact in (
+            "previous_segment_last_frame",
+            "previous_last_frame",
+            "previous_tail",
+            "prev_tail",
+            "上一段尾帧",
+            "继承上段尾帧",
+        ):
+            return SCENE_DIRECTOR_PREVIOUS_IMAGE_REF
         match = re.match(r"^(?:image_?|img_?)(\d+)$", compact)
         if match:
             return f"image_{match.group(1)}"
@@ -623,6 +633,16 @@ def _scene_director_image_ref_limit(capability=None):
         0,
         SCENE_DIRECTOR_MAX_IMAGE_REFS,
     )
+
+
+def _scene_director_previous_image_supported(capability=None):
+    capability = capability if isinstance(capability, dict) else {}
+    if str(capability.get("image_policy") or "optional").lower() == "forbidden":
+        return False
+    modes = {str(item or "").strip().lower() for item in (capability.get("image_modes") or [])}
+    if not modes:
+        return True
+    return bool(modes.intersection({"first_frame", "first_last", "ordered_keyframes"}))
 
 
 def _scene_director_method_alias_key(value):
@@ -1092,11 +1112,15 @@ def _scene_director_segment_image_refs(segment):
     return refs[:SCENE_DIRECTOR_MAX_IMAGE_REFS]
 
 
-def _scene_director_image_role(shot_type, index):
+def _scene_director_image_role(shot_type, index, capability=None):
     if shot_type == "fmlf":
         return "last_frame" if index == 1 else "first_frame"
     if shot_type == "ref":
         return "reference"
+    modes = capability.get("image_modes") if isinstance(capability, dict) else []
+    modes = {str(item or "").strip().lower() for item in (modes or [])}
+    if index == 0 and "last_frame" in modes and "first_frame" not in modes:
+        return "last_frame"
     return "first_frame"
 
 
@@ -1420,6 +1444,14 @@ def _scene_director_validation_message(state_params, key, **kwargs):
             "Director shot 1 cannot use the previous shot result.",
             "分镜 1 不能使用上一段结果。",
         ),
+        "previous_image_first": (
+            "Director shot 1 cannot inherit a previous-shot last frame.",
+            "分镜 1 不能继承上一段尾帧。",
+        ),
+        "previous_image_unsupported": (
+            "Current preset does not support inheriting the previous-shot last frame as an image input.",
+            "当前 preset 不支持将上一段尾帧作为图片输入。",
+        ),
         "previous_unsupported": (
             "Current preset does not support previous-shot video chaining.",
             "当前 preset 不支持上一段视频继承。",
@@ -1521,7 +1553,12 @@ def _scene_director_validate_runtime(runtime, capability=None, state_params=None
         if image_policy == "forbidden" and count:
             warnings.append(_scene_director_validation_message(state_params, "images_ignored", index=index))
         for ref in refs:
-            if not _scene_director_media_available(runtime, ref, "image"):
+            if ref == SCENE_DIRECTOR_PREVIOUS_IMAGE_REF:
+                if index == 1:
+                    errors.append(_scene_director_validation_message(state_params, "previous_image_first"))
+                if not _scene_director_previous_image_supported(capability):
+                    errors.append(_scene_director_validation_message(state_params, "previous_image_unsupported"))
+            elif not _scene_director_media_available(runtime, ref, "image"):
                 errors.append(_scene_director_validation_message(state_params, "image_missing", index=index, ref=ref))
         audio_ref = _scene_director_first_segment_ref(segment, "audio")
         if audio_policy == "required" and not audio_ref:
@@ -1637,7 +1674,7 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
             "task_method": task_method,
             "prompt": prompt_text,
             "images": [
-                {"source_ref": ref, "role": _scene_director_image_role(shot_type, ref_index)}
+                {"source_ref": ref, "role": _scene_director_image_role(shot_type, ref_index, capability)}
                 for ref_index, ref in enumerate(image_refs)
             ],
             "audio": [{"source_ref": audio_ref, "role": "voice"}] if audio_ref else [],
@@ -1764,7 +1801,7 @@ def _scene_director_clear_segment_media_backend(backend):
         backend.pop(key, None)
 
 
-def _scene_director_build_segment_task(base_task, runtime, segment, index, previous_video=None):
+def _scene_director_build_segment_task(base_task, runtime, segment, index, previous_video=None, state_params=None):
     import modules.async_worker as worker
 
     base_args = list(getattr(base_task, "args", []) or [])
@@ -1782,7 +1819,19 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
     for ref_index, ref in enumerate(image_refs):
         if ref_index >= len(SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS):
             break
-        image = _scene_director_backend_image(_scene_director_media_value(runtime, ref))
+        if ref == SCENE_DIRECTOR_PREVIOUS_IMAGE_REF:
+            import modules.util as util
+
+            last_frame_path = util.extract_video_last_frame(previous_video)
+            image = _scene_director_backend_image(last_frame_path)
+            if image is None:
+                raise gr.Error(_scene_director_text(
+                    state_params,
+                    f"Director shot {int(index) + 1} could not read the previous shot's last frame.",
+                    f"分镜 {int(index) + 1} 无法读取上一段尾帧。",
+                ))
+        else:
+            image = _scene_director_backend_image(_scene_director_media_value(runtime, ref))
         if image is None:
             continue
         slot = SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS[ref_index]
@@ -1830,6 +1879,7 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         "audio_output": _scene_director_audio_output_mode(runtime_capability.get("audio_output")),
         "duration_param": segment_duration_param,
         "image_refs": image_refs,
+        "previous_image": previous_video if SCENE_DIRECTOR_PREVIOUS_IMAGE_REF in image_refs else "",
         "audio_ref": audio_ref,
         "video_ref": video_ref,
         "previous_video": previous_video if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF else "",
@@ -2163,7 +2213,14 @@ def generate_clicked_or_director(
     for index, segment in enumerate(segments):
         if getattr(generation_task, "last_stop", False) in ("stop", "skip"):
             break
-        segment_task = _scene_director_build_segment_task(generation_task, runtime, segment, index, previous_video)
+        segment_task = _scene_director_build_segment_task(
+            generation_task,
+            runtime,
+            segment,
+            index,
+            previous_video,
+            state_params,
+        )
         for out in generate_clicked_fn(segment_task, state_params):
             yield out
         segment_results = list(getattr(segment_task, "results", []) or [])
