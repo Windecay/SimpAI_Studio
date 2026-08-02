@@ -12,6 +12,10 @@ RECOMMENDATIONS_DIR = os.path.join(ROOT_DIR, "presets", "scene_prompt_recommenda
 RANDOM_PROMPT_ASSOCIATIONS_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_associations.csv")
 RANDOM_PROMPT_NOISE_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_noise.csv")
 RANDOM_PROMPT_CHARACTERS_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_characters.csv")
+RANDOM_PROMPT_KNOWN_CHARACTERS_ZH_FILE = os.path.join(
+    RECOMMENDATIONS_DIR,
+    "random_prompt_known_characters_zh.json",
+)
 RANDOM_PROMPT_SFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_sfw_zh.json")
 RANDOM_PROMPT_NSFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_nsfw_zh.json")
 RANDOM_PROMPT_ADULT_SLOTS_FILE = os.path.join(ROOT_DIR, "docs", "adult_trigger_slots.csv")
@@ -39,6 +43,7 @@ RANDOM_PROMPT_RECENT_RECENCY = (1.0, 0.78, 0.60, 0.46, 0.34, 0.25, 0.18, 0.13, 0
 _random_prompt_association_cache = None
 _random_prompt_noise_cache = None
 _random_prompt_character_cache = None
+_random_prompt_known_characters_zh_cache = None
 _random_prompt_sfw_zh_cache = None
 _random_prompt_nsfw_zh_cache = None
 _random_prompt_adult_slot_cache = None
@@ -3453,6 +3458,51 @@ def _random_prompt_character_rows():
     return rows
 
 
+def _random_prompt_known_characters_zh_catalog():
+    global _random_prompt_known_characters_zh_cache
+    if _random_prompt_known_characters_zh_cache is not None:
+        return _random_prompt_known_characters_zh_cache
+    with open(RANDOM_PROMPT_KNOWN_CHARACTERS_ZH_FILE, "r", encoding="utf-8") as handle:
+        catalog = json.load(handle)
+    if (
+        not isinstance(catalog, dict)
+        or not isinstance(catalog.get("category"), dict)
+        or not isinstance(catalog.get("items"), list)
+    ):
+        raise ValueError("Chinese known character catalog must contain a category and items list.")
+    _random_prompt_known_characters_zh_cache = catalog
+    return catalog
+
+
+def _random_prompt_catalog_with_known_characters(catalog, content_mode):
+    known_catalog = _random_prompt_known_characters_zh_catalog()
+    character_category = dict(known_catalog.get("category") or {})
+    character_items = []
+    for item in known_catalog.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        if content_mode == "nsfw" and item.get("allow_nsfw") is not True:
+            continue
+        character_items.append(dict(item))
+    character_category["items"] = character_items
+
+    categories = []
+    inserted = False
+    for category in catalog.get("categories") or []:
+        if not isinstance(category, dict) or category.get("id") == "character":
+            continue
+        categories.append(category)
+        if category.get("id") == "subject":
+            categories.append(character_category)
+            inserted = True
+    if not inserted:
+        categories.append(character_category)
+
+    merged_catalog = dict(catalog)
+    merged_catalog["categories"] = categories
+    return merged_catalog
+
+
 def _random_prompt_sfw_zh_catalog():
     global _random_prompt_sfw_zh_cache
     if _random_prompt_sfw_zh_cache is not None:
@@ -3461,6 +3511,7 @@ def _random_prompt_sfw_zh_catalog():
         catalog = json.load(handle)
     if not isinstance(catalog, dict) or not isinstance(catalog.get("categories"), list):
         raise ValueError("Chinese SFW prompt catalog must contain a categories list.")
+    catalog = _random_prompt_catalog_with_known_characters(catalog, "sfw")
     _random_prompt_sfw_zh_cache = catalog
     return catalog
 
@@ -3501,6 +3552,7 @@ def _random_prompt_nsfw_zh_catalog():
 
     merged_catalog = dict(catalog)
     merged_catalog["categories"] = merged_categories
+    merged_catalog = _random_prompt_catalog_with_known_characters(merged_catalog, "nsfw")
     _random_prompt_nsfw_zh_cache = merged_catalog
     return merged_catalog
 
@@ -3511,11 +3563,15 @@ def random_prompt_catalog_payload(content_mode="sfw"):
         catalog = _random_prompt_nsfw_zh_catalog()
         source_files = [
             "presets/scene_prompt_recommendations/random_prompt_sfw_zh.json",
+            "presets/scene_prompt_recommendations/random_prompt_known_characters_zh.json",
             "presets/scene_prompt_recommendations/random_prompt_nsfw_zh.json",
         ]
     else:
         catalog = _random_prompt_sfw_zh_catalog()
-        source_files = ["presets/scene_prompt_recommendations/random_prompt_sfw_zh.json"]
+        source_files = [
+            "presets/scene_prompt_recommendations/random_prompt_known_characters_zh.json",
+            "presets/scene_prompt_recommendations/random_prompt_sfw_zh.json",
+        ]
     return {
         "ok": True,
         "content_mode": mode,

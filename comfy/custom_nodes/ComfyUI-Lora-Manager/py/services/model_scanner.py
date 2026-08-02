@@ -375,7 +375,7 @@ class ModelScanner:
                     'scanner_type': self.model_type,
                     'pageType': page_type
                 })
-                logger.info(
+                logger.debug(
                     f"{self.model_type.capitalize()} cache hydrated from persisted snapshot with {len(self._cache.raw_data)} models"
                 )
                 return
@@ -428,7 +428,7 @@ class ModelScanner:
                 'pageType': page_type
             })
             
-            logger.info(f"{self.model_type.capitalize()} cache initialized in {time.time() - start_time:.2f} seconds. Found {len(self._cache.raw_data)} models")
+            logger.debug(f"{self.model_type.capitalize()} cache initialized in {time.time() - start_time:.2f} seconds. Found {len(self._cache.raw_data)} models")
             
             # Send completion message
             await asyncio.sleep(0.5)  # Small delay to ensure final progress message is sent

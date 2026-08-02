@@ -469,7 +469,7 @@ class RecipeScanner:
                 recipe_count = (
                     len(cache.raw_data) if cache and hasattr(cache, "raw_data") else 0
                 )
-                logger.info(
+                logger.debug(
                     f"Recipe cache initialized in {elapsed_time:.2f} seconds. Found {recipe_count} recipes"
                 )
                 self._schedule_post_scan_enrichment()
@@ -511,7 +511,7 @@ class RecipeScanner:
 
             recipes_dir = self.recipes_dir
             if not recipes_dir or not os.path.exists(recipes_dir):
-                logger.warning(f"Recipes directory not found: {recipes_dir}")
+                logger.debug(f"Recipes directory not found: {recipes_dir}")
                 return self._cache
 
             # Try to load from persistent cache first
@@ -524,7 +524,7 @@ class RecipeScanner:
 
                 if not changed:
                     # Fast path: use cached data directly
-                    logger.info(
+                    logger.debug(
                         "Recipe cache hit: loaded %d recipes from persistent cache",
                         len(recipes),
                     )
@@ -551,7 +551,7 @@ class RecipeScanner:
                     return self._cache
                 else:
                     # Partial update: some files changed
-                    logger.info(
+                    logger.debug(
                         "Recipe cache partial hit: reconciled %d recipes with filesystem",
                         len(recipes),
                     )
@@ -568,7 +568,7 @@ class RecipeScanner:
                     return self._cache
 
             # Fall back to full directory scan
-            logger.info("Recipe cache miss: performing full directory scan")
+            logger.debug("Recipe cache miss: performing full directory scan")
             recipes, json_paths = self._full_directory_scan_sync(recipes_dir)
             self._json_path_map = json_paths
 
@@ -964,7 +964,7 @@ class RecipeScanner:
                 )
 
                 if is_valid:
-                    logger.info(
+                    logger.debug(
                         "FTS index validated, reusing existing index with %d recipes",
                         recipe_count,
                     )
@@ -972,7 +972,7 @@ class RecipeScanner:
                     return
 
                 # Only rebuild if validation fails
-                logger.info("FTS index invalid or outdated, rebuilding...")
+                logger.debug("FTS index invalid or outdated, rebuilding...")
                 await loop.run_in_executor(
                     None, self._fts_index.build_index, self._cache.raw_data
                 )

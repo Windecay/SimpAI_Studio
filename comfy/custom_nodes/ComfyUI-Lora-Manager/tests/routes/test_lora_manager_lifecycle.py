@@ -215,3 +215,31 @@ async def test_lora_manager_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_path:
         assert not any(path.suffix == ".bak" for path in root.rglob("*")), f"Backup files remain in {root}"
 
     assert {"civitai_client", "download_manager", "websocket_manager", "lora_scanner", "checkpoint_scanner", "embedding_scanner", "recipe_scanner"}.issubset(registry_calls)
+
+
+def test_backup_cleanup_permission_errors_are_debug_only(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def raise_permission_error(_path):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(lora_manager.os, "scandir", raise_permission_error)
+
+    with caplog.at_level(logging.DEBUG, logger=lora_manager.__name__):
+        result = asyncio.run(
+            lora_manager.LoraManager._cleanup_backup_files_in_directory(
+                "E:/System Volume Information"
+            )
+        )
+
+    assert result == (0, 0)
+    assert not [
+        record for record in caplog.records
+        if record.levelno >= logging.WARNING
+    ]
+    assert any(
+        "Error scanning directory" in record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.DEBUG
+    )

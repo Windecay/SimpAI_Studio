@@ -55,15 +55,15 @@ async def _load_model_catalog() -> Dict[str, List[str]]:
         async with aiohttp.ClientSession(timeout=_CATALOG_TIMEOUT) as session:
             async with session.get(_MODEL_CATALOG_URL) as resp:
                 if resp.status != 200:
-                    logger.warning("Model catalog returned HTTP %s", resp.status)
+                    logger.debug("Model catalog returned HTTP %s", resp.status)
                     return _catalog_cache or {}
                 data = await resp.json()
     except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as exc:
-        logger.warning("Failed to fetch model catalog: %s", exc)
+        logger.debug("Failed to fetch model catalog: %s", exc)
         return _catalog_cache or {}
 
     if not isinstance(data, dict):
-        logger.warning("Model catalog is not a dict, got %s", type(data).__name__)
+        logger.debug("Model catalog is not a dict, got %s", type(data).__name__)
         return _catalog_cache or {}
 
     result: Dict[str, List[str]] = {}

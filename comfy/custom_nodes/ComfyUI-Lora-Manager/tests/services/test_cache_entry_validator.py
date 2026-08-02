@@ -2,6 +2,8 @@
 Unit tests for CacheEntryValidator
 """
 
+import logging
+
 import pytest
 
 from py.services.cache_entry_validator import (
@@ -242,6 +244,40 @@ class TestCacheEntryValidator:
         assert len(invalid) == 1
         # invalid list contains the actual invalid entries (not by index)
         assert invalid[0]['file_path'] == '/models/test2.safetensors'
+
+    def test_validate_batch_aggregates_invalid_entry_logs(self, caplog):
+        entries = [
+            {'file_path': f'/models/invalid-{index}.safetensors'}
+            for index in range(5)
+        ]
+
+        with caplog.at_level(
+            logging.DEBUG,
+            logger='py.services.cache_entry_validator',
+        ):
+            valid, invalid = CacheEntryValidator.validate_batch(
+                entries,
+                auto_repair=False,
+            )
+
+        warnings = [
+            record for record in caplog.records
+            if record.levelno == logging.WARNING
+        ]
+        debug_messages = [
+            record.getMessage() for record in caplog.records
+            if record.levelno == logging.DEBUG
+        ]
+
+        assert valid == []
+        assert len(invalid) == 5
+        assert len(warnings) == 1
+        assert 'Ignored 5 invalid cache entries' in warnings[0].getMessage()
+        assert "Required field 'sha256' is empty (5)" in warnings[0].getMessage()
+        assert len([
+            message for message in debug_messages
+            if 'Invalid cache entry for' in message
+        ]) == 5
 
     def test_validate_batch_empty_list(self):
         """Test batch validation with empty list"""

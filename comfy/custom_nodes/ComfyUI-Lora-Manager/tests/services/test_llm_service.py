@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from unittest import mock
 
 import pytest
 
+from py.services import llm_service as llm_service_module
 from py.services.llm_service import LLMService
 from py.services.errors import LLMNotConfiguredError, LLMRateLimitError, LLMResponseError
 
@@ -83,6 +85,32 @@ def llm_service():
         llm_model="gpt-4o-mini",
     )
     return LLMService(settings)
+
+
+def test_model_catalog_connection_failure_is_debug_only(
+    caplog,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(llm_service_module, "_catalog_cache", None)
+
+    with mock.patch.object(
+        llm_service_module.aiohttp,
+        "ClientSession",
+        side_effect=llm_service_module.aiohttp.ClientConnectionError("offline"),
+    ):
+        with caplog.at_level(logging.DEBUG, logger=llm_service_module.__name__):
+            catalog = asyncio.run(llm_service_module._load_model_catalog())
+
+    assert catalog == {}
+    assert not [
+        record for record in caplog.records
+        if record.levelno >= logging.WARNING
+    ]
+    assert any(
+        "Failed to fetch model catalog" in record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.DEBUG
+    )
 
 
 class TestLLMServiceConfiguration:

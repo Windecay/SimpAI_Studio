@@ -5,6 +5,7 @@ Validates and repairs cache entries to prevent runtime errors from
 missing or invalid critical fields.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -216,6 +217,7 @@ class CacheEntryValidator:
 
         valid_entries: List[Dict[str, Any]] = []
         invalid_entries: List[Dict[str, Any]] = []
+        invalid_details: List[Tuple[str, List[str]]] = []
 
         for entry in entries:
             result = cls.validate(entry, auto_repair=auto_repair)
@@ -225,11 +227,32 @@ class CacheEntryValidator:
                 valid_entries.append(result.entry if result.entry else entry)
             else:
                 invalid_entries.append(entry)
-                # Log invalid entries for debugging
                 file_path = entry.get('file_path', '<unknown>') if isinstance(entry, dict) else '<not a dict>'
-                logger.warning(
+                invalid_details.append((file_path, result.errors))
+                logger.debug(
                     f"Invalid cache entry for '{file_path}': {', '.join(result.errors)}"
                 )
+
+        if invalid_details:
+            error_counts = Counter(
+                error
+                for _, errors in invalid_details
+                for error in errors
+            )
+            common_errors = error_counts.most_common(3)
+            error_summary = "; ".join(
+                f"{error} ({count})" for error, count in common_errors
+            )
+            remaining_error_types = len(error_counts) - len(common_errors)
+            if remaining_error_types > 0:
+                error_summary += f"; {remaining_error_types} more error types"
+
+            logger.warning(
+                "Ignored %d invalid cache entries: %s. "
+                "File details are available at DEBUG level.",
+                len(invalid_details),
+                error_summary,
+            )
 
         return valid_entries, invalid_entries
 

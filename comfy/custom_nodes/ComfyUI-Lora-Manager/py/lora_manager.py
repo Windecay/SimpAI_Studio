@@ -141,17 +141,17 @@ class LoraManager:
 
         # Add static route for example images if the path exists in settings
         example_images_path = settings.get("example_images_path")
-        logger.info(f"Example images path: {example_images_path}")
+        logger.debug(f"Example images path: {example_images_path}")
         if example_images_path and os.path.exists(example_images_path):
             app.router.add_static("/example_images_static", example_images_path)
-            logger.info(
+            logger.debug(
                 f"Added static route for example images: /example_images_static -> {example_images_path}"
             )
 
         # Add static route for locales JSON files
         if os.path.exists(config.i18n_path):
             app.router.add_static("/locales", config.i18n_path)
-            logger.info(
+            logger.debug(
                 f"Added static route for locales: /locales -> {config.i18n_path}"
             )
 
@@ -333,7 +333,7 @@ class LoraManager:
                         )
 
                 except Exception as e:
-                    logger.error(f"Error cleaning up .bak files in {root_path}: {e}")
+                    logger.debug(f"Error cleaning up .bak files in {root_path}: {e}")
 
                 # Yield control periodically
                 await asyncio.sleep(0.01)
@@ -346,7 +346,7 @@ class LoraManager:
                 logger.debug("Backup cleanup completed: no .bak files found")
 
         except Exception as e:
-            logger.error(f"Error during backup file cleanup: {e}", exc_info=True)
+            logger.debug(f"Error during backup file cleanup: {e}", exc_info=True)
 
     @classmethod
     async def _cleanup_backup_files_in_directory(cls, directory_path: str):
@@ -387,12 +387,12 @@ class LoraManager:
                                 cleanup_recursive(entry.path)
 
                         except Exception as e:
-                            logger.warning(
+                            logger.debug(
                                 f"Could not delete .bak file {entry.path}: {e}"
                             )
 
             except Exception as e:
-                logger.error(f"Error scanning directory {path} for .bak files: {e}")
+                logger.debug(f"Error scanning directory {path} for .bak files: {e}")
 
         # Run the recursive cleanup in a thread pool to avoid blocking
         loop = asyncio.get_event_loop()
