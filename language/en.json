@@ -632,5 +632,10 @@
     "Replace title image": "Replace title image",
     "Replace generation waiting image": "Replace generation waiting image",
     "Restore default title image": "Restore default title image",
-    "Restore default generation waiting image": "Restore default generation waiting image"
+    "Restore default generation waiting image": "Restore default generation waiting image",
+    "Extension duration (seconds)": "Extension duration (seconds)",
+    "Output FPS [RIFE when higher than generation FPS]": "Output FPS [RIFE when higher than generation FPS]",
+    "LTX generation FPS": "LTX generation FPS",
+    "Output FPS after RIFE interpolation [16 = no interpolation]": "Output FPS after RIFE interpolation [16 = no interpolation]",
+    "Motion boost strength [single-image only; >1 increases motion]": "Motion boost strength [single-image only; >1 increases motion]"
 }

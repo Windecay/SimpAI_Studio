@@ -1804,5 +1804,10 @@
   "Replace title image": "替换标题图片",
   "Replace generation waiting image": "替换生成等待图片",
   "Restore default title image": "恢复默认标题图片",
-  "Restore default generation waiting image": "恢复默认生成等待图片"
+  "Restore default generation waiting image": "恢复默认生成等待图片",
+  "Extension duration (seconds)": "续写时长（秒）",
+  "Output FPS [RIFE when higher than generation FPS]": "输出每秒帧率[高于生成帧率时使用补帧]",
+  "LTX generation FPS": "LTX 生成帧率",
+  "Output FPS after RIFE interpolation [16 = no interpolation]": "RIFE 插帧后的输出帧率 [16 = 不插帧]",
+  "Motion boost strength [single-image only; >1 increases motion]": "运动增强强度 [仅单首帧；>1 增强运动]"
 }

@@ -1390,10 +1390,6 @@ def _canvas_param_schema(scene_frontend, key, title_key=None, default_key=None, 
         "visible": True,
         "interactive": key not in disinteractive,
     }
-    for suffix in ("en", "cn"):
-        localized_title = _canvas_scene_value(scene_frontend, f"{resolved_title_key}_{suffix}", theme, None)
-        if localized_title not in (None, ""):
-            item[f"label_{suffix}"] = str(localized_title)
     min_value = _canvas_scene_value(scene_frontend, f"{base}_min", theme, None)
     max_value = _canvas_scene_value(scene_frontend, f"{base}_max", theme, None)
     step_value = _canvas_scene_value(scene_frontend, f"{base}_step", theme, None)

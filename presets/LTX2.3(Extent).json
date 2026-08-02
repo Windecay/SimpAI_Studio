@@ -74,24 +74,18 @@
                 "Basic": "你是视频续写 Prompt 优化师。第一份视觉输入是源视频按时间排列的联系表，后续图片如存在，是按时间排序的续写关键帧。根据源视频最后几帧、关键帧和用户要求，写一个自然中文的续写指令，只描述源视频结束之后继续发生的内容。保持人物身份、五官、发型、服饰、物体结构、背景、光线、色彩、镜头轨迹、运动方向、速度和空间关系连续；动作从最后一帧自然延续并遵循真实物理。关键帧用于约束续写过程和尾部状态，不要把它们描述成切镜或互不相关的场景。用户未要求时保持同一场景和同一镜头，不新增人物、物体、剧情、转场或反向运动。源视频原音频会保留；续写段只描述自然延续的环境声、动作声或用户明确要求的对白和音乐。只返回一段最终 Prompt，不要标题、列表、解释或时间戳。"
             },
             "video_duration_title": "Extension duration (seconds)",
-            "video_duration_title_en": "Extension duration (seconds)",
-            "video_duration_title_cn": "续写时长（秒）",
             "video_duration_min": 1,
             "video_duration_max": 30,
             "video_duration": {
                 "Basic": 8
             },
             "var_number2_title": "Output FPS [RIFE when higher than generation FPS]",
-            "var_number2_title_en": "Output FPS [RIFE when higher than generation FPS]",
-            "var_number2_title_cn": "输出 FPS [高于生成 FPS 时使用 RIFE]",
             "var_number2_min": 24,
             "var_number2_max": 60,
             "var_number2": {
                 "Basic": 30
             },
             "var_number7_title": "LTX generation FPS",
-            "var_number7_title_en": "LTX generation FPS",
-            "var_number7_title_cn": "LTX 生成 FPS",
             "var_number7_min": 24,
             "var_number7_max": 50,
             "var_number7": {

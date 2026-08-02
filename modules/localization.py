@@ -1,11 +1,33 @@
 import json
 import os
 import logging
+from functools import lru_cache
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
 
 current_translation = {}
 localization_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'language')
+
+
+@lru_cache(maxsize=2)
+def _load_translation_catalog(filename):
+    if filename not in ("en", "cn"):
+        return {}
+    full_name = os.path.abspath(os.path.join(localization_root, filename + '.json'))
+    try:
+        with open(full_name, encoding='utf-8') as f:
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def localized_text(state, english_text):
+    text = str(english_text or "")
+    state = state if isinstance(state, dict) else {}
+    lang = str(state.get("__lang") or "en").strip().lower()
+    filename = "en" if lang.startswith("en") else "cn"
+    return str(_load_translation_catalog(filename).get(text, text))
 
 
 def localization_js(filename):

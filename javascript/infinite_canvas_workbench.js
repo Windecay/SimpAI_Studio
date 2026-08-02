@@ -411,8 +411,7 @@
     }
 
     function localizedPresetParamLabel(param) {
-        const localized = runtimeUiLang() === 'cn' ? param?.label_cn : param?.label_en;
-        return localizeCanvasLabel(localized || param?.label || param?.key);
+        return localizeCanvasLabel(param?.label || param?.key);
     }
 
     function localizedDefaultTitle(value, defaultEn, defaultCn) {

@@ -13072,6 +13072,11 @@ async def simpleai_random_prompt(payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
+        if str(payload.get("panel_mode") or "").strip().lower() == "catalog":
+            result = await run_in_threadpool(lambda: scene_prompt_recommendations.random_prompt_catalog_payload(
+                content_mode=payload.get("content_mode") or "sfw",
+            ))
+            return JSONResponse(result)
         result = await run_in_threadpool(lambda: scene_prompt_recommendations.compose_random_prompt(
             preset_name=payload.get("preset") or payload.get("__preset") or "",
             scene_theme=payload.get("scene_theme") or payload.get("__scene_theme") or "",
@@ -13080,6 +13085,9 @@ async def simpleai_random_prompt(payload: dict = Body(...)):
             source_mode=payload.get("tag_source") or payload.get("tag_source_mode") or "all",
             prompt_text=payload.get("prompt_head") or payload.get("prompt") or payload.get("positive_prompt") or payload.get("source_prompt") or "",
             recent_history=payload.get("recent_history"),
+            subject_mode=payload.get("subject_mode") or "auto",
+            include_character=payload.get("include_character") if "include_character" in payload else None,
+            content_mode=payload.get("content_mode") or "auto",
         ))
         return JSONResponse(result)
     except Exception as e:

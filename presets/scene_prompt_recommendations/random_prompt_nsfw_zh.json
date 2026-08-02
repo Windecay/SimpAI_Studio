@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "content_mode": "nsfw",
+  "content_level": "suggestive",
+  "inherit_file": "random_prompt_sfw_zh.json",
+  "builder_slots": [
+    "theme",
+    "subject",
+    "appearance",
+    "outfit",
+    "action",
+    "setting",
+    "camera",
+    "lighting",
+    "art",
+    "atmosphere"
+  ],
+  "categories": [
+    {
+      "id": "theme",
+      "label_cn": "题材",
+      "label_en": "Theme",
+      "items": [
+        {"id": "glamour_editorial", "text": "成熟魅力时装写真", "modes": ["person"]},
+        {"id": "boudoir_elegance", "text": "克制优雅的私房写真", "modes": ["person"]},
+        {"id": "hosiery_fashion", "text": "丝袜与腿部线条时尚专题", "modes": ["person"]},
+        {"id": "resort_swimwear", "text": "度假泳装画报", "modes": ["person"]},
+        {"id": "after_shower", "text": "浴后水汽氛围写真", "modes": ["person"]},
+        {"id": "fitness_heat", "text": "运动后的力量与热感", "modes": ["person"]},
+        {"id": "nightlife_allure", "text": "夜场霓虹魅力", "modes": ["person"]},
+        {"id": "mature_cosplay", "text": "角色幻想造型", "modes": ["person"]},
+        {"id": "intimate_couple", "text": "伴侣暧昧双人写真", "modes": ["person"]},
+        {"id": "noir_femme_fatale", "text": "黑色电影危险魅力", "modes": ["person"]}
+      ]
+    },
+    {
+      "id": "subject",
+      "label_cn": "主体",
+      "label_en": "Subject",
+      "items": [
+        {"id": "confident_adult_woman", "text": "一位自信从容的女性", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance", "nightlife_allure"]},
+        {"id": "mature_adult_woman", "text": "一位气质成熟、神情克制的女性", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance", "noir_femme_fatale"]},
+        {"id": "athletic_adult_woman", "text": "一位体态健康有力量感的女性", "modes": ["person"], "themes": ["fitness_heat", "resort_swimwear"]},
+        {"id": "curvy_adult_woman", "text": "一位曲线自然、姿态舒展的女性", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance", "hosiery_fashion"]},
+        {"id": "elegant_adult_model", "text": "一位姿态优雅的时装模特", "modes": ["person"], "themes": ["glamour_editorial", "hosiery_fashion", "noir_femme_fatale"]},
+        {"id": "tattooed_adult_woman", "text": "一位带有精致纹身的女性", "modes": ["person"], "themes": ["nightlife_allure", "fitness_heat", "mature_cosplay"]},
+        {"id": "short_hair_adult_woman", "text": "一位短发利落、气场鲜明的女性", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure", "noir_femme_fatale"]},
+        {"id": "long_hair_adult_woman", "text": "一位长发柔顺、目光沉静的女性", "modes": ["person"], "themes": ["boudoir_elegance", "after_shower", "mature_cosplay"]},
+        {"id": "swimwear_adult_model", "text": "一位肤色健康的泳装模特", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "adult_dancer", "text": "一位身体线条舒展的舞者", "modes": ["person"], "themes": ["fitness_heat", "nightlife_allure"]},
+        {"id": "adult_fantasy_witch", "text": "一位散发成熟魅力的幻想女巫", "modes": ["person"], "themes": ["mature_cosplay"]},
+        {"id": "adult_secret_agent", "text": "一位冷静敏锐的女特工", "modes": ["person"], "themes": ["mature_cosplay", "noir_femme_fatale"]},
+        {"id": "confident_adult_man", "text": "一位体态挺拔、自信沉着的男性", "modes": ["person"], "themes": ["glamour_editorial", "fitness_heat", "nightlife_allure"]},
+        {"id": "athletic_adult_man", "text": "一位肌肉线条自然的男性", "modes": ["person"], "themes": ["fitness_heat", "resort_swimwear"]},
+        {"id": "adult_male_model", "text": "一位气质冷峻的男性模特", "modes": ["person"], "themes": ["glamour_editorial", "noir_femme_fatale"]},
+        {"id": "adult_woman_couple", "text": "两位彼此熟悉的女性伴侣", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "adult_mixed_couple", "text": "一对关系亲密的男女伴侣", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "adult_male_couple", "text": "两位气质互补的男性伴侣", "modes": ["person"], "themes": ["intimate_couple"]}
+      ]
+    },
+    {
+      "id": "character",
+      "label_cn": "知名角色",
+      "label_en": "Known Character",
+      "builder": false,
+      "items": [
+        {"id": "bayonetta", "text": "《猎天使魔女》中的贝优妮塔", "modes": ["person"]},
+        {"id": "ada_wong", "text": "《生化危机》中的艾达·王", "modes": ["person"]},
+        {"id": "lady_dimitrescu", "text": "《生化危机8》中的蒂米特雷斯库夫人", "modes": ["person"]},
+        {"id": "tifa_nsfw", "text": "《最终幻想VII》中的蒂法·洛克哈特", "modes": ["person"]},
+        {"id": "scarlet_2b", "text": "《尼尔：机械纪元》中的2B", "modes": ["person"]},
+        {"id": "yennefer", "text": "《巫师3》中的叶奈法", "modes": ["person"]},
+        {"id": "lara_croft_nsfw", "text": "《古墓丽影》中的劳拉·克劳馥", "modes": ["person"]},
+        {"id": "chun_li", "text": "《街头霸王》中的春丽", "modes": ["person"]},
+        {"id": "kafka_nsfw", "text": "《崩坏：星穹铁道》中的卡芙卡", "modes": ["person"]},
+        {"id": "black_widow", "text": "漫威作品中的黑寡妇", "modes": ["person"]},
+        {"id": "catwoman", "text": "DC作品中的猫女", "modes": ["person"]},
+        {"id": "morrigan", "text": "《恶魔战士》中的莫莉卡·安斯兰特", "modes": ["person"]}
+      ]
+    },
+    {
+      "id": "appearance",
+      "label_cn": "外观",
+      "label_en": "Appearance",
+      "items": [
+        {"id": "mature_gaze", "text": "眼神成熟而直接，表情从容", "modes": ["person"], "themes": ["all"]},
+        {"id": "half_closed_eyes", "text": "微微眯起双眼，神情慵懒", "modes": ["person"], "themes": ["boudoir_elegance", "after_shower", "intimate_couple"]},
+        {"id": "wet_long_hair", "text": "湿润长发贴近肩颈，发梢带着水珠", "modes": ["person"], "themes": ["after_shower", "resort_swimwear"]},
+        {"id": "swept_back_hair", "text": "头发向后梳理，完整露出面部轮廓", "modes": ["person"], "themes": ["glamour_editorial", "fitness_heat", "noir_femme_fatale"]},
+        {"id": "red_lip_makeup", "text": "妆容克制，红唇成为唯一鲜明色彩", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure", "noir_femme_fatale"]},
+        {"id": "soft_makeup", "text": "妆面通透自然，皮肤保留真实纹理", "modes": ["person"], "themes": ["boudoir_elegance", "resort_swimwear", "after_shower"]},
+        {"id": "collarbone_highlight", "text": "肩颈与锁骨被侧光勾出清晰线条", "modes": ["person"], "themes": ["all"]},
+        {"id": "back_curve", "text": "背部线条舒展，姿态自然而有张力", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance", "resort_swimwear"]},
+        {"id": "athletic_sheen", "text": "运动后的皮肤带有健康微光", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "hosiery_leg_line", "text": "腿部线条被丝袜光泽细致勾勒", "modes": ["person"], "themes": ["hosiery_fashion"]},
+        {"id": "water_droplets", "text": "肩臂与皮肤表面留有细密水珠", "modes": ["person"], "themes": ["after_shower", "resort_swimwear"]},
+        {"id": "subtle_tattoo", "text": "肩胛或腰侧露出一小段精致纹身", "modes": ["person"], "themes": ["nightlife_allure", "mature_cosplay"]}
+      ]
+    },
+    {
+      "id": "outfit",
+      "label_cn": "服装",
+      "label_en": "Outfit",
+      "items": [
+        {"id": "deep_v_evening_dress", "text": "穿着剪裁利落的深V晚礼服", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure", "noir_femme_fatale"]},
+        {"id": "high_slit_dress", "text": "穿着带高开衩设计的长裙", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure"]},
+        {"id": "backless_dress", "text": "穿着露背但结构克制的修身长裙", "modes": ["person"], "themes": ["glamour_editorial", "noir_femme_fatale"]},
+        {"id": "silk_slip_dress", "text": "穿着贴合身体线条的丝缎吊带裙", "modes": ["person"], "themes": ["boudoir_elegance", "glamour_editorial"]},
+        {"id": "silk_robe_layers", "text": "披着半敞的丝质睡袍，内搭完整的精致内衣", "modes": ["person"], "themes": ["boudoir_elegance"]},
+        {"id": "lace_lingerie_set", "text": "穿着设计精致、覆盖完整的蕾丝内衣套装", "modes": ["person"], "themes": ["boudoir_elegance"]},
+        {"id": "structured_bodysuit", "text": "穿着结构感鲜明的时装连体衣", "modes": ["person"], "themes": ["glamour_editorial", "mature_cosplay"]},
+        {"id": "corset_fashion", "text": "穿着束腰式时装上衣与长裙", "modes": ["person"], "themes": ["glamour_editorial", "mature_cosplay", "noir_femme_fatale"]},
+        {"id": "black_stockings", "text": "穿着带细腻光泽的黑色长筒丝袜", "modes": ["person"], "themes": ["hosiery_fashion", "boudoir_elegance"]},
+        {"id": "sheer_tights", "text": "穿着轻薄丝袜与剪裁简洁的短裙", "modes": ["person"], "themes": ["hosiery_fashion", "glamour_editorial"]},
+        {"id": "garter_inspired", "text": "穿着吊袜带灵感的高级时装造型", "modes": ["person"], "themes": ["hosiery_fashion", "boudoir_elegance"]},
+        {"id": "white_stockings", "text": "穿着白色长筒袜与低饱和针织套装", "modes": ["person"], "themes": ["hosiery_fashion"]},
+        {"id": "one_piece_swimsuit", "text": "穿着线条简洁的高开衩连体泳装", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "two_piece_swimsuit", "text": "穿着配色高级的两件式泳装与薄纱罩衫", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "wet_shirt_swimwear", "text": "在泳装外叠穿被水打湿的宽松白衬衫", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "secure_towel_wrap", "text": "裹着固定妥当的白色浴巾，肩颈仍带水汽", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "robe_after_shower", "text": "穿着松软浴袍，腰带系好但领口自然放松", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "sports_set", "text": "穿着支撑性运动上衣与高腰运动短裤", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "open_training_jacket", "text": "在运动套装外披着敞开的轻薄训练夹克", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "latex_fashion_dress", "text": "穿着具有镜面光泽的修身乳胶时装裙", "modes": ["person"], "themes": ["nightlife_allure", "mature_cosplay"]},
+        {"id": "leather_stage_outfit", "text": "穿着皮革与金属细节组成的舞台造型", "modes": ["person"], "themes": ["nightlife_allure", "mature_cosplay"]},
+        {"id": "adult_bunny_stage", "text": "穿着成熟兔女郎灵感的完整舞台服装与长手套", "modes": ["person"], "themes": ["mature_cosplay"]},
+        {"id": "fantasy_witch_dress", "text": "穿着开衩长裙、长靴与宽檐帽组成的女巫造型", "modes": ["person"], "themes": ["mature_cosplay"]},
+        {"id": "noir_trench_dress", "text": "穿着黑色修身裙与半披的长风衣", "modes": ["person"], "themes": ["noir_femme_fatale"]},
+        {"id": "adult_male_open_shirt", "text": "穿着领口自然敞开的男性衬衫与西裤", "modes": ["person"], "themes": ["glamour_editorial", "intimate_couple"]},
+        {"id": "couple_eveningwear", "text": "两位人穿着配色呼应的晚装", "modes": ["person"], "themes": ["intimate_couple"]}
+      ]
+    },
+    {
+      "id": "action",
+      "label_cn": "动作",
+      "label_en": "Action",
+      "items": [
+        {"id": "confident_turn", "text": "缓慢回身直视镜头，一只手轻扶腰侧", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure"]},
+        {"id": "chair_crossed_legs", "text": "坐在椅子边缘交叠双腿，肩背保持舒展", "modes": ["person"], "themes": ["glamour_editorial", "hosiery_fashion", "noir_femme_fatale"]},
+        {"id": "lean_wall", "text": "倚墙站立，重心落在一侧，目光越过镜头", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure", "noir_femme_fatale"]},
+        {"id": "adjust_earring", "text": "侧身整理耳饰，露出清晰肩颈线条", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance"]},
+        {"id": "robe_collar", "text": "用指尖轻轻整理睡袍领口，动作自然克制", "modes": ["person"], "themes": ["boudoir_elegance"]},
+        {"id": "bed_edge_pose", "text": "坐在床沿向后支撑身体，视线平静地看向窗外", "modes": ["person"], "themes": ["boudoir_elegance"]},
+        {"id": "curtain_silhouette", "text": "站在半透明窗帘后形成柔和剪影", "modes": ["person"], "themes": ["boudoir_elegance", "after_shower"]},
+        {"id": "adjust_stocking", "text": "抬起一条腿放在矮凳上，专注整理丝袜边缘", "modes": ["person"], "themes": ["hosiery_fashion"]},
+        {"id": "heel_step", "text": "穿着高跟鞋迈步，腿部线条形成清晰对角线", "modes": ["person"], "themes": ["hosiery_fashion", "glamour_editorial"]},
+        {"id": "floor_leg_pose", "text": "坐在地毯上侧身伸展双腿，姿态优雅", "modes": ["person"], "themes": ["hosiery_fashion", "boudoir_elegance"]},
+        {"id": "pool_edge", "text": "坐在泳池边缘轻轻拨动水面", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "sea_walk", "text": "从浅海中迎着逆光缓慢走向岸边", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "wet_hair_back", "text": "双手把湿发向后梳理，水珠沿肩臂滑落", "modes": ["person"], "themes": ["resort_swimwear", "after_shower"]},
+        {"id": "mirror_towel", "text": "站在雾气未散的镜前擦拭湿发", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "window_robe", "text": "穿着浴袍站在窗边，让清晨光线落在侧脸", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "post_workout_breath", "text": "运动后扶住膝盖调整呼吸，发梢微湿", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "stretch_overhead", "text": "举起双臂做舒展拉伸，身体形成流畅弧线", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "boxing_wrap", "text": "低头缠紧拳击绷带，肩臂肌肉保持放松", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "neon_dance", "text": "在霓虹与薄雾中完成充满张力的转身舞步", "modes": ["person"], "themes": ["nightlife_allure"]},
+        {"id": "bar_glance", "text": "倚在吧台边缘，越过肩膀回望镜头", "modes": ["person"], "themes": ["nightlife_allure", "noir_femme_fatale"]},
+        {"id": "glove_pull", "text": "缓慢拉紧长手套，姿态像即将执行任务", "modes": ["person"], "themes": ["mature_cosplay", "noir_femme_fatale"]},
+        {"id": "couple_close_dance", "text": "两位人贴近完成缓慢舞步，手掌停在对方腰侧", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "couple_whisper", "text": "一位人靠近另一位耳畔低声说话，对方含笑侧目", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "couple_forehead", "text": "两位人额头轻触，保持克制而亲密的距离", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "noir_cigarette_pose", "text": "手持未点燃的细长烟杆，站在百叶窗投影之间", "modes": ["person"], "themes": ["noir_femme_fatale"]}
+      ]
+    },
+    {
+      "id": "setting",
+      "label_cn": "场景",
+      "label_en": "Setting",
+      "items": [
+        {"id": "editorial_loft", "text": "场景位于落地窗与粗糙墙面并置的高层摄影棚", "modes": ["person"], "themes": ["glamour_editorial"]},
+        {"id": "minimal_red_studio", "text": "场景位于只有红色布景与金属椅的极简影棚", "modes": ["person"], "themes": ["glamour_editorial"]},
+        {"id": "hotel_suite", "text": "场景位于灯光柔和、陈设克制的高级套房", "modes": ["person"], "themes": ["boudoir_elegance", "intimate_couple"]},
+        {"id": "linen_bedroom", "text": "场景位于铺着亚麻床品、清晨光线充足的卧室", "modes": ["person"], "themes": ["boudoir_elegance"]},
+        {"id": "dressing_room", "text": "场景位于镜灯明亮、服装整齐陈列的私人更衣室", "modes": ["person"], "themes": ["hosiery_fashion", "glamour_editorial"]},
+        {"id": "velvet_lounge", "text": "场景位于深色天鹅绒座椅与黄铜灯具组成的休息室", "modes": ["person"], "themes": ["hosiery_fashion", "noir_femme_fatale"]},
+        {"id": "infinity_pool", "text": "场景位于俯瞰海岸线的无边泳池", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "private_beach", "text": "场景位于日落前人迹稀少的礁石海滩", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "steamy_bathroom", "text": "场景位于雾气弥漫、镜面凝结水珠的现代浴室", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "spa_window", "text": "场景位于带有落地窗与暖石材的安静水疗空间", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "boxing_gym", "text": "场景位于训练结束后的旧式拳击馆", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "night_gym", "text": "场景位于只保留局部灯带的夜间健身房", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "neon_club", "text": "场景位于霓虹交错、舞池薄雾流动的夜店", "modes": ["person"], "themes": ["nightlife_allure"]},
+        {"id": "rooftop_bar", "text": "场景位于雨后城市上空的露台酒吧", "modes": ["person"], "themes": ["nightlife_allure", "intimate_couple"]},
+        {"id": "fantasy_chamber", "text": "场景位于烛火、古书与深色帷幕围绕的幻想房间", "modes": ["person"], "themes": ["mature_cosplay"]},
+        {"id": "spy_penthouse", "text": "场景位于俯瞰夜城、散落任务资料的顶层公寓", "modes": ["person"], "themes": ["mature_cosplay", "noir_femme_fatale"]},
+        {"id": "couple_window", "text": "场景位于落地窗前，城市灯火成为柔焦背景", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "private_dance_floor", "text": "场景位于人群散去后的空旷舞池", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "noir_office", "text": "场景位于百叶窗投下条纹光影的黑色电影办公室", "modes": ["person"], "themes": ["noir_femme_fatale"]},
+        {"id": "vintage_car", "text": "场景位于雨夜路边停靠的复古轿车旁", "modes": ["person"], "themes": ["noir_femme_fatale"]}
+      ]
+    },
+    {
+      "id": "camera",
+      "label_cn": "镜头",
+      "label_en": "Camera",
+      "inherit": true,
+      "items": [
+        {"id": "boudoir_high_angle", "text": "使用高位俯拍，让床品或地毯纹理围绕主体形成柔和构图", "modes": ["person"], "themes": ["boudoir_elegance", "intimate_couple"]},
+        {"id": "leg_line_low_angle", "text": "使用低机位中长焦沿腿部线条向上构图，透视保持自然", "modes": ["person"], "themes": ["hosiery_fashion", "glamour_editorial"]},
+        {"id": "collarbone_closeup", "text": "使用85毫米近景聚焦眼神、肩颈、手部与服装材质", "modes": ["person"], "themes": ["all"]},
+        {"id": "back_profile", "text": "从斜后方拍摄背部轮廓与回望动作，背景保持大面积留白", "modes": ["person"], "themes": ["glamour_editorial", "boudoir_elegance", "resort_swimwear"]},
+        {"id": "mirror_double_view", "text": "利用镜面同时呈现正面表情与背部姿态，避免重复肢体", "modes": ["person"], "themes": ["glamour_editorial", "after_shower", "noir_femme_fatale"]},
+        {"id": "curtain_foreground", "text": "让虚化帷幕占据前景边缘，主体从缝隙中被看见", "modes": ["person"], "themes": ["boudoir_elegance", "intimate_couple"]},
+        {"id": "silhouette_full_body", "text": "使用全身侧面剪影与强逆光，突出姿态而不展示具体身体细节", "modes": ["person"], "themes": ["all"]},
+        {"id": "fashion_dutch_angle", "text": "使用轻微Dutch angle和低位广角制造时装大片的冲击力", "modes": ["person"], "themes": ["glamour_editorial", "nightlife_allure", "mature_cosplay"]},
+        {"id": "couple_over_shoulder", "text": "从一位人的肩后拍摄另一位的表情，形成亲密空间层次", "modes": ["person"], "themes": ["intimate_couple"]},
+        {"id": "overhead_fabric_shape", "text": "采用顶视图，让身体姿态与散开的布料共同形成图形构图", "modes": ["person"], "themes": ["boudoir_elegance", "glamour_editorial"]}
+      ]
+    },
+    {
+      "id": "lighting",
+      "label_cn": "光线",
+      "label_en": "Lighting",
+      "inherit": true,
+      "items": [
+        {"id": "boudoir_window_stripes", "text": "百叶窗光线在皮肤与织物上形成克制的明暗条纹", "modes": ["person"], "themes": ["boudoir_elegance", "noir_femme_fatale"]},
+        {"id": "soft_skin_rim", "text": "大面积柔光保留真实皮肤纹理，细窄轮廓光分离肩颈", "modes": ["person"], "themes": ["all"]},
+        {"id": "red_blue_night", "text": "低亮度红蓝光从两侧交叠，背景沉入深色", "modes": ["person"], "themes": ["nightlife_allure", "mature_cosplay"]},
+        {"id": "bathroom_steam_light", "text": "暖光穿过水汽形成柔和光束，镜面反射保持低对比", "modes": ["person"], "themes": ["after_shower"]},
+        {"id": "pool_caustic_skin", "text": "泳池反射的水波光纹落在人物与墙面上", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "gym_top_light", "text": "单一顶侧光刻画运动后的肌肉线条，暗部保留细节", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "stocking_edge_light", "text": "细长侧光沿丝袜与服装边缘移动，材质光泽清晰", "modes": ["person"], "themes": ["hosiery_fashion"]},
+        {"id": "candle_warm_shadow", "text": "多点烛光形成暖色高光与深而柔和的阴影", "modes": ["person"], "themes": ["mature_cosplay", "intimate_couple"]}
+      ]
+    },
+    {
+      "id": "art",
+      "label_cn": "艺术方向",
+      "label_en": "Art Direction",
+      "inherit": true,
+      "items": []
+    },
+    {
+      "id": "atmosphere",
+      "label_cn": "氛围",
+      "label_en": "Atmosphere",
+      "inherit": true,
+      "items": [
+        {"id": "adult_confidence", "text": "强调人的自信与自我掌控，性感但不低俗", "modes": ["person"], "themes": ["all"]},
+        {"id": "restrained_desire", "text": "通过距离、目光与停顿表达克制的暧昧张力", "modes": ["person"], "themes": ["boudoir_elegance", "intimate_couple", "noir_femme_fatale"]},
+        {"id": "fashion_provocation", "text": "画面具有挑衅感，但保持高级时装叙事", "modes": ["person"], "themes": ["glamour_editorial", "hosiery_fashion", "nightlife_allure"]},
+        {"id": "warm_private_moment", "text": "气氛私密温暖，人物状态放松而自然", "modes": ["person"], "themes": ["boudoir_elegance", "after_shower", "intimate_couple"]},
+        {"id": "cool_dangerous", "text": "冷色环境中带有危险而迷人的距离感", "modes": ["person"], "themes": ["nightlife_allure", "noir_femme_fatale", "mature_cosplay"]},
+        {"id": "summer_heat", "text": "空气带有夏日热度，水光与皮肤质感清爽通透", "modes": ["person"], "themes": ["resort_swimwear"]},
+        {"id": "post_workout_energy", "text": "保留运动后的呼吸感和真实力量，不做夸张摆拍", "modes": ["person"], "themes": ["fitness_heat"]},
+        {"id": "mutual_intimacy", "text": "两位人关系平等，互动亲密但没有露骨行为", "modes": ["person"], "themes": ["intimate_couple"]}
+      ]
+    }
+  ],
+  "quality_suffix": "所有人物均为人，画面性感但不露骨，主体清晰，皮肤与服装材质自然，姿态可信，构图具有明确视觉重点。"
+}

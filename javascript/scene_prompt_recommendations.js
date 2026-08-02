@@ -12,7 +12,32 @@
     let activeItems = [];
     let clickBoundButton = null;
     let randomPromptPending = false;
+    let randomPromptPromise = null;
+    let randomPromptRequestSerial = 0;
     let recentRandomHistory = [];
+    let promptCatalog = null;
+    const promptCatalogCache = { sfw: null, nsfw: null };
+    const promptCatalogPending = { sfw: null, nsfw: null };
+    let modalView = "recommendations";
+    let autoRandomGenerateBypass = false;
+    let autoRandomGeneratePending = false;
+    const randomPanelState = {
+        tab: "random",
+        contentMode: "sfw",
+        subjectMode: "auto",
+        includeCharacter: true,
+        everyGeneration: false,
+        everyGenerationMode: "random",
+        writeModes: { random: "replace", word_bank: "append", builder: "replace" },
+        randomItem: null,
+        error: "",
+        catalogError: "",
+        wordCategory: "all",
+        wordSearch: "",
+        wordSelected: [],
+        builderValues: {},
+        builderLocks: {},
+    };
     const RANDOM_HISTORY_LIMIT = 10;
     const RANDOM_HISTORY_TAG_LIMIT = 80;
 
@@ -24,7 +49,7 @@
 
     function currentLang() {
         const params = paramsSource();
-        const lang = String(params.__lang || params.state?.__lang || window.locale_lang || "").toLowerCase();
+        const lang = String(params.state?.__lang || params.__lang || window.locale_lang || "").toLowerCase();
         return lang.startsWith("en") ? "en" : "cn";
     }
 
@@ -66,13 +91,31 @@
         return root.matches?.("button") ? root : root.querySelector?.("button");
     }
 
+    function generationButton() {
+        const root = typeof getGradioRootById === "function" ? getGradioRootById("generate_button") : document.getElementById("generate_button");
+        if (!root) return null;
+        return root.matches?.("button") ? root : root.querySelector?.("button");
+    }
+
     function setPromptButtonLabel() {
         const button = promptButton();
         if (!button) return;
         const label = isSceneMode() ? text("Prompt Picks", "推荐提示词") : text("Random Prompt", "随机提示词");
-        if (button.textContent !== label) button.textContent = label;
-        if (button.getAttribute("title") !== label) button.setAttribute("title", label);
-        if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
+        const autoActive = randomPanelState.everyGeneration && !isSceneMode();
+        const autoModeLabel = randomPanelState.everyGenerationMode === "builder"
+            ? text("Builder every generation", "每次生成随机拼句")
+            : text("Tags every generation", "每次生成随机 Tag");
+        const displayLabel = autoActive ? text("Auto Random", "自动随机") : label;
+        const title = autoActive ? displayLabel + " · " + autoModeLabel : label;
+        if (button.textContent !== displayLabel) button.textContent = displayLabel;
+        button.classList.toggle("simpleai-random-auto-active", autoActive);
+        button.setAttribute("data-auto-random-mode", autoActive ? randomPanelState.everyGenerationMode : "");
+        if (button.getAttribute("title") !== title) button.setAttribute("title", title);
+        if (button.getAttribute("aria-label") !== title) button.setAttribute("aria-label", title);
+    }
+
+    function syncPromptButtonAutoState() {
+        setPromptButtonLabel();
     }
 
     async function postJson(url, payload) {
@@ -112,11 +155,18 @@
                 closeModal();
                 return;
             }
+            if (modalView === "random" && handleRandomPanelAction(action, evt)) return;
             if (action === "apply") {
                 const itemEl = evt.target.closest("[data-item-index]");
                 const item = activeItems[Number(itemEl?.getAttribute("data-item-index"))];
                 if (item) applyPromptItem(item);
             }
+        });
+        modal.addEventListener("change", (evt) => {
+            if (modalView === "random") handleRandomPanelChange(evt);
+        });
+        modal.addEventListener("input", (evt) => {
+            if (modalView === "random") handleRandomPanelInput(evt);
         });
         document.body.appendChild(modal);
         return modal;
@@ -145,11 +195,15 @@
 
     function renderItems(items, preset, sceneTheme) {
         const node = ensureModal();
+        modalView = "recommendations";
+        node.dataset.view = modalView;
+        node.dataset.lang = currentLang();
         activeItems = Array.isArray(items) ? items : [];
         node.querySelector('[data-role="title"]').textContent = text("Prompt Picks", "推荐提示词");
         const sub = [preset, sceneTheme].filter(Boolean).join(" / ");
         node.querySelector('[data-role="subtitle"]').textContent = sub || text("Local prompt files", "本地提示词文件");
         const list = node.querySelector('[data-role="list"]');
+        list.className = "simpleai-prompt-recommendation-list";
         if (!activeItems.length) {
             list.innerHTML = `<div class="simpleai-prompt-recommendation-empty">${escapeHtml(text("No prompt file matched this preset.", "当前 preset 还没有推荐提示词文件。"))}</div>`;
             return;
@@ -197,7 +251,9 @@
         let next = incoming;
         if (mode === "append") {
             const current = currentTextboxValue(target).trim();
-            next = current ? `${current}, ${incoming}` : incoming;
+            const hasChinese = /[\u3400-\u9fff]/.test(incoming);
+            const separator = hasChinese && /[。！？.!?]$/.test(current) ? "\n" : (hasChinese ? "，" : ", ");
+            next = current ? `${current}${separator}${incoming}` : incoming;
         }
         if (setTextboxValue(target, next)) {
             if (target === "positive_prompt" && typeof syncPositivePromptMetaState === "function") {
@@ -205,6 +261,614 @@
             }
             closeModal();
         }
+    }
+
+    function catalogCategories() {
+        return Array.isArray(promptCatalog?.categories) ? promptCatalog.categories : [];
+    }
+
+    function catalogCategory(categoryId) {
+        return catalogCategories().find((category) => category.id === categoryId) || null;
+    }
+
+    function categoryLabel(category) {
+        if (!category) return "";
+        return currentLang() === "en"
+            ? (category.label_en || category.label_cn || category.id)
+            : (category.label_cn || category.label_en || category.id);
+    }
+
+    function wordEntryKey(categoryId, itemId) {
+        return categoryId + ":" + itemId;
+    }
+
+    function allWordEntries() {
+        const entries = [];
+        catalogCategories().forEach((category) => {
+            (category.items || []).forEach((item) => {
+                entries.push({
+                    key: wordEntryKey(category.id, item.id),
+                    category,
+                    item,
+                });
+            });
+        });
+        return entries;
+    }
+
+    function selectedWordEntries() {
+        const byKey = new Map(allWordEntries().map((entry) => [entry.key, entry]));
+        return randomPanelState.wordSelected.map((key) => byKey.get(key)).filter(Boolean);
+    }
+
+    function filteredWordEntries() {
+        const categoryId = randomPanelState.wordCategory;
+        const query = randomPanelState.wordSearch.trim().toLowerCase();
+        return allWordEntries().filter((entry) => {
+            if (categoryId !== "all" && entry.category.id !== categoryId) return false;
+            if (!query) return true;
+            const haystack = String(entry.item.text || "") + " " + String(entry.item.id || "");
+            return haystack.toLowerCase().includes(query);
+        });
+    }
+
+    function composeWordBankPrompt() {
+        const phrases = selectedWordEntries().map((entry) => String(entry.item.text || "").trim()).filter(Boolean);
+        return phrases.length ? phrases.join("，") + "。" : "";
+    }
+
+    function builderSlots() {
+        const configured = Array.isArray(promptCatalog?.builder_slots) ? promptCatalog.builder_slots : [];
+        return configured.filter((slotId) => catalogCategory(slotId)?.builder !== false);
+    }
+
+    function catalogItem(categoryId, itemId) {
+        return (catalogCategory(categoryId)?.items || []).find((item) => item.id === itemId) || null;
+    }
+
+    function builderSubjectMode() {
+        const subject = catalogItem("subject", randomPanelState.builderValues.subject);
+        return Array.isArray(subject?.modes) ? subject.modes[0] || "" : "";
+    }
+
+    function builderCandidates(slotId) {
+        const category = catalogCategory(slotId);
+        const currentTheme = randomPanelState.builderValues.theme || "";
+        const currentMode = builderSubjectMode();
+        return (category?.items || []).filter((item) => {
+            const itemModes = Array.isArray(item.modes) ? item.modes : [];
+            const itemThemes = Array.isArray(item.themes) ? item.themes : [];
+            if (slotId === "theme") {
+                return !currentMode || !itemModes.length || itemModes.includes(currentMode);
+            }
+            if (currentTheme && itemThemes.length && !itemThemes.includes("all") && !itemThemes.includes(currentTheme)) {
+                return false;
+            }
+            if (slotId !== "subject" && currentMode && itemModes.length && !itemModes.includes(currentMode)) {
+                return false;
+            }
+            return true;
+        });
+    }
+
+    function pickDifferentItem(items, currentId) {
+        if (!items.length) return null;
+        const alternatives = items.filter((item) => item.id !== currentId);
+        const pool = alternatives.length ? alternatives : items;
+        return pool[Math.floor(Math.random() * pool.length)] || null;
+    }
+
+    function normalizeBuilderSelections(changedSlot) {
+        for (const slotId of builderSlots()) {
+            if (slotId === changedSlot || randomPanelState.builderLocks[slotId]) continue;
+            const candidates = builderCandidates(slotId);
+            const current = randomPanelState.builderValues[slotId];
+            if (!current || !candidates.some((item) => item.id === current)) {
+                randomPanelState.builderValues[slotId] = pickDifferentItem(candidates, current)?.id || "";
+            }
+        }
+    }
+
+    function randomizeBuilderSlot(slotId) {
+        const current = randomPanelState.builderValues[slotId] || "";
+        randomPanelState.builderValues[slotId] = pickDifferentItem(builderCandidates(slotId), current)?.id || "";
+        if (slotId === "theme" || slotId === "subject") normalizeBuilderSelections(slotId);
+    }
+
+    function randomizeBuilderAll() {
+        if (!promptCatalog) return;
+        const slots = builderSlots();
+        slots.forEach((slotId) => {
+            if (!randomPanelState.builderLocks[slotId]) randomPanelState.builderValues[slotId] = "";
+        });
+        slots.forEach((slotId) => {
+            if (!randomPanelState.builderLocks[slotId]) randomizeBuilderSlot(slotId);
+        });
+    }
+
+    function ensureBuilderValues() {
+        if (!promptCatalog || Object.keys(randomPanelState.builderValues).length) return;
+        randomizeBuilderAll();
+    }
+
+    function composeBuilderPrompt() {
+        const phrases = [];
+        builderSlots().forEach((slotId) => {
+            const item = catalogItem(slotId, randomPanelState.builderValues[slotId]);
+            const value = String(item?.text || "").trim();
+            if (!value) return;
+            phrases.push(slotId === "theme" ? "题材：" + value : value);
+        });
+        if (!phrases.length) return "";
+        const suffix = String(promptCatalog?.quality_suffix || "").trim();
+        return phrases.join("，") + "。" + suffix;
+    }
+
+    function currentPanelPrompt() {
+        if (randomPanelState.tab === "word_bank") return composeWordBankPrompt();
+        if (randomPanelState.tab === "builder") return composeBuilderPrompt();
+        return String(randomPanelState.randomItem?.prompt || "").trim();
+    }
+
+    function currentPanelItem() {
+        const prompt = currentPanelPrompt();
+        if (!prompt) return null;
+        const mode = randomPanelState.writeModes[randomPanelState.tab] || "replace";
+        if (randomPanelState.tab === "random") {
+            return Object.assign({}, randomPanelState.randomItem, { mode });
+        }
+        const contentPrefix = randomPanelState.contentMode === "nsfw" ? "local_nsfw_chinese_" : "local_sfw_chinese_";
+        return {
+            id: "random_panel_" + randomPanelState.tab,
+            target: "positive_prompt",
+            mode,
+            title: text("Chinese Prompt", "中文提示词"),
+            prompt,
+            source: contentPrefix + (randomPanelState.tab === "word_bank" ? "word_bank" : "builder"),
+        };
+    }
+
+    function renderRandomTab() {
+        const nsfwMode = randomPanelState.contentMode === "nsfw";
+        const subjectModes = nsfwMode
+            ? [["person", text("Adults", "成年人")]]
+            : [
+                ["auto", text("Auto", "自动")],
+                ["person", text("People", "人物")],
+                ["animal", text("Animal", "动物")],
+                ["scenery", text("Scenery", "风景")],
+            ];
+        const subjectButtons = subjectModes.map(([value, label]) => {
+            const active = randomPanelState.subjectMode === value ? " is-active" : "";
+            const pressed = randomPanelState.subjectMode === value ? "true" : "false";
+            return '<button type="button" class="simpleai-random-segment' + active + '" data-action="subject-mode" data-value="' +
+                value + '" aria-pressed="' + pressed + '">' + escapeHtml(label) + '</button>';
+        }).join("");
+        const characterDisabled = !nsfwMode && ["animal", "scenery"].includes(randomPanelState.subjectMode);
+        const recipe = randomPanelState.randomItem?.recipe || {};
+        const recipeValues = [recipe.subject, recipe.theme, recipe.visual_direction, recipe.art_direction].filter(Boolean);
+        const status = randomPromptPending
+            ? '<div class="simpleai-random-status"><i class="fa-solid fa-spinner fa-spin"></i><span>' +
+                escapeHtml(text("Generating...", "生成中...")) + '</span></div>'
+            : "";
+        const error = randomPanelState.error
+            ? '<div class="simpleai-random-error">' + escapeHtml(randomPanelState.error) + '</div>'
+            : "";
+        const meta = recipeValues.length
+            ? '<div class="simpleai-random-recipe-meta">' + recipeValues.map((value) =>
+                '<span>' + escapeHtml(value) + '</span>').join("") + '</div>'
+            : "";
+        return '<div class="simpleai-random-options">' +
+            '<div class="simpleai-random-field">' +
+                '<div class="simpleai-random-field-label">' + escapeHtml(text("Subject", "主体")) + '</div>' +
+                '<div class="simpleai-random-segments" role="group" aria-label="' +
+                    escapeHtml(text("Subject", "主体")) + '">' + subjectButtons + '</div>' +
+            '</div>' +
+            '<label class="simpleai-random-toggle' + (characterDisabled ? " is-disabled" : "") + '">' +
+                '<input type="checkbox" data-role="include-character"' +
+                    (randomPanelState.includeCharacter && !characterDisabled ? " checked" : "") +
+                    (characterDisabled ? " disabled" : "") + '>' +
+                '<span class="simpleai-random-toggle-track" aria-hidden="true"></span>' +
+                '<span>' + escapeHtml(nsfwMode
+                    ? text("Include known character", "加入知名角色")
+                    : text("Known character for people", "人物时加入知名角色")) + '</span>' +
+            '</label>' +
+            status + error + meta +
+        '</div>';
+    }
+
+    function renderCatalogState() {
+        if (randomPanelState.catalogError) {
+            return '<div class="simpleai-random-catalog-state">' +
+                '<span>' + escapeHtml(randomPanelState.catalogError) + '</span>' +
+                '<button type="button" class="simpleai-random-secondary-button" data-action="retry-catalog">' +
+                    '<i class="fa-solid fa-rotate-right"></i><span>' + escapeHtml(text("Retry", "重试")) + '</span>' +
+                '</button></div>';
+        }
+        return '<div class="simpleai-random-catalog-state"><i class="fa-solid fa-spinner fa-spin"></i><span>' +
+            escapeHtml(text("Loading...", "加载中...")) + '</span></div>';
+    }
+
+    function wordResultsMarkup() {
+        const entries = filteredWordEntries();
+        const visible = entries.slice(0, 80);
+        const selected = new Set(randomPanelState.wordSelected);
+        if (!entries.length) {
+            return '<div class="simpleai-random-catalog-state">' +
+                escapeHtml(text("No matching entries", "没有匹配词条")) + '</div>';
+        }
+        return visible.map((entry) => {
+            const active = selected.has(entry.key);
+            return '<button type="button" class="simpleai-word-bank-item' + (active ? " is-selected" : "") +
+                '" data-action="word-toggle" data-key="' + escapeHtml(entry.key) +
+                '" aria-pressed="' + (active ? "true" : "false") + '">' +
+                '<span>' + escapeHtml(entry.item.text || "") + '</span>' +
+                '<small>' + escapeHtml(categoryLabel(entry.category)) + '</small>' +
+            '</button>';
+        }).join("");
+    }
+
+    function renderWordBankTab() {
+        if (!promptCatalog) return renderCatalogState();
+        const categoryOptions = ['<option value="all">' + escapeHtml(text("All categories", "全部分类")) + '</option>']
+            .concat(catalogCategories().map((category) =>
+                '<option value="' + escapeHtml(category.id) + '"' +
+                    (randomPanelState.wordCategory === category.id ? " selected" : "") + '>' +
+                    escapeHtml(categoryLabel(category)) + '</option>'))
+            .join("");
+        const resultCount = filteredWordEntries().length;
+        return '<div class="simpleai-word-bank">' +
+            '<div class="simpleai-word-bank-toolbar">' +
+                '<label><span>' + escapeHtml(text("Category", "分类")) + '</span>' +
+                    '<select data-role="word-category">' + categoryOptions + '</select></label>' +
+                '<label class="simpleai-word-bank-search"><span>' + escapeHtml(text("Search", "搜索")) + '</span>' +
+                    '<div><i class="fa-solid fa-magnifying-glass"></i>' +
+                    '<input type="search" data-role="word-search" value="' + escapeHtml(randomPanelState.wordSearch) +
+                    '" placeholder="' + escapeHtml(text("Search Chinese entries", "搜索中文词条")) + '"></div></label>' +
+            '</div>' +
+            '<div class="simpleai-word-bank-summary">' +
+                escapeHtml(text("Selected", "已选")) + ' ' + randomPanelState.wordSelected.length +
+                '<span>' + resultCount + ' ' + escapeHtml(text("results", "项结果")) + '</span>' +
+            '</div>' +
+            '<div class="simpleai-word-bank-results" data-role="word-results">' + wordResultsMarkup() + '</div>' +
+        '</div>';
+    }
+
+    function renderBuilderTab() {
+        if (!promptCatalog) return renderCatalogState();
+        ensureBuilderValues();
+        const rows = builderSlots().map((slotId, index) => {
+            const category = catalogCategory(slotId);
+            const currentId = randomPanelState.builderValues[slotId] || "";
+            const currentItem = catalogItem(slotId, currentId);
+            const candidates = builderCandidates(slotId).slice();
+            if (currentItem && !candidates.some((item) => item.id === currentItem.id)) candidates.unshift(currentItem);
+            const options = ['<option value="">' + escapeHtml(text("Not selected", "未选择")) + '</option>']
+                .concat(candidates.map((item) =>
+                    '<option value="' + escapeHtml(item.id) + '"' + (item.id === currentId ? " selected" : "") + '>' +
+                        escapeHtml(item.text || "") + '</option>'))
+                .join("");
+            const locked = !!randomPanelState.builderLocks[slotId];
+            return '<div class="simpleai-builder-row" data-builder-slot="' + escapeHtml(slotId) + '">' +
+                '<span class="simpleai-builder-step">' + (index + 1) + '</span>' +
+                '<label><span>' + escapeHtml(categoryLabel(category)) + '</span>' +
+                    '<select data-role="builder-select" data-slot="' + escapeHtml(slotId) + '">' + options + '</select></label>' +
+                '<div class="simpleai-builder-tools">' +
+                    '<button type="button" class="' + (locked ? "is-active" : "") + '" data-action="builder-lock" data-slot="' +
+                        escapeHtml(slotId) + '" title="' + escapeHtml(locked ? text("Unlock", "解锁") : text("Lock", "锁定")) +
+                        '" aria-label="' + escapeHtml(locked ? text("Unlock", "解锁") : text("Lock", "锁定")) + '">' +
+                        '<i class="fa-solid fa-' + (locked ? "lock" : "lock-open") + '"></i></button>' +
+                    '<button type="button" data-action="builder-random" data-slot="' + escapeHtml(slotId) +
+                        '" title="' + escapeHtml(text("Randomize this slot", "随机当前项")) + '" aria-label="' +
+                        escapeHtml(text("Randomize this slot", "随机当前项")) + '">' +
+                        '<i class="fa-solid fa-shuffle"></i></button>' +
+                    '<button type="button" data-action="builder-clear" data-slot="' + escapeHtml(slotId) +
+                        '" title="' + escapeHtml(text("Clear", "清除")) + '" aria-label="' +
+                        escapeHtml(text("Clear", "清除")) + '">' +
+                        '<i class="fa-solid fa-eraser"></i></button>' +
+                '</div>' +
+            '</div>';
+        }).join("");
+        return '<div class="simpleai-builder-list">' + rows + '</div>';
+    }
+
+    function renderPanelPreview() {
+        const prompt = currentPanelPrompt();
+        return '<section class="simpleai-random-preview">' +
+            '<div class="simpleai-random-preview-label"><i class="fa-regular fa-eye"></i><span>' +
+                escapeHtml(text("Preview", "预览")) + '</span></div>' +
+            '<div class="simpleai-random-preview-text" data-role="panel-preview">' +
+                (prompt ? escapeHtml(prompt) : '<span class="is-empty">' + escapeHtml(text("No content", "暂无内容")) + '</span>') +
+            '</div>' +
+        '</section>';
+    }
+
+    function renderPanelFooter() {
+        const activeMode = randomPanelState.writeModes[randomPanelState.tab] || "replace";
+        const modeButton = (value, en, cn) =>
+            '<button type="button" class="simpleai-random-segment' + (activeMode === value ? " is-active" : "") +
+                '" data-action="write-mode" data-value="' + value + '" aria-pressed="' +
+                (activeMode === value ? "true" : "false") + '">' + escapeHtml(text(en, cn)) + '</button>';
+        let secondary = "";
+        if (randomPanelState.tab === "random") {
+            secondary = '<button type="button" class="simpleai-random-secondary-button" data-action="generate-random"' +
+                (randomPromptPending ? " disabled" : "") + '><i class="fa-solid fa-shuffle"></i><span>' +
+                escapeHtml(text("Regenerate", "重新生成")) + '</span></button>';
+        } else if (randomPanelState.tab === "word_bank") {
+            secondary = '<button type="button" class="simpleai-random-secondary-button" data-action="word-clear"' +
+                (randomPanelState.wordSelected.length ? "" : " disabled") + '><i class="fa-regular fa-trash-can"></i><span>' +
+                escapeHtml(text("Clear", "清空")) + '</span></button>';
+        } else {
+            secondary = '<button type="button" class="simpleai-random-secondary-button" data-action="builder-random-all">' +
+                '<i class="fa-solid fa-shuffle"></i><span>' + escapeHtml(text("Randomize unlocked", "随机未锁项")) +
+                '</span></button>';
+        }
+        return '<footer class="simpleai-random-footer">' +
+            '<div class="simpleai-random-write-mode"><span>' + escapeHtml(text("Write mode", "写入方式")) + '</span>' +
+                '<div class="simpleai-random-segments" role="group" aria-label="' +
+                    escapeHtml(text("Write mode", "写入方式")) + '">' +
+                    modeButton("replace", "Replace", "替换") + modeButton("append", "Append", "追加") +
+                '</div></div>' +
+            '<div class="simpleai-random-footer-actions">' + secondary +
+                '<button type="button" class="simpleai-random-primary-button" data-action="apply-panel"' +
+                    (currentPanelPrompt() ? "" : " disabled") + '><i class="fa-solid fa-arrow-right-to-bracket"></i><span>' +
+                    escapeHtml(text("Write prompt", "写入提示词")) + '</span></button>' +
+            '</div>' +
+        '</footer>';
+    }
+
+    function renderPanelModeBar() {
+        const mode = randomPanelState.contentMode;
+        const autoMode = ["random", "builder"].includes(randomPanelState.tab)
+            ? randomPanelState.tab
+            : randomPanelState.everyGenerationMode;
+        const autoLabel = autoMode === "builder"
+            ? text("Random builder on every generation", "每次生成随机拼句")
+            : text("Random tags on every generation", "每次生成随机 Tag");
+        const autoDisabled = randomPanelState.tab === "word_bank" && !randomPanelState.everyGeneration;
+        const modeButton = (value, label) =>
+            '<button type="button" class="simpleai-random-segment' + (mode === value ? " is-active" : "") +
+                '" data-action="content-mode" data-value="' + value + '" aria-pressed="' +
+                (mode === value ? "true" : "false") + '">' + label + '</button>';
+        return '<div class="simpleai-random-mode-bar">' +
+            '<div class="simpleai-random-content-mode">' +
+                '<span>' + escapeHtml(text("Content", "内容")) + '</span>' +
+                '<div class="simpleai-random-segments" role="group" aria-label="' +
+                    escapeHtml(text("Content", "内容")) + '">' +
+                    modeButton("sfw", "SFW") + modeButton("nsfw", "NSFW") +
+                '</div>' +
+            '</div>' +
+            '<label class="simpleai-random-toggle' + (autoDisabled ? " is-disabled" : "") + '">' +
+                '<input type="checkbox" data-role="every-generation"' +
+                    (randomPanelState.everyGeneration ? " checked" : "") +
+                    (autoDisabled ? " disabled" : "") + '>' +
+                '<span class="simpleai-random-toggle-track" aria-hidden="true"></span>' +
+                '<span>' + escapeHtml(autoLabel) + '</span>' +
+            '</label>' +
+        '</div>';
+    }
+
+    function renderRandomPanel() {
+        const node = ensureModal();
+        modalView = "random";
+        node.dataset.view = modalView;
+        node.dataset.lang = currentLang();
+        node.querySelector('[data-role="title"]').textContent = text("Prompt Studio", "提示词工坊");
+        node.querySelector('[data-role="subtitle"]').textContent = randomPanelState.contentMode === "nsfw"
+            ? text("NSFW · Suggestive", "NSFW · 性感擦边")
+            : "SFW";
+        const closeButton = node.querySelector('[data-action="close"].simpleai-prompt-recommendation-icon-button');
+        if (closeButton) {
+            closeButton.title = text("Close", "关闭");
+            closeButton.setAttribute("aria-label", text("Close", "关闭"));
+        }
+        const tabs = [
+            ["random", "fa-shuffle", text("Random", "随机")],
+            ["word_bank", "fa-book-open", text("Word Bank", "词库")],
+            ["builder", "fa-puzzle-piece", text("Builder", "拼句")],
+        ];
+        const tabMarkup = tabs.map(([value, icon, label]) =>
+            '<button type="button" role="tab" class="' + (randomPanelState.tab === value ? "is-active" : "") +
+                '" data-action="panel-tab" data-value="' + value + '" aria-selected="' +
+                (randomPanelState.tab === value ? "true" : "false") + '"><i class="fa-solid ' + icon +
+                '"></i><span>' + escapeHtml(label) + '</span></button>').join("");
+        let tabContent = renderRandomTab();
+        if (randomPanelState.tab === "word_bank") tabContent = renderWordBankTab();
+        if (randomPanelState.tab === "builder") tabContent = renderBuilderTab();
+        const content = node.querySelector('[data-role="list"]');
+        content.className = "simpleai-random-prompt-content";
+        content.innerHTML = '<div class="simpleai-random-panel">' +
+            renderPanelModeBar() +
+            '<nav class="simpleai-random-tabs" role="tablist">' + tabMarkup + '</nav>' +
+            '<div class="simpleai-random-tab-body">' + tabContent + '</div>' +
+            renderPanelPreview() + renderPanelFooter() +
+        '</div>';
+    }
+
+    function loadPromptCatalog(force) {
+        const mode = randomPanelState.contentMode === "nsfw" ? "nsfw" : "sfw";
+        if (promptCatalogCache[mode] && !force) {
+            promptCatalog = promptCatalogCache[mode];
+            ensureBuilderValues();
+            return Promise.resolve(promptCatalog);
+        }
+        if (promptCatalogPending[mode] && !force) return promptCatalogPending[mode];
+        if (force) {
+            promptCatalogCache[mode] = null;
+            promptCatalog = null;
+        }
+        randomPanelState.catalogError = "";
+        promptCatalogPending[mode] = postJson("/simpleai/random-prompt", {
+            panel_mode: "catalog",
+            content_mode: mode,
+            __lang: currentLang(),
+        }).then((payload) => {
+            if (!payload.catalog || !Array.isArray(payload.catalog.categories)) {
+                throw new Error(text("Prompt catalog is unavailable.", "提示词库不可用。"));
+            }
+            promptCatalogCache[mode] = payload.catalog;
+            if (randomPanelState.contentMode === mode) {
+                promptCatalog = payload.catalog;
+                ensureBuilderValues();
+            }
+            return payload.catalog;
+        }).catch((error) => {
+            if (randomPanelState.contentMode === mode) {
+                randomPanelState.catalogError = error.message || String(error);
+            }
+            return null;
+        }).finally(() => {
+            promptCatalogPending[mode] = null;
+            if (
+                randomPanelState.contentMode === mode
+                && modalView === "random"
+                && modal?.classList.contains("is-open")
+            ) renderRandomPanel();
+        });
+        return promptCatalogPending[mode];
+    }
+
+    function handleRandomPanelAction(action, evt) {
+        if (!action) return false;
+        const actionNode = evt.target.closest("[data-action]");
+        if (action === "panel-tab") {
+            const tab = actionNode?.getAttribute("data-value");
+            if (["random", "word_bank", "builder"].includes(tab)) {
+                randomPanelState.tab = tab;
+                if (["random", "builder"].includes(tab)) randomPanelState.everyGenerationMode = tab;
+                renderRandomPanel();
+                if (tab !== "random" && !promptCatalog) loadPromptCatalog(false);
+                syncPromptButtonAutoState();
+            }
+            return true;
+        }
+        if (action === "content-mode") {
+            const mode = actionNode?.getAttribute("data-value") === "nsfw" ? "nsfw" : "sfw";
+            if (mode !== randomPanelState.contentMode) {
+                randomPanelState.contentMode = mode;
+                if (mode === "nsfw") randomPanelState.subjectMode = "person";
+                promptCatalog = promptCatalogCache[mode];
+                randomPanelState.wordSelected = [];
+                randomPanelState.builderValues = {};
+                randomPanelState.builderLocks = {};
+                randomPanelState.randomItem = null;
+                randomPanelState.catalogError = "";
+                renderRandomPanel();
+                loadPromptCatalog(false);
+                if (randomPanelState.tab === "random") generateRandomPrompt(true);
+            }
+            return true;
+        }
+        if (action === "subject-mode") {
+            const mode = actionNode?.getAttribute("data-value");
+            if (["auto", "person", "animal", "scenery"].includes(mode)) randomPanelState.subjectMode = mode;
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "write-mode") {
+            const mode = actionNode?.getAttribute("data-value") === "append" ? "append" : "replace";
+            randomPanelState.writeModes[randomPanelState.tab] = mode;
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "generate-random") {
+            generateRandomPrompt();
+            return true;
+        }
+        if (action === "apply-panel") {
+            const item = currentPanelItem();
+            if (item) applyPromptItem(item);
+            return true;
+        }
+        if (action === "retry-catalog") {
+            renderRandomPanel();
+            loadPromptCatalog(true);
+            return true;
+        }
+        if (action === "word-toggle") {
+            const key = actionNode?.getAttribute("data-key") || "";
+            const index = randomPanelState.wordSelected.indexOf(key);
+            if (index >= 0) randomPanelState.wordSelected.splice(index, 1);
+            else if (key) randomPanelState.wordSelected.push(key);
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "word-clear") {
+            randomPanelState.wordSelected = [];
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "builder-lock") {
+            const slotId = actionNode?.getAttribute("data-slot") || "";
+            randomPanelState.builderLocks[slotId] = !randomPanelState.builderLocks[slotId];
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "builder-random") {
+            randomizeBuilderSlot(actionNode?.getAttribute("data-slot") || "");
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "builder-clear") {
+            const slotId = actionNode?.getAttribute("data-slot") || "";
+            randomPanelState.builderValues[slotId] = "";
+            renderRandomPanel();
+            return true;
+        }
+        if (action === "builder-random-all") {
+            randomizeBuilderAll();
+            renderRandomPanel();
+            return true;
+        }
+        return false;
+    }
+
+    function handleRandomPanelChange(evt) {
+        const role = evt.target?.getAttribute?.("data-role");
+        if (role === "include-character") {
+            randomPanelState.includeCharacter = !!evt.target.checked;
+            return;
+        }
+        if (role === "every-generation") {
+            randomPanelState.everyGeneration = !!evt.target.checked;
+            if (randomPanelState.everyGeneration && ["random", "builder"].includes(randomPanelState.tab)) {
+                randomPanelState.everyGenerationMode = randomPanelState.tab;
+            }
+            syncPromptButtonAutoState();
+            renderRandomPanel();
+            return;
+        }
+        if (role === "word-category") {
+            randomPanelState.wordCategory = evt.target.value || "all";
+            renderRandomPanel();
+            return;
+        }
+        if (role === "builder-select") {
+            const slotId = evt.target.getAttribute("data-slot") || "";
+            randomPanelState.builderValues[slotId] = evt.target.value || "";
+            if (slotId === "theme" || slotId === "subject") normalizeBuilderSelections(slotId);
+            renderRandomPanel();
+        }
+    }
+
+    function handleRandomPanelInput(evt) {
+        if (evt.target?.getAttribute?.("data-role") !== "word-search") return;
+        randomPanelState.wordSearch = evt.target.value || "";
+        const results = modal?.querySelector('[data-role="word-results"]');
+        if (results) results.innerHTML = wordResultsMarkup();
+        const count = modal?.querySelector(".simpleai-word-bank-summary span");
+        if (count) {
+            count.textContent = filteredWordEntries().length + " " + text("results", "项结果");
+        }
+    }
+
+    function openRandomPromptPanel() {
+        const node = ensureModal();
+        renderRandomPanel();
+        node.classList.add("is-open");
+        node.removeAttribute("aria-hidden");
+        loadPromptCatalog(false);
+        generateRandomPrompt();
     }
 
     function rememberRandomPrompt(item) {
@@ -248,31 +912,108 @@
         }
     }
 
-    async function generateRandomPrompt() {
-        if (randomPromptPending) return;
+    function generateRandomPrompt(force) {
+        if (randomPromptPending && !force) return randomPromptPromise;
+        const requestSerial = ++randomPromptRequestSerial;
+        const requestMode = randomPanelState.contentMode;
         randomPromptPending = true;
-        const button = promptButton();
-        const previous = button?.textContent || "";
-        if (button) button.textContent = text("Working...", "生成中...");
-        try {
-            const payload = await postJson("/simpleai/random-prompt", {
-                preset: currentPreset(),
-                scene_theme: selectedSceneTheme(),
-                __lang: currentLang(),
-                prompt_head: currentTextboxValue("positive_prompt").slice(0, 64),
-                recent_history: recentRandomHistory,
-            });
-            if (payload.item) {
-                rememberRandomPrompt(payload.item);
-                applyPromptItem(payload.item);
+        randomPanelState.error = "";
+        if (modalView === "random") renderRandomPanel();
+        const requestPromise = (async () => {
+            try {
+                const payload = await postJson("/simpleai/random-prompt", {
+                    panel_mode: "random",
+                    content_mode: requestMode,
+                    preset: currentPreset(),
+                    scene_theme: selectedSceneTheme(),
+                    __lang: currentLang(),
+                    prompt_head: currentTextboxValue("positive_prompt").slice(0, 64),
+                    recent_history: recentRandomHistory,
+                    subject_mode: randomPanelState.subjectMode,
+                    include_character: randomPanelState.includeCharacter && !["animal", "scenery"].includes(randomPanelState.subjectMode),
+                });
+                if (
+                    payload.item
+                    && requestSerial === randomPromptRequestSerial
+                    && requestMode === randomPanelState.contentMode
+                ) {
+                    rememberRandomPrompt(payload.item);
+                    randomPanelState.randomItem = payload.item;
+                    return payload.item;
+                }
+                return null;
+            } catch (error) {
+                if (
+                    requestSerial === randomPromptRequestSerial
+                    && requestMode === randomPanelState.contentMode
+                ) randomPanelState.error = error.message || String(error);
+                console.warn("[UI-TRACE] random_prompt.local_failed", error);
+                return null;
+            } finally {
+                if (requestSerial === randomPromptRequestSerial) {
+                    randomPromptPending = false;
+                    setPromptButtonLabel();
+                    if (modalView === "random" && modal?.classList.contains("is-open")) renderRandomPanel();
+                }
             }
-        } catch (error) {
-            console.warn("[UI-TRACE] random_prompt.local_failed", error);
-        } finally {
-            randomPromptPending = false;
-            if (button) button.textContent = previous || text("Random Prompt", "随机提示词");
-            setPromptButtonLabel();
+        })();
+        randomPromptPromise = requestPromise;
+        return requestPromise;
+    }
+
+    async function prepareEveryGenerationPrompt() {
+        if (randomPanelState.everyGenerationMode === "builder") {
+            const catalog = await loadPromptCatalog(false);
+            if (!catalog) return false;
+            randomizeBuilderAll();
+            const prompt = composeBuilderPrompt();
+            if (!prompt) return false;
+            const mode = randomPanelState.writeModes.builder || "replace";
+            const contentPrefix = randomPanelState.contentMode === "nsfw" ? "local_nsfw_chinese_" : "local_sfw_chinese_";
+            applyPromptItem({
+                id: "random_panel_builder_auto",
+                target: "positive_prompt",
+                mode,
+                title: text("Chinese Prompt", "中文提示词"),
+                prompt,
+                source: contentPrefix + "builder",
+            });
+            return true;
         }
+        const item = await generateRandomPrompt();
+        if (!item) return false;
+        applyPromptItem(Object.assign({}, item, {
+            mode: randomPanelState.writeModes.random || "replace",
+        }));
+        return true;
+    }
+
+    function onEveryGenerationClick(evt) {
+        if (autoRandomGenerateBypass || !randomPanelState.everyGeneration || isSceneMode()) return;
+        const button = generationButton();
+        if (!button || evt.target !== button && !button.contains(evt.target)) return;
+        evt.preventDefault();
+        evt.stopPropagation();
+        evt.stopImmediatePropagation();
+        if (autoRandomGeneratePending) return;
+        autoRandomGeneratePending = true;
+        button.classList.add("simpleai-auto-random-preparing");
+        Promise.resolve(prepareEveryGenerationPrompt())
+            .catch((error) => {
+                console.warn("[UI-TRACE] random_prompt.auto_prepare_failed", error);
+            })
+            .finally(() => {
+                autoRandomGeneratePending = false;
+                button.classList.remove("simpleai-auto-random-preparing");
+                const currentButton = generationButton() || button;
+                currentButton.classList.remove("simpleai-auto-random-preparing");
+                autoRandomGenerateBypass = true;
+                try {
+                    currentButton.click();
+                } finally {
+                    autoRandomGenerateBypass = false;
+                }
+            });
     }
 
     function onRandomPromptClick(evt) {
@@ -283,7 +1024,7 @@
         if (isSceneMode()) {
             openRecommendations();
         } else {
-            generateRandomPrompt();
+            openRandomPromptPanel();
         }
     }
 
@@ -295,6 +1036,8 @@
         button.addEventListener("click", onRandomPromptClick, true);
         clickBoundButton = button;
     }
+
+    document.addEventListener("click", onEveryGenerationClick, true);
 
     document.addEventListener("keydown", (evt) => {
         if (evt.key === "Escape") closeModal();

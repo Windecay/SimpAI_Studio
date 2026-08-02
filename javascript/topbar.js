@@ -5321,6 +5321,36 @@ function isCurrentSystemParamsForLtxGuide(systemParams) {
     return true;
 }
 
+let ltxGuideControlAssetPromise = null;
+
+function syncLtxGuideControlContent(systemParams) {
+    if (window.SimpAILTXGuideEditor?.syncSceneControl) {
+        try {
+            return !!window.SimpAILTXGuideEditor.syncSceneControl(systemParams || {});
+        } catch (e) {
+            return false;
+        }
+    }
+    const loadGroup = window.SimpAILazyAssetLoader?.loadGroup;
+    if (typeof loadGroup !== "function") return false;
+    if (!ltxGuideControlAssetPromise) {
+        ltxGuideControlAssetPromise = Promise.resolve(loadGroup("ltxGuideEditor"))
+            .catch(() => false)
+            .finally(() => {
+                ltxGuideControlAssetPromise = null;
+            });
+    }
+    ltxGuideControlAssetPromise.then((loaded) => {
+        if (!loaded || !document.documentElement.classList.contains("simpai-ltx-guide-control-active")) return;
+        const latestParams = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object"
+            ? window.simpleaiTopbarSystemParams
+            : (systemParams || {});
+        if (!isCurrentSystemParamsForLtxGuide(latestParams)) return;
+        try { window.SimpAILTXGuideEditor?.syncSceneControl?.(latestParams); } catch (e) {}
+    });
+    return false;
+}
+
 function setLtxGuideControlVisible(requestedVisible, systemParams) {
     const visible = !!requestedVisible && isCurrentSystemParamsForLtxGuide(systemParams);
     try {
@@ -5328,9 +5358,7 @@ function setLtxGuideControlVisible(requestedVisible, systemParams) {
     } catch (e) {}
     try { setSceneAuxControlVisible("ltx_guide_control", visible); } catch (e) {}
     try { setSceneAuxControlVisible("ltx_guide_scene_control_html", visible); } catch (e) {}
-    if (visible && window.SimpAILTXGuideEditor?.syncSceneControl) {
-        try { window.SimpAILTXGuideEditor.syncSceneControl(systemParams || {}); } catch (e) {}
-    }
+    if (visible) syncLtxGuideControlContent(systemParams || {});
     if (!visible && window.SimpAILTXGuideEditor?.closeScenePreset) {
         try { window.SimpAILTXGuideEditor.closeScenePreset(); } catch (e) {}
     }

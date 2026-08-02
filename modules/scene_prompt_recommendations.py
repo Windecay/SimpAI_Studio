@@ -12,6 +12,8 @@ RECOMMENDATIONS_DIR = os.path.join(ROOT_DIR, "presets", "scene_prompt_recommenda
 RANDOM_PROMPT_ASSOCIATIONS_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_associations.csv")
 RANDOM_PROMPT_NOISE_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_noise.csv")
 RANDOM_PROMPT_CHARACTERS_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_characters.csv")
+RANDOM_PROMPT_SFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_sfw_zh.json")
+RANDOM_PROMPT_NSFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_nsfw_zh.json")
 RANDOM_PROMPT_ADULT_SLOTS_FILE = os.path.join(ROOT_DIR, "docs", "adult_trigger_slots.csv")
 RANDOM_PROMPT_ADULT_NEGATIVE_FILE = os.path.join(ROOT_DIR, "docs", "adult_negative_conflicts.csv")
 RANDOM_PROMPT_NSFW_ENV = "SIMPAI_DEV_RANDOM_PROMPT_NSFW"
@@ -37,9 +39,17 @@ RANDOM_PROMPT_RECENT_RECENCY = (1.0, 0.78, 0.60, 0.46, 0.34, 0.25, 0.18, 0.13, 0
 _random_prompt_association_cache = None
 _random_prompt_noise_cache = None
 _random_prompt_character_cache = None
+_random_prompt_sfw_zh_cache = None
+_random_prompt_nsfw_zh_cache = None
 _random_prompt_adult_slot_cache = None
 _random_prompt_adult_negative_cache = None
 RANDOM_CHARACTER_SAMPLE_POOL = 600
+
+RANDOM_SUBJECT_MODE_IDS = {
+    "person": {"solo_girl", "solo_boy", "duo"},
+    "animal": {"animal_focus"},
+    "scenery": {"scenery"},
+}
 
 PROMPT_TARGETS = {
     "positive_prompt": "positive_prompt",
@@ -74,11 +84,87 @@ RANDOM_QUALITY_TAGS = [
     "highres",
 ]
 
-RANDOM_STYLE_GROUPS = [
-    ["anime_style", "clean_lineart"],
-    ["cinematic_lighting", "depth_of_field"],
-    ["painterly", "soft_shading"],
-    ["vibrant_colors", "sharp_focus"],
+RANDOM_ART_DIRECTION_PROFILES = [
+    {
+        "id": "cinematic_film_frame",
+        "style": ["cinematic_still", "film_grain"],
+        "color": [["controlled_color_grading", "warm_cool_contrast"], ["low_key_palette", "saturated_accents"]],
+    },
+    {
+        "id": "editorial_color_story",
+        "style": ["editorial_photography", "refined_styling"],
+        "color": [["bold_color_blocking", "clean_tonal_separation"], ["limited_palette", "accent_color"]],
+    },
+    {
+        "id": "documentary_observation",
+        "style": ["documentary_photography", "candid_moment"],
+        "color": [["natural_colors", "subtle_film_tones"], ["muted_palette", "soft_highlights"]],
+    },
+    {
+        "id": "watercolor_atmosphere",
+        "style": ["watercolor_painting", "textured_paper"],
+        "color": [["translucent_color_washes", "soft_color_bleed"], ["granulating_pigment", "restrained_palette"]],
+    },
+    {
+        "id": "oil_painted_drama",
+        "style": ["oil_painting", "visible_brushstrokes"],
+        "color": [["chiaroscuro", "rich_shadow_colors"], ["impasto_highlights", "deep_color_palette"]],
+    },
+    {
+        "id": "graphic_gouache",
+        "style": ["gouache_painting", "matte_paint_texture"],
+        "color": [["flat_color_shapes", "limited_palette"], ["opaque_colors", "bold_value_structure"]],
+    },
+    {
+        "id": "ink_wash_poetry",
+        "style": ["ink_wash_painting", "expressive_brushwork"],
+        "color": [["monochrome_ink", "subtle_color_accents"], ["tonal_washes", "paper_white_negative_space"]],
+    },
+    {
+        "id": "woodblock_graphic",
+        "style": ["woodblock_print", "carved_line_texture"],
+        "color": [["flat_colors", "strong_contours"], ["restricted_palette", "decorative_pattern"]],
+    },
+    {
+        "id": "graphic_novel_panel",
+        "style": ["graphic_novel", "heavy_ink_lines"],
+        "color": [["high_contrast", "selective_color"], ["limited_palette", "halftone_texture"]],
+    },
+    {
+        "id": "art_nouveau_ornament",
+        "style": ["art_nouveau", "ornamental_linework"],
+        "color": [["jewel_tone_palette", "decorative_flats"], ["pastel_palette", "gold_accents"]],
+    },
+    {
+        "id": "surreal_dream_image",
+        "style": ["surrealism", "symbolic_imagery"],
+        "color": [["uncanny_color_harmony", "luminous_accents"], ["dreamlike_palette", "unexpected_color_contrast"]],
+    },
+    {
+        "id": "retro_futurist_poster",
+        "style": ["retro_futurism", "screen_print_texture"],
+        "color": [["bold_geometric_colors", "limited_palette"], ["vintage_print_colors", "bright_accents"]],
+    },
+    {
+        "id": "atmospheric_concept_art",
+        "style": ["concept_art", "painterly_rendering"],
+        "color": [["atmospheric_color_depth", "controlled_saturation"], ["cinematic_palette", "luminous_haze"]],
+    },
+    {
+        "id": "cel_animation_keyframe",
+        "style": ["anime_illustration", "clean_cel_shading"],
+        "color": [["dynamic_color_script", "crisp_color_separation"], ["vibrant_palette", "colored_shadows"]],
+    },
+    {
+        "id": "layered_paper_art",
+        "style": ["paper_cut_art", "layered_paper_texture"],
+        "color": [["layered_color_shapes", "cast_paper_shadows"], ["handmade_palette", "tactile_color_layers"]],
+    },
+    {
+        "id": "monochrome_fine_art",
+        "style": ["fine_art_photography", "monochrome"],
+        "color": [["rich_tonal_range", "silver_gelatin_texture"], ["deep_blacks", "luminous_highlights"]],
+    },
 ]
 
 RANDOM_SUBJECT_PROFILES = [
@@ -662,19 +748,160 @@ RANDOM_SCENE_PROFILES.extend([
     ),
 ])
 
-RANDOM_COMPOSITION_GROUPS = {
+RANDOM_VISUAL_DIRECTION_PROFILES = {
     "character": [
-        ["cowboy_shot", "eye_level", "depth_of_field"],
-        ["upper_body", "from_side", "shallow_depth_of_field"],
-        ["full_body", "dynamic_angle", "motion_blur"],
-        ["portrait", "center_composition", "detailed_face"],
-        ["wide_shot", "rule_of_thirds", "detailed_background"],
+        {
+            "id": "eye_level_editorial",
+            "composition": ["cowboy_shot", "eye_level", "balanced_composition"],
+            "lens": [["50mm_lens", "natural_perspective"], ["85mm_lens", "shallow_depth_of_field"]],
+        },
+        {
+            "id": "heroic_low_angle",
+            "composition": ["full_body", "from_below", "diagonal_composition"],
+            "lens": [["24mm_wide_angle_lens", "foreshortening"], ["35mm_lens", "dramatic_perspective"]],
+        },
+        {
+            "id": "high_angle_isolation",
+            "composition": ["full_body", "from_above", "negative_space"],
+            "lens": [["35mm_lens", "high_vantage_point"], ["50mm_lens", "compressed_background"]],
+        },
+        {
+            "id": "dutch_angle_action",
+            "composition": ["medium_shot", "dutch_angle", "diagonal_lines"],
+            "lens": [["28mm_lens", "perspective_distortion"], ["action_camera", "dynamic_depth"]],
+        },
+        {
+            "id": "extreme_closeup_tension",
+            "composition": ["extreme_close_up", "cropped_composition", "intense_gaze"],
+            "lens": [["85mm_lens", "shallow_depth_of_field"], ["macro_lens", "fine_surface_detail"]],
+        },
+        {
+            "id": "environmental_portrait",
+            "composition": ["wide_shot", "small_figure", "layered_composition"],
+            "lens": [["35mm_lens", "deep_focus"], ["24mm_lens", "expansive_background"]],
+        },
+        {
+            "id": "over_shoulder_story",
+            "composition": ["over_shoulder", "foreground_silhouette", "off_center_subject"],
+            "lens": [["50mm_lens", "depth_of_field"], ["70mm_lens", "foreground_blur"]],
+        },
+        {
+            "id": "back_view_depth",
+            "composition": ["from_behind", "leading_lines", "vanishing_point"],
+            "lens": [["35mm_lens", "deep_perspective"], ["50mm_lens", "layered_depth"]],
+        },
+        {
+            "id": "worm_eye_monumental",
+            "composition": ["full_body", "worm_eye_view", "exaggerated_scale"],
+            "lens": [["18mm_ultra_wide_lens", "strong_foreshortening"], ["24mm_lens", "towering_perspective"]],
+        },
+        {
+            "id": "overhead_graphic",
+            "composition": ["overhead_view", "top_down_composition", "radial_layout"],
+            "lens": [["35mm_lens", "graphic_depth"], ["50mm_lens", "flattened_perspective"]],
+        },
+        {
+            "id": "profile_negative_space",
+            "composition": ["profile", "side_view", "asymmetrical_negative_space"],
+            "lens": [["85mm_lens", "background_compression"], ["50mm_lens", "soft_depth_of_field"]],
+        },
+        {
+            "id": "tracking_motion",
+            "composition": ["action_shot", "tracking_shot", "motion_direction"],
+            "lens": [["35mm_lens", "panning_motion_blur"], ["24mm_lens", "speed_lines"]],
+        },
+        {
+            "id": "frame_within_frame",
+            "composition": ["medium_shot", "frame_within_frame", "center_focus"],
+            "lens": [["50mm_lens", "foreground_elements"], ["85mm_lens", "layered_focus"]],
+        },
+        {
+            "id": "foreground_depth",
+            "composition": ["cowboy_shot", "foreground_occlusion", "three_plane_composition"],
+            "lens": [["35mm_lens", "deep_staging"], ["50mm_lens", "foreground_blur"]],
+        },
+        {
+            "id": "reflection_dual_frame",
+            "composition": ["reflection_shot", "symmetrical_composition", "dual_framing"],
+            "lens": [["50mm_lens", "selective_focus"], ["85mm_lens", "compressed_layers"]],
+        },
+        {
+            "id": "asymmetric_close_portrait",
+            "composition": ["close_up", "off_center_composition", "visual_tension"],
+            "lens": [["85mm_lens", "shallow_depth_of_field"], ["50mm_lens", "subtle_perspective"]],
+        },
     ],
     "scenery": [
-        ["wide_shot", "establishing_shot", "atmospheric_perspective"],
-        ["panorama", "vanishing_point", "depth_of_field"],
-        ["low_angle", "dramatic_perspective", "detailed_background"],
-        ["overhead_view", "leading_lines", "sharp_focus"],
+        {
+            "id": "epic_panorama",
+            "composition": ["extreme_wide_shot", "panorama", "layered_horizon"],
+            "lens": [["18mm_ultra_wide_lens", "atmospheric_perspective"], ["24mm_lens", "deep_focus"]],
+        },
+        {
+            "id": "aerial_geometry",
+            "composition": ["aerial_view", "bird_eye_view", "geometric_composition"],
+            "lens": [["35mm_lens", "flattened_depth"], ["50mm_lens", "pattern_emphasis"]],
+        },
+        {
+            "id": "monumental_low_angle",
+            "composition": ["low_angle", "towering_scale", "diagonal_composition"],
+            "lens": [["20mm_wide_angle_lens", "dramatic_perspective"], ["28mm_lens", "foreground_scale"]],
+        },
+        {
+            "id": "ground_level_immersion",
+            "composition": ["ground_level_view", "leading_foreground", "deep_perspective"],
+            "lens": [["18mm_ultra_wide_lens", "immersive_scale"], ["24mm_lens", "near_far_contrast"]],
+        },
+        {
+            "id": "overhead_pattern",
+            "composition": ["overhead_view", "top_down_composition", "repeating_pattern"],
+            "lens": [["35mm_lens", "graphic_flattening"], ["50mm_lens", "precise_geometry"]],
+        },
+        {
+            "id": "one_point_architecture",
+            "composition": ["one_point_perspective", "vanishing_point", "symmetrical_architecture"],
+            "lens": [["24mm_lens", "deep_focus"], ["35mm_lens", "controlled_perspective"]],
+        },
+        {
+            "id": "dutch_urban_energy",
+            "composition": ["dutch_angle", "diagonal_lines", "dynamic_architecture"],
+            "lens": [["24mm_lens", "perspective_distortion"], ["28mm_lens", "energetic_depth"]],
+        },
+        {
+            "id": "natural_foreground_frame",
+            "composition": ["frame_within_frame", "foreground_elements", "distant_focal_point"],
+            "lens": [["35mm_lens", "layered_focus"], ["50mm_lens", "foreground_blur"]],
+        },
+        {
+            "id": "three_plane_landscape",
+            "composition": ["foreground_midground_background", "layered_composition", "depth_cues"],
+            "lens": [["35mm_lens", "deep_focus"], ["50mm_lens", "atmospheric_depth"]],
+        },
+        {
+            "id": "reflection_symmetry",
+            "composition": ["reflection_composition", "horizontal_symmetry", "centered_horizon"],
+            "lens": [["35mm_lens", "crisp_reflection"], ["50mm_lens", "compressed_layers"]],
+        },
+        {
+            "id": "telephoto_layers",
+            "composition": ["distant_view", "stacked_layers", "compressed_perspective"],
+            "lens": [["135mm_telephoto_lens", "atmospheric_layers"], ["200mm_telephoto_lens", "flattened_distance"]],
+        },
+        {
+            "id": "fisheye_immersion",
+            "composition": ["fisheye_view", "curved_perspective", "center_weighted_composition"],
+            "lens": [["fisheye_lens", "extreme_field_of_view"], ["14mm_lens", "barrel_distortion"]],
+        },
+        {
+            "id": "isometric_world",
+            "composition": ["isometric_view", "structured_layout", "miniature_world_composition"],
+            "lens": [["orthographic_view", "uniform_scale"], ["tilt_shift_lens", "miniature_effect"]],
+        },
+        {
+            "id": "environmental_detail",
+            "composition": ["close_detail", "abstract_crop", "texture_composition"],
+            "lens": [["macro_lens", "selective_focus"], ["100mm_lens", "fine_texture_detail"]],
+        },
     ],
 }
 
@@ -1024,7 +1251,7 @@ RANDOM_SFW_THEME_PROFILES.extend([
 
 RANDOM_SFW_OPTIONAL_SLOT_CHANCES = {
     "atmosphere": 0.7,
-    "style": 0.65,
+    "style": 0.9,
 }
 
 RANDOM_BAD_LOOKUP_TAGS = {
@@ -3226,6 +3453,78 @@ def _random_prompt_character_rows():
     return rows
 
 
+def _random_prompt_sfw_zh_catalog():
+    global _random_prompt_sfw_zh_cache
+    if _random_prompt_sfw_zh_cache is not None:
+        return _random_prompt_sfw_zh_cache
+    with open(RANDOM_PROMPT_SFW_ZH_FILE, "r", encoding="utf-8") as handle:
+        catalog = json.load(handle)
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("categories"), list):
+        raise ValueError("Chinese SFW prompt catalog must contain a categories list.")
+    _random_prompt_sfw_zh_cache = catalog
+    return catalog
+
+
+def _random_prompt_nsfw_zh_catalog():
+    global _random_prompt_nsfw_zh_cache
+    if _random_prompt_nsfw_zh_cache is not None:
+        return _random_prompt_nsfw_zh_cache
+    with open(RANDOM_PROMPT_NSFW_ZH_FILE, "r", encoding="utf-8") as handle:
+        catalog = json.load(handle)
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("categories"), list):
+        raise ValueError("Chinese NSFW prompt catalog must contain a categories list.")
+
+    base_categories = {
+        category.get("id"): category
+        for category in _random_prompt_sfw_zh_catalog().get("categories") or []
+        if isinstance(category, dict) and category.get("id")
+    }
+    merged_categories = []
+    for category in catalog.get("categories") or []:
+        if not isinstance(category, dict):
+            continue
+        merged = dict(category)
+        if category.get("inherit"):
+            base = base_categories.get(category.get("id")) or {}
+            inherited_items = []
+            for item in base.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                inherited = dict(item)
+                if inherited.get("themes"):
+                    inherited["themes"] = ["all"]
+                inherited_items.append(inherited)
+            merged = dict(base)
+            merged.update({key: value for key, value in category.items() if key not in {"items", "inherit"}})
+            merged["items"] = inherited_items + list(category.get("items") or [])
+        merged_categories.append(merged)
+
+    merged_catalog = dict(catalog)
+    merged_catalog["categories"] = merged_categories
+    _random_prompt_nsfw_zh_cache = merged_catalog
+    return merged_catalog
+
+
+def random_prompt_catalog_payload(content_mode="sfw"):
+    mode = "nsfw" if _prompt_lookup_norm(content_mode) == "nsfw" else "sfw"
+    if mode == "nsfw":
+        catalog = _random_prompt_nsfw_zh_catalog()
+        source_files = [
+            "presets/scene_prompt_recommendations/random_prompt_sfw_zh.json",
+            "presets/scene_prompt_recommendations/random_prompt_nsfw_zh.json",
+        ]
+    else:
+        catalog = _random_prompt_sfw_zh_catalog()
+        source_files = ["presets/scene_prompt_recommendations/random_prompt_sfw_zh.json"]
+    return {
+        "ok": True,
+        "content_mode": mode,
+        "catalog": catalog,
+        "source_file": source_files[-1],
+        "source_files": source_files,
+    }
+
+
 def _prompt_lookup_tag_is_visual(tag):
     raw = str(tag or "").strip().lower()
     if raw.startswith("@") or "\\" in raw:
@@ -3368,6 +3667,43 @@ def _random_prompt_related_tag_allowed(related, current_norms):
 
 def _subject_accepts_character(subject_id):
     return _prompt_lookup_norm(subject_id) in {"solo_girl", "solo_boy", "duo"}
+
+
+def _normalize_random_subject_mode(value):
+    mode = _prompt_lookup_norm(value)
+    aliases = {
+        "people": "person",
+        "human": "person",
+        "character": "person",
+        "animals": "animal",
+        "landscape": "scenery",
+        "landscapes": "scenery",
+        "scene": "scenery",
+    }
+    mode = aliases.get(mode, mode)
+    return mode if mode in RANDOM_SUBJECT_MODE_IDS else "auto"
+
+
+def _pick_random_subject_profile(rng, subject_mode="auto"):
+    mode = _normalize_random_subject_mode(subject_mode)
+    if mode == "auto":
+        return rng.choice(RANDOM_SUBJECT_PROFILES)
+    accepted = RANDOM_SUBJECT_MODE_IDS[mode]
+    candidates = [profile for profile in RANDOM_SUBJECT_PROFILES if profile.get("id") in accepted]
+    return rng.choice(candidates or RANDOM_SUBJECT_PROFILES)
+
+
+def _random_character_option_enabled(value):
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "no", "off"}
+    return bool(value)
+
+
+def _normalize_random_content_mode(value):
+    mode = _prompt_lookup_norm(value)
+    return mode if mode in {"sfw", "nsfw"} else "auto"
 
 
 def _character_subject_matches(row, subject_id):
@@ -3749,8 +4085,21 @@ def _build_developer_nsfw_axis_profile(rng, content_level):
     }
 
 
-def _pick_developer_nsfw_profile(rng, recent_history=None):
+def _pick_developer_nsfw_profile(rng, recent_history=None, content_levels=None):
     profiles = [profile for profile in RANDOM_PROMPT_NSFW_PROFILES if isinstance(profile, dict)]
+    allowed_levels = {
+        _prompt_lookup_norm(level)
+        for level in content_levels or []
+        if _prompt_lookup_norm(level)
+    }
+    if allowed_levels:
+        filtered = [
+            profile
+            for profile in profiles
+            if _prompt_lookup_norm(profile.get("content_level")) in allowed_levels
+        ]
+        if filtered:
+            profiles = filtered
     profiles_by_level = {}
     for profile in profiles:
         level = _prompt_lookup_norm(profile.get("content_level"))
@@ -3840,22 +4189,30 @@ def _compose_developer_nsfw_random_prompt(
     lang="cn",
     seed=None,
     recent_history=None,
+    include_character=None,
+    content_levels=None,
 ):
     rng = random.Random(seed) if seed is not None else random.Random()
     recent_history = _normalize_random_prompt_recent_history(recent_history)
-    profile = _pick_developer_nsfw_profile(rng, recent_history=recent_history)
+    profile = _pick_developer_nsfw_profile(
+        rng,
+        recent_history=recent_history,
+        content_levels=content_levels,
+    )
     picked_slots = []
     prompt_tags = []
 
     _extend_tag_group(prompt_tags, picked_slots, "rating", ["nsfw"])
     _extend_tag_group(prompt_tags, picked_slots, "subject", profile.get("tags"))
     _extend_tag_group(prompt_tags, picked_slots, "axis_detail", _pick_group(rng, profile.get("axis_detail")))
-    character_tags = _pick_adult_random_character_tags(
-        rng,
-        profile.get("subject_id"),
-        chance=profile.get("character_chance", 1.0),
-        copyright_chance=profile.get("copyright_chance", 1.0),
-    )
+    character_tags = []
+    if _random_character_option_enabled(include_character):
+        character_tags = _pick_adult_random_character_tags(
+            rng,
+            profile.get("subject_id"),
+            chance=1.0 if include_character is not None else profile.get("character_chance", 1.0),
+            copyright_chance=profile.get("copyright_chance", 1.0),
+        )
     _extend_tag_group(prompt_tags, picked_slots, "character", character_tags)
     _extend_tag_group(prompt_tags, picked_slots, "setting", _pick_group(rng, profile.get("setting")))
     _extend_tag_group(prompt_tags, picked_slots, "event_setup", _pick_group(rng, profile.get("event_setup")))
@@ -3917,18 +4274,31 @@ def compose_random_prompt(
     source_mode="all",
     prompt_text="",
     recent_history=None,
+    subject_mode="auto",
+    include_character=None,
+    content_mode="auto",
 ):
-    if _developer_random_prompt_nsfw_enabled() or _random_prompt_nsfw_requested(prompt_text):
-        return _compose_developer_nsfw_random_prompt(
-            preset_name=preset_name,
-            scene_theme=scene_theme,
-            lang=lang,
-            seed=seed,
-            recent_history=recent_history,
-        )
+    normalized_content_mode = _normalize_random_content_mode(content_mode)
+    use_nsfw = normalized_content_mode == "nsfw" or (
+        normalized_content_mode == "auto"
+        and (_developer_random_prompt_nsfw_enabled() or _random_prompt_nsfw_requested(prompt_text))
+    )
+    if use_nsfw:
+        nsfw_options = {
+            "preset_name": preset_name,
+            "scene_theme": scene_theme,
+            "lang": lang,
+            "seed": seed,
+            "recent_history": recent_history,
+        }
+        if include_character is not None:
+            nsfw_options["include_character"] = include_character
+        if normalized_content_mode == "nsfw":
+            nsfw_options["content_levels"] = {"suggestive"}
+        return _compose_developer_nsfw_random_prompt(**nsfw_options)
 
     rng = random.Random(seed) if seed is not None else random.Random()
-    subject = rng.choice(RANDOM_SUBJECT_PROFILES)
+    subject = _pick_random_subject_profile(rng, subject_mode=subject_mode)
     scene = rng.choice(RANDOM_SCENE_PROFILES)
     theme = _pick_sfw_theme_profile(rng, subject.get("id"), scene.get("id"))
     scenery_only = "no_humans" in subject.get("tags", [])
@@ -3938,7 +4308,11 @@ def compose_random_prompt(
     prompt_tags = []
 
     _extend_tag_group(prompt_tags, picked_slots, "subject", subject.get("tags"))
-    character_tags = _pick_random_character_tags(rng, subject.get("id"))
+    character_tags = (
+        _pick_random_character_tags(rng, subject.get("id"))
+        if _random_character_option_enabled(include_character)
+        else []
+    )
     _extend_tag_group(prompt_tags, picked_slots, "character", character_tags)
     _extend_tag_group(prompt_tags, picked_slots, "appearance", _pick_group(rng, subject.get("appearance")))
     _extend_tag_group(prompt_tags, picked_slots, "outfit", _pick_group(rng, subject.get("outfit")))
@@ -3952,11 +4326,16 @@ def compose_random_prompt(
     _extend_tag_group(prompt_tags, picked_slots, "theme_scene_detail", _pick_group(rng, theme.get("scene_detail")))
     _extend_tag_group(prompt_tags, picked_slots, "prop", _pick_group(rng, theme.get("prop")))
     _extend_tag_group(prompt_tags, picked_slots, "lighting", _pick_group(rng, scene.get("lighting")))
-    _extend_tag_group(prompt_tags, picked_slots, "composition", _pick_group(rng, RANDOM_COMPOSITION_GROUPS.get(composition_key)))
+    visual_direction = _pick_weighted_profile(rng, RANDOM_VISUAL_DIRECTION_PROFILES.get(composition_key))
+    _extend_tag_group(prompt_tags, picked_slots, "composition", visual_direction.get("composition"))
+    _extend_tag_group(prompt_tags, picked_slots, "camera_lens", _pick_group(rng, visual_direction.get("lens")))
     if rng.random() <= _safe_float(RANDOM_SFW_OPTIONAL_SLOT_CHANCES.get("atmosphere"), 1.0):
         _extend_tag_group(prompt_tags, picked_slots, "atmosphere", _pick_group(rng, RANDOM_ATMOSPHERE_GROUPS))
+    art_direction = {}
     if rng.random() <= _safe_float(RANDOM_SFW_OPTIONAL_SLOT_CHANCES.get("style"), 1.0):
-        _extend_tag_group(prompt_tags, picked_slots, "style", _pick_group(rng, RANDOM_STYLE_GROUPS))
+        art_direction = _pick_weighted_profile(rng, RANDOM_ART_DIRECTION_PROFILES)
+        _extend_tag_group(prompt_tags, picked_slots, "style", art_direction.get("style"))
+        _extend_tag_group(prompt_tags, picked_slots, "color_design", _pick_group(rng, art_direction.get("color")))
 
     for term in _random_prompt_lookup_terms(rng, subject, scene, theme):
         tags = _lookup_prompt_tags(term, source_mode=source_mode, rng=rng, max_count=1)
@@ -3992,6 +4371,8 @@ def compose_random_prompt(
                 "scene": scene.get("id"),
                 "theme": theme.get("id"),
                 "character": character_tags[:1],
+                "visual_direction": visual_direction.get("id"),
+                "art_direction": art_direction.get("id"),
             },
             "source": "local_prompt_recipe_danbooru_lookup",
         },

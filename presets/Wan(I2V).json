@@ -48,16 +48,12 @@
                 "Basic": 5
             },
             "var_number2_title": "Output FPS after RIFE interpolation [16 = no interpolation]",
-            "var_number2_title_en": "Output FPS after RIFE interpolation [16 = no interpolation]",
-            "var_number2_title_cn": "RIFE 插帧后的输出帧率 [16 = 不插帧]",
             "var_number2_min": 16,
             "var_number2_max": 60,
             "var_number2": {
                 "Basic": 30
             },
             "var_number4_title": "Motion boost strength [single-image only; >1 increases motion]",
-            "var_number4_title_en": "Motion boost strength [single-image only; >1 increases motion]",
-            "var_number4_title_cn": "运动增强强度 [仅单首帧；>1 增强运动]",
             "var_number4_min": 1.0,
             "var_number4_max": 1.3,
             "var_number4": {

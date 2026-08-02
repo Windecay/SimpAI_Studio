@@ -25,6 +25,7 @@ from modules.flags import SAMPLERS, CIVITAI_NO_KARRAS
 from modules.util import quote, unquote, extract_styles_from_prompt, is_json, sha256, get_files_from_folder, resize_image, resize_image_by_max_area, is_chinese, HWC3, normalize_gradio_image_value, simpai_ui_trace_enabled
 import enhanced.all_parameters as ads
 from modules.hash_cache import sha256_from_cache
+from modules.localization import localized_text as localized_ui_text
 import extras.preprocessors as preprocessors
 import numpy as np
 from enhanced.vlm import vlm
@@ -122,12 +123,8 @@ def scene_disvisible_with_optional_inputs(scenes):
 def scene_localized_text(state, scenes, key, default=""):
     state = state if isinstance(state, dict) else {}
     scenes = scenes if isinstance(scenes, dict) else {}
-    lang = str(state.get("__lang") or "").strip().lower()
-    suffix = "cn" if lang.startswith(("cn", "zh")) else "en"
-    value = scenes.get(f"{key}_{suffix}")
-    if value in (None, ""):
-        value = scenes.get(key, default)
-    return default if value is None else value
+    value = scenes.get(key, default)
+    return localized_ui_text(state, default if value is None else value)
 
 
 def _scene_frontend_from_state_or_scene(state_or_scene):
