@@ -1,0 +1,408 @@
+{
+  "version": 1,
+  "context_slots": ["theme", "action", "setting"],
+  "selection_weights": {
+    "core": {"exact": 88, "related": 9, "contextual": 2, "neutral": 1},
+    "visual": {"exact": 55, "related": 30, "contextual": 10, "neutral": 5}
+  },
+  "content_preferences": {
+    "nsfw": {
+      "promote": {
+        "subject": ["black_hair_woman"],
+        "appearance": [
+          "cinched_slim_waist", "prominent_hip_curve", "pear_curve_body", "hourglass_figure",
+          "nipple_through_sheer", "body_oil_sheen", "wet_skin_lines", "glossy_lips",
+          "bare_shoulders", "collarbone_dip", "lower_back_curve", "dimple_back",
+          "hip_bone_protrude", "smoky_eye_look", "dewy_skin_glow"
+        ],
+        "outfit": [
+          "see_through_blouse", "mesh_fabric_top", "sheer_full_body_dress", "sheer_raincoat",
+          "unlined_silk_top", "sheet_wrap_only", "towel_waist", "sheer_pantyhose",
+          "thigh_high_socks", "garter_belt_set"
+        ],
+        "action": [
+          "water_pour_shoulder", "sheet_pull_over", "blouse_unbutton_hint", "lotion_apply_leg",
+          "bath_sponge_scrub", "bubble_bath_blow", "hair_flip_side", "lip_bite_look",
+          "strap_adjust", "waist_twist_look", "hip_turn_profile"
+        ]
+      },
+      "demote": {
+        "subject": [
+          "redhead_woman", "blonde_woman", "latina_woman", "middle_eastern_woman",
+          "freckled_redhead", "loose_curls_woman", "wet_curly_woman"
+        ],
+        "appearance": ["freckled_soft_skin", "drawn_freckles", "no_makeup_fresh", "soft_makeup"]
+      },
+      "item_weights": {
+        "subject": {
+          "black_hair_woman": 5,
+          "redhead_woman": 0.12,
+          "blonde_woman": 0.2,
+          "latina_woman": 0.25,
+          "middle_eastern_woman": 0.3,
+          "freckled_redhead": 0.08,
+          "loose_curls_woman": 0.15,
+          "wet_curly_woman": 0.25
+        },
+        "appearance": {
+          "cinched_slim_waist": 8,
+          "prominent_hip_curve": 8,
+          "nipple_through_sheer": 8,
+          "pear_curve_body": 6,
+          "hourglass_figure": 6,
+          "body_oil_sheen": 6,
+          "wet_skin_lines": 6,
+          "glossy_lips": 4,
+          "bare_shoulders": 4,
+          "lower_back_curve": 4,
+          "smoky_eye_look": 4,
+          "collarbone_dip": 3,
+          "dimple_back": 3,
+          "hip_bone_protrude": 3,
+          "soft_makeup": 0.3,
+          "no_makeup_fresh": 0.3,
+          "nude_lip_gloss": 0.8,
+          "dewy_skin_glow": 1,
+          "velvet_skin_tone": 1,
+          "long_straight_hair_waist": 1,
+          "swept_back_hair": 0.5
+        },
+        "outfit": {
+          "see_through_blouse": 6,
+          "mesh_fabric_top": 6,
+          "sheer_full_body_dress": 5,
+          "sheer_raincoat": 4,
+          "unlined_silk_top": 4,
+          "sheet_wrap_only": 4,
+          "towel_waist": 4,
+          "sheer_pantyhose": 4,
+          "garter_belt_set": 4,
+          "thigh_high_socks": 3
+        },
+        "action": {
+          "water_pour_shoulder": 5,
+          "sheet_pull_over": 5,
+          "blouse_unbutton_hint": 5,
+          "lip_bite_look": 5,
+          "waist_twist_look": 5,
+          "hip_turn_profile": 5,
+          "lotion_apply_leg": 4,
+          "bath_sponge_scrub": 4,
+          "bubble_bath_blow": 4,
+          "hair_flip_side": 4,
+          "strap_adjust": 4
+        }
+      }
+    }
+  },
+  "profiles": [
+    {
+      "id": "selfie_private",
+      "theme_ids": ["bedroom_selfie", "cosplay_selfie"],
+      "allow_specialties": ["selfie", "private_indoor", "reflection"],
+      "preferred": {
+        "camera": ["front_camera_pov", "selfie_mirror_shot", "hand_held_shake", "intimate_50mm_close"],
+        "lighting": ["phone_screen_glow", "curtain_morning_soft", "bedside_lamp_warm", "soft_window_light", "practical_lamps"],
+        "art": ["phone_camera_candid", "webcam_selfie_vibe", "no_retouch_natural", "film_35mm", "instant_film"],
+        "atmosphere": ["candid_selfie_mood", "candid_privacy", "cozy_secret_peek", "warm_private_moment", "quiet_morning_slow"]
+      }
+    },
+    {
+      "id": "domestic_private",
+      "theme_ids": [
+        "slice_of_life", "family_memory", "retro_lifestyle", "wellness_retreat",
+        "boudoir_elegance", "after_shower", "intimate_couple", "sensual_intimacy",
+        "seductive_bath", "lingerie_fashion", "pov_intimate", "partial_nude_elegance",
+        "intimacy_upgrade", "hand_touch_focus", "bubble_bath_play", "library_elegance",
+        "coffee_casual_date"
+      ],
+      "allow_specialties": ["selfie", "private_indoor", "reflection", "water_indoor", "historical"],
+      "preferred": {
+        "camera": ["intimate_50mm_close", "shallow_focus_detail", "collarbone_closeup", "doorway_peek", "curtain_foreground"],
+        "lighting": ["soft_window_light", "practical_lamps", "bedside_lamp_warm", "curtain_morning_soft", "candle_warm_shadow"],
+        "art": ["cinematic_still", "documentary_photo", "film_35mm", "boudoir_film_soft", "no_retouch_natural"],
+        "atmosphere": ["warm_daily", "timeless_memory", "warm_private_moment", "late_night_warmth", "familiar_comfort"]
+      }
+    },
+    {
+      "id": "editorial_portrait",
+      "theme_ids": [
+        "modern_editorial", "fashion_avant_garde",
+        "glamour_editorial", "hosiery_fashion", "see_through_fashion", "artistic_nude",
+        "waist_hip_curve", "uniform_glamour", "foot_leg_focus", "tattoo_body_art",
+        "twin_duo_sisters", "atelier_model", "flower_shower_shoot"
+      ],
+      "allow_specialties": ["portrait_editorial", "reflection", "experimental", "stage", "urban"],
+      "preferred": {
+        "camera": ["low_angle_24mm", "high_angle_isolation", "dutch_dynamic", "asymmetric_close", "fashion_dutch_angle"],
+        "lighting": ["hard_side_light", "warm_cool_rim", "projected_pattern", "prism_spectrum", "soft_skin_rim"],
+        "art": ["editorial_photo", "fashion_collage", "high_fashion_editorial", "soft_glam_retouch", "editorial_3d"],
+        "atmosphere": ["avant_curiosity", "adult_confidence", "fashion_provocation", "body_confidence"]
+      }
+    },
+    {
+      "id": "urban_day",
+      "theme_ids": [
+        "urban_story", "street_documentary", "workplace_story", "food_culture",
+        "architecture_poetry", "detective_mystery", "industrial_heritage"
+      ],
+      "allow_specialties": ["urban", "transport", "surveillance", "reflection", "outdoor", "motion"],
+      "preferred": {
+        "camera": ["environmental_portrait", "foreground_layers", "one_point_depth", "deep_focus_tableau", "candid_obstruction_50mm"],
+        "lighting": ["fluorescent_layers", "skylight_volume", "passing_headlight", "soft_window_light"],
+        "art": ["documentary_photo", "architectural_photo", "cinematic_still", "large_format_photo"],
+        "atmosphere": ["urban_alienation", "focused_craft", "working_rhythm", "layered_city_sound"]
+      }
+    },
+    {
+      "id": "urban_night",
+      "theme_ids": [
+        "cyberpunk_noir", "urban_nightlife", "nightlife_allure", "noir_femme_fatale",
+        "rain_street_night", "rooftop_dusk_view"
+      ],
+      "allow_specialties": ["urban", "transport", "surveillance", "reflection", "experimental", "stage", "motion"],
+      "preferred": {
+        "camera": ["slow_shutter_trails", "ground_level_reflection", "window_glass_frame", "walking_follow_shot", "puddle_low_angle"],
+        "lighting": ["neon_reflection", "reflected_city_glow", "red_blue_night", "amber_streetlamp", "rain_window_light"],
+        "art": ["cinematic_teal_orange", "film_noir_grain", "long_exposure_light", "wet_glass_macro", "film_35mm"],
+        "atmosphere": ["midnight_vitality", "rain_afterglow", "layered_city_sound", "rain_soaked_stillness", "cool_dangerous"]
+      }
+    },
+    {
+      "id": "stage_performance",
+      "theme_ids": [
+        "music_stage", "dance_theatre", "festival_celebration",
+        "dance_performance", "festive_theme", "burlesque_stage", "opera_backstage"
+      ],
+      "allow_specialties": ["stage", "experimental", "reflection", "urban", "motion"],
+      "preferred": {
+        "camera": ["stage_full_body_spot", "crane_arc", "orbiting_portrait", "wide_centered_action", "fabric_flow_closeup"],
+        "lighting": ["stage_spot", "stage_cross_color", "stage_spotlight", "projector_beam", "firework_backlight"],
+        "art": ["cinematic_still", "high_fashion_editorial", "smoke_filled_ambient", "film_strip_frames"],
+        "atmosphere": ["concert_euphoria", "suspended_dance", "stage_magic", "backstage_hurry", "celebratory_joy"]
+      }
+    },
+    {
+      "id": "sports_motion",
+      "theme_ids": ["sports_energy", "fitness_heat", "private_yoga", "horse_equestrian"],
+      "allow_specialties": ["sports", "motion", "outdoor", "water_surface", "urban"],
+      "preferred": {
+        "camera": ["panning_motion", "tracking_back", "shoulder_mount_energy", "body_mount_front", "walking_follow_shot"],
+        "lighting": ["gym_top_light", "hard_side_light", "overcast_diffuse", "noon_harsh_sun"],
+        "art": ["documentary_photo", "film_35mm", "hdr_drama", "no_retouch_natural"],
+        "atmosphere": ["competitive_focus", "post_workout_energy", "graceful_strength", "fierce_determination"]
+      }
+    },
+    {
+      "id": "coastal_water",
+      "theme_ids": ["ocean_journey", "resort_swimwear", "wet_clothing"],
+      "allow_specialties": ["water_surface", "underwater", "outdoor", "motion", "reflection"],
+      "preferred": {
+        "camera": ["half_underwater", "puddle_low_angle", "panoramic_scale", "wide_centered_action"],
+        "lighting": ["pool_reflection", "golden_hour", "golden_back_rim", "pool_caustic_skin"],
+        "art": ["cinematic_still", "underwater_photography", "golden_hour_warm", "film_35mm"],
+        "atmosphere": ["wild_freedom", "summer_heat", "windblown_freedom", "reef_abundance"]
+      }
+    },
+    {
+      "id": "underwater",
+      "theme_ids": ["underwater_realm"],
+      "allow_specialties": ["underwater", "experimental", "reflection"],
+      "preferred": {
+        "camera": ["underwater_wide_dome", "periscope_surface", "half_underwater"],
+        "lighting": ["underwater_sunshafts", "aquarium_blue_ripple", "underwater_caustics", "bioluminescence_glow"],
+        "art": ["underwater_photography", "cinematic_still", "concept_art"],
+        "atmosphere": ["underwater_weightlessness", "reef_abundance", "vast_solitude"]
+      }
+    },
+    {
+      "id": "nature_travel",
+      "theme_ids": [
+        "nature_wildlife", "travel_journal", "countryside_seasons", "botanical_world",
+        "desert_expedition", "polar_expedition", "mountain_adventure", "railway_journey",
+        "aviation_story", "garden_life", "natural_outdoor"
+      ],
+      "allow_specialties": ["outdoor", "transport", "water_surface", "astronomy", "motion", "reflection"],
+      "preferred": {
+        "camera": ["environmental_portrait", "panoramic_scale", "drone_follow", "extreme_wide_horizon", "foreground_layers"],
+        "lighting": ["golden_hour", "overcast_diffuse", "dappled_canopy", "dawn_gradient", "golden_back_rim"],
+        "art": ["documentary_photo", "macro_nature_photo", "large_format_photo", "mixed_media_journal"],
+        "atmosphere": ["wild_freedom", "road_freedom", "summit_awe", "garden_rest", "windblown_freedom"]
+      }
+    },
+    {
+      "id": "east_asian_cultural",
+      "theme_ids": [
+        "ancient_china", "wuxia", "eastern_folklore", "craft_heritage",
+        "oriental_elegance", "classical_chinese"
+      ],
+      "allow_specialties": ["historical", "outdoor", "stage", "reflection", "experimental"],
+      "preferred": {
+        "subject": [
+          "black_hair_woman", "cheongsam_woman", "kimono_woman", "hanfu_woman",
+          "new_year_cheongsam_woman", "xianxia_woman", "wuxia_heroine_woman", "palace_lady_woman",
+          "guzheng_woman"
+        ],
+        "appearance": [
+          "long_straight_hair_waist", "updo_exposed_nape", "classic_eyebrow_look",
+          "hairpin_sway_ornament", "dewy_skin_glow", "velvet_skin_tone"
+        ],
+        "camera": ["frame_within_frame", "profile_space_85mm", "medium_format_symmetry", "doorway_peek"],
+        "lighting": ["lantern_pool", "candle_cluster", "oil_lamp_glow", "lantern_warm_glow"],
+        "art": ["ink_wash", "gongbi", "sumi_e", "nihonga"],
+        "atmosphere": ["solemn_ritual", "handmade_patience", "oriental_mystery"]
+      }
+    },
+    {
+      "id": "western_historical",
+      "theme_ids": ["european_period", "archaeology_mystery", "steampunk_adventure", "retro_decades"],
+      "allow_specialties": ["historical", "outdoor", "stage", "reflection", "experimental"],
+      "preferred": {
+        "camera": ["frame_within_frame", "profile_space_85mm", "medium_format_symmetry", "doorway_peek"],
+        "lighting": ["candle_cluster", "fireplace_glow", "stained_glass_pattern_light", "oil_lamp_glow"],
+        "art": ["daguerreotype", "salt_print", "fresco", "copper_etching", "glass_plate_photo"],
+        "atmosphere": ["solemn_ritual", "vintage_glamour", "retro_nostalgia", "gothic_grandeur"]
+      }
+    },
+    {
+      "id": "fantasy_surreal",
+      "theme_ids": [
+        "dark_fantasy", "surreal_dream", "gentle_fairy_tale", "high_fantasy",
+        "miniature_world", "mature_cosplay", "fantasy_creature"
+      ],
+      "allow_specialties": ["fantasy", "experimental", "underwater", "astronomy", "outdoor", "stage", "reflection"],
+      "preferred": {
+        "camera": ["fisheye_immersive", "radial_zoom", "mirror_triptych", "tilt_shift_miniature", "orbiting_portrait"],
+        "lighting": ["bioluminescent_light", "prism_spectrum", "eclipse_rim", "fairy_glow_particles", "moonlight_frost_glow"],
+        "art": ["surrealism", "concept_art", "stained_glass", "double_exposure", "dream_sequence_blur"],
+        "atmosphere": ["dream_logic", "fairy_wonder", "mystical_awe", "otherworldly_glamour"]
+      }
+    },
+    {
+      "id": "scifi_cosmic",
+      "theme_ids": [
+        "science_fiction", "solarpunk_future", "space_opera",
+        "post_apocalyptic_rebirth", "astronomy_observation"
+      ],
+      "allow_specialties": ["scifi", "experimental", "astronomy", "urban", "surveillance", "transport", "reflection"],
+      "preferred": {
+        "camera": ["fisheye_immersive", "split_diopter", "aerial_geometry", "security_monitor_grid", "ultra_wide_close_14mm"],
+        "lighting": ["projected_pattern", "eclipse_rim", "prism_spectrum", "screen_matrix_glow", "starlight_only"],
+        "art": ["retro_future", "concept_art", "glitch_aesthetic", "vaporwave_neon", "editorial_3d"],
+        "atmosphere": ["precise_future", "cosmic_humility", "galactic_ceremony", "futuristic_cold"]
+      }
+    }
+  ],
+  "specialties": {
+    "selfie": {
+      "camera": ["front_camera_pov", "selfie_mirror_shot", "hand_held_shake", "intimate_50mm_close"],
+      "lighting": ["phone_screen_glow", "curtain_morning_soft", "bedside_lamp_warm"],
+      "art": ["phone_camera_candid", "webcam_selfie_vibe"],
+      "atmosphere": ["candid_selfie_mood", "candid_privacy", "cozy_secret_peek"]
+    },
+    "private_indoor": {
+      "camera": ["boudoir_high_angle", "collarbone_closeup", "curtain_foreground", "doorway_peek", "between_curtains", "doorway_frame_shot"],
+      "lighting": ["boudoir_window_stripes", "soft_window_light", "candle_warm_shadow", "sheer_window_glow", "spa_steam_light", "practical_lamps"],
+      "art": ["boudoir_film_soft", "soft_focus_glow"],
+      "atmosphere": ["warm_private_moment", "late_night_warmth", "warm_home_cocoon", "quiet_morning_slow", "bookish_quiet"]
+    },
+    "water_indoor": {
+      "lighting": ["bathroom_steam_light", "pool_underlight", "spa_steam_light"],
+      "atmosphere": ["restorative_calm", "minimalist_zen"]
+    },
+    "portrait_editorial": {
+      "camera": ["fashion_dutch_angle", "collarbone_closeup", "back_profile", "overhead_fabric_shape", "torso_art_frame", "hip_profile_shot"],
+      "lighting": ["soft_skin_rim", "stocking_edge_light", "body_curve_rim_light", "golden_three_point", "butterfly_light"],
+      "art": ["high_fashion_editorial", "soft_glam_retouch", "editorial_3d"],
+      "atmosphere": ["adult_confidence", "fashion_provocation", "body_confidence"]
+    },
+    "reflection": {
+      "camera": ["reflection_split", "glass_refraction", "ground_level_reflection", "mirror_triptych", "puddle_low_angle", "mirror_double_view", "mirror_third_person", "reflection_puddle_shot", "selfie_mirror_shot"],
+      "lighting": ["neon_reflection", "pool_reflection", "mirror_bounce", "rain_window_light"],
+      "art": ["mirror_reflection_art", "wet_glass_macro"],
+      "atmosphere": ["rain_afterglow", "rain_soaked_stillness"]
+    },
+    "urban": {
+      "camera": ["slow_shutter_trails", "puddle_low_angle", "ground_level_reflection", "car_window_passby", "elevator_doors", "staircase_spiral"],
+      "lighting": ["neon_reflection", "sodium_vapor", "headlights_rain", "reflected_city_glow", "passing_headlight", "amber_streetlamp", "red_blue_night", "pink_neon_rim", "neon_double_edge", "red_light_district"],
+      "art": ["long_exposure_light", "cyberpunk_neon_city", "vaporwave_neon", "wet_glass_macro"],
+      "atmosphere": ["urban_alienation", "rain_afterglow", "midnight_vitality", "layered_city_sound", "city_buzz_below", "rain_soaked_stillness", "energetic_chaos"]
+    },
+    "transport": {
+      "camera": ["tracking_back", "drone_follow", "body_mount_front", "car_window_passby", "tracking_dolly", "crane_shot"],
+      "lighting": ["moving_train_window_light", "headlights_rain", "passing_headlight", "lighthouse_beam"],
+      "art": ["mixed_media_journal"],
+      "atmosphere": ["road_freedom", "departure_longing", "window_journey", "open_sky_courage", "secret_adventure"]
+    },
+    "surveillance": {
+      "camera": ["keyhole_peek", "fps_game_view", "security_monitor_grid"],
+      "lighting": ["screen_matrix_glow"],
+      "art": ["cctv_surveillance", "security_cam_grainy"],
+      "atmosphere": ["noir_suspicion"]
+    },
+    "stage": {
+      "camera": ["stage_full_body_spot", "crane_arc", "crane_shot", "tracking_dolly"],
+      "lighting": ["stage_spot", "stage_cross_color", "stage_spotlight", "projector_beam", "firework_backlight"],
+      "art": ["smoke_filled_ambient", "film_strip_frames"],
+      "atmosphere": ["concert_euphoria", "suspended_dance", "stage_magic", "backstage_hurry", "celebratory_joy"]
+    },
+    "sports": {
+      "camera": ["panning_motion", "walking_follow_shot", "shoulder_mount_energy", "body_mount_front"],
+      "lighting": ["gym_top_light", "noon_harsh_sun"],
+      "art": ["hdr_drama"],
+      "atmosphere": ["competitive_focus", "post_workout_energy", "graceful_strength", "fierce_determination"]
+    },
+    "motion": {
+      "camera": ["tracking_back", "panning_motion", "whip_pan", "drone_follow", "crane_descent", "shoulder_mount_energy", "body_mount_front", "drone_topdown_follow", "tracking_dolly", "handheld_motion_blur"],
+      "lighting": ["moving_train_window_light", "passing_headlight"],
+      "atmosphere": ["joyful_motion", "energetic_chaos"]
+    },
+    "water_surface": {
+      "camera": ["half_underwater", "puddle_low_angle", "reflection_puddle_shot"],
+      "lighting": ["pool_reflection", "pool_caustic_skin", "pool_underlight", "moon_water_light"],
+      "art": ["golden_hour_warm"],
+      "atmosphere": ["summer_heat", "wild_freedom"]
+    },
+    "underwater": {
+      "camera": ["half_underwater", "underwater_wide_dome", "periscope_surface"],
+      "lighting": ["underwater_caustics", "aquarium_blue_ripple", "underwater_sunshafts", "bioluminescent_light", "bioluminescence_glow"],
+      "art": ["underwater_photography"],
+      "atmosphere": ["underwater_weightlessness", "reef_abundance"]
+    },
+    "outdoor": {
+      "camera": ["aerial_geometry", "panoramic_scale", "drone_follow", "drone_topdown_follow", "extreme_wide_horizon", "through_trees", "reflection_puddle_shot"],
+      "lighting": ["golden_hour", "blue_hour", "overcast_diffuse", "dappled_canopy", "snow_bounce", "desert_bounce", "green_jungle_light", "aurora_wash", "snow_blue_hour", "sunset_ray_light", "noon_harsh_sun"],
+      "art": ["macro_nature_photo", "infrared_photo", "aerial_top_view"],
+      "atmosphere": ["vast_solitude", "wild_freedom", "desert_sublime", "polar_silence", "summit_awe", "garden_rest", "windblown_freedom"]
+    },
+    "historical": {
+      "lighting": ["lantern_pool", "candle_cluster", "fireplace_glow", "stained_glass_pattern_light", "oil_lamp_glow", "lantern_warm_glow", "torch_flame_light"],
+      "art": ["daguerreotype", "salt_print", "sumi_e", "nihonga", "gongbi", "fresco", "copper_etching"],
+      "atmosphere": ["solemn_ritual", "handmade_patience", "oriental_mystery", "vintage_glamour", "royal_dignity"]
+    },
+    "fantasy": {
+      "camera": ["radial_zoom", "mirror_triptych", "tilt_shift_miniature"],
+      "lighting": ["bioluminescent_light", "eclipse_rim", "prism_spectrum", "fairy_glow_particles", "moonlight_frost_glow"],
+      "art": ["surrealism", "stained_glass", "dream_sequence_blur"],
+      "atmosphere": ["dream_logic", "fairy_wonder", "mystical_awe", "otherworldly_glamour", "gothic_grandeur"]
+    },
+    "astronomy": {
+      "camera": ["slow_shutter_trails", "panoramic_scale", "extreme_wide_horizon"],
+      "lighting": ["aurora_wash", "starlight_only", "telescope_red_lamp", "aurora_reflection"],
+      "art": ["long_exposure_light"],
+      "atmosphere": ["cosmic_humility", "observatory_patience", "mystical_awe"]
+    },
+    "scifi": {
+      "camera": ["fisheye_immersive", "ultra_wide_close_14mm", "camera_roll_shot", "fps_game_view", "security_monitor_grid"],
+      "lighting": ["projected_pattern", "eclipse_rim", "screen_matrix_glow", "neon_double_edge"],
+      "art": ["retro_future", "glitch_aesthetic", "vaporwave_neon", "cyberpunk_neon_city", "editorial_3d"],
+      "atmosphere": ["precise_future", "galactic_ceremony", "futuristic_cold"]
+    },
+    "experimental": {
+      "camera": ["fisheye_immersive", "radial_zoom", "tilt_shift_miniature", "mirror_triptych", "camera_roll_shot", "security_monitor_grid"],
+      "lighting": ["projected_pattern", "prism_spectrum", "double_shadow", "screen_matrix_glow"],
+      "art": ["glitch_aesthetic", "double_exposure", "infrared_surreal", "tilt_shift_miniature", "magazine_cutout", "photogram"],
+      "atmosphere": ["dream_logic", "energetic_chaos"]
+    }
+  }
+}

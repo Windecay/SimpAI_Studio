@@ -18,6 +18,10 @@ RANDOM_PROMPT_KNOWN_CHARACTERS_ZH_FILE = os.path.join(
 )
 RANDOM_PROMPT_SFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_sfw_zh.json")
 RANDOM_PROMPT_NSFW_ZH_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt_nsfw_zh.json")
+RANDOM_PROMPT_BUILDER_RULES_ZH_FILE = os.path.join(
+    RECOMMENDATIONS_DIR,
+    "random_prompt_builder_rules_zh.json",
+)
 RANDOM_PROMPT_ADULT_SLOTS_FILE = os.path.join(ROOT_DIR, "docs", "adult_trigger_slots.csv")
 RANDOM_PROMPT_ADULT_NEGATIVE_FILE = os.path.join(ROOT_DIR, "docs", "adult_negative_conflicts.csv")
 RANDOM_PROMPT_NSFW_ENV = "SIMPAI_DEV_RANDOM_PROMPT_NSFW"
@@ -44,6 +48,7 @@ _random_prompt_association_cache = None
 _random_prompt_noise_cache = None
 _random_prompt_character_cache = None
 _random_prompt_known_characters_zh_cache = None
+_random_prompt_builder_rules_zh_cache = None
 _random_prompt_sfw_zh_cache = None
 _random_prompt_nsfw_zh_cache = None
 _random_prompt_adult_slot_cache = None
@@ -3474,6 +3479,22 @@ def _random_prompt_known_characters_zh_catalog():
     return catalog
 
 
+def _random_prompt_builder_rules_zh():
+    global _random_prompt_builder_rules_zh_cache
+    if _random_prompt_builder_rules_zh_cache is not None:
+        return _random_prompt_builder_rules_zh_cache
+    with open(RANDOM_PROMPT_BUILDER_RULES_ZH_FILE, "r", encoding="utf-8") as handle:
+        rules = json.load(handle)
+    if (
+        not isinstance(rules, dict)
+        or not isinstance(rules.get("profiles"), list)
+        or not isinstance(rules.get("specialties"), dict)
+    ):
+        raise ValueError("Chinese prompt builder rules must contain profiles and specialties.")
+    _random_prompt_builder_rules_zh_cache = rules
+    return rules
+
+
 def _random_prompt_catalog_with_known_characters(catalog, content_mode):
     known_catalog = _random_prompt_known_characters_zh_catalog()
     character_category = dict(known_catalog.get("category") or {})
@@ -3512,6 +3533,7 @@ def _random_prompt_sfw_zh_catalog():
     if not isinstance(catalog, dict) or not isinstance(catalog.get("categories"), list):
         raise ValueError("Chinese SFW prompt catalog must contain a categories list.")
     catalog = _random_prompt_catalog_with_known_characters(catalog, "sfw")
+    catalog["builder_rules"] = _random_prompt_builder_rules_zh()
     _random_prompt_sfw_zh_cache = catalog
     return catalog
 
@@ -3543,6 +3565,7 @@ def _random_prompt_nsfw_zh_catalog():
                     continue
                 inherited = dict(item)
                 if inherited.get("themes"):
+                    inherited["source_themes"] = list(inherited["themes"])
                     inherited["themes"] = ["all"]
                 inherited_items.append(inherited)
             merged = dict(base)
@@ -3553,6 +3576,7 @@ def _random_prompt_nsfw_zh_catalog():
     merged_catalog = dict(catalog)
     merged_catalog["categories"] = merged_categories
     merged_catalog = _random_prompt_catalog_with_known_characters(merged_catalog, "nsfw")
+    merged_catalog["builder_rules"] = _random_prompt_builder_rules_zh()
     _random_prompt_nsfw_zh_cache = merged_catalog
     return merged_catalog
 
@@ -3564,12 +3588,14 @@ def random_prompt_catalog_payload(content_mode="sfw"):
         source_files = [
             "presets/scene_prompt_recommendations/random_prompt_sfw_zh.json",
             "presets/scene_prompt_recommendations/random_prompt_known_characters_zh.json",
+            "presets/scene_prompt_recommendations/random_prompt_builder_rules_zh.json",
             "presets/scene_prompt_recommendations/random_prompt_nsfw_zh.json",
         ]
     else:
         catalog = _random_prompt_sfw_zh_catalog()
         source_files = [
             "presets/scene_prompt_recommendations/random_prompt_known_characters_zh.json",
+            "presets/scene_prompt_recommendations/random_prompt_builder_rules_zh.json",
             "presets/scene_prompt_recommendations/random_prompt_sfw_zh.json",
         ]
     return {

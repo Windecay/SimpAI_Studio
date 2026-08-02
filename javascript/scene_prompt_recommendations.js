@@ -331,23 +331,122 @@
         return Array.isArray(subject?.modes) ? subject.modes[0] || "" : "";
     }
 
-    function builderCandidates(slotId) {
+    function builderRules() {
+        return promptCatalog?.builder_rules && typeof promptCatalog.builder_rules === "object"
+            ? promptCatalog.builder_rules
+            : {};
+    }
+
+    function builderProfiles() {
+        return Array.isArray(builderRules().profiles) ? builderRules().profiles : [];
+    }
+
+    function builderContentPreferences() {
+        const preferences = builderRules().content_preferences?.[randomPanelState.contentMode];
+        return preferences && typeof preferences === "object" ? preferences : {};
+    }
+
+    function builderItemThemeIds(slotId, item) {
+        if (!item) return [];
+        if (slotId === "theme") return item.id ? [item.id] : [];
+        const sourceThemes = Array.isArray(item.source_themes) ? item.source_themes : [];
+        const themes = sourceThemes.length ? sourceThemes : (Array.isArray(item.themes) ? item.themes : []);
+        return themes.filter((themeId) => themeId && themeId !== "all");
+    }
+
+    function builderItemSpecialties(slotId, itemId) {
+        if (!slotId || !itemId) return [];
+        const specialties = builderRules().specialties || {};
+        return Object.entries(specialties).reduce((result, [specialtyId, slots]) => {
+            const itemIds = Array.isArray(slots?.[slotId]) ? slots[slotId] : [];
+            if (itemIds.includes(itemId)) result.push(specialtyId);
+            return result;
+        }, []);
+    }
+
+    function builderContextProfile(targetSlotId) {
+        const profiles = builderProfiles();
+        if (!profiles.length) return null;
+        const configuredSlots = Array.isArray(builderRules().context_slots) ? builderRules().context_slots : [];
+        const contextSlots = configuredSlots.length ? configuredSlots : ["theme", "action", "setting"];
+        const populated = contextSlots.filter((slotId) =>
+            slotId !== targetSlotId && randomPanelState.builderValues[slotId]);
+        const locked = populated.filter((slotId) => randomPanelState.builderLocks[slotId]);
+        const selectedContextSlots = locked.length ? locked : populated;
+        const scores = new Map(profiles.map((profile) => [profile.id, 0]));
+
+        selectedContextSlots.forEach((slotId) => {
+            const item = catalogItem(slotId, randomPanelState.builderValues[slotId]);
+            const itemThemes = builderItemThemeIds(slotId, item);
+            const weight = (slotId === "theme" ? 8 : 3) + (randomPanelState.builderLocks[slotId] ? 12 : 0);
+            profiles.forEach((profile) => {
+                const profileThemes = Array.isArray(profile.theme_ids) ? profile.theme_ids : [];
+                if (itemThemes.some((themeId) => profileThemes.includes(themeId))) {
+                    scores.set(profile.id, (scores.get(profile.id) || 0) + weight);
+                }
+            });
+        });
+
+        builderSlots().forEach((slotId) => {
+            if (
+                slotId === targetSlotId
+                || contextSlots.includes(slotId)
+                || !randomPanelState.builderLocks[slotId]
+                || !randomPanelState.builderValues[slotId]
+            ) return;
+            const item = catalogItem(slotId, randomPanelState.builderValues[slotId]);
+            const itemThemes = builderItemThemeIds(slotId, item);
+            const specialties = builderItemSpecialties(slotId, item?.id);
+            profiles.forEach((profile) => {
+                const profileThemes = Array.isArray(profile.theme_ids) ? profile.theme_ids : [];
+                const allowed = Array.isArray(profile.allow_specialties) ? profile.allow_specialties : [];
+                if (itemThemes.some((themeId) => profileThemes.includes(themeId))) {
+                    scores.set(profile.id, (scores.get(profile.id) || 0) + 12);
+                }
+                if (specialties.some((specialtyId) => allowed.includes(specialtyId))) {
+                    scores.set(profile.id, (scores.get(profile.id) || 0) + 10);
+                }
+            });
+        });
+
+        let selected = null;
+        let selectedScore = 0;
+        profiles.forEach((profile) => {
+            const score = scores.get(profile.id) || 0;
+            if (score > selectedScore) {
+                selected = profile;
+                selectedScore = score;
+            }
+        });
+        return selected;
+    }
+
+    function builderModeCandidates(slotId) {
         const category = catalogCategory(slotId);
-        const currentTheme = randomPanelState.builderValues.theme || "";
         const currentMode = builderSubjectMode();
         return (category?.items || []).filter((item) => {
             const itemModes = Array.isArray(item.modes) ? item.modes : [];
-            const itemThemes = Array.isArray(item.themes) ? item.themes : [];
             if (slotId === "theme") {
                 return !currentMode || !itemModes.length || itemModes.includes(currentMode);
-            }
-            if (currentTheme && itemThemes.length && !itemThemes.includes("all") && !itemThemes.includes(currentTheme)) {
-                return false;
             }
             if (slotId !== "subject" && currentMode && itemModes.length && !itemModes.includes(currentMode)) {
                 return false;
             }
             return true;
+        });
+    }
+
+    function builderCandidates(slotId) {
+        const currentTheme = randomPanelState.builderValues.theme || "";
+        const profile = slotId === "theme" ? null : builderContextProfile(slotId);
+        return builderModeCandidates(slotId).filter((item) => {
+            if (slotId === "theme") return true;
+            const itemThemes = Array.isArray(item.themes) ? item.themes : [];
+            const themeCompatible = !currentTheme
+                || !itemThemes.length
+                || itemThemes.includes("all")
+                || itemThemes.includes(currentTheme);
+            return themeCompatible && (!profile || !!builderCandidateTier(slotId, item, profile));
         });
     }
 
@@ -358,21 +457,116 @@
         return pool[Math.floor(Math.random() * pool.length)] || null;
     }
 
+    function builderCandidateTier(slotId, item, profile) {
+        if (!profile) return "neutral";
+        const profileThemes = Array.isArray(profile.theme_ids) ? profile.theme_ids : [];
+        if (slotId === "theme") return profileThemes.includes(item.id) ? "exact" : "";
+
+        const itemThemes = builderItemThemeIds(slotId, item);
+        const demoted = Array.isArray(builderContentPreferences().demote?.[slotId])
+            ? builderContentPreferences().demote[slotId]
+            : [];
+        if (demoted.includes(item.id)) return "neutral";
+        const currentTheme = randomPanelState.builderValues.theme || "";
+        if (currentTheme && itemThemes.includes(currentTheme)) return "exact";
+        const preferred = Array.isArray(profile.preferred?.[slotId]) ? profile.preferred[slotId] : [];
+        if (preferred.includes(item.id)) return "exact";
+        const promoted = Array.isArray(builderContentPreferences().promote?.[slotId])
+            ? builderContentPreferences().promote[slotId]
+            : [];
+        if (promoted.includes(item.id)) return "exact";
+        if (itemThemes.some((themeId) => profileThemes.includes(themeId))) return "related";
+
+        const specialties = builderItemSpecialties(slotId, item.id);
+        const allowed = Array.isArray(profile.allow_specialties) ? profile.allow_specialties : [];
+        if (specialties.some((specialtyId) => allowed.includes(specialtyId))) return "contextual";
+        if (itemThemes.length || specialties.length) return "";
+        return "neutral";
+    }
+
+    function builderItemPickWeight(slotId, item, profile) {
+        let weight = 1;
+        const preferred = Array.isArray(profile?.preferred?.[slotId]) ? profile.preferred[slotId] : [];
+        if (preferred.includes(item.id)) weight *= 3;
+        const configured = Number(builderContentPreferences().item_weights?.[slotId]?.[item.id]);
+        if (Number.isFinite(configured) && configured >= 0) weight *= configured;
+        return weight;
+    }
+
+    function pickContextualBuilderItem(slotId, items, currentId) {
+        if (!items.length) return null;
+        const profile = builderContextProfile(slotId);
+        if (!profile) return pickDifferentItem(items, currentId);
+        const tiers = ["exact", "related", "contextual", "neutral"];
+        const visualSlots = ["camera", "lighting", "art", "atmosphere"];
+        const weightGroup = visualSlots.includes(slotId) ? "visual" : "core";
+        const configuredWeights = builderRules().selection_weights?.[weightGroup] || {};
+        const weights = Object.assign(
+            weightGroup === "visual"
+                ? { exact: 55, related: 30, contextual: 10, neutral: 5 }
+                : { exact: 88, related: 9, contextual: 2, neutral: 1 },
+            configuredWeights,
+        );
+        const buildBuckets = (pool) => {
+            const buckets = Object.fromEntries(tiers.map((tier) => [tier, []]));
+            pool.forEach((item) => {
+                const tier = builderCandidateTier(slotId, item, profile);
+                if (tier && buckets[tier]) buckets[tier].push(item);
+            });
+            return buckets;
+        };
+        const alternatives = items.filter((item) => item.id !== currentId);
+        let buckets = buildBuckets(alternatives);
+        if (!tiers.some((tier) => buckets[tier].length)) buckets = buildBuckets(items);
+        const available = tiers.filter((tier) => buckets[tier].length && Number(weights[tier]) > 0);
+        if (!available.length) {
+            return pickDifferentItem(builderCandidates(slotId), currentId) || pickDifferentItem(items, currentId);
+        }
+        const totalWeight = available.reduce((total, tier) => total + Number(weights[tier]), 0);
+        let roll = Math.random() * totalWeight;
+        let selectedTier = available[available.length - 1];
+        for (const tier of available) {
+            roll -= Number(weights[tier]);
+            if (roll < 0) {
+                selectedTier = tier;
+                break;
+            }
+        }
+        const pool = buckets[selectedTier];
+        const itemWeights = pool.map((item) => builderItemPickWeight(slotId, item, profile));
+        const itemWeightTotal = itemWeights.reduce((total, weight) => total + weight, 0);
+        if (itemWeightTotal <= 0) return pool[Math.floor(Math.random() * pool.length)] || null;
+        let itemRoll = Math.random() * itemWeightTotal;
+        for (let index = 0; index < pool.length; index += 1) {
+            itemRoll -= itemWeights[index];
+            if (itemRoll < 0) return pool[index];
+        }
+        return pool[pool.length - 1] || null;
+    }
+
     function normalizeBuilderSelections(changedSlot) {
         for (const slotId of builderSlots()) {
             if (slotId === changedSlot || randomPanelState.builderLocks[slotId]) continue;
             const candidates = builderCandidates(slotId);
             const current = randomPanelState.builderValues[slotId];
             if (!current || !candidates.some((item) => item.id === current)) {
-                randomPanelState.builderValues[slotId] = pickDifferentItem(candidates, current)?.id || "";
+                randomPanelState.builderValues[slotId] = pickContextualBuilderItem(
+                    slotId,
+                    builderModeCandidates(slotId),
+                    current,
+                )?.id || "";
             }
         }
     }
 
-    function randomizeBuilderSlot(slotId) {
+    function randomizeBuilderSlot(slotId, normalize = true) {
         const current = randomPanelState.builderValues[slotId] || "";
-        randomPanelState.builderValues[slotId] = pickDifferentItem(builderCandidates(slotId), current)?.id || "";
-        if (slotId === "theme" || slotId === "subject") normalizeBuilderSelections(slotId);
+        randomPanelState.builderValues[slotId] = pickContextualBuilderItem(
+            slotId,
+            builderModeCandidates(slotId),
+            current,
+        )?.id || "";
+        if (normalize && (slotId === "theme" || slotId === "subject")) normalizeBuilderSelections(slotId);
     }
 
     function randomizeBuilderAll() {
@@ -382,7 +576,7 @@
             if (!randomPanelState.builderLocks[slotId]) randomPanelState.builderValues[slotId] = "";
         });
         slots.forEach((slotId) => {
-            if (!randomPanelState.builderLocks[slotId]) randomizeBuilderSlot(slotId);
+            if (!randomPanelState.builderLocks[slotId]) randomizeBuilderSlot(slotId, false);
         });
     }
 
@@ -542,6 +736,16 @@
             const currentId = randomPanelState.builderValues[slotId] || "";
             const currentItem = catalogItem(slotId, currentId);
             const candidates = builderCandidates(slotId).slice();
+            const profile = slotId === "theme" ? null : builderContextProfile(slotId);
+            const tierOrder = { exact: 0, related: 1, contextual: 2, neutral: 3 };
+            if (profile) {
+                candidates.sort((left, right) => {
+                    const tierDifference = (tierOrder[builderCandidateTier(slotId, left, profile)] ?? 4)
+                        - (tierOrder[builderCandidateTier(slotId, right, profile)] ?? 4);
+                    return tierDifference || builderItemPickWeight(slotId, right, profile)
+                        - builderItemPickWeight(slotId, left, profile);
+                });
+            }
             if (currentItem && !candidates.some((item) => item.id === currentItem.id)) candidates.unshift(currentItem);
             const options = ['<option value="">' + escapeHtml(text("Not selected", "未选择")) + '</option>']
                 .concat(candidates.map((item) =>
