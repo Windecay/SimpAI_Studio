@@ -16,9 +16,9 @@
           "hip_bone_protrude", "smoky_eye_look", "dewy_skin_glow"
         ],
         "outfit": [
-          "see_through_blouse", "mesh_fabric_top", "sheer_full_body_dress", "sheer_raincoat",
-          "unlined_silk_top", "sheet_wrap_only", "towel_waist", "sheer_pantyhose",
-          "thigh_high_socks", "garter_belt_set"
+          "see_through_blouse", "mesh_fabric_top", "sheer_full_body_dress",
+          "silk_slip_dress", "lace_lingerie_set", "black_stockings",
+          "suspender_stockings", "latex_fashion_dress", "corset_fashion"
         ],
         "action": [
           "water_pour_shoulder", "sheet_pull_over", "blouse_unbutton_hint", "lotion_apply_leg",
@@ -28,7 +28,7 @@
       },
       "demote": {
         "subject": [
-          "redhead_woman", "blonde_woman", "latina_woman", "middle_eastern_woman",
+          "redhead_woman", "blonde_woman",
           "freckled_redhead", "loose_curls_woman", "wet_curly_woman"
         ],
         "appearance": ["freckled_soft_skin", "drawn_freckles", "no_makeup_fresh", "soft_makeup"]
@@ -38,8 +38,6 @@
           "black_hair_woman": 5,
           "redhead_woman": 0.12,
           "blonde_woman": 0.2,
-          "latina_woman": 0.25,
-          "middle_eastern_woman": 0.3,
           "freckled_redhead": 0.08,
           "loose_curls_woman": 0.15,
           "wet_curly_woman": 0.25
@@ -68,16 +66,22 @@
           "swept_back_hair": 0.5
         },
         "outfit": {
-          "see_through_blouse": 6,
-          "mesh_fabric_top": 6,
-          "sheer_full_body_dress": 5,
-          "sheer_raincoat": 4,
-          "unlined_silk_top": 4,
-          "sheet_wrap_only": 4,
-          "towel_waist": 4,
-          "sheer_pantyhose": 4,
-          "garter_belt_set": 4,
-          "thigh_high_socks": 3
+          "see_through_blouse": 2,
+          "mesh_fabric_top": 2,
+          "sheer_full_body_dress": 1.5,
+          "silk_slip_dress": 2,
+          "lace_lingerie_set": 2,
+          "black_stockings": 1.5,
+          "suspender_stockings": 1.5,
+          "latex_fashion_dress": 1.5,
+          "corset_fashion": 1.5,
+          "sheer_raincoat": 0.5,
+          "unlined_silk_top": 0.8,
+          "sheet_wrap_only": 0.4,
+          "towel_waist": 0.6,
+          "sheer_pantyhose": 1,
+          "garter_belt_set": 1.2,
+          "thigh_high_socks": 0.8
         },
         "action": {
           "water_pour_shoulder": 5,
