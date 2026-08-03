@@ -17504,6 +17504,11 @@ button[aria-label="Edit"][title="Edit"] {
     max-width: 100%;
 }
 
+.describe-vlm-chat-generated-media.is-video {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
 .describe-vlm-chat-generated-media a {
     display: block;
     width: fit-content;
@@ -17535,13 +17540,20 @@ button[aria-label="Edit"][title="Edit"] {
     outline-offset: 2px;
 }
 
-.describe-vlm-chat-generated-media img {
+.describe-vlm-chat-generated-media img,
+.describe-vlm-chat-generated-media video {
     display: block;
     width: auto;
     max-width: 100%;
     height: auto;
     max-height: 320px;
     object-fit: contain;
+}
+
+.describe-vlm-chat-generated-media video {
+    width: 100%;
+    border-radius: 6px;
+    background: #090a0c;
 }
 
 .describe-vlm-chat-generated-tools {
@@ -18243,7 +18255,8 @@ button[aria-label="Edit"][title="Edit"] {
         max-width: 100%;
     }
 
-    .describe-vlm-chat-generated-media img {
+    .describe-vlm-chat-generated-media img,
+    .describe-vlm-chat-generated-media video {
         max-height: 220px;
     }
 

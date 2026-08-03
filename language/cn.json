@@ -1135,6 +1135,7 @@
   "MiniMax H3 Text-to-Video": "MiniMax H3 文生视频",
   "MiniMax H3 Image-to-Video [Main image: first frame; Image 2: optional last frame]": "MiniMax H3 图生视频 [主图为首帧，图2可作尾帧]",
   "MiniMax H3 Reference-to-Video [Upload 1-5 reference images in order]": "MiniMax H3 多参考图生视频 [按顺序上传1-5张参考图]",
+  "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]": "MiniMax H3 多参考视频 [最多5张图片、2个视频和1个音频参考]",
   "LTX2.3 Text-to-Video [Optional audio input]": "LTX2.3文生视频 [可选音频]",
   "LTX2.3 Text+Audio to Video": "LTX2.3文+音频生视频",
   "LTX2.3 Text+Audio to Video [Audio required]": "LTX2.3文+音频生视频 [必须上传音频]",

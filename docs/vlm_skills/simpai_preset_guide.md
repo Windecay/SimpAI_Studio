@@ -194,9 +194,11 @@ SimpAI UI guide skill:
   for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
 - For MiniMax H3 native-audio video generation, recommend MiniMax-H3(T2V) for
   text-to-video, MiniMax-H3(I2V) when the main image is the first frame and an
-  optional second image is the last frame, and MiniMax-H3(R2V) for 1-5 ordered
-  reference images. H3(R2V) prompts should refer to uploaded images as
-  `<Picture 1>`, `<Picture 2>`, and so on in upload order.
+  optional second image is the last frame, and MiniMax-H3(R2V) for mixed
+  references: up to five ordered images, two videos, and one standalone audio
+  clip in the current Studio interface. H3(R2V) prompts should use `<Picture 1>`,
+  `<Video 1>`, and `<Audio 1>` tags, numbered independently by media type. Each
+  reference video's soundtrack is paired with that video automatically.
 - For video outpainting / expanding video frame boundaries, recommend
   Wan-Outpaint.
 - For video object/person/face replacement with masks, recommend Wan-Animate

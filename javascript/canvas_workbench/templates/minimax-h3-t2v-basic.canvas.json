@@ -1,0 +1,729 @@
+{
+  "schema": "simpai.canvas.workbench.v1",
+  "id": "minimax_h3_t2v_basic",
+  "title": "MiniMax-H3 文生视频",
+  "viewport": {
+    "x": 80,
+    "y": 60,
+    "zoom": 0.52
+  },
+  "settings": {
+    "grid": true,
+    "snap": true,
+    "minimap": true,
+    "edgeLabels": true,
+    "reducedMotion": false,
+    "inspectorCollapsed": false
+  },
+  "groups": [
+    {
+      "id": "h3_t2v_group_prompt",
+      "title": "1. Prompt / 提示词",
+      "x": -170,
+      "y": -170,
+      "w": 500,
+      "h": 520,
+      "color": "#0f766e",
+      "alpha": 0.12,
+      "shortcut": "1",
+      "locked": false
+    },
+    {
+      "id": "h3_t2v_group_config",
+      "title": "2. H3 Configs / H3 配置",
+      "x": 360,
+      "y": -170,
+      "w": 500,
+      "h": 1580,
+      "color": "#7c3aed",
+      "alpha": 0.1,
+      "shortcut": "2",
+      "locked": false
+    },
+    {
+      "id": "h3_t2v_group_run",
+      "title": "3. Generate With Audio / 生成音画",
+      "x": 900,
+      "y": -170,
+      "w": 1040,
+      "h": 980,
+      "color": "#ea580c",
+      "alpha": 0.11,
+      "shortcut": "3",
+      "locked": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "h3_t2v_note",
+      "type": "note",
+      "x": -120,
+      "y": -100,
+      "w": 400,
+      "h": 190,
+      "title": "MiniMax H3 Text To Video / 文生视频",
+      "text": "Write the scene, action, camera movement, timing, dialogue or sound intent directly in the Preset prompt. H3 returns video with generated audio. / 在 Preset 提示词中直接写场景、动作、镜头、节奏、对白或声音要求。H3 会生成带音频的视频。",
+      "style": {
+        "color": "#f8fafc",
+        "background": "#164e63",
+        "font_size": 13
+      },
+      "source": {
+        "kind": "canvas_note"
+      }
+    },
+    {
+      "id": "h3_t2v_models",
+      "type": "config",
+      "config_kind": "models",
+      "x": 410,
+      "y": -100,
+      "w": 400,
+      "h": 500,
+      "title": "Models Config / 模型配置",
+      "target_preset_id": "h3_t2v_preset",
+      "config": {
+        "defaults": {
+          "base_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "refiner_model": "None",
+          "clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae": "minimax_h3_video_vae_fp16.safetensors",
+          "loras": [
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            }
+          ]
+        },
+        "values": {
+          "base_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "refiner_model": "None",
+          "clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae": "minimax_h3_video_vae_fp16.safetensors",
+          "loras": [
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            }
+          ]
+        },
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "source": {
+        "kind": "template_config",
+        "preset": "MiniMax-H3(T2V)"
+      }
+    },
+    {
+      "id": "h3_t2v_resolution",
+      "type": "config",
+      "config_kind": "resolution",
+      "x": 410,
+      "y": 450,
+      "w": 400,
+      "h": 430,
+      "title": "Resolution Config / 分辨率配置",
+      "target_preset_id": "h3_t2v_preset",
+      "config": {
+        "defaults": {
+          "template": "Custom",
+          "available_aspect_ratios_selection": "Custom",
+          "default_aspect_ratio": "864*480",
+          "aspect_ratios": [
+            "864*480",
+            "480*864",
+            "640*640",
+            "736*576",
+            "576*736",
+            "800*544",
+            "544*800",
+            "992*416"
+          ],
+          "resolution_control": {
+            "mode": "standard",
+            "source": "none",
+            "base_width": 864,
+            "base_height": 480,
+            "quantize": 32,
+            "interactive": true,
+            "frontend_preprocess": false,
+            "preprocess_target": "none",
+            "preprocess_fit": "scale"
+          }
+        },
+        "values": {
+          "template": "Preset",
+          "aspect_ratio": "864*480",
+          "width": 864,
+          "height": 480,
+          "quantize": 32,
+          "multiplier": 1,
+          "edit_mode": "proportional",
+          "random_aspect_ratio": false,
+          "ratio_lock": false,
+          "ratio_lock_value": "current",
+          "ratio_lock_custom": "1:1"
+        },
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "source": {
+        "kind": "template_config",
+        "preset": "MiniMax-H3(T2V)"
+      }
+    },
+    {
+      "id": "h3_t2v_advanced",
+      "type": "config",
+      "config_kind": "advanced",
+      "x": 410,
+      "y": 930,
+      "w": 400,
+      "h": 300,
+      "title": "Advanced Config / 高级配置",
+      "target_preset_id": "h3_t2v_preset",
+      "config": {
+        "defaults": {
+          "guidance_scale": 1,
+          "sharpness": 2,
+          "overwrite_step": 20,
+          "sampler_name": "res_multistep",
+          "scheduler_name": "simple",
+          "performance_selection": "Speed",
+          "style_selections": [],
+          "image_number": 1
+        },
+        "values": {
+          "guidance_scale": 1,
+          "sharpness": 2,
+          "overwrite_step": 20,
+          "sampler_name": "res_multistep",
+          "scheduler_name": "simple",
+          "performance_selection": "Speed",
+          "style_selections": [],
+          "image_number": 1
+        },
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "source": {
+        "kind": "template_config",
+        "preset": "MiniMax-H3(T2V)"
+      }
+    },
+    {
+      "id": "h3_t2v_preset",
+      "type": "preset",
+      "x": 950,
+      "y": -100,
+      "w": 450,
+      "h": 690,
+      "title": "MiniMax-H3(T2V)",
+      "preset": {
+        "name": "MiniMax-H3(T2V)",
+        "display_name": "MiniMax-H3(T2V)",
+        "snapshot_hash": null,
+        "snapshot": {
+          "default_styles": [],
+          "default_prompt": "",
+          "default_prompt_negative": ""
+        }
+      },
+      "runtime": {
+        "backend_engine": "Comfy",
+        "engine_type": "video",
+        "scene_frontend": "v1.1",
+        "scene_theme": "Basic",
+        "task_method": "minimax_h3_t2v_cn"
+      },
+      "schema": {
+        "version": "v1.1",
+        "engine_type": "video",
+        "themes": [
+          "Basic"
+        ],
+        "default_theme": "Basic",
+        "theme_labels": {
+          "Basic": {
+            "en": "Basic",
+            "zh": "基础"
+          }
+        },
+        "theme_title": "MiniMax H3 Text-to-Video",
+        "director_capability": {
+          "image_policy": "forbidden",
+          "audio_policy": "forbidden",
+          "video_policy": "forbidden",
+          "max_images": 0,
+          "min_images": 0,
+          "image_modes": [
+            "none"
+          ],
+          "duration_strategy": "shot",
+          "audio_output": "generated",
+          "mixed_segments": false
+        },
+        "disvisible": [
+          "scene_canvas_image",
+          "scene_input_image1",
+          "scene_input_image2",
+          "scene_input_image3",
+          "scene_input_image4",
+          "scene_additional_prompt",
+          "scene_additional_prompt_2",
+          "scene_video",
+          "scene_reference_video",
+          "scene_audio",
+          "scene_var_number",
+          "scene_var_number2",
+          "scene_var_number3",
+          "scene_var_number4",
+          "scene_var_number5",
+          "scene_var_number6",
+          "scene_var_number7",
+          "scene_var_number8",
+          "scene_var_number9",
+          "scene_var_number10",
+          "scene_switch_option1",
+          "scene_switch_option2",
+          "scene_switch_option3",
+          "scene_switch_option4",
+          "scene_refiner_model",
+          "sam3_input_video",
+          "sam3_mask_video",
+          "scene_batch"
+        ],
+        "disinteractive": [],
+        "divisible": [],
+        "image_preprocessor_method": [],
+        "disable_canvas_mask": false,
+        "upload_slots": [
+          {
+            "key": "scene_video",
+            "label": "Scene Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_reference_video",
+            "label": "Reference Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "sam3_input_video",
+            "label": "SAM3 Input Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "sam3_mask_video",
+            "label": "SAM3 Mask Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_audio",
+            "label": "Scene Audio",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_canvas_image",
+            "label": "Canvas Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image1",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image2",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image3",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image4",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          }
+        ],
+        "params": [
+          {
+            "key": "scene_video_duration",
+            "label": "Video Duration(s)",
+            "type": "number",
+            "default": 5,
+            "visible": true,
+            "interactive": true,
+            "min": 0.2,
+            "max": 15
+          },
+          {
+            "key": "scene_aspect_ratio",
+            "label": "Aspect Ratio",
+            "type": "choice",
+            "choices": [
+              "864*480",
+              "480*864",
+              "640*640",
+              "736*576",
+              "576*736",
+              "800*544",
+              "544*800",
+              "992*416"
+            ],
+            "default": "864*480",
+            "visible": true,
+            "interactive": true
+          }
+        ],
+        "per_theme": {
+          "Basic": {
+            "task_method": "minimax_h3_t2v_cn",
+            "supported_tasks": [],
+            "defaults": {
+              "scene_video_duration": 5,
+              "scene_aspect_ratio": "864*480",
+              "prompt": ""
+            },
+            "generation_config_props": {
+              "overwrite_step": {
+                "min": 1,
+                "max": 50,
+                "step": 1
+              }
+            }
+          }
+        }
+      },
+      "models_config": {
+        "mode": "external_override",
+        "defaults": {
+          "base_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "refiner_model": "None",
+          "clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae": "minimax_h3_video_vae_fp16.safetensors",
+          "loras": [
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            }
+          ]
+        },
+        "overrides": {
+          "base_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "refiner_model": "None",
+          "clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae": "minimax_h3_video_vae_fp16.safetensors",
+          "loras": [
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            }
+          ]
+        },
+        "source_node_id": "h3_t2v_models",
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "resolution_config": {
+        "mode": "external_override",
+        "defaults": {
+          "template": "Custom",
+          "available_aspect_ratios_selection": "Custom",
+          "default_aspect_ratio": "864*480",
+          "aspect_ratios": [
+            "864*480",
+            "480*864",
+            "640*640",
+            "736*576",
+            "576*736",
+            "800*544",
+            "544*800",
+            "992*416"
+          ],
+          "resolution_control": {
+            "mode": "standard",
+            "source": "none",
+            "base_width": 864,
+            "base_height": 480,
+            "quantize": 32,
+            "interactive": true,
+            "frontend_preprocess": false,
+            "preprocess_target": "none",
+            "preprocess_fit": "scale"
+          }
+        },
+        "overrides": {
+          "template": "Preset",
+          "aspect_ratio": "864*480",
+          "width": 864,
+          "height": 480,
+          "quantize": 32,
+          "multiplier": 1,
+          "edit_mode": "proportional",
+          "random_aspect_ratio": false,
+          "ratio_lock": false,
+          "ratio_lock_value": "current",
+          "ratio_lock_custom": "1:1"
+        },
+        "source_node_id": "h3_t2v_resolution",
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "generation_config": {
+        "mode": "external_override",
+        "defaults": {
+          "guidance_scale": 1,
+          "sharpness": 2,
+          "overwrite_step": 20,
+          "sampler_name": "res_multistep",
+          "scheduler_name": "simple",
+          "performance_selection": "Speed",
+          "style_selections": [],
+          "image_number": 1
+        },
+        "overrides": {
+          "guidance_scale": 1,
+          "sharpness": 2,
+          "overwrite_step": 20,
+          "sampler_name": "res_multistep",
+          "scheduler_name": "simple",
+          "performance_selection": "Speed",
+          "style_selections": [],
+          "image_number": 1
+        },
+        "source_node_id": "h3_t2v_advanced",
+        "updated_at": "2026-08-03T00:00:00Z"
+      },
+      "model_requirements": {
+        "model_list": [
+          "diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae,minimax_h3_video_vae_fp16.safetensors,5207808496,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_video_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+          "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+        ],
+        "has_model_probe": true,
+        "source": "presets/MiniMax-H3(T2V).json"
+      },
+      "model_status": {
+        "state": "unknown",
+        "missing_count": 0,
+        "message": "MiniMax H3 model requirements loaded; check or download models before running."
+      },
+      "upload_slots": {},
+      "text_inputs": {
+        "prompt": null,
+        "negative_prompt": null
+      },
+      "params": {
+        "prompt": "电影感中景，一名旅行者站在风吹过的海岸悬崖上，镜头缓慢环绕，衣物与草地随风摆动，远处海浪清晰可闻，环境声自然连贯。",
+        "negative_prompt": "",
+        "seed_random": true,
+        "image_seed": 0,
+        "scene_video_duration": 5,
+        "scene_aspect_ratio": "864*480"
+      },
+      "status": "idle",
+      "collapsed": false,
+      "source": {
+        "kind": "template_runnable_preset",
+        "preset": "MiniMax-H3(T2V)"
+      }
+    },
+    {
+      "id": "h3_t2v_result",
+      "type": "result",
+      "x": 1480,
+      "y": -100,
+      "w": 400,
+      "h": 360,
+      "title": "H3 Video With Audio / H3 音画结果",
+      "producer": {
+        "preset_node_id": "h3_t2v_preset",
+        "run_id": null,
+        "task_id": null
+      },
+      "status": {
+        "state": "placeholder",
+        "queue_position": 0,
+        "step": 0,
+        "total_steps": 20,
+        "percent": 0,
+        "message": "Run MiniMax-H3(T2V) after the models are ready."
+      },
+      "preview": null,
+      "asset": null,
+      "source": {
+        "kind": "template_result_placeholder"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "h3_t2v_edge_models",
+      "type": "config",
+      "from": "h3_t2v_models",
+      "to": "h3_t2v_preset",
+      "slot": "models"
+    },
+    {
+      "id": "h3_t2v_edge_resolution",
+      "type": "config",
+      "from": "h3_t2v_resolution",
+      "to": "h3_t2v_preset",
+      "slot": "resolution"
+    },
+    {
+      "id": "h3_t2v_edge_advanced",
+      "type": "config",
+      "from": "h3_t2v_advanced",
+      "to": "h3_t2v_preset",
+      "slot": "advanced"
+    },
+    {
+      "id": "h3_t2v_edge_result",
+      "type": "generate",
+      "from": "h3_t2v_preset",
+      "to": "h3_t2v_result",
+      "slot": "preset"
+    }
+  ],
+  "runs": [],
+  "template": {
+    "id": "minimax_h3_t2v_basic",
+    "title": {
+      "en": "MiniMax H3 Text to Video",
+      "zh": "MiniMax-H3 文生视频"
+    },
+    "description": {
+      "en": "A runnable MiniMax H3 text-to-video template with native generated audio, model checks, resolution controls, and a video Result.",
+      "zh": "可运行的 MiniMax H3 文生视频模板，包含原生生成音频、模型检查、分辨率控制和视频结果。"
+    },
+    "category": "video",
+    "tags": [
+      "video",
+      "minimax",
+      "h3",
+      "t2v",
+      "text-to-video",
+      "native-audio",
+      "runnable",
+      "文生视频"
+    ],
+    "type_label": {
+      "en": "Text to video",
+      "zh": "文生视频"
+    },
+    "model_dependency": {
+      "mode": "requires_models",
+      "label": {
+        "en": "Requires H3 models",
+        "zh": "需要 H3 模型"
+      },
+      "note": {
+        "en": "Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, and both H3 VAEs.",
+        "zh": "需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器和两个 H3 VAE。"
+      },
+      "models": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax_h3_video_vae_fp16.safetensors",
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    "preview": ""
+  }
+}

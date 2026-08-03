@@ -60,10 +60,13 @@
         'image_anime_to_real', 'image_view_synthesis', 'image_depth_estimation',
         'image_object_transfer', 'image_expression_transfer'
     ]);
-    const CREATIVE_IMAGE_INPUT_TASKS = new Set([...CREATIVE_IMAGE_TASKS].filter((task) => task !== 'text_to_image'));
+    const CREATIVE_VIDEO_TASKS = new Set(['text_to_video', 'image_to_video', 'multi_image_to_video']);
+    const CREATIVE_GENERATION_TASKS = new Set([...CREATIVE_IMAGE_TASKS, ...CREATIVE_VIDEO_TASKS]);
+    const CREATIVE_TEXT_TASKS = new Set(['text_to_image', 'text_to_video']);
+    const CREATIVE_IMAGE_INPUT_TASKS = new Set([...CREATIVE_GENERATION_TASKS].filter((task) => !CREATIVE_TEXT_TASKS.has(task)));
     const CREATIVE_MULTI_IMAGE_TASKS = new Set([
         'multi_image_edit', 'image_style_transfer', 'image_face_swap', 'image_pose_transfer',
-        'image_object_transfer', 'image_expression_transfer'
+        'image_object_transfer', 'image_expression_transfer', 'multi_image_to_video'
     ]);
     const CREATIVE_TASK_ALIASES = {
         t2i: 'text_to_image',
@@ -92,7 +95,16 @@
         feature_transfer: 'image_object_transfer',
         object_transfer: 'image_object_transfer',
         image_feature_transfer: 'image_object_transfer',
-        expression_transfer: 'image_expression_transfer'
+        expression_transfer: 'image_expression_transfer',
+        t2v: 'text_to_video',
+        text2video: 'text_to_video',
+        generate_video: 'text_to_video',
+        i2v: 'image_to_video',
+        image2video: 'image_to_video',
+        reference_to_video: 'multi_image_to_video',
+        ref_to_video: 'multi_image_to_video',
+        r2v: 'multi_image_to_video',
+        multi_i2v: 'multi_image_to_video'
     };
 
     function normalizeCreativePreference(value) {
@@ -609,7 +621,7 @@
     }
 
     function mediaKind(value) {
-        return /^video\//i.test(String(value?.mime || value?.type || '')) ? 'video' : 'image';
+        return String(value?.kind || '').toLowerCase() === 'video' || /^video\//i.test(String(value?.mime || value?.type || '')) ? 'video' : 'image';
     }
 
     function describeInputMediaDescriptor() {
@@ -1947,11 +1959,11 @@
         return {
             type,
             target: 'canvas_run',
-            task: CREATIVE_IMAGE_TASKS.has(task) ? task : 'text_to_image',
+            task: CREATIVE_GENERATION_TASKS.has(task) ? task : 'text_to_image',
             requested_task: String(action.requested_task || action.task_request?.task || '').trim().slice(0, 80),
             media_inputs: persistedMediaInputs,
             prompt,
-            preset: String(action.preset || (action.execution_plan?.status === 'no_compatible_route' ? '' : CREATIVE_DEFAULT_PRESET)).slice(0, 200),
+            preset: String(action.preset || (action.execution_plan?.status === 'no_compatible_route' || CREATIVE_VIDEO_TASKS.has(task) ? '' : CREATIVE_DEFAULT_PRESET)).slice(0, 200),
             preset_source: ['agent_auto', 'session_preference', 'user'].includes(String(action.preset_source || ''))
                 ? String(action.preset_source)
                 : '',
@@ -2760,7 +2772,7 @@
             if (!entry || typeof entry !== 'object') return;
             const name = String(entry.name || entry.display_name || '').trim().replace(/\.json$/i, '');
             const engineType = String(entry.engine_type || entry.default_engine?.engine_type || 'image').trim().toLowerCase();
-            if (!name || seen.has(name.toLowerCase()) || ['video', 'audio'].includes(engineType)) return;
+            if (!name || seen.has(name.toLowerCase()) || engineType === 'audio') return;
             seen.add(name.toLowerCase());
             rows.push(Object.assign({}, entry, { name, display_name: String(entry.display_name || name) }));
         });
@@ -2890,9 +2902,12 @@
         const stableRequest = String(action?.requested_task || action?.task_request?.task || '').trim();
         const requested = String(stableRequest || action?.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const normalized = CREATIVE_TASK_ALIASES[requested] || requested;
-        if (!CREATIVE_IMAGE_TASKS.has(normalized)) {
+        if (!CREATIVE_GENERATION_TASKS.has(normalized)) {
             return inputCount > 1 ? 'multi_image_edit' : inputCount === 1 ? 'image_edit' : 'text_to_image';
         }
+        if (normalized === 'text_to_video' && inputCount > 0) return inputCount > 1 ? 'multi_image_to_video' : 'image_to_video';
+        if (normalized === 'image_to_video' && inputCount > 1) return 'multi_image_to_video';
+        if (normalized === 'multi_image_to_video' && inputCount === 1 && !stableRequest) return 'image_to_video';
         if (normalized === 'text_to_image' && inputCount > 0) return inputCount > 1 ? 'multi_image_edit' : 'image_edit';
         if (normalized === 'image_edit' && inputCount > 1) return 'multi_image_edit';
         if (normalized === 'multi_image_edit' && inputCount === 1 && !stableRequest) return 'image_edit';
@@ -2900,13 +2915,18 @@
     }
 
     function creativePresetSupportedTasks(entry) {
+        const outputType = String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image';
         const declared = Array.isArray(entry?.media_capability?.supported_tasks)
             ? entry.media_capability.supported_tasks.map((task) => {
                 const taskKey = String(task || '').trim().toLowerCase().replace(/[- ]/g, '_');
                 return CREATIVE_TASK_ALIASES[taskKey] || taskKey;
             })
             : [];
-        if (declared.length) return [...new Set(declared.filter((task) => CREATIVE_IMAGE_TASKS.has(task)))];
+        if (declared.length) {
+            return [...new Set(declared.filter((task) => (
+                outputType === 'video' ? CREATIVE_VIDEO_TASKS.has(task) : CREATIVE_IMAGE_TASKS.has(task)
+            )))];
+        }
         const descriptor = [
             entry?.name,
             entry?.task_method,
@@ -2918,6 +2938,10 @@
             'retouch', 'imagerepair', 'image repair', 'pose editor', 'a2r'
         ];
         const maxImages = creativePresetMaxImages(entry);
+        if (outputType === 'video') {
+            if (maxImages < 1) return ['text_to_video'];
+            return maxImages > 1 ? ['image_to_video', 'multi_image_to_video'] : ['image_to_video'];
+        }
         if (maxImages > 0 && editMarkers.some((marker) => descriptor.includes(marker))) {
             return maxImages > 1 ? ['image_edit', 'multi_image_edit'] : ['image_edit'];
         }
@@ -2927,7 +2951,7 @@
     function creativePresetSupportsTask(entry, task, inputCount = 0) {
         if (!entry || !creativePresetSupportedTasks(entry).includes(task)) return false;
         const count = Math.max(0, Math.round(Number(inputCount) || 0));
-        if (task === 'text_to_image') return count === 0;
+        if (CREATIVE_TEXT_TASKS.has(task)) return count === 0;
         const required = creativeRequiredImageCount(entry, task);
         return count >= required && count <= creativePresetMaxImages(entry);
     }
@@ -2964,7 +2988,7 @@
             return [...new Set(declared.map((task) => {
                 const key = String(task || '').trim().toLowerCase().replace(/[- ]/g, '_');
                 return CREATIVE_TASK_ALIASES[key] || key;
-            }).filter((task) => CREATIVE_IMAGE_TASKS.has(task)))];
+            }).filter((task) => CREATIVE_GENERATION_TASKS.has(task)))];
         }
         return [];
     }
@@ -3179,6 +3203,9 @@
     function creativeCompatiblePresetEntry(task, inputCount = 0) {
         const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
         const taskPriorities = {
+            text_to_video: ['MiniMax-H3(T2V)', 'Wan(T2V)', 'LTX2.3(T2V)', 'Wan-TTP'],
+            image_to_video: ['MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Wan(I2V)', 'Dasiwa(I2V)', 'LTX2.3(I2V)'],
+            multi_image_to_video: ['MiniMax-H3(R2V)', 'MiniMax-H3(I2V)', 'Wan(I2V)', 'Dasiwa(I2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
             image_restore: ['Imagerepair+'],
             image_detail_enhance: ['Z-imageT', 'Anima', 'Flux2-Klein', 'Qwen2512', 'Wan(T2I)', 'Flux1-dev', 'NunFlux_fp4', 'NunFlux_int4', 'Illustrious(OB)', 'Illustrious(MiaoKa)', 'ChenkinXL', 'SD1.5'],
@@ -3356,10 +3383,10 @@
             .map(normalizeCreativeMediaInput)
             .filter(Boolean);
         const requestedTask = String(action.requested_task || action.task_request?.task || action.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
-        if (!action.requested_task && CREATIVE_IMAGE_TASKS.has(requestedTask)) action.requested_task = requestedTask;
+        if (!action.requested_task && CREATIVE_GENERATION_TASKS.has(requestedTask)) action.requested_task = requestedTask;
         action.task = creativeActionTask(action, action.media_inputs.length);
         const noCompatibleRoute = action.execution_plan?.status === 'no_compatible_route';
-        action.preset = String(action.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET)).trim();
+        action.preset = String(action.preset || (noCompatibleRoute || CREATIVE_VIDEO_TASKS.has(action.task) ? '' : CREATIVE_DEFAULT_PRESET)).trim();
         action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
         action.image_number = Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1)));
         action.tool_call_id = String(action.tool_call_id || uid('describe_vlm_chat_tool'));
@@ -3580,6 +3607,9 @@
     function creativeTaskLabel(task) {
         const labels = {
             text_to_image: ['Image generation', '生图'],
+            text_to_video: ['Text to video', '文生视频'],
+            image_to_video: ['Image to video', '图生视频'],
+            multi_image_to_video: ['Reference images to video', '多参考视频'],
             image_edit: ['Image edit', '图片编辑'],
             multi_image_edit: ['Multi-image edit', '多图编辑'],
             image_upscale: ['Image upscale', '图像放大'],
@@ -3649,7 +3679,9 @@
                 const action = actions[actionIndex];
                 if (!['generate_image', 'offer_image'].includes(action?.type)) continue;
                 if (String(action.generation?.state || '').toLowerCase() !== 'finished') continue;
-                const assets = (Array.isArray(action.generation?.assets) ? action.generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
+                const assets = (Array.isArray(action.generation?.assets) ? action.generation.assets : [])
+                    .map(normalizeCreativeAsset)
+                    .filter((asset) => asset && mediaKind(asset) === 'image');
                 if (assets.length) return { asset: assets[assets.length - 1], index: assets.length - 1 };
             }
             const summaries = Array.isArray(message?.images) ? message.images : [];
@@ -3690,7 +3722,19 @@
         return `<div class="describe-vlm-chat-generated-result" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}"><div class="describe-vlm-chat-generated-meta" title="${escapeHtml(`${presetLabel}: ${presetName}`)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(presetLabel)}</span><b>${escapeHtml(presetName)}</b></div>${assets.map((asset, index) => {
             const src = creativeAssetUrl(asset.preview_url);
             if (!src) return '';
-            const resultLabel = localText(`Generated image ${index + 1}`, `生成图片 ${index + 1}`);
+            const video = mediaKind(asset) === 'video';
+            const resultLabel = video
+                ? localText(`Generated video ${index + 1}`, `生成视频 ${index + 1}`)
+                : localText(`Generated image ${index + 1}`, `生成图片 ${index + 1}`);
+            if (video) {
+                return `<div class="describe-vlm-chat-generated-media is-video">
+  <video src="${escapeHtml(src)}" aria-label="${escapeHtml(resultLabel)}" controls preload="metadata" playsinline></video>
+  <div class="describe-vlm-chat-generated-tools" role="toolbar" aria-label="${escapeHtml(localText('Video actions', '视频操作'))}">
+    <button type="button" data-describe-vlm-chat-generation-run="${escapeHtml(actionRef)}" title="${escapeHtml(rerunTitle)}" aria-label="${escapeHtml(rerunTitle)}"><i class="fa-solid fa-rotate-right"></i></button>
+    <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(copyTitle)}" aria-label="${escapeHtml(copyTitle)}"><i class="fa-solid fa-copy"></i></button>
+  </div>
+</div>`;
+            }
             const imageKey = creativeResultImageKey(asset, src);
             const attached = Boolean(imageKey) && state.pendingImages.some((image) => String(image?.key || '') === imageKey);
             const waitingAction = latestNeedsMediaCreativeAction(actionRef);
@@ -4195,6 +4239,8 @@
         const catalog = await ensureCreativePresetCatalog({ force: true });
         const current = creativeActionFromRef(ref);
         if (!current || current.action.generation?._attempt_token !== attemptToken) return;
+        const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
+        const requestedTask = creativeActionTask(action, inputCount);
         let entry = creativePresetEntry(action.preset);
         if (!entry && String(action.preset || '').trim()) {
             action.generation.state = 'preset_missing';
@@ -4205,15 +4251,18 @@
             persistCreativeAction(true);
             return;
         }
-        if (!entry) entry = creativePresetEntry(CREATIVE_DEFAULT_PRESET) || catalog[0] || null;
+        if (!entry) {
+            entry = creativeCompatiblePresetEntry(requestedTask, inputCount)
+                || (CREATIVE_VIDEO_TASKS.has(requestedTask) ? null : creativePresetEntry(CREATIVE_DEFAULT_PRESET))
+                || catalog[0]
+                || null;
+        }
         if (!entry) {
             action.generation.state = 'failed';
-            action.generation.error = localText('No image preset is available.', '没有可用的生图 Preset。');
+            action.generation.error = localText('No compatible media Preset is available.', '没有可用的媒体生成 Preset。');
             persistCreativeAction(true);
             return;
         }
-        const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
-        const requestedTask = creativeActionTask(action, inputCount);
         if (!creativePresetHasTaskRoute(entry, requestedTask, inputCount)) {
             action.generation.state = 'failed';
             action.generation.error = CREATIVE_IMAGE_INPUT_TASKS.has(requestedTask)

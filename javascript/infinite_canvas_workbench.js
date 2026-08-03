@@ -124,11 +124,11 @@
     const CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY || 'simpai.canvas.agentPresetQueues.v1';
     const CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE || ['Z-imageT'];
     const CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE || ['Flux2-KleinEdit'];
-    const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE || ['Wan(I2V)', 'Dasiwa(I2V)'];
-    const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE || ['Wan(T2V)', 'Wan-TTP'];
+    const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE || ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'];
+    const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE || ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'];
     const CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE || ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'];
-    const CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE || ['LTX2.3(TA2V)', 'LTX2.3(IA2V)'];
-    const CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE || ['LTX2.3(IA2V)', 'LTX2.3(TA2V)'];
+    const CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX2.3(TA2V)', 'LTX2.3(IA2V)'];
+    const CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX2.3(IA2V)', 'LTX2.3(TA2V)'];
     const CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET || 'LTX-Outpaint';
     const CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET || 'Wan-Remover';
     const CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET || 'Bernini-VideoEdit';
@@ -208,8 +208,8 @@
     const VLM_MODEL_STATUS_CACHE_TTL_MS = WORKBENCH_VLM.VLM_MODEL_STATUS_CACHE_TTL_MS || 5 * 60 * 1000;
     const TEMPLATE_LIBRARY_MANIFEST_PATH = workbenchStaticFilePath('javascript/canvas_workbench/templates/template-library.json');
     const TEMPLATE_PREVIEW_ROOT = 'javascript/canvas_workbench/templates/previews/';
-    const CANVAS_AGENT_MAX_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_IMAGE_REFERENCES || 3;
-    const CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES || 2;
+    const CANVAS_AGENT_MAX_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_IMAGE_REFERENCES || 5;
+    const CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES || 4;
     const CANVAS_AGENT_MAX_VIDEO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_VIDEO_REFERENCES || 1;
     const CANVAS_AGENT_MAX_AUDIO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_AUDIO_REFERENCES || 1;
     const CANVAS_AGENT_MAX_TEXT_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_TEXT_REFERENCES || 4;
@@ -6241,6 +6241,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         return status;
     }
 
+    function canvasAgentPresetImageCapacity(entry) {
+        const declared = Number(entry?.media_capability?.max_images ?? entry?.schema?.director_capability?.max_images);
+        if (Number.isFinite(declared)) return Math.max(0, Math.round(declared));
+        const probe = createCanvasAgentPresetProbeNode(entry);
+        return canvasAgentUploadSlotsForNode(probe).filter(slot => getUploadSlotMediaKind(slot.key) === 'image').length;
+    }
+
     async function chooseCanvasAgentPresetEntry(kind, options) {
         const opts = options || {};
         const settings = getCanvasAgentSettings();
@@ -6256,6 +6263,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         const uniqueQueue = Array.from(new Set(queue.filter(Boolean)));
         const checked = [];
+        const requiredImageCount = Math.max(0, Math.round(Number(opts.imageCount) || 0));
         for (const name of uniqueQueue) {
             const entry = findPresetCatalogEntryByName(name);
             if (!entry) {
@@ -6266,13 +6274,19 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 checked.push(`${name}: marked missing`);
                 continue;
             }
+            if (requiredImageCount && canvasAgentPresetImageCapacity(entry) < requiredImageCount) {
+                checked.push(`${name}: accepts fewer than ${requiredImageCount} images`);
+                continue;
+            }
             const status = await getCanvasAgentPresetStatus(entry);
             if (status?.ok && status.ready) {
                 return { entry, status, queue: uniqueQueue, checked, override: overrideEntry && normalizePresetName(entry.name || '') === normalizePresetName(overrideEntry.name || '') };
             }
             checked.push(`${name}: ${status?.message || status?.error || 'not ready'}`);
         }
-        const firstAvailable = uniqueQueue.map(findPresetCatalogEntryByName).find(Boolean);
+        const firstAvailable = uniqueQueue
+            .map(findPresetCatalogEntryByName)
+            .find(entry => entry && (!requiredImageCount || canvasAgentPresetImageCapacity(entry) >= requiredImageCount));
         return { entry: firstAvailable || null, status: null, queue: uniqueQueue, checked, override: false };
     }
 
@@ -10564,7 +10578,15 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             setCanvasAgentMessage(t('Image-to-video cancelled before prompt submit.', '图生视频已在提示词提交前取消'));
             return;
         }
-        const choice = await chooseCanvasAgentPresetEntry('i2v', { prompt: opts.originalPrompt || prompt, presetName: opts.presetName || opts.plan?.preset || '' });
+        const extraImageRefs = getCanvasAgentExtraImageReferences()
+            .map(ref => canvasAgentReferenceNode(ref))
+            .filter(node => node && node.id !== target.id && isCanvasAgentImageTarget(node))
+            .slice(0, CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES);
+        const choice = await chooseCanvasAgentPresetEntry('i2v', {
+            prompt: opts.originalPrompt || prompt,
+            presetName: opts.presetName || opts.plan?.preset || '',
+            imageCount: 1 + extraImageRefs.length
+        });
         let entry = choice.entry;
         if (!entry) {
             resetCanvasAgentRunInfo();
@@ -10606,6 +10628,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 opts.plan ? { label: t('Route', '路线'), value: opts.plan.source === 'vlm_agent' ? t('Thinking mode', 'Thinking 模式') : t('Local fallback plan', '本地 fallback 计划') } : null,
                 choice.override ? { label: t('Override', '覆盖'), value: t('Preset mentioned in request', '按指令指定 preset') } : null,
                 { label: t('Source', '源图'), value: canvasAgentShortNodeLabel(target) },
+                extraImageRefs.length ? { label: t('Image refs', '图片参考'), value: String(extraImageRefs.length) } : null,
                 { label: t('Input slot', '输入槽'), value: slotPreview?.label || slotPreview?.key || t('First compatible slot', '第一个兼容输入槽') },
                 { label: t('Resolution', '分辨率'), value: canvasAgentResolutionLabel() },
                 { label: t('Prompt', '提示词'), value: canvasAgentPromptSourceLabel(resolved.source) },
@@ -10635,12 +10658,11 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             source: { kind: 'canvas_agent_created', created_at: nowIso() }
         }));
         applyCanvasAgentPromptToGenerator(node, resolved.prompt);
-        const slot = findCanvasAgentUploadSlotForTarget(node, target, slotPreview?.key);
-        if (!slot) {
+        const connections = connectCanvasAgentImagesToGenerator(node, target, extraImageRefs);
+        if (!connections.ok) {
             showToast(t('Selected image-to-video preset has no compatible image input.', '选择的图生视频预设没有兼容的图片输入'));
             return;
         }
-        createUploadEdge(target.id, node.id, slot, { silent: true });
         applyCanvasAgentResolutionToGenerator(node);
         canvasAgentRunNodeSelection(node);
         setCanvasAgentRunInfo({
@@ -30198,6 +30220,90 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     ]
                 },
                 path: 'javascript/canvas_workbench/templates/wan-t2v-basic.canvas.json',
+                preview: ''
+            },
+            {
+                id: 'minimax_h3_t2v_basic',
+                title: t('MiniMax H3 Text to Video', 'MiniMax-H3 文生视频'),
+                description: t('A runnable MiniMax H3 text-to-video template with native generated audio, model checks, resolution controls, and a video Result.', '可运行的 MiniMax H3 文生视频模板，包含原生生成音频、模型检查、分辨率控制和视频结果。'),
+                category: 'video',
+                tags: ['video', 'minimax', 'h3', 't2v', 'text-to-video', 'native-audio', 'runnable', '文生视频'],
+                typeLabel: t('Text to video', '文生视频'),
+                modelDependency: {
+                    mode: 'requires_models',
+                    label: t('Requires H3 models', '需要 H3 模型'),
+                    note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, and both H3 VAEs.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器和两个 H3 VAE。'),
+                    models: [
+                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_audio_vae_fp32.safetensors'
+                    ]
+                },
+                path: 'javascript/canvas_workbench/templates/minimax-h3-t2v-basic.canvas.json',
+                preview: ''
+            },
+            {
+                id: 'minimax_h3_i2v_basic',
+                title: t('MiniMax H3 Image to Video', 'MiniMax-H3 图生视频'),
+                description: t('A runnable MiniMax H3 image-to-video template using a required first frame and an optional last frame, with native generated audio.', '可运行的 MiniMax H3 图生视频模板，使用必需首帧和可选尾帧，并生成原生音频。'),
+                category: 'video',
+                tags: ['video', 'minimax', 'h3', 'i2v', 'image-to-video', 'first-frame', 'last-frame', 'native-audio', 'runnable', '图生视频'],
+                typeLabel: t('Image to video', '图生视频'),
+                modelDependency: {
+                    mode: 'requires_models',
+                    label: t('Requires images + H3 models', '需要图片和 H3 模型'),
+                    note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, both H3 VAEs, and a first-frame image.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE 和一张首帧图。'),
+                    models: [
+                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_audio_vae_fp32.safetensors'
+                    ]
+                },
+                path: 'javascript/canvas_workbench/templates/minimax-h3-i2v-basic.canvas.json',
+                preview: ''
+            },
+            {
+                id: 'minimax_h3_r2v_basic',
+                title: t('MiniMax H3 Mixed References to Video', 'MiniMax-H3 多参考视频'),
+                description: t('A runnable MiniMax H3 reference-to-video template supporting up to five images, two videos with paired soundtracks, and one standalone audio reference.', '可运行的 MiniMax H3 多参考视频模板，支持最多五张图片、两个带配对音轨的视频和一个独立音频参考。'),
+                category: 'video',
+                tags: ['video', 'minimax', 'h3', 'r2v', 'reference-to-video', 'multi-image', 'multi-modal', 'video-reference', 'audio-reference', 'ordered-references', 'native-audio', 'runnable', '多参考视频'],
+                typeLabel: t('Mixed references to video', '多参考视频'),
+                modelDependency: {
+                    mode: 'requires_models',
+                    label: t('Requires media + H3 models', '需要参考媒体和 H3 模型'),
+                    note: t('Requires the MiniMax H3 Ref2VA model, Qwen3-VL text encoder, both H3 VAEs, and at least one image, video, or audio reference.', '需要 MiniMax H3 Ref2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE，以及至少一个图片、视频或音频参考。'),
+                    models: [
+                        'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+                        'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_audio_vae_fp32.safetensors'
+                    ]
+                },
+                path: 'javascript/canvas_workbench/templates/minimax-h3-r2v-basic.canvas.json',
+                preview: ''
+            },
+            {
+                id: 'director_minimax_h3_loop',
+                title: t('Director + MiniMax H3 Native Audio', 'Director + MiniMax-H3 原生音频分镜'),
+                description: t('A runnable Director Timeline template that generates two MiniMax H3 shots and composes the segment videos while retaining their generated audio.', '可运行的 Director Timeline 模板，生成两个 MiniMax H3 分镜，并在合成分段视频时保留模型生成的音频。'),
+                category: 'video',
+                tags: ['video', 'director', 'timeline', 'minimax', 'h3', 't2v', 'native-audio', 'prompt_override', 'result', 'runnable', '导演', '分镜'],
+                typeLabel: t('Director video with audio', '导演分镜音画'),
+                modelDependency: {
+                    mode: 'requires_models',
+                    label: t('Requires H3 models', '需要 H3 模型'),
+                    note: t('Requires the MiniMax H3 T2V model set. Each shot generates video and audio before Timeline composition.', '需要 MiniMax H3 文生视频模型组。每个分镜先生成视频和音频，再进入 Timeline 合成。'),
+                    models: [
+                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_audio_vae_fp32.safetensors'
+                    ]
+                },
+                path: 'javascript/canvas_workbench/templates/director-minimax-h3-loop.canvas.json',
                 preview: ''
             },
             {

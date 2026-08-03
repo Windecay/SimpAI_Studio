@@ -9,6 +9,7 @@ import folder_paths
 
 
 VIDEO_EXTENSIONS = ("webm", "mp4", "mkv", "gif", "mov")
+AUDIO_EXTENSIONS = ("wav", "mp3", "flac", "ogg", "m4a", "aac", "wma")
 
 
 def _clean_video_value(video):
@@ -56,8 +57,8 @@ class SimpAIOptionalVideoPath:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "INT")
-    RETURN_NAMES = ("IMAGE", "frame_count")
+    RETURN_TYPES = ("IMAGE", "INT", "AUDIO")
+    RETURN_NAMES = ("IMAGE", "frame_count", "AUDIO")
     FUNCTION = "load_video"
     CATEGORY = "SimpAI/video"
 
@@ -92,8 +93,8 @@ class SimpAIOptionalReferenceVideoPath:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "INT")
-    RETURN_NAMES = ("IMAGE", "frame_count")
+    RETURN_TYPES = ("IMAGE", "INT", "AUDIO")
+    RETURN_NAMES = ("IMAGE", "frame_count", "AUDIO")
     FUNCTION = "load_video"
     CATEGORY = "SimpAI/video"
 
@@ -115,10 +116,59 @@ class SimpAIOptionalReferenceVideoPath:
         return True
 
 
+class SimpAIOptionalAudioPath:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("STRING", {"default": "", "multiline": False, "vhs_path_extensions": list(AUDIO_EXTENSIONS)}),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("AUDIO",)
+    FUNCTION = "load_audio"
+    CATEGORY = "SimpAI/audio"
+
+    def load_audio(self, audio):
+        path = _resolve_video_path(audio)
+        if not path:
+            return (None,)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Optional reference audio file not found: {audio}")
+        return (_load_audio_value(path, "Optional reference audio"),)
+
+    @classmethod
+    def IS_CHANGED(cls, audio, **kwargs):
+        return _file_hash(_resolve_video_path(audio))
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, audio, **kwargs):
+        text = _clean_video_value(audio)
+        if not text:
+            return True
+        path = _resolve_video_path(text)
+        if not os.path.isfile(path):
+            return f"Invalid optional reference audio file: {audio}"
+        return True
+
+
+def _load_audio_value(path, label, allow_missing_stream=False):
+    from comfy_extras.nodes_audio import load as load_audio
+
+    try:
+        waveform, sample_rate = load_audio(path)
+    except ValueError as err:
+        if allow_missing_stream and "no audio stream" in str(err).lower():
+            return None
+        raise ValueError(f"{label} could not be decoded: {path}") from err
+    return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+
+
 def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, label="Optional video"):
     path = _resolve_video_path(video)
     if not path:
-        return (None, 0)
+        return (None, 0, None)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"{label} file not found: {video}")
 
@@ -160,15 +210,18 @@ def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=
 
     if not frames:
         raise RuntimeError(f"{label} produced no frames: {path}")
-    return (torch.from_numpy(np.stack(frames, axis=0)), len(frames))
+    audio = _load_audio_value(path, f"{label} audio", allow_missing_stream=True)
+    return (torch.from_numpy(np.stack(frames, axis=0)), len(frames), audio)
 
 
 NODE_CLASS_MAPPINGS = {
     "SimpAIOptionalVideoPath": SimpAIOptionalVideoPath,
     "SimpAIOptionalReferenceVideoPath": SimpAIOptionalReferenceVideoPath,
+    "SimpAIOptionalAudioPath": SimpAIOptionalAudioPath,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpAIOptionalVideoPath": "SimpAI Optional Video Path",
     "SimpAIOptionalReferenceVideoPath": "SimpAI Optional Reference Video Path",
+    "SimpAIOptionalAudioPath": "SimpAI Optional Audio Path",
 }

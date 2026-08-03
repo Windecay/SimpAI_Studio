@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["image_to_video", "multi_image_to_video"],
+  "supported_tasks": ["image_to_video", "multi_image_to_video", "audio_to_video", "image_audio_to_video", "video_audio_to_video"],
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
@@ -21,26 +21,24 @@
       "theme_labels": {
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"}
       },
-      "theme_title": "MiniMax H3 Reference-to-Video [Upload 1-5 reference images in order]",
+      "theme_title": "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]",
       "director_capability": {
-        "image_policy": "required",
-        "audio_policy": "forbidden",
-        "video_policy": "forbidden",
+        "image_policy": "optional",
+        "audio_policy": "optional",
+        "video_policy": "optional",
         "max_images": 5,
-        "min_images": 1,
-        "image_modes": ["reference_set"],
+        "min_images": 0,
+        "image_modes": ["none", "reference_set"],
+        "video_modes": ["explicit"],
         "duration_strategy": "shot",
         "audio_output": "generated",
-        "mixed_segments": false
+        "mixed_segments": true
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_reference_video"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",
-        "scene_video",
-        "scene_reference_video",
-        "scene_audio",
         "scene_var_number",
         "scene_var_number2",
         "scene_var_number3",
@@ -64,16 +62,16 @@
       "task_method": {"Basic": "minimax_h3_r2v_cn"},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Rewrite the request as one concise MiniMax H3 reference-to-video prompt in the user's language. Refer to uploaded images only as <Picture 1>, <Picture 2>, and so on, in upload order, and use only tags that exist. State which subject, identity, object, style, or composition comes from each picture. Describe coherent motion, camera movement, timing, and matching generated audio. Do not invent dialogue unless requested. Return only the final prompt."
+        "Basic": "Rewrite the request as one concise MiniMax H3 reference-to-video prompt in the user's language. Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only tags that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack is paired with that video automatically. Describe coherent motion, camera movement, timing, and matching generated audio. Do not invent dialogue unless requested. Return only the final prompt."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
       "video_duration_max": 15,
       "video_duration": {"Basic": 5},
       "aspect_ratio": [
+        "640*640",
         "864*480",
         "480*864",
-        "640*640",
         "736*576",
         "576*736",
         "800*544",
@@ -89,7 +87,7 @@
         "interactive": true,
         "frontend_preprocess": false,
         "preprocess_target": "none",
-        "preprocess_fit": "scale"
+        "preprocess_fit": "pad"
       },
       "overwrite_step_min": 1,
       "overwrite_step_max": 50

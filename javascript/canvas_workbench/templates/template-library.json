@@ -264,6 +264,150 @@
       "preview": ""
     },
     {
+      "id": "minimax_h3_t2v_basic",
+      "title": {
+        "en": "MiniMax H3 Text to Video",
+        "zh": "MiniMax-H3 文生视频"
+      },
+      "description": {
+        "en": "A runnable MiniMax H3 text-to-video template with native generated audio, model checks, resolution controls, and a video Result.",
+        "zh": "可运行的 MiniMax H3 文生视频模板，包含原生生成音频、模型检查、分辨率控制和视频结果。"
+      },
+      "category": "video",
+      "tags": ["video", "minimax", "h3", "t2v", "text-to-video", "native-audio", "runnable", "文生视频"],
+      "type_label": {
+        "en": "Text to video",
+        "zh": "文生视频"
+      },
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {
+          "en": "Requires H3 models",
+          "zh": "需要 H3 模型"
+        },
+        "note": {
+          "en": "Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, and both H3 VAEs.",
+          "zh": "需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器和两个 H3 VAE。"
+        },
+        "models": [
+          "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "minimax_h3_video_vae_fp16.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors"
+        ]
+      },
+      "path": "javascript/canvas_workbench/templates/minimax-h3-t2v-basic.canvas.json",
+      "preview": ""
+    },
+    {
+      "id": "minimax_h3_i2v_basic",
+      "title": {
+        "en": "MiniMax H3 Image to Video",
+        "zh": "MiniMax-H3 图生视频"
+      },
+      "description": {
+        "en": "A runnable MiniMax H3 image-to-video template using a required first frame and an optional last frame, with native generated audio.",
+        "zh": "可运行的 MiniMax H3 图生视频模板，使用必需首帧和可选尾帧，并生成原生音频。"
+      },
+      "category": "video",
+      "tags": ["video", "minimax", "h3", "i2v", "image-to-video", "first-frame", "last-frame", "native-audio", "runnable", "图生视频"],
+      "type_label": {
+        "en": "Image to video",
+        "zh": "图生视频"
+      },
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {
+          "en": "Requires images + H3 models",
+          "zh": "需要图片和 H3 模型"
+        },
+        "note": {
+          "en": "Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, both H3 VAEs, and a first-frame image.",
+          "zh": "需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE 和一张首帧图。"
+        },
+        "models": [
+          "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "minimax_h3_video_vae_fp16.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors"
+        ]
+      },
+      "path": "javascript/canvas_workbench/templates/minimax-h3-i2v-basic.canvas.json",
+      "preview": ""
+    },
+    {
+      "id": "minimax_h3_r2v_basic",
+      "title": {
+        "en": "MiniMax H3 Mixed References to Video",
+        "zh": "MiniMax-H3 多参考视频"
+      },
+      "description": {
+        "en": "A runnable MiniMax H3 reference-to-video template supporting up to five images, two videos with paired soundtracks, and one standalone audio reference.",
+        "zh": "可运行的 MiniMax H3 多参考视频模板，支持最多五张图片、两个带配对音轨的视频和一个独立音频参考。"
+      },
+      "category": "video",
+      "tags": ["video", "minimax", "h3", "r2v", "reference-to-video", "multi-image", "multi-modal", "video-reference", "audio-reference", "ordered-references", "native-audio", "runnable", "多参考视频"],
+      "type_label": {
+        "en": "Mixed references to video",
+        "zh": "多参考视频"
+      },
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {
+          "en": "Requires media + H3 models",
+          "zh": "需要参考媒体和 H3 模型"
+        },
+        "note": {
+          "en": "Requires the MiniMax H3 Ref2VA model, Qwen3-VL text encoder, both H3 VAEs, and at least one image, video, or audio reference.",
+          "zh": "需要 MiniMax H3 Ref2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE，以及至少一个图片、视频或音频参考。"
+        },
+        "models": [
+          "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+          "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "minimax_h3_video_vae_fp16.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors"
+        ]
+      },
+      "path": "javascript/canvas_workbench/templates/minimax-h3-r2v-basic.canvas.json",
+      "preview": ""
+    },
+    {
+      "id": "director_minimax_h3_loop",
+      "title": {
+        "en": "Director + MiniMax H3 Native Audio",
+        "zh": "Director + MiniMax-H3 原生音频分镜"
+      },
+      "description": {
+        "en": "A runnable Director Timeline template that generates two MiniMax H3 shots and composes the segment videos while retaining their generated audio.",
+        "zh": "可运行的 Director Timeline 模板，生成两个 MiniMax H3 分镜，并在合成分段视频时保留模型生成的音频。"
+      },
+      "category": "video",
+      "tags": ["video", "director", "timeline", "minimax", "h3", "t2v", "native-audio", "prompt_override", "result", "runnable", "导演", "分镜"],
+      "type_label": {
+        "en": "Director video with audio",
+        "zh": "导演分镜音画"
+      },
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {
+          "en": "Requires H3 models",
+          "zh": "需要 H3 模型"
+        },
+        "note": {
+          "en": "Requires the MiniMax H3 T2V model set. Each shot generates video and audio before Timeline composition.",
+          "zh": "需要 MiniMax H3 文生视频模型组。每个分镜先生成视频和音频，再进入 Timeline 合成。"
+        },
+        "models": [
+          "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "minimax_h3_video_vae_fp16.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors"
+        ]
+      },
+      "path": "javascript/canvas_workbench/templates/director-minimax-h3-loop.canvas.json",
+      "preview": ""
+    },
+    {
       "id": "director_wan22_loop",
       "title": {
         "en": "Director + Wan2.2 Loop",

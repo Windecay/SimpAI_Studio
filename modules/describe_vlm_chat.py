@@ -19,6 +19,11 @@ GENERATION_ACTION_ALIASES = {
     "create_image",
     "make_image",
     "draw_image",
+    "text_to_video",
+    "generate_video",
+    "video_generation",
+    "create_video",
+    "make_video",
 }
 IMAGE_GENERATION_TASKS = {
     "text_to_image",
@@ -41,7 +46,14 @@ IMAGE_GENERATION_TASKS = {
     "image_object_transfer",
     "image_expression_transfer",
 }
-IMAGE_INPUT_GENERATION_TASKS = IMAGE_GENERATION_TASKS - {"text_to_image"}
+VIDEO_GENERATION_TASKS = {
+    "text_to_video",
+    "image_to_video",
+    "multi_image_to_video",
+}
+GENERATION_TASKS = IMAGE_GENERATION_TASKS | VIDEO_GENERATION_TASKS
+TEXT_GENERATION_TASKS = {"text_to_image", "text_to_video"}
+IMAGE_INPUT_GENERATION_TASKS = GENERATION_TASKS - TEXT_GENERATION_TASKS
 MULTI_IMAGE_GENERATION_TASKS = {
     "multi_image_edit",
     "image_style_transfer",
@@ -49,6 +61,7 @@ MULTI_IMAGE_GENERATION_TASKS = {
     "image_pose_transfer",
     "image_object_transfer",
     "image_expression_transfer",
+    "multi_image_to_video",
 }
 GENERATION_TASK_ALIASES = {
     "t2i": "text_to_image",
@@ -79,9 +92,21 @@ GENERATION_TASK_ALIASES = {
     "object_transfer": "image_object_transfer",
     "image_feature_transfer": "image_object_transfer",
     "expression_transfer": "image_expression_transfer",
+    "t2v": "text_to_video",
+    "text2video": "text_to_video",
+    "generate_video": "text_to_video",
+    "i2v": "image_to_video",
+    "image2video": "image_to_video",
+    "reference_to_video": "multi_image_to_video",
+    "ref_to_video": "multi_image_to_video",
+    "r2v": "multi_image_to_video",
+    "multi_i2v": "multi_image_to_video",
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit"),
+    "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
+    "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
+    "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
 }
 CREATIVE_ASPECT_RATIOS = {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "7:4", "4:7"}
 _CANCEL_TTL_SECONDS = 1800
@@ -95,13 +120,13 @@ DESCRIBE_CHAT_BASE_SYSTEM = (
     "When the user provides a system prompt, that user prompt defines the assistant persona, tone, and creative direction. "
     "You can discuss images, prompts, model behavior, visual ideas, and ordinary user questions. "
     "You cannot operate canvas nodes. Creative mode may return a structured media-generation request that the UI executes according to the user's creative preference. "
-    "Never claim that an image is queued, running, or finished before the UI reports that state. "
+    "Never claim that media is queued, running, or finished before the UI reports that state. "
     "Answer naturally in the user's UI language unless the user asks for another language."
 )
 
 CREATIVE_ASSISTANT_SYSTEM = (
     "Creative mode for SimpAI Studio VLM chat. The UI may already show a session preference card for anime, realistic, automatic, or a specific Preset. "
-    "When the user asks to draw, create, render, generate, or edit an image, determine the task type and write the complete executable image prompt, then return exactly one JSON object: "
+    "When the user asks to draw, create, render, generate, or edit an image or video, determine the task type and write the complete executable media prompt, then return exactly one JSON object: "
     "{\"reply\":\"one short user-facing sentence\",\"actions\":[{\"type\":\"generate_image\",\"prompt\":\"complete executable generation prompt or editing instruction\","
     "\"task\":\"task id\",\"media_refs\":[],\"enhance_targets\":[],\"preset_hint\":\"exact Preset name only when the user explicitly named it\","
     "\"parameter_profile_hint\":\"exact private parameter profile name only when the user explicitly named it\","
@@ -117,12 +142,14 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
     "The generate_image action is a task request, not an execution plan and not proof that generation has started. The application selects and validates the Preset, theme, task_method, models, input slots, and interaction requirements. "
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
+    "For video work, use text_to_video with no image refs, image_to_video with one image ref, and multi_image_to_video with two or more image refs in the user's intended order. "
+    "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) uses one to five ordered reference images. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
     "For image_face_swap, when two attached inputs are available, include exactly two media refs in this order: the target/base image first, then the source face-identity image. Never invent missing refs; the application will request them. The application prefers the automatic QwenFaceSwap route when its models are ready; it does not require a painted mask. "
     "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo and image-input editing to Krea2-ImageEdit; do not promise the wrong family member. "
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
     "Flux2 presets use a multilingual Qwen text encoder. Presets whose task_method ends with `_cn`, or whose text encoder is Qwen, must preserve the user's request language instead of applying the legacy FLUX.1/T5 English-only rule. "
     "Use image_detail_enhance for automatic face, hand, eye, or local detail repair through a Classic Preset Enhance workflow, and include enhance_targets using only face, hand, and eye. "
-    "Use the matching specialized task when requested: image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
+    "Use the matching specialized task when requested: text_to_video, image_to_video, multi_image_to_video, image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
     "When the user asks the character or person in image 1 to wear clothing or an outfit from image 2, use image_object_transfer with image 1 first as the target and image 2 second as the clothing reference. This is an image edit, never text_to_image. "
     "For image_outpaint, write prompt as a concise English natural-language FLUX/T5 outpaint instruction, and express the requested expansion as percentage intent in outpaint.up/down/left/right. Use 0 for directions the user excluded. "
     "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. "
@@ -449,13 +476,14 @@ PROMPT_INTENT_RE = re.compile(
     r"整理.*图|整理.*prompt|整理.*tag|优化.*prompt|优化.*提示|改写.*prompt|改写.*提示|"
     r"\bprompt\b|\bprompts\b|\btag\b|\btags\b|\bdanbooru\b|"
     r"\bdraw\b|\bgenerate\b|\bcreate\b|\bmake\b.{0,24}\b(image|picture|illustration|artwork)\b|"
-    r"\bimage prompt\b|\btext to image\b"
+    r"文生视频|图生视频|多参考视频|视频提示词|生成视频|制作视频|"
+    r"\bimage prompt\b|\bvideo prompt\b|\btext to image\b|\btext to video\b|\bimage to video\b"
     r")",
     re.I,
 )
 CREATIVE_CONTINUATION_INTENT_RE = re.compile(
     r"(?:继续|再来|再生成|再画|换)(?:一|下)?(?:张|幅|个)|下一张|下一幅|"
-    r"\b(?:another|next)\s+(?:one|image|picture|photo|illustration|artwork)\b",
+    r"\b(?:another|next)\s+(?:one|image|picture|photo|illustration|artwork|video|clip)\b",
     re.I,
 )
 CREATIVE_GENERATION_INTENT_RE = re.compile(
@@ -465,7 +493,17 @@ CREATIVE_GENERATION_INTENT_RE = re.compile(
     r"(?:继续|再来|再生成|再画|换)(?:一|下)?(?:张|幅|个)|下一张|下一幅|"
     r"\b(?:draw|render)\b|\b(?:generate|create|make)\b.{0,30}\b(?:image|picture|photo|illustration|artwork)\b|"
     r"\b(?:another|next)\s+(?:one|image|picture|photo|illustration|artwork)\b"
+    r"|文生视频|图生视频|多参考视频|生成.{0,8}(?:视频|影片|短片)|制作.{0,8}(?:视频|影片|短片)|"
+    r"\b(?:generate|create|make|render)\b.{0,30}\b(?:video|movie|clip|animation)\b|"
+    r"\b(?:text|image|reference)[-_ ]?to[-_ ]?video\b"
     r")",
+    re.I,
+)
+VIDEO_GENERATION_INTENT_RE = re.compile(
+    r"文生视频|图生视频|多参考视频|参考图.{0,10}(?:生成|制作).{0,8}视频|"
+    r"生成.{0,8}(?:视频|影片|短片)|制作.{0,8}(?:视频|影片|短片)|"
+    r"\b(?:generate|create|make|render)\b.{0,30}\b(?:video|movie|clip|animation)\b|"
+    r"\b(?:text|image|reference)[-_ ]?to[-_ ]?video\b|\b(?:t2v|i2v|r2v)\b",
     re.I,
 )
 CREATIVE_EDIT_INTENT_RE = re.compile(
@@ -615,11 +653,16 @@ def _localized_creative_generation_reply(actions, lang, auto_generate=False):
         return ""
     plan = generation.get("execution_plan") if isinstance(generation.get("execution_plan"), dict) else {}
     task = str(plan.get("task") or generation.get("task") or "text_to_image").strip().lower()
+    video = task in VIDEO_GENERATION_TASKS
     editing = task != "text_to_image"
     if _normalize_lang(lang) == "en":
+        if video:
+            return "I prepared the video plan and am starting it now." if auto_generate else "I prepared a video-generation proposal. Review the inputs and options, then confirm."
         if auto_generate:
             return "I prepared the image-editing plan and am starting it now." if editing else "I prepared the image-generation plan and am starting it now."
         return "I prepared an image-editing proposal. Review the source image and options, then confirm." if editing else _localized_default_reply("generate_image", "en")
+    if video:
+        return "已准备视频方案，正在开始生成。" if auto_generate else "已准备视频生成方案，请检查输入和选项后确认。"
     if auto_generate:
         return "已准备修图方案，正在开始处理。" if editing else "已准备生图方案，正在开始生成。"
     return "已准备修图方案，请检查输入图片和选项后确认。" if editing else _localized_default_reply("generate_image", "cn")
@@ -782,10 +825,16 @@ def _normalize_preset_capabilities(value, limit=100):
         for raw_task in item.get("supported_tasks") if isinstance(item.get("supported_tasks"), list) else []:
             task_key = str(raw_task or "").strip().lower().replace("-", "_").replace(" ", "_")
             task = GENERATION_TASK_ALIASES.get(task_key, task_key)
-            if task in IMAGE_GENERATION_TASKS and task not in supported_tasks:
+            if task in GENERATION_TASKS and task not in supported_tasks:
                 supported_tasks.append(task)
-        if output_type == "video":
-            supported_tasks = []
+        supported_tasks = [
+            task for task in supported_tasks
+            if (task in VIDEO_GENERATION_TASKS) == (output_type == "video")
+        ]
+        if not supported_tasks and output_type == "video":
+            supported_tasks = ["text_to_video"] if max_images == 0 else ["image_to_video"]
+            if max_images > 1:
+                supported_tasks.append("multi_image_to_video")
         elif not supported_tasks:
             descriptor = " ".join(
                 _clean_text(item.get(key)).lower()
@@ -804,7 +853,7 @@ def _normalize_preset_capabilities(value, limit=100):
                 supported_tasks = ["text_to_image"]
         supported_tasks = [
             task for task in supported_tasks
-            if task == "text_to_image"
+            if task in TEXT_GENERATION_TASKS
             or (task in IMAGE_INPUT_GENERATION_TASKS and max_images >= 1)
             and (task not in MULTI_IMAGE_GENERATION_TASKS or max_images >= 2)
         ]
@@ -863,7 +912,7 @@ def _normalize_preset_capabilities(value, limit=100):
             for raw_task in theme_info.get("supported_tasks") if isinstance(theme_info.get("supported_tasks"), list) else []:
                 task_key = str(raw_task or "").strip().lower().replace("-", "_").replace(" ", "_")
                 task = GENERATION_TASK_ALIASES.get(task_key, task_key)
-                if task in IMAGE_GENERATION_TASKS and task not in theme_tasks:
+                if task in GENERATION_TASKS and task not in theme_tasks:
                     theme_tasks.append(task)
             per_theme[theme] = {"task_method": theme_method, "supported_tasks": theme_tasks}
         normalized.append(
@@ -1684,16 +1733,37 @@ def _infer_specialized_generation_task(text):
     return ""
 
 
+def _infer_video_generation_task(text, media_refs=None):
+    source = str(text or "").strip()
+    refs = media_refs if isinstance(media_refs, list) else []
+    if not source or not VIDEO_GENERATION_INTENT_RE.search(source):
+        return ""
+    if len(refs) > 1 or re.search(r"多参考|多图|reference[-_ ]?to[-_ ]?video|\br2v\b", source, re.I):
+        return "multi_image_to_video"
+    if refs or re.search(r"图生视频|image[-_ ]?to[-_ ]?video|\bi2v\b|参考图", source, re.I):
+        return "image_to_video"
+    return "text_to_video"
+
+
 def _normalize_generation_task(value, media_refs, intent_text=""):
     task_key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     task = GENERATION_TASK_ALIASES.get(task_key, task_key)
     inferred_task = _infer_specialized_generation_task(intent_text)
-    if task not in IMAGE_GENERATION_TASKS:
-        task = inferred_task or ("multi_image_edit" if len(media_refs) > 1 else "image_edit" if media_refs else "text_to_image")
+    inferred_video_task = _infer_video_generation_task(intent_text, media_refs)
+    if task not in GENERATION_TASKS:
+        task = inferred_video_task or inferred_task or ("multi_image_edit" if len(media_refs) > 1 else "image_edit" if media_refs else "text_to_image")
+    elif inferred_video_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
+        task = inferred_video_task
     elif inferred_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
         task = inferred_task
     if not media_refs:
         return task
+    if task == "text_to_video":
+        return "multi_image_to_video" if len(media_refs) > 1 else "image_to_video"
+    if task == "image_to_video" and len(media_refs) > 1:
+        return "multi_image_to_video"
+    if task == "multi_image_to_video" and len(media_refs) == 1:
+        return "image_to_video"
     if task == "text_to_image":
         return "multi_image_edit" if len(media_refs) > 1 else "image_edit"
     if task == "image_edit" and len(media_refs) > 1:
@@ -1701,6 +1771,10 @@ def _normalize_generation_task(value, media_refs, intent_text=""):
     if task == "multi_image_edit" and len(media_refs) == 1:
         return "image_edit"
     return task
+
+
+def _generation_task_output_type(task):
+    return "video" if str(task or "").strip().lower() in VIDEO_GENERATION_TASKS else "image"
 
 
 def _generation_media_limit(preset, preset_capabilities, default=5):
@@ -1715,7 +1789,7 @@ def _generation_media_limit(preset, preset_capabilities, default=5):
 
 def _preset_supports_generation_task(preset, task, image_count, preset_capabilities):
     capability = _preset_capability_map(preset_capabilities).get(str(preset or "").strip().lower())
-    if not capability or capability.get("output_type") != "image":
+    if not capability or capability.get("output_type") != _generation_task_output_type(task):
         return False
     normalized_task = str(task or "").strip().lower().replace("-", "_")
     supported_tasks = capability.get("supported_tasks") if isinstance(capability.get("supported_tasks"), list) else []
@@ -1727,7 +1801,7 @@ def _preset_supports_generation_task(preset, task, image_count, preset_capabilit
         count = max(0, int(image_count or 0))
     except Exception:
         return False
-    if normalized_task == "text_to_image":
+    if normalized_task in TEXT_GENERATION_TASKS:
         return count == 0
     required = max(1, min_images)
     if normalized_task in MULTI_IMAGE_GENERATION_TASKS:
@@ -1746,6 +1820,9 @@ def _preset_requires_manual_interaction(capability):
 
 
 GENERATION_PRESET_PRIORITIES = {
+    "text_to_video": ("MiniMax-H3(T2V)", "Wan(T2V)", "LTX2.3(T2V)", "Wan-TTP"),
+    "image_to_video": ("MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "Wan(I2V)", "Dasiwa(I2V)", "LTX2.3(I2V)"),
+    "multi_image_to_video": ("MiniMax-H3(R2V)", "MiniMax-H3(I2V)", "Wan(I2V)", "Dasiwa(I2V)"),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
     "image_restore": ("Imagerepair+", "OneKeyKontext"),
     "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "NunFlux_fp4", "NunFlux_int4", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
@@ -1774,7 +1851,7 @@ def _generation_preset_priorities(task):
 
 
 def _capability_route_rows(capability, task):
-    if not isinstance(capability, dict) or capability.get("output_type") != "image":
+    if not isinstance(capability, dict) or capability.get("output_type") != _generation_task_output_type(task):
         return []
     preset_tasks = capability.get("supported_tasks") if isinstance(capability.get("supported_tasks"), list) else []
     themes = capability.get("themes") if isinstance(capability.get("themes"), list) else []
@@ -1807,7 +1884,7 @@ def _capability_accepts_image_count(capability, task, image_count):
         count = max(0, int(image_count or 0))
     except Exception:
         return False
-    if task == "text_to_image":
+    if task in TEXT_GENERATION_TASKS:
         return count == 0 and min_images == 0
     required = max(1, min_images)
     if task in MULTI_IMAGE_GENERATION_TASKS:
@@ -1821,7 +1898,7 @@ def _explicit_preset_family(message):
         escaped = re.escape(alias)
         patterns = (
             rf"(?:用|使用|选用|选择|改用|换用|通过)\s*{escaped}(?:\s*2)?(?:\b|(?=[\u3400-\u9fff]))",
-            rf"(?<![a-z0-9]){escaped}(?:\s*2)?\s*(?:生成|生图|画|制作|创建|修改|编辑|修图|处理)",
+            rf"(?<![a-z0-9]){escaped}(?:\s*2)?\s*(?:生成|生图|视频|影片|短片|画|制作|创建|修改|编辑|修图|处理)",
             rf"\b(?:use|using|with|via|choose|select|switch\s+to)\s+(?:the\s+)?{escaped}(?:\s*2)?\b",
         )
         if any(re.search(pattern, source, re.I) for pattern in patterns):
@@ -2036,7 +2113,7 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
     )
     if task == "text_to_image" and CREATIVE_EDIT_INTENT_RE.search(intent_text):
         task = "multi_image_edit" if len(available) > 1 else "image_edit"
-    if task != "text_to_image" and not refs:
+    if task in IMAGE_INPUT_GENERATION_TASKS and not refs:
         refs = available[:5]
         task = _normalize_generation_task(task, refs, user_message or instruction)
     outpaint = _normalize_outpaint_intent(
@@ -2084,7 +2161,7 @@ def compile_creative_execution_plan(
         for route in _capability_route_rows(capability, task):
             route_rows.append({"capability": capability, "order": order, **route})
 
-    required_count = 0 if task == "text_to_image" else 2 if task in MULTI_IMAGE_GENERATION_TASKS else 1
+    required_count = 0 if task in TEXT_GENERATION_TASKS else 2 if task in MULTI_IMAGE_GENERATION_TASKS else 1
     count_compatible = [
         route for route in route_rows
         if _capability_accepts_image_count(route["capability"], task, len(refs))
@@ -2300,7 +2377,7 @@ def _apply_generation_media_limits(actions, available_media_refs=None, preset_ca
         item = dict(action)
         refs, _ = _normalize_generation_media_refs(item.get("media_refs"), available_media_refs)
         task = _normalize_generation_task(item.get("task"), refs, item.get("prompt"))
-        if task != "text_to_image" and not refs:
+        if task in IMAGE_INPUT_GENERATION_TASKS and not refs:
             refs = available[:5]
             task = _normalize_generation_task(task, refs)
         item["preset"] = _compatible_generation_preset(

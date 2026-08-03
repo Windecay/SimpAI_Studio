@@ -1,0 +1,534 @@
+{
+  "schema": "simpai.canvas.workbench.v1",
+  "id": "director_minimax_h3_loop",
+  "title": "Director + MiniMax-H3 原生音频分镜",
+  "viewport": {
+    "x": 100,
+    "y": 70,
+    "zoom": 0.5
+  },
+  "settings": {
+    "grid": true,
+    "snap": true,
+    "minimap": true,
+    "edgeLabels": true,
+    "reducedMotion": false,
+    "inspectorCollapsed": false
+  },
+  "groups": [
+    {
+      "id": "director_h3_group_note",
+      "title": "1. H3 Director / H3 导演分镜",
+      "x": -170,
+      "y": -170,
+      "w": 440,
+      "h": 650,
+      "color": "#0f766e",
+      "alpha": 0.12,
+      "shortcut": "1",
+      "locked": false
+    },
+    {
+      "id": "director_h3_group_plan",
+      "title": "2. Director Timeline / 导演时间轴",
+      "x": 320,
+      "y": -170,
+      "w": 650,
+      "h": 1220,
+      "color": "#7c3aed",
+      "alpha": 0.1,
+      "shortcut": "2",
+      "locked": false
+    },
+    {
+      "id": "director_h3_group_run",
+      "title": "3. MiniMax-H3 Run / MiniMax-H3 运行",
+      "x": 1000,
+      "y": -170,
+      "w": 1050,
+      "h": 1020,
+      "color": "#ea580c",
+      "alpha": 0.11,
+      "shortcut": "3",
+      "locked": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "director_h3_note",
+      "type": "note",
+      "x": -120,
+      "y": -90,
+      "w": 340,
+      "h": 260,
+      "title": "MiniMax H3 Director / H3 导演分镜",
+      "text": "Edit each shot prompt and duration in Director Timeline. MiniMax-H3(T2V) runs once per shot; the composed result keeps the generated dialogue, sound effects, ambience, and music from each segment. / 在 Director Timeline 中编辑每个分镜的提示词和时长。MiniMax-H3(T2V) 会逐镜头运行，合成结果保留各段生成的对白、音效、环境声和音乐。",
+      "style": {
+        "color": "#f8fafc",
+        "background": "#164e63",
+        "font_size": 13
+      },
+      "source": {
+        "kind": "canvas_note"
+      }
+    },
+    {
+      "id": "director_h3_timeline",
+      "type": "director_timeline",
+      "x": 360,
+      "y": -90,
+      "w": 570,
+      "h": 1040,
+      "title": "Director Timeline / 导演时间轴",
+      "director": {
+        "schema": "simpai.director_timeline.v1",
+        "width": 640,
+        "height": 640,
+        "fps": 24,
+        "duration": 10,
+        "format": "MiniMax-H3",
+        "segments": [
+          {
+            "id": "h3_shot_1",
+            "start": 0,
+            "end": 5,
+            "unit": "seconds",
+            "type": "t2v",
+            "prompt": "清晨的未来城市广场，镜头低位缓慢向前推进，一名信使穿过薄雾走向发光的车站，脚步声、风声和远处交通声自然同步。",
+            "images": [],
+            "audio": [],
+            "video": []
+          },
+          {
+            "id": "h3_shot_2",
+            "start": 5,
+            "end": 10,
+            "unit": "seconds",
+            "type": "t2v",
+            "prompt": "信使进入车站后停在巨大的全息地图前，镜头从侧面平移到近景，广播声与空间环境声延续，人物轻声说出目的地。",
+            "images": [],
+            "audio": [],
+            "video": []
+          }
+        ]
+      },
+      "media_inputs": {},
+      "source": {
+        "kind": "director_timeline",
+        "schema": "simpai.director_timeline.v1"
+      },
+      "status": {
+        "state": "idle",
+        "message": "Director prompt_override is sent to MiniMax-H3(T2V); generated segment audio is retained."
+      }
+    },
+    {
+      "id": "director_h3_preset",
+      "type": "preset",
+      "x": 1040,
+      "y": -90,
+      "w": 460,
+      "h": 720,
+      "title": "MiniMax-H3 Text-to-Video",
+      "preset": {
+        "name": "MiniMax-H3(T2V)",
+        "display_name": "MiniMax-H3(T2V)",
+        "snapshot_hash": null,
+        "snapshot": {
+          "default_styles": [],
+          "default_prompt": "",
+          "default_prompt_negative": ""
+        }
+      },
+      "runtime": {
+        "backend_engine": "Comfy",
+        "engine_type": "video",
+        "scene_frontend": "v1.1",
+        "scene_theme": "Basic",
+        "task_method": "minimax_h3_t2v_cn"
+      },
+      "schema": {
+        "version": "v1.1",
+        "engine_type": "video",
+        "themes": [
+          "Basic"
+        ],
+        "default_theme": "Basic",
+        "theme_labels": {
+          "Basic": {
+            "en": "Basic",
+            "zh": "基础"
+          }
+        },
+        "theme_title": "MiniMax H3 Text-to-Video",
+        "director_capability": {
+          "image_policy": "forbidden",
+          "audio_policy": "forbidden",
+          "video_policy": "forbidden",
+          "max_images": 0,
+          "min_images": 0,
+          "image_modes": [
+            "none"
+          ],
+          "duration_strategy": "shot",
+          "audio_output": "generated",
+          "mixed_segments": false
+        },
+        "disvisible": [
+          "scene_canvas_image",
+          "scene_input_image1",
+          "scene_input_image2",
+          "scene_input_image3",
+          "scene_input_image4",
+          "scene_additional_prompt",
+          "scene_additional_prompt_2",
+          "scene_video",
+          "scene_reference_video",
+          "scene_audio",
+          "scene_var_number",
+          "scene_var_number2",
+          "scene_var_number3",
+          "scene_var_number4",
+          "scene_var_number5",
+          "scene_var_number6",
+          "scene_var_number7",
+          "scene_var_number8",
+          "scene_var_number9",
+          "scene_var_number10",
+          "scene_switch_option1",
+          "scene_switch_option2",
+          "scene_switch_option3",
+          "scene_switch_option4",
+          "scene_refiner_model",
+          "sam3_input_video",
+          "sam3_mask_video",
+          "scene_batch"
+        ],
+        "disinteractive": [],
+        "divisible": [],
+        "image_preprocessor_method": [],
+        "disable_canvas_mask": false,
+        "upload_slots": [
+          {
+            "key": "scene_video",
+            "label": "Scene Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_reference_video",
+            "label": "Reference Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "sam3_input_video",
+            "label": "SAM3 Input Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "sam3_mask_video",
+            "label": "SAM3 Mask Video",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_audio",
+            "label": "Scene Audio",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_canvas_image",
+            "label": "Canvas Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image1",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image2",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image3",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image4",
+            "label": "Input Image",
+            "visible": false,
+            "interactive": true
+          }
+        ],
+        "params": [
+          {
+            "key": "scene_video_duration",
+            "label": "Video Duration(s)",
+            "type": "number",
+            "default": 5,
+            "visible": true,
+            "interactive": true,
+            "min": 0.2,
+            "max": 15
+          },
+          {
+            "key": "scene_aspect_ratio",
+            "label": "Aspect Ratio",
+            "type": "choice",
+            "choices": [
+              "864*480",
+              "480*864",
+              "640*640",
+              "736*576",
+              "576*736",
+              "800*544",
+              "544*800",
+              "992*416"
+            ],
+            "default": "864*480",
+            "visible": true,
+            "interactive": true
+          }
+        ],
+        "per_theme": {
+          "Basic": {
+            "task_method": "minimax_h3_t2v_cn",
+            "supported_tasks": [],
+            "defaults": {
+              "scene_video_duration": 5,
+              "scene_aspect_ratio": "864*480",
+              "prompt": ""
+            },
+            "generation_config_props": {
+              "overwrite_step": {
+                "min": 1,
+                "max": 50,
+                "step": 1
+              }
+            }
+          }
+        }
+      },
+      "models_config": {
+        "mode": "preset_default",
+        "defaults": {
+          "base_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "refiner_model": "None",
+          "clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae": "minimax_h3_video_vae_fp16.safetensors",
+          "loras": [
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": true,
+              "model": "None",
+              "weight": 1
+            }
+          ]
+        },
+        "overrides": {}
+      },
+      "resolution_config": {
+        "mode": "preset_default",
+        "defaults": {
+          "template": "Custom",
+          "available_aspect_ratios_selection": "Custom",
+          "default_aspect_ratio": "864*480",
+          "aspect_ratios": [
+            "864*480",
+            "480*864",
+            "640*640",
+            "736*576",
+            "576*736",
+            "800*544",
+            "544*800",
+            "992*416"
+          ],
+          "resolution_control": {
+            "mode": "standard",
+            "source": "none",
+            "base_width": 864,
+            "base_height": 480,
+            "quantize": 32,
+            "interactive": true,
+            "frontend_preprocess": false,
+            "preprocess_target": "none",
+            "preprocess_fit": "scale"
+          }
+        },
+        "overrides": {}
+      },
+      "generation_config": {
+        "mode": "preset_default",
+        "defaults": {
+          "guidance_scale": 1,
+          "sharpness": 2,
+          "overwrite_step": 20,
+          "sampler_name": "res_multistep",
+          "scheduler_name": "simple",
+          "performance_selection": "Speed",
+          "style_selections": [],
+          "image_number": 1
+        },
+        "overrides": {}
+      },
+      "model_requirements": {
+        "model_list": [
+          "diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "vae,minimax_h3_video_vae_fp16.safetensors,5207808496,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_video_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+          "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+        ],
+        "has_model_probe": true,
+        "source": "presets/MiniMax-H3(T2V).json"
+      },
+      "model_status": {
+        "state": "unknown",
+        "missing_count": 0,
+        "message": "MiniMax H3 model requirements loaded; check or download models before running."
+      },
+      "upload_slots": {},
+      "text_inputs": {
+        "prompt": "director_h3_timeline",
+        "negative_prompt": null
+      },
+      "params": {
+        "prompt": "",
+        "negative_prompt": "",
+        "seed_random": true,
+        "image_seed": 0,
+        "scene_video_duration": 5,
+        "scene_aspect_ratio": "864*480"
+      },
+      "status": "idle",
+      "collapsed": false,
+      "source": {
+        "kind": "template_runnable_preset",
+        "preset": "MiniMax-H3(T2V)"
+      }
+    },
+    {
+      "id": "director_h3_result",
+      "type": "result",
+      "x": 1560,
+      "y": -60,
+      "w": 410,
+      "h": 360,
+      "title": "MiniMax-H3 Director Result / H3 分镜音画结果",
+      "producer": {
+        "preset_node_id": "director_h3_preset",
+        "qwen_tts_node_id": null,
+        "timeline_node_id": null,
+        "run_id": null,
+        "task_id": null
+      },
+      "status": {
+        "state": "placeholder",
+        "queue_position": 0,
+        "percent": 0,
+        "message": "Run Director Timeline to generate and compose the H3 segment videos with audio."
+      },
+      "preview": null,
+      "asset": null,
+      "assets": [],
+      "source": {
+        "kind": "template_result_placeholder",
+        "producer_type": "preset",
+        "preset_node_id": "director_h3_preset"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "director_h3_edge_prompt",
+      "type": "text",
+      "from": "director_h3_timeline",
+      "to": "director_h3_preset",
+      "slot": "prompt"
+    },
+    {
+      "id": "director_h3_edge_result",
+      "type": "generate",
+      "from": "director_h3_preset",
+      "to": "director_h3_result",
+      "slot": "preset"
+    }
+  ],
+  "runs": [],
+  "template": {
+    "id": "director_minimax_h3_loop",
+    "title": {
+      "en": "Director + MiniMax H3 Native Audio",
+      "zh": "Director + MiniMax-H3 原生音频分镜"
+    },
+    "description": {
+      "en": "A runnable Director Timeline template that generates two MiniMax H3 shots and composes the segment videos while retaining their generated audio.",
+      "zh": "可运行的 Director Timeline 模板，生成两个 MiniMax H3 分镜，并在合成分段视频时保留模型生成的音频。"
+    },
+    "category": "video",
+    "tags": [
+      "video",
+      "director",
+      "timeline",
+      "minimax",
+      "h3",
+      "t2v",
+      "native-audio",
+      "prompt_override",
+      "result",
+      "runnable",
+      "导演",
+      "分镜"
+    ],
+    "type_label": {
+      "en": "Director video with audio",
+      "zh": "导演分镜音画"
+    },
+    "model_dependency": {
+      "mode": "requires_models",
+      "label": {
+        "en": "Requires H3 models",
+        "zh": "需要 H3 模型"
+      },
+      "note": {
+        "en": "Requires the MiniMax H3 T2V model set. Each shot generates video and audio before Timeline composition.",
+        "zh": "需要 MiniMax H3 文生视频模型组。每个分镜先生成视频和音频，再进入 Timeline 合成。"
+      },
+      "models": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax_h3_video_vae_fp16.safetensors",
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ]
+    },
+    "preview": ""
+  }
+}
