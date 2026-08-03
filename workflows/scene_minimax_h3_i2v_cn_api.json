@@ -256,12 +256,10 @@
   },
   "44": {
     "inputs": {
-      "sage_attention": "auto",
-      "allow_compile": false,
       "model": ["43", 0]
     },
-    "class_type": "PathchSageAttentionKJ",
-    "_meta": {"title": "H3 SageAttention"}
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {"title": "MiniMax H3 Memory Efficient Sage Attention Patch"}
   },
   "45": {
     "inputs": {

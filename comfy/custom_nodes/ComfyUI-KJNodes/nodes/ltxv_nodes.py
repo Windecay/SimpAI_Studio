@@ -2012,6 +2012,8 @@ class WanVideoMemoryEfficientSageAttentionPatch(io.ComfyNode):
 
 class MiniMaxH3MemoryEfficientSageAttentionPatch(io.ComfyNode):
 
+    SUPPORTED_CUDA_ARCHS = {"sm80", "sm86", "sm89", "sm90", "sm120"}
+
     @classmethod
     def define_schema(cls):
         return io.Schema(
@@ -2030,14 +2032,31 @@ class MiniMaxH3MemoryEfficientSageAttentionPatch(io.ComfyNode):
 
     @classmethod
     def execute(cls, model) -> io.NodeOutput:
-        if _cuda_archs is None:
-            raise RuntimeError("sageattention is not new enough version or could not determine CUDA architecture, cannot apply MiniMax H3 Memory Efficient Sage Attention Patch.")
         if _ck is None:
             raise RuntimeError("This ComfyUI version does not support MiniMax H3, cannot apply MiniMax H3 Memory Efficient Sage Attention Patch.")
-        model_clone = model.clone()
-        diffusion_model = model_clone.get_model_object("diffusion_model")
+        diffusion_model = model.get_model_object("diffusion_model")
         if _MiniMaxH3Model is not None and not isinstance(diffusion_model, _MiniMaxH3Model):
             raise RuntimeError("MiniMax H3 Memory Efficient Sage Attention Patch can only be applied to a MiniMax H3 model.")
+
+        try:
+            cuda_arch = mm.get_current_compute_capability().lower()
+        except Exception:
+            cuda_arch = str(_cuda_archs[0]).lower() if _cuda_archs else "unknown"
+
+        if cuda_arch not in cls.SUPPORTED_CUDA_ARCHS:
+            logging.warning(
+                "MiniMax H3 Memory Efficient Sage Attention Patch is disabled for CUDA architecture %s; returning the unmodified model.",
+                cuda_arch,
+            )
+            return io.NodeOutput(model)
+        if not _cuda_archs:
+            logging.warning(
+                "MiniMax H3 Memory Efficient Sage Attention Patch could not load SageAttention CUDA architecture support; returning the unmodified model."
+            )
+            return io.NodeOutput(model)
+
+        model_clone = model.clone()
+        diffusion_model = model_clone.get_model_object("diffusion_model")
 
         logging.info("Applying MiniMax H3 Memory Efficient Sage Attention Patch to all transformer blocks")
 
