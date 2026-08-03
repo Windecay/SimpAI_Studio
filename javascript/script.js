@@ -6783,7 +6783,7 @@ function initResolutionControlWidget(widget, options = {}) {
         const current = useSceneSelection() ? _rc_normalizeSceneRatio(readSelection()) : readSelection().split(",", 1)[0].trim();
         const currentWidth = _ro_getSliderValue(targetWidthId);
         const currentHeight = _ro_getSliderValue(targetHeightId);
-        const usesProjectedChoices = profileUsesProjectedChoices(getActiveProfile());
+        const overrideEnabled = _rc_getCheckboxValue(targetOverrideId);
         const optionEntries = [];
         let customValue = null;
         for (const choice of choices) {
@@ -6801,16 +6801,28 @@ function initResolutionControlWidget(widget, options = {}) {
             if (useSceneSelection()) return _rc_normalizeSceneRatio(choiceValue) === current;
             return choiceValue === current || choiceValue === readSelection();
         });
+        const matchedValue = matched && typeof matched === 'object' ? matched.value : matched;
+        const matchedDims = matched && typeof matched === 'object' && matched.width > 0 && matched.height > 0
+            ? { width: Number(matched.width), height: Number(matched.height) }
+            : _rc_parseDims(matchedValue);
+        const customResolutionActive = currentWidth > 0 && currentHeight > 0 && (
+            widget.__rc_user_custom_resolution
+            || (overrideEnabled && (
+                !matchedDims
+                || matchedDims.width !== currentWidth
+                || matchedDims.height !== currentHeight
+            ))
+        );
         let nextValue = '';
-        if (matched) {
-            nextValue = matched && typeof matched === 'object' ? matched.value : matched;
-        } else if ((widget.__rc_user_custom_resolution || _rc_getCheckboxValue(targetOverrideId)) && currentWidth > 0 && currentHeight > 0) {
+        if (customResolutionActive) {
             customValue = `${currentWidth}\u00d7${currentHeight}|custom`;
             optionEntries.push({
                 value: customValue,
                 label: `Custom ${_rc_addRatio(currentWidth, currentHeight)}`,
             });
             nextValue = customValue;
+        } else if (matched) {
+            nextValue = matchedValue;
         }
         const optionsKey = optionEntries.map((entry) => `${entry.value}\u001f${entry.label}`).join('\u001e');
         if (ratioSelect.dataset.rcOptionsKey !== optionsKey) {
@@ -6899,9 +6911,11 @@ function initResolutionControlWidget(widget, options = {}) {
         _ro_setSliderValue(targetWidthId, -1, { commit });
         _ro_setSliderValue(targetHeightId, -1, { commit });
         widget.__rc_projected_choice_key = "";
+        widget.__rc_user_custom_resolution = false;
         if (randomToggle) _rc_setCheckboxValue(targetRandomId, randomToggle.checked, commit);
         const value = useSceneSelection() ? _rc_normalizeSceneRatio(ratio) : `${ratio},${templateSelect.value}`;
         writeSelection(value, commit);
+        populateRatios();
         render();
     };
 

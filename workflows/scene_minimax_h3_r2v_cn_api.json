@@ -114,9 +114,9 @@
       "ref_images.ref_image_3": ["33", 0],
       "ref_images.ref_image_4": ["37", 0],
       "ref_videos.ref_video_0": ["49", 0],
-      "ref_video_audios.ref_video_audio_0": ["49", 2],
+      "ref_video_audios.ref_video_audio_0": ["54", 0],
       "ref_videos.ref_video_1": ["50", 0],
-      "ref_video_audios.ref_video_audio_1": ["50", 2],
+      "ref_video_audios.ref_video_audio_1": ["56", 0],
       "ref_audios.ref_audio_0": ["51", 0]
     },
     "class_type": "MiniMaxH3ReferenceToVideo",
@@ -348,10 +348,11 @@
   "49": {
     "inputs": {
       "video": "",
-      "force_rate": 0,
-      "frame_load_cap": 0,
+      "force_rate": 24,
+      "frame_load_cap": ["7", 1],
       "skip_first_frames": 0,
-      "select_every_nth": 1
+      "select_every_nth": 1,
+      "duration": ["52", 0]
     },
     "class_type": "SimpAIOptionalVideoPath",
     "_meta": {"title": "SimpAIOptionalVideoPath"}
@@ -359,17 +360,63 @@
   "50": {
     "inputs": {
       "reference_video": "",
-      "force_rate": 0,
-      "frame_load_cap": 0,
+      "force_rate": 24,
+      "frame_load_cap": ["7", 1],
       "skip_first_frames": 0,
-      "select_every_nth": 1
+      "select_every_nth": 1,
+      "duration": ["52", 0]
     },
     "class_type": "SimpAIOptionalReferenceVideoPath",
     "_meta": {"title": "SimpAIOptionalReferenceVideoPath"}
   },
   "51": {
-    "inputs": {"audio": ""},
+    "inputs": {
+      "audio": "",
+      "duration": ["52", 0]
+    },
     "class_type": "SimpAIOptionalAudioPath",
     "_meta": {"title": "SimpAIOptionalAudioPath"}
+  },
+  "52": {
+    "inputs": {
+      "expression": "a / 24",
+      "values.a": ["7", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Aligned Duration"}
+  },
+  "53": {
+    "inputs": {
+      "expression": "max(0, a - ((a - 5) % 17)) / 24",
+      "values.a": ["49", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Video 1 Audio Duration"}
+  },
+  "54": {
+    "inputs": {
+      "audio": ["49", 2],
+      "start_index": 0,
+      "duration": ["53", 0]
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {"title": "H3 Video 1 Audio Align"}
+  },
+  "55": {
+    "inputs": {
+      "expression": "max(0, a - ((a - 5) % 17)) / 24",
+      "values.a": ["50", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Video 2 Audio Duration"}
+  },
+  "56": {
+    "inputs": {
+      "audio": ["50", 2],
+      "start_index": 0,
+      "duration": ["55", 0]
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {"title": "H3 Video 2 Audio Align"}
   }
 }
