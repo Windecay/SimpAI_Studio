@@ -538,7 +538,7 @@ if __name__ == "__main__":
 import comfy.options
 comfy.options.enable_args_parsing()
 
-from comfy.cli_args import args, enables_dynamic_vram
+from comfy.cli_args import args, enables_dynamic_vram, get_console_log_level, get_file_log_outputs
 
 if args.list_feature_flags:
     import json
@@ -572,7 +572,9 @@ if __name__ == "__main__":
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
     os.environ['DO_NOT_TRACK'] = '1'
 
-setup_logger(log_level=args.verbose, use_stdout=args.log_stdout)
+console_log_level = get_console_log_level(args.verbose)
+file_log_outputs = get_file_log_outputs(args.verbose)
+setup_logger(log_level=console_log_level, file_outputs=file_log_outputs, use_stdout=args.log_stdout)
 
 faulthandler.enable(file=sys.stderr, all_threads=args.debug_hang)
 if __name__ == "__main__" and args.debug_hang:
@@ -591,11 +593,16 @@ if __name__ == "__main__" and args.debug_hang:
 import comfy_aimdo.control
 
 if enables_dynamic_vram():
+    simple_vram_headroom = None if args.reserve_vram is None else int(args.reserve_vram * 1024 ** 3)
     try:
-        comfy_aimdo.control.init(simple_vram_headroom=None if args.reserve_vram is None else int(args.reserve_vram * 1024 ** 3))
+        comfy_aimdo.control.init(simple_vram_headroom=simple_vram_headroom, nvml_pressure=not args.disable_nvml_pressure)
     except TypeError:
-        # comfy-aimdo 0.4.9 protocol.
-        comfy_aimdo.control.init()
+        # comfy-aimdo 0.4.10 protocol.
+        try:
+            comfy_aimdo.control.init(simple_vram_headroom=simple_vram_headroom)
+        except TypeError:
+            # comfy-aimdo 0.4.9 protocol.
+            comfy_aimdo.control.init()
 
 if os.name == "nt":
     os.environ['MIMALLOC_PURGE_DELAY'] = '0'
@@ -794,13 +801,18 @@ if args.enable_dynamic_vram or (enables_dynamic_vram() and comfy.model_managemen
             aimdo_initialized = comfy_aimdo.control.init_devices(d.index for d in comfy.model_management.get_all_torch_devices())
 
         if aimdo_initialized:
-            if args.verbose == 'DEBUG':
+            if console_log_level == 'DEBUG':
                 comfy_aimdo.control.set_log_debug()
-            elif args.verbose == 'CRITICAL':
+            elif console_log_level == 'DETAIL':
+                try:
+                    comfy_aimdo.control.set_log_detail()
+                except AttributeError:
+                    comfy_aimdo.control.set_log_info()
+            elif console_log_level == 'CRITICAL':
                 comfy_aimdo.control.set_log_critical()
-            elif args.verbose == 'ERROR':
+            elif console_log_level == 'ERROR':
                 comfy_aimdo.control.set_log_error()
-            elif args.verbose == 'WARNING':
+            elif console_log_level == 'WARNING':
                 comfy_aimdo.control.set_log_warning()
             else: #INFO
                 comfy_aimdo.control.set_log_info()
@@ -860,7 +872,7 @@ def prompt_worker(q, server_instance):
     cache_ram_inactive = 0
     if not args.cache_classic and not args.cache_none and args.cache_lru <= 0:
         cache_ram = min(10.0, max(2.0, comfy.model_management.total_ram * 0.10 / 1024.0))
-        cache_ram_inactive = min(96.0, comfy.model_management.total_ram / 1024.0)
+        cache_ram_inactive = min(128.0, comfy.model_management.total_ram / 1024.0)
         if len(args.cache_ram) > 0:
             cache_ram = args.cache_ram[0]
         if len(args.cache_ram) > 1:

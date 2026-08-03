@@ -1,6 +1,6 @@
 {
   "GeneralAPIImage":"通用 API 生图",
-  "General API Image [Manual Configuration Required]": "通用 API 生图 [需要手动配置Base URL、API Key 和模型名]",
+  "General API Image Generation / Image Editing [Manual Configuration Required]": "通用 API 生图 /图像编辑 API [需要手动配置Base URL、API Key 和模型名]",
   "Cloud Image API": "云端生图 API",
   "Configuration name": "配置名称",
   "Saved configurations": "已保存配置",
@@ -1308,8 +1308,8 @@
   "Prompt prefix": "扩展提示前缀",
   "OneButtonPrompt": "一键提示",
   "RandomPrompt": "一键提示",
-  "Prompt Picks": "推荐提示词",
-  "Random Prompt": "随机提示词",
+  "Prompt Picks": "推荐提示",
+  "Random Prompt": "随机提示",
   "+More": "<+追加提示",
   "One Button Preset": "预设的内容模版",
   "HYPERPROMPTING": "超级提示扩展",

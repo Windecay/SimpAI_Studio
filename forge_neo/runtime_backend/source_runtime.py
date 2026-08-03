@@ -108,7 +108,7 @@ _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = ""
 _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 _SOURCE_BACKEND_BOOTSTRAP_PACKAGES: tuple[tuple[str, str], ...] = (
-    ("comfy-kitchen", "0.2.22"),
+    ("comfy-kitchen", "0.2.26"),
 )
 
 

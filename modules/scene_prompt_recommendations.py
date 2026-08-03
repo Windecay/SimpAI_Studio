@@ -4322,7 +4322,7 @@ def _compose_developer_nsfw_random_prompt(
     )
     _extend_tag_group(prompt_tags, picked_slots, "adult_association_stats", association_tags)
     prompt = ", ".join(_dedupe_tags(prompt_tags))
-    title = "Random Prompt (NSFW)" if _clean_lang(lang) == "en" else "随机提示词(NSFW)"
+    title = "Random Prompt (NSFW)" if _clean_lang(lang) == "en" else "随机提示(NSFW)"
     return {
         "ok": True,
         "preset": _clean_text(preset_name),
@@ -4444,7 +4444,7 @@ def compose_random_prompt(
             "id": "local_random_danbooru",
             "target": "positive_prompt",
             "mode": "replace",
-            "title": "Random Prompt" if _clean_lang(lang) == "en" else "随机提示词",
+            "title": "Random Prompt" if _clean_lang(lang) == "en" else "随机提示",
             "prompt": prompt,
             "seed_terms": lookup_terms,
             "slots": picked_slots,

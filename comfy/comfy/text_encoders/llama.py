@@ -265,6 +265,17 @@ class Qwen3VL_4BConfig(Qwen3VL_8BConfig):
     lm_head: bool = False  # 4B ties word embeddings
 
 @dataclass
+class Qwen3VL_32BConfig(Qwen3VL_8BConfig):
+    # MiniMax H3 conditioning checkpoint: truncated to the first 50 of 64 layers,
+    # consumed as the unnormalized hidden state after layer 50 (no final norm, no lm_head)
+    hidden_size: int = 5120
+    intermediate_size: int = 25600
+    num_hidden_layers: int = 50
+    num_attention_heads: int = 64
+    lm_head: bool = False
+    final_norm: bool = False
+
+@dataclass
 class Ovis25_2BConfig:
     vocab_size: int = 151936
     hidden_size: int = 2048
@@ -852,11 +863,8 @@ class BaseLlama:
 class BaseGenerate:
     def logits(self, x):
         input = x[:, -1:]
-        lm_head = getattr(self.model, "lm_head", None)
-        if self.model.config.lm_head:
-            if getattr(lm_head, "weight", None) is None:
-                raise RuntimeError("Selected Text Encoder is missing model.lm_head.weight and cannot be used for TextGenerate.")
-            module = lm_head
+        if hasattr(self.model, "lm_head"):
+            module = self.model.lm_head
         else:
             module = self.model.embed_tokens
 
@@ -864,7 +872,7 @@ class BaseGenerate:
         if module.comfy_cast_weights:
             weight, _, offload_stream = comfy.ops.cast_bias_weight(module, input, offloadable=True)
         else:
-            weight = module.weight.to(x)
+            weight = self.model.embed_tokens.weight.to(x)
 
         x = torch.nn.functional.linear(input, weight, None)
 
@@ -997,19 +1005,16 @@ class BaseGenerate:
 class BaseQwen3:
     def logits(self, x):
         input = x[:, -1:]
-        lm_head = getattr(self.model, "lm_head", None)
         if self.model.config.lm_head:
-            if getattr(lm_head, "weight", None) is None:
-                raise RuntimeError("Selected Text Encoder is missing model.lm_head.weight and cannot be used for TextGenerate.")
-            module = lm_head
-        else:
-            module = self.model.embed_tokens
+            return self.model.lm_head(input)
+
+        module = self.model.embed_tokens
 
         offload_stream = None
         if module.comfy_cast_weights:
             weight, _, offload_stream = comfy.ops.cast_bias_weight(module, input, offloadable=True)
         else:
-            weight = module.weight.to(x)
+            weight = self.model.embed_tokens.weight.to(x)
 
         x = torch.nn.functional.linear(input, weight, None)
 

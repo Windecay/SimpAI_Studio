@@ -100,7 +100,7 @@
     function setPromptButtonLabel() {
         const button = promptButton();
         if (!button) return;
-        const label = isSceneMode() ? text("Prompt Picks", "推荐提示词") : text("Random Prompt", "随机提示词");
+        const label = isSceneMode() ? text("Prompt Picks", "推荐提示") : text("Random Prompt", "随机提示");
         const autoActive = randomPanelState.everyGeneration && !isSceneMode();
         const autoModeLabel = randomPanelState.everyGenerationMode === "builder"
             ? text("Builder every generation", "每次生成随机拼句")
@@ -199,7 +199,7 @@
         node.dataset.view = modalView;
         node.dataset.lang = currentLang();
         activeItems = Array.isArray(items) ? items : [];
-        node.querySelector('[data-role="title"]').textContent = text("Prompt Picks", "推荐提示词");
+        node.querySelector('[data-role="title"]').textContent = text("Prompt Picks", "推荐提示");
         const sub = [preset, sceneTheme].filter(Boolean).join(" / ");
         node.querySelector('[data-role="subtitle"]').textContent = sub || text("Local prompt files", "本地提示词文件");
         const list = node.querySelector('[data-role="list"]');
