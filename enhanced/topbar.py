@@ -261,9 +261,8 @@ def is_preset_file_allowed(p):
     parts = [x for x in p2.split('/') if x]
     if parts and parts[-1].lower() == 'liveportrait video exp.json':
         return False
-    if 'deprecated' in parts:
-        return False
-    if 'characters' in parts:
+    excluded_dirs = {'deprecated', 'characters', 'scene_prompt_recommendations'}
+    if any(part.lower() in excluded_dirs for part in parts[:-1]):
         return False
     return True
 
@@ -616,6 +615,9 @@ def _coerce_nav_preset_list(presets, user_did=None, fallback_preset=None, limit=
         for preset in filtered:
             resolved_preset = _canonicalize_preset_name(_resolve_preset_storage_name(preset, user_did))
             if not resolved_preset or resolved_preset in seen:
+                continue
+            resolved_file = f'{resolved_preset[:-1] if resolved_preset.endswith(".") else resolved_preset}.json'
+            if not is_preset_file_allowed(resolved_file):
                 continue
             if not _preset_storage_exists(resolved_preset, user_did):
                 continue
