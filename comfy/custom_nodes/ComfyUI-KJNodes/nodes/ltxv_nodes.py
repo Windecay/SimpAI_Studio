@@ -611,23 +611,11 @@ class LTXVChunkFeedForward(io.ComfyNode):
 import server
 from threading import Thread
 import torch.nn.functional as F
-import os
 import time
 import struct
 from PIL import Image
 from io import BytesIO
 serv = server.PromptServer.instance
-
-
-def _env_int(name, default):
-    try:
-        value = int(float(os.environ.get(name, default)))
-    except (TypeError, ValueError):
-        return default
-    return max(1, value)
-
-
-LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK = _env_int("SIMPLEAI_LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK", 16)
 
 class WrappedPreviewer():
     def __init__(self, latent_rgb_factors, latent_rgb_factors_bias, rate=8, taeltx=None):
@@ -646,17 +634,16 @@ class WrappedPreviewer():
             x0 = x0.reshape((-1,)+x0.shape[-3:])
         num_images = x0.size(0)
         new_time = time.time()
+        num_previews = int((new_time - self.last_time) * self.rate)
+        self.last_time = self.last_time + num_previews/self.rate
+        if num_previews > num_images:
+            num_previews = num_images
+        elif num_previews <= 0:
+            return None
         if self.first_preview:
             self.first_preview = False
             serv.send_sync('VHS_latentpreview', {'length':num_images, 'rate': self.rate, 'id': serv.last_node_id})
-            self.last_time = new_time
-            num_previews = LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK
-        else:
-            num_previews = int((new_time - self.last_time) * self.rate)
-            if num_previews <= 0:
-                return None
-            self.last_time = new_time
-        num_previews = min(num_previews, num_images, LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK)
+            self.last_time = new_time + 1/self.rate
         if self.c_index + num_previews > num_images:
             x0 = x0.roll(-self.c_index, 0)[:num_previews]
         else:
@@ -866,8 +853,14 @@ def _get_ltx_rgb_factors_impl(is_23):
     return latent_rgb_factors, latent_rgb_factors_bias
 
 
+def _unwrap_upscale_model(latent_upscale_model):
+    # newer comfy wraps the upsampler in a ModelPatcher
+    return getattr(latent_upscale_model, "model", latent_upscale_model)
+
 def prepare_callback(model, steps, x0_output_dict=None, shape=None, latent_upscale_model=None, vae=None, rate=8, taeltx=False, num_keyframes=0, is_23=False):
     latent_rgb_factors, latent_rgb_factors_bias = get_ltx_rgb_factors(is_23)
+    upscaler = _unwrap_upscale_model(latent_upscale_model) if latent_upscale_model is not None else None
+    upscaler_dtype = next(upscaler.parameters()).dtype if upscaler is not None else None
     preview_format = "JPEG"
     if preview_format not in ["JPEG", "PNG"]:
         preview_format = "JPEG"
@@ -883,9 +876,9 @@ def prepare_callback(model, steps, x0_output_dict=None, shape=None, latent_upsca
         if num_keyframes > 0:
             x0 = x0[:, :, :-num_keyframes]
 
-        if latent_upscale_model is not None:
+        if upscaler is not None:
             x0 = vae.first_stage_model.per_channel_statistics.un_normalize(x0)
-            x0 =  latent_upscale_model(x0.to(torch.bfloat16))
+            x0 = upscaler(x0.to(upscaler_dtype))
             x0 = vae.first_stage_model.per_channel_statistics.normalize(x0)
 
         preview_bytes = None
@@ -909,7 +902,7 @@ class OuterSampleCallbackWrapper:
 
         original_callback = callback
         if self.latent_upscale_model is not None:
-            self.latent_upscale_model.to(device)
+            _unwrap_upscale_model(self.latent_upscale_model).to(device)
         if self.vae is not None and self.taeltx:
             self.vae.first_stage_model.to(device)
 
@@ -928,7 +921,7 @@ class OuterSampleCallbackWrapper:
                 original_callback(step, x0, x, total_steps)
         out = executor(noise, latent_image, sampler, sigmas, denoise_mask, combined_callback, disable_pbar, seed, latent_shapes=latent_shapes)
         if self.latent_upscale_model is not None:
-            self.latent_upscale_model.to(mm.unet_offload_device())
+            _unwrap_upscale_model(self.latent_upscale_model).to(mm.unet_offload_device())
         return out
 
 class LTX2SamplingPreviewOverride(io.ComfyNode):
@@ -942,7 +935,7 @@ class LTX2SamplingPreviewOverride(io.ComfyNode):
             is_experimental=True,
             inputs=[
                 io.Model.Input("model", tooltip="The model to add preview override to."),
-                io.Int.Input("preview_rate", default=8, min=1, max=60, step=1, tooltip="Preview frame rate."),
+                io.MultiType.Input(io.Float.Input("preview_rate", default=8.0, min=1.0, max=60.0, step=0.01, tooltip="Preview frame rate."), [io.Int]),
                 io.LatentUpscaleModel.Input("latent_upscale_model", optional=True, tooltip="Optional upscale model to use for higher resolution previews."),
                 io.Vae.Input("vae", optional=True, tooltip="VAE model to use normalizing the latents for the upscale model."),
             ],
@@ -1741,6 +1734,16 @@ try:
     from comfy.ldm.flux.math import apply_rope as _wan_apply_rope
 except ImportError:
     _wan_apply_rope = None
+try:
+    from comfy.ldm.wan.model import WanT2VCrossAttention as _WanT2VCrossAttention, WanI2VCrossAttention as _WanI2VCrossAttention
+except ImportError:
+    _WanT2VCrossAttention = _WanI2VCrossAttention = None
+try:
+    from comfy.ldm.minimax.model import MiniMaxH3Model as _MiniMaxH3Model
+    from comfy.quant_ops import ck as _ck
+except ImportError:
+    _MiniMaxH3Model = None
+    _ck = None
 
 
 def _sageattn_int8_fp8_nhd(qkv, dtype):
@@ -1760,14 +1763,17 @@ def _sageattn_int8_fp8_nhd(qkv, dtype):
     quant_v_scale_max = 448.0
 
     if _cuda_archs[0] in {"sm80", "sm86"}:
-        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, km=k.mean(dim=1, keepdim=True), tensor_layout=tensor_layout, BLKQ=128, WARPQ=32, BLKK=64, WARPK=64)
+        # mean-sub in-place: passing km= makes the triton quant materialize k - km as a full float copy
+        k.sub_(k.mean(dim=1, keepdim=True))
+        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, tensor_layout=tensor_layout, BLKQ=128, WARPQ=32, BLKK=64, WARPK=64)
         del q, k
         o = torch.empty(q_int8.size(), dtype=dtype, device=q_int8.device)
         v_fp16 = v.to(torch.float16)
         del v
         _qattn_sm80.qk_int8_sv_f16_accum_f32_attn(q_int8, k_int8, v_fp16, o, q_scale, k_scale, _tensor_layout, _is_caual, _qk_quant_gran, sm_scale, _return_lse)
     elif _cuda_archs[0] == "sm75":
-        q_int8, q_scale, k_int8, k_scale = per_block_int8_triton(q, k, km=k.mean(dim=1, keepdim=True), sm_scale=sm_scale, tensor_layout=tensor_layout)
+        k.sub_(k.mean(dim=1, keepdim=True))
+        q_int8, q_scale, k_int8, k_scale = per_block_int8_triton(q, k, sm_scale=sm_scale, tensor_layout=tensor_layout)
         del q, k
         o, _ = attn_false(q_int8, k_int8, v, q_scale, k_scale, tensor_layout=tensor_layout, output_dtype=dtype, attn_mask=None, return_lse=False)
         del v
@@ -1777,7 +1783,8 @@ def _sageattn_int8_fp8_nhd(qkv, dtype):
         else:
             pv_accum_dtype = "fp32+fp16"
             quant_v_scale_max = 2.25
-        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, km=k.mean(dim=1, keepdim=True), tensor_layout=tensor_layout, BLKQ=128, WARPQ=32, BLKK=64, WARPK=64)
+        k.sub_(k.mean(dim=1, keepdim=True))
+        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, tensor_layout=tensor_layout, BLKQ=128, WARPQ=32, BLKK=64, WARPK=64)
         del q, k
         v_fp8, v_scale, _ = per_channel_fp8(v, tensor_layout=tensor_layout, scale_max=quant_v_scale_max, smooth_v=False)
         del v
@@ -1788,8 +1795,9 @@ def _sageattn_int8_fp8_nhd(qkv, dtype):
             _qattn_sm89.qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf(q_int8, k_int8, v_fp8, o, q_scale, k_scale, v_scale, _tensor_layout, _is_caual, _qk_quant_gran, sm_scale, _return_lse)
         del v_fp8, v_scale
     elif _cuda_archs[0] == "sm90":
-        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, km=k.mean(dim=1, keepdim=True), tensor_layout=tensor_layout, BLKQ=64, WARPQ=16, BLKK=128, WARPK=128)
-        del q, k,
+        k.sub_(k.mean(dim=1, keepdim=True))
+        q_int8, q_scale, k_int8, k_scale = per_thread_int8_triton(q, k, tensor_layout=tensor_layout, BLKQ=64, WARPQ=16, BLKK=128, WARPK=128)
+        del q, k
         v_fp8, v_scale, _ = per_channel_fp8(v, tensor_layout=tensor_layout, smooth_v=False)
         del v
         o = torch.empty(q_int8.size(), dtype=dtype, device=q_int8.device)
@@ -1802,6 +1810,7 @@ def _sageattn_int8_fp8_nhd(qkv, dtype):
             pv_accum_dtype = "fp32+fp16"
             quant_v_scale_max = 2.25
         _qk_quant_gran = 2 # per warp
+        # km kept here: the CUDA quant fuses the mean-sub with no temp copy
         q_int8, q_scale, k_int8, k_scale = per_warp_int8_cuda(q, k, km=k.mean(dim=1, keepdim=True), tensor_layout=tensor_layout, BLKQ=128, WARPQ=32, BLKK=64)
         del q, k
         v_fp8, v_scale, _ = per_channel_fp8(v, tensor_layout=tensor_layout, scale_max=quant_v_scale_max, smooth_v=False)
@@ -1895,6 +1904,71 @@ def wan_sageattn_forward(self, x, freqs, transformer_options={}):
     return self.o(o.view(b, s, n * d))
 
 
+def wan_t2v_cross_sageattn_forward(self, x, context, transformer_options={}, **kwargs):
+    dtype = x.dtype
+    b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+
+    q = self.norm_q(self.q(x)).view(b, s, n, d)
+    k = self.norm_k(self.k(context)).view(b, -1, n, d)
+    v = self.v(context).view(b, -1, n, d)
+
+    qkv = [q, k, v]
+    del q, k, v
+    o = _sageattn_int8_fp8_nhd(qkv, dtype)
+
+    return self.o(o.view(b, s, n * d))
+
+
+def wan_i2v_cross_sageattn_forward(self, x, context, context_img_len, transformer_options={}):
+    dtype = x.dtype
+    b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+
+    context_img = context[:, :context_img_len]
+    context = context[:, context_img_len:]
+
+    q = self.norm_q(self.q(x)).view(b, s, n, d)
+    k_img = self.norm_k_img(self.k_img(context_img)).view(b, -1, n, d)
+    v_img = self.v_img(context_img).view(b, -1, n, d)
+    # local q reference survives the helper's consume — still needed for the text attention below
+    qkv_img = [q, k_img, v_img]
+    del k_img, v_img
+    img_o = _sageattn_int8_fp8_nhd(qkv_img, dtype)
+
+    k = self.norm_k(self.k(context)).view(b, -1, n, d)
+    v = self.v(context).view(b, -1, n, d)
+    qkv = [q, k, v]
+    del q, k, v
+    o = _sageattn_int8_fp8_nhd(qkv, dtype)
+
+    o.add_(img_o)
+    del img_o
+    return self.o(o.view(b, s, n * d))
+
+
+def minimax_sageattn_forward(self, x, rope_freqs=None, transformer_options={}):
+    # x: [S, hidden], unbatched packed sequence; q/k/v are NHD views into the fused qkv buffer
+    dtype = x.dtype
+    s = x.shape[0]
+    q, k, v = self.qkv_proj(x).split(self.heads * self.head_dim, dim=-1)
+    q = q.view(1, s, self.heads, self.head_dim)
+    k = k.view(1, s, self.heads, self.head_dim)
+    v = v.view(1, s, self.heads, self.head_dim)
+    if rope_freqs is not None:
+        # same fused per-head RMSNorm + partial split-half rope the stock forward uses, in place on the qkv buffer
+        qw = mm.cast_to(self.q_norm.weight, device=x.device)
+        kw = mm.cast_to(self.k_norm.weight, device=x.device)
+        _ck.rms_rope_split_half_(q, k, rope_freqs, qw, kw, epsilon=self.q_norm.eps, rot_dim=rope_freqs.shape[-3] * 2)
+    else:
+        q = self.q_norm(q)
+        k = self.k_norm(k)
+
+    qkv = [q, k, v]
+    del q, k, v
+    o = _sageattn_int8_fp8_nhd(qkv, dtype)
+
+    return self.out_proj(o.view(s, self.heads * self.head_dim))
+
+
 class WanVideoMemoryEfficientSageAttentionPatch(io.ComfyNode):
 
     @classmethod
@@ -1926,6 +2000,49 @@ class WanVideoMemoryEfficientSageAttentionPatch(io.ComfyNode):
 
         for idx, block in enumerate(diffusion_model.blocks):
             model_clone.add_object_patch(f"diffusion_model.blocks.{idx}.self_attn.forward", wan_sageattn_forward.__get__(block.self_attn, block.self_attn.__class__))
+            cross_attn = getattr(block, "cross_attn", None)
+            # exact type match on purpose: subclasses like WanT2VCrossAttentionGather have different semantics
+            if cross_attn is not None and type(cross_attn) is _WanI2VCrossAttention:
+                model_clone.add_object_patch(f"diffusion_model.blocks.{idx}.cross_attn.forward", wan_i2v_cross_sageattn_forward.__get__(cross_attn, cross_attn.__class__))
+            elif cross_attn is not None and type(cross_attn) is _WanT2VCrossAttention:
+                model_clone.add_object_patch(f"diffusion_model.blocks.{idx}.cross_attn.forward", wan_t2v_cross_sageattn_forward.__get__(cross_attn, cross_attn.__class__))
+
+        return io.NodeOutput(model_clone)
+
+
+class MiniMaxH3MemoryEfficientSageAttentionPatch(io.ComfyNode):
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="MiniMaxH3MemoryEfficientSageAttentionPatch",
+            display_name="MiniMax H3 Mem Eff Sage Attention Patch",
+            category="KJNodes/minimax",
+            description="EXPERIMENTAL! Activates custom sageattention on the MiniMax H3 self-attention to reduce peak VRAM usage, overrides the attention mode. Requires latest sageattention version.",
+            is_experimental=True,
+            inputs=[
+                io.Model.Input("model"),
+            ],
+            outputs=[
+                io.Model.Output(display_name="model"),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, model) -> io.NodeOutput:
+        if _cuda_archs is None:
+            raise RuntimeError("sageattention is not new enough version or could not determine CUDA architecture, cannot apply MiniMax H3 Memory Efficient Sage Attention Patch.")
+        if _ck is None:
+            raise RuntimeError("This ComfyUI version does not support MiniMax H3, cannot apply MiniMax H3 Memory Efficient Sage Attention Patch.")
+        model_clone = model.clone()
+        diffusion_model = model_clone.get_model_object("diffusion_model")
+        if _MiniMaxH3Model is not None and not isinstance(diffusion_model, _MiniMaxH3Model):
+            raise RuntimeError("MiniMax H3 Memory Efficient Sage Attention Patch can only be applied to a MiniMax H3 model.")
+
+        logging.info("Applying MiniMax H3 Memory Efficient Sage Attention Patch to all transformer blocks")
+
+        for idx, block in enumerate(diffusion_model.blocks):
+            model_clone.add_object_patch(f"diffusion_model.blocks.{idx}.attn.forward", minimax_sageattn_forward.__get__(block.attn, block.attn.__class__))
 
         return io.NodeOutput(model_clone)
 

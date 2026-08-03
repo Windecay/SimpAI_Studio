@@ -196,6 +196,15 @@ class BasicCache:
         self._clean_cache()
         self._clean_subcaches()
 
+    async def wait_for_pending_stores(self):
+        pending_tasks = tuple(self._pending_store_tasks)
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+
+        subcaches = tuple(self.subcaches.values())
+        if subcaches:
+            await asyncio.gather(*(subcache.wait_for_pending_stores() for subcache in subcaches))
+
     def poll(self, **kwargs):
         pass
 
@@ -337,7 +346,7 @@ class BasicCache:
         subcache_key = self.cache_key_set.get_subcache_key(node_id)
         subcache = self.subcaches.get(subcache_key, None)
         if subcache is None:
-            subcache = BasicCache(self.key_class)
+            subcache = BasicCache(self.key_class, enable_providers=self.enable_providers)
             self.subcaches[subcache_key] = subcache
         await subcache.set_prompt(self.dynprompt, children_ids, self.is_changed_cache)
         return subcache
@@ -416,6 +425,9 @@ class NullCache:
         return []
 
     def clean_unused(self):
+        pass
+
+    async def wait_for_pending_stores(self):
         pass
 
     def poll(self, **kwargs):

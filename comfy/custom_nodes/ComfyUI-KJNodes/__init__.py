@@ -12,7 +12,7 @@ from .nodes.nodes import (
     HunyuanVideoBlockLoraSelect, Wan21BlockLoraSelect, LTX2BlockLoraSelect,
     DiTBlockLoraLoader, CustomControlNetWeightsFluxFromList,
     SetShakkerLabsUnionControlNetType, ModelSaveKJ, StyleModelApplyAdvanced,
-    AudioConcatenate, LeapfusionHunyuanI2V, ImageNoiseAugmentation, VAELoaderKJ,
+    AudioConcatenate, LeapfusionHunyuanI2V, ImageNoiseAugmentation, VAELoaderKJ, VAEMergeKJ,
     ScheduledCFGGuidance, ApplyRifleXRoPE_WanVideo, ApplyRifleXRoPE_HunuyanVideo,
     TimerNodeKJ, HunyuanVideoEncodeKeyframesToCond, LazySwitchKJ, LatentInpaintTTM,
     SimpleCalculatorKJ, GetTrackRange, AddNoiseToTrackPath, VAEDecodeLoopKJ,
@@ -69,17 +69,18 @@ from .nodes.model_optimization_nodes import (
     DiffusionModelLoaderKJ, ModelPatchTorchSettings, PatchModelPatcherOrder,
     TorchCompileModelFluxAdvancedV2, TorchCompileModelWanVideoV2,
     TorchCompileModelAdvanced, TorchCompileVAE, TorchCompileControlNet,
-    WanVideoTeaCacheKJ, WanVideoEnhanceAVideoKJ, LTXVEnhanceAVideoKJ, WanVideoNAG,
+    WanVideoTeaCacheKJ, WanVideoEnhanceAVideoKJ, LTXVEnhanceAVideoKJ, WanVideoNAG, Krea2PromptWeight,
     SkipLayerGuidanceWanVideo, CFGZeroStarAndInit, GGUFLoaderKJ, NABLA_AttentionKJ,
     StartRecordCUDAMemoryHistory, EndRecordCUDAMemoryHistory, VisualizeCUDAMemoryHistory,
     ModelMemoryUseReportPatch, ModelMemoryUsageFactorOverride, WanChunkFeedForward,
     SamplerSelfRefineVideo, PiDColorBiasCorrection, Ideogram4OptimizationsKJ,
 )
 from .nodes.lora_nodes import LoraExtractKJ, LoraReduceRank
-from .nodes.image_transform_node import ImageTransformKJ
+from .nodes.image_transform_node import ImageTransformKJ, BBOXToBoundingBoxKJ
 from .nodes.sharpen_nodes import ImageSharpenKJ
 from .nodes.hdr_preview_node import HDRPreviewKJ
 from .nodes.preview_override_node import ModelPreviewOverrideKJ, GetPreviewOverrideFramesKJ
+from .nodes.context_windows_visualizer import ContextWindowsVisualizerKJ
 from .nodes.ideogram4_nodes import Ideogram4PromptBuilderKJ
 
 import logging
@@ -187,6 +188,7 @@ NODE_CONFIG = {
     "EncodeVideoComponents": {"class": EncodeVideoComponents, "name": "Encode Video Components"},
     "DecodeAndSaveVideo": {"class": DecodeAndSaveVideo, "name": "Decode And Save Video"},
     "ImageTransformKJ": {"class": ImageTransformKJ, "name": "Image Transform KJ"},
+    "BBOXToBoundingBoxKJ": {"class": BBOXToBoundingBoxKJ, "name": "BBOX to Bounding Box KJ"},
     "Ideogram4PromptBuilderKJ": {"class": Ideogram4PromptBuilderKJ, "name": "Ideogram 4 Prompt Builder KJ"},
     "HDRPreviewKJ": {"class": HDRPreviewKJ, "name": "HDR Preview KJ"},
     "ModelPreviewOverrideKJ": {"class": ModelPreviewOverrideKJ, "name": "Model Preview Override KJ"},
@@ -282,6 +284,7 @@ NODE_CONFIG = {
     "PatchFlashAttentionKJ": {"class": PatchFlashAttentionKJ, "name": "Patch Flash Attention KJ"},
     "LeapfusionHunyuanI2VPatcher": {"class": LeapfusionHunyuanI2V, "name": "Leapfusion Hunyuan I2V Patcher"},
     "VAELoaderKJ": {"class": VAELoaderKJ, "name": "VAELoader KJ"},
+    "VAEMergeKJ": {"class": VAEMergeKJ, "name": "VAE Merge KJ"},
     "VAEDecodeLoopKJ": {"class": VAEDecodeLoopKJ, "name": "VAE Decode Loop KJ"},
     "ScheduledCFGGuidance": {"class": ScheduledCFGGuidance, "name": "Scheduled CFG Guidance"},
     "ApplyRifleXRoPE_HunuyanVideo": {"class": ApplyRifleXRoPE_HunuyanVideo, "name": "Apply RifleXRoPE HunuyanVideo"},
@@ -295,6 +298,7 @@ NODE_CONFIG = {
     "PiDColorBiasCorrection": {"class": PiDColorBiasCorrection, "name": "PiD Color Bias Correction"},
     "ModelPatchTorchSettings": {"class": ModelPatchTorchSettings, "name": "Model Patch Torch Settings"},
     "WanVideoNAG": {"class": WanVideoNAG, "name": "WanVideoNAG"},
+    "Krea2PromptWeight": {"class": Krea2PromptWeight, "name": "Krea2 Prompt Weight"},
     "GGUFLoaderKJ": {"class": GGUFLoaderKJ, "name": "GGUF Loader KJ"},
     "LatentInpaintTTM": {"class": LatentInpaintTTM, "name": "Latent Inpaint TTM"},
     "NABLA_AttentionKJ": {"class": NABLA_AttentionKJ, "name": "NABLA Attention KJ"},
@@ -323,6 +327,8 @@ NODE_CONFIG = {
     "GetTrackRange": {"class": GetTrackRange, "name": "Get Track Range"},
     "AddNoiseToTrackPath": {"class": AddNoiseToTrackPath, "name": "Add Noise To Track"},
 
+    #context windows
+    "ContextWindowsVisualizerKJ": {"class": ContextWindowsVisualizerKJ, "name": "Context Windows Visualizer (KJ)"},
     # deprecated
     "PatchModelPatcherOrder": {"class": PatchModelPatcherOrder, "name": "Patch Model Patcher Order"},
     "TorchCompileModelFluxAdvanced": {"class": DeprecatedCompileNodeKJ, "name": "TorchCompileModelFluxAdvanced"},
@@ -341,6 +347,7 @@ try:
         LTX2AudioLatentNormalizingSampling, LTXVImgToVideoInplaceKJ,
         LTX2AttentionTunerPatch, LTX2MemoryEfficientSageAttentionPatch,
         LTX2LoraLoaderAdvanced, WanVideoMemoryEfficientSageAttentionPatch,
+        MiniMaxH3MemoryEfficientSageAttentionPatch,
     )
     NODE_CONFIG.update({
     "LTXVEnhanceAVideoKJ": {"class": LTXVEnhanceAVideoKJ, "name": "LTXV Enhance A Video KJ"},
@@ -356,9 +363,18 @@ try:
     "LTX2MemoryEfficientSageAttentionPatch": {"class": LTX2MemoryEfficientSageAttentionPatch, "name": "LTX2 Memory Efficient Sage Attention Patch"},
     "LTX2LoraLoaderAdvanced": {"class": LTX2LoraLoaderAdvanced, "name": "LTX2 Lora Loader Advanced"},
     "WanVideoMemoryEfficientSageAttentionPatch": {"class": WanVideoMemoryEfficientSageAttentionPatch, "name": "WanVideo Memory Efficient Sage Attention Patch"},
+    "MiniMaxH3MemoryEfficientSageAttentionPatch": {"class": MiniMaxH3MemoryEfficientSageAttentionPatch, "name": "MiniMax H3 Memory Efficient Sage Attention Patch"},
     })
 except Exception as e:
     logging.warning(f"KJNodes: LTXV nodes could not be imported. LTXV nodes will be unavailable. Error: {e}", exc_info=True)
+
+try:
+    from .nodes.triton_vae import PatchTritonVAE
+    NODE_CONFIG.update({
+        "PatchTritonVAE": {"class": PatchTritonVAE, "name": "Patch Triton VAE"},
+    })
+except Exception:
+    logging.warning("KJNodes: PatchTritonVAE node could not be imported. PatchTritonVAE will be unavailable.", exc_info=True)
 
 def generate_node_mappings(node_config):
     node_class_mappings = {}

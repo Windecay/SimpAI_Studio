@@ -841,6 +841,7 @@ class PromptExecutor:
         ram_headroom = int(self.cache_args["ram"] * (1024 ** 3))
         ram_inactive_headroom = int(self.cache_args["ram_inactive"] * (1024 ** 3))
         ram_release_callback = self.caches.outputs.ram_release if self.cache_type == CacheType.RAM_PRESSURE else None
+        prompt_output_cache = self.caches.outputs
         comfy.memory_management.set_ram_cache_release_state(ram_release_callback, ram_headroom)
 
         try:
@@ -945,6 +946,7 @@ class PromptExecutor:
                     except Exception:
                         pass
         finally:
+            await prompt_output_cache.wait_for_pending_stores()
             if self.cache_type == CacheType.RAM_PRESSURE:
                 detail("RAM cache evictions: prompt=%s active=%s full=%s", prompt_id, self.caches.outputs.active_evictions, self.caches.outputs.full_evictions)
             comfy.memory_management.set_ram_cache_release_state(None, 0)

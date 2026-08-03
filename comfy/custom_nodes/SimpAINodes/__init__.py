@@ -54,6 +54,12 @@ if failed_modules:
         print(f"\n[SimpAINodes] Failed to import module {failed['name']}: {failed['error']}")
         print(f"Detailed error information:\n{failed['traceback']}")
 
+try:
+    from .text_embedding_cache import register_text_embedding_cache_provider
+    register_text_embedding_cache_provider()
+except Exception as err:
+    print(f"[SimpAINodes] Failed to enable text embedding cache: {err}")
+
 print(f"[SimpAINodes] Loaded {len(NODE_CLASS_MAPPINGS)} nodes successfully.")
 
 __version__ = "1.0.0"

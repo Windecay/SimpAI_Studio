@@ -889,7 +889,15 @@ def get_task_with_resolution_multiplier(*args):
             if base_w <= 0 or base_h <= 0:
                 try:
                     import re
-                    raw = str(args[aspect_ratios_index] or "")
+                    resolution_selection = args[aspect_ratios_index]
+                    try:
+                        params_backend_index = api_params.all_args.index('params_backend')
+                        params_backend = args[params_backend_index]
+                        if isinstance(params_backend, dict) and params_backend.get('scene_frontend'):
+                            resolution_selection = params_backend.get('scene_aspect_ratio') or resolution_selection
+                    except (ValueError, IndexError, TypeError):
+                        pass
+                    raw = str(resolution_selection or "")
                     raw = raw.split(',', 1)[0]
                     m2 = re.search(r'(\d+)\D+(\d+)', raw.replace('×', 'x'))
                     if m2:
@@ -8338,7 +8346,7 @@ with shared.gradio_root:
                                                 reserved_vram = gr.Slider(label='Reserved VRAM(GB)', minimum=0, maximum=24, step=0.1, value=ads.get_admin_default('reserved_vram'), info='Reserve VRAM to prevent OOM or Slow inference.')
                                                 cache_ram_enable = gr.Checkbox(label='Enable Cache RAM', value=ads.get_admin_default('cache_ram_enable'), info='When disabled, always use Classic cache mode.')
                                                 cache_ram = gr.Slider(label='Cache RAM(GB)', minimum=0, maximum=96, step=0.1, value=ads.get_admin_default('cache_ram'), interactive=ads.get_admin_default('cache_ram_enable'), info='[BETA]Set RAM cache threshold. 0: Classic; >0: RAM Pressure mode (auto-purge when available RAM is low).')
-                                                wavespeed_strength = gr.Slider(label='wavespeed_strength', minimum=0, maximum=1, step=0.01, value=ads.get_admin_default('wavespeed_strength'), info='Wavespeed optimization strength to improve inference speed on some presets.')
+                                                wavespeed_strength = gr.Slider(label='wavespeed_strength', minimum=0, maximum=1, step=0.01, value=ads.get_admin_default('wavespeed_strength'), info='Wavespeed optimization strength to improve inference speed on FLUX/H3 presets.')
                                             with gr.Row(visible=True if not args_manager.args.disable_backend else False):
                                                 translation_methods = gr.Radio(label='Translation methods', choices=modules.flags.translation_methods, value=ads.get_admin_default('translation_methods'))
                                             with gr.Row():

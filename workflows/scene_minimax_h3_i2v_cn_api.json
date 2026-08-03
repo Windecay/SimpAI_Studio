@@ -88,7 +88,7 @@
       "scheduler": ["1", 31],
       "steps": ["1", 9],
       "denoise": 1,
-      "model": ["45", 0]
+      "model": ["58", 0]
     },
     "class_type": "BasicScheduler",
     "_meta": {"title": "H3 Scheduler"}
@@ -114,7 +114,7 @@
   },
   "12": {
     "inputs": {
-      "model": ["45", 0],
+      "model": ["58", 0],
       "conditioning": ["11", 0]
     },
     "class_type": "BasicGuider",
@@ -296,5 +296,21 @@
     },
     "class_type": "easy ifElse",
     "_meta": {"title": "H3 CLIP Loader"}
+  },
+  "57": {
+    "inputs": {"value": 0},
+    "class_type": "easy float",
+    "_meta": {"title": "wavespeed_strength"}
+  },
+  "58": {
+    "inputs": {
+      "reuse_threshold": ["57", 0],
+      "start_percent": 0.3,
+      "end_percent": 0.8,
+      "verbose": false,
+      "model": ["45", 0]
+    },
+    "class_type": "EasyCache",
+    "_meta": {"title": "H3 EasyCache"}
   }
 }
