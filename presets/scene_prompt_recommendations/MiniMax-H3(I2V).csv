@@ -1,0 +1,4 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
+h3_i2v_portrait_motion,Basic,positive_prompt,replace,Portrait with native audio,肖像自然运动,"保持首帧人物身份、服装、构图和光线一致，人物缓慢抬眼看向镜头，发丝和衣料随轻风自然运动，镜头轻微前推。音频：安静室内环境声、轻柔风声和细微衣料摩擦声，不添加对白。","首帧|身份一致|轻微前推|环境音",130
+h3_i2v_first_last_transition,Basic,positive_prompt,replace,First-to-last transition,首尾帧过渡,"从主图首帧自然运动到第二张图所示的尾帧，保持主体身份、场景结构和光线连续，使用一次平滑的横向运镜完成构图变化。音频：与场景匹配的连续环境声和一次克制的转场音效。","首尾帧|自然过渡|横向运镜|连续音频",125
+h3_i2v_product_turntable,Basic,positive_prompt,replace,Product turntable,产品转台展示,"保持输入产品外观、文字和材质准确，产品在展示台上缓慢旋转，镜头从中景移动到细节特写，背景光带平缓移动。音频：低音量电子音乐、轻微转台机械声，结尾干净停止。","产品|材质保持|旋转展示|机械声",115

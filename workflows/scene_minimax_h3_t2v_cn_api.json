@@ -1,0 +1,231 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 864,
+      "height": 480,
+      "cfg": 1,
+      "steps": 20,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 0,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "video_duration": 5
+    },
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"}
+  },
+  "2": {
+    "inputs": {"seed": 0},
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"}
+  },
+  "3": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "base_model"}
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "clip_model"}
+  },
+  "5": {
+    "inputs": {"vae_name": "minimax_h3_video_vae_fp16.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "vae_model"}
+  },
+  "6": {
+    "inputs": {"vae_name": "minimax_h3_audio_vae_fp32.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "MiniMax H3 Audio VAE"}
+  },
+  "7": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": ["1", 32]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Duration to Frames"}
+  },
+  "8": {
+    "inputs": {"sampler_name": ["1", 30]},
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "H3 Sampler"}
+  },
+  "9": {
+    "inputs": {
+      "scheduler": ["1", 31],
+      "steps": ["1", 9],
+      "denoise": 1,
+      "model": ["45", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "H3 Scheduler"}
+  },
+  "10": {
+    "inputs": {"noise_seed": ["2", 0]},
+    "class_type": "RandomNoise",
+    "_meta": {"title": "H3 Noise"}
+  },
+  "11": {
+    "inputs": {
+      "clip": ["48", 0],
+      "vae": ["5", 0],
+      "prompt": ["1", 0],
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "length": ["7", 1]
+    },
+    "class_type": "MiniMaxH3ImageToVideo",
+    "_meta": {"title": "MiniMax H3 Text to Video"}
+  },
+  "12": {
+    "inputs": {
+      "model": ["45", 0],
+      "conditioning": ["11", 0]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {"title": "H3 Guider"}
+  },
+  "13": {
+    "inputs": {
+      "noise": ["10", 0],
+      "guider": ["12", 0],
+      "sampler": ["8", 0],
+      "sigmas": ["9", 0],
+      "latent_image": ["11", 1]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "H3 Sampler Advanced"}
+  },
+  "14": {
+    "inputs": {
+      "samples": ["13", 0],
+      "vae": ["5", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {"title": "H3 Video Decode"}
+  },
+  "15": {
+    "inputs": {
+      "samples": ["13", 0],
+      "vae": ["6", 0]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {"title": "H3 Audio Decode"}
+  },
+  "16": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": 24,
+      "crf": 19,
+      "images": ["14", 0],
+      "audio": ["15", 0]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {"title": "SaveVideoWebsocket"}
+  },
+  "40": {
+    "inputs": {"unet_name": "placeholder.gguf"},
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "base_model_gguf"}
+  },
+  "41": {
+    "inputs": {"value": 1},
+    "class_type": "easy int",
+    "_meta": {"title": "Safetensors Type"}
+  },
+  "42": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 24],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Model Type"}
+  },
+  "43": {
+    "inputs": {
+      "boolean": ["42", 0],
+      "on_true": ["3", 0],
+      "on_false": ["40", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Model Loader"}
+  },
+  "44": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": ["43", 0]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {"title": "H3 SageAttention"}
+  },
+  "45": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": ["44", 0]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {"title": "H3 FP16 Accumulation"}
+  },
+  "46": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {"title": "clip_model"}
+  },
+  "47": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 26],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 CLIP Type"}
+  },
+  "48": {
+    "inputs": {
+      "boolean": ["47", 0],
+      "on_true": ["4", 0],
+      "on_false": ["46", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 CLIP Loader"}
+  }
+}

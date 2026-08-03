@@ -10847,9 +10847,11 @@ function getPresetStoreCandidateEntries() {
             const item = meta[name] || {};
             const orderValue = Number(item.order);
             const source = item.source === "user" || cleanName.endsWith(".") ? "user" : "base";
+            const backendEngine = String(item.backend_engine || inferPresetStoreEngine(cleanName));
             return {
                 name: cleanName,
-                engine: String(item.backend_engine || inferPresetStoreEngine(cleanName)),
+                engine: String(item.preset_category || backendEngine),
+                backendEngine,
                 scene: !!item.scene,
                 engineType: String(item.engine_type || ""),
                 taskMethod: String(item.task_method || ""),
@@ -10910,6 +10912,7 @@ function createPresetStoreCandidateElement(entry) {
         entry.mediaType || "image",
         entry.engineType,
         entry.taskMethod,
+        entry.backendEngine,
         entry.source === "user" ? "user personal" : "system",
     ].join(" ").toLowerCase();
     button.dataset.saiSearch = `${button.dataset.saiSearchBase} ${getPresetStoreDisplayName(entry.name, entry.missing)}`.trim().toLowerCase();

@@ -2967,6 +2967,16 @@ packages = {'base_package': {'id': 1,
                                      'controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl'],
                            'info_links': ['https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged'],
                            'preset_sample': []},
+ 'minimax_h3_package': {'id': 47,
+                        'name': '[47]MiniMax H3文生、图生、多参考图原生音视频模型包|显存需求：★★★★ 速度：★',
+                        'note': 'MiniMax H3文生视频、首尾帧图生视频、多参考图视频生成模型包，输出原生音频',
+                        'files': ['diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                                  'diffusion_models,minimax_h3_ref2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+                                  'text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+                                  'vae,minimax_h3_video_vae_fp16.safetensors,5207808496,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_video_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors',
+                                  'vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors'],
+                        'info_links': ['https://modelscope.cn/models/Comfy-Org/MiniMax-H3'],
+                        'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
 }

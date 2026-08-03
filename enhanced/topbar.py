@@ -306,6 +306,9 @@ PRESET_STORE_ORDER = [
     "Wan(T2V)",
     "Wan-Uni3C(T2V)",
     "Wan(T2I)",
+    "MiniMax-H3(T2V)",
+    "MiniMax-H3(I2V)",
+    "MiniMax-H3(R2V)",
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
     "Bernini-VideoEdit",
@@ -1756,7 +1759,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v8",
+        "canvas_preset_meta_media_capability_v9",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -1785,6 +1788,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             continue
 
         backend_engine = "Other"
+        preset_category = ""
         engine_type = "image"
         is_scene = False
         task_method = ""
@@ -1803,6 +1807,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             preset_content = _read_preset_content_silent(preset_name, user_did)
             model_list_raw = preset_content.get("model_list", []) if isinstance(preset_content, dict) else []
             if isinstance(preset_content, dict):
+                preset_category = str(preset_content.get("preset_category") or "").strip()
                 raw_styles = preset_content.get("default_styles", [])
                 if isinstance(raw_styles, list):
                     default_styles = [str(item) for item in raw_styles if str(item).strip()]
@@ -1914,6 +1919,7 @@ def _build_preset_store_meta(state, copy_cached=True):
 
         meta[preset_name] = {
             "backend_engine": str(backend_engine or "Other"),
+            "preset_category": str(preset_category or backend_engine or "Other"),
             "engine_type": str(engine_type or "image"),
             "scene": bool(is_scene),
             "task_method": str(task_method or ""),

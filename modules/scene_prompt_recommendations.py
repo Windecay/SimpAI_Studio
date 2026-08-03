@@ -3007,6 +3007,14 @@ def _has_image_to_video_phrase(value):
     return "image to video" in clean
 
 
+def _has_reference_to_video_marker(value):
+    clean = _clean_text(value).lower()
+    normalized = re.sub(r"[^a-z0-9]+", "_", clean).strip("_")
+    parts = [part for part in normalized.split("_") if part]
+    phrase = clean.replace("_", " ").replace("-", " ")
+    return "(r2v)" in clean or "r2v" in parts or normalized.endswith("r2v") or "reference to video" in phrase
+
+
 def _scene_prompt_supports_shared_image_to_video(preset_name, scene_frontend, task_methods, capability):
     image_policy = _clean_text(capability.get("image_policy")).lower()
     video_policy = _clean_text(capability.get("video_policy")).lower()
@@ -3024,7 +3032,12 @@ def _scene_prompt_supports_shared_image_to_video(preset_name, scene_frontend, ta
     marker_values = [preset_name, scene_frontend.get("theme_title")]
     marker_values.extend(task_methods)
     marker_values.extend(_scene_value_candidates(scene_frontend.get("theme")))
-    return any(_has_i2v_marker(item) or _has_image_to_video_phrase(item) for item in marker_values)
+    return any(
+        _has_i2v_marker(item)
+        or _has_image_to_video_phrase(item)
+        or _has_reference_to_video_marker(item)
+        for item in marker_values
+    )
 
 
 def _scene_prompt_shared_keys(preset_name):

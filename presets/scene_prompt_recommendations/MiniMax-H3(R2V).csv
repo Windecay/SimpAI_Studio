@@ -1,0 +1,4 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
+h3_r2v_identity_style,Basic,positive_prompt,replace,Identity and style references,身份与风格参考,"以 <Picture 1> 的人物身份、五官和服装为主体，采用 <Picture 2> 的光线、色彩和视觉风格，人物在场景中自然转身并向前走两步，镜头稳定跟随。音频：与场景匹配的脚步声、环境声和克制配乐。","<Picture 1>|<Picture 2>|身份保持|风格参考",140
+h3_r2v_subject_prop_scene,Basic,positive_prompt,replace,Subject prop and scene,主体道具与场景,"使用 <Picture 1> 的主体，手持 <Picture 2> 中的道具，置于 <Picture 3> 的场景构图中；保持各参考图的关键特征清晰，镜头从全景平滑移动到半身特写。音频：自然环境声、道具动作声和轻柔背景音乐。","<Picture 1>|<Picture 2>|<Picture 3>|多参考组合",130
+h3_r2v_multi_character,Basic,positive_prompt,replace,Ordered character references,有序角色参考,"让 <Picture 1> 和 <Picture 2> 中的角色在同一场景自然互动，分别保持身份、服装和身体比例，参考 <Picture 3> 的整体美术风格。镜头缓慢环绕，动作连续。音频：匹配动作的环境声与轻微配乐，不添加未指定对白。","多角色|有序参考|身份一致|原生音频",120

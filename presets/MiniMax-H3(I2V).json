@@ -1,0 +1,125 @@
+{
+  "supported_tasks": ["image_to_video", "multi_image_to_video"],
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "disinteractive": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["Basic"],
+      "theme_labels": {
+        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"}
+      },
+      "theme_title": "MiniMax H3 Image-to-Video [Main image: first frame; Image 2: optional last frame]",
+      "director_capability": {
+        "image_policy": "required",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "max_images": 2,
+        "min_images": 1,
+        "image_modes": ["first_frame", "first_last"],
+        "duration_strategy": "shot",
+        "audio_output": "generated",
+        "mixed_segments": false
+      },
+      "disable_canvas_mask": true,
+      "disvisible": [
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_input_image4",
+        "scene_additional_prompt",
+        "scene_additional_prompt_2",
+        "scene_video",
+        "scene_reference_video",
+        "scene_audio",
+        "scene_var_number",
+        "scene_var_number2",
+        "scene_var_number3",
+        "scene_var_number4",
+        "scene_var_number5",
+        "scene_var_number6",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option1",
+        "scene_switch_option2",
+        "scene_switch_option3",
+        "scene_switch_option4",
+        "scene_refiner_model",
+        "sam3_input_video",
+        "sam3_mask_video",
+        "scene_batch"
+      ],
+      "prompt": {"Basic": ""},
+      "task_method": {"Basic": "minimax_h3_i2v_cn"},
+      "multimodal_prompt": {"Basic": ""},
+      "agent_prompt": {
+        "Basic": "Rewrite the request as one concise MiniMax H3 image-to-video prompt in the user's language. Treat the main image as the first frame and the optional second image as the last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing natural motion, camera movement, timing, and matching audio. Do not invent dialogue unless requested. Return only the final prompt."
+      },
+      "video_duration_title": "Video Duration(s)",
+      "video_duration_min": 0.2,
+      "video_duration_max": 15,
+      "video_duration": {"Basic": 5},
+      "aspect_ratio" : ["640|1:1", "720|1:1", "832|1:1", "960|1:1", "1024|1:1", "1280|1:1", "origin|Original"],
+      "resolution_control": {
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 640,
+        "base_height": 640,
+        "quantize": 32,
+        "interactive": true,
+        "frontend_preprocess": true,
+        "preprocess_target": "image",
+        "preprocess_fit": "proportional"
+      },
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50
+    }
+  },
+  "default_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  "default_loras": [
+    ["None", 1],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1]
+  ],
+  "default_cfg_scale": 1,
+  "default_vae": "minimax_h3_video_vae_fp16.safetensors",
+  "default_sample_sharpness": 2,
+  "default_sampler": "res_multistep",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "640*640",
+  "default_image_number": 1,
+  "default_overwrite_step": 20,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae,minimax_h3_video_vae_fp16.safetensors,5207808496,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_video_vae_fp16.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+  ]
+}

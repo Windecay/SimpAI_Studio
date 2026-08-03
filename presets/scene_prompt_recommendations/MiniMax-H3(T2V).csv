@@ -1,0 +1,4 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
+h3_t2v_neon_rain,Basic,positive_prompt,replace,Neon rain sequence,霓虹雨夜短片,"雨夜城市街道，镜头贴近湿润路面缓慢前移，霓虹倒影随着车辆经过而流动，一名撑伞人物从画面深处走近。音频：细密雨声、远处车流、轻微低频氛围音乐，声场随镜头自然变化。","雨夜|霓虹|镜头前移|环境音",130
+h3_t2v_product_reveal,Basic,positive_prompt,replace,Cinematic product reveal,电影感产品展示,"黑色摄影棚中，一件金属产品从阴影里逐渐显现，镜头环绕半圈并停在正面特写，边缘光突出材质和轮廓。音频：克制的电子脉冲、细微机械声和结尾短促提示音。","产品展示|环绕镜头|金属材质|电子音效",120
+h3_t2v_coastal_morning,Basic,positive_prompt,replace,Coastal morning,海岸清晨,"清晨海岸，镜头从礁石缓慢升起并望向海面，阳光穿过薄雾，海鸟掠过远处浪线。音频：海浪、轻风、稀疏海鸟声和柔和弦乐，不使用对白。","海岸|清晨|镜头上升|自然声音",110

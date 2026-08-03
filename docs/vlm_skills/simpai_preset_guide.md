@@ -192,6 +192,11 @@ SimpAI UI guide skill:
   image-to-video requests, recommend Dasiwa image-to-video first.
 - For text-to-video, recommend Wan(T2V); for image-to-video, recommend Wan(I2V);
   for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
+- For MiniMax H3 native-audio video generation, recommend MiniMax-H3(T2V) for
+  text-to-video, MiniMax-H3(I2V) when the main image is the first frame and an
+  optional second image is the last frame, and MiniMax-H3(R2V) for 1-5 ordered
+  reference images. H3(R2V) prompts should refer to uploaded images as
+  `<Picture 1>`, `<Picture 2>`, and so on in upload order.
 - For video outpainting / expanding video frame boundaries, recommend
   Wan-Outpaint.
 - For video object/person/face replacement with masks, recommend Wan-Animate
