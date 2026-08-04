@@ -241,6 +241,32 @@ def _gallery_display_preview_webroot():
 
 
 def _gallery_display_preview_origin(state_params=None):
+    try:
+        configured_port = int(getattr(args_manager.args, "port", 0) or 0)
+    except (TypeError, ValueError):
+        configured_port = 0
+
+    def _origin_from_candidate(candidate):
+        match = re.match(r"^(https?://[^/]+)", str(candidate or ""))
+        if not match:
+            return ""
+        origin = match.group(1)
+        if configured_port:
+            try:
+                parsed = urlparse(origin)
+                hostname = str(parsed.hostname or "").lower()
+                candidate_port = parsed.port
+                if candidate_port is None:
+                    candidate_port = 443 if parsed.scheme == "https" else 80
+                # A loopback URL from another local service cannot serve the
+                # SimpleAI gallery routes. Keep non-loopback proxy origins
+                # intact, but fall back to the configured frontend port.
+                if hostname in {"127.0.0.1", "localhost", "::1"} and candidate_port != configured_port:
+                    return ""
+            except (TypeError, ValueError):
+                return ""
+        return origin
+
     candidates = []
     if isinstance(state_params, dict):
         candidates.extend([
@@ -257,12 +283,12 @@ def _gallery_display_preview_origin(state_params=None):
     except Exception:
         pass
     for candidate in candidates:
-        match = re.match(r"^(https?://[^/]+)", str(candidate or ""))
-        if match:
-            return match.group(1)
+        origin = _origin_from_candidate(candidate)
+        if origin:
+            return origin
     try:
         host = str(getattr(args_manager.args, "listen", "") or "127.0.0.1").strip()
-        port = int(getattr(args_manager.args, "port", 0) or 0)
+        port = configured_port
         if not port:
             return ""
         if host in ("", "0.0.0.0", "::"):

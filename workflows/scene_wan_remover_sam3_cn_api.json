@@ -384,8 +384,8 @@
         0
       ],
       "audio": [
-        "65",
-        2
+        "251",
+        0
       ]
     },
     "class_type": "VHS_VideoCombine",
@@ -534,6 +534,23 @@
       "title": "Binary Mask (Threshold 0.5)"
     }
   },
+  "251": {
+    "inputs": {
+      "audio": [
+        "65",
+        2
+      ],
+      "start_index": 0,
+      "duration": [
+        "218",
+        7
+      ]
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {
+      "title": "Optional Trim Source Audio"
+    }
+  },
   "222": {
     "inputs": {
       "format": "MP4",
@@ -548,8 +565,8 @@
         0
       ],
       "audio": [
-        "65",
-        2
+        "251",
+        0
       ]
     },
     "class_type": "SaveVideoWebsocket",

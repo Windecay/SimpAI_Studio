@@ -61,6 +61,10 @@
         'image_object_transfer', 'image_expression_transfer'
     ]);
     const CREATIVE_VIDEO_TASKS = new Set(['text_to_video', 'image_to_video', 'multi_image_to_video']);
+    const CREATIVE_MANUAL_OUTPUT_TASKS = new Set([
+        'text_to_image', 'image_edit', 'multi_image_edit',
+        'text_to_video', 'image_to_video', 'multi_image_to_video'
+    ]);
     const CREATIVE_GENERATION_TASKS = new Set([...CREATIVE_IMAGE_TASKS, ...CREATIVE_VIDEO_TASKS]);
     const CREATIVE_TEXT_TASKS = new Set(['text_to_image', 'text_to_video']);
     const CREATIVE_IMAGE_INPUT_TASKS = new Set([...CREATIVE_GENERATION_TASKS].filter((task) => !CREATIVE_TEXT_TASKS.has(task)));
@@ -1815,13 +1819,13 @@
       </div>
       <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image checked><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
       <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
-      <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image', '添加引用图片'))}" aria-label="${escapeHtml(t('Attach reference image', '添加引用图片'))}"><i class="fa-solid fa-image"></i></button>
+      <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}" aria-label="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}"><i class="fa-solid fa-photo-film"></i></button>
     </div>
     <div class="describe-vlm-chat-attachments" data-describe-vlm-chat-attachments hidden></div>
     <textarea data-describe-vlm-chat-input rows="2" placeholder="${escapeHtml(chatInputPlaceholder(state.chatMode))}"></textarea>
     <button type="button" data-describe-vlm-chat-stop title="${escapeHtml(t('Stop reply', '停止回答'))}" aria-label="${escapeHtml(t('Stop reply', '停止回答'))}" hidden><i class="fa-solid fa-stop"></i></button>
     <button type="button" data-describe-vlm-chat-send title="${escapeHtml(t('Send', '发送'))}" aria-label="${escapeHtml(t('Send', '发送'))}"><i class="fa-solid fa-paper-plane"></i></button>
-    <input type="file" accept="image/*" multiple data-describe-vlm-chat-file hidden>
+    <input type="file" accept="image/*,video/*" multiple data-describe-vlm-chat-file hidden>
     <input type="file" accept="image/*" multiple data-describe-vlm-chat-generation-file hidden>
     <input type="file" accept="application/json,.json" data-describe-vlm-chat-conversation-file hidden>
   </div>
@@ -1882,31 +1886,39 @@
         });
         const dataUrl = String(asset?.data_url || '').trim();
         const thumb = String(asset?.thumb || '').trim();
-        const hasEmbeddedImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl)
+        const hasEmbeddedMedia = /^data:(?:image|video)\/[a-z0-9.+-]+;base64,/i.test(dataUrl)
             && dataUrl.length <= MAX_RUNTIME_IMAGE_DATA_URL_LENGTH;
-        if (includeEmbedded && hasEmbeddedImage) {
+        if (includeEmbedded && hasEmbeddedMedia) {
             clean.data_url = dataUrl;
             if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(thumb) && thumb.length <= MAX_RUNTIME_IMAGE_THUMB_LENGTH) {
                 clean.thumb = thumb;
             }
         }
         const hasDurableLocator = Boolean(clean.path || clean.output_path || clean.asset_relative_path || clean.relative_path || clean.preview_url);
-        if (!includeEmbedded && hasEmbeddedImage && !hasDurableLocator) return null;
+        if (!includeEmbedded && hasEmbeddedMedia && !hasDurableLocator) return null;
         return clean.asset_id || hasDurableLocator || clean.data_url ? clean : null;
     }
 
-    function normalizeCreativeMediaInput(input, index = 0, options = {}) {
+    function normalizeChatMediaInput(input, index = 0, options = {}) {
         if (!input || typeof input !== 'object') return null;
         const asset = normalizeCreativeAsset(input.asset, options);
         const ref = String(input.ref || '').trim().slice(0, 160);
-        if (!ref || !asset || !String(asset.mime || '').toLowerCase().startsWith('image/')) return null;
+        const declaredType = String(input.type || '').trim().toLowerCase();
+        const type = declaredType === 'video' || mediaKind(asset) === 'video' ? 'video' : 'image';
+        if (!ref || !asset || !['image', 'video'].includes(type)) return null;
+        if (type === 'video' && !String(asset.mime || '').trim()) asset.mime = 'video/mp4';
         return {
             ref,
-            role: index === 0 ? 'base_image' : `reference_image_${index}`,
-            name: String(input.name || asset.name || `Image ${index + 1}`).trim().slice(0, 200),
-            type: 'image',
+            role: type === 'video' ? 'video' : index === 0 ? 'base_image' : `reference_image_${index}`,
+            name: String(input.name || asset.name || `${type === 'video' ? 'Video' : 'Image'} ${index + 1}`).trim().slice(0, 200),
+            type,
             asset
         };
+    }
+
+    function normalizeCreativeMediaInput(input, index = 0, options = {}) {
+        const normalized = normalizeChatMediaInput(input, index, options);
+        return normalized?.type === 'image' ? normalized : null;
     }
 
     function normalizeCreativeGeneration(generation) {
@@ -2058,7 +2070,7 @@
             ? message.actions.slice(0, 20).map(normalizePersistedAction).filter(Boolean)
             : [];
         const mediaAssets = Array.isArray(message.media_assets)
-            ? message.media_assets.slice(0, MAX_ATTACHMENTS).map((input, index) => normalizeCreativeMediaInput(
+            ? message.media_assets.slice(0, MAX_ATTACHMENTS).map((input, index) => normalizeChatMediaInput(
                 input,
                 index,
                 { includeEmbedded: false }
@@ -2451,7 +2463,7 @@
         }).join('')}</div>`;
     }
 
-    function renderMessageImages(images) {
+    function renderMessageImages(images, mediaAssets = []) {
         const rows = Array.isArray(images) ? images : [];
         if (!rows.length) return '';
         return `<div class="describe-vlm-chat-message-images">${rows.map((image, index) => {
@@ -2462,9 +2474,10 @@
                 ? localText(`Attached video ${index + 1}${dimensions}`, `附加视频 ${index + 1}${dimensions}`)
                 : localText(`Attached image ${index + 1}${dimensions}`, `附图 ${index + 1}${dimensions}`);
             if (video) {
-                const preview = String(image?.preview_url || '').trim();
+                const persistedAsset = Array.isArray(mediaAssets) ? mediaAssets[index]?.asset : null;
+                const preview = String(image?.preview_url || '').trim() || persistedMediaAssetSource(persistedAsset);
                 return preview
-                    ? `<video src="${escapeHtml(preview)}" aria-label="${escapeHtml(label)}" controls preload="metadata" playsinline></video>`
+                    ? `<video src="${escapeHtml(creativeAssetUrl(preview))}" aria-label="${escapeHtml(label)}" controls preload="metadata" playsinline></video>`
                     : `<span class="describe-vlm-chat-message-video-placeholder"><i class="fa-solid fa-film"></i><span>${escapeHtml(image?.name || label)}</span></span>`;
             }
             return `<img src="${escapeHtml(source)}" alt="${escapeHtml(label)}" loading="lazy">`;
@@ -2592,7 +2605,7 @@
         const merged = [];
         const seen = new Set();
         [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])].forEach((image) => {
-            if (!image || mediaKind(image) !== 'image' || !image.data_url) return;
+            if (!image || !['image', 'video'].includes(mediaKind(image)) || !image.data_url) return;
             const identity = composerImageIdentity(image);
             if (identity && seen.has(identity)) return;
             if (identity) seen.add(identity);
@@ -2611,11 +2624,11 @@
     }
 
     async function persistedMediaInputPayload(input, index = 0) {
-        const normalized = normalizeCreativeMediaInput(input, index);
+        const normalized = normalizeChatMediaInput(input, index);
         const asset = normalized?.asset;
         const source = persistedMediaAssetSource(asset);
         if (!asset || !source) return null;
-        if (source.startsWith('data:image/')) {
+        if (/^data:image\//i.test(source)) {
             return imagePayloadFromDataUrl(source, {
                 id: uid('describe_message_ref'),
                 name: normalized.name || asset.name || `message-image-${index + 1}.png`,
@@ -2625,12 +2638,44 @@
                 key: `message-media:${asset.asset_id || normalized.ref || index}`
             });
         }
+        if (/^data:video\//i.test(source)) {
+            return {
+                id: uid('describe_message_ref'),
+                name: normalized.name || asset.name || `message-video-${index + 1}.mp4`,
+                mime: asset.mime || 'video/mp4',
+                media_type: 'video',
+                width: asset.width || null,
+                height: asset.height || null,
+                size: dataUrlBinarySize(source),
+                wire_size: source.length,
+                original_size: asset.size || null,
+                data_url: source,
+                thumb: '',
+                key: `message-media:${asset.asset_id || normalized.ref || index}`
+            };
+        }
         const response = await fetch(source, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`image fetch failed: ${response.status}`);
         const blob = await response.blob();
         const mime = String(blob.type || asset.mime || 'image/png').toLowerCase();
-        if (!mime.startsWith('image/')) return null;
         const dataUrl = await blobToDataUrl(blob);
+        if (mime.startsWith('video/')) {
+            return {
+                id: uid('describe_message_ref'),
+                name: normalized.name || asset.name || `message-video-${index + 1}.mp4`,
+                mime,
+                media_type: 'video',
+                width: asset.width || null,
+                height: asset.height || null,
+                size: blob.size || dataUrlBinarySize(dataUrl),
+                wire_size: dataUrl.length,
+                original_size: blob.size || null,
+                data_url: dataUrl,
+                thumb: '',
+                key: `message-media:${asset.asset_id || normalized.ref || source}`
+            };
+        }
+        if (!mime.startsWith('image/')) return null;
         return imagePayloadFromDataUrl(dataUrl, {
             id: uid('describe_message_ref'),
             name: normalized.name || asset.name || `message-image-${index + 1}.png`,
@@ -2642,7 +2687,7 @@
 
     async function messageImagePayloadsForComposer(message) {
         const runtimePayloads = (Array.isArray(message?._image_payloads) ? message._image_payloads : [])
-            .filter((image) => mediaKind(image) === 'image' && image?.data_url)
+            .filter((image) => ['image', 'video'].includes(mediaKind(image)) && image?.data_url)
             .slice(0, MAX_ATTACHMENTS);
         if (runtimePayloads.length) return runtimePayloads;
 
@@ -3049,6 +3094,52 @@
             .every((key) => keys.has(key));
     }
 
+    function creativeVideoDurationSpec(action, entry = null) {
+        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
+        const task = creativeActionTask(action, inputCount);
+        if (!CREATIVE_VIDEO_TASKS.has(task)) return null;
+        const resolvedEntry = entry || creativePresetEntry(action?.preset);
+        const durationParam = (Array.isArray(resolvedEntry?.schema?.params) ? resolvedEntry.schema.params : [])
+            .find((item) => String(item?.key || '') === 'scene_video_duration');
+        const theme = String(action?.execution_plan?.theme || resolvedEntry?.schema?.default_theme || '').trim();
+        const themeDefaults = resolvedEntry?.schema?.per_theme?.[theme]?.defaults;
+        const overrides = action?.execution_plan?.parameter_overrides && typeof action.execution_plan.parameter_overrides === 'object'
+            ? action.execution_plan.parameter_overrides
+            : {};
+        const toNumber = (value) => {
+            if (value === '' || value == null) return null;
+            const number = Number(value);
+            return Number.isFinite(number) ? number : null;
+        };
+        const rawMinimum = toNumber(durationParam?.min);
+        const rawMaximum = toNumber(durationParam?.max);
+        const minimum = rawMinimum == null ? 0.1 : Math.max(0.1, rawMinimum);
+        const maximum = rawMaximum != null && rawMaximum > 0 ? Math.min(120, rawMaximum) : 120;
+        const upper = Math.max(minimum, maximum);
+        const override = toNumber(overrides.scene_video_duration);
+        const declaredDefault = toNumber(durationParam?.default);
+        const themeDefault = toNumber(themeDefaults?.scene_video_duration);
+        const rawValue = override ?? declaredDefault ?? themeDefault ?? 5;
+        const rawStep = toNumber(durationParam?.step);
+        const step = rawStep != null && rawStep > 0 ? Math.max(0.01, Math.min(10, rawStep)) : 0.1;
+        return {
+            value: Math.max(minimum, Math.min(upper, Math.round(rawValue * 100) / 100)),
+            minimum,
+            maximum: upper,
+            step: Math.round(step * 100) / 100,
+            interactive: durationParam?.interactive !== false
+        };
+    }
+
+    function creativeVideoDurationControl(action, actionRef, disabled = '', entry = null) {
+        const spec = creativeVideoDurationSpec(action, entry);
+        if (!spec) return '';
+        const fieldDisabled = disabled || !spec.interactive ? 'disabled' : '';
+        const label = localText('Duration (seconds)', '时长（秒）');
+        const range = localText(`Allowed range: ${spec.minimum}-${spec.maximum}`, `可选范围：${spec.minimum}-${spec.maximum} 秒`);
+        return `<label class="describe-vlm-chat-generation-duration" title="${escapeHtml(range)}"><span>${escapeHtml(label)}</span><input type="number" min="${spec.minimum}" max="${spec.maximum}" step="${spec.step}" value="${spec.value}" inputmode="decimal" aria-label="${escapeHtml(label)}" data-describe-vlm-chat-generation-duration="${escapeHtml(actionRef)}" ${fieldDisabled}></label>`;
+    }
+
     function creativeEnhanceTargets(action) {
         const aliases = new Map([
             ['face', 'face'], ['facial', 'face'], ['脸', 'face'], ['面部', 'face'], ['脸部', 'face'], ['五官', 'face'],
@@ -3143,9 +3234,25 @@
         let status = requirements.includes('mask') ? 'needs_mask' : requirements.length ? 'needs_interaction' : 'ready';
         if (status === 'ready' && modelStatus === 'missing') status = 'models_missing';
         const slots = creativePresetImageSlots(entry);
-        const parameterOverrides = task === 'image_outpaint' && creativePresetSupportsOutpaintDirections(entry)
-            ? creativeOutpaintParameterOverrides(action)
-            : {};
+        const parameterOverrides = Object.assign(
+            {},
+            action?.execution_plan?.parameter_overrides && typeof action.execution_plan.parameter_overrides === 'object'
+                ? action.execution_plan.parameter_overrides
+                : {},
+            task === 'image_outpaint' && creativePresetSupportsOutpaintDirections(entry)
+                ? creativeOutpaintParameterOverrides(action)
+                : {}
+        );
+        if (Object.prototype.hasOwnProperty.call(parameterOverrides, 'scene_video_duration')) {
+            const durationParam = (Array.isArray(entry?.schema?.params) ? entry.schema.params : [])
+                .find((item) => String(item?.key || '') === 'scene_video_duration');
+            const duration = Number(parameterOverrides.scene_video_duration);
+            const rawMinimum = Number(durationParam?.min);
+            const rawMaximum = Number(durationParam?.max);
+            const minimum = Number.isFinite(rawMinimum) ? Math.max(0.1, rawMinimum) : 0.1;
+            const maximum = Number.isFinite(rawMaximum) && rawMaximum > 0 ? Math.min(120, rawMaximum) : 120;
+            if (Number.isFinite(duration)) parameterOverrides.scene_video_duration = Math.max(minimum, Math.min(maximum, Math.round(duration * 100) / 100));
+        }
         const taskModes = entry?.media_capability?.task_modes && typeof entry.media_capability.task_modes === 'object'
             ? entry.media_capability.task_modes
             : {};
@@ -3168,6 +3275,27 @@
     function normalizeCreativeExecutionPlan(plan) {
         if (!plan || typeof plan !== 'object' || plan.schema !== 'simpai.execution_plan.v1') return null;
         const statuses = new Set(['ready', 'needs_media', 'needs_mask', 'needs_interaction', 'models_missing', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible']);
+        const rawParameterOverrides = plan.parameter_overrides && typeof plan.parameter_overrides === 'object'
+            ? plan.parameter_overrides
+            : {};
+        const parameterOverrides = {};
+        Object.entries(rawParameterOverrides).forEach(([key, value]) => {
+            if (['scene_var_number7', 'scene_var_number8', 'scene_var_number9', 'scene_var_number10'].includes(key)) {
+                parameterOverrides[key] = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+                return;
+            }
+            if (key === 'scene_video_duration') {
+                const duration = Number(value);
+                if (Number.isFinite(duration)) parameterOverrides[key] = Math.max(0.1, Math.min(120, Math.round(duration * 100) / 100));
+                return;
+            }
+            if (key === 'scene_steps' || /^scene_var_number(?:[2-9]|10)?$/.test(key)) {
+                const number = Number(value);
+                if (Number.isFinite(number)) parameterOverrides[key] = number;
+                return;
+            }
+            if (/^scene_switch_option[1-4]$/.test(key) && typeof value === 'boolean') parameterOverrides[key] = value;
+        });
         const normalized = {
             schema: 'simpai.execution_plan.v1',
             status: statuses.has(String(plan.status || '')) ? String(plan.status) : 'no_compatible_route',
@@ -3182,12 +3310,7 @@
             interaction_requirements: Array.isArray(plan.interaction_requirements) ? plan.interaction_requirements.slice(0, 8).map(String) : [],
             model_status: ['ready', 'missing', 'unknown'].includes(String(plan.model_status || '')) ? String(plan.model_status) : 'unknown',
             preset_source: String(plan.preset_source || 'automatic'),
-            parameter_overrides: Object.fromEntries(Object.entries(
-                plan.parameter_overrides && typeof plan.parameter_overrides === 'object' ? plan.parameter_overrides : {}
-            ).filter(([key]) => ['scene_var_number7', 'scene_var_number8', 'scene_var_number9', 'scene_var_number10'].includes(key)).map(([key, value]) => [
-                key,
-                Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
-            ]))
+            parameter_overrides: parameterOverrides
         };
         const parameterProfile = String(plan.parameter_profile || '').trim().slice(0, 200);
         if (parameterProfile) {
@@ -3241,7 +3364,9 @@
         return state.creativePresetCatalog.slice(0, 100).map((entry) => {
             const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes.slice(0, 40).map((theme) => String(theme || '')).filter(Boolean) : [];
             const perTheme = entry?.schema?.per_theme && typeof entry.schema.per_theme === 'object' ? entry.schema.per_theme : {};
-            return {
+            const durationParam = (Array.isArray(entry?.schema?.params) ? entry.schema.params : [])
+                .find((item) => String(item?.key || '') === 'scene_video_duration');
+            const capability = {
                 name: String(entry?.name || ''),
                 min_images: creativePresetMinImages(entry),
                 max_images: creativePresetMaxImages(entry),
@@ -3265,6 +3390,11 @@
                     supported_tasks: creativeThemeSupportedTasks(entry, theme)
                 }]))
             };
+            const durationMin = Number(durationParam?.min);
+            const durationMax = Number(durationParam?.max);
+            if (Number.isFinite(durationMin)) capability.video_duration_min = durationMin;
+            if (Number.isFinite(durationMax)) capability.video_duration_max = durationMax;
+            return capability;
         }).filter((item) => item.name);
     }
 
@@ -3530,6 +3660,25 @@
         return rows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selected ? 'selected' : ''} ${entry.task_incompatible ? 'disabled' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`).join('');
     }
 
+    function creativeManualOutputTasks(action) {
+        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
+        const imageTask = inputCount > 1 ? 'multi_image_edit' : inputCount === 1 ? 'image_edit' : 'text_to_image';
+        const videoTask = inputCount > 1 ? 'multi_image_to_video' : inputCount === 1 ? 'image_to_video' : 'text_to_video';
+        const task = creativeActionTask(action, inputCount);
+        if (!CREATIVE_MANUAL_OUTPUT_TASKS.has(task)) return null;
+        return {
+            imageTask,
+            videoTask,
+            selected: CREATIVE_VIDEO_TASKS.has(task) ? 'video' : 'image'
+        };
+    }
+
+    function creativeOutputTypeControl(action, actionRef, disabled = '') {
+        const tasks = creativeManualOutputTasks(action);
+        if (!tasks) return '';
+        return `<label><span>${escapeHtml(localText('Output', '生成类型'))}</span><select data-describe-vlm-chat-generation-output-type="${escapeHtml(actionRef)}" ${disabled}><option value="image" ${tasks.selected === 'image' ? 'selected' : ''}>${escapeHtml(localText('Image', '图片'))}</option><option value="video" ${tasks.selected === 'video' ? 'selected' : ''}>${escapeHtml(localText('Video', '视频'))}</option></select></label>`;
+    }
+
     function creativeThemeControl(action, actionRef, disabled = '') {
         const entry = creativePresetEntry(action?.preset);
         const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
@@ -3552,11 +3701,23 @@
     }
 
     function creativeAssetUrl(value) {
-        const url = String(value || '').trim();
-        if (!url) return '';
-        if (url.startsWith('/file=')) return `/gradio_api/file=${url.slice('/file='.length)}`;
-        if (url.startsWith('/gradio_api/file=') || url.startsWith('data:image/') || url.startsWith('blob:')) return url;
-        return '';
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        if (/^\/file=/i.test(raw)) return `/gradio_api/file=${raw.slice('/file='.length)}`;
+        if (/^(?:data:(?:image|video)\/[a-z0-9.+-]+(?:;[^,]*)?,|blob:)/i.test(raw)) return raw;
+        try {
+            const pageLocation = window.location || {};
+            const parsed = new URL(raw, window.location?.href || document.baseURI);
+            if (!/^https?:$/i.test(parsed.protocol)) return '';
+            const isLoopback = (hostname) => ['127.0.0.1', 'localhost', '::1'].includes(String(hostname || '').toLowerCase());
+            if (isLoopback(parsed.hostname) && /^https?:$/i.test(String(pageLocation.protocol || ''))) {
+                parsed.protocol = pageLocation.protocol || parsed.protocol;
+                parsed.host = pageLocation.host || parsed.host;
+            }
+            return parsed.href;
+        } catch (err) {
+            return '';
+        }
     }
 
     function creativeResponseError(response) {
@@ -3646,7 +3807,7 @@
     }
 
     async function creativeResultImagePayload(asset, index = 0) {
-        const source = creativeAssetUrl(asset?.preview_url);
+        const source = persistedMediaAssetSource(asset);
         const imageKey = creativeResultImageKey(asset, source);
         if (!asset || !source || !imageKey) throw new Error('generated image is unavailable');
         const response = await fetch(source, { credentials: 'same-origin' });
@@ -3720,12 +3881,14 @@
             ? localText('Agent Preset', 'Agent 使用的 Preset')
             : 'Preset';
         return `<div class="describe-vlm-chat-generated-result" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}"><div class="describe-vlm-chat-generated-meta" title="${escapeHtml(`${presetLabel}: ${presetName}`)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(presetLabel)}</span><b>${escapeHtml(presetName)}</b></div>${assets.map((asset, index) => {
-            const src = creativeAssetUrl(asset.preview_url);
-            if (!src) return '';
+            const src = persistedMediaAssetSource(asset);
             const video = mediaKind(asset) === 'video';
             const resultLabel = video
                 ? localText(`Generated video ${index + 1}`, `生成视频 ${index + 1}`)
                 : localText(`Generated image ${index + 1}`, `生成图片 ${index + 1}`);
+            if (!src) {
+                return `<div class="describe-vlm-chat-generated-media is-unavailable"><span><i class="fa-solid ${video ? 'fa-film' : 'fa-image'}"></i>${escapeHtml(localText('Preview unavailable', '暂时无法预览'))}</span></div>`;
+            }
             if (video) {
                 return `<div class="describe-vlm-chat-generated-media is-video">
   <video src="${escapeHtml(src)}" aria-label="${escapeHtml(resultLabel)}" controls preload="metadata" playsinline></video>
@@ -3763,7 +3926,7 @@
         const generation = found ? creativeGenerationForAction(found.action) : null;
         const assets = (Array.isArray(generation?.assets) ? generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
         const asset = Number.isInteger(index) && index >= 0 ? assets[index] : null;
-        const source = creativeAssetUrl(asset?.preview_url);
+        const source = persistedMediaAssetSource(asset);
         const imageKey = creativeResultImageKey(asset, source);
         if (!asset || !source || !imageKey) {
             setStatus(localText('The generated image is no longer available.', '这张结果图已不可用。'), true);
@@ -3885,7 +4048,9 @@
             : ['models_missing', 'preset_missing'].includes(currentState)
                 ? localText('Check again', '重新检查')
                 : localText('Generate', '确认生成');
-        const submitTitle = localText('Submit image generation', '提交生图任务');
+        const submitTitle = CREATIVE_VIDEO_TASKS.has(String(action?.task || '').trim().toLowerCase())
+            ? localText('Submit video generation', '提交视频生成任务')
+            : localText('Submit image generation', '提交生图任务');
         const stopTitle = localText('Stop generation', '停止生成');
         const disabled = active ? 'disabled' : '';
         const offered = action.type === 'offer_image';
@@ -3909,6 +4074,9 @@
             : '';
         const collapseTitle = collapsed ? localText('Expand generation details', '展开生图详情') : localText('Collapse generation details', '折叠生图详情');
         const headerStatus = collapsed ? creativeStateLabel(generation) : offerReason;
+        const entry = creativePresetEntry(action?.preset);
+        const outputTypeControl = creativeOutputTypeControl(action, actionRef, disabled);
+        const videoDurationControl = creativeVideoDurationControl(action, actionRef, disabled, entry);
         const themeControl = creativeThemeControl(action, actionRef, disabled);
         const parameterProfileControl = creativeParameterProfileControl(action, actionRef, disabled);
         return `<div class="describe-vlm-chat-action-card describe-vlm-chat-generation${collapsed ? ' is-collapsed' : ''}" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}">
@@ -3919,7 +4087,9 @@
   ${renderCreativeOutpaintOptions(action, actionRef, disabled)}
   <label class="describe-vlm-chat-generation-prompt"><span>${escapeHtml(localText('Prompt', '提示词'))}</span><textarea rows="4" data-describe-vlm-chat-generation-prompt="${escapeHtml(actionRef)}" ${disabled}>${escapeHtml(prompt)}</textarea></label>
   <div class="describe-vlm-chat-generation-options${themeControl ? ' has-theme' : ''}">
+    ${outputTypeControl}
     <label><span>${escapeHtml(presetLabel)}</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
+    ${videoDurationControl}
     ${themeControl}
     ${parameterProfileControl}
     <label><span>${escapeHtml(localText('Aspect', '比例'))}</span><select data-describe-vlm-chat-generation-aspect="${escapeHtml(actionRef)}" ${disabled}>${creativeAspectOptions().map((item) => `<option value="${escapeHtml(item.key)}" ${String(item.key) === action.aspect_ratio ? 'selected' : ''}>${escapeHtml(item.key === 'auto' ? localText('Auto', '自适应') : item.key)}</option>`).join('')}</select></label>
@@ -3959,8 +4129,26 @@
                 theme: selectedTheme
             });
         }
+        const selectedOutputType = String(card.querySelector('[data-describe-vlm-chat-generation-output-type]')?.value || '').trim();
+        const outputTasks = creativeManualOutputTasks(found.action);
+        if (selectedOutputType && outputTasks) {
+            const selectedTask = selectedOutputType === 'video' ? outputTasks.videoTask : outputTasks.imageTask;
+            found.action.requested_task = selectedTask;
+            found.action.task = selectedTask;
+        }
         found.action.aspect_ratio = String(card.querySelector('[data-describe-vlm-chat-generation-aspect]')?.value || found.action.aspect_ratio || 'auto');
         found.action.image_number = Math.max(1, Math.min(4, Math.round(Number(card.querySelector('[data-describe-vlm-chat-generation-count]')?.value || found.action.image_number || 1))));
+        const durationInput = card.querySelector('[data-describe-vlm-chat-generation-duration]');
+        const durationSpec = creativeVideoDurationSpec(found.action, creativePresetEntry(found.action.preset));
+        const durationValue = Number(durationInput?.value);
+        if (durationInput && durationSpec && durationSpec.interactive && Number.isFinite(durationValue)) {
+            const parameterOverrides = Object.assign({}, found.action.execution_plan?.parameter_overrides || {});
+            parameterOverrides.scene_video_duration = Math.max(
+                durationSpec.minimum,
+                Math.min(durationSpec.maximum, Math.round(durationValue * 100) / 100)
+            );
+            found.action.execution_plan = Object.assign({}, found.action.execution_plan || {}, { parameter_overrides: parameterOverrides });
+        }
         if (
             String(found.action.task || '') === 'image_outpaint'
             && creativePresetSupportsOutpaintDirections(creativePresetEntry(found.action.preset))
@@ -4130,15 +4318,21 @@
         }
         persistCreativeAction(true, CREATIVE_TERMINAL_STATES.has(responseState) ? {} : { anchorGenerationRef: ref });
         if (!wasFinished && responseState === 'finished' && generation.assets.length) {
+            const generatedVideo = CREATIVE_VIDEO_TASKS.has(String(found.action?.task || '').trim().toLowerCase())
+                || generation.assets.some((asset) => mediaKind(asset) === 'video');
             setStatus(state.autoAttachPreviousImage
-                ? localText(
-                    'Image generated. Your next message will include the latest result image.',
-                    '图片已生成。下一条消息会自动附带最新结果图。'
-                )
-                : localText(
-                    'Image generated. To discuss it with the Agent, reference the image before sending your next message.',
-                    '图片已生成。需要 Agent 继续看图交流时，请点击图片上的“引用图片”，再发送消息。'
-                ));
+                ? (generatedVideo
+                    ? localText('Video generated. It is available in this chat window.', '视频已生成，可直接在当前聊天窗口查看。')
+                    : localText(
+                        'Image generated. Your next message will include the latest result image.',
+                        '图片已生成。下一条消息会自动附带最新结果图。'
+                    ))
+                : (generatedVideo
+                    ? localText('Video generated. You can play it in this chat window.', '视频已生成，可在当前聊天窗口播放。')
+                    : localText(
+                        'Image generated. To discuss it with the Agent, reference the image before sending your next message.',
+                        '图片已生成。需要 Agent 继续看图交流时，请点击图片上的“引用图片”，再发送消息。'
+                    )));
         }
         return generation;
     }
@@ -4528,7 +4722,7 @@
     <button type="button" data-describe-vlm-chat-rollback="${messageIndex}" title="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}" aria-label="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}"><i class="fa-solid fa-clock-rotate-left"></i></button>
     <button type="button" class="is-danger" data-describe-vlm-chat-delete="${messageIndex}" title="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}" aria-label="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}"><i class="fa-solid fa-trash"></i></button>
   </span></div>
-  ${renderMessageImages(message.images)}
+  ${renderMessageImages(message.images, message.media_assets)}
   ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
   ${completionWarningHtml}
   ${actionHtml}
@@ -4590,37 +4784,39 @@
     }
 
     async function addPendingImageFiles(files) {
-        const imageFiles = Array.from(files || []).filter((file) => /^image\//i.test(file.type || ''));
-        if (!imageFiles.length) return;
+        const mediaFiles = Array.from(files || []).filter((file) => /^(?:image|video)\//i.test(file.type || ''));
+        if (!mediaFiles.length) return;
         const selectedCustomApi = readDescribeCustomApi(readSelectedVlmVersion());
         if (selectedCustomApi && selectedCustomApi.supports_images === false) {
             setStatus(t(
-                'The selected Custom API has image input disabled.',
-                '当前 Custom API 未启用图像输入。'
+                'The selected Custom API has visual input disabled.',
+                '当前 Custom API 未启用图像/视频输入。'
             ), true);
             return;
         }
-        setStatus(t('Reading image...', '正在读取图片...'));
-        for (const file of imageFiles.slice(0, MAX_ATTACHMENTS)) {
+        setStatus(t('Reading media...', '正在读取媒体文件...'));
+        for (const file of mediaFiles.slice(0, MAX_ATTACHMENTS)) {
             try {
-                const payload = await fileToImagePayload(file);
+                const payload = await fileToMediaPayload(file);
                 state.pendingImages.push(payload);
             } catch (err) {
-                setStatus(t('Image read failed.', '读取图片失败。'), true);
+                setStatus(String(err?.message || '').includes('too large')
+                    ? t('Video attachment is too large (80 MB maximum).', '视频附件过大，最大支持 80 MB。')
+                    : t('Media read failed.', '读取媒体文件失败。'), true);
             }
         }
         if (state.pendingImages.length > MAX_ATTACHMENTS) {
             state.pendingImages = state.pendingImages.slice(-MAX_ATTACHMENTS);
         }
         renderPendingImages();
-        setStatus(`${t('Reference image attached.', '引用图片已添加。')} ${imageUploadStatus(state.pendingImages)}`);
+        setStatus(`${t('Reference media attached.', '引用媒体已添加。')} ${imageUploadStatus(state.pendingImages)}`);
     }
 
     function collectClipboardImageFiles(dataTransfer) {
-        const files = Array.from(dataTransfer?.files || []).filter((file) => /^image\//i.test(file.type || ''));
+        const files = Array.from(dataTransfer?.files || []).filter((file) => /^(?:image|video)\//i.test(file.type || ''));
         if (files.length) return files;
         return Array.from(dataTransfer?.items || [])
-            .filter((item) => item.kind === 'file' && /^image\//i.test(item.type || ''))
+            .filter((item) => item.kind === 'file' && /^(?:image|video)\//i.test(item.type || ''))
             .map((item) => item.getAsFile())
             .filter(Boolean);
     }
@@ -4666,7 +4862,9 @@
             const routeIndex = url.pathname.indexOf(route);
             const basePath = routeIndex >= 0 ? url.pathname.slice(0, routeIndex) : '';
             const encodedPath = encodeURI(String(originalPath).replace(/\\/g, '/')).replace(/\?/g, '%3F').replace(/#/g, '%23');
-            return `${url.origin}${basePath}/gradio_api/file=${encodedPath}`;
+            const pageOrigin = String(window.location?.origin || '').trim();
+            const origin = /^https?:\/\//i.test(pageOrigin) ? pageOrigin : url.origin;
+            return `${origin}${basePath}/gradio_api/file=${encodedPath}`;
         } catch (err) {
             return source;
         }
@@ -4679,7 +4877,8 @@
         try {
             normalized = new URL(value, document.baseURI).href;
         } catch (err) {}
-        return galleryOriginalSource(normalized);
+        const resolved = galleryOriginalSource(normalized);
+        return creativeAssetUrl(resolved) || resolved;
     }
 
     function firstImageDropUrl(dataTransfer) {
@@ -5110,7 +5309,7 @@
                 : []
         };
         userMessage.media_assets = Array.isArray(response?.input_media_assets)
-            ? response.input_media_assets.map(normalizeCreativeMediaInput).filter(Boolean)
+            ? response.input_media_assets.map(normalizeChatMediaInput).filter(Boolean)
             : [];
         if (pendingIndex >= 0) state.messages[pendingIndex] = assistant;
         else state.messages.push(assistant);
@@ -5458,9 +5657,37 @@
             }
             return;
         }
-        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt], [data-describe-vlm-chat-outpaint]')) {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-output-type]')) {
+            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-output-type');
+            const found = syncCreativeActionFromDom(ref);
+            if (found) {
+                const inputCount = Array.isArray(found.action.media_inputs) ? found.action.media_inputs.length : 0;
+                let entry = creativePresetEntry(found.action.preset);
+                const task = creativeActionTask(found.action, inputCount);
+                if (!entry || !creativePresetHasTaskRoute(entry, task, inputCount)) {
+                    const compatible = creativeCompatiblePresetEntry(task, inputCount);
+                    if (compatible) {
+                        found.action.preset = compatible.name;
+                        found.action.preset_source = 'user';
+                        entry = compatible;
+                        if (!creativeParameterProfileEntry(found.action.parameter_profile, found.action.preset)) found.action.parameter_profile = '';
+                    }
+                }
+                clampCreativeActionMediaInputs(found.action, entry);
+                found.action.execution_plan = creativeExecutionPlanForEntry(found.action, entry, 'request_hint');
+                const generation = creativeGenerationForAction(found.action);
+                if (!CREATIVE_ACTIVE_STATES.has(String(generation.state || ''))) {
+                    generation.state = found.action.execution_plan.status === 'ready' ? 'awaiting_confirmation' : found.action.execution_plan.status;
+                    generation.error = '';
+                }
+                persistCreativeAction(true);
+            }
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-duration], [data-describe-vlm-chat-generation-prompt], [data-describe-vlm-chat-outpaint]')) {
             const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-aspect')
                 || evt.target.getAttribute('data-describe-vlm-chat-generation-count')
+                || evt.target.getAttribute('data-describe-vlm-chat-generation-duration')
                 || evt.target.getAttribute('data-describe-vlm-chat-generation-prompt')
                 || evt.target.getAttribute('data-describe-vlm-chat-outpaint-ref');
             syncCreativeActionFromDom(ref);
@@ -5517,6 +5744,11 @@
                 found.action.prompt = evt.target.value || '';
                 state.persistenceDirty = true;
             }
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-duration]')) {
+            const found = syncCreativeActionFromDom(evt.target.getAttribute('data-describe-vlm-chat-generation-duration'));
+            if (found) state.persistenceDirty = true;
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-system]')) {

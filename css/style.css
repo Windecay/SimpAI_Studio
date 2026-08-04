@@ -17556,6 +17556,23 @@ button[aria-label="Edit"][title="Edit"] {
     background: #090a0c;
 }
 
+.describe-vlm-chat-generated-media.is-unavailable {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    color: rgba(255, 255, 255, 0.68);
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+}
+
+.describe-vlm-chat-generated-media.is-unavailable span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
 .describe-vlm-chat-generated-tools {
     position: absolute;
     top: 6px;
@@ -17887,6 +17904,11 @@ button[aria-label="Edit"][title="Edit"] {
 }
 
 .describe-vlm-chat-outpaint-options input[type="number"] {
+    height: 34px;
+    padding: 0 8px;
+}
+
+.describe-vlm-chat-generation-duration input[type="number"] {
     height: 34px;
     padding: 0 8px;
 }

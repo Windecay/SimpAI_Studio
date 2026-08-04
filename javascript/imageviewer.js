@@ -210,7 +210,9 @@ function simpleaiGalleryDisplayPreviewOriginalSrc(src) {
     const routeIndex = url.pathname.indexOf(SIMPLEAI_GALLERY_DISPLAY_PREVIEW_ROUTE);
     const basePath = routeIndex >= 0 ? url.pathname.slice(0, routeIndex) : '';
     const encodedPath = encodeURI(String(originalPath).replace(/\\/g, '/')).replace(/\?/g, '%3F').replace(/#/g, '%23');
-    return `${url.origin}${basePath}/gradio_api/file=${encodedPath}`;
+    const pageOrigin = String(window.location?.origin || '').trim();
+    const origin = /^https?:\/\//i.test(pageOrigin) ? pageOrigin : url.origin;
+    return `${origin}${basePath}/gradio_api/file=${encodedPath}`;
 }
 
 function simpleaiGallerySignedOriginalDownloadSrc(src) {

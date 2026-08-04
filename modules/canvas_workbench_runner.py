@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import logging
+import mimetypes
 import os
 import random
 import threading
@@ -2081,9 +2082,24 @@ def _image_like_to_data_url(value, max_side=768):
     return frame.get("data_url") if isinstance(frame, dict) else None
 
 
+def _output_asset_mime(value, record=None):
+    mime = str(mimetypes.guess_type(str(value or ""))[0] or "").strip().lower()
+    if mime:
+        return mime
+    task = record.get("task") if isinstance(record, dict) else None
+    content_type = str(getattr(task, "content_type", "") or "").strip().lower()
+    if content_type == "video":
+        return "video/mp4"
+    if content_type == "image":
+        return "image/png"
+    return ""
+
+
 def _output_asset(value, record=None):
     if isinstance(value, str):
         name = os.path.basename(value)
+        mime = _output_asset_mime(value, record)
+        is_video = mime.startswith("video/")
         asset_ref = None
         if not (isinstance(record, dict) and record.get("result_asset_scope") == "gallery"):
             try:
@@ -2106,12 +2122,16 @@ def _output_asset(value, record=None):
                 asset_ref = None
         if not asset_ref:
             asset_ref = {
-                "kind": "generated_file",
+                "kind": "video" if is_video else "generated_file",
                 "asset_id": value,
                 "path": value,
                 "output_path": value,
                 "name": name,
             }
+        if mime and not asset_ref.get("mime"):
+            asset_ref["mime"] = mime
+        if is_video and not asset_ref.get("kind"):
+            asset_ref["kind"] = "video"
         preview_path = asset_ref.get("path") or value
         asset_ref["preview_url"] = f"/gradio_api/file={quote(preview_path, safe=':/')}" if os.path.exists(preview_path) else ""
         asset_ref["name"] = asset_ref.get("name") or name

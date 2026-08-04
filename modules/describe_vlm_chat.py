@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -155,6 +156,7 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. "
     "Do not choose or invent a parameter profile. Set preset_hint or parameter_profile_hint only when the user's latest message explicitly names it. Never invent media refs. "
     "Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
+    "Read explicit natural-language controls such as 6秒/6s/六秒半, 横屏/竖屏/16:9/9:16, and 2张/两条. Preserve these controls exactly and never replace an explicit video duration with a Preset default. "
     "image_number must be an integer from 1 to 4. Do not invent API routes, canvas node IDs, run IDs, file paths, or completed image URLs. "
     "For ordinary conversation that does not request an image or prompt, answer normally without action JSON."
 )
@@ -915,25 +917,31 @@ def _normalize_preset_capabilities(value, limit=100):
                 if task in GENERATION_TASKS and task not in theme_tasks:
                     theme_tasks.append(task)
             per_theme[theme] = {"task_method": theme_method, "supported_tasks": theme_tasks}
-        normalized.append(
-            {
-                "name": name,
-                "min_images": min_images,
-                "max_images": max_images,
-                "output_type": output_type,
-                "supported_tasks": supported_tasks,
-                "interaction_requirements": interaction_requirements,
-                "model_status": model_status,
-                "backend_engine": _clean_text(item.get("backend_engine"))[:80],
-                "task_method": _clean_text(item.get("task_method"))[:120],
-                "purpose": _clean_text(item.get("purpose"))[:240],
-                "image_slots": image_slots,
-                "task_modes": task_modes,
-                "themes": themes,
-                "default_theme": default_theme,
-                "per_theme": per_theme,
-            }
-        )
+        normalized_item = {
+            "name": name,
+            "min_images": min_images,
+            "max_images": max_images,
+            "output_type": output_type,
+            "supported_tasks": supported_tasks,
+            "interaction_requirements": interaction_requirements,
+            "model_status": model_status,
+            "backend_engine": _clean_text(item.get("backend_engine"))[:80],
+            "task_method": _clean_text(item.get("task_method"))[:120],
+            "purpose": _clean_text(item.get("purpose"))[:240],
+            "image_slots": image_slots,
+            "task_modes": task_modes,
+            "themes": themes,
+            "default_theme": default_theme,
+            "per_theme": per_theme,
+        }
+        for duration_key in ("video_duration_min", "video_duration_max"):
+            try:
+                duration_value = float(item.get(duration_key))
+            except Exception:
+                continue
+            if duration_value >= 0:
+                normalized_item[duration_key] = duration_value
+        normalized.append(normalized_item)
         if len(normalized) >= max(1, min(200, int(limit or 100))):
             break
     return normalized
@@ -1665,7 +1673,83 @@ def sanitize_danbooru_character_outfit_tags(prompt_text):
     return ", ".join(cleaned) if changed else source
 
 
-def _normalize_creative_aspect_ratio(value):
+_CREATIVE_NUMBER_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+_CREATIVE_NUMBER_UNITS = {"十": 10, "百": 100, "千": 1000, "万": 10000}
+
+
+def _creative_semantic_number(value):
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    try:
+        if re.fullmatch(r"\d+(?:\.\d+)?", text):
+            return float(text)
+    except Exception:
+        pass
+    if "点" in text:
+        integer_text, decimal_text = text.split("点", 1)
+        integer = _creative_semantic_number(integer_text)
+        decimal_digits = [str(_CREATIVE_NUMBER_DIGITS.get(char)) for char in decimal_text if char in _CREATIVE_NUMBER_DIGITS]
+        if integer is not None and decimal_digits and len(decimal_digits) == len(decimal_text):
+            return float(integer) + float("0." + "".join(decimal_digits))
+    if not all(char in _CREATIVE_NUMBER_DIGITS or char in _CREATIVE_NUMBER_UNITS for char in text):
+        return None
+    total = 0
+    section = 0
+    number = 0
+    for char in text:
+        if char in _CREATIVE_NUMBER_DIGITS:
+            number = _CREATIVE_NUMBER_DIGITS[char]
+            continue
+        unit = _CREATIVE_NUMBER_UNITS[char]
+        if unit == 10000:
+            section += number
+            total += max(section, 1) * unit
+            section = 0
+            number = 0
+            continue
+        section += (number or 1) * unit
+        number = 0
+    return float(total + section + number)
+
+
+def _creative_ratio_from_text(value):
+    text = str(value or "").strip().lower().replace("：", ":")
+    ratio_match = re.search(r"(?<!\d)(\d{1,2})\s*[:：x*]\s*(\d{1,2})(?!\d)", text, re.I)
+    if ratio_match:
+        candidate = f"{ratio_match.group(1)}:{ratio_match.group(2)}"
+        if candidate in CREATIVE_ASPECT_RATIOS:
+            return candidate
+    size_match = re.search(r"(?<!\d)(\d{3,5})\s*[x*]\s*(\d{3,5})(?!\d)", text, re.I)
+    if size_match:
+        width, height = int(size_match.group(1)), int(size_match.group(2))
+        divisor = math.gcd(width, height)
+        candidate = f"{width // divisor}:{height // divisor}"
+        if candidate in CREATIVE_ASPECT_RATIOS:
+            return candidate
+    if re.search(r"(?:竖屏|直屏|纵向|portrait|vertical)", text, re.I):
+        return "9:16"
+    if re.search(r"(?:横屏|宽屏|横向|landscape|horizontal|宽画面)", text, re.I):
+        return "16:9"
+    if re.search(r"(?:方形|正方形|square)", text, re.I):
+        return "1:1"
+    return ""
+
+
+def _normalize_creative_aspect_ratio(value, intent_text=""):
     text = str(value or "auto").strip().lower().replace("：", ":").replace("x", ":").replace("*", ":")
     aliases = {
         "square": "1:1",
@@ -1675,15 +1759,102 @@ def _normalize_creative_aspect_ratio(value):
         "vertical": "9:16",
     }
     text = aliases.get(text, text)
-    return text if text in CREATIVE_ASPECT_RATIOS else "auto"
+    detected = _creative_ratio_from_text(intent_text)
+    return detected or (text if text in CREATIVE_ASPECT_RATIOS else "auto")
 
 
-def _normalize_creative_image_number(value):
+def _creative_count_from_text(value):
+    text = str(value or "").strip().lower()
+    pattern = re.compile(
+        r"(?<![\d.])([\d]+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)\s*"
+        r"(?:张|幅|个版本|条视频|段视频|个视频|条|段|个|份|张图|images?|videos?|copies?|variations?)",
+        re.I,
+    )
+    for match in pattern.finditer(text):
+        prefix = text[max(0, match.start() - 12):match.start()]
+        suffix = text[match.end():match.end() + 6]
+        if not re.search(r"(?:生成|输出|制作|做|来|给我|produce|generate|create|render)\s*$", prefix, re.I):
+            continue
+        if re.match(r"(?:参考|输入|附带|上传)", suffix):
+            continue
+        number = _creative_semantic_number(match.group(1))
+        if number is not None:
+            return int(number)
+    return None
+
+
+def _normalize_creative_image_number(value, intent_text=""):
+    detected = _creative_count_from_text(intent_text)
+    if detected is not None:
+        return max(1, min(4, detected))
     try:
         number = int(float(value))
     except Exception:
         number = 1
     return max(1, min(4, number))
+
+
+def _creative_duration_from_value(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        text = str(value or "").strip().lower()
+        match = re.search(
+            r"(?<![\d.])([\d]+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)\s*半?\s*"
+            r"(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(半)?",
+            text,
+            re.I,
+        )
+        if match:
+            number = _creative_semantic_number(match.group(1))
+            if number is None:
+                return None
+            if match.group(2):
+                number += 0.5
+        else:
+            number = _creative_semantic_number(text)
+            if number is None:
+                return None
+    return max(0.1, min(120.0, round(float(number), 2)))
+
+
+def _normalize_creative_video_duration(value, intent_text=""):
+    text = str(intent_text or "")
+    match = re.search(
+        r"(?<![\d.])([\d]+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)\s*半?\s*"
+        r"(?:秒钟?|s(?:ec(?:onds?)?)?)\s*(半)?",
+        text,
+        re.I,
+    )
+    if match:
+        number = _creative_semantic_number(match.group(1))
+        if number is not None:
+            if match.group(2):
+                number += 0.5
+            return max(0.1, min(120.0, round(float(number), 2)))
+    return _creative_duration_from_value(value)
+
+
+def _creative_video_duration_for_capability(value, capability):
+    try:
+        duration = float(value)
+    except Exception:
+        return None
+    source = capability if isinstance(capability, dict) else {}
+    try:
+        lower = max(0.1, float(source.get("video_duration_min")))
+    except Exception:
+        lower = 0.1
+    try:
+        raw_upper = float(source.get("video_duration_max"))
+        upper = min(120.0, raw_upper) if raw_upper > 0 else 120.0
+    except Exception:
+        upper = 120.0
+    if upper < lower:
+        upper = lower
+    return max(lower, min(upper, round(duration, 2)))
 
 
 def _normalize_generation_media_refs(value, available_media_refs=None):
@@ -2125,9 +2296,25 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
         "media_refs": refs,
         "instruction": instruction,
         "preset_hint": str(source.get("preset_hint") or source.get("preset") or source.get("preset_name") or "").strip()[:120],
-        "aspect_ratio": _normalize_creative_aspect_ratio(source.get("aspect_ratio") or source.get("aspect") or source.get("ratio")),
-        "image_number": _normalize_creative_image_number(source.get("image_number") or source.get("count") or source.get("images")),
+        "aspect_ratio": _normalize_creative_aspect_ratio(
+            source.get("aspect_ratio") or source.get("aspect") or source.get("ratio"),
+            intent_text,
+        ),
+        "image_number": _normalize_creative_image_number(
+            source.get("image_number") or source.get("count") or source.get("images"),
+            intent_text,
+        ),
     }
+    if task in VIDEO_GENERATION_TASKS:
+        duration = _normalize_creative_video_duration(
+            source.get("video_duration")
+            or source.get("duration_seconds")
+            or source.get("duration")
+            or source.get("seconds"),
+            intent_text,
+        )
+        if duration is not None:
+            request["video_duration"] = duration
     parameter_profile_hint = str(
         source.get("parameter_profile_hint") or source.get("parameter_profile") or source.get("profile") or ""
     ).strip()[:120]
@@ -2310,6 +2497,11 @@ def compile_creative_execution_plan(
             "scene_var_number9": _outpaint_percent(outpaint.get("left")),
             "scene_var_number10": _outpaint_percent(outpaint.get("right")),
         }
+    if task in VIDEO_GENERATION_TASKS and request.get("video_duration") is not None:
+        parameter_overrides["scene_video_duration"] = _creative_video_duration_for_capability(
+            request["video_duration"],
+            capability,
+        )
     plan = {
         "schema": "simpai.execution_plan.v1",
         "status": status,
