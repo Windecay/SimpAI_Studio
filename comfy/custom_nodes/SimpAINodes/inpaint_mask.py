@@ -1,13 +1,14 @@
 import os
 import sys
+import threading
 
 import numpy as np
 import onnxruntime as ort
 import torch
-from segment_anything import sam_model_registry
 from segment_anything.utils.amg import remove_small_regions
 
-from .sam_predictor import SamPredictor
+
+_SAM_PREDICTOR_LOCK = threading.RLock()
 
 
 def _hwc3(image):
@@ -77,19 +78,23 @@ def generate_mask_from_image(image, mask_model="sam", extras=None, sam_options=N
     boxes = boxes * torch.tensor([width, height, width, height])
     boxes[:, :2] -= boxes[:, 2:] / 2
     boxes[:, 2:] += boxes[:, :2]
-    predictor = SamPredictor(sam_model_registry[sam_options.model_type](checkpoint=backend.resolve_sam_model(sam_options.model_type)))
     final_mask = torch.zeros((height, width))
     dino_count = boxes.size(0)
     sam_count = applied_count = 0
     if dino_count > 0:
-        predictor.set_image(image)
-        transformed_boxes = predictor.transform.apply_boxes_torch(boxes, image.shape[:2])
-        masks, _, _ = predictor.predict_torch(None, None, boxes=transformed_boxes, multimask_output=False)
-        masks = _optimize_masks(masks)
-        sam_count = len(masks)
-        maximum = sys.maxsize if sam_options.max_detections == 0 else sam_options.max_detections
-        for index in range(min(len(logits), maximum)):
-            final_mask += masks[index][0]
-            applied_count += 1
+        with _SAM_PREDICTOR_LOCK:
+            predictor = backend.get_sam_predictor(sam_options.model_type)
+            try:
+                predictor.set_image(image)
+                transformed_boxes = predictor.transform.apply_boxes_torch(boxes, image.shape[:2])
+                masks, _, _ = predictor.predict_torch(None, None, boxes=transformed_boxes, multimask_output=False)
+                masks = _optimize_masks(masks)
+                sam_count = len(masks)
+                maximum = sys.maxsize if sam_options.max_detections == 0 else sam_options.max_detections
+                for index in range(min(len(logits), maximum)):
+                    final_mask += masks[index][0]
+                    applied_count += 1
+            finally:
+                predictor.reset_image()
     final_mask = (final_mask > 0).cpu().numpy()
     return np.dstack((final_mask, final_mask, final_mask)).astype(np.uint8) * 255, dino_count, sam_count, applied_count

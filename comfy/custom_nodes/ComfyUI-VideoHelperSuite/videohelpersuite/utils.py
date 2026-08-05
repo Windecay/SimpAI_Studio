@@ -221,6 +221,10 @@ def requeue_workflow(requeue_required=(-1,True)):
     if requeue_guard[1] == requeue_guard[2] and max(requeue_guard[3].values()):
         requeue_workflow_unchecked()
 
+class NoAudioStreamError(Exception):
+    """Raised when an input media file has no audio stream."""
+
+
 def get_audio(file, start_time=0, duration=0):
     args = [ffmpeg_path, "-i", file]
     if start_time > 0:
@@ -234,8 +238,10 @@ def get_audio(file, start_time=0, duration=0):
         audio = torch.frombuffer(bytearray(res.stdout), dtype=torch.float32)
         match = re.search(', (\\d+) Hz, (\\w+), ',res.stderr.decode(*ENCODE_ARGS))
     except subprocess.CalledProcessError as e:
-        raise Exception(f"VHS failed to extract audio from {file}:\n" \
-                + e.stderr.decode(*ENCODE_ARGS))
+        stderr = e.stderr.decode(*ENCODE_ARGS)
+        if re.search(r"Output file(?: #\d+)? does not contain any stream", stderr):
+            raise NoAudioStreamError from e
+        raise Exception(f"VHS failed to extract audio from {file}:\n" + stderr)
     if match:
         ar = int(match.group(1))
         #NOTE: Just throwing an error for other channel types right now
@@ -253,17 +259,27 @@ class LazyAudioMap(Mapping):
         self.start_time=start_time
         self.duration=duration
         self._dict=None
-    def __getitem__(self, key):
-        if self._dict is None:
+        self._loaded=False
+
+    def _load(self):
+        if self._loaded:
+            return
+        try:
             self._dict = get_audio(self.file, self.start_time, self.duration)
+        except NoAudioStreamError:
+            # Keep the mapping safe to inspect while allowing downstream nodes
+            # to treat the source as having no audio.
+            self._dict = {}
+        self._loaded=True
+
+    def __getitem__(self, key):
+        self._load()
         return self._dict[key]
     def __iter__(self):
-        if self._dict is None:
-            self._dict = get_audio(self.file, self.start_time, self.duration)
+        self._load()
         return iter(self._dict)
     def __len__(self):
-        if self._dict is None:
-            self._dict = get_audio(self.file, self.start_time, self.duration)
+        self._load()
         return len(self._dict)
 def lazy_get_audio(file, start_time=0, duration=0, **kwargs):
     return LazyAudioMap(file, start_time, duration)

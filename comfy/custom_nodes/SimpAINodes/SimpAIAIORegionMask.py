@@ -29,6 +29,7 @@ class _ComfyMaskBackend:
     def __init__(self):
         self.sam_dirs = _folder_dirs("sams", "sams") + _folder_dirs("inpaint", "inpaint")
         self.rembg_dirs = _folder_dirs("rembg", "rembg") + _folder_dirs("inpaint", "inpaint")
+        self._sam_predictors = {}
         dino_dirs = _folder_dirs("grounding-dino", "grounding-dino") + _folder_dirs("inpaint", "inpaint")
         from .grounding_dino import GroundingDinoModel
         self.groundingdino = GroundingDinoModel(dino_dirs, dino_dirs[0]).predict_with_caption
@@ -43,6 +44,19 @@ class _ComfyMaskBackend:
         target = os.path.join(target_dir, filename)
         download_url_to_file(url, target)
         return target
+
+    def get_sam_predictor(self, model_type):
+        model_type = str(model_type)
+        predictor = self._sam_predictors.get(model_type)
+        if predictor is None:
+            from segment_anything import sam_model_registry
+
+            from .sam_predictor import SamPredictor
+
+            checkpoint = self.resolve_sam_model(model_type)
+            predictor = SamPredictor(sam_model_registry[model_type](checkpoint=checkpoint))
+            self._sam_predictors[model_type] = predictor
+        return predictor
 
     def resolve_rembg_home(self, mask_model):
         return find_dir_containing_model(
