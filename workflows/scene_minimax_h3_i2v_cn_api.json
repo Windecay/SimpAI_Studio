@@ -88,7 +88,7 @@
       "scheduler": ["1", 31],
       "steps": ["1", 9],
       "denoise": 1,
-      "model": ["58", 0]
+      "model": ["68", 0]
     },
     "class_type": "BasicScheduler",
     "_meta": {"title": "H3 Scheduler"}
@@ -114,7 +114,7 @@
   },
   "12": {
     "inputs": {
-      "model": ["58", 0],
+      "model": ["68", 0],
       "conditioning": ["11", 0]
     },
     "class_type": "BasicGuider",
@@ -310,5 +310,95 @@
     },
     "class_type": "EasyCache",
     "_meta": {"title": "H3 EasyCache"}
+  },
+  "59": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["58", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_1"}
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["59", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_2"}
+  },
+  "61": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["60", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_3"}
+  },
+  "62": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["61", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_4"}
+  },
+  "63": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["62", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_5"}
+  },
+  "64": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["63", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_6"}
+  },
+  "65": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["64", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_7"}
+  },
+  "66": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["65", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_8"}
+  },
+  "67": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["66", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_9"}
+  },
+  "68": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["67", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_10"}
   }
 }

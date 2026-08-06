@@ -496,10 +496,12 @@ CREATIVE_GENERATION_INTENT_RE = re.compile(
     r"\b(?:another|next)\s+(?:one|image|picture|photo|illustration|artwork)\b"
     r"|文生视频|图生视频|多参考视频|生成.{0,8}(?:视频|影片|短片)|制作.{0,8}(?:视频|影片|短片)|"
     r"\b(?:generate|create|make|render)\b.{0,30}\b(?:video|movie|clip|animation)\b|"
-    r"\b(?:text|image|reference)[-_ ]?to[-_ ]?video\b"
+    r"\b(?:text|image|reference)[-_ ]?to[-_ ]?video\b|"
+    r"^\s*生成[\s，。！？,.!?]*$"
     r")",
     re.I,
 )
+CREATIVE_BARE_GENERATION_COMMAND_RE = re.compile(r"^\s*生成[\s，。！？,.!?]*$", re.I)
 VIDEO_GENERATION_INTENT_RE = re.compile(
     r"文生视频|图生视频|多参考视频|参考图.{0,10}(?:生成|制作).{0,8}视频|"
     r"生成.{0,8}(?:视频|影片|短片)|制作.{0,8}(?:视频|影片|短片)|"
@@ -1111,15 +1113,43 @@ def _prompt_options_from_payload(payload, lang):
         or payload.get("template_id")
         or ""
     )
-    custom_system_prompt = _clean_multiline_text(
-        payload.get("custom_system_prompt")
-        or payload.get("user_system_prompt")
-        or payload.get("system_prompt")
+    user_system_prompt_template_id = _clean_text(
+        payload.get("user_system_prompt_template_id")
+        or payload.get("vlm_user_system_prompt_template_id")
         or ""
     )
-    if system_prompt_template_id and not custom_system_prompt:
+    resolved_base_system_prompt = _clean_multiline_text(
+        vlm_system_prompt_templates.resolve_vlm_system_prompt_template(system_prompt_template_id)
+    ) if system_prompt_template_id else ""
+    base_system_prompt_content = _clean_multiline_text(
+        resolved_base_system_prompt
+        or payload.get("base_system_prompt_content")
+        or payload.get("system_prompt_document")
+        or ""
+    )
+    user_system_prompt_content = _clean_multiline_text(
+        payload.get("user_system_prompt_content")
+        or payload.get("user_prompt_document")
+        or ""
+    )
+    system_prompt_manual_override = _truthy(payload.get("system_prompt_manual_override"), False)
+    if system_prompt_manual_override:
         custom_system_prompt = _clean_multiline_text(
-            vlm_system_prompt_templates.resolve_vlm_system_prompt_template(system_prompt_template_id)
+            payload.get("user_system_prompt")
+            or payload.get("custom_system_prompt")
+            or payload.get("system_prompt")
+            or ""
+        )
+    else:
+        custom_system_prompt = _clean_multiline_text(
+            vlm_system_prompt_templates.compose_system_prompt_documents(
+                base_system_prompt_content,
+                user_system_prompt_content,
+            )
+            or payload.get("user_system_prompt")
+            or payload.get("custom_system_prompt")
+            or payload.get("system_prompt")
+            or ""
         )
     creative_preferences = _normalize_creative_preferences(payload.get("creative_preferences"))
     return {
@@ -1135,6 +1165,10 @@ def _prompt_options_from_payload(payload, lang):
         "target_base_model": _prompt_target_field(options, "base_model", "model", "checkpoint"),
         "custom_system_prompt": custom_system_prompt,
         "system_prompt_template_id": system_prompt_template_id,
+        "user_system_prompt_template_id": user_system_prompt_template_id,
+        "base_system_prompt_content": base_system_prompt_content,
+        "user_system_prompt_content": user_system_prompt_content,
+        "system_prompt_manual_override": system_prompt_manual_override,
         "prompt_intent": prompt_intent,
         "request_prompt_language": _requested_prompt_language(message, lang),
         "include_current_prompt": include_current_prompt,
@@ -1446,6 +1480,13 @@ def build_runtime_payload(payload):
         "describe_current_prompt_included": bool(prompt_options["include_current_prompt"] and str(current_prompt or "").strip()),
         "describe_custom_system_prompt": bool(prompt_options["custom_system_prompt"]),
         "describe_system_prompt_template_id": prompt_options["system_prompt_template_id"],
+        "describe_user_system_prompt_template_id": prompt_options["user_system_prompt_template_id"],
+        "describe_system_prompt_manual_override": prompt_options["system_prompt_manual_override"],
+        "describe_system_prompt_documents_merged": bool(
+            prompt_options["base_system_prompt_content"]
+            and prompt_options["user_system_prompt_content"]
+            and not prompt_options["system_prompt_manual_override"]
+        ),
         "describe_output_tags": prompt_options["output_tags"],
         "describe_output_chinese": prompt_options["output_chinese"],
         "describe_output_artist": prompt_options["output_artist"],
@@ -3211,6 +3252,10 @@ def recover_creative_generation_action(
         return None
 
     prompt = _extract_recoverable_creative_prompt(response, raw_json)
+    if not prompt and CREATIVE_GENERATION_INTENT_RE.search(message):
+        plain_response = _clean_multiline_text(response, limit=12000)
+        if _creative_prompt_information_size(plain_response) >= 80:
+            prompt = plain_response
     if not prompt and previous_prompt and CREATIVE_CONTINUATION_INTENT_RE.search(message):
         prompt = previous_prompt
     prompt = prompt or message

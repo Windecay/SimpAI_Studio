@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+import uuid
 from io import StringIO
 from pathlib import Path
 
@@ -9,6 +10,10 @@ DEFAULT_TEMPLATE_CSV = Path(__file__).resolve().parent.parent / "docs" / "vlm_sy
 TEMPLATE_CSV_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_CSV"
 TEMPLATE_DIR_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_DIR"
 MAX_TEMPLATE_CHARS = 12000
+USER_TEMPLATE_CATALOG = "presets/vlm_system_prompts"
+USER_TEMPLATE_SUFFIX = ".md"
+MAX_USER_TEMPLATE_NAME_CHARS = 120
+USER_SYSTEM_PROMPT_SEPARATOR = "\n\n--- User-level system prompt / 用户级系统提示词 ---\n\n"
 H3_PROMPT_WRITING_TEMPLATES = {
     "cn": {
         "id": "h3_prompt_writing_cn.md",
@@ -118,6 +123,96 @@ def _read_text(path):
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _normalize_user_template_content(value):
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if MAX_TEMPLATE_CHARS and len(text) > MAX_TEMPLATE_CHARS:
+        text = text[:MAX_TEMPLATE_CHARS].rstrip() + "\n..."
+    return text
+
+
+def compose_system_prompt_documents(base_content, user_content):
+    """Join the selected bundled document and the user's document predictably."""
+    base = str(base_content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    user = str(user_content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if base and user:
+        return f"{base}{USER_SYSTEM_PROMPT_SEPARATOR}{user}"
+    return base or user
+
+
+def _safe_user_template_filename(value, fallback="user-template"):
+    text = _clean_text(value)
+    if text.lower().endswith((".md", ".txt")):
+        text = Path(text).stem
+    text = re.sub(r"[\\/:*?\"<>|\r\n\t]+", "_", text)
+    text = re.sub(r"\s+", " ", text).strip(" .")
+    text = (text or fallback)[:MAX_USER_TEMPLATE_NAME_CHARS].strip(" .")
+    return f"{text or fallback}{USER_TEMPLATE_SUFFIX}"
+
+
+def _user_template_root(user_did):
+    did = re.sub(r"[^A-Za-z0-9_.:@-]+", "_", _clean_text(user_did)).strip(" .") or "guest"
+    try:
+        import shared
+
+        token = getattr(shared, "token", None)
+        if token is not None and hasattr(token, "get_path_in_user_dir"):
+            return Path(token.get_path_in_user_dir(did, USER_TEMPLATE_CATALOG))
+    except Exception:
+        pass
+    try:
+        import shared
+
+        base = getattr(shared, "path_userhome", None) or "users"
+    except Exception:
+        base = "users"
+    return Path(base) / did / USER_TEMPLATE_CATALOG
+
+
+def _user_template_path(root, template_id):
+    root = Path(root)
+    filename = _safe_user_template_filename(template_id)
+    candidate = (root / filename).resolve()
+    try:
+        if candidate.parent != root.resolve():
+            return None
+    except OSError:
+        return None
+    return candidate
+
+
+def _user_template_entry(path, root, max_chars=MAX_TEMPLATE_CHARS):
+    content = _normalize_user_template_content(_read_text(path))
+    return {
+        "id": path.name,
+        "name": path.stem,
+        "filename": path.name,
+        "content": content[:max_chars] if max_chars else content,
+        "chars": len(content),
+        "size": path.stat().st_size,
+        "mtime": int(path.stat().st_mtime),
+        "source": "user",
+        "template_dir": str(root),
+        "template_source": str(root),
+    }
+
+
+def _list_user_vlm_system_prompt_templates(user_did, max_chars=MAX_TEMPLATE_CHARS):
+    root = _user_template_root(user_did)
+    if not root.is_dir():
+        return []
+    entries = []
+    for path in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_file() or path.suffix.lower() not in {".md", ".txt"}:
+            continue
+        try:
+            entry = _user_template_entry(path, root, max_chars=max_chars)
+        except OSError:
+            continue
+        if entry["content"]:
+            entries.append(entry)
+    return entries
+
+
 def extract_system_prompt_template(content, max_chars=MAX_TEMPLATE_CHARS):
     text = str(content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
@@ -222,14 +317,17 @@ def _list_templates_from_dir(root, max_chars=MAX_TEMPLATE_CHARS):
     return templates
 
 
-def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMPLATE_CHARS):
+def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMPLATE_CHARS, user_did=None):
     payload = payload if isinstance(payload, dict) else {}
     source = _template_source(payload=payload, root=root)
+    user_templates = _list_user_vlm_system_prompt_templates(user_did, max_chars=max_chars) if user_did else []
     if not source.exists():
         return {
             "ok": True,
             "templates": [],
             "count": 0,
+            "user_templates": user_templates,
+            "user_template_count": len(user_templates),
             "template_dir": str(source.parent),
             "template_source": str(source),
             "message": "VLM system prompt template source is not available.",
@@ -259,9 +357,60 @@ def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMP
         "ok": True,
         "templates": templates,
         "count": len(templates),
+        "user_templates": user_templates,
+        "user_template_count": len(user_templates),
         "template_dir": template_dir,
         "template_source": str(source),
     }
+
+
+def save_user_vlm_system_prompt_template(user_did, name, content, template_id=""):
+    name = _clean_text(name)
+    content = _normalize_user_template_content(content)
+    if not name:
+        return {"ok": False, "error": "Template name is required."}
+    if not content:
+        return {"ok": False, "error": "Template content is required."}
+
+    root = _user_template_root(user_did)
+    root.mkdir(parents=True, exist_ok=True)
+    old_path = _user_template_path(root, template_id) if template_id else None
+    path = root / _safe_user_template_filename(name)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        os.replace(temporary, path)
+        if old_path and old_path != path.resolve() and old_path.is_file():
+            old_path.unlink()
+    except OSError as exc:
+        try:
+            if temporary.exists():
+                temporary.unlink()
+        except OSError:
+            pass
+        return {"ok": False, "error": f"Failed to save template: {exc}"}
+
+    templates = _list_user_vlm_system_prompt_templates(user_did)
+    saved = next((item for item in templates if item["id"] == path.name), None)
+    return {
+        "ok": True,
+        "template": saved,
+        "templates": templates,
+        "user_template_count": len(templates),
+    }
+
+
+def delete_user_vlm_system_prompt_template(user_did, template_id):
+    root = _user_template_root(user_did)
+    path = _user_template_path(root, template_id)
+    if not path or not path.is_file():
+        return {"ok": False, "error": "Template was not found."}
+    try:
+        path.unlink()
+    except OSError as exc:
+        return {"ok": False, "error": f"Failed to delete template: {exc}"}
+    templates = _list_user_vlm_system_prompt_templates(user_did)
+    return {"ok": True, "templates": templates, "user_template_count": len(templates)}
 
 
 def resolve_vlm_system_prompt_template(template_id, payload=None, root=None, max_chars=MAX_TEMPLATE_CHARS):

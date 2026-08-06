@@ -136,6 +136,16 @@ def _initial_resolution_from_task(async_task):
     raise ValueError(f"Invalid aspect ratio selection: {getattr(async_task, 'aspect_ratios_selection', None)!r}")
 
 
+def _should_persist_output(async_task):
+    """Video outputs are final media and must not use the image-only save policy."""
+    content_type = str(getattr(async_task, "content_type", "") or "").strip().lower()
+    if content_type == "video":
+        return True
+    return not bool(getattr(async_task, "should_enhance", False)) or not bool(
+        getattr(async_task, "save_final_enhanced_image_only", False)
+    )
+
+
 def _clip_skip_max():
     try:
         import modules.flags as flags
@@ -2564,8 +2574,21 @@ def worker():
 
         ldm_patched.modules.model_management.print_memory_info("begin to process_task")
 
-        show_intermediate_results = len(tasks) > 1 or async_task.should_enhance
-        persist_image = not async_task.should_enhance or not async_task.save_final_enhanced_image_only
+        show_intermediate_results = (
+            len(tasks) > 1
+            or async_task.should_enhance
+            or async_task.content_type == 'video'
+        )
+        persist_image = _should_persist_output(async_task)
+        logger.info(
+            "[Generate] output_policy: content_type=%s, should_enhance=%s, "
+            "save_final_enhanced_image_only=%s, disable_image_log=%s, persist_image=%s",
+            async_task.content_type,
+            async_task.should_enhance,
+            async_task.save_final_enhanced_image_only,
+            bool(getattr(args_manager.args, "disable_image_log", False)),
+            persist_image,
+        )
 
         for current_task_id, task in enumerate(tasks):
             progressbar(async_task, current_progress, f'进入 {async_task.task_class} 生图 {current_task_id + 1}/{async_task.image_number} ...')

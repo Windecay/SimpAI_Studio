@@ -329,8 +329,25 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
     if not user_did:
         user_did = shared.token.get_guest_did()
     user_path_outputs = modules.config.get_user_path_outputs(user_did)
-    
-    path_outputs = modules.config.temp_path if args_manager.args.disable_image_log or not persist_image else user_path_outputs
+
+    is_image = isinstance(img, np.ndarray)
+    media_type = 'image' if is_image else None
+    format_name = None
+    if not is_image:
+        media_type, format_name = get_media_info(img[:8])
+    disable_image_log = bool(getattr(args_manager.args, 'disable_image_log', False))
+    is_video_result = media_type == 'video'
+    path_outputs = user_path_outputs if is_video_result or (not disable_image_log and persist_image) else modules.config.temp_path
+    logger.info(
+        '[Output] private_log_path: media_type=%s, persist_image=%s, disable_image_log=%s, '
+        'user_path_outputs=%s, temp_path=%s, selected_root=%s',
+        media_type,
+        persist_image,
+        disable_image_log,
+        os.path.abspath(user_path_outputs),
+        os.path.abspath(modules.config.temp_path),
+        os.path.abspath(path_outputs),
+    )
     output_format = output_format if output_format else modules.config.default_output_format
     date_string, local_temp_filename, only_name = generate_temp_filename(folder=path_outputs, extension=output_format)
     os.makedirs(os.path.dirname(local_temp_filename), exist_ok=True)
@@ -338,7 +355,6 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
     parsed_parameters = metadata_parser.to_string(metadata.copy()) if metadata_parser is not None else ''
     metadata_scheme = metadata_parser.get_scheme().value if metadata_parser is not None else ''
 
-    is_image = isinstance(img, np.ndarray)
     if is_image:
         image = Image.fromarray(img)
         img_byte_result = BytesIO()
@@ -382,11 +398,7 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
 
         img_result = img_byte_result.getvalue()
 
-        if args_manager.args.disable_image_log:
-            return local_temp_filename, img_result, ''
-    
     else:
-        media_type, format_name = get_media_info(img[:8])
         local_temp_filename_root, _ = os.path.splitext(local_temp_filename)
         local_temp_filename = f'{local_temp_filename_root}.{format_name}'
         only_name_root, _ = os.path.splitext(only_name)
@@ -397,6 +409,9 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
             if media_type == 'video' and metadata_parser is not None:
                 _embed_video_metadata(local_temp_filename, parsed_parameters, metadata_scheme)
         img_result = img
+
+    if disable_image_log:
+        return local_temp_filename, img_result, ''
 
     html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')
 
@@ -433,12 +448,24 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
         user_did = shared.token.get_guest_did()
     user_path_outputs = modules.config.get_user_path_outputs(user_did)
 
-    path_outputs = modules.config.temp_path if args_manager.args.disable_image_log or not persist_image else user_path_outputs
+    media_type, format_name = get_media_info(result_img[:8])
+    disable_image_log = bool(getattr(args_manager.args, 'disable_image_log', False))
+    is_video_result = media_type == 'video'
+    path_outputs = user_path_outputs if is_video_result or (not disable_image_log and persist_image) else modules.config.temp_path
+    logger.info(
+        '[Output] p2p_log_path: media_type=%s, persist_image=%s, disable_image_log=%s, '
+        'user_path_outputs=%s, temp_path=%s, selected_root=%s',
+        media_type,
+        persist_image,
+        disable_image_log,
+        os.path.abspath(user_path_outputs),
+        os.path.abspath(modules.config.temp_path),
+        os.path.abspath(path_outputs),
+    )
     output_format = output_format if output_format else modules.config.default_output_format
     date_string, local_temp_filename, only_name = generate_temp_filename(folder=path_outputs, extension=output_format)
     os.makedirs(os.path.dirname(local_temp_filename), exist_ok=True)
-    
-    media_type, format_name = get_media_info(result_img[:8])
+
     if media_type=='video':
         local_temp_filename_root, _ = os.path.splitext(local_temp_filename)
         local_temp_filename = f'{local_temp_filename_root}.{format_name}'
@@ -448,7 +475,7 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
     with open(local_temp_filename, "wb") as f:
         f.write(result_img)
 
-    if args_manager.args.disable_image_log:
+    if disable_image_log:
         return local_temp_filename
 
     html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')

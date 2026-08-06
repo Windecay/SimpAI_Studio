@@ -1810,10 +1810,15 @@ def generate_clicked(task: worker.AsyncTask, state):
                         skip_update
                     finished = True
 
-                    # delete Fooocus temp images, only keep gradio temp images
+                    # Remove temporary image outputs, but keep generated videos as user media.
                     if args_manager.args.disable_image_log:
+                        video_extensions = tuple(getattr(gallery_util, 'video_types', ('.mp4', '.webm')))
                         for filepath in product:
-                            if isinstance(filepath, str) and os.path.exists(filepath):
+                            is_video = (
+                                isinstance(filepath, str)
+                                and os.path.splitext(filepath)[1].lower() in video_extensions
+                            )
+                            if isinstance(filepath, str) and not is_video and os.path.exists(filepath):
                                 os.remove(filepath)
 
             elif task.content_type == 'video' and len(preview_cache) > 1 and current_time >= next_preview_ui_time:
@@ -14266,12 +14271,20 @@ async def canvas_workbench_custom_llm_models_endpoint(payload: dict = Body(...))
             status_code=500,
         )
 
+def _vlm_system_prompt_user_did(request):
+    user_did = str(_resolve_cloud_config_user_did({}, request) or "").strip()
+    return user_did or "guest"
+
+
 @app.get("/vlm-system-prompt-templates")
 @app.post("/vlm-system-prompt-templates")
-async def vlm_system_prompt_templates_endpoint(payload: dict = Body(default={})):
+async def vlm_system_prompt_templates_endpoint(request: Request, payload: dict = Body(default={})):
     try:
         payload = payload if isinstance(payload, dict) else {}
-        result = await run_in_threadpool(lambda: vlm_system_prompt_templates.list_vlm_system_prompt_templates(payload))
+        user_did = _vlm_system_prompt_user_did(request)
+        result = await run_in_threadpool(
+            lambda: vlm_system_prompt_templates.list_vlm_system_prompt_templates(payload, user_did=user_did)
+        )
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -14280,6 +14293,58 @@ async def vlm_system_prompt_templates_endpoint(payload: dict = Body(default={}))
             {
                 "ok": False,
                 "error": "VLM System Prompt Templates Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
+
+@app.post("/vlm-user-system-prompt-templates/save")
+async def vlm_user_system_prompt_templates_save_endpoint(request: Request, payload: dict = Body(default={})):
+    try:
+        payload = payload if isinstance(payload, dict) else {}
+        user_did = _vlm_system_prompt_user_did(request)
+        result = await run_in_threadpool(
+            lambda: vlm_system_prompt_templates.save_user_vlm_system_prompt_template(
+                user_did,
+                payload.get("name"),
+                payload.get("content"),
+                payload.get("id"),
+            )
+        )
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "VLM User System Prompt Template Save Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
+
+@app.post("/vlm-user-system-prompt-templates/delete")
+async def vlm_user_system_prompt_templates_delete_endpoint(request: Request, payload: dict = Body(default={})):
+    try:
+        payload = payload if isinstance(payload, dict) else {}
+        user_did = _vlm_system_prompt_user_did(request)
+        result = await run_in_threadpool(
+            lambda: vlm_system_prompt_templates.delete_user_vlm_system_prompt_template(
+                user_did,
+                payload.get("id"),
+            )
+        )
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "VLM User System Prompt Template Delete Error",
                 "details": str(e),
             },
             status_code=500,

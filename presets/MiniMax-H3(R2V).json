@@ -91,6 +91,7 @@
         "preprocess_target": "none",
         "preprocess_fit": "pad"
       },
+      "image_preprocessor_method": [["-normalization"]],
       "overwrite_step_min": 1,
       "overwrite_step_max": 50
     }
