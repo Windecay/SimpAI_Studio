@@ -12,6 +12,7 @@
     let lastFocused = null;
     let activePromptField = null;
     let pendingPromptField = null;
+    let pendingDirectRequest = null;
     let lastAppliedPromptField = null;
     let lastAppliedPreviousPrompt = "";
 
@@ -153,6 +154,24 @@
             params?.default_engine?.scene_frontend,
         ];
         return candidates.find((value) => value && typeof value === "object") || {};
+    }
+
+    function currentPromptCompiler() {
+        const params = paramsSource();
+        const sceneFrontend = currentSceneFrontend(params);
+        const theme = String(params.__scene_theme || params.scene_theme || "").trim();
+        const raw = sceneFrontend.prompt_compiler;
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+            if (theme && Object.prototype.hasOwnProperty.call(raw, theme)) return String(raw[theme] || "");
+            if (raw.id || raw.compiler || raw.name) return JSON.stringify(raw);
+            const firstKey = Object.keys(raw).find((key) => raw[key] !== undefined && raw[key] !== null && raw[key] !== "");
+            return firstKey ? String(raw[firstKey] || "") : "";
+        }
+        return String(raw || "");
+    }
+
+    function usesMiniMaxH3PromptCompiler() {
+        return /minimax[_\s-]*h3/i.test(currentPromptCompiler());
     }
 
     function sceneList(value) {
@@ -392,6 +411,7 @@
         );
 
         const mode = isSceneMode() ? "scene" : "classic";
+        const h3Compiler = mode === "scene" && usesMiniMaxH3PromptCompiler();
         const items = catalogItems().filter((item) => !Array.isArray(item.modes) || item.modes.includes(mode));
         const list = node.querySelector('[data-role="list"]');
         if (!items.length) {
@@ -401,11 +421,18 @@
         list.innerHTML = items.map((item) => {
             const availability = actionAvailability(item);
             const badges = [];
-            if (item.id === "smart_expand" && mode === "scene") badges.push(text("Scene agent", "场景智能体"));
+            if (item.id === "smart_expand" && h3Compiler) badges.push(text("H3 compiler", "H3 编译器"));
+            else if (item.id === "smart_expand" && mode === "scene") badges.push(text("Scene agent", "场景智能体"));
             if (hasVideo && item.media_policy === "main_video_auto") badges.push(text("Video", "视频"));
             if (item.requires_vlm || (mode === "scene" && item.requires_vlm_scene)) badges.push("VLM");
             const busy = pending && pendingActionId === item.id;
             const stateText = busy ? text("Working...", "处理中…") : availability.reason;
+            const label = item.id === "smart_expand" && h3Compiler
+                ? text("Compile MiniMax H3 Prompt", "编译 MiniMax H3 提示词")
+                : actionLabel(item);
+            const description = item.id === "smart_expand" && h3Compiler
+                ? text("Build and validate the required H3 audiovisual prompt structure.", "生成并检查 H3 所需的结构化视听提示词。")
+                : actionDescription(item);
             return `
                 <button type="button"
                         class="simpleai-prompt-action-item${item.featured ? " is-featured" : ""}${busy ? " is-busy" : ""}"
@@ -414,8 +441,8 @@
                         ${availability.enabled ? "" : "disabled"}>
                     <span class="simpleai-prompt-action-item-icon"><i class="fa-solid ${escapeHtml(item.icon || "fa-wand-magic-sparkles")}"></i></span>
                     <span class="simpleai-prompt-action-item-main">
-                        <span class="simpleai-prompt-action-item-title">${escapeHtml(actionLabel(item))}</span>
-                        <span class="simpleai-prompt-action-item-description">${escapeHtml(actionDescription(item))}</span>
+                        <span class="simpleai-prompt-action-item-title">${escapeHtml(label)}</span>
+                        <span class="simpleai-prompt-action-item-description">${escapeHtml(description)}</span>
                         ${badges.length ? `<span class="simpleai-prompt-action-item-badges">${badges.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("")}</span>` : ""}
                         ${stateText ? `<span class="simpleai-prompt-action-item-state">${escapeHtml(stateText)}</span>` : ""}
                     </span>
@@ -447,6 +474,23 @@
         const root = rootById("prompt_action_trigger");
         if (!root) return null;
         return root.matches?.("button") ? root : root.querySelector?.("button");
+    }
+
+    async function clickPromptActionTrigger(trigger) {
+        try {
+            if (window.SimpAISketch?.flushAll) {
+                await window.SimpAISketch.flushAll({
+                    force: true,
+                    change: true,
+                    cache: true,
+                    cacheWaitMs: 1500,
+                    refreshCache: true
+                });
+            }
+        } catch (error) {
+            console.warn("[UI-TRACE] prompt_action_sketch_flush_failed", error);
+        }
+        trigger.click();
     }
 
     function runAction(actionId) {
@@ -487,7 +531,16 @@
         pendingAgentService = currentAgentService(item);
         setAgentStatus(pendingAgentService, "busy");
         renderModal();
-        trigger.click();
+        void clickPromptActionTrigger(trigger).catch((error) => {
+            const service = pendingAgentService;
+            pending = false;
+            pendingActionId = "";
+            pendingAgentService = null;
+            pendingPromptField = null;
+            previousPrompt = "";
+            renderModal();
+            setAgentStatus(service, "error", String(error?.message || error || text("Prompt action bridge is unavailable.", "提示工具执行组件不可用。")));
+        });
     }
 
     function ensureToast() {
@@ -538,10 +591,18 @@
     window.completeSimpleAIPromptAction = function completeSimpleAIPromptAction(value) {
         const result = parseResult(value);
         const target = pendingPromptField;
+        const directRequest = pendingDirectRequest;
         const service = resolvedAgentService(result, pendingAgentService);
         pending = false;
         pendingActionId = "";
         pendingAgentService = null;
+        pendingDirectRequest = null;
+        if (directRequest) {
+            pendingPromptField = null;
+            previousPrompt = "";
+            directRequest.resolve(result);
+            return;
+        }
         if (result.ok) {
             if (!setPromptFieldValue(target, String(result.text ?? previousPrompt))) {
                 pendingPromptField = null;
@@ -599,6 +660,75 @@
     window.refreshSimpleAIPromptToolsButton = bindButton;
     window.openSimpleAIPromptToolsForField = function openSimpleAIPromptToolsForField(field) {
         openModal(field);
+    };
+    window.runSimpleAIPromptActionForField = function runSimpleAIPromptActionForField(actionId, field) {
+        const target = promptField(field);
+        if (!target) return false;
+        openModal(target);
+        runAction(actionId);
+        return pending && pendingActionId === actionId;
+    };
+    window.runSimpleAIPromptActionDirect = function runSimpleAIPromptActionDirect(actionId, inputText, options = {}) {
+        return new Promise((resolve, reject) => {
+            if (pending) {
+                reject(new Error(text("Another prompt action is already running.", "已有提示词任务正在处理。")));
+                return;
+            }
+            const item = catalogItems().find((candidate) => candidate.id === actionId);
+            if (!item) {
+                reject(new Error(text("Unknown prompt action.", "未找到对应的提示词功能。")));
+                return;
+            }
+            const availability = actionAvailability(item);
+            if (!availability.enabled) {
+                reject(new Error(availability.reason || text("Prompt action is unavailable.", "当前无法使用该提示词功能。")));
+                return;
+            }
+            if (isGenerationActive()) {
+                reject(new Error(text("Prompt actions are unavailable during generation.", "生成期间无法处理提示词。")));
+                return;
+            }
+            const trigger = hiddenTriggerButton();
+            if (!trigger) {
+                reject(new Error(text("Prompt action bridge is unavailable.", "提示词执行组件不可用。")));
+                return;
+            }
+
+            const original = String(inputText ?? "");
+            if (!original.trim()) {
+                reject(new Error(text("Prompt is empty.", "提示词不能为空。")));
+                return;
+            }
+            const directOptions = options && typeof options === "object" && !Array.isArray(options)
+                ? { ...options }
+                : {};
+            if (!Object.prototype.hasOwnProperty.call(directOptions, "use_video")) {
+                directOptions.use_video = item.media_policy === "main_video_auto" && mainVideoContextAvailable();
+            }
+            if (!Object.prototype.hasOwnProperty.call(directOptions, "language")) directOptions.language = currentLang();
+            if (!Object.prototype.hasOwnProperty.call(directOptions, "direction")) directOptions.direction = "auto";
+            if (!setField("prompt_action_input", original)
+                    || !setField("prompt_action_id", actionId)
+                    || !setField("prompt_action_options", JSON.stringify(directOptions))) {
+                reject(new Error(text("Prompt action parameters could not be prepared.", "提示词参数写入失败。")));
+                return;
+            }
+
+            pending = true;
+            pendingActionId = actionId;
+            pendingAgentService = currentAgentService(item);
+            pendingPromptField = null;
+            previousPrompt = original;
+            pendingDirectRequest = { resolve, reject };
+            clickPromptActionTrigger(trigger).catch((error) => {
+                pending = false;
+                pendingActionId = "";
+                pendingAgentService = null;
+                pendingDirectRequest = null;
+                previousPrompt = "";
+                reject(error);
+            });
+        });
     };
     window.simpleAIPromptToolsHasText = function simpleAIPromptToolsHasText() {
         return !!String(defaultPromptField()?.value || "").trim();

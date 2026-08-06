@@ -1,0 +1,198 @@
+{
+    "supported_tasks": [
+        "video_upscale"
+    ],
+    "default_engine": {
+        "backend_engine": "Wan",
+        "engine_type": "video",
+        "disvisible": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "advanced_checkbox"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "available_aspect_ratios_selection": "Flux",
+            "scene_frontend": {
+            "version": "v1.1",
+            "theme": [
+                "Bernini-VideoUpscale"
+            ],
+      "theme_title": "Bernini-VideoUpscale",
+            "director_capability": {
+                "image_policy": "forbidden",
+                "audio_policy": "forbidden",
+                "video_policy": "required",
+                "max_images": 0,
+                "min_images": 0,
+                "image_modes": [
+                    "none"
+                ],
+                "video_modes": [
+                    "explicit"
+                ],
+                "chain_output": "last_result",
+                "requires_sequential": false,
+                "duration_strategy": "video_min",
+                "audio_output": "source_audio",
+                "mixed_segments": false
+            },
+            "disvisible": [
+                "scene_canvas_image",
+                "scene_input_image1",
+                "scene_input_image2",
+                "scene_input_image3",
+        "scene_input_image4",
+        "scene_additional_prompt",
+        "scene_additional_prompt_2",
+        "scene_audio",
+        "scene_var_number",
+        "scene_var_number9",
+                "scene_var_number10",
+                "scene_image_number",
+                "scene_batch",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "scene_base_model",
+                "scene_refiner_model",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "task_method": {
+                "Bernini-VideoUpscale": "bernini_video_upscale_cn"
+            },
+            "disable_canvas_mask": true,
+            "multimodal_prompt": {
+                "Bernini-VideoUpscale": ""
+            },
+            "agent_prompt": {
+                "Bernini-VideoUpscale": "你是视频高清化 Prompt 优化师。将用户要求整理为直接的视频放大指令，强调恢复清晰细节、纹理和边缘，同时保持源视频的人物身份、物体结构、动作时序、镜头运动、构图、光线、色彩和音频不变。不要新增人物、物体、剧情、切镜或镜头运动。只返回最终 Prompt，不要标题、列表或解释。"
+            },
+            "video_duration_title": "Duration limit (seconds) [0 = no limit]",
+            "video_duration_min": 0,
+            "video_duration_max": 120,
+            "video_duration": {
+                "Bernini-VideoUpscale": 0
+            },
+            "var_number_min": 1,
+            "var_number_max": 10,
+            "var_number": {
+                "Basic": 5
+            },
+      "var_number3_title": "Redraw strength",
+      "var_number3_min": 0.0,
+      "var_number3_max": 0.5,
+      "var_number3": {
+        "Bernini-VideoUpscale": 0.25
+      },
+      "var_number2_title": "Override FPS (0 = source)",
+      "var_number2_min": 0,
+      "var_number2_max": 30,
+      "var_number2": {
+        "Bernini-VideoUpscale": 0
+      },
+      "var_number4_title": "Detail strength",
+      "var_number4_min": 0.0,
+      "var_number4_max": 2.0,
+      "var_number4": {
+        "Bernini-VideoUpscale": 0.25
+      },
+      "var_number5_title": "Texture strength",
+      "var_number5_min": 0.0,
+      "var_number5_max": 1.0,
+      "var_number5": {
+        "Bernini-VideoUpscale": 0.05
+      },
+      "var_number6_title": "Focus persistence",
+      "var_number6_min": 0.0,
+      "var_number6_max": 0.95,
+      "var_number6": {
+        "Bernini-VideoUpscale": 0.65
+      },
+      "switch_option1_title": "Use Tiled VAE Decode",
+      "switch_option1": {
+        "Bernini-VideoUpscale": false
+      },
+      "switch_option2_title": "Enhance detail",
+      "switch_option2": {
+        "Bernini-VideoUpscale": true
+      },
+            "aspect_ratio": [
+                "832|1:1",
+                "960|1:1",
+                "1024|1:1",
+                "1280|1:1",
+                "origin|Original"
+            ],
+            "resolution_control": {
+                "mode": "video_keep_input_area",
+                "source": "scene_video",
+                "base_width": 1280,
+                "base_height": 1280,
+                "quantize": 16,
+                "interactive": true,
+                "frontend_preprocess": true,
+                "preprocess_target": "video",
+                "preprocess_fit": "proportional",
+                "preserve_audio": true
+            },
+            "overwrite_step_min": 2,
+            "overwrite_step_max": 2,
+            "var_number7_title": "Frames per segment (smaller saves VRAM)",
+            "var_number7_min": 33,
+            "var_number7_max": 185,
+            "var_number7": {
+                "Bernini-VideoUpscale": 65
+            },
+            "var_number8_title": "Historical prefix frames",
+            "var_number8_min": 0,
+            "var_number8_max": 9,
+            "var_number8": {
+                "Bernini-VideoUpscale": 5
+            },
+            "prompt": {
+                "Bernini-VideoUpscale": "将源视频放大并恢复高清细节，保持原始人物、物体、动作、镜头运动、构图、色彩和时序不变。"
+            }
+        }
+    },
+    "default_model": "wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
+    "previous_default_models": [
+        "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors"
+    ],
+    "default_refiner": "None",
+    "previous_default_refiners": [],
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_vae": "wan_2.1_vae.safetensors",
+    "default_clip_model": "nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
+    "default_loras": [
+        [
+            "Bernini-R_LightX2V_low_noise.safetensors",
+            1.5
+        ]
+    ],
+    "default_cfg_scale": 1,
+    "default_sample_sharpness": 2,
+    "default_sampler": "res_multistep",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1280*1280",
+    "default_image_number": 1,
+    "default_overwrite_step": 2,
+    "default_prompt_negative": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "diffusion_models,wan2.2_bernini_r_low_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
+        "loras,Bernini-R_LightX2V_low_noise.safetensors,1244141856,0,https://modelscope.cn/models/rzgar/Bernini-R-LightX2V-4step-loras/resolve/master/Bernini-R_LightX2V_low_noise.safetensors",
+        "text_encoders,nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors,6749480621,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5_xxl_v2_int8-convrot.safetensors,https://huggingface.co/rzgar/NSFW-Wan-UMT5-XXL-V2/resolve/main/encoders/nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
+        "vae,wan_2.1_vae.safetensors,253815318,0,https://www.modelscope.cn/models/Comfy-Org/Wan-2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors"
+    ],
+    "default_prompt": "将将源视频放大并恢复高清细节，保持原始人物、物体、动作、镜头运动、构图、色彩和时序不变。"
+}

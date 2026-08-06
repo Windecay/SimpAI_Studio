@@ -11,6 +11,7 @@ import modules.canvas_danbooru_preflight as canvas_danbooru_preflight
 import modules.canvas_danbooru_prompt_review as canvas_danbooru_prompt_review
 import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_prompt_pipeline as canvas_vlm_prompt_pipeline
+import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 
 try:
     from enhanced.vlm import VLM
@@ -128,6 +129,10 @@ VLM_NATURAL_PROMPT_REFINE_SKILL_FILE = "natural_prompt_refine.md"
 VLM_AGENT_COMPANION_SKILL_FILE = "agent_companion.md"
 VLM_PRESET_TOOL_CALLING_SKILL_FILE = "preset_tool_calling.md"
 VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE = "simpai_preset_guide.md"
+VLM_H3_PROMPT_WRITING_SKILL_FILES = {
+    "en": "h3_prompt_writing_en.md",
+    "cn": "h3_prompt_writing_cn.md",
+}
 VLM_PROMPT_REWRITE_PRESET_NOTES_MAX_CHARS = 6000
 VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS = 20000
 VLM_PROMPT_REWRITE_SKILL_EXCERPT_MAX_CHARS = 3600
@@ -166,6 +171,51 @@ def _canvas_bool(value, default=False):
         return bool(value)
     return str(value).strip().lower() not in {"0", "false", "no", "off", ""}
 
+
+def _canvas_normalize_skill_language(value):
+    raw = str(value or "").strip().lower().replace("_", "-")
+    if raw.startswith("en") or raw in {"english", "英文"}:
+        return "en"
+    if raw.startswith(("zh", "cn")) or raw in {"chinese", "simplified-chinese", "中文"}:
+        return "cn"
+    return ""
+
+
+def _canvas_vlm_skill_language(params=None, payload=None, target=None):
+    params = params if isinstance(params, dict) else {}
+    payload = payload if isinstance(payload, dict) else {}
+    target = target if isinstance(target, dict) else {}
+    candidates = []
+
+    def add_state(value):
+        if isinstance(value, dict):
+            for key in ("__lang", "lang", "language"):
+                if value.get(key):
+                    candidates.append(value.get(key))
+
+    # stage.__lang is the request-level language source. The other locations
+    # keep direct API calls and older canvas payloads compatible.
+    add_state(payload.get("stage"))
+    add_state(params.get("stage"))
+    add_state(params)
+    add_state(payload)
+    add_state(payload.get("state"))
+    add_state(payload.get("user_context"))
+    add_state(payload.get("agent_context"))
+    add_state(target)
+    add_state(target.get("prompt_compiler_context"))
+
+    for value in candidates:
+        normalized = _canvas_normalize_skill_language(value)
+        if normalized:
+            return normalized
+    return "en"
+
+
+def _canvas_h3_prompt_writing_skill_file(params=None, payload=None, target=None):
+    language = _canvas_vlm_skill_language(params=params, payload=payload, target=target)
+    return VLM_H3_PROMPT_WRITING_SKILL_FILES[language]
+
 def _canvas_compact_agent_prompt_enabled(params):
     if not isinstance(params, dict):
         return False
@@ -199,7 +249,7 @@ def _canvas_vlm_prompt_rewrite_target_summary(payload):
     target = targets.get("text_to_image") if isinstance(targets.get("text_to_image"), dict) else {}
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
     fields = []
-    for key in ("label", "name", "backend_engine", "task_method", "text_encoder", "prompt_format"):
+    for key in ("label", "name", "backend_engine", "task_method", "text_encoder", "prompt_format", "prompt_compiler"):
         value = str(target.get(key) or "").strip()
         if value:
             fields.append(f"{key}={value[:80]}")
@@ -217,6 +267,8 @@ def _canvas_vlm_prompt_rewrite_target_family(target_key, target=None):
         for field in ("label", "name")
     )
 
+    if minimax_h3_prompt_compiler.target_compiler(data):
+        return "minimax_h3"
     if _canvas_is_anima_prompt_target_key(key, data):
         return "anima"
     if key in CANVAS_DANBOORU_TARGET_KEYS:
@@ -328,6 +380,8 @@ def _canvas_vlm_prompt_rewrite_required_docs(payload):
     payload = payload if isinstance(payload, dict) else {}
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
     target = _canvas_prompt_target_for_payload(payload, target_key)
+    if minimax_h3_prompt_compiler.target_compiler(target):
+        return [_canvas_h3_prompt_writing_skill_file(payload=payload, target=target)]
     if _canvas_is_anima_prompt_target_key(target_key, target):
         return [VLM_ANIMA_PROMPT_SKILL_FILE]
     if target_key in CANVAS_DANBOORU_TARGET_KEYS:
@@ -341,6 +395,35 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target = _canvas_vlm_prompt_rewrite_target_summary(payload)
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
     target_meta = _canvas_prompt_target_for_payload(payload if isinstance(payload, dict) else {}, target_key)
+    h3_instructions = minimax_h3_prompt_compiler.build_system_instructions(target_meta)
+    if h3_instructions:
+        h3_skill_file = _canvas_h3_prompt_writing_skill_file(payload=payload, target=target_meta)
+        h3_skill = _canvas_read_vlm_skill_file(
+            h3_skill_file,
+            VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
+        )
+        parts = [
+            "SimpAI MiniMax H3 prompt compiler mode.",
+            "Compile the user's rough request for the selected H3 workflow without changing the requested intent.",
+            "Target: " + target,
+            h3_instructions,
+        ]
+        if h3_skill:
+            parts.append(
+                "Selected MiniMax H3 Prompt Writing skill. Use it for scene-writing guidance only; "
+                "the SimpAI H3 compiler contract and runtime media inventory have higher priority:\n"
+                + h3_skill
+            )
+        if base:
+            preset_notes = _canvas_vlm_prompt_rewrite_compact_text(
+                base,
+                VLM_PROMPT_REWRITE_PRESET_NOTES_MAX_CHARS,
+            )
+            parts.append(
+                "Preset-specific content notes. They may refine content but cannot replace or contradict the H3 output contract:\n"
+                + preset_notes
+            )
+        return "\n".join(part for part in parts if str(part or "").strip()).strip()
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, target_meta)
     target_requires_danbooru = target_key in CANVAS_DANBOORU_TARGET_KEYS
     target_family = _canvas_vlm_prompt_rewrite_target_family(target_key, target_meta)
@@ -374,6 +457,7 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
         required_docs=required_docs,
         required_only=bool(required_docs),
+        language=_canvas_vlm_skill_language(payload=payload, target=target_meta),
     )
     if docs:
         skill_text = "\n\n".join(
@@ -2237,10 +2321,11 @@ def _canvas_vlm_compact_action_protocol_text(image_prompt_intent, danbooru_promp
     )
 
 
-def _canvas_read_vlm_skill_docs(query="", max_chars=9000, required_docs=None, required_only=False):
+def _canvas_read_vlm_skill_docs(query="", max_chars=9000, required_docs=None, required_only=False, language=None):
     root = _canvas_vlm_skills_dir()
     if not os.path.isdir(root):
         return []
+    requested_language = _canvas_normalize_skill_language(language)
     skill_index = _canvas_read_vlm_skill_index()
     area_by_doc = {}
     for area in skill_index.get("areas") or []:
@@ -2273,6 +2358,9 @@ def _canvas_read_vlm_skill_docs(query="", max_chars=9000, required_docs=None, re
                 continue
             lowered = content.lower()
             area = area_by_doc.get(rel, {})
+            area_language = _canvas_normalize_skill_language(area.get("language"))
+            if requested_language and area_language and area_language != requested_language:
+                continue
             area_text = json.dumps(area, ensure_ascii=False).lower() if area else ""
             score = sum(1 for term in query_terms if term in lowered or term in rel.lower() or term in area_text)
             title = filename[:-3]
@@ -4236,6 +4324,13 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
     payload_targets = payload_agent_context.get("prompt_generation_targets") if isinstance(payload_agent_context, dict) else {}
     payload_text_target = payload_targets.get("text_to_image") if isinstance(payload_targets.get("text_to_image"), dict) else {}
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
+    h3_target = payload_text_target or {"key": target_key}
+    h3_prompt_required = bool(minimax_h3_prompt_compiler.target_compiler(h3_target))
+    h3_skill_file = _canvas_h3_prompt_writing_skill_file(
+        params=params,
+        payload=payload,
+        target=h3_target,
+    ) if h3_prompt_required else ""
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, payload_text_target)
     target_requires_danbooru = target_key in {"sdxl_danbooru", "danbooru", "illustrious", "noob", "pony", "animagine"}
     image_prompt_intent = _canvas_vlm_image_prompting_intent(effective_prompt)
@@ -4401,7 +4496,9 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
             and _canvas_vlm_preset_guide_intent(effective_prompt)
         )
         required_docs = []
-        if anima_prompt_required:
+        if h3_prompt_required:
+            required_docs.append(h3_skill_file)
+        elif anima_prompt_required:
             required_docs.append(VLM_ANIMA_PROMPT_SKILL_FILE)
         if preset_guide_required:
             required_docs.append(VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE)
@@ -4416,7 +4513,9 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
         elif not anima_prompt_required and prompt_skill_intent:
             required_docs.append(VLM_IMAGE_PROMPT_SKILL_FILE)
         doc_budget = 1400 if prompt_rewrite_request else (2200 if compact_prompt else 9000)
-        if anima_prompt_required:
+        if h3_prompt_required:
+            doc_budget = max(doc_budget, 7000 if compact_prompt else 10000)
+        elif anima_prompt_required:
             doc_budget = max(doc_budget, 18000 if compact_prompt else 20000)
         if preset_guide_required:
             doc_budget = max(doc_budget, 18000 if compact_prompt else 24000)
@@ -4427,6 +4526,7 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
             doc_budget,
             required_docs=required_docs,
             required_only=bool(required_docs),
+            language=_canvas_vlm_skill_language(params=params, payload=payload, target=h3_target),
         )
         if docs:
             if compact_prompt:
@@ -7943,7 +8043,14 @@ def _canvas_vlm_skills(payload):
     query = ""
     if isinstance(payload, dict):
         query = str(payload.get("query") or "")
-    docs = _canvas_read_vlm_skill_docs(query, 12000)
+    agent_context = payload.get("agent_context") if isinstance(payload, dict) and isinstance(payload.get("agent_context"), dict) else {}
+    targets = agent_context.get("prompt_generation_targets") if isinstance(agent_context.get("prompt_generation_targets"), dict) else {}
+    target = targets.get("text_to_image") if isinstance(targets.get("text_to_image"), dict) else {}
+    docs = _canvas_read_vlm_skill_docs(
+        query,
+        12000,
+        language=_canvas_vlm_skill_language(payload=payload, target=target),
+    )
     return {
         "ok": True,
         "skills_dir": _canvas_vlm_skills_dir(),

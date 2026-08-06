@@ -569,7 +569,11 @@
         if (systemPromptTemplateRequest) return systemPromptTemplateRequest;
         state.systemPromptTemplatesLoading = true;
         syncSystemPromptTemplateControls(modal);
-        systemPromptTemplateRequest = postJson(SYSTEM_PROMPT_TEMPLATE_ENDPOINT, {})
+        systemPromptTemplateRequest = postJson(SYSTEM_PROMPT_TEMPLATE_ENDPOINT, {
+            stage: { __lang: state.__lang },
+            __lang: state.__lang,
+            lang: state.__lang
+        })
             .then((data) => {
                 state.systemPromptTemplates = normalizeSystemPromptTemplates(data);
                 state.systemPromptTemplatesLoaded = true;

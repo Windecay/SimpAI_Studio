@@ -9,10 +9,85 @@ DEFAULT_TEMPLATE_CSV = Path(__file__).resolve().parent.parent / "docs" / "vlm_sy
 TEMPLATE_CSV_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_CSV"
 TEMPLATE_DIR_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_DIR"
 MAX_TEMPLATE_CHARS = 12000
+H3_PROMPT_WRITING_TEMPLATES = {
+    "cn": {
+        "id": "h3_prompt_writing_cn.md",
+        "name": "H3 提示词写作",
+        "filename": "h3_prompt_writing_cn.md",
+    },
+    "en": {
+        "id": "h3_prompt_writing_en.md",
+        "name": "H3 Prompt Writing",
+        "filename": "h3_prompt_writing_en.md",
+    },
+}
 
 
 def _clean_text(value):
     return str(value or "").strip()
+
+
+def _normalize_language(value):
+    raw = _clean_text(value).lower().replace("_", "-")
+    if raw.startswith("en") or raw in {"english", "英文"}:
+        return "en"
+    if raw.startswith(("zh", "cn")) or raw in {"chinese", "simplified-chinese", "中文"}:
+        return "cn"
+    return ""
+
+
+def _payload_language(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    candidates = []
+    for source in (payload.get("stage"), payload.get("user_context"), payload):
+        if isinstance(source, dict):
+            candidates.extend(source.get(key) for key in ("__lang", "lang", "language"))
+    for value in candidates:
+        language = _normalize_language(value)
+        if language:
+            return language
+    return ""
+
+
+def _is_default_template_source(source):
+    try:
+        return source.resolve() == DEFAULT_TEMPLATE_CSV.resolve()
+    except OSError:
+        return source == DEFAULT_TEMPLATE_CSV
+
+
+def _h3_prompt_writing_template_entries(language="", max_chars=MAX_TEMPLATE_CHARS):
+    skill_dir = DEFAULT_TEMPLATE_CSV.parent / "vlm_skills"
+    entries = []
+    languages = [language] if language else list(H3_PROMPT_WRITING_TEMPLATES)
+    for item_language in languages:
+        metadata = H3_PROMPT_WRITING_TEMPLATES.get(item_language)
+        if not metadata:
+            continue
+        path = skill_dir / metadata["filename"]
+        if not path.is_file():
+            continue
+        try:
+            content = extract_system_prompt_template(_read_text(path), max_chars=max_chars)
+        except Exception:
+            continue
+        if not content:
+            continue
+        stat = path.stat()
+        entries.append({
+            "id": metadata["id"],
+            "name": metadata["name"],
+            "filename": metadata["filename"],
+            "content": content,
+            "chars": len(content),
+            "size": stat.st_size,
+            "mtime": int(stat.st_mtime),
+            "source": f"bundled:{metadata['filename']}",
+            "template_dir": str(skill_dir),
+            "template_source": str(path),
+            "language": item_language,
+        })
+    return entries
 
 
 def _template_source(payload=None, root=None):
@@ -92,7 +167,7 @@ def _template_entry_from_csv_row(row, source_path, mtime=0, max_chars=MAX_TEMPLA
     )
     if not template_id or not name or not content:
         return None
-    return {
+    entry = {
         "id": template_id,
         "name": name,
         "filename": filename,
@@ -104,6 +179,10 @@ def _template_entry_from_csv_row(row, source_path, mtime=0, max_chars=MAX_TEMPLA
         "template_dir": str(source_path.parent),
         "template_source": str(source_path),
     }
+    language = _normalize_language(row.get("language"))
+    if language:
+        entry["language"] = language
+    return entry
 
 
 def _list_templates_from_csv(path, max_chars=MAX_TEMPLATE_CHARS):
@@ -144,6 +223,7 @@ def _list_templates_from_dir(root, max_chars=MAX_TEMPLATE_CHARS):
 
 
 def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMPLATE_CHARS):
+    payload = payload if isinstance(payload, dict) else {}
     source = _template_source(payload=payload, root=root)
     if not source.exists():
         return {
@@ -164,6 +244,16 @@ def list_vlm_system_prompt_templates(payload=None, root=None, max_chars=MAX_TEMP
     else:
         templates = []
         template_dir = str(source.parent)
+
+    language = _payload_language(payload)
+    if _is_default_template_source(source):
+        templates.extend(_h3_prompt_writing_template_entries(language=language, max_chars=max_chars))
+    if language:
+        templates = [
+            item for item in templates
+            if not _normalize_language(item.get("language"))
+            or _normalize_language(item.get("language")) == language
+        ]
 
     return {
         "ok": True,

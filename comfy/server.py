@@ -962,6 +962,12 @@ class PromptServer():
 
         @routes.get("/object_info")
         async def get_object_info(request):
+            refresh_requested = str(request.query.get("refresh", "")).strip().lower() in {"1", "true", "yes"}
+            if refresh_requested:
+                folder_paths.filename_list_cache.clear()
+                folder_paths.cache_helper.clear()
+                self.model_file_manager.clear_cache()
+                logging.info("Cleared model filename caches before rebuilding object_info")
             asset_seeder.start(roots=("models", "input", "output"))
             with folder_paths.cache_helper:
                 out = {}

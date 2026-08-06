@@ -10,7 +10,7 @@
         16
       ],
       "force_size": 1,
-      "min_frames": 45,
+      "min_frames": 33,
       "max_frames": 185
     },
     "class_type": "SimpAIBerniniBestFrameWindow",
@@ -81,7 +81,7 @@
   "18": {
     "inputs": {
       "anything": [
-        "124",
+        "262",
         0
       ]
     },
@@ -96,7 +96,7 @@
       "codec": "h264",
       "fps": [
         "155",
-        0
+        5
       ],
       "crf": 19,
       "images": [
@@ -113,143 +113,18 @@
       "title": "SaveVideoWebsocket"
     }
   },
-  "22": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "8",
-        0
-      ],
-      "steps": [
-        "150",
-        9
-      ],
-      "cfg": [
-        "150",
-        8
-      ],
-      "sampler_name": [
-        "150",
-        30
-      ],
-      "scheduler": [
-        "150",
-        31
-      ],
-      "start_at_step": 0,
-      "end_at_step": [
-        "143",
-        0
-      ],
-      "return_with_leftover_noise": "enable",
-      "model": [
-        "41",
-        0
-      ],
-      "positive": [
-        "219",
-        0
-      ],
-      "negative": [
-        "219",
-        1
-      ],
-      "latent_image": [
-        "268",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
-  "25": {
-    "inputs": {
-      "unet_name": "placeholder.gguf"
-    },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": {
-      "title": "base_model_gguf2"
-    }
-  },
-  "26": {
-    "inputs": {
-      "sage_attention": "auto",
-      "allow_compile": false,
-      "model": [
-        "142",
-        0
-      ]
-    },
-    "class_type": "PathchSageAttentionKJ",
-    "_meta": {
-      "title": "Patch Sage Attention KJ"
-    }
-  },
-  "31": {
-    "inputs": {
-      "unet_name": "placeholder.gguf"
-    },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": {
-      "title": "base_model_gguf"
-    }
-  },
   "32": {
     "inputs": {
       "sage_attention": "auto",
       "allow_compile": false,
       "model": [
-        "141",
+        "134",
         0
       ]
     },
     "class_type": "PathchSageAttentionKJ",
     "_meta": {
       "title": "Patch Sage Attention KJ"
-    }
-  },
-  "41": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "79",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_5"
-    }
-  },
-  "76": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "78",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_2"
-    }
-  },
-  "77": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "76",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_3"
     }
   },
   "78": {
@@ -266,57 +141,6 @@
       "title": "lora_1"
     }
   },
-  "79": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "77",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_4"
-    }
-  },
-  "90": {
-    "inputs": {
-      "source_fps": [
-        "155",
-        5
-      ],
-      "target_fps": [
-        "155",
-        0
-      ],
-      "scale": 2,
-      "model_name": "flownet.pkl",
-      "batch_size": 16,
-      "use_fp16": true,
-      "images": [
-        "262",
-        0
-      ]
-    },
-    "class_type": "RIFEInterpolation",
-    "_meta": {
-      "title": "RIFE Frame Interpolation"
-    }
-  },
-  "93": {
-    "inputs": {
-      "enable_fp16_accumulation": true,
-      "model": [
-        "26",
-        0
-      ]
-    },
-    "class_type": "ModelPatchTorchSettings",
-    "_meta": {
-      "title": "Model Patch Torch Settings"
-    }
-  },
   "94": {
     "inputs": {
       "enable_fp16_accumulation": true,
@@ -330,24 +154,10 @@
       "title": "Model Patch Torch Settings"
     }
   },
-  "95": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "213",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_8"
-    }
-  },
   "109": {
     "inputs": {
       "samples": [
-        "151",
+        "278",
         0
       ],
       "vae": [
@@ -367,7 +177,7 @@
       "temporal_size": 64,
       "temporal_overlap": 24,
       "samples": [
-        "151",
+        "278",
         0
       ],
       "vae": [
@@ -400,43 +210,6 @@
       "title": "If else"
     }
   },
-  "122": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "155",
-        0
-      ],
-      "b": [
-        "275",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "124": {
-    "inputs": {
-      "boolean": [
-        "122",
-        0
-      ],
-      "on_true": [
-        "262",
-        0
-      ],
-      "on_false": [
-        "90",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
   "134": {
     "inputs": {
       "unet_name": "placeholder.safetensors",
@@ -445,112 +218,6 @@
     "class_type": "UNETLoader",
     "_meta": {
       "title": "base_model"
-    }
-  },
-  "135": {
-    "inputs": {
-      "unet_name": "placeholder.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "base_model2"
-    }
-  },
-  "137": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "150",
-        25
-      ],
-      "b": [
-        "138",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "138": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "140": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "150",
-        24
-      ],
-      "b": [
-        "138",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "141": {
-    "inputs": {
-      "boolean": [
-        "140",
-        0
-      ],
-      "on_true": [
-        "134",
-        0
-      ],
-      "on_false": [
-        "31",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "142": {
-    "inputs": {
-      "boolean": [
-        "137",
-        0
-      ],
-      "on_true": [
-        "135",
-        0
-      ],
-      "on_false": [
-        "25",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "143": {
-    "inputs": {
-      "expression": "int(a/2)",
-      "a": [
-        "150",
-        9
-      ]
-    },
-    "class_type": "UtilityExpression",
-    "_meta": {
-      "title": "Expression"
     }
   },
   "145": {
@@ -581,26 +248,26 @@
       "additional_prompt": "",
       "ip_image": "welcome.png",
       "ip_image1": "welcome.png",
-      "ip_image2": "welcome.png",
-      "ip_image3": "welcome.png",
+      "ip_image2": "None",
+      "ip_image3": "None",
       "inpaint_image": "welcome.png",
       "inpaint_mask": "welcome.png",
       "width": 640,
       "height": 640,
       "cfg": 1,
-      "steps": 6,
+      "steps": 2,
       "var_number": 5,
-      "var_number2": 16,
-      "var_number3": 2,
-      "var_number4": 1.1,
-      "var_number5": 1,
-      "var_number6": 1,
-      "var_number7": 81,
-      "var_number8": 0,
+      "var_number2": 0,
+      "var_number3": 0.25,
+      "var_number4": 0.25,
+      "var_number5": 0.05,
+      "var_number6": 0.65,
+      "var_number7": 65,
+      "var_number8": 9,
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
-      "switch_option2": false,
+      "switch_option2": true,
       "switch_option3": false,
       "switch_option4": false,
       "model_type": 2,
@@ -614,54 +281,6 @@
     "class_type": "SceneInput",
     "_meta": {
       "title": "SceneInput"
-    }
-  },
-  "151": {
-    "inputs": {
-      "add_noise": "disable",
-      "noise_seed": [
-        "8",
-        0
-      ],
-      "steps": [
-        "150",
-        9
-      ],
-      "cfg": 1,
-      "sampler_name": [
-        "150",
-        30
-      ],
-      "scheduler": [
-        "150",
-        31
-      ],
-      "start_at_step": [
-        "143",
-        0
-      ],
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "215",
-        0
-      ],
-      "positive": [
-        "219",
-        0
-      ],
-      "negative": [
-        "219",
-        1
-      ],
-      "latent_image": [
-        "22",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
     }
   },
   "155": {
@@ -832,62 +451,6 @@
       "title": "WanVideo Image Resize To Closest"
     }
   },
-  "212": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "93",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_6"
-    }
-  },
-  "213": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "212",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_7"
-    }
-  },
-  "214": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "95",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_9"
-    }
-  },
-  "215": {
-    "inputs": {
-      "lora_name": "placeholder.safetensors",
-      "strength_model": 0,
-      "model": [
-        "214",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "lora_10"
-    }
-  },
   "219": {
     "inputs": {
       "width": [
@@ -908,6 +471,7 @@
         "274",
         0
       ],
+      "allow_short_context": false,
       "positive": [
         "2",
         0
@@ -924,152 +488,28 @@
         "246",
         0
       ],
-      "reference_images.reference_image_0": [
-        "230",
-        0
-      ],
-      "reference_images.reference_image_1": [
-        "231",
+      "context_video": [
+        "246",
         0
       ]
     },
     "class_type": "SimpAIBerniniLongVideoConditioning",
     "_meta": {
-      "title": "SimpAI Bernini Long Video Conditioning - First Segment"
-    }
-  },
-  "220": {
-    "inputs": {
-      "image_name": [
-        "150",
-        4
-      ],
-      "image": "None"
-    },
-    "class_type": "LoadInputImage",
-    "_meta": {
-      "title": "LoadInputImage"
-    }
-  },
-  "221": {
-    "inputs": {
-      "image_name": [
-        "150",
-        2
-      ],
-      "image": "None"
-    },
-    "class_type": "LoadInputImage",
-    "_meta": {
-      "title": "LoadInputImage"
-    }
-  },
-  "226": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "220",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "227": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "221",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "228": {
-    "inputs": {
-      "mask": [
-        "226",
-        0
-      ]
-    },
-    "class_type": "easy isMaskEmpty",
-    "_meta": {
-      "title": "Is Mask Empty"
-    }
-  },
-  "229": {
-    "inputs": {
-      "mask": [
-        "227",
-        0
-      ]
-    },
-    "class_type": "easy isMaskEmpty",
-    "_meta": {
-      "title": "Is Mask Empty"
-    }
-  },
-  "230": {
-    "inputs": {
-      "boolean": [
-        "228",
-        0
-      ],
-      "on_true": [
-        "232",
-        0
-      ],
-      "on_false": [
-        "220",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "231": {
-    "inputs": {
-      "boolean": [
-        "229",
-        0
-      ],
-      "on_true": [
-        "232",
-        0
-      ],
-      "on_false": [
-        "221",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "232": {
-    "inputs": {},
-    "class_type": "noneNode",
-    "_meta": {
-      "title": "None"
+      "title": "SimpAI Bernini Long Video Conditioning - Low Noise First Segment"
     }
   },
   "240": {
     "inputs": {
-      "python_expression": "0 if a <= 1 else (9 if a > 9 else a - 1)",
+      "python_expression": "0 if a <= 1 else (b if a > b else a - 1)",
       "print_to_console": "False",
       "a": [
         "1",
         0
       ],
-      "b": 0,
+      "b": [
+        "150",
+        17
+      ],
       "c": 0
     },
     "class_type": "Evaluate Integers",
@@ -1103,7 +543,7 @@
     },
     "class_type": "GetImageSize+",
     "_meta": {
-      "title": "Source Video Frame Count"
+      "title": "Loaded Video Frame Count"
     }
   },
   "243": {
@@ -1252,6 +692,7 @@
         "274",
         0
       ],
+      "allow_short_context": false,
       "positive": [
         "2",
         0
@@ -1268,127 +709,24 @@
         "249",
         0
       ],
+      "context_video": [
+        "249",
+        0
+      ],
       "previous_frames": [
         "247",
         2
-      ],
-      "reference_images.reference_image_0": [
-        "230",
-        0
-      ],
-      "reference_images.reference_image_1": [
-        "231",
-        0
       ]
     },
     "class_type": "SimpAIBerniniLongVideoConditioning",
     "_meta": {
-      "title": "SimpAI Bernini Long Video Conditioning - Loop Segment"
-    }
-  },
-  "251": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "8",
-        0
-      ],
-      "steps": [
-        "150",
-        9
-      ],
-      "cfg": [
-        "150",
-        8
-      ],
-      "sampler_name": [
-        "150",
-        30
-      ],
-      "scheduler": [
-        "150",
-        31
-      ],
-      "start_at_step": 0,
-      "end_at_step": [
-        "143",
-        0
-      ],
-      "return_with_leftover_noise": "enable",
-      "model": [
-        "41",
-        0
-      ],
-      "positive": [
-        "250",
-        0
-      ],
-      "negative": [
-        "250",
-        1
-      ],
-      "latent_image": [
-        "269",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler Advanced - Loop Stage 1"
-    }
-  },
-  "252": {
-    "inputs": {
-      "add_noise": "disable",
-      "noise_seed": [
-        "8",
-        0
-      ],
-      "steps": [
-        "150",
-        9
-      ],
-      "cfg": 1,
-      "sampler_name": [
-        "150",
-        30
-      ],
-      "scheduler": [
-        "150",
-        31
-      ],
-      "start_at_step": [
-        "143",
-        0
-      ],
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "215",
-        0
-      ],
-      "positive": [
-        "250",
-        0
-      ],
-      "negative": [
-        "250",
-        1
-      ],
-      "latent_image": [
-        "251",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler Advanced - Loop Stage 2"
+      "title": "SimpAI Bernini Long Video Conditioning - Low Noise Loop Segment"
     }
   },
   "253": {
     "inputs": {
       "samples": [
-        "252",
+        "279",
         0
       ],
       "vae": [
@@ -1408,7 +746,7 @@
       "temporal_size": 64,
       "temporal_overlap": 24,
       "samples": [
-        "252",
+        "279",
         0
       ],
       "vae": [
@@ -1560,8 +898,8 @@
     "inputs": {
       "batch_index": 0,
       "length": [
-        "242",
-        2
+        "267",
+        0
       ],
       "image": [
         "261",
@@ -1570,15 +908,19 @@
     },
     "class_type": "ImageFromBatch",
     "_meta": {
-      "title": "Trim To Source Video Length"
+      "title": "Trim To Requested Duration"
     }
   },
   "263": {
     "inputs": {
-      "value": "(a>0)*max(1, round(a*16))",
+      "value": "(a>0)*max(1, round(a*b))",
       "a": [
         "150",
         32
+      ],
+      "b": [
+        "275",
+        0
       ]
     },
     "class_type": "SimpleMath+",
@@ -1589,7 +931,7 @@
   "264": {
     "inputs": {
       "images": [
-        "124",
+        "262",
         0
       ]
     },
@@ -1607,7 +949,7 @@
       ],
       "b": [
         "155",
-        0
+        5
       ]
     },
     "class_type": "SimpleMath+",
@@ -1632,28 +974,25 @@
       "title": "Optional Trim Source Audio To Final Video"
     }
   },
-  "268": {
+  "267": {
     "inputs": {
-      "anything": [
-        "219",
+      "value": "(a<=0)*c+(a>0)*min(c,max(1,round(a*b)))",
+      "a": [
+        "150",
+        32
+      ],
+      "b": [
+        "155",
+        5
+      ],
+      "c": [
+        "242",
         2
       ]
     },
-    "class_type": "easy cleanGpuUsed",
+    "class_type": "SimpleMath+",
     "_meta": {
-      "title": "Clean VRAM Used"
-    }
-  },
-  "269": {
-    "inputs": {
-      "anything": [
-        "250",
-        2
-      ]
-    },
-    "class_type": "easy cleanGpuUsed",
-    "_meta": {
-      "title": "Clean VRAM Used"
+      "title": "Requested Duration Frame Count"
     }
   },
   "270": {
@@ -1739,7 +1078,132 @@
     },
     "class_type": "JWIntegerToFloat",
     "_meta": {
-      "title": "Integer to Float"
+      "title": "Optional Lower FPS Override"
+    }
+  },
+  "278": {
+    "inputs": {
+      "seed": [
+        "8",
+        0
+      ],
+      "steps": [
+        "150",
+        9
+      ],
+      "cfg": [
+        "150",
+        8
+      ],
+      "sampler_name": [
+        "150",
+        30
+      ],
+      "scheduler": [
+        "150",
+        31
+      ],
+      "denoise": [
+        "150",
+        12
+      ],
+      "enhance_detail": [
+        "150",
+        21
+      ],
+      "detail_strength": [
+        "150",
+        13
+      ],
+      "texture_strength": [
+        "150",
+        14
+      ],
+      "focus_persistence": [
+        "150",
+        15
+      ],
+      "model": [
+        "78",
+        0
+      ],
+      "positive": [
+        "219",
+        0
+      ],
+      "negative": [
+        "219",
+        1
+      ],
+      "latent_image": [
+        "219",
+        4
+      ]
+    },
+    "class_type": "SimpAILatentDetailSampler",
+    "_meta": {
+      "title": "Bernini Detail Sampler"
+    }
+  },
+  "279": {
+    "inputs": {
+      "seed": [
+        "8",
+        0
+      ],
+      "steps": [
+        "150",
+        9
+      ],
+      "cfg": 1,
+      "sampler_name": [
+        "150",
+        30
+      ],
+      "scheduler": [
+        "150",
+        31
+      ],
+      "denoise": [
+        "150",
+        12
+      ],
+      "enhance_detail": [
+        "150",
+        21
+      ],
+      "detail_strength": [
+        "150",
+        13
+      ],
+      "texture_strength": [
+        "150",
+        14
+      ],
+      "focus_persistence": [
+        "150",
+        15
+      ],
+      "model": [
+        "78",
+        0
+      ],
+      "positive": [
+        "250",
+        0
+      ],
+      "negative": [
+        "250",
+        1
+      ],
+      "latent_image": [
+        "250",
+        4
+      ]
+    },
+    "class_type": "SimpAILatentDetailSampler",
+    "_meta": {
+      "title": "SimpAI Latent Detail Sampler - Loop Segment"
     }
   }
 }

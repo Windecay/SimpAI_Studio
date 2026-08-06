@@ -199,8 +199,6 @@ SimpAI UI guide skill:
   clip in the current Studio interface. H3(R2V) prompts should use `<Picture 1>`,
   `<Video 1>`, and `<Audio 1>` tags, numbered independently by media type. Each
   reference video's soundtrack is paired with that video automatically.
-- For video outpainting / expanding video frame boundaries, recommend
-  Wan-Outpaint.
 - For video object/person/face replacement with masks, recommend Wan-Animate
   with SAM3; for video removal/inpainting, recommend Wan-Remover with SAM3.
 - For video face swap, recommend ReActor-FaceSwap / ReActor Face Swap for a

@@ -178,6 +178,68 @@ def prompt_action_capability_from_state(state):
     }
 
 
+def _prompt_action_h3_reference_mode(state):
+    data = state if isinstance(state, dict) else {}
+    scene = _prompt_action_scene_frontend(data)
+    theme = _prompt_action_scene_theme(data, scene)
+    try:
+        from modules import minimax_h3_prompt_compiler
+
+        compiler = minimax_h3_prompt_compiler.scene_compiler(scene, theme)
+        if isinstance(compiler, dict):
+            return str(compiler.get("route") or "").lower() == "reference"
+    except Exception:
+        pass
+    task_method = _prompt_action_theme_value(scene.get("task_method"), theme)
+    haystack = " ".join(
+        str(value or "")
+        for value in (
+            task_method,
+            data.get("task_method"),
+            data.get("__preset"),
+            data.get("preset"),
+            scene.get("theme_title"),
+        )
+    ).lower()
+    return "minimax" in haystack and "h3" in haystack and "r2v" in haystack
+
+
+def _prompt_action_reconcile_h3_reference_capability(state, capability, declared_capability=None):
+    resolved = copy.deepcopy(capability if isinstance(capability, dict) else {})
+    if not _prompt_action_h3_reference_mode(state):
+        return resolved
+
+    declared = declared_capability if isinstance(declared_capability, dict) else {}
+    declared_policy = str(declared.get("image_policy") or "").strip().lower()
+    if declared_policy in {"optional", "required"}:
+        resolved["image_policy"] = declared_policy
+    elif str(resolved.get("image_policy") or "").strip().lower() in {"", "forbidden"}:
+        resolved["image_policy"] = "optional"
+
+    try:
+        declared_max = int(declared.get("max_images"))
+    except Exception:
+        declared_max = 0
+    try:
+        resolved_max = int(resolved.get("max_images"))
+    except Exception:
+        resolved_max = 0
+    resolved["max_images"] = declared_max if declared_max > 0 else (
+        resolved_max if resolved_max > 0 else len(PROMPT_ACTION_SCENE_IMAGE_SLOTS)
+    )
+    if "min_images" in declared:
+        resolved["min_images"] = copy.deepcopy(declared.get("min_images"))
+    elif "min_images" not in resolved:
+        resolved["min_images"] = 0
+
+    declared_modes = declared.get("image_modes")
+    modes = list(declared_modes) if isinstance(declared_modes, (list, tuple)) else list(resolved.get("image_modes") or [])
+    if "reference_set" not in {str(item or "").strip().lower() for item in modes}:
+        modes.append("reference_set")
+    resolved["image_modes"] = modes
+    return resolved
+
+
 def _prompt_action_hidden_scene_slots(state):
     scene = _prompt_action_scene_frontend(state)
     raw_hidden = scene.get("disvisible", [])
@@ -333,15 +395,51 @@ def _prompt_action_director_image_entries(runtime, segment, max_images=None):
 
 def _prompt_action_normalize_image_entries(entries):
     try:
-        from modules.util import normalize_gradio_image_value
+        from modules.util import normalize_gradio_image_value, normalize_gradio_sketch_value
     except Exception:
         normalize_gradio_image_value = None
+        normalize_gradio_sketch_value = None
+
+    def fallback_image(value):
+        if isinstance(value, np.ndarray):
+            return value
+        if isinstance(value, Image.Image):
+            return np.asarray(value.convert("RGB"))
+        if isinstance(value, dict):
+            for key in ("image", "background", "composite", "data", "path", "name"):
+                image = fallback_image(value.get(key))
+                if image is not None:
+                    return image
+            return None
+        if isinstance(value, str) and os.path.exists(value):
+            try:
+                with Image.open(value) as source:
+                    return np.asarray(source.convert("RGB"))
+            except Exception:
+                return None
+        return None
+
     normalized = []
+    unresolved = []
     for slot, value in entries:
-        image = normalize_gradio_image_value(value) if normalize_gradio_image_value is not None else value
+        image = None
+        if slot == "scene_canvas_image" and normalize_gradio_sketch_value is not None:
+            sketch = normalize_gradio_sketch_value(
+                value,
+                image_mode="RGB",
+                preserve_mask_color=True,
+            )
+            if isinstance(sketch, dict):
+                image = sketch.get("image")
+        if image is None and normalize_gradio_image_value is not None:
+            image = normalize_gradio_image_value(value, image_mode="RGB")
+        if image is None:
+            image = fallback_image(value)
         if image is not None:
             normalized.append((slot, image))
-    return normalized
+        else:
+            unresolved.append(slot)
+    return normalized, unresolved
 
 
 def _prompt_action_duration(value):
@@ -352,26 +450,37 @@ def _prompt_action_duration(value):
     return round(max(0.0, min(86400.0, result)), 3)
 
 
+def _prompt_action_visual_analysis_intent(input_text):
+    text = str(input_text or "").strip()
+    if re.search(
+        r"(?:story\s*board|shot\s*(?:board|sheet)|"
+        r"\u5206\u955c(?:\u7a3f|\u56fe|\u677f|\u811a\u672c)|\u6545\u4e8b\u677f|\u955c\u5934\u8868|"
+        r"(?:\u6839\u636e|\u53c2\u8003|\u6309\u7167|\u8bfb\u53d6|\u5206\u6790).{0,12}\u5206\u955c)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return "storyboard"
+    return ""
+
+
 def prepare_prompt_action_resources(state, input_images, scene_resources=None, input_text=""):
     data = state if isinstance(state, dict) else {}
     resources = dict(scene_resources or {})
     scene_mode = prompt_action_mode(data) == "scene"
-    capability = prompt_action_capability_from_state(data) if scene_mode else {}
+    declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
+    capability = copy.deepcopy(declared_capability)
     hidden = _prompt_action_hidden_scene_slots(data) if scene_mode else set()
     image_map = _prompt_action_image_map(input_images)
-    entries = [
+    raw_entries = [
+        (slot, image_map.get(slot))
+        for slot in PROMPT_ACTION_SCENE_IMAGE_SLOTS
+        if image_map.get(slot) is not None
+    ]
+    visible_entries = [
         (slot, image_map.get(slot))
         for slot in PROMPT_ACTION_SCENE_IMAGE_SLOTS
         if image_map.get(slot) is not None and (not scene_mode or slot not in hidden)
     ]
-    if str(capability.get("image_policy") or "").lower() == "forbidden":
-        entries = []
-    try:
-        max_images = int(capability.get("max_images")) if capability.get("max_images") is not None else len(entries)
-    except Exception:
-        max_images = len(entries)
-    if capability:
-        entries = entries[:max(0, max_images)]
 
     director_runtime = resources.get("director_state") if isinstance(resources.get("director_state"), dict) else {}
     director_enabled = bool(resources.get("director_enabled")) and bool(director_runtime)
@@ -381,14 +490,25 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             for key in PROMPT_ACTION_CAPABILITY_KEYS
             if key in director_runtime["director_capability"]
         }
-        try:
-            max_images = int(capability.get("max_images")) if capability.get("max_images") is not None else len(entries)
-        except Exception:
-            max_images = len(entries)
+    capability = _prompt_action_reconcile_h3_reference_capability(
+        data,
+        capability,
+        declared_capability,
+    )
+    visual_analysis_intent = _prompt_action_visual_analysis_intent(input_text)
+    image_policy = str(capability.get("image_policy") or "").lower()
+    analysis_only_images = bool(visual_analysis_intent and raw_entries and image_policy == "forbidden")
+    entries = list(raw_entries if analysis_only_images else visible_entries)
+    try:
+        max_images = int(capability.get("max_images")) if capability.get("max_images") is not None else len(entries)
+    except Exception:
+        max_images = len(entries)
+    if capability and not analysis_only_images:
+        entries = entries[:max(0, max_images)]
     director_index, director_segment = _prompt_action_director_segment(director_runtime, input_text) if director_enabled else (-1, None)
     director_context = {}
     if director_segment is not None:
-        if str(capability.get("image_policy") or "").lower() == "forbidden":
+        if image_policy == "forbidden":
             director_entries, director_image_refs = [], []
         else:
             director_entries, director_image_refs = _prompt_action_director_image_entries(
@@ -396,7 +516,8 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
                 director_segment,
                 max_images=max_images if capability else None,
             )
-        entries = director_entries
+        if not analysis_only_images:
+            entries = director_entries
         start = _prompt_action_duration(director_segment.get("start")) or 0.0
         end = _prompt_action_duration(director_segment.get("end"))
         segment_duration = round(max(0.0, (end if end is not None else start) - start), 3)
@@ -419,10 +540,15 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             "video_ref": video_ref,
         }
 
-    entries = _prompt_action_normalize_image_entries(entries)
-    roles = _prompt_action_image_roles(entries, capability)
+    entries, unresolved_image_slots = _prompt_action_normalize_image_entries(entries)
+    roles = ["storyboard"] * len(entries) if analysis_only_images else _prompt_action_image_roles(entries, capability)
     image_descriptors = [
-        {"slot": slot, "role": roles[index], "index": index + 1}
+        {
+            "slot": slot,
+            "role": roles[index],
+            "index": index + 1,
+            "analysis_only": analysis_only_images,
+        }
         for index, (slot, _image) in enumerate(entries)
     ]
     images = [image for _slot, image in entries]
@@ -488,6 +614,10 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "theme": _prompt_action_scene_theme(data),
         "capability": capability,
         "image_descriptors": image_descriptors,
+        "unresolved_image_slots": unresolved_image_slots,
+        "generation_image_count": 0 if analysis_only_images else len(entries),
+        "analysis_only_image_count": len(entries) if analysis_only_images else 0,
+        "visual_analysis_intent": visual_analysis_intent if analysis_only_images else "",
         "video_path": video_path,
         "video_first_frame_path": first_frame,
         "video_source": video_source,
@@ -809,6 +939,8 @@ def prepare_prompt_action_media(
 
 def _prompt_action_role_label(role):
     key = str(role or "").strip().lower()
+    if key == "storyboard":
+        return "analysis-only storyboard"
     if key == "source_image":
         return "source image"
     if key == "first_frame":
@@ -863,7 +995,19 @@ def prompt_action_media_note(media_meta):
             )
     offset = int(meta.get("video_visual_count") or 1) if meta.get("video_used") else 0
     descriptors = meta.get("image_descriptors") if isinstance(meta.get("image_descriptors"), list) else []
-    if descriptors:
+    analysis_only_count = int(meta.get("analysis_only_image_count") or 0)
+    if analysis_only_count and meta.get("visual_analysis_intent") == "storyboard":
+        first_index = offset + 1
+        last_index = offset + analysis_only_count
+        visual_range = f"visual input {first_index}" if first_index == last_index else f"visual inputs {first_index}-{last_index}"
+        parts.append(
+            f"The {visual_range} contain analysis-only storyboard sheets. Read every panel in its visible order, "
+            "including shot composition, subject continuity, action progression, camera direction, captions, dialogue, "
+            "and timing notes. Use that evidence to design the H3 shot sequence. These images are not H3 endpoint frames "
+            "or generation references: never label them as <Picture N> and never describe them as uploaded media in the "
+            "final prompt."
+        )
+    elif descriptors:
         labels = []
         for index, item in enumerate(descriptors):
             if not isinstance(item, dict):
@@ -907,6 +1051,13 @@ def prompt_action_resource_contract_note(media_meta):
     duration = meta.get("target_duration_seconds")
     if duration is not None:
         lines.append(f"- target_duration_seconds: {duration}")
+    analysis_only_count = int(meta.get("analysis_only_image_count") or 0)
+    if analysis_only_count:
+        lines.append(f"- analysis_only_storyboard_images: {analysis_only_count}")
+        lines.append(
+            "- The storyboard visuals may be read to design shots, but they are not generation images, endpoint frames, "
+            "or numbered H3 references."
+        )
     lines.append(f"- audio_uploaded_or_referenced: {bool(meta.get('audio_present'))}")
     lines.append("- audio_content_available_to_agent: false")
     lines.append(f"- reference_video_uploaded: {bool(meta.get('reference_video_present'))}")
@@ -920,7 +1071,10 @@ def prompt_action_resource_contract_note(media_meta):
         ])
         if str(meta.get("video_source") or "") == "director_previous_segment_pending":
             lines.append("- previous_segment_visual_status: unavailable before the previous shot has generated")
-    lines.append("Do not use hidden, stale, unavailable, or role-incompatible media.")
+    if analysis_only_count:
+        lines.append("Do not use hidden, stale, unavailable, or role-incompatible media beyond the declared storyboard analysis visuals.")
+    else:
+        lines.append("Do not use hidden, stale, unavailable, or role-incompatible media.")
     return "\n".join(lines)
 
 

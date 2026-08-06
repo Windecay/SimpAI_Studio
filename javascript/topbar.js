@@ -5366,6 +5366,51 @@ function setLtxGuideControlVisible(requestedVisible, systemParams) {
 }
 window.simpaiSetLtxGuideControlVisible = setLtxGuideControlVisible;
 
+let h3StoryboardControlAssetPromise = null;
+
+function syncH3StoryboardControlContent(systemParams) {
+    if (window.SimpAIH3StoryboardEditor?.syncSceneControl) {
+        try {
+            return !!window.SimpAIH3StoryboardEditor.syncSceneControl(systemParams || {});
+        } catch (e) {
+            return false;
+        }
+    }
+    const loadGroup = window.SimpAILazyAssetLoader?.loadGroup;
+    if (typeof loadGroup !== "function") return false;
+    if (!h3StoryboardControlAssetPromise) {
+        h3StoryboardControlAssetPromise = Promise.resolve(loadGroup("h3StoryboardEditor"))
+            .catch(() => false)
+            .finally(() => {
+                h3StoryboardControlAssetPromise = null;
+            });
+    }
+    h3StoryboardControlAssetPromise.then((loaded) => {
+        if (!loaded || !document.documentElement.classList.contains("simpai-h3-storyboard-control-active")) return;
+        const latestParams = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object"
+            ? window.simpleaiTopbarSystemParams
+            : (systemParams || {});
+        if (!isCurrentSystemParamsForLtxGuide(latestParams)) return;
+        try { window.SimpAIH3StoryboardEditor?.syncSceneControl?.(latestParams); } catch (e) {}
+    });
+    return false;
+}
+
+function setH3StoryboardControlVisible(requestedVisible, systemParams) {
+    const visible = !!requestedVisible && isCurrentSystemParamsForLtxGuide(systemParams);
+    try {
+        document.documentElement.classList.toggle("simpai-h3-storyboard-control-active", visible);
+    } catch (e) {}
+    try { setSceneAuxControlVisible("minimax_h3_storyboard_control", visible); } catch (e) {}
+    try { setSceneAuxControlVisible("minimax_h3_storyboard_scene_control_html", visible); } catch (e) {}
+    if (visible) syncH3StoryboardControlContent(systemParams || {});
+    if (!visible && window.SimpAIH3StoryboardEditor?.closeScenePreset) {
+        try { window.SimpAIH3StoryboardEditor.closeScenePreset(); } catch (e) {}
+    }
+    return visible;
+}
+window.simpaiSetH3StoryboardControlVisible = setH3StoryboardControlVisible;
+
 function sceneDisvisibleSetFromValue(disvisible) {
     return Array.isArray(disvisible)
         ? new Set(disvisible.map((item) => String(item)))
@@ -6094,6 +6139,9 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const showLtxGuideControl = !!(isScene
         && (taskText.includes("ltx2.3_i2v") || taskText.includes("ltx2.3_ia2v") || taskText.includes("ltx2.3_extent") || /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(presetNameLower))
         && !hidden.has("ltx_guide_control"));
+    const showH3StoryboardControl = !!(isScene
+        && (taskText.includes("minimax_h3") || /minimax[-_\s]*h3/.test(presetNameLower))
+        && !hidden.has("minimax_h3_storyboard_control"));
     const showCloudImageApi = !!(isScene && presetName === "GeneralAPIImage");
     const engineText = String((langSource && (langSource.backend_engine || langSource.engine)) || "").toLowerCase();
     const wanCameraMotion = ["uni3c"].some((marker) => themeText.includes(marker) || taskText.includes(marker) || engineText.includes(marker));
@@ -6109,6 +6157,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("gaussian_studio", showGaussianStudio);
     setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
     setLtxGuideControlVisible(showLtxGuideControl, langSource);
+    setH3StoryboardControlVisible(showH3StoryboardControl, langSource);
     setSceneAuxControlVisible("relight_light_control", showRelightLight);
     setSceneAuxControlVisible("scene_cloud_image_api", showCloudImageApi);
     setRelightLightSliderHidden(showRelightLight);

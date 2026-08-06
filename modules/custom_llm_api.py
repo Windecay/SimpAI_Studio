@@ -1,5 +1,7 @@
 import json
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 
@@ -7,6 +9,20 @@ import urllib.request
 OPENAI_CHAT_COMPLETIONS = "openai_compatible"
 OPENAI_RESPONSES = "openai_responses"
 SUPPORTED_API_FORMATS = (OPENAI_CHAT_COMPLETIONS, OPENAI_RESPONSES)
+RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
+DEFAULT_MAX_ATTEMPTS = 3
+_RETRY_BACKOFF_BASE_SECONDS = 0.35
+_RETRY_BACKOFF_MAX_SECONDS = 8.0
+
+
+class CustomLLMRequestError(RuntimeError):
+    """A request failure with enough metadata to decide whether it is transient."""
+
+    def __init__(self, message, *, status=None, retryable=False, retry_after=None):
+        super().__init__(message)
+        self.status = status
+        self.retryable = bool(retryable)
+        self.retry_after = retry_after
 
 
 def normalize_api_format(value):
@@ -52,7 +68,19 @@ def _response_preview(body, limit=300):
     return compact[:limit] or "<empty body>"
 
 
-def request_json(url, payload=None, api_key="", method="POST", timeout=120):
+def _retry_after_seconds(headers):
+    if not headers:
+        return None
+    raw = headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(0.0, min(float(raw), _RETRY_BACKOFF_MAX_SECONDS))
+    except (TypeError, ValueError):
+        return None
+
+
+def _request_json_once(url, payload=None, api_key="", method="POST", timeout=120):
     data = None
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -72,9 +100,11 @@ def request_json(url, payload=None, api_key="", method="POST", timeout=120):
             except json.JSONDecodeError as exc:
                 status = getattr(response, "status", None) or response.getcode()
                 content_type = response.headers.get("Content-Type", "unknown")
-                raise RuntimeError(
+                raise CustomLLMRequestError(
                     f"API returned non-JSON response (HTTP {status}, Content-Type: {content_type}): "
-                    f"{_response_preview(body)}"
+                    f"{_response_preview(body)}",
+                    status=status,
+                    retryable=status in RETRYABLE_HTTP_STATUS_CODES,
                 ) from exc
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -93,7 +123,36 @@ def request_json(url, payload=None, api_key="", method="POST", timeout=120):
                 message = str(parsed.get("message") or parsed.get("detail") or "")
         if not message:
             message = _response_preview(body)
-        raise RuntimeError(f"HTTP {exc.code}: {message}") from exc
+        raise CustomLLMRequestError(
+            f"HTTP {exc.code}: {message}",
+            status=exc.code,
+            retryable=exc.code in RETRYABLE_HTTP_STATUS_CODES,
+            retry_after=_retry_after_seconds(getattr(exc, "headers", None)),
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as exc:
+        raise CustomLLMRequestError(
+            f"API request failed: {exc}",
+            retryable=True,
+        ) from exc
+
+
+def request_json(url, payload=None, api_key="", method="POST", timeout=120, max_attempts=DEFAULT_MAX_ATTEMPTS):
+    try:
+        attempts = int(max_attempts)
+    except (TypeError, ValueError):
+        attempts = DEFAULT_MAX_ATTEMPTS
+    attempts = max(1, min(attempts, 5))
+    for attempt in range(attempts):
+        try:
+            return _request_json_once(url, payload, api_key=api_key, method=method, timeout=timeout)
+        except CustomLLMRequestError as exc:
+            if not exc.retryable or attempt >= attempts - 1:
+                raise
+            delay = exc.retry_after
+            if delay is None:
+                delay = min(_RETRY_BACKOFF_MAX_SECONDS, _RETRY_BACKOFF_BASE_SECONDS * (2 ** attempt))
+            if delay > 0:
+                time.sleep(delay)
 
 
 def _content_text(content):
@@ -257,7 +316,10 @@ def extract_response_text(response):
     text = _content_text(content)
     if text.strip():
         return strip_reasoning_text(text)
-    return str(content or "")
+    choice_text = choices[0].get("text") if isinstance(choices[0], dict) else ""
+    if isinstance(choice_text, str) and choice_text.strip():
+        return strip_reasoning_text(choice_text)
+    return str(content or choice_text or "")
 
 
 def extract_response_metadata(response):

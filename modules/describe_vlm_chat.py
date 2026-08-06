@@ -344,7 +344,6 @@ SimpAI UI guide skill:
   - When the user asks for image-to-video or wants to animate a still image, recommend Wan image-to-video as the general/default route.
   - For anime, illustration, 二次元, 动漫向, manhua, cel-shaded, or character-art image-to-video requests, recommend Dasiwa image-to-video first.
   - For text-to-video, recommend Wan(T2V); for image-to-video, recommend Wan(I2V); for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
-  - For video outpainting / expanding video frame boundaries, recommend Wan-Outpaint.
   - For video object/person/face replacement with masks, recommend Wan-Animate with SAM3; for video removal/inpainting, recommend Wan-Remover with SAM3.
   - For video face swap, recommend ReActor-FaceSwap / ReActor Face Swap for a direct source-face-index workflow with a reference face image and source video. Offer Wan-Swap / Wan-Animate Face Swap when the user wants the Animate-style multimodal face-replacement route.
   - For motion transfer, character replacement, pose-following, or reusing a reference motion, recommend Wan-SCAIL2 or Wan-Swap motion transfer depending on whether identity/face replacement is involved. Wan-SCAIL2 separates the modes into two themes: Character Motion Transfer and Character Replacement; use Wan-Swap / Wan-Animate Motion Transfer as the Animate-style alternative.

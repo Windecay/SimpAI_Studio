@@ -16,6 +16,58 @@ _OBJECT_INFO_CACHE = {
 }
 
 
+def _comfy_endpoint(comfyclient_pipeline):
+    try:
+        return str(comfyclient_pipeline.server_address())
+    except Exception:
+        return ""
+
+
+def _clear_object_info_cache():
+    _OBJECT_INFO_CACHE.update({
+        "endpoint": "",
+        "expires_at": 0.0,
+        "data": None,
+    })
+
+
+def invalidate_comfy_object_info_cache():
+    _clear_object_info_cache()
+
+
+def refresh_comfy_model_catalog(comfyclient_pipeline, ttl_seconds=30.0, timeout_seconds=5.0):
+    endpoint = _comfy_endpoint(comfyclient_pipeline)
+    if not endpoint:
+        _clear_object_info_cache()
+        return False
+
+    _clear_object_info_cache()
+    now = time.monotonic()
+    try:
+        with httpx.Client(timeout=timeout_seconds) as client:
+            response = client.get(f"http://{endpoint}/object_info?refresh=1")
+            response.raise_for_status()
+            data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Comfy object_info response is not an object")
+    except Exception as exc:
+        _OBJECT_INFO_CACHE.update({
+            "endpoint": endpoint,
+            "expires_at": now + 5.0,
+            "data": None,
+        })
+        logger.warning("Comfy model catalog refresh unavailable; Studio file refresh continues: %s", exc)
+        return False
+
+    _OBJECT_INFO_CACHE.update({
+        "endpoint": endpoint,
+        "expires_at": now + float(ttl_seconds),
+        "data": data,
+    })
+    logger.info("Refreshed Comfy model catalog: %s", endpoint)
+    return True
+
+
 def _normal_model_key(value):
     return str(value or "").strip().replace("\\", "/")
 
@@ -120,10 +172,7 @@ def normalize_comfy_prompt_enum_paths(prompt, object_info):
 
 
 def get_comfy_object_info(comfyclient_pipeline, ttl_seconds=30.0):
-    try:
-        endpoint = str(comfyclient_pipeline.server_address())
-    except Exception:
-        endpoint = ""
+    endpoint = _comfy_endpoint(comfyclient_pipeline)
     if not endpoint:
         return None
 

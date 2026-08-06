@@ -64,7 +64,20 @@ class SimpAIBerniniLongVideoConditioning(io.ComfyNode):
                 io.Int.Input("batch_size", default=1, min=1, max=4096),
                 io.Int.Input("inherited_prefix_frames", default=9, min=0, max=nodes.MAX_RESOLUTION, step=1),
                 io.Int.Input("ref_max_size", default=848, min=16, max=nodes.MAX_RESOLUTION, step=16),
+                io.Boolean.Input(
+                    "allow_short_context",
+                    default=False,
+                    optional=True,
+                    advanced=True,
+                    tooltip="Keep a shorter source context instead of expanding it to the target length.",
+                ),
                 io.Image.Input("source_video", optional=True),
+                io.Image.Input(
+                    "context_video",
+                    optional=True,
+                    advanced=True,
+                    tooltip="Optional reduced video used only for context_latents; source_video keeps the output length.",
+                ),
                 io.Image.Input("previous_frames", optional=True),
                 io.Image.Input("reference_video", optional=True),
                 io.Autogrow.Input(
@@ -83,6 +96,7 @@ class SimpAIBerniniLongVideoConditioning(io.ComfyNode):
                 io.Conditioning.Output(display_name="negative"),
                 io.Latent.Output(display_name="latent"),
                 io.Int.Output(display_name="inherited_prefix_frames"),
+                io.Latent.Output(display_name="source_latent"),
             ],
         )
 
@@ -99,9 +113,11 @@ class SimpAIBerniniLongVideoConditioning(io.ComfyNode):
         inherited_prefix_frames,
         ref_max_size,
         source_video=None,
+        context_video=None,
         previous_frames=None,
         reference_video=None,
         reference_images=None,
+        allow_short_context=False,
     ) -> io.NodeOutput:
         length = max(1, int(length))
         batch_size = max(1, int(batch_size))
@@ -124,22 +140,56 @@ class SimpAIBerniniLongVideoConditioning(io.ComfyNode):
 
         context = []
         source_context = None
+        source_latent_context = None
+
         if source_video is not None:
             if actual_prefix > 0:
                 source_slice = source_video[actual_prefix:length]
-                if source_slice.shape[0] == 0 and source_video.shape[0] > 0:
-                    source_slice = source_video[-1:]
             else:
                 source_slice = source_video[:length]
-            source_context = _resize_to_canvas(source_slice, width, height)
+            if source_slice.shape[0] == 0 and source_video.shape[0] > 0:
+                source_slice = source_video[-1:]
+            source_latent_context = _resize_to_canvas(source_slice, width, height)
+            if prefix is not None:
+                source_latent_context = torch.cat([prefix, source_latent_context], dim=0)
+            source_latent_context = _pad_or_trim_frames(source_latent_context, length)
+
+            if context_video is None:
+                source_context = source_latent_context
+            else:
+                if actual_prefix > 0:
+                    context_slice = context_video[actual_prefix:length]
+                else:
+                    context_slice = context_video[:length]
+                if context_slice.shape[0] == 0 and context_video.shape[0] > 0:
+                    context_slice = context_video if allow_short_context else context_video[-1:]
+                source_context = _resize_to_canvas(context_slice, width, height)
+                if prefix is not None:
+                    source_context = torch.cat([prefix, source_context], dim=0)
+                if not allow_short_context:
+                    source_context = _pad_or_trim_frames(source_context, length)
+        elif context_video is not None:
+            source_context = _resize_to_canvas(context_video[:length], width, height)
             if prefix is not None:
                 source_context = torch.cat([prefix, source_context], dim=0)
+            if not allow_short_context:
+                source_context = _pad_or_trim_frames(source_context, length)
         elif prefix is not None:
             source_context = prefix
 
-        if source_context is not None:
-            if source_video is not None:
-                source_context = _pad_or_trim_frames(source_context, length)
+        if source_latent_context is not None:
+            source_samples = vae.encode(source_latent_context[:, :, :, :3])
+            source_latent = {"samples": source_samples}
+            if context_video is None:
+                context.append(source_samples)
+        elif source_context is not None and context_video is None:
+            source_samples = vae.encode(source_context[:, :, :, :3])
+            context.append(source_samples)
+            source_latent = {"samples": source_samples}
+        else:
+            source_latent = {"samples": latent}
+
+        if source_context is not None and context_video is not None:
             context.append(vae.encode(source_context[:, :, :, :3]))
 
         if reference_video is not None:
@@ -159,7 +209,7 @@ class SimpAIBerniniLongVideoConditioning(io.ComfyNode):
             positive = node_helpers.conditioning_set_values(positive, {"context_latents": context})
             negative = node_helpers.conditioning_set_values(negative, {"context_latents": context})
 
-        return io.NodeOutput(positive, negative, {"samples": latent}, actual_prefix)
+        return io.NodeOutput(positive, negative, {"samples": latent}, actual_prefix, source_latent)
 
 
 NODE_CLASS_MAPPINGS = {

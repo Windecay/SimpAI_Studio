@@ -6,6 +6,10 @@ _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES = ContextVar(
     "simpai_profile_known_total_sampler_classes",
     default=frozenset(),
 )
+_PROFILE_ALLOW_PROGRESS_RESETS = ContextVar(
+    "simpai_profile_allow_progress_resets",
+    default=False,
+)
 
 
 @contextmanager
@@ -13,11 +17,33 @@ def use_progress_profile(profile):
     profile_classes = getattr(profile, "known_total_sampler_classes", ()) if profile is not None else ()
     classes = frozenset(str(class_type) for class_type in profile_classes if class_type)
     active_classes = _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.get()
-    token = _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.set(active_classes | classes)
+    class_token = _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.set(active_classes | classes)
+    reset_token = _PROFILE_ALLOW_PROGRESS_RESETS.set(
+        bool(profile is not None and getattr(profile, "pass_count", 1) > 1)
+    )
     try:
         yield
     finally:
-        _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.reset(token)
+        _PROFILE_ALLOW_PROGRESS_RESETS.reset(reset_token)
+        _PROFILE_KNOWN_TOTAL_SAMPLER_CLASSES.reset(class_token)
+
+
+def install_progress_profile_reset_filter(comfyclient_pipeline):
+    original = getattr(comfyclient_pipeline, "_normalize_display_progress", None)
+    if not callable(original):
+        return False
+    if getattr(original, "_simpai_progress_profile_reset_filter", False):
+        return False
+
+    def normalize_display_progress(step, total, last_step, last_total):
+        if _PROFILE_ALLOW_PROGRESS_RESETS.get():
+            return step, total
+        return original(step, total, last_step, last_total)
+
+    normalize_display_progress._simpai_progress_profile_reset_filter = True
+    normalize_display_progress._simpai_original = original
+    comfyclient_pipeline._normalize_display_progress = normalize_display_progress
+    return True
 
 
 def _int_like(value):

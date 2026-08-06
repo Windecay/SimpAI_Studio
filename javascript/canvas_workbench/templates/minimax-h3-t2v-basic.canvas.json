@@ -220,7 +220,7 @@
       "x": 410,
       "y": 930,
       "w": 400,
-      "h": 300,
+      "h": 285,
       "title": "Advanced Config / 高级配置",
       "target_preset_id": "h3_t2v_preset",
       "config": {
@@ -278,6 +278,7 @@
       },
       "schema": {
         "version": "v1.1",
+        "prompt_compiler": "minimax_h3_t2va",
         "engine_type": "video",
         "themes": [
           "Basic"
@@ -432,6 +433,7 @@
         "per_theme": {
           "Basic": {
             "task_method": "minimax_h3_t2v_cn",
+            "prompt_compiler": "minimax_h3_t2va",
             "supported_tasks": [],
             "defaults": {
               "scene_video_duration": 5,

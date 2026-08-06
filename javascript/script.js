@@ -521,6 +521,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             poseStudio: ['Pose Studio', 'Pose Studio'],
             gaussianStudio: ['Gaussian Studio', 'Gaussian Studio'],
             livePortraitExpression: ['LivePortrait Expression', 'LivePortrait Expression'],
+            h3StoryboardEditor: ['H3 Storyboard', 'H3 分镜表'],
             tagCart: ['Tag Cart', '标签选择器'],
             layerForge: ['LayerForge', 'LayerForge'],
             customSketch: ['Sketch', 'Sketch'],
@@ -889,13 +890,15 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             || replayClickAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
             || replayClickAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
             || replayClickAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]')
-            || replayClickAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]');
+            || replayClickAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]')
+            || replayClickAfterLazyLoad('h3StoryboardEditor', event, '[data-h3-storyboard-scene-open]');
     }, true);
     document.addEventListener('keydown', (event) => {
             replayKeydownAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
             || replayKeydownAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
             || replayKeydownAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]')
-            || replayKeydownAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]');
+            || replayKeydownAfterLazyLoad('ltxGuideEditor', event, '[data-ltx-guide-scene-open]')
+            || replayKeydownAfterLazyLoad('h3StoryboardEditor', event, '[data-h3-storyboard-scene-open]');
     }, true);
     document.addEventListener('pointerover', scheduleLayerForgeLazyFromPointer, { capture: true, passive: true });
     document.addEventListener('pointerout', cancelLayerForgeLazyHover, { capture: true, passive: true });
@@ -3473,6 +3476,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'gaussian_studio', group: 'scene-aux' },
         { id: 'liveportrait_expression', group: 'scene-aux' },
         { id: 'ltx_guide_control', group: 'scene-aux' },
+        { id: 'minimax_h3_storyboard_control', group: 'scene-aux' },
         { id: 'relight_light_control', group: 'scene-aux' },
         { id: 'scene_cloud_image_api', group: 'scene-aux' },
     ]);
@@ -3696,6 +3700,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 setVisible('ltx_guide_control', false);
                 setVisible('ltx_guide_scene_control_html', false);
             }
+            if (typeof window.simpaiSetH3StoryboardControlVisible === 'function') {
+                window.simpaiSetH3StoryboardControlVisible(false, params || {});
+            } else {
+                setVisible('minimax_h3_storyboard_control', false);
+                setVisible('minimax_h3_storyboard_scene_control_html', false);
+            }
             if (typeof window.closeSam3FramesEditor === 'function') {
                 try { window.closeSam3FramesEditor(); } catch (e) {}
             }
@@ -3768,6 +3778,21 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             if (!showLtxGuideControl && window.SimpAILTXGuideEditor?.closeScenePreset) {
                 try { window.SimpAILTXGuideEditor.closeScenePreset(); } catch (e) {}
+            }
+        }
+        const showH3StoryboardControl = (taskMethodLower.includes('minimax_h3')
+            || /minimax[-_\s]*h3/.test(preset.toLowerCase()))
+            && !disvisible.has('minimax_h3_storyboard_control');
+        if (typeof window.simpaiSetH3StoryboardControlVisible === 'function') {
+            window.simpaiSetH3StoryboardControlVisible(showH3StoryboardControl, params || {});
+        } else {
+            setVisible('minimax_h3_storyboard_control', showH3StoryboardControl);
+            setVisible('minimax_h3_storyboard_scene_control_html', showH3StoryboardControl);
+            if (showH3StoryboardControl && window.SimpAIH3StoryboardEditor?.syncSceneControl) {
+                try { window.SimpAIH3StoryboardEditor.syncSceneControl(params || {}); } catch (e) {}
+            }
+            if (!showH3StoryboardControl && window.SimpAIH3StoryboardEditor?.closeScenePreset) {
+                try { window.SimpAIH3StoryboardEditor.closeScenePreset(); } catch (e) {}
             }
         }
         const showRelightLight = (themeLower.includes('relight') || taskMethodLower.includes('relight')) && !disvisible.has('relight_light_control');

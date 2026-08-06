@@ -62,7 +62,7 @@ Edit `template-library.json` to add workbench templates.
 - Video-extend templates should include an empty `video` placeholder connected to `scene_video`, and should explain that a video Result from T2V/I2V can be chained into that slot.
 - SAM3/Wan video-edit templates should include a `sam3_video_mask` node, a `media` edge from the source video to the SAM3 node with `slot: "source"`, and `upload` edges from source/mask nodes into `sam3_input_video` and `sam3_mask_video`.
 - Wan-Animate replacement templates should connect a required `image` placeholder to `scene_canvas_image` for the object/face/person reference, and should keep unused scene media slots explicitly hidden in `schema.upload_slots`.
-- Wan-Remover templates should use `sam3_input_video` plus `sam3_mask_video`; Wan-Outpaint templates should use `scene_video` and hide SAM3 slots.
+- Wan-Remover templates should use `sam3_input_video` plus `sam3_mask_video`.
 - Wan-SCAIL2 and Wan-Swap templates should use `scene_video` plus `scene_canvas_image`; use `motion_signal.mp4` for motion examples, `example.mp4` for generic video examples, and the reserved portrait/reference images for replaceable image examples.
 - Video enhancement templates such as Nvidia-VSR should expose `scene_video`, keep hidden media slots explicit, and document any optional model dependency such as RIFE interpolation.
 - LTX2.3 Insight-style video restoration templates should expose `scene_video`, keep audio and unrelated media slots hidden, mirror all task themes in the Preset node schema, and keep task IC-LoRA files in `model_requirements.model_list`.

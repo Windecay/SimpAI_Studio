@@ -79,6 +79,10 @@ def _upscale_target_size(image, multiple):
     return max(1, int(width * float(multiple))), max(1, int(height * float(multiple)))
 
 
+def _tiled_vae_decode(uov):
+    return bool(uov.get("tiled_decode", True))
+
+
 class _SimpAIAIOUOVBase:
     FAMILY = "base"
 
@@ -215,7 +219,7 @@ class _SimpAIAIOUOVBase:
                 seam_fix_mask_blur=8,
                 seam_fix_padding=16,
                 force_uniform_tiles=True,
-                tiled_decode=False,
+                tiled_decode=_tiled_vae_decode(uov),
             )
             if progress_node_id:
                 tiled.set_override_display_id(progress_node_id)
@@ -272,7 +276,7 @@ class SimpAIAIOUOVAnima(_SimpAIAIOUOVBase):
                            mode_type="Chess", tile_width=int(uov.get("tile_width", 1024)),
                            tile_height=int(uov.get("tile_height", 1024)), mask_blur=32, tile_padding=128,
                            seam_fix_mode="None", seam_fix_denoise=1.0, seam_fix_width=64, seam_fix_mask_blur=8,
-                           seam_fix_padding=16, force_uniform_tiles=True, tiled_decode=False)
+                           seam_fix_padding=16, force_uniform_tiles=True, tiled_decode=_tiled_vae_decode(uov))
         if progress_node_id:
             tiled.set_override_display_id(progress_node_id)
         return {"result": (tiled.out(0),), "expand": graph.finalize()}
@@ -316,7 +320,7 @@ class SimpAIAIOUOVChenkin(_SimpAIAIOUOVBase):
                            tile_width=int(uov.get("tile_width", 1024)), tile_height=int(uov.get("tile_height", 1024)),
                            mask_blur=64, tile_padding=128, seam_fix_mode="None", seam_fix_denoise=1.0,
                            seam_fix_width=64, seam_fix_mask_blur=8, seam_fix_padding=16,
-                           force_uniform_tiles=True, tiled_decode=False)
+                           force_uniform_tiles=True, tiled_decode=_tiled_vae_decode(uov))
         if progress_node_id:
             tiled.set_override_display_id(progress_node_id)
         return {"result": (tiled.out(0),), "expand": graph.finalize()}

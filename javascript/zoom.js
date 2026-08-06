@@ -132,6 +132,7 @@ onUiLoaded(async() => {
         }
 
         function shouldHandleCanvasHotkeys(event) {
+            if (document.querySelector?.('.sai-h3sb-modal')) return false;
             const sketch = getSimpAISketchApi();
             if (sketch?.isFullscreen?.() || sketch?.isPanFloating?.()) {
                 activeElement = elemId;

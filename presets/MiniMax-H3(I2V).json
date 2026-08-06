@@ -34,6 +34,7 @@
         "mixed_segments": false
       },
       "disable_canvas_mask": true,
+      "divisible": ["minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_input_image2",
         "scene_input_image3",
@@ -64,9 +65,10 @@
       ],
       "prompt": {"Basic": ""},
       "task_method": {"Basic": "minimax_h3_i2v_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_frame_anchor"},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Rewrite the request as one concise MiniMax H3 image-to-video prompt in the user's language. Treat the main image as the first frame and the optional second image as the last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing natural motion, camera movement, timing, and matching audio. Do not invent dialogue unless requested. Return only the final prompt."
+        "Basic": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Do not invent dialogue or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,

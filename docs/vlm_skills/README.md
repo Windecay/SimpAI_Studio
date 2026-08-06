@@ -31,6 +31,10 @@ Documents:
 - `natural_prompt_refine.md`: optional second-pass Review/Refine Prompt rules
   for natural-language targets such as Qwen/Z-image, FLUX/T5XXL, and Wan/UMT5;
   preserve user intent first, then repair or enrich the prompt text.
+- `h3_prompt_writing_en.md` / `h3_prompt_writing_cn.md`: localized MiniMax H3
+  Prompt Writing guidance adapted from the official `h3-prompt-writing` skill.
+  Canvas Agent loads exactly one file from `stage.__lang`; H3 field names,
+  section names, shot markers, and media tokens remain English in both files.
 - `tool_status.md`: how the Agent should interpret queued, running, failed,
   canceled, skipped, and no-output tool runs.
 - `agent_companion.md`: behavior rules for the always-available canvas Agent

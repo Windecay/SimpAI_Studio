@@ -1028,46 +1028,6 @@
       "preview": ""
     },
     {
-      "id": "wan_video_outpaint",
-      "title": {
-        "en": "Wan Video Outpaint",
-        "zh": "Wan 视频扩图"
-      },
-      "description": {
-        "en": "A runnable Wan-Outpaint template that expands a source video's frame with directional outpaint controls.",
-        "zh": "可运行的 Wan-Outpaint 模板，通过方向扩展参数扩大源视频画幅。"
-      },
-      "category": "video",
-      "tags": ["video", "wan", "wan-outpaint", "outpaint", "extend-frame", "timeline", "runnable", "视频扩图", "画幅扩展"],
-      "type_label": {
-        "en": "Video outpaint",
-        "zh": "视频扩图"
-      },
-      "model_dependency": {
-        "mode": "requires_models",
-        "label": {
-          "en": "Requires video + models",
-          "zh": "需要视频和模型"
-        },
-        "note": {
-          "en": "Requires Wan-Animate, CLIP vision, UMT5, Wan VAE, lightx2v/WanAnimate LoRAs, RIFE, Flux2 Klein, and support encoders.",
-          "zh": "需要 Wan-Animate、CLIP vision、UMT5、Wan VAE、lightx2v/WanAnimate LoRA、RIFE、Flux2 Klein 和支撑编码器。"
-        },
-        "models": [
-          "wan2.2_animate_14B_int8_convrot.safetensors",
-          "clip_vision_h.safetensors",
-          "nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
-          "wan_2.1_vae.safetensors",
-          "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
-          "",
-          "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
-          "flux2-vae.safetensors"
-        ]
-      },
-      "path": "javascript/canvas_workbench/templates/wan-video-outpaint.canvas.json",
-      "preview": ""
-    },
-    {
       "id": "tts_timeline_voiceover_mix",
       "title": {
         "en": "TTS Timeline Voiceover Mix",

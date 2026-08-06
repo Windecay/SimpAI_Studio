@@ -31,6 +31,7 @@ import modules.constants as constants
 import modules.flags as flags
 import modules.style_sorter as style_sorter
 import modules.meta_parser
+import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 import modules.welcome_media as welcome_media
 import modules.batch_utils as batch_utils
 import modules.canvas_danbooru_preflight as canvas_danbooru_preflight
@@ -1055,6 +1056,13 @@ def refresh_files_clicked(state_params, use_model_filter: bool = True, show_info
         modules.config.clip_filenames = list(clip_filenames or [])
         modules.config.upscale_model_filenames = list(upscale_model_filenames or [])
 
+    comfyd_catalog_refreshed = False
+    if force_file_scan:
+        try:
+            comfyd_catalog_refreshed = bool(simpleai.refresh_comfyd_model_catalog())
+        except Exception as exc:
+            logger.warning("[RefreshFiles] Comfyd model catalog refresh failed: %s", exc)
+
     def _include_current_choice(choices, *values):
         result = list(choices or [])
         for value in values:
@@ -1109,11 +1117,12 @@ def refresh_files_clicked(state_params, use_model_filter: bool = True, show_info
             state_params[_REFRESH_FILES_CHOICES_KEY] = choices_signature
     util.log_ui_trace(
         logger,
-        "[UI-TRACE] refresh_files_clicked | preset=%r, engine=%r, task_method=%r, cache_hit=%s, choices_reused=%s, choices_deferred=%s, models=%s, loras=%s, clip=%s, vae=%s, upscale=%s",
+        "[UI-TRACE] refresh_files_clicked | preset=%r, engine=%r, task_method=%r, cache_hit=%s, comfyd_refreshed=%s, choices_reused=%s, choices_deferred=%s, models=%s, loras=%s, clip=%s, vae=%s, upscale=%s",
         state_params.get('__preset', None) if isinstance(state_params, dict) else None,
         engine,
         task_method,
         cache_hit,
+        comfyd_catalog_refreshed,
         choices_reused,
         defer_choice_updates,
         len(model_filenames or []),
@@ -1196,6 +1205,19 @@ def _format_generation_eta(seconds):
     hours, minutes = divmod(minutes, 60)
     return f"ETA:{hours}h {minutes:02d}m"
 
+def _minimax_h3_generation_prompt_validation(task, state):
+    inferred = minimax_h3_prompt_compiler.validate_task_prompt(task)
+    if inferred is not None:
+        return inferred
+    state_data = state if isinstance(state, dict) else {}
+    scene_frontend = state_data.get("scene_frontend") if isinstance(state_data.get("scene_frontend"), dict) else {}
+    theme = state_data.get("scene_theme") or state_data.get("__scene_theme") or ""
+    compiler = minimax_h3_prompt_compiler.scene_compiler(scene_frontend, theme)
+    if not compiler:
+        return None
+    return minimax_h3_prompt_compiler.validate_task_prompt(task, compiler)
+
+
 def generate_clicked(task: worker.AsyncTask, state):
     user_did = None
     try:
@@ -1208,6 +1230,20 @@ def generate_clicked(task: worker.AsyncTask, state):
         model_management.interrupt_processing = False
     if len(task.args) == 0:
         return
+    h3_validation = _minimax_h3_generation_prompt_validation(task, state)
+    if h3_validation and not h3_validation.get("ok"):
+        details = minimax_h3_prompt_compiler.validation_error_text(h3_validation)
+        gr.Info(_studio_text(
+            state,
+            "MiniMax H3 prompt structure may need review. Generation will continue with the current prompt.",
+            "MiniMax H3 提示词结构可能需要调整，已按当前内容继续生成。",
+        ), duration=5)
+        logger.warning(
+            "MiniMax H3 prompt validation warning; generation continues: mode=%s errors=%s details=%s",
+            h3_validation.get("mode"),
+            h3_validation.get("errors"),
+            details,
+        )
     try:
         effective_user_did = user_did
         if not effective_user_did and hasattr(shared.token, "get_default_workspace_did"):
@@ -4274,6 +4310,25 @@ with shared.gradio_root:
 </div>
 """,
                                 elem_id="ltx_guide_scene_control_html",
+                            )
+
+                        with gr.Group(visible=True, elem_id="minimax_h3_storyboard_control", elem_classes=['simpai-mounted-hidden', 'sai-h3-storyboard-scene-entry']) as minimax_h3_storyboard_control:
+                            gr.HTML(
+                                value="""
+<div id="minimax_h3_storyboard_scene_control" class="sai-h3-storyboard-scene-control" tabindex="0">
+  <button type="button" class="sai-h3-storyboard-scene-open" data-h3-storyboard-scene-open title="Edit MiniMax H3 storyboard">
+    <i class="fa-solid fa-table-list"></i><span data-h3-storyboard-scene-label>H3 Storyboard / H3 \u5206\u955c\u8868</span>
+  </button>
+  <small data-h3-storyboard-scene-status>T2VA · 3 shots · 5.0s · Direct</small>
+</div>
+""",
+                                elem_id="minimax_h3_storyboard_scene_control_html",
+                            )
+                            minimax_h3_storyboard_scene_state = gr.Textbox(
+                                value="",
+                                visible="hidden",
+                                elem_id="minimax_h3_storyboard_scene_state",
+                                elem_classes=["sai-gradio-hidden-bridge"],
                             )
 
                         with gr.Group(visible=True, elem_id="relight_light_control", elem_classes=['simpai-mounted-hidden', 'sai-relight-light-scene-entry']) as relight_light_control:
@@ -11152,7 +11207,7 @@ with shared.gradio_root:
         scene_theme.select(switch_scene_theme_select, inputs=state_topbar, outputs=state_topbar, queue=False, show_progress=False) \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(modules.meta_parser.switch_scene_theme_standard_generation_defaults, inputs=[state_topbar, scene_theme], outputs=[overwrite_step], queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda: None, js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
@@ -12357,6 +12412,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/gaussian_studio_editor.js"),
         webpath("javascript/liveportrait_expression_editor.js"),
         webpath("javascript/ltx_guide_editor.js"),
+        webpath("javascript/minimax_h3_storyboard_editor.js"),
         webpath("javascript/canvas_workbench/registry.js"),
         webpath("javascript/canvas_workbench/vlm_chat.js"),
         webpath("javascript/canvas_workbench/canvas_agent.js"),

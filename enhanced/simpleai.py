@@ -479,6 +479,13 @@ def update_comfyd_io_paths(user_did=None, update_runtime=True, update_startup=Tr
     return target_did, comfyd_input, comfyd_output
 
 
+def refresh_comfyd_model_catalog():
+    comfy_prompt_compat.invalidate_comfy_object_info_cache()
+    if not comfyd.is_running():
+        return False
+    return comfy_prompt_compat.refresh_comfy_model_catalog(comfyclient_pipeline)
+
+
 def reset_simpleai_args():
     global args_comfyd
     shared.sysinfo.update(dict(

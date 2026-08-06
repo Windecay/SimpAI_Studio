@@ -33,6 +33,7 @@
         "audio_output": "generated",
         "mixed_segments": false
       },
+      "divisible": ["minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_canvas_image",
         "scene_input_image1",
@@ -65,9 +66,10 @@
       ],
       "prompt": {"Basic": ""},
       "task_method": {"Basic": "minimax_h3_t2v_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_t2va"},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Rewrite the request as one concise MiniMax H3 video prompt in the user's language. Preserve the requested subject, action, camera movement, timing, style, and on-screen text. Add coherent motion and a matching audio layer when useful. Do not invent dialogue, lyrics, or named characters unless the user asks for them. Return only the final prompt."
+        "Basic": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,

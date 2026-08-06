@@ -339,10 +339,46 @@ def canvas_custom_llm_completion_request(base_url, api_key, api_format, payload,
         timeout=timeout,
     )
 
-def canvas_file_to_data_url(path, mime=""):
+def canvas_image_to_data_url(image, max_side=0, jpeg_quality=85):
+    pil_image = image.copy() if isinstance(image, Image.Image) else Image.fromarray(np.asarray(image).astype(np.uint8, copy=False))
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+    try:
+        max_side = int(max_side or 0)
+    except Exception:
+        max_side = 0
+    if max_side > 0:
+        width, height = pil_image.size
+        longest = max(width, height)
+        if longest > max_side:
+            scale = max_side / float(longest)
+            target = (max(1, round(width * scale)), max(1, round(height * scale)))
+            resampling = getattr(Image, "Resampling", Image).LANCZOS
+            pil_image = pil_image.resize(target, resampling)
+    try:
+        jpeg_quality = max(1, min(int(jpeg_quality), 95))
+    except Exception:
+        jpeg_quality = 85
+    output = io.BytesIO()
+    pil_image.save(output, format="JPEG", quality=jpeg_quality, optimize=True)
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def canvas_file_to_data_url(path, mime="", max_side=0, jpeg_quality=85):
     import mimetypes
 
     mime = mime or mimetypes.guess_type(str(path or ""))[0] or "image/png"
+    try:
+        max_side = int(max_side or 0)
+    except Exception:
+        max_side = 0
+    if max_side > 0 and (mime.startswith("image/") or describe_media.media_type(path) == "image"):
+        try:
+            with Image.open(path) as image:
+                return canvas_image_to_data_url(image, max_side=max_side, jpeg_quality=jpeg_quality)
+        except Exception as exc:
+            logger.warning("Canvas VLM image compression skipped; sending original asset: %s", exc)
     with open(path, "rb") as handle:
         encoded = base64.b64encode(handle.read()).decode("ascii")
     return f"data:{mime};base64,{encoded}"
@@ -380,10 +416,21 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     model = str(params.get("custom_model") or "").strip()
     api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
     supports_images = bool(params.get("custom_supports_images", True))
+    disable_thinking = bool(params.get("disable_thinking"))
+    try:
+        h3_visual_reference_max_side = max(0, min(int(params.get("h3_visual_reference_max_side") or 0), 4096))
+    except Exception:
+        h3_visual_reference_max_side = 0
     if not api_format_supported(api_format):
         return {"ok": False, "error": f"Unsupported Custom API format: {api_format}"}
     if not base_url or not model:
         return {"ok": False, "error": "Custom API settings are incomplete.", "details": "API Base URL and Model are required."}
+
+    def prepare_custom_request(request):
+        prepared = dict(request or {})
+        if disable_thinking:
+            prepared["chat_template_kwargs"] = {"enable_thinking": False}
+        return prepared
 
     two_stage_intent_meta = None
     two_stage_requested = canvas_vlm_agent.two_stage_intent_enabled(payload, params, prompt)
@@ -399,7 +446,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         try:
             stage_started = time.monotonic()
             intent_prompt = canvas_vlm_agent.build_two_stage_intent_prompt(payload, params, prompt)
-            intent_request = {
+            intent_request = prepare_custom_request({
                 "model": model,
                 "messages": [
                     {
@@ -411,7 +458,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 "temperature": 0.0,
                 "top_p": 0.5,
                 "max_tokens": max(128, min(int(params.get("two_stage_intent_max_tokens") or 256), 1024)),
-            }
+            })
             if int(params.get("seed", -1)) >= 0:
                 intent_request["seed"] = int(params.get("seed"))
             intent_response = canvas_custom_llm_completion_request(
@@ -453,19 +500,25 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             try:
                 if mime.startswith("video/") or describe_media.media_type(path) == "video":
                     contact_sheet, _ = describe_media.prepare_visual_input(path, use_multi_frame=False)
-                    output = io.BytesIO()
-                    Image.fromarray(np.asarray(contact_sheet).astype(np.uint8, copy=False)).save(output, format="JPEG", quality=86)
-                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
                     image_parts.append({
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
+                        "image_url": {"url": canvas_image_to_data_url(
+                            contact_sheet,
+                            max_side=h3_visual_reference_max_side,
+                            jpeg_quality=86,
+                        )},
                     })
                     continue
                 if mime and not mime.startswith("image/"):
                     continue
                 image_parts.append({
                     "type": "image_url",
-                    "image_url": {"url": canvas_file_to_data_url(path, mime)}
+                    "image_url": {"url": canvas_file_to_data_url(
+                        path,
+                        mime,
+                        max_side=h3_visual_reference_max_side,
+                        jpeg_quality=85,
+                    )}
                 })
             except Exception as exc:
                 logger.warning("Custom VLM image encode skipped: %s", exc)
@@ -476,13 +529,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         messages.append({"role": "user", "content": prompt})
 
     max_tokens = int(params.get("max_tokens", 1024))
-    request_payload = {
+    request_payload = prepare_custom_request({
         "model": model,
         "messages": messages,
         "temperature": float(params.get("temperature", 0.8)),
         "top_p": float(params.get("top_p", 0.9)),
         "max_tokens": max_tokens,
-    }
+    })
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     main_started = time.monotonic()
@@ -499,13 +552,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     text = canvas_extract_openai_text(response).strip()
 
     def review_llm_fn(messages, review_payload):
-        review_request = {
+        review_request = prepare_custom_request({
             "model": str(params.get("danbooru_review_model") or model),
             "messages": messages,
             "temperature": 0.1,
             "top_p": 0.8,
             "max_tokens": int(params.get("danbooru_review_max_tokens") or 800),
-        }
+        })
         review_response = canvas_custom_llm_completion_request(
             base_url,
             api_key,
@@ -530,13 +583,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         else:
             retry_messages.append({"role": "user", "content": retry_prompt})
         retry_max_tokens = max(max_tokens, 1024)
-        retry_request = {
+        retry_request = prepare_custom_request({
             "model": model,
             "messages": retry_messages,
             "temperature": 0.2,
             "top_p": 0.8,
             "max_tokens": retry_max_tokens,
-        }
+        })
         retry_response = canvas_custom_llm_completion_request(
             base_url,
             api_key,

@@ -2054,7 +2054,7 @@
 
         async function ensureCachedPayload(payload, options = {}) {
             if (!payload) return false;
-            const existingText = cachedReferenceText(payload);
+            const existingText = options.refresh === true ? "" : cachedReferenceText(payload);
             if (existingText) {
                 writeInputPayload(existingText, payload, options.write ? options : { change: false });
                 return true;
@@ -2119,13 +2119,21 @@
         function flush(options = {}) {
             if (!valueDirty && !options.force) {
                 if (options.cache && lastPayload) {
-                    return ensureCachedPayload(lastPayload, { write: true, maxWaitMs: options.cacheWaitMs });
+                    return ensureCachedPayload(lastPayload, {
+                        write: true,
+                        maxWaitMs: options.cacheWaitMs,
+                        refresh: options.refreshCache === true
+                    });
                 }
                 return true;
             }
             serialize(options);
             if (options.cache && lastPayload) {
-                return ensureCachedPayload(lastPayload, { write: true, maxWaitMs: options.cacheWaitMs });
+                return ensureCachedPayload(lastPayload, {
+                    write: true,
+                    maxWaitMs: options.cacheWaitMs,
+                    refresh: options.refreshCache === true
+                });
             }
             return true;
         }
@@ -2731,6 +2739,7 @@
             if (document.hidden) releaseTransientState();
         });
         document.addEventListener("keydown", (event) => {
+            if (document.querySelector?.(".sai-h3sb-modal")) return;
             const historyAction = sketchHistoryHotkey(event);
             if (eventTargetInsideEditor(event)) {
                 markPointerInside();

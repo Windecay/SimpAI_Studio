@@ -312,10 +312,10 @@ PRESET_STORE_ORDER = [
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
     "Bernini-VideoEdit",
+    "Bernini-VideoUpscale",
     "Wan-TTP",
     "Wan-Animate",
     "Wan-Swap",
-    "Wan-Outpaint",
     "Wan-SCAIL2",
     "Wan-SCAIL2-SAM3",
     "Wan-Remover",
@@ -1535,6 +1535,7 @@ def _build_canvas_scene_schema(scene_frontend):
             defaults.setdefault("scene_aspect_ratio", scene_frontend.get("aspect_ratio")[0])
         per_theme[theme] = {
             "task_method": _canvas_scene_value(scene_frontend, "task_method", theme, ""),
+            "prompt_compiler": copy.deepcopy(_canvas_scene_value(scene_frontend, "prompt_compiler", theme, "")),
             "supported_tasks": [
                 str(task or "").strip().lower().replace("-", "_").replace(" ", "_")
                 for task in (theme_supported_tasks.get(theme) if isinstance(theme_supported_tasks.get(theme), list) else [])
@@ -1552,6 +1553,7 @@ def _build_canvas_scene_schema(scene_frontend):
         "default_theme": default_theme,
         "theme_labels": copy.deepcopy(scene_frontend.get("theme_labels") or {}),
         "theme_title": scene_frontend.get("theme_title", "Theme"),
+        "prompt_compiler": copy.deepcopy(_canvas_scene_value(scene_frontend, "prompt_compiler", default_theme, "")),
         "director_capability": copy.deepcopy(scene_frontend.get("director_capability") or {}),
         "disvisible": disvisible,
         "disinteractive": disinteractive,
@@ -1923,6 +1925,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             "engine_type": str(engine_type or "image"),
             "scene": bool(is_scene),
             "task_method": str(task_method or ""),
+            "prompt_compiler": copy.deepcopy(schema.get("prompt_compiler") if isinstance(schema, dict) else ""),
             "schema": schema,
             "media_capability": _build_canvas_media_capability(
                 schema,

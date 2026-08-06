@@ -172,9 +172,7 @@ aligned:
   template metadata.
 
 For multi-stage workflows, name internal helper loaders so they cannot be
-confused with user-facing slots. Example: Wan Outpaint uses separate Flux2
-preprocess and Wan generation model roles, so helper names such as
-`flux2_internal_clip` and `flux2_internal_vae` should remain separate from the
+confused with user-facing slots. Keep helper model roles separate from the
 user-facing `clip_model` / `vae` slots.
 
 ## Creating a Non-Scene Preset
@@ -550,6 +548,24 @@ Scene-specific notes:
   `javascript/canvas_workbench/templates/`, for example `director_supported`,
   `duration_strategy`, and `audio_output` when those flows apply.
 
+### Structured Prompt Compilers
+
+Use `scene_frontend.prompt_compiler` when a model requires a strict prompt
+grammar that must be shared by Prompt Tools, Director, Infinite Canvas, and the
+generation submit path. Keep creative content guidance in `agent_prompt`; do
+not duplicate structural rules there.
+
+MiniMax H3 uses these per-theme compiler ids:
+
+- `minimax_h3_t2va` for text-to-video;
+- `minimax_h3_frame_anchor` for one-image I2VA or two-image FL2VA;
+- `minimax_h3_ref2va` for reference-to-video.
+
+The shared implementation is `modules/minimax_h3_prompt_compiler.py`. Preset
+Store copies the selected compiler into the Canvas schema. Prompt Tools may
+compile after an explicit user action. Generation validates the final prompt
+and blocks an invalid structure; it must not silently rewrite the prompt.
+
 ## Validation Checklist
 
 Use the narrowest relevant checks for the target:
@@ -586,6 +602,8 @@ Use the narrowest relevant checks for the target:
   focused VLM contract for that surface, such as
   `tests/test_canvas_vlm_agent_preset_guide_contract.py` or
   `tests/test_describe_vlm_chat_contract.py`.
+- For MiniMax H3 prompt compilers:
+  `python -m pytest tests/test_minimax_h3_prompt_compiler.py tests/test_vlm_prompt_actions.py -q`.
 
 ## Common Pitfalls
 

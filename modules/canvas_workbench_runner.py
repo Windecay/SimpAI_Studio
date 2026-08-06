@@ -15,6 +15,7 @@ import modules.constants as constants
 import modules.flags as flags
 from modules import canvas_workbench_assets
 from modules import canvas_workbench_director
+from modules import minimax_h3_prompt_compiler
 from enhanced import parameter_profiles
 from modules.access_mode import user_can_generate
 
@@ -759,7 +760,7 @@ def _director_runtime_from_params(params):
     prompt_override = str(params.get("prompt_override") or "").strip()
     if payload:
         runtime = canvas_workbench_director.prepare_director_runtime(payload)
-        if prompt_override and not runtime.get("prompt_override"):
+        if prompt_override:
             runtime["prompt_override"] = prompt_override
         return runtime
     if prompt_override:
@@ -2459,6 +2460,13 @@ def run_node(payload, state_params):
         api_arg_overrides = task_args_preview.get("api_arg_overrides") or {}
         args = build_canvas_async_task_args(api_arg_overrides, enabled_loras, materialized_inputs, load_images=True)
         task = worker.AsyncTask(args=args)
+        h3_validation = minimax_h3_prompt_compiler.validate_task_prompt(task)
+        if h3_validation and not h3_validation.get("ok"):
+            logger.warning(
+                "MiniMax H3 canvas prompt validation warning; submission continues: mode=%s errors=%s",
+                h3_validation.get("mode"),
+                h3_validation.get("errors") or [],
+            )
         record = reservation
         record.update({
             "task_id": task.task_id,
@@ -2476,7 +2484,13 @@ def run_node(payload, state_params):
             "input_count": len(materialized_inputs),
             "state_params": copy.deepcopy(state_params) if isinstance(state_params, dict) else {},
             "updated_ts": now,
+            **({"prompt_compiler": h3_validation} if h3_validation else {}),
         })
+        if h3_validation and not h3_validation.get("ok"):
+            _add_run_event(record, "warning", "MiniMax H3 prompt structure warning; submission continued.", {
+                "mode": h3_validation.get("mode"),
+                "errors": h3_validation.get("errors") or [],
+            })
         _add_run_event(record, "info", "Queued in AsyncTask.", {
             "task_id": task.task_id,
             "preset_node_id": preset_node.get("id"),

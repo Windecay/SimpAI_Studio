@@ -10,6 +10,7 @@ import threading
 import numpy as np
 import modules.config as config
 import modules.flags as flags
+import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 import modules.prompt_actions as prompt_actions
 import enhanced.translator as translator
 import enhanced.superprompter as superprompter
@@ -146,6 +147,8 @@ def _superprompt_scene_value(state, theme, key, default=""):
 
 def _superprompt_target_key(backend_engine, task_method, target_text):
     haystack = f"{backend_engine} {task_method} {target_text}".lower()
+    if "minimax" in haystack and "h3" in haystack:
+        return "minimax_h3"
     if "anima" in haystack:
         return "anima_aio"
     if any(token in haystack for token in (
@@ -212,6 +215,9 @@ def _superprompt_target_from_state(state):
         if str(item or "").strip()
     )
     target_key = _superprompt_target_key(backend_engine, task_method, target_text)
+    prompt_compiler = minimax_h3_prompt_compiler.scene_compiler(scene_frontend, theme)
+    if prompt_compiler:
+        target_key = "minimax_h3"
     target = {
         "key": target_key,
         "label": label,
@@ -222,6 +228,8 @@ def _superprompt_target_from_state(state):
         "prompt_format": prompt_format,
         "source": "main_webui_superprompt",
     }
+    if prompt_compiler:
+        target["prompt_compiler"] = prompt_compiler
     capability = prompt_actions.prompt_action_capability_from_state(state)
     if capability:
         target["director_capability"] = capability
@@ -262,7 +270,7 @@ def _superprompt_image_input(input_images):
 def _superprompt_action_target_override(action, options, state):
     action = action if isinstance(action, dict) else {}
     options = options if isinstance(options, dict) else {}
-    target_kind = str(action.get("target_kind") or "").strip().lower()
+    target_kind = str(options.get("target_kind") or action.get("target_kind") or "").strip().lower()
     if target_kind == "danbooru":
         return {
             "key": "sdxl_danbooru",
@@ -1386,13 +1394,30 @@ class VLM:
             action_id = str(action_data.get("id") or "smart_expand").strip() or "smart_expand"
             action_options = options if isinstance(options, dict) else {}
             target_override = _superprompt_action_target_override(action_data, action_options, state)
+            use_scene_agent_prompt = action_options.get(
+                "use_scene_agent_prompt",
+                action_data.get("use_scene_agent_prompt", True),
+            )
             payload, preset_agent_prompt = _superprompt_payload_from_state(
                 state,
                 target_override=target_override,
-                use_scene_agent_prompt=bool(action_data.get("use_scene_agent_prompt", True)),
+                use_scene_agent_prompt=bool(use_scene_agent_prompt),
             )
             if action_id != "smart_expand":
                 payload["node_id"] = f"canvas_agent_prompt_rewrite:main_webui_{action_id}"
+            target = (
+                payload.get("agent_context", {})
+                .get("prompt_generation_targets", {})
+                .get("text_to_image", {})
+            )
+            compiler = minimax_h3_prompt_compiler.target_compiler(target)
+            if compiler and isinstance(target, dict):
+                compiler_context = dict(media_context or {}) if isinstance(media_context, dict) else {}
+                for key in ("language", "h3_storyboard_form", "storyboard_form"):
+                    if key in action_options:
+                        compiler_context[key] = action_options.get(key)
+                target["prompt_compiler"] = compiler
+                target["prompt_compiler_context"] = minimax_h3_prompt_compiler.normalize_context(compiler_context)
             params = {
                 "mode": "chat",
                 "node_id": payload["node_id"],
@@ -1410,8 +1435,14 @@ class VLM:
             if resource_contract:
                 system_prompt = f"{system_prompt}\n\n{resource_contract}"
             prompt_prefix = str(prompt or "").strip()
-            action_instruction = str(action_data.get("instruction") or "").strip()
-            if str(action_data.get("target_kind") or "").strip().lower() == "natural":
+            custom_instruction = str(action_options.get("instruction") or "").strip()
+            action_instruction = "\n".join(
+                part for part in (custom_instruction, str(action_data.get("instruction") or "").strip()) if part
+            )
+            effective_target_kind = str(
+                action_options.get("target_kind") or action_data.get("target_kind") or ""
+            ).strip().lower()
+            if effective_target_kind == "natural":
                 target_key = str((target_override or {}).get("key") or "").strip().lower()
                 language_instruction = (
                     "Write the final prompt in fluent English only."
@@ -1441,11 +1472,20 @@ class VLM:
                     request_parts.append(prompt_prefix)
                 request_parts.append(f"User prompt:\n{input_text}")
                 user_prompt = "\n\n".join(request_parts)
-            target = (
-                payload.get("agent_context", {})
-                .get("prompt_generation_targets", {})
-                .get("text_to_image", {})
-            )
+            if compiler:
+                compiler_request = minimax_h3_prompt_compiler.build_rewrite_request(
+                    input_text,
+                    target,
+                    media_context,
+                )
+                compiler_parts = [
+                    action_instruction,
+                    media_note,
+                    text_context_note,
+                    compiler_request,
+                ]
+                user_prompt = "\n\n".join(part for part in compiler_parts if str(part or "").strip())
+            compiler_mode = minimax_h3_prompt_compiler.resolve_mode(compiler, media_context) if compiler else ""
             logger.info(
                 "Using VLM prompt action: action=%s target=%s task_method=%s video_frames=%s",
                 action_id,
@@ -1456,7 +1496,7 @@ class VLM:
             result = self.inference(
                 _superprompt_image_input(input_images),
                 user_prompt,
-                max_tokens=1024,
+                max_tokens=1800 if compiler_mode == minimax_h3_prompt_compiler.MODE_REF2VA else (1200 if compiler else 1024),
                 temperature=0.65,
                 top_p=0.85,
                 top_k=40,
@@ -1464,7 +1504,7 @@ class VLM:
                 seed=-1,
                 system_prompt=system_prompt,
             )
-            return _superprompt_clean_output(result, fallback=input_text)
+            return _superprompt_clean_output(result, fallback="" if compiler else input_text)
         except Exception as exc:
             logger.warning("VLM prompt action failed; falling back to legacy prompt expansion: %s", exc)
             return None
@@ -1574,6 +1614,13 @@ class VLM:
 
         action_options = prompt_actions.normalize_prompt_action_options(options)
         handler = str(action.get("handler") or "")
+        structured_compiler = None
+        if handler == "smart_expand":
+            target_override = _superprompt_action_target_override(action, action_options, state_data)
+            prompt_target, _agent_prompt = _superprompt_target_from_state(state_data)
+            if target_override:
+                prompt_target = target_override
+            structured_compiler = minimax_h3_prompt_compiler.target_compiler(prompt_target)
         if handler == "tag_separator_toggle":
             try:
                 output, direction, changed_tags = prompt_actions.transform_prompt_tag_separators(
@@ -1661,6 +1708,65 @@ class VLM:
                 resource_values,
                 input_text=original,
             )
+        expected_slots_value = action_options.get("expected_generation_image_slots")
+        if isinstance(expected_slots_value, (list, tuple)):
+            expected_slots = []
+            for value in expected_slots_value:
+                slot = str(value or "").strip()
+                if slot in prompt_actions.PROMPT_ACTION_SCENE_IMAGE_SLOTS and slot not in expected_slots:
+                    expected_slots.append(slot)
+            actual_slots = [
+                str(item.get("slot") or "").strip()
+                for item in resource_context.get("image_descriptors", [])
+                if isinstance(item, dict) and not item.get("analysis_only") and str(item.get("slot") or "").strip()
+            ]
+            resource_context["expected_generation_image_slots"] = expected_slots
+            resource_context["actual_generation_image_slots"] = actual_slots
+            if actual_slots != expected_slots:
+                missing_slots = [slot for slot in expected_slots if slot not in actual_slots]
+                slot_labels_cn = {
+                    "scene_canvas_image": "上传和画布(1)",
+                    "scene_input_image1": "提示图(2)",
+                    "scene_input_image2": "提示图(3)",
+                    "scene_input_image3": "提示图(4)",
+                    "scene_input_image4": "提示图(5)",
+                }
+                slot_labels_en = {
+                    "scene_canvas_image": "Upload and canvas (1)",
+                    "scene_input_image1": "Prompt image (2)",
+                    "scene_input_image2": "Prompt image (3)",
+                    "scene_input_image3": "Prompt image (4)",
+                    "scene_input_image4": "Prompt image (5)",
+                }
+                language = str(action_options.get("language") or state_data.get("__lang") or "").strip().lower()
+                if language.startswith(("cn", "zh")):
+                    if missing_slots:
+                        labels = "、".join(slot_labels_cn.get(slot, slot) for slot in missing_slots)
+                        error = f"参考图同步失败：{labels}没有传入 LLM。当前分镜内容已保留，请重新点击 LLM 优化；这不影响写入 Prompt 或提交生成。"
+                    else:
+                        error = "参考图顺序与分镜窗口不一致。当前分镜内容已保留，请重新点击 LLM 优化；这不影响写入 Prompt 或提交生成。"
+                else:
+                    if missing_slots:
+                        labels = ", ".join(slot_labels_en.get(slot, slot) for slot in missing_slots)
+                        error = f"Reference image sync failed: {labels} did not reach the LLM. The current storyboard was preserved; retry LLM optimization. Applying the Prompt and submitting generation are still available."
+                    else:
+                        error = "Reference image order does not match the storyboard window. The current storyboard was preserved; retry LLM optimization. Applying the Prompt and submitting generation are still available."
+                return {
+                    "ok": False,
+                    "text": original,
+                    "action_id": action["id"],
+                    "error": error,
+                    "media": {
+                        "video_requested": False,
+                        "video_used": False,
+                        "sampled_frames": 0,
+                        "image_descriptors": resource_context.get("image_descriptors", []),
+                        "generation_image_count": resource_context.get("generation_image_count", 0),
+                        "unresolved_image_slots": resource_context.get("unresolved_image_slots", []),
+                        "expected_generation_image_slots": expected_slots,
+                        "actual_generation_image_slots": actual_slots,
+                    },
+                }
         resolved_video_path = str(resource_context.get("video_path") or "")
         resolved_first_frame_path = str(resource_context.get("video_first_frame_path") or "")
         video_sources = [
@@ -1692,6 +1798,9 @@ class VLM:
             options=media_options,
             resource_context=resource_context,
         )
+        for key in ("language", "h3_storyboard_form", "storyboard_form"):
+            if key in action_options:
+                media_meta[key] = action_options.get(key)
         public_media = {
             key: media_meta.get(key)
             for key in (
@@ -1702,6 +1811,12 @@ class VLM:
                 "used_first_frame_only",
                 "cache_hit",
                 "image_descriptors",
+                "unresolved_image_slots",
+                "expected_generation_image_slots",
+                "actual_generation_image_slots",
+                "generation_image_count",
+                "analysis_only_image_count",
+                "visual_analysis_intent",
                 "video_source",
                 "video_visual_mode",
                 "video_visual_count",
@@ -1713,16 +1828,46 @@ class VLM:
         }
 
         if handler == "smart_expand":
-            output = self.extended_prompt(
-                original,
-                prompt_prefix,
-                prepared_images,
-                state_data,
-                translation_methods,
-                action=action,
-                media_context=media_meta,
-                options=action_options,
-            )
+            if structured_compiler:
+                try:
+                    output = self.extended_prompt_with_skills(
+                        original,
+                        prompt_prefix,
+                        prepared_images,
+                        state_data,
+                        translation_methods,
+                        action=action,
+                        media_context=media_meta,
+                        options=action_options,
+                    )
+                except Exception as exc:
+                    logger.warning("MiniMax H3 structured prompt optimization failed: %s", exc)
+                    return {
+                        "ok": False,
+                        "text": original,
+                        "action_id": action["id"],
+                        "error": f"MiniMax H3 structured prompt optimization failed: {exc}",
+                        "media": public_media,
+                    }
+                if not str(output or "").strip():
+                    return {
+                        "ok": False,
+                        "text": original,
+                        "action_id": action["id"],
+                        "error": "MiniMax H3 structured prompt optimization returned no text. The original prompt was preserved.",
+                        "media": public_media,
+                    }
+            else:
+                output = self.extended_prompt(
+                    original,
+                    prompt_prefix,
+                    prepared_images,
+                    state_data,
+                    translation_methods,
+                    action=action,
+                    media_context=media_meta,
+                    options=action_options,
+                )
         elif handler == "agent_rewrite":
             output = self.extended_prompt_with_skills(
                 original,
@@ -1745,11 +1890,38 @@ class VLM:
                 "error": "Prompt action returned no text.",
                 "media": public_media,
             }
+        compiler_validation = None
+        effective_target_kind = str(
+            action_options.get("target_kind") or action.get("target_kind") or ""
+        ).strip()
+        skip_compiler_validation = prompt_actions.prompt_action_option_bool(
+            action_options,
+            "skip_prompt_compiler_validation",
+            False,
+        )
+        if not effective_target_kind and not skip_compiler_validation:
+            prompt_target, _agent_prompt = _superprompt_target_from_state(state_data)
+            compiler = minimax_h3_prompt_compiler.target_compiler(prompt_target)
+            if compiler:
+                compiler_validation = minimax_h3_prompt_compiler.validate_prompt(
+                    cleaned,
+                    prompt_target,
+                    media_meta,
+                )
+                if not compiler_validation.get("ok"):
+                    logger.warning(
+                        "MiniMax H3 prompt action returned a non-conforming structure; returning it for user editing: %s",
+                        minimax_h3_prompt_compiler.validation_error_text(compiler_validation),
+                    )
         return {
             "ok": True,
             "text": cleaned,
             "action_id": action["id"],
             "media": public_media,
+            **({
+                "warning": "MiniMax H3 prompt structure needs review."
+            } if compiler_validation and not compiler_validation.get("ok") else {}),
+            **({"prompt_compiler": compiler_validation} if compiler_validation else {}),
         }
 
     def translate(self, input_text, method=None):

@@ -111,6 +111,40 @@
       "reason": "Second-pass refinement changes natural-language generation prompts and must prioritize user intent, target language, and bounded enrichment."
     },
     {
+      "key": "h3_prompt_writing_en",
+      "title": "MiniMax H3 Prompt Writing (English)",
+      "doc": "h3_prompt_writing_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_en.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills/h3-prompt-writing",
+        "upstream_files": ["SKILL.md", "references/base-en.txt", "references/ref-en.txt"]
+      },
+      "reason": "English-localized runtime guidance adapted from the official H3 Prompt Writing skill; the local H3 compiler owns runtime-specific constraints."
+    },
+    {
+      "key": "h3_prompt_writing_cn",
+      "title": "MiniMax H3 Prompt Writing (Chinese)",
+      "doc": "h3_prompt_writing_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_cn.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills/h3-prompt-writing",
+        "upstream_files": ["SKILL.md", "references/base-en.txt", "references/ref-en.txt"]
+      },
+      "reason": "Chinese-localized runtime guidance adapted from the official H3 Prompt Writing skill; technical H3 field names and media tokens remain English."
+    },
+    {
       "key": "tool_status",
       "title": "Tool Execution Status",
       "doc": "tool_status.md",

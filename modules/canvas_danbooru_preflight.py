@@ -3,6 +3,7 @@ import re
 import modules.canvas_danbooru_policy as canvas_danbooru_policy
 import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_prompt_pipeline as canvas_vlm_prompt_pipeline
+import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 
 
 def payload_text_to_image_target_key(payload):
@@ -95,6 +96,7 @@ def prompt_preflight_check(payload):
     purpose = str(data.get("purpose") or action or "").strip()
     user_prompt = str(data.get("user_prompt") or data.get("original_prompt") or data.get("source_prompt") or "").strip()
     preset_defaults = data.get("preset_defaults") if isinstance(data.get("preset_defaults"), dict) else {}
+    h3_compiler = minimax_h3_prompt_compiler.target_compiler(target)
     tag_source_mode = canvas_danbooru_service._canvas_danbooru_tag_source_mode(
         data.get("tag_source") or data.get("tag_source_mode")
     )
@@ -109,7 +111,13 @@ def prompt_preflight_check(payload):
         })
 
     if not prompt:
-        add("block", "empty_prompt", "Prompt is empty.", "Write a final prompt before submitting.")
+        add(
+            "warning" if h3_compiler else "block",
+            "empty_prompt",
+            "Prompt is empty.",
+            "The H3 task can still be submitted; enter a prompt when you want explicit scene control."
+            if h3_compiler else "Write a final prompt before submitting.",
+        )
     has_chinese = bool(re.search(r"[\u3400-\u9fff]", prompt))
     comma_count = prompt.count(",")
     sentence_like = bool(re.search(r"[。！？.!?]\s*$", prompt)) or len(prompt) > 160 and comma_count < 2
@@ -120,7 +128,22 @@ def prompt_preflight_check(payload):
     unescaped_parenthetical_tags = prompt_preflight_unescaped_parenthetical_tags(prompt)
     character_resolution = {}
     unknown_character_tags = []
-    if target_key_lower == "outpaint_instruction" or action.lower() == "outpaint" or purpose.lower() == "outpaint":
+    h3_validation = None
+    if h3_compiler:
+        h3_validation = minimax_h3_prompt_compiler.validate_prompt(prompt, target)
+        for index, message in enumerate(h3_validation.get("errors") or []):
+            add(
+                "warning",
+                f"minimax_h3_structure_{index + 1}",
+                message,
+                "The prompt can still be submitted. Open the H3 storyboard editor only when you want to adjust its structure.",
+            )
+        for index, message in enumerate(h3_validation.get("warnings") or []):
+            add("warning", f"minimax_h3_warning_{index + 1}", message)
+        if h3_validation.get("ok") and not h3_validation.get("warnings"):
+            add("pass", "minimax_h3_structure", f"MiniMax H3 {h3_validation.get('mode') or ''} prompt structure is valid.")
+
+    elif target_key_lower == "outpaint_instruction" or action.lower() == "outpaint" or purpose.lower() == "outpaint":
         if has_chinese:
             add("block", "outpaint_chinese", "FLUX outpaint prompt contains Chinese characters.", "Translate the final prompt into concise English before submitting.")
         elif prompt:
@@ -285,6 +308,7 @@ def prompt_preflight_check(payload):
         "wildcard_preview": wildcard_preview,
         "action": action,
         "purpose": purpose,
+        "prompt_compiler": h3_validation,
     }
 
 

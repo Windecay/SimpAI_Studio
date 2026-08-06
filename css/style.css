@@ -8253,6 +8253,10 @@ html.simpai-preset-nav-active #ltx_guide_control,
 html.simpai-preset-nav-active #ltx_guide_scene_control_html,
 html.simpai-preset-nav-active .gradio-container .styler:has(> #ltx_guide_scene_control_html),
 html.simpai-preset-nav-active .gradio-container .gr-group:has(> .styler > #ltx_guide_scene_control_html),
+html.simpai-preset-nav-active #minimax_h3_storyboard_control,
+html.simpai-preset-nav-active #minimax_h3_storyboard_scene_control_html,
+html.simpai-preset-nav-active .gradio-container .styler:has(> #minimax_h3_storyboard_scene_control_html),
+html.simpai-preset-nav-active .gradio-container .gr-group:has(> .styler > #minimax_h3_storyboard_scene_control_html),
 html.simpai-preset-nav-active #relight_light_control,
 html.simpai-preset-nav-active #scene_cloud_image_api,
 html.simpai-preset-nav-active #scene_resolution_override_accordion {
@@ -8288,6 +8292,8 @@ html.simpai-preset-nav-active #gaussian_studio > *,
 html.simpai-preset-nav-active #liveportrait_expression > *,
 html.simpai-preset-nav-active #ltx_guide_control > *,
 html.simpai-preset-nav-active #ltx_guide_scene_control_html > *,
+html.simpai-preset-nav-active #minimax_h3_storyboard_control > *,
+html.simpai-preset-nav-active #minimax_h3_storyboard_scene_control_html > *,
 html.simpai-preset-nav-active #relight_light_control > *,
 html.simpai-preset-nav-active #scene_cloud_image_api > *,
 html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
@@ -10821,6 +10827,117 @@ html:not(.simpai-ltx-guide-control-active) .gradio-container .gr-group:has(> .st
 }
 
 #ltx_guide_scene_control [data-ltx-guide-scene-status] {
+    width: 100% !important;
+    min-height: 18px !important;
+    display: block !important;
+    color: var(--body-text-color-subdued, #aab4c8) !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    text-align: center !important;
+    font-variant-numeric: tabular-nums !important;
+}
+
+html:not(.simpai-h3-storyboard-control-active) #minimax_h3_storyboard_control,
+html:not(.simpai-h3-storyboard-control-active) #minimax_h3_storyboard_scene_control_html,
+html:not(.simpai-h3-storyboard-control-active) .gradio-container .styler:has(> #minimax_h3_storyboard_scene_control_html),
+html:not(.simpai-h3-storyboard-control-active) .gradio-container .gr-group:has(> .styler > #minimax_h3_storyboard_scene_control_html) {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+#minimax_h3_storyboard_control.sai-h3-storyboard-scene-entry,
+#minimax_h3_storyboard_control.sai-h3-storyboard-scene-entry > *,
+#minimax_h3_storyboard_control.sai-h3-storyboard-scene-entry :where(.styler, .html-container, .prose, .contain, .padded, .form, .block, .wrap),
+#minimax_h3_storyboard_scene_control_html,
+#minimax_h3_storyboard_scene_control_html > *,
+#minimax_h3_storyboard_scene_control_html :where(.prose, .html-container, .styler, .block) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#minimax_h3_storyboard_control.sai-h3-storyboard-scene-entry {
+    margin: 8px 0 12px !important;
+}
+
+#minimax_h3_storyboard_scene_control_html p {
+    margin: 0 !important;
+}
+
+.gradio-container .gr-group:has(> .styler > #minimax_h3_storyboard_scene_control_html),
+.gradio-container .styler:has(> #minimax_h3_storyboard_scene_control_html) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#minimax_h3_storyboard_scene_control.sai-h3-storyboard-scene-control {
+    --sai-h3-storyboard-accent: #f97316;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+#minimax_h3_storyboard_scene_control .sai-h3-storyboard-scene-open {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 16px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 9px !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 86%, var(--sai-h3-storyboard-accent, #f97316)) !important;
+    border: 1px solid color-mix(in srgb, var(--sai-h3-storyboard-accent, #f97316) 58%, var(--border-color-primary, #4b5563)) !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    cursor: pointer !important;
+}
+
+#minimax_h3_storyboard_scene_control .sai-h3-storyboard-scene-open:hover,
+#minimax_h3_storyboard_scene_control .sai-h3-storyboard-scene-open:focus-visible {
+    border-color: color-mix(in srgb, var(--sai-h3-storyboard-accent, #f97316) 78%, #ffffff) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 76%, var(--sai-h3-storyboard-accent, #f97316)) !important;
+    outline: none !important;
+}
+
+#minimax_h3_storyboard_scene_control .sai-h3-storyboard-scene-open i {
+    width: 22px !important;
+    height: 22px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #ffffff !important;
+    background: var(--sai-h3-storyboard-accent, #f97316) !important;
+    border-radius: 50% !important;
+    font-size: 13px !important;
+}
+
+#minimax_h3_storyboard_scene_control [data-h3-storyboard-scene-status] {
     width: 100% !important;
     min-height: 18px !important;
     display: block !important;

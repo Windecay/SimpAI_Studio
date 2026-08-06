@@ -35,7 +35,7 @@
         "mixed_segments": true
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4", "scene_reference_video"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_reference_video", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",
@@ -60,9 +60,10 @@
       ],
       "prompt": {"Basic": ""},
       "task_method": {"Basic": "minimax_h3_r2v_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_ref2va"},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Rewrite the request as one concise MiniMax H3 reference-to-video prompt in the user's language. Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only tags that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack is paired with that video automatically. Describe coherent motion, camera movement, timing, and matching generated audio. Do not invent dialogue unless requested. Return only the final prompt."
+        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,

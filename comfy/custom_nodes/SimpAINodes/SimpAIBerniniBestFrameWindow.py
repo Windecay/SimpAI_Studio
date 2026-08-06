@@ -1,47 +1,39 @@
-import math
-
 from comfy_api.latest import io
 
 
-def _align_4n1(value):
-    value = max(1, int(round(value)))
-    return value + ((1 - value) % 4)
+def _ceil_4n1(value):
+    value = max(1, int(value))
+    return 1 + ((value - 1 + 3) // 4) * 4
+
+
+def _floor_4n1(value):
+    value = max(1, int(value))
+    return 1 + ((value - 1) // 4) * 4
+
+
+def _window_bounds(min_frames, max_frames):
+    min_window = _ceil_4n1(min_frames)
+    max_window = _floor_4n1(max_frames)
+    if max_window < min_window:
+        max_window = min_window
+    return min_window, max_window
 
 
 def _best_segment_frames(total_frames, target_frames, force_size, min_frames, max_frames):
     total_frames = max(1, int(total_frames))
-    min_frames = _align_4n1(min_frames)
-    max_frames = max(min_frames, _align_4n1(max_frames))
+    min_frames, max_frames = _window_bounds(min_frames, max_frames)
 
     if force_size > 1:
-        return max(1, min(_align_4n1(force_size), max_frames))
+        forced = _ceil_4n1(force_size)
+        return max(min_frames, min(forced, max_frames))
 
     if total_frames <= min_frames:
-        return _align_4n1(total_frames)
+        return min_frames
 
-    target_frames = max(min_frames, min(_align_4n1(target_frames), max_frames))
-    n_min = math.ceil((min_frames - 1) / 4)
-    n_max = math.floor((max_frames - 1) / 4)
-
-    best_frames = target_frames
-    best_candidate = None
-    for n in range(n_min, n_max + 1):
-        frames = 4 * n + 1
-        new_frames_per_loop = max(1, frames - 1)
-        segments = max(1, math.ceil((total_frames - 1) / new_frames_per_loop))
-        generated_frames = 1 + segments * new_frames_per_loop
-        extra_frames = generated_frames - total_frames
-        candidate = (
-            extra_frames,
-            abs(frames - target_frames),
-            frames > target_frames,
-            segments,
-        )
-        if best_candidate is None or candidate < best_candidate:
-            best_candidate = candidate
-            best_frames = frames
-
-    return best_frames
+    target_frames = max(min_frames, min(_floor_4n1(target_frames), max_frames))
+    if total_frames <= target_frames:
+        return min(max(min_frames, _ceil_4n1(total_frames)), target_frames)
+    return target_frames
 
 
 class SimpAIBerniniBestFrameWindow(io.ComfyNode):
@@ -51,12 +43,14 @@ class SimpAIBerniniBestFrameWindow(io.ComfyNode):
             node_id="SimpAIBerniniBestFrameWindow",
             display_name="SimpAI Bernini Best Frame Window",
             category="image/video",
-            description="Choose a 4n+1 segment frame count near the user target and reduce short tail segments.",
+            description=(
+                "Choose a legal 4n+1 segment frame count while keeping the target as a VRAM limit."
+            ),
             inputs=[
                 io.Int.Input("total_frames", default=81, min=1, max=100000, step=1),
                 io.Int.Input("target_frames", default=81, min=1, max=100000, step=1),
                 io.Int.Input("force_size", default=1, min=1, max=1025, step=4),
-                io.Int.Input("min_frames", default=45, min=1, max=100000, step=4),
+                io.Int.Input("min_frames", default=33, min=1, max=100000, step=4),
                 io.Int.Input("max_frames", default=185, min=1, max=100000, step=4),
             ],
             outputs=[

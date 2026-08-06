@@ -82,7 +82,7 @@ def format_sampling_progress(step, total_steps, output_index, output_count, lang
     return f"采样步数 {step}/{total_steps}，{media_label} {output_index}/{output_count} ..."
 
 
-def build_progress_profile(task_method, params, base_steps, duration_probe=None):
+def build_progress_profile(task_method, params, base_steps, duration_probe=None, frame_rate_probe=None):
     method = str(task_method or "").lower()
     if not isinstance(params, dict):
         return None
@@ -92,6 +92,7 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None)
         return None
 
     probe = duration_probe or probe_media_duration
+    fps_probe = frame_rate_probe or probe_media_frame_rate
     if "infinitetalk" in method:
         return _build_infinitetalk_profile(method, params, steps, probe)
     if "qwen_faceswap" in method:
@@ -100,8 +101,8 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None)
         return _build_wan_animate_profile(method, params, steps, probe)
     if "wan_scail2" in method:
         return _build_scail2_profile(params, steps, probe)
-    if "bernini_video_edit" in method:
-        return _build_bernini_video_edit_profile(params, steps, probe)
+    if "bernini_video_edit" in method or "bernini_video_upscale" in method:
+        return _build_bernini_video_edit_profile(params, steps, probe, fps_probe)
     return None
 
 
@@ -223,17 +224,19 @@ def _build_scail2_profile(params, steps, probe):
     )
 
 
-def _build_bernini_video_edit_profile(params, steps, probe):
+def _build_bernini_video_edit_profile(params, steps, probe, fps_probe):
     video_path = _media_path(params.get("video"))
     duration = _probe_positive_duration(probe, video_path)
-    frame_rate = _positive_float(params.get("var_number2")) or 16.0
+    frame_rate = _positive_float(params.get("var_number2"))
+    if frame_rate is None:
+        frame_rate = _positive_float(fps_probe(video_path)) or 16.0
     if duration is None:
         return None
 
     total_frames = max(1, int(duration * frame_rate))
     duration_limit = _positive_float(params.get("video_duration"))
     if duration_limit is not None:
-        total_frames = min(total_frames, max(1, int(round(duration_limit * 16.0))))
+        total_frames = min(total_frames, max(1, int(round(duration_limit * frame_rate))))
     total_frames = _floor_4n_plus_1(total_frames)
 
     target_frames = _positive_int(params.get("var_number7")) or 81
@@ -243,7 +246,10 @@ def _build_bernini_video_edit_profile(params, steps, probe):
         min_frames=45,
         max_frames=185,
     )
-    inherited_prefix = 0 if segment_frames <= 1 else min(9, segment_frames - 1)
+    prefix_setting = _nonnegative_int(params.get("var_number8"))
+    if prefix_setting is None:
+        prefix_setting = 9
+    inherited_prefix = 0 if segment_frames <= 1 else min(prefix_setting, segment_frames - 1)
     pass_count = _pass_count(
         total_frames,
         segment_frames,
@@ -255,6 +261,7 @@ def _build_bernini_video_edit_profile(params, steps, probe):
         pass_count=pass_count,
         total_steps=steps * pass_count,
         source_duration=total_frames / frame_rate,
+        known_total_sampler_classes=("SimpAILatentDetailSampler",),
     )
 
 
@@ -295,33 +302,14 @@ def _best_wan_animate_window(total_frames):
 def _best_segment_frames(total_frames, target_frames, min_frames, max_frames):
     total_frames = max(1, int(total_frames))
     min_frames = _align_4n_plus_1(min_frames)
-    max_frames = max(min_frames, _align_4n_plus_1(max_frames))
+    max_frames = max(min_frames, _floor_4n_plus_1(max_frames))
     if total_frames <= min_frames:
-        return _align_4n_plus_1(total_frames)
+        return min_frames
 
-    target_frames = max(
-        min_frames,
-        min(_align_4n_plus_1(target_frames), max_frames),
-    )
-    best_frames = target_frames
-    best_candidate = None
-    for frames in range(min_frames, max_frames + 1, 4):
-        new_frames_per_loop = max(1, frames - 1)
-        segment_count = max(
-            1,
-            int(math.ceil((total_frames - 1) / new_frames_per_loop)),
-        )
-        extra_frames = 1 + segment_count * new_frames_per_loop - total_frames
-        candidate = (
-            extra_frames,
-            abs(frames - target_frames),
-            frames > target_frames,
-            segment_count,
-        )
-        if best_candidate is None or candidate < best_candidate:
-            best_candidate = candidate
-            best_frames = frames
-    return best_frames
+    target_frames = max(min_frames, min(_floor_4n_plus_1(target_frames), max_frames))
+    if total_frames <= target_frames:
+        return min(max(min_frames, _align_4n_plus_1(total_frames)), target_frames)
+    return target_frames
 
 
 def _pass_count(total_frames, first_keep, repeat_keep):
@@ -402,6 +390,45 @@ def probe_media_duration(path):
         return None
 
 
+def probe_media_frame_rate(path):
+    path = _media_path(path)
+    if not path or not os.path.isfile(path):
+        return None
+
+    ffprobe = _ffprobe_executable()
+    if not ffprobe:
+        return None
+
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe,
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=avg_frame_rate,r_frame_rate",
+                "-of", "json",
+                os.path.abspath(path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return None
+        payload = json.loads(completed.stdout or "{}")
+        streams = payload.get("streams") if isinstance(payload, dict) else None
+        stream = streams[0] if streams else {}
+        for key in ("avg_frame_rate", "r_frame_rate"):
+            value = _parse_frame_rate(stream.get(key))
+            if value is not None:
+                return value
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
 def _align_4n_plus_1(value):
     value = max(1, int(value))
     remainder = (value - 1) % 4
@@ -418,12 +445,38 @@ def _positive_int(value):
     return parsed if parsed > 0 else None
 
 
+def _nonnegative_int(value):
+    try:
+        parsed = int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
 def _positive_float(value):
     if isinstance(value, bool) or value is None:
         return None
     try:
         parsed = float(value)
     except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0 else None
+
+
+def _parse_frame_rate(value):
+    text = str(value or "").strip()
+    if not text or text in ("0/0", "N/A"):
+        return None
+    try:
+        if "/" in text:
+            numerator, denominator = text.split("/", 1)
+            denominator = float(denominator)
+            if denominator == 0:
+                return None
+            parsed = float(numerator) / denominator
+        else:
+            parsed = float(text)
+    except (TypeError, ValueError, ZeroDivisionError):
         return None
     return parsed if math.isfinite(parsed) and parsed > 0 else None
 

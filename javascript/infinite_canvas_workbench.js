@@ -210,7 +210,7 @@
     const TEMPLATE_PREVIEW_ROOT = 'javascript/canvas_workbench/templates/previews/';
     const CANVAS_AGENT_MAX_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_IMAGE_REFERENCES || 5;
     const CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES || 4;
-    const CANVAS_AGENT_MAX_VIDEO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_VIDEO_REFERENCES || 1;
+    const CANVAS_AGENT_MAX_VIDEO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_VIDEO_REFERENCES || 2;
     const CANVAS_AGENT_MAX_AUDIO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_AUDIO_REFERENCES || 1;
     const CANVAS_AGENT_MAX_TEXT_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_TEXT_REFERENCES || 4;
     const CANVAS_AGENT_ASPECT_OPTIONS = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_ASPECT_OPTIONS || [
@@ -1603,7 +1603,8 @@
             user_did: systemParams.user_did || systemParams.__user_did || storageScope.owner || '',
             owner: storageScope.owner || '',
             scope: storageScope.mode || '',
-            nickname: systemParams.nickname || systemParams.user_name || ''
+            nickname: systemParams.nickname || systemParams.user_name || '',
+            __lang: runtimeUiLang()
         };
     }
 
@@ -1935,6 +1936,9 @@
         return {
             project_id: project.id || PROJECT_ID,
             project_title: project.title || '',
+            stage: {
+                __lang: runtimeUiLang()
+            },
             current_node_id: node?.id || '',
             selected_node_ids: selectedIds.slice(0, 20),
             totals: {
@@ -4754,7 +4758,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             }
         } else if (kind === 'video') {
             if (counts.videos >= CANVAS_AGENT_MAX_VIDEO_REFERENCES) {
-                if (!opts.silent) showToast(t('Only 1 video reference is supported in this version.', '当前版本最多支持 1 个视频引用。'));
+                if (!opts.silent) showToast(t('Only 2 video references are supported in this version.', '当前版本最多支持 2 个视频引用。'));
                 return false;
             }
             role = 'reference';
@@ -4849,16 +4853,25 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const opts = options || {};
         const refs = normalizeCanvasAgentReferences();
         const nodes = [];
-        refs.forEach((ref) => {
-            const node = canvasAgentReferenceNode(ref);
-            if (!node || !['image', 'result', 'video'].includes(node.type)) return;
-            if (opts.imagesOnly && getCanvasAgentReferenceKind(node) !== 'image') return;
+        const seen = new Set();
+        const addNode = (node) => {
+            const kind = getCanvasAgentReferenceKind(node);
+            if (!node || !['image', 'video'].includes(kind)) return;
+            if (opts.imagesOnly && kind !== 'image') return;
+            const key = canvasAgentReferenceKey(node, kind);
+            if (seen.has(key)) return;
+            seen.add(key);
             nodes.push(node);
-        });
-        if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget) && (!opts.imagesOnly || isCanvasAgentImageTarget(opts.fallbackTarget)) && !nodes.some(node => node.id === opts.fallbackTarget.id)) {
-            nodes.unshift(opts.fallbackTarget);
+        };
+        if (Array.isArray(opts.referenceNodes)) opts.referenceNodes.forEach(addNode);
+        if (opts.includeCanvasAgentReferences !== false) {
+            refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref)));
         }
-        return nodes.map(node => serializeAssetSourceForRun(node)).filter(Boolean).slice(0, opts.imagesOnly ? CANVAS_AGENT_MAX_IMAGE_REFERENCES : 4);
+        if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) addNode(opts.fallbackTarget);
+        const defaultLimit = opts.imagesOnly ? CANVAS_AGENT_MAX_IMAGE_REFERENCES : 4;
+        const requestedLimit = Math.round(Number(opts.maxSources || defaultLimit));
+        const maxSources = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
+        return nodes.map(node => serializeAssetSourceForRun(node)).filter(Boolean).slice(0, maxSources);
     }
 
     function canvasAgentReferenceSummaryText() {
@@ -6316,6 +6329,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const key = String(target?.key || '').trim();
         const labels = {
             anima: t('Anima / hybrid anime prompt', 'Anima / 混合动漫提示词'),
+            minimax_h3: t('MiniMax H3 / structured audiovisual prompt', 'MiniMax H3 / 结构化视听提示词'),
             qwen_natural: t('Qwen / Chinese natural prompt', 'Qwen / 中文自然语言提示词'),
             wan_video_cn: t('Wan / Chinese video prompt', 'Wan / 中文视频动态提示词'),
             flux_t5_en: t('FLUX/T5XXL / English prompt', 'FLUX/T5XXL / 英文提示词'),
@@ -6359,6 +6373,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
     function canvasAgentPromptTargetFromMeta(meta, purpose) {
         const data = meta && typeof meta === 'object' ? meta : {};
         const modelList = Array.isArray(data.model_list) ? data.model_list : [];
+        const promptCompiler = data.prompt_compiler || '';
+        const promptCompilerText = typeof promptCompiler === 'string' ? promptCompiler : JSON.stringify(promptCompiler || {});
+        const hasH3Compiler = /minimax[_\s-]*h3/i.test(promptCompilerText);
         const name = normalizePresetName(data.name || data.display_name || data.preset || '');
         const backend = String(data.backend_engine || '').trim();
         const taskMethod = String(data.task_method || '').trim();
@@ -6376,6 +6393,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         let key = purposeText.includes('outpaint') ? 'outpaint_instruction' : 'unknown_default';
         const taskMethodLower = taskMethod.toLowerCase();
         const taskMethodIsChinese = /(?:^|[_-])cn$/.test(taskMethodLower);
+        if (key === 'unknown_default' && hasH3Compiler) key = 'minimax_h3';
         if (key === 'unknown_default') {
             if (/(^|[^a-z0-9])anima(?:[_\s-]?aio|-base|$|[^a-z0-9])|anima-base-v/i.test(haystack)) key = 'anima';
             else if (taskMethodIsChinese && (purposeText.includes('video') || /wan|umt5/i.test(haystack))) key = 'wan_video_cn';
@@ -6404,7 +6422,62 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             text_encoder: encoder,
             model_list: modelList.slice(0, 8)
         };
+        if (hasH3Compiler) target.prompt_compiler = promptCompiler;
         target.label = canvasAgentPromptTargetLabel(target);
+        return target;
+    }
+
+    function canvasAgentPromptCompilerContext(entryOrNode) {
+        const node = entryOrNode && ['preset', 'classic'].includes(entryOrNode.type) ? entryOrNode : null;
+        const imageIds = new Set();
+        const videoIds = new Set();
+        const audioIds = new Set();
+        if (node) {
+            getPresetUploadRunEdges(node).forEach((edge) => {
+                const kind = getUploadSlotMediaKind(edge?.slot || '');
+                if (kind === 'image') imageIds.add(edge.from);
+                else if (kind === 'video') videoIds.add(edge.from);
+                else if (kind === 'audio') audioIds.add(edge.from);
+            });
+        } else {
+            const refs = normalizeCanvasAgentReferences();
+            refs.forEach((ref) => {
+                if (ref.kind === 'image') imageIds.add(ref.nodeId);
+                else if (ref.kind === 'video') videoIds.add(ref.nodeId);
+                else if (ref.kind === 'audio') audioIds.add(ref.nodeId);
+            });
+            const primaryImage = getCanvasAgentPrimaryMediaNode('image');
+            if (primaryImage?.id) imageIds.add(primaryImage.id);
+            const primaryVideo = getCanvasAgentPrimaryMediaNode('video');
+            if (primaryVideo?.id) videoIds.add(primaryVideo.id);
+            const primaryAudio = getCanvasAgentPrimaryMediaNode('audio');
+            if (primaryAudio?.id) audioIds.add(primaryAudio.id);
+        }
+        const entry = node ? getPresetCatalogEntryForNode(node) : entryOrNode;
+        const schema = (node?.schema && typeof node.schema === 'object')
+            ? node.schema
+            : (entry?.schema && typeof entry.schema === 'object' ? entry.schema : {});
+        const theme = node?.runtime?.scene_theme || schema.default_theme || (Array.isArray(schema.themes) ? schema.themes[0] : '') || '';
+        const themeInfo = schema.per_theme?.[theme] && typeof schema.per_theme[theme] === 'object' ? schema.per_theme[theme] : {};
+        const themeDefaults = themeInfo.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
+        const rawDuration = node?.params?.scene_video_duration
+            ?? node?.preset?.defaults?.scene_video_duration
+            ?? themeDefaults.scene_video_duration
+            ?? null;
+        const duration = Number(rawDuration);
+        return {
+            image_count: imageIds.size,
+            video_count: videoIds.size,
+            audio_count: audioIds.size,
+            duration_seconds: Number.isFinite(duration) && duration > 0 ? duration : null,
+            inventory_known: true,
+            language: runtimeUiLang()
+        };
+    }
+
+    function canvasAgentAttachPromptCompilerContext(target, entryOrNode) {
+        if (!target?.prompt_compiler) return target;
+        target.prompt_compiler_context = canvasAgentPromptCompilerContext(entryOrNode);
         return target;
     }
 
@@ -6414,30 +6487,32 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         const defaultEngine = entry.default_engine && typeof entry.default_engine === 'object' ? entry.default_engine : {};
         const backendParams = defaultEngine.backend_params && typeof defaultEngine.backend_params === 'object' ? defaultEngine.backend_params : {};
-        return canvasAgentPromptTargetFromMeta({
+        return canvasAgentAttachPromptCompilerContext(canvasAgentPromptTargetFromMeta({
             name: entry.name || entry.display_name || '',
             display_name: entry.display_name || entry.name || '',
             backend_engine: entry.backend_engine || defaultEngine.backend_engine || backendParams.backend_engine || '',
             engine_type: entry.engine_type || defaultEngine.engine_type || '',
             task_method: canvasAgentPresetTaskMethod(entry),
             source: entry.source || (entry.name ? `presets/${entry.name}.json` : ''),
-            model_list: canvasAgentPresetModelList(entry)
-        }, purpose);
+            model_list: canvasAgentPresetModelList(entry),
+            prompt_compiler: entry.prompt_compiler || entry.schema?.prompt_compiler || ''
+        }, purpose), entry);
     }
 
     function canvasAgentPromptTargetFromNode(node, purpose) {
         if (!node || typeof node !== 'object') return canvasAgentPromptTargetFromPurpose(purpose, {});
         if (node.type === 'preset') {
             const entry = getPresetCatalogEntryForNode(node);
-            return canvasAgentPromptTargetFromMeta({
+            return canvasAgentAttachPromptCompilerContext(canvasAgentPromptTargetFromMeta({
                 name: node.preset?.name || node.title || entry?.name || '',
                 display_name: node.title || entry?.display_name || '',
                 backend_engine: node.runtime?.backend_engine || entry?.backend_engine || '',
                 engine_type: node.runtime?.engine_type || entry?.engine_type || '',
                 task_method: node.runtime?.task_method || canvasAgentPresetTaskMethod(entry),
                 source: node.model_requirements?.source || entry?.source || '',
-                model_list: canvasAgentPresetModelList(node)
-            }, purpose);
+                model_list: canvasAgentPresetModelList(node),
+                prompt_compiler: entry?.prompt_compiler || node.schema?.prompt_compiler || ''
+            }, purpose), node);
         }
         if (node.type === 'classic') {
             return canvasAgentPromptTargetFromMeta({
@@ -7311,7 +7386,11 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             currentPrompt = String(form.prompt || currentPrompt).trim();
             if (choice === 'rewrite') {
                 try {
-                    const rewritten = await rewriteCanvasAgentPromptWithLlm(currentPrompt, purpose, opts);
+                    const rewritten = await rewriteCanvasAgentPromptWithLlm(
+                        currentPrompt,
+                        purpose,
+                        Object.assign({}, opts, { promptTarget: target })
+                    );
                     if (rewritten?.ok && rewritten.prompt) currentPrompt = String(rewritten.prompt).trim();
                 } catch (err) {
                     console.warn('[SimpAI Canvas Agent] preflight regenerate failed', err);
@@ -7324,6 +7403,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
 
     function canvasAgentPromptTargetInstruction(target) {
         const key = String(target?.key || 'unknown_default');
+        if (key === 'minimax_h3') return 'Final prompt target: MiniMax H3 structured audiovisual prompt. Follow the selected H3 compiler mode exactly, including required section labels, shot markers, timing, and available <Picture N>, <Video N>, and <Audio N> references.';
         if (key === 'anima') return 'Final prompt target: Anima hybrid prompt. Write English Anima/Danbooru anchors first, then short English nltags control sentences when useful. Do not write a generic Qwen paragraph or Chinese prompt.';
         if (key === 'wan_video_cn') return 'Final prompt target: Wan / UMT5 Chinese video prompt. Write Chinese natural language focused on action progression, camera movement, temporal continuity, and what remains stable.';
         if (key === 'flux_t5_en') return 'Final prompt target: FLUX/T5XXL English prompt. The final prompt must be English natural language only; no Chinese characters.';
@@ -8276,7 +8356,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
 
     function canvasAgentVlmAgentContextPayload(options = {}) {
         const opts = options || {};
-        return Object.assign({}, buildVlmAgentContext(null, { userPrompt: opts.userPrompt || opts.prompt || '' }) || {}, {
+        const context = Object.assign({}, buildVlmAgentContext(null, { userPrompt: opts.userPrompt || opts.prompt || '' }) || {}, {
             agent_references: normalizeCanvasAgentReferences().map(ref => ({
                 role: ref.role,
                 kind: ref.kind,
@@ -8285,6 +8365,12 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 meta: ref.meta || {}
             }))
         });
+        if (opts.promptTarget && typeof opts.promptTarget === 'object') {
+            context.prompt_generation_targets = Object.assign({}, context.prompt_generation_targets || {}, {
+                text_to_image: Object.assign({}, opts.promptTarget)
+            });
+        }
+        return context;
     }
 
     async function requestCanvasAgentVlmInstructionPlan(rawPrompt, requestedAction) {
@@ -8416,6 +8502,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
     async function rewriteCanvasAgentPromptWithLlm(prompt, purpose, options) {
         const model = getCanvasAgentRewriteModel();
         const opts = options || {};
+        const isH3StoryboardCell = !!opts.h3StoryboardCell;
         const imageTarget = opts.imageTarget || null;
         const mediaTarget = opts.mediaTarget || imageTarget || null;
         const purposeText = String(purpose || '').toLowerCase();
@@ -8425,21 +8512,50 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const visualFallbackTarget = isAudioPurpose && imageTarget && isCanvasAgentImageTarget(imageTarget)
             ? imageTarget
             : (mediaTarget || imageTarget);
+        const referenceImagesOnly = typeof opts.referenceImagesOnly === 'boolean'
+            ? opts.referenceImagesOnly
+            : (isAudioPurpose || (!isVideoPurpose && !isAudioPurpose));
         const assetSources = getCanvasAgentVlmReferenceSources({
             fallbackTarget: visualFallbackTarget,
-            imagesOnly: isAudioPurpose || (!isVideoPurpose && !isAudioPurpose)
+            imagesOnly: referenceImagesOnly,
+            referenceNodes: opts.referenceNodes,
+            includeCanvasAgentReferences: opts.includeCanvasAgentReferences,
+            maxSources: opts.maxReferenceSources
         });
+        const explicitReferenceSummary = String(opts.referenceSummary || '').trim();
+        const referenceSummary = explicitReferenceSummary || (assetSources.length ? canvasAgentReferenceSummaryText() : '');
         const isImageEdit = purposeText.includes('edit') && !isVideoPurpose && !isAudioPurpose;
         const isRefine = purposeText.includes('refine');
         const presetHint = normalizePresetName(opts.presetName || opts.plan?.preset || '');
-        const promptTarget = canvasAgentPromptTargetFromPurpose(purpose, Object.assign({}, opts, { presetName: presetHint }));
+        const basePromptTarget = opts.promptTarget
+            || canvasAgentPromptTargetFromPurpose(purpose, Object.assign({}, opts, { presetName: presetHint }));
+        const uiLanguage = runtimeUiLang();
+        const promptTarget = isH3StoryboardCell ? {
+            key: 'qwen_natural',
+            label: 'MiniMax H3 storyboard field',
+            name: 'MiniMax H3 storyboard field',
+            backend_engine: 'PromptAction',
+            task_method: uiLanguage === 'en' ? 'natural_en' : 'natural_cn',
+            text_encoder: 'natural_language',
+            prompt_format: uiLanguage === 'en' ? 'natural_en' : 'natural_zh',
+            source: 'minimax_h3_storyboard_editor'
+        } : basePromptTarget;
+        const h3CompilerText = typeof promptTarget?.prompt_compiler === 'string'
+            ? promptTarget.prompt_compiler
+            : JSON.stringify(promptTarget?.prompt_compiler || {});
+        const isH3Target = String(promptTarget?.key || '') === 'minimax_h3' || /minimax[_\s-]*h3/i.test(h3CompilerText);
+        const isH3ReferenceTarget = isH3Target && /ref2va|reference|r2v/i.test(h3CompilerText);
         const presetDefaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, Object.assign({}, opts, { presetName: presetHint }));
         const isDanbooruTarget = canvasAgentPromptTargetNeedsDanbooru(promptTarget);
         const danbooruLookupText = isDanbooruTarget
             ? await canvasAgentDanbooruLookupText(prompt, promptTarget, purpose, Object.assign({}, opts, { presetName: presetHint, presetDefaults }))
             : '';
         const rewritePrompt = [
-            isRefine
+            isH3StoryboardCell
+                ? String(opts.cellInstruction || '').trim()
+                : (isH3Target
+                ? 'Compile the user request into the exact MiniMax H3 prompt structure required by the selected preset.'
+                : (isRefine
                 ? 'Refine the user prompt into a clearer, stronger generator-ready prompt while preserving the original intent.'
                 : (isImageEdit
                 ? 'Refine the user request into a concise, high-quality image editing prompt.'
@@ -8449,10 +8565,23 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                     ? 'Refine the user request into a concise, high-quality video generation/editing prompt.'
                     : (isAudioPurpose
                         ? 'Refine the user request into a concise audio generation/editing prompt.'
-                        : 'Refine the user request into a concise, high-quality image generation prompt.')))),
-            'Output only the final prompt text. No explanation, markdown, JSON, labels, metadata, policy notes, or internal state.',
-            'If the request is brief or underspecified, expand it with visible subject, action/pose, setting, composition/camera, lighting, mood, and concrete visual details.',
-            'Do not return the unchanged original request unless it is already a detailed generator prompt.',
+                        : 'Refine the user request into a concise, high-quality image generation prompt.')))))),
+            isH3StoryboardCell
+                ? 'Output only the replacement content for the selected field. Do not output a field label, quotes, markdown, explanation, or any other storyboard field.'
+                : (isH3Target
+                ? 'Output only the finished H3 prompt. Keep every section label, shot marker, timestamp, alignment line, and media label required by the H3 compiler contract.'
+                : 'Output only the final prompt text. No explanation, markdown, JSON, labels, metadata, policy notes, or internal state.'),
+            !isH3StoryboardCell
+                ? 'If the request is brief or underspecified, expand it with visible subject, action/pose, setting, composition/camera, lighting, mood, and concrete visual details.'
+                : '',
+            !isH3StoryboardCell
+                ? 'Do not return the unchanged original request unless it is already a detailed generator prompt.'
+                : '',
+            isH3Target
+                ? (uiLanguage === 'en'
+                    ? 'Write editable H3 field content in English. In every shot, keep Camera:, Dialogue and visible text:, and Synchronized sound: as separate fields.'
+                    : 'H3 \u6bb5\u843d\u540d\u3001Shot \u6807\u8bb0\u548c Camera:/Dialogue and visible text:/Synchronized sound: \u6807\u7b7e\u4fdd\u7559\u82f1\u6587\uff0c\u6240\u6709\u53ef\u7f16\u8f91\u5185\u5bb9\u4f7f\u7528\u7b80\u4f53\u4e2d\u6587\u3002\u6bcf\u4e2a Shot \u5fc5\u987b\u5c06\u753b\u9762/\u52a8\u4f5c\u3001\u8fd0\u955c\u3001\u5bf9\u767d/\u753b\u9762\u6587\u5b57\u3001\u58f0\u97f3\u5206\u5f00\u8f93\u51fa\u3002\u672a\u8981\u6c42\u5bf9\u767d\u65f6\u5199\u201c\u65e0\u201d\uff0c\u672a\u8981\u6c42\u58f0\u97f3\u65f6\u5199\u201c\u9759\u97f3\u201d\uff0c\u8fd0\u955c\u53ef\u6839\u636e\u52a8\u4f5c\u5408\u7406\u8bbe\u8ba1\u3002')
+                : '',
             isOutpaintPurpose
                 ? 'For FLUX outpaint, write English only. Preserve the original image content, lighting, perspective, camera angle, style, color palette, texture, and depth; describe seamless continuation beyond the current borders.'
                 : '',
@@ -8468,10 +8597,10 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             presetHint ? `Target preset hint: ${presetHint}` : '',
             `Target: ${canvasAgentPromptTargetContextLine(promptTarget)}`,
             canvasAgentPromptTargetInstruction(promptTarget),
-            !isVideoPurpose && !isAudioPurpose && !isOutpaintPurpose
+            !isH3StoryboardCell && !isVideoPurpose && !isAudioPurpose && !isOutpaintPurpose
                 ? 'For natural-language image prompts, write one coherent scene prompt with subject, visible action, setting, composition/camera, lighting, and mood.'
                 : '',
-            isVideoPurpose
+            !isH3StoryboardCell && isVideoPurpose
                 ? 'For video prompts, make the motion, action progression, camera movement, and continuity explicit.'
                 : '',
             Array.isArray(presetDefaults.styles) && presetDefaults.styles.length
@@ -8484,7 +8613,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 ? 'For Danbooru/tag targets, use the local lookup below as authoritative. Include MANDATORY identity tags exactly when present; do not guess character or copyright tags from memory.'
                 : '',
             danbooruLookupText,
-            assetSources.length ? `Explicit references:\n${canvasAgentReferenceSummaryText()}` : '',
+            referenceSummary ? `Reference mapping:\n${referenceSummary}` : '',
             `Purpose: ${purpose || 'text-to-image'}`,
             opts.userPrompt && String(opts.userPrompt || '').trim() && String(opts.userPrompt || '').trim() !== String(prompt || '').trim()
                 ? `Original user request: ${String(opts.userPrompt || '').trim()}`
@@ -8498,33 +8627,42 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             asset_sources: assetSources,
             conversation_id: '',
             chat_messages: [],
-            agent_context: canvasAgentVlmAgentContextPayload({ userPrompt: opts.userPrompt || prompt }),
+            agent_context: canvasAgentVlmAgentContextPayload({
+                userPrompt: opts.userPrompt || prompt,
+                promptTarget
+            }),
             params: Object.assign({
                 version: model,
                 mode: 'chat',
                 request_id: rewriteRequestId,
                 prompt: rewritePrompt,
-                system_prompt: isImageEdit
+                system_prompt: isH3StoryboardCell
+                    ? (uiLanguage === 'en'
+                        ? 'You edit one MiniMax H3 storyboard field at a time. Return only the replacement field content in English.'
+                        : '\u4f60\u6bcf\u6b21\u53ea\u4fee\u6539 MiniMax H3 \u5206\u955c\u8868\u7684\u4e00\u4e2a\u683c\u5b50\uff0c\u53ea\u8f93\u51fa\u7b80\u4f53\u4e2d\u6587\u66ff\u6362\u5185\u5bb9\u3002')
+                    : (isImageEdit
                     ? 'You are a prompt refinement assistant for SimpAI Studio image editing. Use compact built-in prompt rules. Ground edits in the attached image when provided. Follow the prompt target rules in the user message.'
                     : (isOutpaintPurpose
                         ? 'You are a prompt refinement assistant for SimpAI Studio FLUX outpainting. Output English only and follow the prompt target rules in the user message.'
                     : (isVideoPurpose
                         ? 'You are a prompt refinement assistant for SimpAI Studio video generation and editing. Use compact built-in prompt rules. Follow the prompt target rules in the user message.'
-                        : 'You are a prompt refinement assistant for SimpAI Studio. Use compact built-in prompt rules. Follow the prompt target rules in the user message.')),
+                        : 'You are a prompt refinement assistant for SimpAI Studio. Use compact built-in prompt rules. Follow the prompt target rules in the user message.'))),
                 save_context: false,
                 compact_agent_prompt: true,
                 agent_use_skills: true,
                 agent_use_canvas_context: false,
                 agent_action_hints: false,
                 agent_use_danbooru_lookup: isDanbooruTarget,
-                output_chinese: false,
+                output_chinese: uiLanguage !== 'en' && (isH3Target || isH3StoryboardCell),
                 video_frames: getCanvasAgentSettings().videoFrames,
-                max_tokens: 384,
+                max_tokens: isH3StoryboardCell ? 256 : (isH3ReferenceTarget ? 1800 : (isH3Target ? 1200 : 384)),
                 temperature: 0.45,
                 top_p: 0.9,
                 top_k: 40,
                 repetition_penalty: 1.05,
                 seed: -1,
+                disable_thinking: isH3Target || isH3StoryboardCell,
+                h3_visual_reference_max_side: (isH3Target || isH3StoryboardCell) ? 512 : 0,
                 free_after: false
             }, model === 'Custom' ? getCanvasAgentCustomRuntimeParams() : {})
         }, {
@@ -8535,7 +8673,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             return { ok: false, error: response?.details || response?.error || 'LLM refine returned no text' };
         }
         let candidate = String(response.text || '').trim();
-        if (canvasAgentPromptRewriteTooWeak(prompt, candidate)) {
+        if (!isH3StoryboardCell && canvasAgentPromptRewriteTooWeak(prompt, candidate)) {
             candidate = canvasAgentLocalPromptRewriteFallback(prompt, promptTarget) || candidate;
         }
         return { ok: true, prompt: candidate };
@@ -18615,6 +18753,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
             temperature: 0,
             top_p: 1,
             seed: -1,
+            disable_thinking: true,
             free_after: false
         });
         if (!runtime.custom_base_url || !runtime.custom_model) {
@@ -19321,6 +19460,139 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(text);
     }
 
+    function isMiniMaxH3PresetNode(node) {
+        if (!node || node.type !== 'preset') return false;
+        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
+        if (taskMethod.includes('minimax_h3')) return true;
+        const text = [
+            node.title,
+            node.preset?.name,
+            node.preset?.display_name,
+            node.runtime?.scene_theme,
+            getPresetTheme(node)
+        ].filter(Boolean).join(' ').toLowerCase();
+        return /minimax[-_\s]*h3/.test(text);
+    }
+
+    function h3StoryboardVlmReferencesForPreset(node) {
+        const counts = { image: 0, video: 0, audio: 0 };
+        const tokenNames = { image: 'Picture', video: 'Video', audio: 'Audio' };
+        return getPresetUploadRunEdges(node)
+            .slice()
+            .sort((left, right) => SLOT_ORDER.indexOf(left?.slot || '') - SLOT_ORDER.indexOf(right?.slot || ''))
+            .map((edge) => {
+                const kind = getUploadSlotMediaKind(edge?.slot || '');
+                const sourceNode = getNode(edge?.from);
+                const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
+                if (!sourceNode || !asset || !tokenNames[kind]) return null;
+                counts[kind] += 1;
+                return {
+                    kind,
+                    token: `<${tokenNames[kind]} ${counts[kind]}>`,
+                    slot: edge?.slot || '',
+                    node: sourceNode,
+                    asset,
+                    label: String(sourceNode?.title || sourceNode?.name || edge?.slot || '').trim()
+                };
+            })
+            .filter(Boolean);
+    }
+
+    function h3StoryboardVlmReferenceSummary(references) {
+        return (Array.isArray(references) ? references : []).map((reference) => {
+            const asset = reference.asset || {};
+            const details = [
+                reference.label,
+                reference.slot,
+                asset.width && asset.height ? `${asset.width}x${asset.height}` : '',
+                asset.duration ? `${Math.round(Number(asset.duration) * 1000) / 1000}s` : '',
+                asset.fps ? `${Math.round(Number(asset.fps) * 1000) / 1000}fps` : ''
+            ].filter(Boolean).join(' / ');
+            const availability = reference.kind === 'audio'
+                ? 'connected audio metadata only; audio content is not decoded during prompt optimization'
+                : `attached ${reference.kind} reference`;
+            return `${reference.token}: ${availability}${details ? ` / ${details}` : ''}`;
+        }).join('\n');
+    }
+
+    function h3StoryboardInventoryForPreset(node) {
+        const context = canvasAgentPromptCompilerContext(node);
+        const refs = { image: [], video: [], audio: [] };
+        getPresetUploadRunEdges(node)
+            .slice()
+            .sort((left, right) => SLOT_ORDER.indexOf(left?.slot || '') - SLOT_ORDER.indexOf(right?.slot || ''))
+            .forEach((edge) => {
+                const kind = getUploadSlotMediaKind(edge?.slot || '');
+                if (!refs[kind]) return;
+                const sourceNode = getNode(edge.from);
+                const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
+                const preview = kind === 'image'
+                    ? safeAssetFullDisplaySrc(asset || {}, asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '')
+                    : '';
+                const label = String(sourceNode?.title || sourceNode?.name || edge?.slot || `${kind} ${refs[kind].length + 1}`).trim();
+                refs[kind].push({
+                    slot: edge?.slot || '',
+                    label_en: label,
+                    label_cn: label,
+                    preview
+                });
+            });
+        return {
+            image_count: Math.max(0, Number(context?.image_count || 0)),
+            video_count: Math.max(0, Number(context?.video_count || 0)),
+            audio_count: Math.max(0, Number(context?.audio_count || 0)),
+            image_refs: refs.image,
+            video_refs: refs.video,
+            audio_refs: refs.audio
+        };
+    }
+
+    function h3StoryboardModeForPreset(node) {
+        const inventory = h3StoryboardInventoryForPreset(node);
+        const target = canvasAgentPromptTargetFromNode(node, 'video');
+        if (window.SimpAIH3StoryboardEditor?.normalizeMode) {
+            return window.SimpAIH3StoryboardEditor.normalizeMode(target?.prompt_compiler || '', { inventory });
+        }
+        const compiler = typeof target?.prompt_compiler === 'string'
+            ? target.prompt_compiler
+            : JSON.stringify(target?.prompt_compiler || {});
+        const compact = String(compiler || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (compact.includes('ref2va') || compact.includes('reference')) return 'Ref2VA';
+        if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
+        if (compact.includes('l2va') || compact.includes('lastframe')) return 'L2VA';
+        if (compact.includes('i2va')) return 'I2VA';
+        return 'T2VA';
+    }
+
+    function h3StoryboardOptionsForPreset(node) {
+        return {
+            mode: h3StoryboardModeForPreset(node),
+            duration: Math.max(0.3, Number(node?.params?.scene_video_duration || 5)),
+            inventory: h3StoryboardInventoryForPreset(node),
+            langState: window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' }
+        };
+    }
+
+    function h3StoryboardStateForPreset(node) {
+        const options = h3StoryboardOptionsForPreset(node);
+        const source = node?.h3_storyboard || node?.params?.prompt || '';
+        if (window.SimpAIH3StoryboardEditor?.normalize) {
+            return window.SimpAIH3StoryboardEditor.normalize(source, options);
+        }
+        let stored = source && typeof source === 'object' ? source : {};
+        if (typeof source === 'string' && source.trim().startsWith('{')) {
+            try { stored = JSON.parse(source); } catch (error) { stored = {}; }
+        }
+        const shotMatches = String(node?.params?.prompt || '').match(/\[Shot\s+\d+\]/gi) || [];
+        return {
+            mode: options.mode,
+            optimize: !!stored.optimize,
+            shots: Array.isArray(stored.shots) && stored.shots.length
+                ? stored.shots
+                : Array.from({ length: Math.max(1, shotMatches.length || 3) }, () => ({}))
+        };
+    }
+
     function ltx23GuideModeForPreset(node) {
         const taskMethod = String(getPresetThemeInfo(node).task_method || node?.runtime?.task_method || '').toLowerCase();
         const text = [
@@ -19470,6 +19742,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 </div>`;
     }
 
+    function renderMiniMaxH3StoryboardPresetController(node) {
+        if (!isMiniMaxH3PresetNode(node)) return '';
+        const options = h3StoryboardOptionsForPreset(node);
+        const state = h3StoryboardStateForPreset(node);
+        const summary = window.SimpAIH3StoryboardEditor?.statusText
+            ? window.SimpAIH3StoryboardEditor.statusText(state, options, options.langState)
+            : `${options.mode} · ${Math.max(1, state.shots?.length || 3)} ${t('shots', '镜头')} · ${options.duration.toFixed(1)}s · ${state.optimize ? t('LLM optimize', 'LLM 优化') : t('Direct', '直接写入')}`;
+        return `<div class="sai-style-transfer-link-panel sai-h3-storyboard-panel">
+  <i class="fa-solid fa-table-list"></i>
+  <span><b>${escapeHtml(t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'))}</b><span>${escapeHtml(summary)}</span></span>
+  <button type="button" data-node-action="edit-h3-storyboard"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
+</div>`;
+    }
+
     function renderPresetSpecialController(node) {
         const kind = getPresetSpecialControllerKind(node);
         if (!kind) return '';
@@ -19504,6 +19790,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   ${isStyleTransferPresetNode(node) ? `<button type="button" data-node-action="add-style-selector" title="${escapeHtml(t('Add or focus Style Selector', '添加或定位 Style Selector'))}"><i class="fa-solid fa-palette"></i></button>` : ''}
   ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
   ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
+  ${isMiniMaxH3PresetNode(node) ? `<button type="button" data-node-action="edit-h3-storyboard" title="${escapeHtml(t('Edit MiniMax H3 storyboard', '编辑 MiniMax H3 分镜表'))}"><i class="fa-solid fa-table-list"></i></button>` : ''}
   <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -19519,6 +19806,7 @@ ${renderPresetModelStatusHtml(node)}
 ${renderStyleTransferPresetController(node)}
 ${renderLivePortraitVideoExpressionPresetController(node)}
 ${renderLtx23GuidePresetController(node)}
+${renderMiniMaxH3StoryboardPresetController(node)}
 ${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
 <div class="sai-preset-slots">
 ${uploadSlots.map((slotInfo, index) => {
@@ -39992,6 +40280,113 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         });
     }
 
+    async function openMiniMaxH3StoryboardPresetEditor(node) {
+        if (!isMiniMaxH3PresetNode(node)) return null;
+        if (isNodeLocked(node)) {
+            showToast(t('Node is locked.', '节点已锁定。'));
+            return null;
+        }
+        const ready = await ensureWorkbenchLazyRuntime(
+            'h3StoryboardEditor',
+            () => typeof window.SimpAIH3StoryboardEditor?.open === 'function',
+            t('Loading H3 storyboard...', '正在加载 H3 分镜表...'),
+            t('H3 storyboard editor is not loaded.', 'H3 分镜表编辑器尚未加载。')
+        );
+        if (!ready) return null;
+        const options = h3StoryboardOptionsForPreset(node);
+        return window.SimpAIH3StoryboardEditor.open(Object.assign({}, options, {
+            title: t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'),
+            context: 'canvas',
+            prompt: node.params?.prompt || '',
+            storyboardState: h3StoryboardStateForPreset(node),
+            modalMount: canvasOverlayHost(),
+            onRequestMedia: () => {
+                const current = getNode(node.id) || node;
+                selectedNodeId = current.id;
+                selectedNodeIds = new Set([current.id]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+                mutate({ inspector: true });
+                showToast(t('Connect image, video, or audio nodes to the H3 preset.', '\u8bf7\u5c06\u56fe\u7247\u3001\u89c6\u9891\u6216\u97f3\u9891\u8282\u70b9\u8fde\u63a5\u5230 H3 Preset\u3002'));
+            },
+            onOptimize: async (response) => {
+                const current = getNode(node.id) || node;
+                const h3References = h3StoryboardVlmReferencesForPreset(current);
+                const h3ReferenceOptions = {
+                    referenceNodes: h3References
+                        .filter(reference => ['image', 'video'].includes(reference.kind))
+                        .map(reference => reference.node),
+                    includeCanvasAgentReferences: false,
+                    referenceImagesOnly: false,
+                    maxReferenceSources: 7,
+                    referenceSummary: h3StoryboardVlmReferenceSummary(h3References)
+                };
+                if (response?.kind === 'cell') {
+                    const input = String(response?.input || '').trim();
+                    if (!input) return { ok: false, error: t('Selected field context is empty.', '\u5f53\u524d\u683c\u6ca1\u6709\u53ef\u7528\u4e0a\u4e0b\u6587\u3002') };
+                    showToast(t('Editing selected H3 field with LLM...', '\u6b63\u5728\u4fee\u6539 H3 \u5f53\u524d\u683c...'));
+                    const rewritten = await rewriteCanvasAgentPromptWithLlm(input, 'h3 storyboard cell', Object.assign({}, h3ReferenceOptions, {
+                        h3StoryboardCell: true,
+                        cellInstruction: response?.instruction || '',
+                        presetName: current.preset?.name || current.title || '',
+                        userPrompt: response?.user_instruction || input
+                    }));
+                    const cell = String(rewritten?.prompt || '').trim();
+                    if (!rewritten?.ok || !cell) {
+                        const error = rewritten?.error || 'unknown';
+                        showToast(t('H3 field edit failed: {error}', 'H3 \u683c\u5b50\u4fee\u6539\u5931\u8d25\uff1a{error}').replace('{error}', error));
+                        return { ok: false, error };
+                    }
+                    return { ok: true, cell };
+                }
+                const prompt = String(response?.prompt || '').trim();
+                if (!prompt) {
+                    return {
+                        ok: false,
+                        error: t('H3 storyboard prompt is empty.', 'H3 分镜提示词为空。')
+                    };
+                }
+                showToast(t('Optimizing H3 storyboard with LLM...', '正在通过 LLM 优化 H3 分镜表...'));
+                const promptTarget = canvasAgentPromptTargetFromNode(current, 'video');
+                const rewritten = await rewriteCanvasAgentPromptWithLlm(prompt, 'video refine', Object.assign({}, h3ReferenceOptions, {
+                    promptTarget,
+                    presetName: current.preset?.name || current.title || '',
+                    presetDefaults: canvasAgentPresetPromptDefaults(current),
+                    userPrompt: prompt
+                }));
+                const optimizedPrompt = String(rewritten?.prompt || '').trim();
+                if (!rewritten?.ok || !optimizedPrompt) {
+                    const error = rewritten?.error || 'unknown';
+                    showToast(t('H3 storyboard optimization failed: {error}', 'H3 分镜表优化失败：{error}')
+                        .replace('{error}', error));
+                    return { ok: false, error };
+                }
+                return { ok: true, prompt: optimizedPrompt };
+            },
+            onConfirm: (response) => {
+                const current = getNode(node.id) || node;
+                const prompt = String(response?.prompt || '').trim();
+                pushHistory('Update MiniMax H3 storyboard');
+                current.params = Object.assign({}, current.params || {}, { prompt });
+                current.h3_storyboard = Object.assign({}, response?.state || {}, {
+                    prompt_snapshot: prompt,
+                    updated_at: nowIso()
+                });
+                current.status = Object.assign({}, current.status || {}, {
+                    state: 'ready',
+                    message: t('H3 storyboard applied.', 'H3 分镜表已写入 Prompt。')
+                });
+                selectedNodeId = current.id;
+                selectedNodeIds = new Set([current.id]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+                mutate({ inspector: true });
+                showToast(current.status.message);
+                return true;
+            }
+        }));
+    }
+
     function qwenTtsResultBasePosition(node) {
         return {
             x: Math.round((node?.x || 0) + (node?.w || 360) + 140),
@@ -41500,6 +41895,68 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return timeline;
     }
 
+    function directorSegmentPromptCompilerTarget(node, plan, segment) {
+        const target = typeof canvasAgentPromptTargetFromNode === 'function'
+            ? canvasAgentPromptTargetFromNode(node, 'text-to-video')
+            : null;
+        if (!target?.prompt_compiler) return target;
+        const imageCount = directorSegmentMediaRefs(segment, 'images').length;
+        const videoCount = directorSegmentFirstMediaRef(segment, 'video') ? 1 : 0;
+        const audioCount = directorSegmentFirstMediaRef(segment, 'audio') ? 1 : 0;
+        return Object.assign({}, target, {
+            prompt_compiler_context: Object.assign({}, target.prompt_compiler_context || {}, {
+                image_count: imageCount,
+                video_count: videoCount,
+                audio_count: audioCount,
+                duration_seconds: directorSegmentGenerationSeconds(segment, plan),
+                inventory_known: true
+            })
+        });
+    }
+
+    async function preflightDirectorSegmentPrompts(node, plan, options) {
+        const segments = Array.isArray(plan?.segments) ? plan.segments : [];
+        const baseTarget = directorSegmentPromptCompilerTarget(node, plan, segments[0] || {});
+        if (!baseTarget?.prompt_compiler) return { ok: true, plan };
+        const wildcardPreview = await buildWildcardPreviewForNode(node);
+        const entry = getPresetCatalogEntryForNode(node);
+        const presetDefaults = canvasAgentPresetPromptDefaults(node);
+        const preparedSegments = [];
+        for (let index = 0; index < segments.length; index += 1) {
+            const segment = segments[index];
+            const prompt = directorSegmentPrompt(segment, '');
+            const promptTarget = directorSegmentPromptCompilerTarget(node, plan, segment);
+            const result = await ensureCanvasAgentPromptPreflightAllows(prompt, promptTarget, 'text-to-video', {
+                node,
+                entry,
+                wildcardPreview,
+                presetDefaults,
+                promptTarget,
+                userPrompt: prompt,
+                allowEditOnBlock: true,
+                autoStart: !!options?.autoStart
+            });
+            if (!result.ok) {
+                return {
+                    ok: false,
+                    error: result.error || t('Director shot prompt preflight was cancelled.', 'Director 分镜提示词预检查已取消。'),
+                    preflight: result.preflight,
+                    segment_index: index
+                };
+            }
+            preparedSegments.push(Object.assign({}, segment, {
+                prompt: String(result.prompt || prompt).trim()
+            }));
+        }
+        return {
+            ok: true,
+            plan: Object.assign({}, plan, {
+                segments: preparedSegments,
+                payload: Object.assign({}, plan?.payload || {}, { segments: preparedSegments })
+            })
+        };
+    }
+
     async function submitDirectorSegmentRun(presetNode, resultNode, plan, segment, index, previousResultNode) {
         if (directorSegmentUsesPreviousImage(segment) && !directorResultAssetSource(previousResultNode)) {
             const message = t('Director shot {index} needs the previous shot last frame, but the previous run has no usable video yet.', '分镜 {index} 需要继承上一段尾帧，但上一段还没有可用视频。')
@@ -41560,6 +42017,16 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             message: t('Preparing Director segmented run...', '正在准备 Director 分镜运行...')
         };
         mutate({ inspector: true });
+        const promptGate = await preflightDirectorSegmentPrompts(node, plan, opts);
+        if (!promptGate?.ok) {
+            node.status = {
+                state: 'failed',
+                message: promptGate?.error || t('Director prompt preflight failed.', 'Director 提示词预检查失败。')
+            };
+            mutate({ inspector: true });
+            return promptGate;
+        }
+        plan = promptGate.plan || plan;
         const modelGate = await ensurePresetModelsBeforeRun(node);
         if (!modelGate?.ok) return modelGate;
         pushHistory('Run Director segmented preset');
@@ -41860,6 +42327,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         }
         showToast(t('Result placeholder created; submitting to AsyncTask.', '已创建结果占位节点，正在提交到 AsyncTask'));
         const payload = buildRunDryRunPayload(node, resultNode, runId);
+        applyPromptPreflightOverrideToRunPayload(payload, preflight.promptOverride);
         const runResult = await sendCanvasRunNodeRequest(payload);
         return applyRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
         } finally {
@@ -42242,15 +42710,19 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             setBlockedSchedulerFromPlan(plan);
             return { ok: false, error: 'missing inputs', plan };
         }
-        if (shouldUseDirectRunPromptPreflight(options) && typeof canvasAgentPromptTargetFromNode === 'function') {
+        let promptOverride = '';
+        const directPurpose = String(node.runtime?.engine_type || node.schema?.engine_type || '').toLowerCase().includes('video') ? 'video' : 'text_to_image';
+        const directPromptTarget = typeof canvasAgentPromptTargetFromNode === 'function'
+            ? canvasAgentPromptTargetFromNode(node, directPurpose)
+            : null;
+        const requiresPromptCompilerPreflight = !!directPromptTarget?.prompt_compiler;
+        if ((shouldUseDirectRunPromptPreflight(options) || requiresPromptCompilerPreflight) && directPromptTarget) {
             const serialized = node.type === 'classic' ? serializeClassicNodeForRun(node) : serializePresetForRun(node);
             const promptText = canvasRunPromptParamText(serialized?.params?.prompt);
             const prompt = promptText.trim();
-            if (prompt) {
-                const purpose = String(node.runtime?.engine_type || node.schema?.engine_type || '').toLowerCase().includes('video') ? 'video' : 'text_to_image';
-                const target = canvasAgentPromptTargetFromNode(node, purpose);
+            if (prompt || requiresPromptCompilerPreflight) {
                 const wildcardPreview = await buildWildcardPreviewForNode(node);
-                const result = await ensureCanvasAgentPromptPreflightAllows(promptText, target, purpose, {
+                const result = await ensureCanvasAgentPromptPreflightAllows(promptText, directPromptTarget, directPurpose, {
                     node,
                     entry: getPresetCatalogEntryForNode(node),
                     wildcardPreview,
@@ -42258,12 +42730,16 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                     allowEditOnBlock: true
                 });
                 if (!result.ok) return { ok: false, error: result.error || 'prompt preflight blocked', preflight: result.preflight };
-                if (result.prompt && result.prompt !== prompt && !getPromptTextSourceNode(node, 'prompt')) {
-                    updateNodeParam(node.id, 'prompt', result.prompt, 'textarea');
+                if (result.prompt && result.prompt !== prompt) {
+                    if (getPromptTextSourceNode(node, 'prompt')) {
+                        promptOverride = String(result.prompt).trim();
+                    } else {
+                        updateNodeParam(node.id, 'prompt', result.prompt, 'textarea');
+                    }
                 }
             }
         }
-        return { ok: true, plan };
+        return { ok: true, plan, promptOverride };
     }
 
     function shouldUseDirectRunPromptPreflight(options) {
@@ -43121,6 +43597,18 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             if (source && edge?.slot) assetSources[edge.slot] = sourceSerializer(source);
         });
         return assetSources;
+    }
+
+    function applyPromptPreflightOverrideToRunPayload(payload, promptOverride) {
+        const prompt = String(promptOverride || '').trim();
+        const params = payload?.preset_node?.params;
+        if (!prompt || !params || typeof params !== 'object') return payload;
+        params.prompt = prompt;
+        if (params.director_timeline && typeof params.director_timeline === 'object') {
+            params.prompt_override = prompt;
+            params.director_prompt_override = prompt;
+        }
+        return payload;
     }
 
     function buildRunDryRunPayload(presetNode, resultNode, runId) {
@@ -44224,6 +44712,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             openLivePortraitVideoExpressionPresetEditor(node);
         } else if (action === 'edit-ltx23-guides' && node.type === 'preset') {
             openLtx23GuidePresetEditor(node);
+        } else if (action === 'edit-h3-storyboard' && node.type === 'preset') {
+            openMiniMaxH3StoryboardPresetEditor(node);
         } else if (action === 'apply-style-selector' && node.type === 'style_selector') {
             runStyleSelectorTargetPreset(node);
         } else if (action === 'check-models' && ['preset', 'classic'].includes(node.type)) {
