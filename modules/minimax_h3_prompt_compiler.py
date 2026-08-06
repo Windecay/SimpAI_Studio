@@ -85,10 +85,10 @@ def normalize_compiler(value):
     route_normalized = _clean_text(route).lower().replace("-", "_").replace(" ", "_")
     if route_normalized == "reference" or "ref2va" in route_normalized or "r2v" in route_normalized:
         route_id = "reference"
+    elif route_normalized == "last_frame" or "last_frame" in route_normalized or "l2va" in route_normalized:
+        route_id = "last_frame"
     elif route_normalized == "frame_anchor" or "frame" in route_normalized or "i2v" in route_normalized or "fl2va" in route_normalized:
         route_id = "frame_anchor"
-    elif route_normalized == "last_frame" or "l2va" in route_normalized:
-        route_id = "last_frame"
     else:
         route_id = "text"
     return {"id": COMPILER_ID, "route": route_id}

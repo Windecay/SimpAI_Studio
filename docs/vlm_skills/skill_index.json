@@ -145,6 +145,74 @@
       "reason": "Chinese-localized runtime guidance adapted from the official H3 Prompt Writing skill; technical H3 field names and media tokens remain English."
     },
     {
+      "key": "h3_prompt_writing_base_en",
+      "title": "MiniMax H3 Base Mode Prompt Writing (English)",
+      "doc": "h3_prompt_writing_base_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_base_en.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing/references/base-en.txt",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt",
+        "upstream_files": ["references/base-en.txt"]
+      },
+      "reason": "English mode-specific guidance for T2VA, I2VA, FL2VA, and L2VA; the local H3 compiler owns runtime validation."
+    },
+    {
+      "key": "h3_prompt_writing_base_cn",
+      "title": "MiniMax H3 基础模式提示词写作（中文）",
+      "doc": "h3_prompt_writing_base_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_base_cn.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing/references/base-en.txt",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt",
+        "upstream_files": ["references/base-en.txt"]
+      },
+      "reason": "中文模式专用规则，覆盖 T2VA、I2VA、FL2VA 和 L2VA；本地 H3 compiler 负责运行时校验。"
+    },
+    {
+      "key": "h3_prompt_writing_ref_en",
+      "title": "MiniMax H3 Ref2VA Prompt Writing (English)",
+      "doc": "h3_prompt_writing_ref_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_ref_en.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing/references/ref-en.txt",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt",
+        "upstream_files": ["references/ref-en.txt"]
+      },
+      "reason": "English Ref2VA-specific reference-token, retention, subject, and timeline guidance; the local H3 compiler owns runtime validation."
+    },
+    {
+      "key": "h3_prompt_writing_ref_cn",
+      "title": "MiniMax H3 Ref2VA 提示词写作（中文）",
+      "doc": "h3_prompt_writing_ref_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "manual_required": true,
+      "auto_generated": true,
+      "edit_target": "docs/vlm_skills/h3_prompt_writing_ref_cn.md",
+      "source": {
+        "repository": "MiniMax-AI/MiniMax-H3",
+        "path": "skills/h3-prompt-writing/references/ref-en.txt",
+        "url": "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt",
+        "upstream_files": ["references/ref-en.txt"]
+      },
+      "reason": "中文 Ref2VA 专用规则，覆盖参考 token、保留关系、主体定义和时间线；本地 H3 compiler 负责运行时校验。"
+    },
+    {
       "key": "tool_status",
       "title": "Tool Execution Status",
       "doc": "tool_status.md",

@@ -133,6 +133,16 @@ VLM_H3_PROMPT_WRITING_SKILL_FILES = {
     "en": "h3_prompt_writing_en.md",
     "cn": "h3_prompt_writing_cn.md",
 }
+VLM_H3_PROMPT_WRITING_MODE_SKILL_FILES = {
+    "base": {
+        "en": "h3_prompt_writing_base_en.md",
+        "cn": "h3_prompt_writing_base_cn.md",
+    },
+    "reference": {
+        "en": "h3_prompt_writing_ref_en.md",
+        "cn": "h3_prompt_writing_ref_cn.md",
+    },
+}
 VLM_PROMPT_REWRITE_PRESET_NOTES_MAX_CHARS = 6000
 VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS = 20000
 VLM_PROMPT_REWRITE_SKILL_EXCERPT_MAX_CHARS = 3600
@@ -215,6 +225,27 @@ def _canvas_vlm_skill_language(params=None, payload=None, target=None):
 def _canvas_h3_prompt_writing_skill_file(params=None, payload=None, target=None):
     language = _canvas_vlm_skill_language(params=params, payload=payload, target=target)
     return VLM_H3_PROMPT_WRITING_SKILL_FILES[language]
+
+
+def _canvas_h3_prompt_writing_mode(target=None):
+    target = target if isinstance(target, dict) else {}
+    compiler = minimax_h3_prompt_compiler.target_compiler(target)
+    if not compiler:
+        return ""
+    context = target.get("prompt_compiler_context") if isinstance(target.get("prompt_compiler_context"), dict) else {}
+    mode = minimax_h3_prompt_compiler.resolve_mode(compiler, context)
+    return "reference" if mode == minimax_h3_prompt_compiler.MODE_REF2VA else "base"
+
+
+def _canvas_h3_prompt_writing_skill_files(params=None, payload=None, target=None):
+    language = _canvas_vlm_skill_language(params=params, payload=payload, target=target)
+    files = [VLM_H3_PROMPT_WRITING_SKILL_FILES[language]]
+    mode_key = _canvas_h3_prompt_writing_mode(target)
+    mode_files = VLM_H3_PROMPT_WRITING_MODE_SKILL_FILES.get(mode_key) or {}
+    mode_file = mode_files.get(language)
+    if mode_file:
+        files.append(mode_file)
+    return files
 
 def _canvas_compact_agent_prompt_enabled(params):
     if not isinstance(params, dict):
@@ -381,7 +412,7 @@ def _canvas_vlm_prompt_rewrite_required_docs(payload):
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
     target = _canvas_prompt_target_for_payload(payload, target_key)
     if minimax_h3_prompt_compiler.target_compiler(target):
-        return [_canvas_h3_prompt_writing_skill_file(payload=payload, target=target)]
+        return _canvas_h3_prompt_writing_skill_files(payload=payload, target=target)
     if _canvas_is_anima_prompt_target_key(target_key, target):
         return [VLM_ANIMA_PROMPT_SKILL_FILE]
     if target_key in CANVAS_DANBOORU_TARGET_KEYS:
@@ -397,11 +428,14 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target_meta = _canvas_prompt_target_for_payload(payload if isinstance(payload, dict) else {}, target_key)
     h3_instructions = minimax_h3_prompt_compiler.build_system_instructions(target_meta)
     if h3_instructions:
-        h3_skill_file = _canvas_h3_prompt_writing_skill_file(payload=payload, target=target_meta)
-        h3_skill = _canvas_read_vlm_skill_file(
-            h3_skill_file,
+        h3_skill_docs = _canvas_read_vlm_skill_docs(
+            "MiniMax H3",
             VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
+            required_docs=_canvas_h3_prompt_writing_skill_files(payload=payload, target=target_meta),
+            required_only=True,
+            language=_canvas_vlm_skill_language(payload=payload, target=target_meta),
         )
+        h3_skill = "\n\n".join(str(doc.get("content") or "").strip() for doc in h3_skill_docs if doc.get("content"))
         parts = [
             "SimpAI MiniMax H3 prompt compiler mode.",
             "Compile the user's rough request for the selected H3 workflow without changing the requested intent.",
@@ -4326,11 +4360,11 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
     h3_target = payload_text_target or {"key": target_key}
     h3_prompt_required = bool(minimax_h3_prompt_compiler.target_compiler(h3_target))
-    h3_skill_file = _canvas_h3_prompt_writing_skill_file(
+    h3_skill_files = _canvas_h3_prompt_writing_skill_files(
         params=params,
         payload=payload,
         target=h3_target,
-    ) if h3_prompt_required else ""
+    ) if h3_prompt_required else []
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, payload_text_target)
     target_requires_danbooru = target_key in {"sdxl_danbooru", "danbooru", "illustrious", "noob", "pony", "animagine"}
     image_prompt_intent = _canvas_vlm_image_prompting_intent(effective_prompt)
@@ -4497,7 +4531,7 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
         )
         required_docs = []
         if h3_prompt_required:
-            required_docs.append(h3_skill_file)
+            required_docs.extend(h3_skill_files)
         elif anima_prompt_required:
             required_docs.append(VLM_ANIMA_PROMPT_SKILL_FILE)
         if preset_guide_required:
