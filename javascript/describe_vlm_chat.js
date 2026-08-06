@@ -2062,6 +2062,20 @@
             );
     }
 
+    function visibleReplyFromResponse(response, completion) {
+        const text = String(response?.text || '').trim();
+        if (text) return text;
+        const rawText = String(response?.raw_text || response?.rawText || '').trim();
+        if (rawText) return rawText;
+        if (completion?.output_limited) {
+            return t(
+                'Reply reached the output limit before returning visible text.',
+                '回答达到输出上限，但没有返回可显示正文。'
+            );
+        }
+        return t('No visible reply was returned.', '没有返回可显示正文。');
+    }
+
     function normalizePersistedMessage(message, options = {}) {
         if (!message || typeof message !== 'object') return null;
         const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
@@ -5296,13 +5310,13 @@
         }
         const pendingIndex = state.messages.findIndex((item) => item.pending);
         const pendingMessageId = pendingIndex >= 0 ? state.messages[pendingIndex]?.id : '';
-        const reply = response?.ok
-            ? (response.text || t('Done.', '完成。'))
-            : (response?.details || response?.error || t('VLM/LLM AI chat failed.', 'VLM/LLM AI对话失败。'));
         const completion = normalizeChatCompletion(
             response?.completion || response?.params?.completion,
             response?.params?.max_tokens
         );
+        const reply = response?.ok
+            ? visibleReplyFromResponse(response, completion)
+            : (response?.details || response?.error || t('VLM/LLM AI chat failed.', 'VLM/LLM AI对话失败。'));
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             role: 'assistant',
