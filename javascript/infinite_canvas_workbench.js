@@ -30524,7 +30524,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
-                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
                     ]
                 },
@@ -30545,7 +30545,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
-                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
                     ]
                 },
@@ -30566,7 +30566,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
-                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
                     ]
                 },
@@ -30587,7 +30587,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
-                        'minimax_h3_video_vae_fp16.safetensors',
+                        'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
                     ]
                 },

@@ -1,0 +1,180 @@
+{
+  "1": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "MiniMax H3 Ref2VA Model / MiniMax H3 Ref2VA 模型"}
+  },
+  "2": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "MiniMax H3 Text Encoder / MiniMax H3 文本编码器"}
+  },
+  "3": {
+    "inputs": {"vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "MiniMax H3 Video VAE / MiniMax H3 视频 VAE"}
+  },
+  "4": {
+    "inputs": {"vae_name": "minimax_h3_audio_vae_fp32.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "MiniMax H3 Audio VAE / MiniMax H3 音频 VAE"}
+  },
+  "5": {
+    "inputs": {"seed": 0},
+    "class_type": "SeedInput",
+    "_meta": {"title": "Seed / 随机种子"}
+  },
+  "6": {
+    "inputs": {
+      "video": "",
+      "force_rate": 24,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    },
+    "class_type": "SimpAIOptionalVideoPath",
+    "_meta": {"title": "Source Video Path / 源视频路径"}
+  },
+  "7": {
+    "inputs": {
+      "audio": ["6", 2],
+      "start_index": 0,
+      "duration": 5.1666666667
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {"title": "Align Source Audio / 对齐源音频"}
+  },
+  "8": {
+    "inputs": {
+      "model": ["1", 0]
+    },
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {"title": "H3 Memory Efficient Attention / H3 显存优化注意力"}
+  },
+  "9": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": ["8", 0]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {"title": "H3 FP16 Accumulation / H3 FP16 累积"}
+  },
+  "10": {
+    "inputs": {
+      "reuse_threshold": 0,
+      "start_percent": 0.3,
+      "end_percent": 0.8,
+      "verbose": false,
+      "model": ["9", 0]
+    },
+    "class_type": "EasyCache",
+    "_meta": {"title": "Easy Cache"}
+  },
+  "11": {
+    "inputs": {
+      "clip": ["2", 0],
+      "vae": ["3", 0],
+      "audio_vae": ["4", 0],
+      "prompt": "Keep the reference video content, identity, motion, camera path, timing, composition, colors, and visible text unchanged. Reconstruct clearer detail at the target resolution. / 保持参考视频的内容、身份、动作、镜头轨迹、时序、构图、色彩和可见文字不变，在目标分辨率恢复更清晰的细节。",
+      "width": 1024,
+      "height": 576,
+      "length": 124,
+      "ref_image_size": "match",
+      "ref_videos.ref_video_0": ["6", 0],
+      "ref_video_audios.ref_video_audio_0": ["7", 0]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {"title": "H3 Reference Context / H3 参考视频 Context"}
+  },
+  "12": {
+    "inputs": {
+      "model": ["10", 0],
+      "conditioning": ["11", 0]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {"title": "H3 Guider / H3 引导"}
+  },
+  "13": {
+    "inputs": {
+      "vae": ["3", 0],
+      "width": 1024,
+      "height": 576,
+      "length": 124,
+      "source_video": ["6", 0],
+      "audio_vae": ["4", 0],
+      "source_audio": ["7", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
+    "_meta": {"title": "H3 Source Latent / H3 源视频初始 Latent"}
+  },
+  "14": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "H3 Sampler / H3 采样器"}
+  },
+  "15": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 0.25,
+      "model": ["10", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "Low Denoise Scheduler / 低重绘调度器"}
+  },
+  "16": {
+    "inputs": {
+      "noise_seed": ["5", 0]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {"title": "Sampling Noise / 采样噪声"}
+  },
+  "17": {
+    "inputs": {
+      "noise": ["16", 0],
+      "guider": ["12", 0],
+      "sampler": ["14", 0],
+      "sigmas": ["15", 0],
+      "latent_image": ["13", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "H3 Low-Denoise Sampling / H3 低重绘采样"}
+  },
+  "18": {
+    "inputs": {
+      "samples": ["17", 0],
+      "vae": ["3", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {"title": "Decode Video / 解码视频"}
+  },
+  "19": {
+    "inputs": {
+      "samples": ["17", 0],
+      "vae": ["4", 0]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {"title": "Decode Audio / 解码音频"}
+  },
+  "20": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": 24,
+      "crf": 19,
+      "images": ["18", 0],
+      "audio": ["19", 0]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {"title": "Save H3 Upscale Result / 保存 H3 放大结果"}
+  }
+}
