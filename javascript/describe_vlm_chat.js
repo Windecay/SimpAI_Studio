@@ -177,22 +177,49 @@
         };
     }
 
+    function normalizeStoredSystemPromptSelection(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const builtInTemplateId = String(source.systemPromptTemplateId || '').trim().slice(0, 200);
+        const storedUserTemplateId = String(source.userSystemPromptTemplateId || '').trim().slice(0, 200);
+        const storedPickerValue = String(
+            source.systemPromptPickerValue
+            || builtInTemplateId
+            || (storedUserTemplateId ? `user:${storedUserTemplateId}` : NO_SYSTEM_PROMPT_PICKER_VALUE)
+        ).trim().slice(0, 240);
+        const userPickerId = storedPickerValue.startsWith('user:')
+            ? storedPickerValue.slice(5).trim()
+            : '';
+        const userSelected = !!userPickerId && userPickerId !== '__none__';
+        if (userSelected) {
+            return {
+                systemPromptTemplateId: '',
+                systemPromptPickerValue: `user:${userPickerId}`,
+                baseSystemPromptContent: '',
+                userSystemPromptTemplateId: userPickerId,
+                userSystemPromptTemplateName: String(source.userSystemPromptTemplateName || '').slice(0, 200),
+                userSystemPromptContent: String(source.userSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT)
+            };
+        }
+        return {
+            systemPromptTemplateId: builtInTemplateId,
+            systemPromptPickerValue: storedPickerValue.startsWith('user:')
+                ? (builtInTemplateId || NO_SYSTEM_PROMPT_PICKER_VALUE)
+                : (storedPickerValue || builtInTemplateId || NO_SYSTEM_PROMPT_PICKER_VALUE),
+            baseSystemPromptContent: String(source.baseSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
+            userSystemPromptTemplateId: '',
+            userSystemPromptTemplateName: '',
+            userSystemPromptContent: ''
+        };
+    }
+
     function loadChatSettings() {
         try {
             const data = JSON.parse(window.localStorage?.getItem(SETTINGS_STORAGE_KEY) || '{}');
+            const selection = normalizeStoredSystemPromptSelection(data);
             return {
                 chatMode: normalizeChatMode(data.chatMode),
                 customSystemPrompt: String(data.customSystemPrompt || ''),
-                systemPromptTemplateId: String(data.systemPromptTemplateId || ''),
-                systemPromptPickerValue: String(
-                    data.systemPromptPickerValue
-                    || data.systemPromptTemplateId
-                    || (data.userSystemPromptTemplateId ? `user:${data.userSystemPromptTemplateId}` : NO_SYSTEM_PROMPT_PICKER_VALUE)
-                ),
-                baseSystemPromptContent: String(data.baseSystemPromptContent || ''),
-                userSystemPromptTemplateId: String(data.userSystemPromptTemplateId || ''),
-                userSystemPromptTemplateName: String(data.userSystemPromptTemplateName || ''),
-                userSystemPromptContent: String(data.userSystemPromptContent || ''),
+                ...selection,
                 systemPromptManualOverride: !!data.systemPromptManualOverride,
                 unloadAfterChat: !!data.unloadAfterChat,
                 windowLayout: normalizeChatWindowLayout(data.windowLayout)
@@ -606,7 +633,7 @@
         const selected = activeSystemPromptPickerValue();
         const intro = state.systemPromptTemplatesLoading && !state.systemPromptTemplatesLoaded
             ? t('Loading templates...', '正在读取模板...')
-            : t('Custom / no template', '自定义 / 不使用模板');
+            : t('Custom / no built-in template', '自定义 / 不使用内置模板');
         const options = [`<option value="${NO_SYSTEM_PROMPT_PICKER_VALUE}">${escapeHtml(intro)}</option>`];
         state.systemPromptTemplates.forEach((item) => {
             options.push(`<option value="${escapeHtml(item.id)}" ${item.id === selected ? 'selected' : ''}>${escapeHtml(item.name)}</option>`);
@@ -734,6 +761,9 @@
         state.systemPromptTemplateId = template?.id || '';
         state.systemPromptPickerValue = state.systemPromptTemplateId || NO_SYSTEM_PROMPT_PICKER_VALUE;
         state.baseSystemPromptContent = template?.content || '';
+        state.userSystemPromptTemplateId = '';
+        state.userSystemPromptTemplateName = '';
+        state.userSystemPromptContent = '';
         state.systemPromptManualOverride = false;
         state.customSystemPrompt = mergedSystemPromptContent();
         const target = modal || document.getElementById('describe_vlm_chat_modal');
@@ -764,6 +794,8 @@
         state.userSystemPromptTemplateId = template?.id || '';
         state.userSystemPromptTemplateName = template?.name || '';
         state.userSystemPromptContent = template?.content || '';
+        state.systemPromptTemplateId = '';
+        state.baseSystemPromptContent = '';
         state.systemPromptPickerValue = pickerValue || (template ? `user:${template.id}` : state.systemPromptTemplateId || NO_SYSTEM_PROMPT_PICKER_VALUE);
         state.systemPromptManualOverride = false;
         state.customSystemPrompt = mergedSystemPromptContent();
@@ -775,7 +807,7 @@
             : localText('User document cleared.', '用户文档已清除。'));
     }
 
-    async function saveUserSystemPromptTemplate(modal) {
+    async function saveUserSystemPromptTemplate(modal, saveAsNew = false) {
         const target = modal || document.getElementById('describe_vlm_chat_modal');
         const formRoot = userSystemPromptTemplateDialog(target) || target;
         const name = String((formRoot?.querySelector?.('[data-describe-vlm-chat-user-template-name]')?.value
@@ -793,7 +825,7 @@
         state.userSystemPromptTemplateName = name;
         state.userSystemPromptContent = content;
         const response = await postJson(USER_SYSTEM_PROMPT_TEMPLATE_SAVE_ENDPOINT, {
-            id: state.userSystemPromptTemplateId,
+            id: saveAsNew ? '' : state.userSystemPromptTemplateId,
             name,
             content,
             __lang: state.__lang,
@@ -805,9 +837,11 @@
         }
         state.userSystemPromptTemplates = normalizeSystemPromptTemplates(response, 'templates');
         const saved = response.template && normalizeSystemPromptTemplates({ templates: [response.template] })[0];
-        state.userSystemPromptTemplateId = saved?.id || state.userSystemPromptTemplateId;
+        state.userSystemPromptTemplateId = saved?.id || (saveAsNew ? '' : state.userSystemPromptTemplateId);
         state.userSystemPromptTemplateName = saved?.name || name;
         state.userSystemPromptContent = saved?.content || content;
+        state.systemPromptTemplateId = '';
+        state.baseSystemPromptContent = '';
         state.systemPromptPickerValue = state.userSystemPromptTemplateId ? `user:${state.userSystemPromptTemplateId}` : state.systemPromptTemplateId || NO_SYSTEM_PROMPT_PICKER_VALUE;
         state.systemPromptManualOverride = false;
         state.customSystemPrompt = mergedSystemPromptContent();
@@ -815,7 +849,9 @@
         saveConversationSnapshot();
         syncSystemPromptTemplateControls(target);
         closeUserSystemPromptTemplateDialog(target);
-        setStatus(localText(`User document saved: ${state.userSystemPromptTemplateName}`, `用户文档已保存：${state.userSystemPromptTemplateName}`));
+        setStatus(saveAsNew
+            ? localText(`User document saved as new: ${state.userSystemPromptTemplateName}`, `已另存为新用户项目：${state.userSystemPromptTemplateName}`)
+            : localText(`User document saved: ${state.userSystemPromptTemplateName}`, `用户项目已保存：${state.userSystemPromptTemplateName}`));
     }
 
     async function deleteUserSystemPromptTemplate(modal) {
@@ -2102,6 +2138,7 @@
     </div>
     <div class="describe-vlm-chat-user-template-dialog-actions">
       <button type="button" data-describe-vlm-chat-user-template-delete title="${escapeHtml(localText('Delete user document', '删除用户项目'))}" aria-label="${escapeHtml(localText('Delete user document', '删除用户项目'))}"><i class="fa-solid fa-trash"></i><span>${escapeHtml(localText('Delete', '删除'))}</span></button>
+      <button type="button" data-describe-vlm-chat-user-template-save-as title="${escapeHtml(localText('Save as new user document', '另存为新用户项目'))}" aria-label="${escapeHtml(localText('Save as new user document', '另存为新用户项目'))}"><i class="fa-solid fa-file-circle-plus"></i><span>${escapeHtml(localText('Save as new', '另存为新项目'))}</span></button>
       <button type="button" data-describe-vlm-chat-user-template-save title="${escapeHtml(localText('Save user document', '保存用户项目'))}" aria-label="${escapeHtml(localText('Save user document', '保存用户项目'))}"><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save', '保存'))}</span></button>
     </div>
   </div>
@@ -2406,21 +2443,13 @@
 
     function normalizeConversationPayload(data) {
         if (!data || typeof data !== 'object' || data.schema !== CONVERSATION_SCHEMA || Number(data.version) !== CONVERSATION_VERSION || !Array.isArray(data.messages)) return null;
+        const selection = normalizeStoredSystemPromptSelection(data);
         return {
             conversationId: uid('describe_vlm_chat_import'),
             messages: normalizePersistedMessages(data.messages),
             chatMode: normalizeChatMode(data.chatMode),
             customSystemPrompt: String(data.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
-            systemPromptTemplateId: String(data.systemPromptTemplateId || '').slice(0, 200),
-            systemPromptPickerValue: String(
-                data.systemPromptPickerValue
-                || data.systemPromptTemplateId
-                || (data.userSystemPromptTemplateId ? `user:${data.userSystemPromptTemplateId}` : NO_SYSTEM_PROMPT_PICKER_VALUE)
-            ).slice(0, 240),
-            baseSystemPromptContent: String(data.baseSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
-            userSystemPromptTemplateId: String(data.userSystemPromptTemplateId || '').slice(0, 200),
-            userSystemPromptTemplateName: String(data.userSystemPromptTemplateName || '').slice(0, 200),
-            userSystemPromptContent: String(data.userSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
+            ...selection,
             systemPromptManualOverride: !!data.systemPromptManualOverride,
             autoAttachPreviousImage: data.auto_attach_previous_image !== false,
             creativePreference: normalizeCreativePreference(data.creative_preferences),
@@ -5490,20 +5519,26 @@
         const userDocumentField = userTemplateDialog?.querySelector('[data-describe-vlm-chat-user-template-content]');
         const customSystemPrompt = String(systemPromptField ? systemPromptField.value : (state.customSystemPrompt || ''));
         const selectedPickerValue = String(templatePicker?.value || state.systemPromptPickerValue || '').trim();
-        const selectedTemplateId = selectedPickerValue === NO_SYSTEM_PROMPT_PICKER_VALUE
+        const selectedUserPickerId = selectedPickerValue.startsWith('user:')
+            ? selectedPickerValue.slice(5).trim()
+            : '';
+        const usingUserTemplate = !!selectedUserPickerId && selectedUserPickerId !== '__none__';
+        const selectedTemplateId = usingUserTemplate
             ? ''
-            : selectedPickerValue.startsWith('user:')
-            ? state.systemPromptTemplateId
+            : selectedPickerValue === NO_SYSTEM_PROMPT_PICKER_VALUE
+            ? ''
             : selectedPickerValue || state.systemPromptTemplateId || '';
-        const selectedUserTemplateId = selectedPickerValue.startsWith('user:')
-            ? selectedPickerValue.slice(5) === '__none__' ? '' : selectedPickerValue.slice(5)
-            : state.userSystemPromptTemplateId;
+        const selectedUserTemplateId = usingUserTemplate ? selectedUserPickerId : '';
         const selectedBuiltInTemplate = state.systemPromptTemplates.find(item => item.id === selectedTemplateId);
         const selectedUserTemplate = state.userSystemPromptTemplates.find(item => item.id === selectedUserTemplateId);
-        const baseSystemPromptContent = String(selectedBuiltInTemplate?.content || state.baseSystemPromptContent || '').trim();
-        const userSystemPromptContent = String(userDocumentField
-            ? userDocumentField.value
-            : (state.userSystemPromptContent || selectedUserTemplate?.content || '')).trim();
+        const baseSystemPromptContent = usingUserTemplate
+            ? ''
+            : String(selectedBuiltInTemplate?.content || state.baseSystemPromptContent || '').trim();
+        const userSystemPromptContent = usingUserTemplate
+            ? String(userDocumentField
+                ? userDocumentField.value
+                : (state.userSystemPromptContent || selectedUserTemplate?.content || '')).trim()
+            : '';
         const mergedSystemPrompt = composeSystemPromptDocuments(baseSystemPromptContent, userSystemPromptContent);
         state.chatMode = selectedMode;
         state.customSystemPrompt = customSystemPrompt;
@@ -5511,10 +5546,12 @@
         state.systemPromptTemplateId = selectedTemplateId;
         state.baseSystemPromptContent = baseSystemPromptContent;
         state.userSystemPromptTemplateId = selectedUserTemplateId;
-        state.userSystemPromptTemplateName = String(userTemplateDialog?.querySelector('[data-describe-vlm-chat-user-template-name]')?.value
-            || state.userSystemPromptTemplateName
-            || selectedUserTemplate?.name
-            || '').trim();
+        state.userSystemPromptTemplateName = usingUserTemplate
+            ? String(userTemplateDialog?.querySelector('[data-describe-vlm-chat-user-template-name]')?.value
+                || state.userSystemPromptTemplateName
+                || selectedUserTemplate?.name
+                || '').trim()
+            : '';
         state.userSystemPromptContent = userSystemPromptContent;
         state.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
         saveChatSettings();
@@ -5782,6 +5819,10 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-user-template-open]')) {
             openUserSystemPromptTemplateDialog(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-user-template-save-as]')) {
+            saveUserSystemPromptTemplate(modal, true);
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-user-template-save]')) {
