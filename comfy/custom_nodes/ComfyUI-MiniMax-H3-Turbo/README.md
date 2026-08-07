@@ -63,14 +63,22 @@ a pruned base automatically and re-injects the LoRA's time-conditioning at run
 time (a small `silu(t_emb)` grid ships with the node for this), so one LoRA file
 covers every base.
 
-## Why a custom sampler
+## Why a custom sampler (and how it adapts)
 
 MiniMax-H3 denoises the video and audio streams on two different flow schedules
-(video shift 12, audio shift 3). ComfyUI's stock samplers step both streams on
-one schedule, which is fine at ~20 steps but badly over-steps the audio at 4
-steps — the audio comes out distorted or blown out. This sampler steps each
-stream on its own schedule, so audio stays clean at 4 steps. If you load the
-LoRA and use a stock sampler at 4 steps and the audio is broken, this is why.
+(video shift 12, audio shift 3). **Recent ComfyUI handles this natively** — its
+`ModelSamplingAV` carries the audio latent on the video schedule — so a stock
+sampler already produces correct audio there. On **older ComfyUI without that
+support**, a stock sampler steps both streams on one schedule and badly over-steps
+the audio at 4 steps, so the audio comes out distorted or blown out.
+
+This node's sampler **auto-detects which ComfyUI it's running on**: on recent
+builds it steps as a plain single-schedule sampler (bit-for-bit the stock result);
+on older builds it steps each stream on its own clock so audio stays clean at 4
+steps. Keep it in the workflow and it does the right thing across ComfyUI versions
+— you don't need to change anything when you update ComfyUI. (On recent ComfyUI a
+stock `euler` sampler works too; the Turbo Sampler just keeps existing graphs
+working unchanged.)
 
 ## Notes
 

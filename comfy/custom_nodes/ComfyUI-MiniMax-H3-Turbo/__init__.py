@@ -5,10 +5,12 @@ Drops into the stock MiniMax-H3 workflow (t2v and i2v):
   MiniMaxH3TurboLoRA    MODEL -> MODEL   applies the turbo LoRA
   MiniMaxH3TurboSampler       -> SAMPLER 4-step sampler for SamplerCustomAdvanced
 
-The sampler steps the video and audio streams on their own flow schedules
-(video shift 12, audio shift 3). A stock single-schedule sampler over-steps the
-audio at 4 steps and the audio breaks; this one keeps each stream on its own
-clock so 4 steps stays clean.
+On older ComfyUI the sampler steps the video and audio streams on their own flow
+schedules (video shift 12, audio shift 3), because a stock single-schedule sampler
+over-steps the audio at 4 steps and it breaks. Recent ComfyUI resolves that dual
+schedule natively (ModelSamplingAV), so this sampler auto-detects it and falls back
+to a plain single-schedule step, avoiding a double-shift that would corrupt the
+audio. Either way it drops into the same workflow slot.
 """
 
 import math
@@ -19,6 +21,7 @@ import torch.nn.functional as F
 from tqdm.auto import trange
 
 import comfy.samplers
+import comfy.model_sampling
 import comfy.lora
 import comfy.weight_adapter
 import comfy.utils
@@ -60,10 +63,59 @@ def _latent_shapes(model):
     return None
 
 
+def _model_sampling(model):
+    """Find the model_sampling instance exposed to a KSAMPLER callback."""
+    for chain in (("inner_model", "inner_model", "model_sampling"),
+                  ("inner_model", "model_sampling"),
+                  ("model_sampling",)):
+        o = model
+        try:
+            for attr in chain:
+                o = getattr(o, attr)
+        except AttributeError:
+            continue
+        if o is not None:
+            return o
+    return None
+
+
+def _native_av_schedule(model):
+    """Whether ComfyUI already applies the audio flow schedule natively."""
+    ms = _model_sampling(model)
+    if ms is None:
+        return False
+    if getattr(ms, "audio_shift", None) is not None:
+        return True
+    av = getattr(comfy.model_sampling, "ModelSamplingAV", None)
+    return av is not None and isinstance(ms, av)
+
+
 @torch.no_grad()
 def _turbo_sampler(model, x, sigmas, extra_args=None, callback=None, disable=None,
                    **kwargs):
     extra_args = {} if extra_args is None else extra_args
+    s_in = x.new_ones([x.shape[0]])
+    _rms = lambda t: float(t.float().pow(2).mean().sqrt())
+
+    if _native_av_schedule(model):
+        # ModelSamplingAV already carries the audio latent on the video schedule.
+        print(f"[H3TURBO sampler] native ModelSamplingAV -> single-schedule Euler  "
+              f"sigmas={[round(float(s),4) for s in sigmas]}  x.shape={tuple(x.shape)} "
+              f"dtype={x.dtype}", flush=True)
+        for i in trange(len(sigmas) - 1, disable=disable):
+            sv, sv_n = float(sigmas[i]), float(sigmas[i + 1])
+            denoised = model(x, sigmas[i] * s_in, **extra_args)
+            d = (x - denoised) / sigmas[i]
+            x = x + (sv_n - sv) * d
+            print(f"[H3TURBO step {i}] sv={sv:.4f}->{sv_n:.4f}  "
+                  f"denoised_rms={_rms(denoised):.4f} x_rms={_rms(x):.4f} d_rms={_rms(d):.4f}",
+                  flush=True)
+            if callback is not None:
+                callback({"i": i, "denoised": denoised, "x": x,
+                          "sigma": sigmas[i], "sigma_hat": sigmas[i]})
+        return x
+
+    # Older ComfyUI needs separate video and audio flow clocks.
     shapes = _latent_shapes(model)
     if not shapes or len(shapes) < 2:
         raise RuntimeError(
@@ -71,10 +123,9 @@ def _turbo_sampler(model, x, sigmas, extra_args=None, callback=None, disable=Non
             "(the EmptyMiniMaxH3LatentAV / MiniMaxH3ImageToVideo output).")
     v_numel = math.prod(shapes[0][1:])           # flat pack is [video | audio]
     a_numel = (x.shape[-1] - v_numel)
-    print(f"[H3TURBO sampler] sigmas={[round(float(s),4) for s in sigmas]}  "
-          f"x.shape={tuple(x.shape)} dtype={x.dtype}  v_numel={v_numel} a_numel={a_numel}  "
-          f"shapes={shapes}", flush=True)
-    s_in = x.new_ones([x.shape[0]])
+    print(f"[H3TURBO sampler] legacy dual-schedule (no native ModelSamplingAV)  "
+          f"sigmas={[round(float(s),4) for s in sigmas]}  x.shape={tuple(x.shape)} "
+          f"dtype={x.dtype}  v_numel={v_numel} a_numel={a_numel}  shapes={shapes}", flush=True)
     for i in trange(len(sigmas) - 1, disable=disable):   # tqdm it/s bar, like stock
         sv, sv_n = float(sigmas[i]), float(sigmas[i + 1])
         denoised = model(x, sigmas[i] * s_in, **extra_args)
@@ -85,7 +136,6 @@ def _turbo_sampler(model, x, sigmas, extra_args=None, callback=None, disable=Non
         sl = _audio_slope(max(sv, 1e-6))
         xa = xa + (_audio_sigma(sv_n) - _audio_sigma(sv)) * (oa / sl)  # audio clock
         x = torch.cat([xv, xa], dim=-1)
-        _rms = lambda t: float(t.float().pow(2).mean().sqrt())
         print(f"[H3TURBO step {i}] sv={sv:.4f}->{sv_n:.4f}  denoised_rms={_rms(denoised):.4f}  "
               f"video: x_rms={_rms(xv):.4f} v_rms={_rms(ov):.4f}  "
               f"audio: x_rms={_rms(xa):.4f} v_rms={_rms(oa):.4f} slope={sl:.4f}", flush=True)
@@ -182,7 +232,11 @@ class MiniMaxH3TurboSampler:
     FUNCTION = "get_sampler"
     CATEGORY = "MiniMaxH3Turbo"
     DESCRIPTION = ("4-step sampler for the MiniMax-H3 Turbo LoRA. Feed into "
-                   "SamplerCustomAdvanced and set the scheduler to 4 steps.")
+                   "SamplerCustomAdvanced and set the scheduler to 4 steps. "
+                   "Auto-adapts to the ComfyUI version: on recent builds that "
+                   "handle the audio schedule natively (ModelSamplingAV) it steps "
+                   "as a plain single-schedule sampler; on older builds it steps "
+                   "video and audio on their separate clocks.")
 
     def get_sampler(self):
         return (comfy.samplers.KSAMPLER(_turbo_sampler),)
@@ -257,13 +311,29 @@ def _apply_merge_lora(new_model, lora, modules, strength):
     return len(new_model.add_patches(loaded, strength))
 
 
+def _int8_fused_fc2(dm, modules):
+    """Find H3 fc2 modules whose int8 fused path bypasses module.forward."""
+    fused = []
+    for module in modules:
+        if not module.endswith(".mlp.fc2"):
+            continue
+        try:
+            weight = comfy.utils.get_attr(dm, module + ".weight")
+        except Exception:
+            continue
+        if (getattr(weight, "_layout_cls", None) == "TensorWiseINT8Layout"
+                and not getattr(getattr(weight, "_params", None), "transposed", False)):
+            fused.append(module)
+    return fused
+
+
 def _inject_adaln_egrid(new_model, dm, lora, adaln, strength):
     """Pruned/curve base only: the adaln update lives in the 2688-dim silu(t_emb)
     space, which the pruned base has collapsed into a small curve, so it can be
     neither a bypass adapter nor a merged weight patch. Re-inject it at run time —
     a shared silu(t_emb) interpolated from the bundled E-grid each forward, plus a
     forward-attribute patch on each adaln projection that adds B @ A @ silu(t_emb)
-    (see _make_adaln_forward). Peak memory is negligible (only a few rows), so this is
+    (see _make_adaln_forward). Peak memory is negligible (M <= 3 rows), so this is
     identical in both the bypass and low_vram modes."""
     E = _egrid()
     shared = {"silu_temb": None}
@@ -390,7 +460,6 @@ class MiniMaxH3TurboLoRA:
         modules = sorted({k.rsplit(".lora_", 1)[0] for k in lora})
         new_model = model.clone()
         mode = "merge" if low_vram else "bypass"
-        apply = _apply_merge_lora if low_vram else _apply_bypass_lora
 
         # On the pruned base the adaln update can't be a weight patch (it lives in
         # the collapsed silu(t_emb) curve), so it is always re-injected at run
@@ -402,7 +471,17 @@ class MiniMaxH3TurboLoRA:
         else:
             backbone, adaln = modules, []
 
-        n = apply(new_model, lora, backbone, strength)
+        n_fc2 = 0
+        if low_vram:
+            n = _apply_merge_lora(new_model, lora, backbone, strength)
+        else:
+            # The fused int8 fc2 path reads weight directly and skips bypass hooks.
+            fc2_fused = set(_int8_fused_fc2(dm, backbone))
+            bypass_mods = [m for m in backbone if m not in fc2_fused]
+            n = _apply_bypass_lora(new_model, lora, bypass_mods, strength)
+            if fc2_fused:
+                n_fc2 = _apply_merge_lora(new_model, lora, sorted(fc2_fused), strength)
+                n += n_fc2
         if pruned and adaln:
             _inject_adaln_egrid(new_model, dm, lora, adaln, strength)
 
@@ -415,7 +494,9 @@ class MiniMaxH3TurboLoRA:
             detail = f"{n} weights patched (merged)"
         else:
             injs = new_model.injections.get("bypass_lora", [])
-            detail = f"{n} adapters bound, {len(injs)} bypass injections set"
+            detail = f"{n - n_fc2} bypass adapters, {len(injs)} injections"
+            if n_fc2:
+                detail += f", {n_fc2} int8 fc2 via merge"
         extra = f" + {len(adaln)} adaln injected at run time" if adaln else ""
         print(f"[MiniMaxH3TurboLoRA] {'pruned' if pruned else 'full'} base [{mode}]: "
               f"lora={lora_name} strength={strength} | {len(backbone)} backbone "

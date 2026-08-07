@@ -24,7 +24,17 @@ try:
 except Exception:
     api_params = None
 
-CANVAS_EXTRA_BACKEND_ARGS = ("keep_vlm_model_loaded",)
+CANVAS_EXTRA_BACKEND_ARGS = (
+    "upscale_model",
+    "keep_vlm_model_loaded",
+    "cloud_config_name",
+    "cloud_protocol",
+    "cloud_base_url",
+    "cloud_api_key",
+    "cloud_model",
+    "simpleai_regen_manifest",
+    "scene_video_duration",
+)
 
 
 def _ensure_canvas_backend_args():
