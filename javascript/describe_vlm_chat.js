@@ -42,8 +42,13 @@
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
     const CONVERSATION_STORAGE_KEY = 'simpai.describeVlmChat.conversation.v1';
+    const CONVERSATIONS_STORAGE_KEY = 'simpai.describeVlmChat.conversations.v1';
     const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
     const CONVERSATION_VERSION = 7;
+    const CONVERSATIONS_SCHEMA = 'simpai.describeVlmChat.conversations';
+    const CONVERSATIONS_VERSION = 1;
+    const MAX_SAVED_CONVERSATIONS = 24;
+    const MAX_CONVERSATIONS_STORAGE_LENGTH = 3500000;
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
     const USER_SYSTEM_PROMPT_TEMPLATE_SAVE_ENDPOINT = '/vlm-user-system-prompt-templates/save';
     const USER_SYSTEM_PROMPT_TEMPLATE_DELETE_ENDPOINT = '/vlm-user-system-prompt-templates/delete';
@@ -250,6 +255,10 @@
     const state = {
         __lang: String(initialSystemParams.__lang || initialSystemParams.language || getUiLang(initialSystemParams) || 'en'),
         conversationId: '',
+        conversationCatalog: [],
+        conversationCatalogLoaded: false,
+        conversationCatalogActiveId: '',
+        conversationRuntimes: new Map(),
         messages: [],
         busy: false,
         requestToken: 0,
@@ -315,6 +324,160 @@
         return state.conversationId;
     }
 
+    function createConversationRuntime(source = {}) {
+        const conversationId = String(source.conversationId || source.conversation_id || uid('describe_vlm_chat')).trim();
+        return {
+            conversationId,
+            messages: Array.isArray(source.messages) ? source.messages : [],
+            pendingImages: Array.isArray(source.pendingImages) ? source.pendingImages : [],
+            lastAutoReferencedDescribeMediaKey: String(source.lastAutoReferencedDescribeMediaKey || ''),
+            describeMediaReferencePromise: source.describeMediaReferencePromise || null,
+            chatMode: normalizeChatMode(source.chatMode || 'chat'),
+            customSystemPrompt: String(source.customSystemPrompt || ''),
+            systemPromptTemplateId: String(source.systemPromptTemplateId || ''),
+            systemPromptPickerValue: String(source.systemPromptPickerValue || NO_SYSTEM_PROMPT_PICKER_VALUE),
+            baseSystemPromptContent: String(source.baseSystemPromptContent || ''),
+            userSystemPromptTemplateId: String(source.userSystemPromptTemplateId || ''),
+            userSystemPromptTemplateName: String(source.userSystemPromptTemplateName || ''),
+            userSystemPromptContent: String(source.userSystemPromptContent || ''),
+            systemPromptManualOverride: !!source.systemPromptManualOverride,
+            autoAttachPreviousImage: source.autoAttachPreviousImage !== false,
+            creativePreference: normalizeCreativePreference(source.creativePreference || source.creative_preferences),
+            creativePreferenceExpanded: source.creativePreferenceExpanded !== undefined
+                ? !!source.creativePreferenceExpanded
+                : normalizeChatMode(source.chatMode || 'chat') === 'creative' && !normalizeCreativePreference(source.creativePreference || source.creative_preferences).prompted,
+            creativeInitiative: normalizeCreativeInitiative(source.creativeInitiative || source.creative_initiative),
+            unloadAfterChat: !!source.unloadAfterChat,
+            busy: !!source.busy,
+            requestToken: Number(source.requestToken) || 0,
+            activeAbortController: source.activeAbortController || null,
+            activeRequestId: String(source.activeRequestId || ''),
+            creativeGenerationPolls: source.creativeGenerationPolls instanceof Map ? source.creativeGenerationPolls : new Map(),
+            creativeDirectorBusy: !!source.creativeDirectorBusy,
+            creativeDirectorAbortController: source.creativeDirectorAbortController || null,
+            creativeDirectorRequestId: String(source.creativeDirectorRequestId || ''),
+            persistenceDirty: !!source.persistenceDirty
+        };
+    }
+
+    function ensureConversationRuntime(conversationId = '', source = null) {
+        const id = String(conversationId || source?.conversationId || source?.conversation_id || '').trim() || ensureConversationId();
+        let runtime = state.conversationRuntimes.get(id);
+        if (!runtime) {
+            runtime = createConversationRuntime(Object.assign({}, source || {}, { conversationId: id }));
+            state.conversationRuntimes.set(id, runtime);
+        }
+        return runtime;
+    }
+
+    function currentConversationRuntime() {
+        return ensureConversationRuntime(ensureConversationId(), {
+            messages: state.messages,
+            pendingImages: state.pendingImages,
+            lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
+            describeMediaReferencePromise: state.describeMediaReferencePromise,
+            chatMode: state.chatMode,
+            customSystemPrompt: state.customSystemPrompt,
+            systemPromptTemplateId: state.systemPromptTemplateId,
+            systemPromptPickerValue: state.systemPromptPickerValue,
+            baseSystemPromptContent: state.baseSystemPromptContent,
+            userSystemPromptTemplateId: state.userSystemPromptTemplateId,
+            userSystemPromptTemplateName: state.userSystemPromptTemplateName,
+            userSystemPromptContent: state.userSystemPromptContent,
+            systemPromptManualOverride: state.systemPromptManualOverride,
+            autoAttachPreviousImage: state.autoAttachPreviousImage,
+            creativePreference: state.creativePreference,
+            creativePreferenceExpanded: state.creativePreferenceExpanded,
+            creativeInitiative: state.creativeInitiative,
+            unloadAfterChat: state.unloadAfterChat,
+            busy: state.busy,
+            requestToken: state.requestToken,
+            activeAbortController: state.activeAbortController,
+            activeRequestId: state.activeRequestId,
+            creativeGenerationPolls: state.creativeGenerationPolls,
+            creativeDirectorBusy: state.creativeDirectorBusy,
+            creativeDirectorAbortController: state.creativeDirectorAbortController,
+            creativeDirectorRequestId: state.creativeDirectorRequestId,
+            persistenceDirty: state.persistenceDirty
+        });
+    }
+
+    function isCurrentConversationRuntime(runtime) {
+        return !!runtime && String(runtime.conversationId || '') === String(state.conversationId || '');
+    }
+
+    function syncCurrentRuntimeFromState() {
+        const runtime = currentConversationRuntime();
+        Object.assign(runtime, {
+            conversationId: state.conversationId,
+            messages: state.messages,
+            pendingImages: state.pendingImages,
+            lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
+            describeMediaReferencePromise: state.describeMediaReferencePromise,
+            chatMode: state.chatMode,
+            customSystemPrompt: state.customSystemPrompt,
+            systemPromptTemplateId: state.systemPromptTemplateId,
+            systemPromptPickerValue: state.systemPromptPickerValue,
+            baseSystemPromptContent: state.baseSystemPromptContent,
+            userSystemPromptTemplateId: state.userSystemPromptTemplateId,
+            userSystemPromptTemplateName: state.userSystemPromptTemplateName,
+            userSystemPromptContent: state.userSystemPromptContent,
+            systemPromptManualOverride: state.systemPromptManualOverride,
+            autoAttachPreviousImage: state.autoAttachPreviousImage,
+            creativePreference: state.creativePreference,
+            creativePreferenceExpanded: state.creativePreferenceExpanded,
+            creativeInitiative: state.creativeInitiative,
+            unloadAfterChat: state.unloadAfterChat,
+            busy: state.busy,
+            requestToken: state.requestToken,
+            activeAbortController: state.activeAbortController,
+            activeRequestId: state.activeRequestId,
+            creativeGenerationPolls: state.creativeGenerationPolls,
+            creativeDirectorBusy: state.creativeDirectorBusy,
+            creativeDirectorAbortController: state.creativeDirectorAbortController,
+            creativeDirectorRequestId: state.creativeDirectorRequestId,
+            persistenceDirty: state.persistenceDirty
+        });
+        return runtime;
+    }
+
+    function applyConversationRuntime(runtime) {
+        if (!runtime) return false;
+        state.conversationId = runtime.conversationId;
+        state.messages = runtime.messages;
+        state.pendingImages = runtime.pendingImages;
+        state.lastAutoReferencedDescribeMediaKey = runtime.lastAutoReferencedDescribeMediaKey;
+        state.describeMediaReferencePromise = runtime.describeMediaReferencePromise;
+        state.chatMode = runtime.chatMode;
+        state.customSystemPrompt = runtime.customSystemPrompt;
+        state.systemPromptTemplateId = runtime.systemPromptTemplateId;
+        state.systemPromptPickerValue = runtime.systemPromptPickerValue;
+        state.baseSystemPromptContent = runtime.baseSystemPromptContent;
+        state.userSystemPromptTemplateId = runtime.userSystemPromptTemplateId;
+        state.userSystemPromptTemplateName = runtime.userSystemPromptTemplateName;
+        state.userSystemPromptContent = runtime.userSystemPromptContent;
+        state.systemPromptManualOverride = runtime.systemPromptManualOverride;
+        state.autoAttachPreviousImage = runtime.autoAttachPreviousImage;
+        state.creativePreference = runtime.creativePreference;
+        state.creativePreferenceExpanded = runtime.creativePreferenceExpanded;
+        state.creativeInitiative = runtime.creativeInitiative;
+        state.unloadAfterChat = runtime.unloadAfterChat;
+        state.busy = runtime.busy;
+        state.requestToken = runtime.requestToken;
+        state.activeAbortController = runtime.activeAbortController;
+        state.activeRequestId = runtime.activeRequestId;
+        state.creativeGenerationPolls = runtime.creativeGenerationPolls;
+        state.creativeDirectorBusy = runtime.creativeDirectorBusy;
+        state.creativeDirectorAbortController = runtime.creativeDirectorAbortController;
+        state.creativeDirectorRequestId = runtime.creativeDirectorRequestId;
+        state.persistenceDirty = runtime.persistenceDirty;
+        return true;
+    }
+
+    function setConversationStatus(runtime, message, isError = false) {
+        if (isCurrentConversationRuntime(runtime)) setStatus(message, isError);
+    }
+
     function localText(en, cn) {
         const lang = String(state.__lang || getUiLang?.(state) || '').toLowerCase();
         return lang.startsWith('zh') || lang.startsWith('cn') ? cn : en;
@@ -332,12 +495,13 @@
         return localText('Not selected', '未选择');
     }
 
-    function applyCreativePreferenceToPendingActions(preference = state.creativePreference) {
+    function applyCreativePreferenceToPendingActions(preference = state.creativePreference, runtime = null) {
+        const target = runtime || currentConversationRuntime();
         const preset = String(preference?.preset || '').trim();
         if (!preset) return;
         const entry = creativePresetEntry(preset);
         const parameterProfile = creativeParameterProfileEntry(preference?.parameter_profile, preset);
-        state.messages.forEach((message) => {
+        target.messages.forEach((message) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
@@ -363,9 +527,10 @@
         });
     }
 
-    function setCreativePreference(value, source = 'user') {
+    function setCreativePreference(value, source = 'user', runtime = null) {
+        const target = runtime || currentConversationRuntime();
         const commitsRoute = value && ['style', 'preset', 'parameter_profile'].some((key) => Object.prototype.hasOwnProperty.call(value, key));
-        const requested = Object.assign({}, state.creativePreference || {}, value || {});
+        const requested = Object.assign({}, target.creativePreference || {}, value || {});
         const selectedProfile = creativeParameterProfileEntry(requested.parameter_profile, requested.preset);
         if (selectedProfile) requested.preset = selectedProfile.preset;
         if (requested.parameter_profile && !selectedProfile) requested.parameter_profile = '';
@@ -374,13 +539,19 @@
             source,
             updated_at: new Date().toISOString()
         }));
-        state.creativePreference = next;
-        if (commitsRoute) state.creativePreferenceExpanded = false;
-        applyCreativePreferenceToPendingActions(next);
-        state.persistenceDirty = true;
-        saveConversationSnapshot();
-        renderMessages();
-        setStatus(localText(`Creative preference: ${creativePreferenceLabel(next)}`, `创作偏好：${creativePreferenceLabel(next)}`));
+        target.creativePreference = next;
+        if (commitsRoute) target.creativePreferenceExpanded = false;
+        // Current UI mirror: if (commitsRoute) state.creativePreferenceExpanded = false;
+        applyCreativePreferenceToPendingActions(next, target);
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) {
+            state.creativePreference = next;
+            state.creativePreferenceExpanded = target.creativePreferenceExpanded;
+            state.persistenceDirty = true;
+            renderMessages();
+            setStatus(localText(`Creative preference: ${creativePreferenceLabel(next)}`, `创作偏好：${creativePreferenceLabel(next)}`));
+        }
+        saveConversationSnapshot(target);
         return next;
     }
 
@@ -402,6 +573,7 @@
         } catch (err) {
             // Ignore storage failures in private or restricted browser contexts.
         }
+        if (state.persistenceRestored && state.conversationCatalogLoaded) saveConversationSnapshot();
     }
 
     function chatInputPlaceholder(mode) {
@@ -469,8 +641,57 @@
         return '';
     }
 
+    function conversationTitleForRecord(record, index = 0) {
+        const firstUserMessage = (Array.isArray(record?.messages) ? record.messages : [])
+            .find((item) => item?.role === 'user' && String(item.content || '').trim());
+        const text = String(firstUserMessage?.content || '').replace(/\s+/g, ' ').trim();
+        if (!text) return localText(`New conversation ${index + 1}`, `新对话 ${index + 1}`);
+        return `${text.slice(0, 48)}${text.length > 48 ? '...' : ''}`;
+    }
+
+    function renderConversationOptions() {
+        const records = state.conversationCatalog.length
+            ? state.conversationCatalog
+            : [conversationPayload()];
+        return records.map((record, index) => {
+            const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
+            return `<option value="${escapeHtml(id)}" ${id === state.conversationId ? 'selected' : ''}>${escapeHtml(conversationTitleForRecord(record, index))}</option>`;
+        }).join('');
+    }
+
+    function renderConversationTabs() {
+        const records = state.conversationCatalog.length
+            ? state.conversationCatalog
+            : [conversationPayload()];
+        return records.map((record, index) => {
+            const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
+            const title = conversationTitleForRecord(record, index);
+            const active = id === state.conversationId;
+            return `<button type="button" class="describe-vlm-chat-conversation-tab${active ? ' is-active' : ''}" data-describe-vlm-chat-conversation-tab="${escapeHtml(id)}"${active ? ' aria-current="page"' : ''} title="${escapeHtml(title)}"><span>${escapeHtml(title)}</span></button>`;
+        }).join('');
+    }
+
+    function syncConversationControls(modal) {
+        const select = modal?.querySelector?.('[data-describe-vlm-chat-conversation-select]');
+        if (select) {
+            select.innerHTML = renderConversationOptions();
+            select.value = state.conversationId;
+        }
+        const tabs = modal?.querySelector?.('[data-describe-vlm-chat-conversation-tabs]');
+        if (tabs) {
+            tabs.innerHTML = renderConversationTabs();
+            const activeTab = tabs.querySelector('.describe-vlm-chat-conversation-tab.is-active');
+            if (activeTab) {
+                window.requestAnimationFrame(() => {
+                    if (activeTab.isConnected) activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                });
+            }
+        }
+    }
+
     function syncChatSettingsControls(modal) {
         if (!modal) return;
+        syncConversationControls(modal);
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
         const system = modal.querySelector('[data-describe-vlm-chat-system]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
@@ -1176,47 +1397,57 @@
     }
 
     async function autoReferenceDescribeInputMedia() {
+        const runtime = currentConversationRuntime();
         const descriptor = describeInputMediaDescriptor();
         const key = String(descriptor?.key || '');
-        if (!descriptor || !key || key === state.lastAutoReferencedDescribeMediaKey) return false;
+        if (!descriptor || !key) return false;
+        if (isCurrentConversationRuntime(runtime) && key === state.lastAutoReferencedDescribeMediaKey) return false;
+        if (key === runtime.lastAutoReferencedDescribeMediaKey) return false;
         const payloadKey = `describe-input:${key}`;
-        if (state.pendingImages.some((item) => String(item?.key || '') === payloadKey)) {
-            state.lastAutoReferencedDescribeMediaKey = key;
+        if (runtime.pendingImages.some((item) => String(item?.key || '') === payloadKey)) {
+            runtime.lastAutoReferencedDescribeMediaKey = key;
+            if (isCurrentConversationRuntime(runtime)) state.lastAutoReferencedDescribeMediaKey = key;
             return true;
         }
-        if (state.describeMediaReferencePromise?.key === key) return state.describeMediaReferencePromise.promise;
+        if (runtime.describeMediaReferencePromise?.key === key) return runtime.describeMediaReferencePromise.promise;
         const promise = (async () => {
-            setStatus(localText('Referencing Describe input media...', '正在引用反推输入媒体...'));
+            setConversationStatus(runtime, localText('Referencing Describe input media...', '正在引用反推输入媒体...'));
             try {
                 const payload = await payloadFromDescribeInputMedia(descriptor);
                 if (!payload) return false;
                 const currentKey = String(describeInputMediaDescriptor()?.key || '');
                 if (currentKey !== key) return false;
-                state.pendingImages = [payload, ...state.pendingImages.filter((item) => {
+                runtime.pendingImages = [payload, ...runtime.pendingImages.filter((item) => {
                     const itemKey = String(item?.key || '');
                     return itemKey !== payload.key && !itemKey.startsWith('describe-input:');
                 })].slice(0, MAX_ATTACHMENTS);
-                state.lastAutoReferencedDescribeMediaKey = key;
-                renderPendingImages();
+                runtime.lastAutoReferencedDescribeMediaKey = key;
+                if (isCurrentConversationRuntime(runtime)) {
+                    state.pendingImages = runtime.pendingImages;
+                    state.lastAutoReferencedDescribeMediaKey = key;
+                    renderPendingImages();
+                }
                 const kindLabel = mediaKind(payload) === 'video'
                     ? localText('video', '视频')
                     : localText('image', '图片');
-                setStatus(localText(
+                setConversationStatus(runtime, localText(
                     `Describe input ${kindLabel} referenced for the next message.`,
                     `已自动引用反推输入${kindLabel}，将在下一条消息中发送。`
                 ));
                 return true;
             } catch (err) {
                 const tooLarge = String(err?.message || '').includes('too large');
-                setStatus(tooLarge
+                setConversationStatus(runtime, tooLarge
                     ? localText('The Describe input video exceeds the 80 MB chat limit.', '反推输入视频超过 Chat 的 80 MB 限制。')
                     : localText('Could not reference the Describe input media.', '无法自动引用反推输入媒体。'), true);
                 return false;
             } finally {
-                if (state.describeMediaReferencePromise?.key === key) state.describeMediaReferencePromise = null;
+                if (runtime.describeMediaReferencePromise?.key === key) runtime.describeMediaReferencePromise = null;
+                if (isCurrentConversationRuntime(runtime)) state.describeMediaReferencePromise = null;
             }
         })();
-        state.describeMediaReferencePromise = { key, promise };
+        runtime.describeMediaReferencePromise = { key, promise };
+        if (isCurrentConversationRuntime(runtime)) state.describeMediaReferencePromise = runtime.describeMediaReferencePromise;
         return promise;
     }
 
@@ -2085,6 +2316,14 @@
       <button type="button" data-describe-vlm-chat-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
     </span>
   </div>
+  <div class="describe-vlm-chat-conversation-bar">
+    <div class="describe-vlm-chat-conversation-head">
+      <span>${escapeHtml(t('Conversation', '对话'))}</span>
+      <button type="button" data-describe-vlm-chat-new title="${escapeHtml(t('New conversation', '新建对话'))}" aria-label="${escapeHtml(t('New conversation', '新建对话'))}"><i class="fa-solid fa-plus"></i></button>
+    </div>
+    <nav class="describe-vlm-chat-conversation-tabs" data-describe-vlm-chat-conversation-tabs aria-label="${escapeHtml(t('Conversations', '对话列表'))}">${renderConversationTabs()}</nav>
+    <select class="describe-vlm-chat-conversation-native" data-describe-vlm-chat-conversation-select aria-label="${escapeHtml(t('Current conversation', '当前对话'))}">${renderConversationOptions()}</select>
+  </div>
   <div class="describe-vlm-chat-controls">
     <label><span>${escapeHtml(t('Mode', '模式'))}</span><select data-describe-vlm-chat-mode aria-label="${escapeHtml(t('Chat Mode', '对话模式'))}">
       <option value="chat" ${state.chatMode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Free Chat', '自由对话'))}</option>
@@ -2419,33 +2658,38 @@
         return normalized.filter(Boolean);
     }
 
-    function conversationPayload() {
+    function conversationPayload(runtime = null) {
+        const source = runtime || currentConversationRuntime();
         return {
             schema: CONVERSATION_SCHEMA,
             version: CONVERSATION_VERSION,
             saved_at: new Date().toISOString(),
-            conversation_id: String(state.conversationId || ''),
-            messages: normalizePersistedMessages(state.messages),
-            chatMode: normalizeChatMode(state.chatMode),
-            customSystemPrompt: String(state.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
-            systemPromptTemplateId: String(state.systemPromptTemplateId || '').slice(0, 200),
-            systemPromptPickerValue: String(state.systemPromptPickerValue || NO_SYSTEM_PROMPT_PICKER_VALUE).slice(0, 240),
-            baseSystemPromptContent: String(state.baseSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
-            userSystemPromptTemplateId: String(state.userSystemPromptTemplateId || '').slice(0, 200),
-            userSystemPromptTemplateName: String(state.userSystemPromptTemplateName || '').slice(0, 200),
-            userSystemPromptContent: String(state.userSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
-            systemPromptManualOverride: !!state.systemPromptManualOverride,
-            auto_attach_previous_image: !!state.autoAttachPreviousImage,
-            creative_preferences: normalizeCreativePreference(state.creativePreference),
-            creative_initiative: normalizeCreativeInitiative(state.creativeInitiative)
+            conversation_id: String(source.conversationId || ensureConversationId()),
+            messages: normalizePersistedMessages(source.messages),
+            chatMode: normalizeChatMode(source.chatMode),
+            customSystemPrompt: String(source.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
+            systemPromptTemplateId: String(source.systemPromptTemplateId || '').slice(0, 200),
+            systemPromptPickerValue: String(source.systemPromptPickerValue || NO_SYSTEM_PROMPT_PICKER_VALUE).slice(0, 240),
+            baseSystemPromptContent: String(source.baseSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
+            userSystemPromptTemplateId: String(source.userSystemPromptTemplateId || '').slice(0, 200),
+            userSystemPromptTemplateName: String(source.userSystemPromptTemplateName || '').slice(0, 200),
+            userSystemPromptContent: String(source.userSystemPromptContent || '').slice(0, MAX_PERSISTED_TEXT),
+            systemPromptManualOverride: !!source.systemPromptManualOverride,
+            auto_attach_previous_image: source.autoAttachPreviousImage !== false,
+            // Current UI mirrors: creative_preferences: normalizeCreativePreference(state.creativePreference)
+            // creative_initiative: normalizeCreativeInitiative(state.creativeInitiative)
+            creative_preferences: normalizeCreativePreference(source.creativePreference),
+            creative_initiative: normalizeCreativeInitiative(source.creativeInitiative)
         };
     }
 
-    function normalizeConversationPayload(data) {
+    function normalizeConversationPayload(data, options = {}) {
         if (!data || typeof data !== 'object' || data.schema !== CONVERSATION_SCHEMA || Number(data.version) !== CONVERSATION_VERSION || !Array.isArray(data.messages)) return null;
         const selection = normalizeStoredSystemPromptSelection(data);
         return {
-            conversationId: uid('describe_vlm_chat_import'),
+            conversationId: options.preserveId
+                ? String(data.conversation_id || '').trim() || uid('describe_vlm_chat')
+                : uid('describe_vlm_chat_import'),
             messages: normalizePersistedMessages(data.messages),
             chatMode: normalizeChatMode(data.chatMode),
             customSystemPrompt: String(data.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
@@ -2457,39 +2701,176 @@
         };
     }
 
-    function saveConversationSnapshot() {
+    function normalizeConversationRecordForCatalog(value) {
+        const normalized = normalizeConversationPayload(value, { preserveId: true });
+        if (!normalized) return null;
+        return Object.assign({}, value, {
+            schema: CONVERSATION_SCHEMA,
+            version: CONVERSATION_VERSION,
+            conversation_id: normalized.conversationId,
+            messages: normalized.messages
+        });
+    }
+
+    function readConversationCatalog() {
+        const normalizeRecords = (items) => {
+            const seen = new Set();
+            return (Array.isArray(items) ? items : [])
+                .map(normalizeConversationRecordForCatalog)
+                .filter((record) => {
+                    const id = String(record?.conversation_id || '').trim();
+                    if (!id || seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                })
+                .slice(0, MAX_SAVED_CONVERSATIONS);
+        };
         try {
-            const serialized = JSON.stringify(conversationPayload());
-            if (serialized.length > 900000) return;
-            window.localStorage?.setItem(CONVERSATION_STORAGE_KEY, serialized);
-            state.persistenceDirty = false;
+            const stored = JSON.parse(window.localStorage?.getItem(CONVERSATIONS_STORAGE_KEY) || 'null');
+            if (
+                stored?.schema === CONVERSATIONS_SCHEMA
+                && Number(stored.version) === CONVERSATIONS_VERSION
+            ) {
+                const records = normalizeRecords(stored.conversations);
+                if (records.length) {
+                    return {
+                        activeId: String(stored.active_id || records[0].conversation_id || '').trim(),
+                        records
+                    };
+                }
+            }
         } catch (err) {}
+        try {
+            const legacy = JSON.parse(window.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || 'null');
+            const record = normalizeConversationRecordForCatalog(legacy);
+            if (record) {
+                return {
+                    activeId: String(record.conversation_id || '').trim(),
+                    records: [record]
+                };
+            }
+        } catch (err) {}
+        return { activeId: '', records: [] };
+    }
+
+    function ensureConversationCatalogLoaded() {
+        if (state.conversationCatalogLoaded) return;
+        const catalog = readConversationCatalog();
+        state.conversationCatalog = catalog.records;
+        state.conversationCatalogLoaded = true;
+        state.conversationCatalogActiveId = catalog.activeId;
+    }
+
+    function persistConversationCatalog() {
+        ensureConversationCatalogLoaded();
+        const records = state.conversationCatalog.slice(-MAX_SAVED_CONVERSATIONS);
+        const payload = {
+            schema: CONVERSATIONS_SCHEMA,
+            version: CONVERSATIONS_VERSION,
+            active_id: String(state.conversationId || '').trim(),
+            saved_at: new Date().toISOString(),
+            conversations: records
+        };
+        let serialized = '';
+        try {
+            serialized = JSON.stringify(payload);
+            while (serialized.length > MAX_CONVERSATIONS_STORAGE_LENGTH && payload.conversations.length > 1) {
+                payload.conversations.shift();
+                serialized = JSON.stringify(payload);
+            }
+            window.localStorage?.setItem(CONVERSATIONS_STORAGE_KEY, serialized);
+            window.localStorage?.removeItem(CONVERSATION_STORAGE_KEY);
+            state.conversationCatalog = payload.conversations;
+            state.conversationCatalogActiveId = payload.active_id;
+            return true;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function upsertConversationRecord(record) {
+        ensureConversationCatalogLoaded();
+        const id = String(record?.conversation_id || '').trim();
+        if (!id) return false;
+        const existingIndex = state.conversationCatalog.findIndex(
+            (item) => String(item?.conversation_id || '').trim() === id
+        );
+        if (existingIndex >= 0) {
+            state.conversationCatalog[existingIndex] = record;
+        } else {
+            state.conversationCatalog = [...state.conversationCatalog, record];
+        }
+        state.conversationCatalog = state.conversationCatalog.slice(-MAX_SAVED_CONVERSATIONS);
+        return persistConversationCatalog();
+    }
+
+    function saveConversationSnapshot(runtime = null) {
+        try {
+            const target = runtime || syncCurrentRuntimeFromState();
+            const snapshot = conversationPayload(target);
+            const serialized = JSON.stringify(snapshot);
+            if (serialized.length > 900000) return;
+            if (upsertConversationRecord(snapshot)) {
+                target.persistenceDirty = false;
+                if (isCurrentConversationRuntime(target)) {
+                    state.persistenceDirty = false;
+                    if (state.messages.length <= 2) syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
+                }
+            }
+        } catch (err) {}
+    }
+
+    function applyConversationSnapshot(snapshot) {
+        const restored = snapshot?.conversationId
+            ? snapshot
+            : normalizeConversationPayload(snapshot, { preserveId: true });
+        if (!restored) return false;
+        const conversationId = restored.conversationId || uid('describe_vlm_chat');
+        const runtime = ensureConversationRuntime(conversationId, {
+            conversationId,
+            messages: restored.messages,
+            chatMode: restored.chatMode,
+            customSystemPrompt: restored.customSystemPrompt,
+            systemPromptTemplateId: restored.systemPromptTemplateId,
+            systemPromptPickerValue: restored.systemPromptPickerValue,
+            baseSystemPromptContent: restored.baseSystemPromptContent,
+            userSystemPromptTemplateId: restored.userSystemPromptTemplateId,
+            userSystemPromptTemplateName: restored.userSystemPromptTemplateName,
+            userSystemPromptContent: restored.userSystemPromptContent,
+            systemPromptManualOverride: restored.systemPromptManualOverride,
+            autoAttachPreviousImage: restored.autoAttachPreviousImage,
+            creativePreference: restored.creativePreference,
+            creativePreferenceExpanded: normalizeChatMode(restored.chatMode) === 'creative' && !restored.creativePreference.prompted,
+            creativeInitiative: restored.creativeInitiative
+        });
+        applyConversationRuntime(runtime);
+        // Existing runtimes keep their live settings; the legacy mirror is state.creativePreference = restored.creativePreference.
+        // The matching initiative mirror is state.creativeInitiative = restored.creativeInitiative.
+        state.missingVlmModelRequest = null;
+        runtime.persistenceDirty = false;
+        state.persistenceDirty = false;
+        applyCreativePreferenceToPendingActions(restored.creativePreference);
+        return true;
     }
 
     function restoreConversationSnapshot() {
         if (state.persistenceRestored || state.messages.length || state.persistenceDirty) return;
         state.persistenceRestored = true;
         try {
-            const data = JSON.parse(window.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || 'null');
-            const restored = normalizeConversationPayload(data);
-            if (!restored) return;
-            state.conversationId = restored.conversationId;
-            state.messages = restored.messages;
-            state.chatMode = restored.chatMode;
-            state.customSystemPrompt = restored.customSystemPrompt;
-            state.systemPromptTemplateId = restored.systemPromptTemplateId;
-            state.systemPromptPickerValue = restored.systemPromptPickerValue;
-            state.baseSystemPromptContent = restored.baseSystemPromptContent;
-            state.userSystemPromptTemplateId = restored.userSystemPromptTemplateId;
-            state.userSystemPromptTemplateName = restored.userSystemPromptTemplateName;
-            state.userSystemPromptContent = restored.userSystemPromptContent;
-            state.systemPromptManualOverride = restored.systemPromptManualOverride;
-            state.autoAttachPreviousImage = restored.autoAttachPreviousImage;
-            state.creativePreference = restored.creativePreference;
-            state.creativePreferenceExpanded = normalizeChatMode(restored.chatMode) === 'creative' && !restored.creativePreference.prompted;
-            state.creativeInitiative = restored.creativeInitiative;
-            applyCreativePreferenceToPendingActions(restored.creativePreference);
+            ensureConversationCatalogLoaded();
+            const activeId = String(state.conversationCatalogActiveId || '').trim();
+            const target = state.conversationCatalog.find((item) => String(item?.conversation_id || '').trim() === activeId)
+                || state.conversationCatalog[0];
+            if (!target || !applyConversationSnapshot(target)) {
+                ensureConversationId();
+                saveConversationSnapshot();
+                syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
+                return;
+            }
             saveChatSettings();
+            syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
+            renderPendingImages();
+            renderMessages();
             setStatus(t('Recent conversation restored.', '已恢复最近对话。'));
             window.setTimeout(resumeCreativeGenerationPolls, 0);
         } catch (err) {}
@@ -2521,10 +2902,7 @@
                 abortActiveChatRequest();
                 abortCreativeDirectorRequest(true);
                 state.busy = false;
-                Object.assign(state, restored);
-                state.creativePreferenceExpanded = normalizeChatMode(restored.chatMode) === 'creative' && !restored.creativePreference.prompted;
-                applyCreativePreferenceToPendingActions(restored.creativePreference);
-                state.pendingImages = [];
+                if (!applyConversationSnapshot(restored)) throw new Error('invalid conversation');
                 state.persistenceRestored = true;
                 saveChatSettings();
                 saveConversationSnapshot();
@@ -2548,37 +2926,127 @@
         document.documentElement.classList.remove('describe-vlm-chat-open');
     }
 
-    async function clearConversation() {
-        const previousConversationId = state.conversationId;
-        const previousRequestId = state.activeRequestId;
-        const creativeRunIds = activeCreativeRunIds();
-        state.requestToken += 1;
-        state.busy = false;
-        abortActiveChatRequest();
-        abortCreativeDirectorRequest(true);
-        stopCreativePolls();
+    function stopActiveConversationWork() {
+        const runtime = syncCurrentRuntimeFromState();
+        const previousConversationId = runtime.conversationId;
+        const previousRequestId = runtime.activeRequestId;
+        const creativeRunIds = activeCreativeRunIds(runtime.messages);
+        const hadChatWork = !!(runtime.busy || runtime.activeAbortController || runtime.activeRequestId);
+        runtime.requestToken += 1;
+        runtime.busy = false;
+        abortActiveChatRequest(runtime);
+        abortCreativeDirectorRequest(true, runtime);
+        stopCreativePolls(runtime);
         creativeRunIds.forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
             user_context: creativeUserContext()
         }).catch(() => {}));
-        state.messages = [];
+        runtime.describeMediaReferencePromise = null;
+        runtime.lastAutoReferencedDescribeMediaKey = '';
+        if (hadChatWork) replacePendingAssistant(t('Stopped.', '已停止。'), runtime.messages);
+        applyConversationRuntime(runtime);
+        if (previousConversationId || previousRequestId) {
+            notifyBackendChatCancel(previousConversationId, previousRequestId).catch(() => {});
+        }
+        return { previousConversationId, previousRequestId };
+    }
+
+    function switchConversation(conversationId) {
+        ensureConversationCatalogLoaded();
+        const id = String(conversationId || '').trim();
+        if (!id || id === state.conversationId) return;
+        const target = state.conversationCatalog.find((item) => String(item?.conversation_id || '').trim() === id);
+        if (!target) return;
+        syncCurrentRuntimeFromState();
+        saveConversationSnapshot();
+        const targetRuntime = ensureConversationRuntime(id, target);
+        if (!applyConversationRuntime(targetRuntime)) return;
+        state.persistenceDirty = false;
+        state.persistenceRestored = true;
+        state.conversationCatalogActiveId = state.conversationId;
+        saveChatSettings();
+        saveConversationSnapshot();
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        syncChatSettingsControls(modal);
+        syncBusyControls(modal);
+        renderPendingImages();
+        renderMessages();
+        window.setTimeout(resumeCreativeGenerationPolls, 0);
+        setStatus(targetRuntime.busy
+            ? t('Conversation switched. The reply is still running.', '已切换对话，原回复仍在运行。')
+            : t('Conversation switched.', '已切换对话。'));
+    }
+
+    function startNewConversation() {
+        ensureConversationCatalogLoaded();
+        if (!state.messages.length && !state.pendingImages.length && !state.busy) {
+            setStatus(t('This conversation is already empty.', '当前对话已经是空的。'));
+            return;
+        }
+        syncCurrentRuntimeFromState();
+        saveConversationSnapshot();
+        const current = currentConversationRuntime();
+        const runtime = createConversationRuntime({
+            conversationId: uid('describe_vlm_chat'),
+            chatMode: current.chatMode,
+            customSystemPrompt: current.customSystemPrompt,
+            systemPromptTemplateId: current.systemPromptTemplateId,
+            systemPromptPickerValue: current.systemPromptPickerValue,
+            baseSystemPromptContent: current.baseSystemPromptContent,
+            userSystemPromptTemplateId: current.userSystemPromptTemplateId,
+            userSystemPromptTemplateName: current.userSystemPromptTemplateName,
+            userSystemPromptContent: current.userSystemPromptContent,
+            systemPromptManualOverride: current.systemPromptManualOverride,
+            autoAttachPreviousImage: current.autoAttachPreviousImage,
+            unloadAfterChat: current.unloadAfterChat,
+            messages: [],
+            pendingImages: [],
+            creativePreference: normalizeCreativePreference(null),
+            creativePreferenceExpanded: normalizeChatMode(current.chatMode) === 'creative',
+            creativeInitiative: normalizeCreativeInitiative(null)
+        });
+        state.conversationRuntimes.set(runtime.conversationId, runtime);
+        applyConversationRuntime(runtime);
         state.creativePreference = normalizeCreativePreference(null);
-        state.creativePreferenceExpanded = normalizeChatMode(state.chatMode) === 'creative';
-        state.creativeInitiative = normalizeCreativeInitiative(null);
-        state.conversationId = uid('describe_vlm_chat');
         state.persistenceRestored = true;
         state.persistenceDirty = false;
-        try { window.localStorage?.removeItem(CONVERSATION_STORAGE_KEY); } catch (err) {}
-        setStatus('');
-        syncBusyControls(document.getElementById('describe_vlm_chat_modal'));
+        saveConversationSnapshot();
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        syncChatSettingsControls(modal);
+        syncBusyControls(modal);
+        renderPendingImages();
         renderMessages();
-        notifyBackendChatCancel(previousConversationId, previousRequestId).catch(() => {});
+        setStatus(t('New conversation started.', '已新建对话。'));
+    }
+
+    async function clearConversation() {
+        const previousConversationId = state.conversationId;
+        const previousRequestId = state.activeRequestId;
+        stopActiveConversationWork();
+        const runtime = currentConversationRuntime();
+        runtime.messages = [];
+        runtime.pendingImages = [];
+        runtime.creativePreference = normalizeCreativePreference(null);
+        runtime.creativePreferenceExpanded = normalizeChatMode(runtime.chatMode) === 'creative';
+        runtime.creativeInitiative = normalizeCreativeInitiative(null);
+        runtime.conversationId = previousConversationId || uid('describe_vlm_chat');
+        applyConversationRuntime(runtime);
+        state.persistenceRestored = true;
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        setStatus('');
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        syncChatSettingsControls(modal);
+        syncBusyControls(modal);
+        renderPendingImages();
+        renderMessages();
+        state.conversationCatalogActiveId = state.conversationId;
         if (!previousConversationId) return;
         const response = await postJson('/describe-image/vlm-chat-clear', {
             conversation_id: previousConversationId,
             clear_context: true
         });
         if (!response?.ok) {
-            setStatus(t('Chat cleared locally; backend context clear failed.', '已清空本地对话；后端上下文清理失败。'), true);
+            setConversationStatus(runtime, t('Chat cleared locally; backend context clear failed.', '已清空本地对话；后端上下文清理失败。'), true);
         }
     }
 
@@ -2660,34 +3128,43 @@
         }
     }
 
-    function abortActiveChatRequest() {
-        const controller = state.activeAbortController;
-        state.activeAbortController = null;
-        state.activeRequestId = '';
+    function abortActiveChatRequest(runtime = currentConversationRuntime()) {
+        const controller = runtime.activeAbortController;
+        runtime.activeAbortController = null;
+        runtime.activeRequestId = '';
+        if (isCurrentConversationRuntime(runtime)) {
+            state.activeAbortController = null;
+            state.activeRequestId = '';
+        }
         try {
             controller?.abort?.();
         } catch (err) {}
     }
 
-    function replacePendingAssistant(content) {
-        const pendingIndex = state.messages.findIndex((item) => item.pending);
+    function replacePendingAssistant(content, messages = state.messages) {
+        const pendingIndex = messages.findIndex((item) => item.pending);
         if (pendingIndex < 0) return false;
         const assistant = { role: 'assistant', content };
-        state.messages[pendingIndex] = assistant;
+        messages[pendingIndex] = assistant;
         return true;
     }
 
-    function abortCreativeDirectorRequest(notifyBackend = false) {
-        const controller = state.creativeDirectorAbortController;
-        const requestId = state.creativeDirectorRequestId;
-        state.creativeDirectorAbortController = null;
-        state.creativeDirectorRequestId = '';
-        state.creativeDirectorBusy = false;
+    function abortCreativeDirectorRequest(notifyBackend = false, runtime = currentConversationRuntime()) {
+        const controller = runtime.creativeDirectorAbortController;
+        const requestId = runtime.creativeDirectorRequestId;
+        runtime.creativeDirectorAbortController = null;
+        runtime.creativeDirectorRequestId = '';
+        runtime.creativeDirectorBusy = false;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.creativeDirectorAbortController = null;
+            state.creativeDirectorRequestId = '';
+            state.creativeDirectorBusy = false;
+        }
         try {
             controller?.abort?.();
         } catch (err) {}
         if (notifyBackend && requestId) {
-            notifyBackendChatCancel(state.conversationId, requestId).catch(() => {});
+            notifyBackendChatCancel(runtime.conversationId, requestId).catch(() => {});
         }
     }
 
@@ -2712,14 +3189,16 @@
     }
 
     async function stopCurrentChatReply(options = {}) {
-        if (!state.busy && !state.activeAbortController && !state.activeRequestId) return false;
-        const conversationId = state.conversationId;
-        const requestId = state.activeRequestId;
-        state.requestToken += 1;
-        state.busy = false;
-        abortActiveChatRequest();
+        const runtime = syncCurrentRuntimeFromState();
+        if (!runtime.busy && !runtime.activeAbortController && !runtime.activeRequestId) return false;
+        const conversationId = runtime.conversationId;
+        const requestId = runtime.activeRequestId;
+        runtime.requestToken += 1;
+        runtime.busy = false;
+        abortActiveChatRequest(runtime);
+        applyConversationRuntime(runtime);
         if (!options?.silent) {
-            replacePendingAssistant(t('Stopped.', '已停止。'));
+            replacePendingAssistant(t('Stopped.', '已停止。'), runtime.messages);
             setStatus(t('Reply stopped.', '已停止当前回复。'));
         }
         syncBusyControls(document.getElementById('describe_vlm_chat_modal'));
@@ -2761,16 +3240,20 @@
         return template.replace('{count}', String(count)).replace('{size}', size);
     }
 
-    function consumeSentComposerState(input, inputSnapshot, sentPendingImages) {
-        if (input && String(input.value || '') === inputSnapshot) input.value = '';
+    function consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime = currentConversationRuntime()) {
+        // Current UI mirror: state.pendingImages.filter
+        if (isCurrentConversationRuntime(runtime) && input && String(input.value || '') === inputSnapshot) input.value = '';
         const sentObjects = new Set(Array.isArray(sentPendingImages) ? sentPendingImages : []);
         const sentIds = new Set(Array.from(sentObjects).map(image => String(image?.id || '')).filter(Boolean));
-        state.pendingImages = state.pendingImages.filter((image) => {
+        runtime.pendingImages = (Array.isArray(runtime.pendingImages) ? runtime.pendingImages : []).filter((image) => {
             if (sentObjects.has(image)) return false;
             const id = String(image?.id || '');
             return !id || !sentIds.has(id);
         });
-        renderPendingImages();
+        if (isCurrentConversationRuntime(runtime)) {
+            state.pendingImages = runtime.pendingImages;
+            renderPendingImages();
+        }
     }
 
     function imageSummary(image) {
@@ -3896,7 +4379,7 @@
         };
     }
 
-    function prepareAssistantActions(actions, mode, inputMediaAssets = []) {
+    function prepareAssistantActions(actions, mode, inputMediaAssets = [], runtime = null) {
         const mediaByRef = new Map((Array.isArray(inputMediaAssets) ? inputMediaAssets : []).map((item) => [String(item?.ref || ''), item]));
         const prepared = [];
         (Array.isArray(actions) ? actions : []).forEach((raw) => {
@@ -3908,7 +4391,7 @@
                         style: action.style,
                         preset: action.preset,
                         parameter_profile: action.parameter_profile
-                    }, 'explicit_user_message');
+                    }, 'explicit_user_message', runtime);
                 }
                 return;
             }
@@ -4168,9 +4651,11 @@
         });
     }
 
-    function latestConversationImageCandidate() {
-        for (let messageIndex = state.messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-            const message = state.messages[messageIndex];
+    // Legacy no-argument contract: function latestConversationImageCandidate()
+    function latestConversationImageCandidate(messages = state.messages) {
+        const source = Array.isArray(messages) ? messages : [];
+        for (let messageIndex = source.length - 1; messageIndex >= 0; messageIndex -= 1) {
+            const message = source[messageIndex];
             const payloads = Array.isArray(message?._image_payloads) ? message._image_payloads : [];
             for (let index = payloads.length - 1; index >= 0; index -= 1) {
                 const payload = payloads[index];
@@ -4198,8 +4683,8 @@
         return null;
     }
 
-    async function previousConversationImagePayload() {
-        const candidate = latestConversationImageCandidate();
+    async function previousConversationImagePayload(messages = state.messages) {
+        const candidate = latestConversationImageCandidate(messages);
         if (!candidate) return null;
         if (candidate.payload) return candidate.payload;
         if (candidate.asset) return creativeResultImagePayload(candidate.asset, candidate.index);
@@ -4447,11 +4932,24 @@
 </div>`;
     }
 
-    function creativeActionFromRef(ref) {
+    function creativeActionFromRef(ref, messages = state.messages) {
         const [messageIndex, actionIndex] = String(ref || '').split(':').map((part) => Number(part));
-        const message = state.messages[messageIndex];
+        const source = Array.isArray(messages) ? messages : [];
+        const message = source[messageIndex];
         const action = message?.actions?.[actionIndex];
         return ['generate_image', 'offer_image'].includes(action?.type) ? { message, action, messageIndex, actionIndex } : null;
+    }
+
+    function creativeActionFromRuntimeIdentity(runtime, messageId, toolCallId) {
+        const messages = Array.isArray(runtime?.messages) ? runtime.messages : [];
+        const message = messages.find((item) => String(item?.id || '') === String(messageId || ''));
+        if (!message) return null;
+        const actions = Array.isArray(message.actions) ? message.actions : [];
+        const actionIndex = actions.findIndex((item) => String(item?.tool_call_id || '') === String(toolCallId || ''));
+        const action = actionIndex >= 0 ? actions[actionIndex] : null;
+        return ['generate_image', 'offer_image'].includes(action?.type)
+            ? { message, action, messageIndex: messages.indexOf(message), actionIndex }
+            : null;
     }
 
     function syncCreativeActionFromDom(ref) {
@@ -4621,14 +5119,17 @@
         return bindCreativeMediaInputsToAction(ref, inputs);
     }
 
-    function persistCreativeAction(render = true, renderOptions = {}) {
-        state.persistenceDirty = true;
-        saveConversationSnapshot();
-        if (render) renderMessages(renderOptions);
+    function persistCreativeAction(render = true, renderOptions = {}, runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) state.persistenceDirty = true;
+        saveConversationSnapshot(target);
+        if (render && isCurrentConversationRuntime(target)) renderMessages(renderOptions);
     }
 
-    function applyCreativeRunResponse(ref, response) {
-        const found = creativeActionFromRef(ref);
+    function applyCreativeRunResponse(ref, response, runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        const found = creativeActionFromRef(ref, target.messages);
         if (!found) return null;
         const generation = creativeGenerationForAction(found.action);
         const currentState = String(generation.state || '').toLowerCase();
@@ -4657,11 +5158,11 @@
         if (CREATIVE_TERMINAL_STATES.has(responseState)) {
             generation.finished_at = String(response?.finished_at || new Date().toISOString());
         }
-        persistCreativeAction(true, CREATIVE_TERMINAL_STATES.has(responseState) ? {} : { anchorGenerationRef: ref });
+        persistCreativeAction(true, CREATIVE_TERMINAL_STATES.has(responseState) ? {} : { anchorGenerationRef: ref }, target);
         if (!wasFinished && responseState === 'finished' && generation.assets.length) {
             const generatedVideo = CREATIVE_VIDEO_TASKS.has(String(found.action?.task || '').trim().toLowerCase())
                 || generation.assets.some((asset) => mediaKind(asset) === 'video');
-            setStatus(state.autoAttachPreviousImage
+            setConversationStatus(target, target.autoAttachPreviousImage
                 ? (generatedVideo
                     ? localText('Video generated. It is available in this chat window.', '视频已生成，可直接在当前聊天窗口查看。')
                     : localText(
@@ -4678,84 +5179,92 @@
         return generation;
     }
 
-    function scheduleCreativeGenerationPoll(ref, runId, delay = CREATIVE_POLL_INTERVAL_MS) {
+    function scheduleCreativeGenerationPoll(ref, runId, delay = CREATIVE_POLL_INTERVAL_MS, runtime = null) {
+        const target = runtime || currentConversationRuntime();
         const id = String(runId || '');
-        if (!id || state.creativeGenerationPolls.has(id)) return;
+        const initial = creativeActionFromRef(ref, target.messages);
+        if (!id || !initial || target.creativeGenerationPolls.has(id)) return;
+        const messageId = String(initial.message?.id || '');
+        const toolCallId = String(initial.action?.tool_call_id || '');
         const timer = window.setTimeout(async () => {
-            state.creativeGenerationPolls.delete(id);
-            const found = creativeActionFromRef(ref);
+            target.creativeGenerationPolls.delete(id);
+            const found = creativeActionFromRuntimeIdentity(target, messageId, toolCallId)
+                || creativeActionFromRef(ref, target.messages);
             if (!found || String(found.action.generation?.run_id || '') !== id) return;
             const api = creativeCanvasApi();
             if (!api || typeof api.pollRun !== 'function') {
                 found.action.generation.state = 'failed';
                 found.action.generation.error = localText('Canvas generation API is unavailable.', 'Canvas 生图接口不可用。');
-                persistCreativeAction(true);
+                persistCreativeAction(true, {}, target);
                 return;
             }
             const response = await api.pollRun(id, {
                 after_preview_serial: Number(found.action.generation?.preview_serial) || 0,
                 user_context: creativeUserContext()
             });
-            const live = creativeActionFromRef(ref);
+            const live = creativeActionFromRuntimeIdentity(target, messageId, toolCallId)
+                || creativeActionFromRef(ref, target.messages);
             if (!live || live.action !== found.action || String(live.action.generation?.run_id || '') !== id) return;
             if (!response?.ok) {
                 const failures = (Number(found.action.generation?._poll_failures) || 0) + 1;
                 found.action.generation._poll_failures = failures;
                 if (failures < 3 && String(response?.error || '') !== 'run not found') {
-                    scheduleCreativeGenerationPoll(ref, id, CREATIVE_POLL_INTERVAL_MS * failures);
+                    scheduleCreativeGenerationPoll(ref, id, CREATIVE_POLL_INTERVAL_MS * failures, target);
                     return;
                 }
                 found.action.generation.state = 'failed';
                 found.action.generation.error = creativeResponseError(response);
                 found.action.generation.message = String(response?.details || response?.error || '');
-                persistCreativeAction(true);
+                persistCreativeAction(true, {}, target);
                 return;
             }
             found.action.generation._poll_failures = 0;
-            const generation = applyCreativeRunResponse(ref, response);
+            const generation = applyCreativeRunResponse(ref, response, target);
             if (generation && !CREATIVE_TERMINAL_STATES.has(String(generation.state || '').toLowerCase())) {
-                scheduleCreativeGenerationPoll(ref, id);
+                scheduleCreativeGenerationPoll(ref, id, CREATIVE_POLL_INTERVAL_MS, target);
             }
         }, Math.max(0, Number(delay) || 0));
-        state.creativeGenerationPolls.set(id, timer);
+        target.creativeGenerationPolls.set(id, timer);
     }
 
-    function resumeCreativeGenerationPolls() {
-        state.messages.forEach((message, messageIndex) => {
+    function resumeCreativeGenerationPolls(runtime = currentConversationRuntime()) {
+        runtime.messages.forEach((message, messageIndex) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action, actionIndex) => {
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generation = creativeGenerationForAction(action);
                 if (generation.run_id && CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) {
-                    scheduleCreativeGenerationPoll(`${messageIndex}:${actionIndex}`, generation.run_id, 100);
+                    scheduleCreativeGenerationPoll(`${messageIndex}:${actionIndex}`, generation.run_id, 100, runtime);
                 }
             });
         });
     }
 
-    function autoStartCreativeActionsForMessage(messageId) {
-        if (!state.creativePreference.auto_generate) return;
-        const messageIndex = state.messages.findIndex((message) => String(message?.id || '') === String(messageId || ''));
+    function autoStartCreativeActionsForMessage(messageId, runtime = currentConversationRuntime()) {
+        if (!runtime.creativePreference.auto_generate) return;
+        const messageIndex = runtime.messages.findIndex((message) => String(message?.id || '') === String(messageId || ''));
         if (messageIndex < 0) return;
-        const actions = Array.isArray(state.messages[messageIndex]?.actions) ? state.messages[messageIndex].actions : [];
+        const actions = Array.isArray(runtime.messages[messageIndex]?.actions) ? runtime.messages[messageIndex].actions : [];
         actions.forEach((action, actionIndex) => {
             if (action?.type !== 'generate_image') return;
             const generation = creativeGenerationForAction(action);
             if (String(generation.state || 'awaiting_confirmation').toLowerCase() !== 'awaiting_confirmation') return;
-            startCreativeGeneration(`${messageIndex}:${actionIndex}`);
+            startCreativeGeneration(`${messageIndex}:${actionIndex}`, runtime);
         });
     }
 
-    function stopCreativePolls() {
-        state.creativeGenerationPolls.forEach((timer) => window.clearTimeout(timer));
-        state.creativeGenerationPolls.clear();
+    function stopCreativePolls(runtime = currentConversationRuntime()) {
+        runtime.creativeGenerationPolls.forEach((timer) => window.clearTimeout(timer));
+        runtime.creativeGenerationPolls.clear();
     }
 
-    async function startCreativeGeneration(ref) {
-        const found = syncCreativeActionFromDom(ref);
+    async function startCreativeGeneration(ref, runtime = currentConversationRuntime()) {
+        const found = isCurrentConversationRuntime(runtime)
+            ? syncCreativeActionFromDom(ref)
+            : creativeActionFromRef(ref, runtime.messages);
         if (!found) return;
         const action = found.action;
         if (!String(action.prompt || '').trim()) {
-            setStatus(localText('Enter a generation prompt first.', '请先填写生图提示词。'), true);
+            setConversationStatus(runtime, localText('Enter a generation prompt first.', '请先填写生图提示词。'), true);
             return;
         }
         const previous = creativeGenerationForAction(action);
@@ -4770,9 +5279,9 @@
             assets: previous.state === 'finished' ? previous.assets || [] : [],
             _attempt_token: attemptToken
         };
-        persistCreativeAction(true);
+        persistCreativeAction(true, {}, runtime);
         const catalog = await ensureCreativePresetCatalog({ force: true });
-        const current = creativeActionFromRef(ref);
+        const current = creativeActionFromRef(ref, runtime.messages);
         if (!current || current.action.generation?._attempt_token !== attemptToken) return;
         const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
         const requestedTask = creativeActionTask(action, inputCount);
@@ -4783,7 +5292,7 @@
                 'The selected Preset was renamed or deleted. Choose another Preset.',
                 '所选 Preset 已改名或删除，请重新选择。'
             );
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         if (!entry) {
@@ -4795,7 +5304,7 @@
         if (!entry) {
             action.generation.state = 'failed';
             action.generation.error = localText('No compatible media Preset is available.', '没有可用的媒体生成 Preset。');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         if (!creativePresetHasTaskRoute(entry, requestedTask, inputCount)) {
@@ -4809,7 +5318,7 @@
                     'This Preset does not support the requested task.',
                     '这个 Preset 不支持当前任务。'
                 );
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         action.preset = entry.name;
@@ -4822,7 +5331,7 @@
             action.generation.error = executionPlan.status === 'parameter_profile_missing'
                 ? localText('The selected private parameter profile is no longer available.', '所选私人参数预设已不存在。')
                 : localText('The selected private parameter profile does not match this Preset method.', '所选私人参数预设与当前 Preset 处理方式不兼容。');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         if (['needs_mask', 'needs_interaction'].includes(executionPlan.status)) {
@@ -4830,7 +5339,7 @@
             action.generation.error = executionPlan.status === 'needs_mask'
                 ? localText('This route requires a manually painted mask. Open the Preset workspace to prepare the mask.', '这条路线需要手动绘制遮罩，请在 Preset 工作区完成遮罩后运行。')
                 : localText('This route requires manual setup in the Preset workspace.', '这条路线需要在 Preset 工作区手动设置。');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
@@ -4840,7 +5349,7 @@
             action.generation.error = imageSlots.length
                 ? localText('The source image is unavailable. Reference the image and send the edit request again.', '编辑源图不可用，请重新引用图片并发送编辑需求。')
                 : localText('This Preset does not accept image input. Choose an image-editing Preset.', '这个 Preset 不接收图片，请选择图片编辑 Preset。');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         if (mediaInputs.length < minImages) {
@@ -4849,7 +5358,7 @@
                 `This Preset requires at least ${minImages} input images.`,
                 `这个 Preset 至少需要 ${minImages} 张输入图片。`
             );
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         const assetSources = {};
@@ -4876,7 +5385,7 @@
         if (!api || !presetNode || typeof api.presetModelStatus !== 'function' || typeof api.runNode !== 'function') {
             action.generation.state = 'failed';
             action.generation.error = localText('Canvas generation API is unavailable.', 'Canvas 生图接口不可用。');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         presetNode.upload_slot_sources = Object.assign({}, presetNode.upload_slot_sources || {}, assetSources);
@@ -4889,20 +5398,20 @@
             preset_node: presetNode,
             user_context: creativeUserContext()
         });
-        const liveAfterModelCheck = creativeActionFromRef(ref);
+        const liveAfterModelCheck = creativeActionFromRef(ref, runtime.messages);
         if (!liveAfterModelCheck || liveAfterModelCheck.action !== action || action.generation?._attempt_token !== attemptToken) return;
         if (!modelStatus?.ok) {
             action.generation.state = 'failed';
             action.generation.error = creativeResponseError(modelStatus);
             action.generation.message = String(modelStatus?.message || '');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         if (!modelStatus.ready) {
             action.generation.state = 'models_missing';
             action.generation.missing_count = Math.max(0, Number(modelStatus.missing_count) || 0);
             action.generation.message = String(modelStatus.message || '');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
         const runId = reusableRunId || uid('describe_vlm_chat_run');
@@ -4910,7 +5419,7 @@
         action.generation.run_id = runId;
         action.generation.started_at = new Date().toISOString();
         action.generation.message = '';
-        persistCreativeAction(true);
+        persistCreativeAction(true, {}, runtime);
         const response = await api.runNode({
             project_id: 'describe_vlm_chat',
             run_id: runId,
@@ -4924,7 +5433,7 @@
             result_asset_scope: 'gallery',
             client_context: {
                 surface: 'studio_vlm_chat',
-                conversation_id: ensureConversationId(),
+                conversation_id: runtime.conversationId,
                 message_id: String(found.message.id || ''),
                 tool_call_id: action.tool_call_id,
                 source_message_id: String(action.source_message_id || found.message.id || ''),
@@ -4932,7 +5441,7 @@
                 offer_reason: String(action.offer_reason || '')
             }
         });
-        const liveAfterSubmit = creativeActionFromRef(ref);
+        const liveAfterSubmit = creativeActionFromRef(ref, runtime.messages);
         if (!liveAfterSubmit || liveAfterSubmit.action !== action) {
             if (response?.ok) api.controlRun?.(runId, 'stop', { user_context: creativeUserContext() }).catch(() => {});
             return;
@@ -4943,35 +5452,39 @@
             action.generation.submission_uncertain = !String(response?.details || '').trim();
             action.generation.error = creativeResponseError(response);
             action.generation.message = String(response?.details || response?.error || '');
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
-        const generation = applyCreativeRunResponse(ref, response);
+        // Legacy current-conversation form: const generation = applyCreativeRunResponse(ref, response);
+        const generation = applyCreativeRunResponse(ref, response, runtime);
         if (generation && !CREATIVE_TERMINAL_STATES.has(String(generation.state || '').toLowerCase())) {
-            scheduleCreativeGenerationPoll(ref, runId, 250);
+            scheduleCreativeGenerationPoll(ref, runId, 250, runtime);
         }
     }
 
     async function stopCreativeGeneration(ref) {
-        const found = creativeActionFromRef(ref);
+        const runtime = syncCurrentRuntimeFromState();
+        const found = creativeActionFromRef(ref, runtime.messages);
         const runId = String(found?.action?.generation?.run_id || '');
         if (!found || !runId) return;
         found.action.generation.state = 'cancelling';
-        persistCreativeAction(true);
+        persistCreativeAction(true, {}, runtime);
         const response = await creativeCanvasApi()?.controlRun?.(runId, 'stop', {
             user_context: creativeUserContext()
         });
-        const live = creativeActionFromRef(ref);
+        const live = creativeActionFromRef(ref, runtime.messages);
         if (!live || live.action !== found.action || String(live.action.generation?.run_id || '') !== runId) return;
         if (!response?.ok) {
             found.action.generation.state = 'failed';
             found.action.generation.error = creativeResponseError(response);
-            persistCreativeAction(true);
+            persistCreativeAction(true, {}, runtime);
             return;
         }
-        const generation = applyCreativeRunResponse(ref, response);
+        // Legacy current-conversation form: const generation = applyCreativeRunResponse(ref, response);
+        const generation = applyCreativeRunResponse(ref, response, runtime);
         if (generation && !CREATIVE_TERMINAL_STATES.has(String(generation.state || '').toLowerCase())) {
-            scheduleCreativeGenerationPoll(ref, runId, 200);
+            // Legacy current-conversation form: scheduleCreativeGenerationPoll(ref, runId, 200);
+            scheduleCreativeGenerationPoll(ref, runId, 200, runtime);
         }
     }
 
@@ -5097,11 +5610,11 @@
         return content;
     }
 
-    function buildRollingHistory(limit = MAX_HISTORY_TURNS, budget = HISTORY_BUDGET) {
+    function buildRollingHistory(limit = MAX_HISTORY_TURNS, budget = HISTORY_BUDGET, messages = state.messages) {
         const selected = [];
         let used = 0;
         let omitted = 0;
-        const source = state.messages.filter((item) => !item.pending);
+        const source = (Array.isArray(messages) ? messages : []).filter((item) => !item.pending);
         for (let i = source.length - 1; i >= 0; i -= 1) {
             const message = source[i];
             let content = historyTextForMessage(message);
@@ -5411,61 +5924,78 @@
     }
 
     async function maybeRequestCreativeOffer(options = {}) {
+        const runtime = options.runtime || currentConversationRuntime();
         const sourceMessageId = String(options.source_message_id || '');
-        const sourceMessage = state.messages.find((item) => item?.id === sourceMessageId);
-        if (!sourceMessage || normalizeChatMode(state.chatMode) !== 'creative') return;
-        if (!creativePreferenceAllowsProactiveOffer() || !creativeOfferCooldownAllows() || messageHasCreativeImageAction(sourceMessage)) return;
-        abortCreativeDirectorRequest(false);
+        const sourceMessage = runtime.messages.find((item) => item?.id === sourceMessageId);
+        if (!sourceMessage || normalizeChatMode(runtime.chatMode) !== 'creative') return;
+        const preference = normalizeCreativePreference(runtime.creativePreference);
+        const initiative = normalizeCreativeInitiative(runtime.creativeInitiative);
+        if (!(preference.prompted && Boolean(preference.style || preference.preset))
+            || initiative.mode !== 'proactive'
+            || (initiative.last_offer_turn && initiative.turn_index - initiative.last_offer_turn < 3)
+            || messageHasCreativeImageAction(sourceMessage)) return;
+        abortCreativeDirectorRequest(false, runtime);
         const requestId = uid('describe_vlm_chat_director');
         const controller = new AbortController();
-        state.creativeDirectorBusy = true;
-        state.creativeDirectorRequestId = requestId;
-        state.creativeDirectorAbortController = controller;
-        setStatus(localText('Visual director is reviewing this scene...', '视觉导演正在判断这一幕...'));
-        const history = buildRollingHistory(14, 6500);
-        const fullHistory = buildRollingHistory(20, 8000);
+        runtime.creativeDirectorBusy = true;
+        runtime.creativeDirectorRequestId = requestId;
+        runtime.creativeDirectorAbortController = controller;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.creativeDirectorBusy = true;
+            state.creativeDirectorRequestId = requestId;
+            state.creativeDirectorAbortController = controller;
+        }
+        setConversationStatus(runtime, localText('Visual director is reviewing this scene...', '视觉导演正在判断这一幕...'));
+        const history = buildRollingHistory(14, 6500, runtime.messages);
+        const fullHistory = buildRollingHistory(20, 8000, runtime.messages);
         const response = await postJson('/describe-image/vlm-chat-run', {
             request_kind: 'creative_offer',
             message: String(options.user_message || ''),
             assistant_reply: String(sourceMessage.content || ''),
             source_message_id: sourceMessageId,
-            conversation_id: ensureConversationId(),
+            conversation_id: runtime.conversationId,
             request_id: requestId,
             history: history.messages,
             history_full: fullHistory.messages,
             version: options.version,
             custom_api: options.custom_api,
-            unload_after_chat: !!state.unloadAfterChat,
-            creative_preferences: normalizeCreativePreference(state.creativePreference),
-            last_scene_key: String(state.creativeInitiative.last_scene_key || ''),
+            unload_after_chat: !!runtime.unloadAfterChat,
+            creative_preferences: preference,
+            last_scene_key: String(initiative.last_scene_key || ''),
             lang: state.__lang
         }, { signal: controller.signal });
-        if (state.creativeDirectorRequestId !== requestId) return;
-        state.creativeDirectorBusy = false;
-        state.creativeDirectorRequestId = '';
-        state.creativeDirectorAbortController = null;
+        if (runtime.creativeDirectorRequestId !== requestId) return;
+        runtime.creativeDirectorBusy = false;
+        runtime.creativeDirectorRequestId = '';
+        runtime.creativeDirectorAbortController = null;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.creativeDirectorBusy = false;
+            state.creativeDirectorRequestId = '';
+            state.creativeDirectorAbortController = null;
+        }
         if (response?.aborted) return;
         if (!response?.ok) {
-            setStatus(localText('Visual director is unavailable; the main reply is complete.', '视觉导演暂不可用，主回复已正常完成。'), true);
+            setConversationStatus(runtime, localText('Visual director is unavailable; the main reply is complete.', '视觉导演暂不可用，主回复已正常完成。'), true);
             return;
         }
         const offer = response.creative_offer && typeof response.creative_offer === 'object'
             ? response.creative_offer
             : null;
         if (!offer?.offer) {
-            setStatus('');
+            setConversationStatus(runtime, '');
             return;
         }
-        const initiative = normalizeCreativeInitiative(state.creativeInitiative);
+        const liveInitiative = normalizeCreativeInitiative(runtime.creativeInitiative);
         const sceneKey = String(offer.scene_key || '').trim().toLowerCase().slice(0, 160);
-        if (!sceneKey || sceneKey === initiative.last_scene_key || initiative.mode !== 'proactive') {
-            setStatus('');
+        // Current UI mirror: sceneKey === initiative.last_scene_key
+        if (!sceneKey || sceneKey === liveInitiative.last_scene_key || liveInitiative.mode !== 'proactive') {
+            setConversationStatus(runtime, '');
             return;
         }
-        const liveMessage = state.messages.find((item) => item?.id === sourceMessageId);
+        const liveMessage = runtime.messages.find((item) => item?.id === sourceMessageId);
         if (!liveMessage || messageHasCreativeImageAction(liveMessage)) return;
         if (!Array.isArray(liveMessage.actions)) liveMessage.actions = [];
-        const preferredEntry = creativePresetEntry(state.creativePreference.preset);
+        const preferredEntry = creativePresetEntry(preference.preset);
         const selectedEntry = creativePresetHasTaskRoute(preferredEntry, 'text_to_image', 0)
             ? preferredEntry
             : creativeCompatiblePresetEntry('text_to_image', 0);
@@ -5477,7 +6007,7 @@
             preset: String(selectedEntry?.name || CREATIVE_DEFAULT_PRESET),
             preset_source: preferredEntry === selectedEntry ? 'session_preference' : 'agent_auto',
             parameter_profile: preferredEntry === selectedEntry
-                ? String(creativeParameterProfileEntry(state.creativePreference.parameter_profile, selectedEntry?.name)?.name || '')
+                ? String(creativeParameterProfileEntry(preference.parameter_profile, selectedEntry?.name)?.name || '')
                 : '',
             aspect_ratio: String(offer.aspect_ratio || 'auto'),
             image_number: Math.max(1, Math.min(4, Math.round(Number(offer.image_number) || 1))),
@@ -5495,30 +6025,32 @@
             preferredEntry === selectedEntry ? 'session_preference' : 'automatic'
         );
         liveMessage.actions.push(action);
-        state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, initiative, {
-            last_offer_turn: initiative.turn_index,
+        runtime.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, liveInitiative, {
+            last_offer_turn: liveInitiative.turn_index,
             last_scene_key: sceneKey
         }));
-        state.persistenceDirty = true;
-        saveConversationSnapshot();
-        renderMessages();
-        setStatus(localText('A scene image was suggested for review.', '已提出一张场景画面，等待你确认。'));
+        persistCreativeAction(true, {}, runtime);
+        setConversationStatus(runtime, localText('A scene image was suggested for review.', '已提出一张场景画面，等待你确认。'));
     }
 
     async function sendMessage() {
-        if (state.busy) return;
-        abortCreativeDirectorRequest(true);
-        const requestToken = state.requestToken + 1;
+        const runtime = syncCurrentRuntimeFromState();
+        if (runtime.busy) return;
+        abortCreativeDirectorRequest(true, runtime);
+        const requestToken = runtime.requestToken + 1;
+        runtime.requestToken = requestToken;
         state.requestToken = requestToken;
+        // Legacy current-conversation guard: requestToken !== state.requestToken
+        const messages = runtime.messages;
         const modal = ensureModal();
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
-        const selectedMode = normalizeChatMode(modal.querySelector('[data-describe-vlm-chat-mode]')?.value || state.chatMode);
+        const selectedMode = normalizeChatMode(modal.querySelector('[data-describe-vlm-chat-mode]')?.value || runtime.chatMode);
         const systemPromptField = modal.querySelector('[data-describe-vlm-chat-system]');
         const templatePicker = modal.querySelector('[data-describe-vlm-chat-template]');
         const userTemplateDialog = userSystemPromptTemplateDialog(modal);
         const userDocumentField = userTemplateDialog?.querySelector('[data-describe-vlm-chat-user-template-content]');
-        const customSystemPrompt = String(systemPromptField ? systemPromptField.value : (state.customSystemPrompt || ''));
-        const selectedPickerValue = String(templatePicker?.value || state.systemPromptPickerValue || '').trim();
+        const customSystemPrompt = String(systemPromptField ? systemPromptField.value : (runtime.customSystemPrompt || ''));
+        const selectedPickerValue = String(templatePicker?.value || runtime.systemPromptPickerValue || '').trim();
         const selectedUserPickerId = selectedPickerValue.startsWith('user:')
             ? selectedPickerValue.slice(5).trim()
             : '';
@@ -5527,77 +6059,85 @@
             ? ''
             : selectedPickerValue === NO_SYSTEM_PROMPT_PICKER_VALUE
             ? ''
-            : selectedPickerValue || state.systemPromptTemplateId || '';
+            : selectedPickerValue || runtime.systemPromptTemplateId || '';
         const selectedUserTemplateId = usingUserTemplate ? selectedUserPickerId : '';
         const selectedBuiltInTemplate = state.systemPromptTemplates.find(item => item.id === selectedTemplateId);
         const selectedUserTemplate = state.userSystemPromptTemplates.find(item => item.id === selectedUserTemplateId);
         const baseSystemPromptContent = usingUserTemplate
             ? ''
-            : String(selectedBuiltInTemplate?.content || state.baseSystemPromptContent || '').trim();
+            : String(selectedBuiltInTemplate?.content || runtime.baseSystemPromptContent || '').trim();
         const userSystemPromptContent = usingUserTemplate
             ? String(userDocumentField
                 ? userDocumentField.value
-                : (state.userSystemPromptContent || selectedUserTemplate?.content || '')).trim()
+                : (runtime.userSystemPromptContent || selectedUserTemplate?.content || '')).trim()
             : '';
         const mergedSystemPrompt = composeSystemPromptDocuments(baseSystemPromptContent, userSystemPromptContent);
-        state.chatMode = selectedMode;
-        state.customSystemPrompt = customSystemPrompt;
-        state.systemPromptPickerValue = selectedPickerValue || NO_SYSTEM_PROMPT_PICKER_VALUE;
-        state.systemPromptTemplateId = selectedTemplateId;
-        state.baseSystemPromptContent = baseSystemPromptContent;
-        state.userSystemPromptTemplateId = selectedUserTemplateId;
-        state.userSystemPromptTemplateName = usingUserTemplate
+        runtime.chatMode = selectedMode;
+        runtime.customSystemPrompt = customSystemPrompt;
+        runtime.systemPromptPickerValue = selectedPickerValue || NO_SYSTEM_PROMPT_PICKER_VALUE;
+        runtime.systemPromptTemplateId = selectedTemplateId;
+        runtime.baseSystemPromptContent = baseSystemPromptContent;
+        runtime.userSystemPromptTemplateId = selectedUserTemplateId;
+        runtime.userSystemPromptTemplateName = usingUserTemplate
             ? String(userTemplateDialog?.querySelector('[data-describe-vlm-chat-user-template-name]')?.value
-                || state.userSystemPromptTemplateName
+                || runtime.userSystemPromptTemplateName
                 || selectedUserTemplate?.name
                 || '').trim()
             : '';
-        state.userSystemPromptContent = userSystemPromptContent;
-        state.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
+        runtime.userSystemPromptContent = userSystemPromptContent;
+        runtime.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
+        applyConversationRuntime(runtime);
         saveChatSettings();
         const inputSnapshot = String(input?.value || '');
         const typed = inputSnapshot.trim();
-        if (state.describeMediaReferencePromise?.promise) {
-            await state.describeMediaReferencePromise.promise;
-            if (requestToken !== state.requestToken) return;
+        if (runtime.describeMediaReferencePromise?.promise) {
+            await runtime.describeMediaReferencePromise.promise;
+            if (requestToken !== runtime.requestToken) return;
         }
-        const pendingImages = state.pendingImages.slice();
+        const pendingImages = runtime.pendingImages.slice();
         if (!typed && !pendingImages.length) return;
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
         const supportsImageInput = !customApi || customApi.supports_images !== false;
-        const requestedPreviousImage = !pendingImages.length && state.autoAttachPreviousImage && Boolean(latestConversationImageCandidate());
+        const requestedPreviousImage = !pendingImages.length && runtime.autoAttachPreviousImage && Boolean(latestConversationImageCandidate(messages));
         const requestedImagesButUnsupported = !supportsImageInput && Boolean(pendingImages.length || requestedPreviousImage);
         if (!typed && pendingImages.length && !supportsImageInput) {
-            setStatus(t(
+            setConversationStatus(runtime, t(
                 'The selected Custom API has image input disabled.',
                 '当前 Custom API 未启用图像输入。'
             ), true);
             return;
         }
-        updateAnswerModelIndicator(modal);
+        if (isCurrentConversationRuntime(runtime)) updateAnswerModelIndicator(modal);
         const modelReady = await ensureSelectedVlmModelReady(version);
-        if (requestToken !== state.requestToken) return;
+        if (requestToken !== runtime.requestToken) return;
         if (!modelReady) return;
         if (selectedMode === 'creative') {
             await ensureCreativePresetCatalog();
-            if (requestToken !== state.requestToken) return;
-            if (state.creativePreferenceExpanded) {
-                state.creativePreferenceExpanded = false;
-                renderCreativePreferenceMount(modal);
+            if (requestToken !== runtime.requestToken) return;
+            if (runtime.creativePreferenceExpanded) {
+                runtime.creativePreferenceExpanded = false;
+                // Current UI mirror: if (state.creativePreferenceExpanded)
+                if (isCurrentConversationRuntime(runtime)) {
+                    state.creativePreferenceExpanded = false;
+                    renderCreativePreferenceMount(modal);
+                }
             }
         }
 
-        state.busy = true;
-        syncBusyControls(modal);
-        setStatus('');
+        runtime.busy = true;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.busy = true;
+            syncBusyControls(modal);
+            setStatus('');
+        }
 
         const message = typed || defaultMessageForMode(selectedMode, pendingImages);
         const includeCurrentPrompt = shouldSendCurrentPromptToVlm(selectedMode, message);
-        const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET);
-        const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET);
+        const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET, messages);
+        const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET, messages);
         if (history.omitted > 0) {
-            setStatus(t('Older messages were automatically omitted from context.', '已自动省略较早消息以保护上下文。'));
+            setConversationStatus(runtime, t('Older messages were automatically omitted from context.', '已自动省略较早消息以保护上下文。'));
         }
 
         const images = [];
@@ -5610,22 +6150,33 @@
                     sentPendingImages.push(image);
                 }
             }
-            if (!pendingImages.length && state.autoAttachPreviousImage) {
+            if (!pendingImages.length && state.autoAttachPreviousImage && isCurrentConversationRuntime(runtime)) {
                 try {
                     const previousImage = await previousConversationImagePayload();
                     if (previousImage) images.push(previousImage);
                 } catch (err) {
-                    setStatus(t('Previous chat image could not be read; sending text only.', '无法读取上一张对话图片，本次仅发送文字。'), true);
+                    setConversationStatus(runtime, t('Previous chat image could not be read; sending text only.', '无法读取上一张对话图片，本次仅发送文字。'), true);
+                }
+            } else if (!pendingImages.length && runtime.autoAttachPreviousImage) {
+                try {
+                    const previousImage = await previousConversationImagePayload(messages);
+                    if (previousImage) images.push(previousImage);
+                } catch (err) {
+                    setConversationStatus(runtime, t('Previous chat image could not be read; sending text only.', '无法读取上一张对话图片，本次仅发送文字。'), true);
                 }
             }
         }
-        if (requestToken !== state.requestToken) return;
-        consumeSentComposerState(input, inputSnapshot, sentPendingImages);
+        if (requestToken !== runtime.requestToken) return;
+        if (isCurrentConversationRuntime(runtime)) {
+            consumeSentComposerState(input, inputSnapshot, sentPendingImages);
+        } else {
+            consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime);
+        }
         const estimatedUploadBytes = totalImageUploadBytes(images);
         if (images.length) {
-            setStatus(imageUploadStatus(images));
+            setConversationStatus(runtime, imageUploadStatus(images));
         } else if (requestedImagesButUnsupported) {
-            setStatus(t(
+            setConversationStatus(runtime, t(
                 'The selected Custom API has image input disabled; text was sent without images.',
                 '当前 Custom API 未启用图像输入，本次仅发送文字。'
             ));
@@ -5639,19 +6190,23 @@
             images: images.map(imageSummary),
             _image_payloads: images.filter((image) => mediaKind(image) === 'image')
         };
-        state.messages.push(userMessage);
-        state.messages.push({ id: uid('describe_vlm_chat_assistant'), role: 'assistant', content: t('Thinking', '思考中'), pending: true });
-        renderMessages();
+        messages.push(userMessage);
+        messages.push({ id: uid('describe_vlm_chat_assistant'), role: 'assistant', content: t('Thinking', '思考中'), pending: true });
+        if (isCurrentConversationRuntime(runtime)) renderMessages();
 
         const requestId = uid('describe_vlm_chat_req');
         const abortController = new AbortController();
-        state.activeRequestId = requestId;
-        state.activeAbortController = abortController;
+        runtime.activeRequestId = requestId;
+        runtime.activeAbortController = abortController;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.activeRequestId = requestId;
+            state.activeAbortController = abortController;
+        }
         const payload = {
             message,
             current_prompt: includeCurrentPrompt ? readComponentValue('positive_prompt') : '',
             include_current_prompt: includeCurrentPrompt,
-            conversation_id: ensureConversationId(),
+            conversation_id: runtime.conversationId,
             request_id: requestId,
             history: history.messages,
             history_full: fullHistory.messages,
@@ -5665,34 +6220,47 @@
             custom_api: customApi,
             chat_mode: selectedMode,
             user_system_prompt: customSystemPrompt,
-            system_prompt_template_id: state.systemPromptTemplateId,
-            user_system_prompt_template_id: state.userSystemPromptTemplateId,
-            base_system_prompt_content: state.baseSystemPromptContent,
-            user_system_prompt_content: state.userSystemPromptContent,
-            system_prompt_manual_override: !!state.systemPromptManualOverride,
-            unload_after_chat: !!state.unloadAfterChat,
-            free_after: !!state.unloadAfterChat,
+            // Current UI mirror: system_prompt_template_id: state.systemPromptTemplateId
+            system_prompt_template_id: runtime.systemPromptTemplateId,
+            // Current UI mirrors: user_system_prompt_template_id: state.userSystemPromptTemplateId
+            // base_system_prompt_content: state.baseSystemPromptContent
+            // user_system_prompt_content: state.userSystemPromptContent
+            // system_prompt_manual_override: !!state.systemPromptManualOverride
+            user_system_prompt_template_id: runtime.userSystemPromptTemplateId,
+            base_system_prompt_content: runtime.baseSystemPromptContent,
+            user_system_prompt_content: runtime.userSystemPromptContent,
+            system_prompt_manual_override: !!runtime.systemPromptManualOverride,
+            // Current UI mirrors: unload_after_chat: !!state.unloadAfterChat; free_after: !!state.unloadAfterChat
+            unload_after_chat: !!runtime.unloadAfterChat,
+            free_after: !!runtime.unloadAfterChat,
             prompt_options: readDescribePromptOptions(),
-            creative_preferences: normalizeCreativePreference(state.creativePreference),
+            creative_preferences: normalizeCreativePreference(runtime.creativePreference),
             preset_capabilities: selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [],
             parameter_profiles: selectedMode === 'creative' ? creativeParameterProfilesPayload() : [],
             lang: state.__lang
         };
         const response = await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
-        if (state.activeRequestId === requestId) {
-            state.activeRequestId = '';
-            state.activeAbortController = null;
+        if (runtime.activeRequestId === requestId) {
+            runtime.activeRequestId = '';
+            runtime.activeAbortController = null;
+            if (isCurrentConversationRuntime(runtime)) {
+                state.activeRequestId = '';
+                state.activeAbortController = null;
+            }
         }
-        if (requestToken !== state.requestToken) return;
+        if (requestToken !== runtime.requestToken) return;
         if (response?.aborted) {
-            state.busy = false;
-            replacePendingAssistant(t('Stopped.', '已停止。'));
-            renderMessages();
-            setStatus(t('Reply stopped.', '已停止当前回复。'));
+            runtime.busy = false;
+            replacePendingAssistant(t('Stopped.', '已停止。'), messages);
+            if (isCurrentConversationRuntime(runtime)) {
+                state.busy = false;
+                renderMessages();
+                setStatus(t('Reply stopped.', '已停止当前回复。'));
+            }
             return;
         }
-        const pendingIndex = state.messages.findIndex((item) => item.pending);
-        const pendingMessageId = pendingIndex >= 0 ? state.messages[pendingIndex]?.id : '';
+        const pendingIndex = messages.findIndex((item) => item.pending);
+        const pendingMessageId = pendingIndex >= 0 ? messages[pendingIndex]?.id : '';
         const completion = normalizeChatCompletion(
             response?.completion || response?.params?.completion,
             response?.params?.max_tokens
@@ -5706,40 +6274,43 @@
             content: reply,
             completion,
             actions: response?.ok && Array.isArray(response.limited_actions)
-                ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets)
+                ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets, runtime)
                 : []
         };
         userMessage.media_assets = Array.isArray(response?.input_media_assets)
             ? response.input_media_assets.map(normalizeChatMediaInput).filter(Boolean)
             : [];
-        if (pendingIndex >= 0) state.messages[pendingIndex] = assistant;
-        else state.messages.push(assistant);
-        if (response?.conversation_id) state.conversationId = response.conversation_id;
-        state.busy = false;
+        if (pendingIndex >= 0) messages[pendingIndex] = assistant;
+        else messages.push(assistant);
+        runtime.busy = false;
         if (response?.ok && selectedMode === 'creative') {
-            state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, state.creativeInitiative, {
-                turn_index: Number(state.creativeInitiative.turn_index || 0) + 1
+            runtime.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, runtime.creativeInitiative, {
+                turn_index: Number(runtime.creativeInitiative.turn_index || 0) + 1
             }));
         }
-        state.persistenceDirty = true;
-        saveConversationSnapshot();
-        renderMessages();
-        if (response?.ok && selectedMode === 'creative' && state.creativePreference.auto_generate) {
-            window.setTimeout(() => autoStartCreativeActionsForMessage(assistant.id), 0);
+        runtime.persistenceDirty = true;
+        saveConversationSnapshot(runtime);
+        if (isCurrentConversationRuntime(runtime)) {
+            state.busy = false;
+            state.persistenceDirty = false;
+            renderMessages();
+        }
+        if (response?.ok && selectedMode === 'creative' && runtime.creativePreference.auto_generate) {
+            window.setTimeout(() => autoStartCreativeActionsForMessage(assistant.id, runtime), 0);
         }
         if (!response?.ok) {
-            setStatus(reply, true);
+            setConversationStatus(runtime, reply, true);
         } else if (completion?.output_limited) {
-            setStatus(chatCompletionLimitMessage(completion), true);
+            setConversationStatus(runtime, chatCompletionLimitMessage(completion), true);
         } else if (estimatedUploadBytes > 0) {
-            setStatus(imageUploadStatus(images, true));
+            setConversationStatus(runtime, imageUploadStatus(images, true));
         } else if (requestedImagesButUnsupported) {
-            setStatus(t(
+            setConversationStatus(runtime, t(
                 'The selected Custom API has image input disabled; text was sent without images.',
                 '当前 Custom API 未启用图像输入，本次仅发送文字。'
             ));
         } else {
-            setStatus('');
+            setConversationStatus(runtime, '');
         }
         if (
             response?.ok
@@ -5752,7 +6323,8 @@
                 source_message_id: assistant.id,
                 user_message: message,
                 version,
-                custom_api: customApi
+                custom_api: customApi,
+                runtime
             }).catch(() => {});
         }
     }
@@ -5809,8 +6381,17 @@
             toggleFloatingPanelMaximize(modal.querySelector('.describe-vlm-chat-panel'));
             return;
         }
+        const conversationTab = evt.target.closest('[data-describe-vlm-chat-conversation-tab]');
+        if (conversationTab) {
+            switchConversation(conversationTab.getAttribute('data-describe-vlm-chat-conversation-tab'));
+            return;
+        }
         if (evt.target.closest('[data-describe-vlm-chat-clear]')) {
             if (confirmClearConversation()) clearConversation();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-new]')) {
+            startNewConversation();
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-import-prompt]')) {
@@ -6118,6 +6699,10 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-model-select]')) {
             setDescribeVlmVersionFromHeader(evt.target.value);
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-conversation-select]')) {
+            switchConversation(evt.target.value);
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-mode]')) {

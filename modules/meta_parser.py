@@ -416,9 +416,11 @@ def _resolve_scene_theme_name(scenes: dict, theme):
 
 
 def _scene_generation_step_default(state_or_scene, theme=None, default=None):
-    scenes = state_or_scene.get("scene_frontend", {}) if isinstance(state_or_scene, dict) else {}
-    if not isinstance(scenes, dict):
-        scenes = state_or_scene if isinstance(state_or_scene, dict) else {}
+    if isinstance(state_or_scene, dict):
+        nested_scene = state_or_scene.get("scene_frontend")
+        scenes = nested_scene if isinstance(nested_scene, dict) else state_or_scene
+    else:
+        scenes = {}
     for key in ("overwrite_step", "steps", "scene_steps"):
         if key not in scenes:
             continue

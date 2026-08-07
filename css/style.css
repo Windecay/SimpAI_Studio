@@ -4932,7 +4932,7 @@ html.describe-vlm-chat-open body {
   bottom: auto !important;
   transform: translate(-50%, -50%) !important;
   display: grid !important;
-  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(180px, 1fr) auto auto;
   width: min(620px, calc(100vw - 28px)) !important;
   height: min(680px, calc(100dvh - 32px)) !important;
   min-height: 420px;
@@ -5131,6 +5131,53 @@ html.describe-vlm-chat-resizing * {
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid rgba(127, 127, 127, 0.22);
+}
+
+.describe-vlm-chat-conversation-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: end;
+  gap: 8px;
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--block-background-fill, #24262b) 94%, #000000 6%);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+.describe-vlm-chat-conversation-bar label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-conversation-bar label > span {
+  color: color-mix(in srgb, var(--body-text-color, #f8fafc) 78%, transparent);
+  font-weight: 700;
+}
+
+.describe-vlm-chat-conversation-bar select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color-primary, #4b5563);
+  border-radius: 6px;
+  background: var(--input-background-fill, transparent);
+  color: var(--body-text-color, #f8fafc);
+  box-sizing: border-box;
+}
+
+.describe-vlm-chat-conversation-bar button {
+  width: 40px;
+  height: 38px;
+  min-width: 40px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .describe-vlm-chat-controls label {
@@ -5995,6 +6042,7 @@ html.describe-vlm-chat-resizing * {
 
 .describe-vlm-chat-head button,
 .describe-vlm-chat-compose button,
+.describe-vlm-chat-conversation-bar button,
 .describe-vlm-chat-template-manage,
 .describe-vlm-chat-msg-head button,
 .describe-vlm-chat-actions button {
@@ -6006,6 +6054,7 @@ html.describe-vlm-chat-resizing * {
 
 .describe-vlm-chat-head button:hover,
 .describe-vlm-chat-compose button:hover,
+.describe-vlm-chat-conversation-bar button:hover,
 .describe-vlm-chat-template-manage:hover,
 .describe-vlm-chat-msg-head button:hover,
 .describe-vlm-chat-actions button:hover {
@@ -6018,6 +6067,11 @@ html.describe-vlm-chat-resizing * {
   border-bottom-color: var(--describe-chat-line-soft);
 }
 
+.describe-vlm-chat-conversation-bar {
+  background: var(--describe-chat-panel-soft);
+  border-bottom-color: var(--describe-chat-line-soft);
+}
+
 .describe-vlm-chat-controls label > span {
   color: var(--describe-chat-muted);
 }
@@ -6026,6 +6080,7 @@ html.describe-vlm-chat-resizing * {
   color: var(--describe-chat-muted);
 }
 
+.describe-vlm-chat-conversation-bar select,
 .describe-vlm-chat-controls select,
 .describe-vlm-chat-controls textarea {
   background: var(--describe-chat-panel-deep) !important;
@@ -6034,6 +6089,7 @@ html.describe-vlm-chat-resizing * {
   outline: none !important;
 }
 
+.describe-vlm-chat-conversation-bar select:focus,
 .describe-vlm-chat-controls select:focus,
 .describe-vlm-chat-controls textarea:focus {
   border-color: #d7dbe5 !important;
@@ -6065,6 +6121,7 @@ html.describe-vlm-chat-resizing * {
 }
 
 .describe-vlm-chat-user-template-dialog-head button,
+.describe-vlm-chat-conversation-bar button,
 .describe-vlm-chat-user-template-dialog-actions button {
   color: var(--describe-chat-text) !important;
   background: var(--describe-chat-button) !important;
@@ -6546,6 +6603,264 @@ html.describe-vlm-chat-resizing * {
   }
 }
 
+/* VLM chat layout: keep the conversation list beside the work area and let
+   the compose tools wrap instead of disappearing behind horizontal overflow. */
+.describe-vlm-chat-panel {
+  grid-template-columns: minmax(142px, 156px) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+}
+
+.describe-vlm-chat-head {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.describe-vlm-chat-conversation-bar {
+  grid-column: 1;
+  grid-row: 2 / 6;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 8px;
+  border-right: 1px solid var(--describe-chat-line-soft, rgba(127, 127, 127, 0.28));
+  border-bottom: 0;
+  overflow: hidden;
+}
+
+.describe-vlm-chat-conversation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  flex: 0 0 auto;
+}
+
+.describe-vlm-chat-conversation-head > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--describe-chat-muted, rgba(248, 250, 252, 0.78));
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-conversation-head button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+
+.describe-vlm-chat-conversation-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.describe-vlm-chat-conversation-tab,
+.describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-tab {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--describe-chat-muted, #a4a8b4) !important;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.describe-vlm-chat-conversation-tab span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-tab:hover {
+  border-color: var(--describe-chat-line, #494c56) !important;
+  background: color-mix(in srgb, var(--describe-chat-button, #3b3d46) 72%, transparent) !important;
+  color: var(--describe-chat-text, #f3f4f8) !important;
+}
+
+.describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-tab.is-active {
+  border-color: color-mix(in srgb, var(--describe-chat-accent, #f97316) 62%, var(--describe-chat-line, #494c56)) !important;
+  background: color-mix(in srgb, var(--describe-chat-accent, #f97316) 18%, var(--describe-chat-panel-deep, #1f2024)) !important;
+  color: var(--describe-chat-text, #f3f4f8) !important;
+}
+
+.describe-vlm-chat-conversation-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.describe-vlm-chat-controls {
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-columns: minmax(100px, 0.75fr) minmax(128px, 0.95fr) minmax(145px, 1.3fr);
+  min-width: 0;
+}
+
+.describe-vlm-chat-chat-area {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.describe-vlm-chat-status {
+  grid-column: 2;
+  grid-row: 4;
+}
+
+.describe-vlm-chat-compose {
+  grid-column: 2;
+  grid-row: 5;
+  min-width: 0;
+  overflow: visible;
+}
+
+.describe-vlm-chat-compose-toolbar {
+  flex-wrap: wrap;
+  align-content: flex-start;
+  row-gap: 6px;
+  min-height: 34px;
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.describe-vlm-chat-compose-tools,
+.describe-vlm-chat-compose-tools button,
+.describe-vlm-chat-compose-toolbar [data-describe-vlm-chat-pick-image] {
+  flex: 0 0 auto;
+}
+
+.describe-vlm-chat-compose-toolbar .describe-vlm-chat-image-toggle,
+.describe-vlm-chat-compose-toolbar .describe-vlm-chat-unload-toggle {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.describe-vlm-chat-compose-toolbar .describe-vlm-chat-image-toggle span,
+.describe-vlm-chat-compose-toolbar .describe-vlm-chat-unload-toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(72px, 1fr) auto auto;
+  }
+
+  .describe-vlm-chat-head,
+  .describe-vlm-chat-controls,
+  .describe-vlm-chat-chat-area,
+  .describe-vlm-chat-status,
+  .describe-vlm-chat-compose {
+    grid-column: 1;
+  }
+
+  .describe-vlm-chat-head {
+    grid-row: 1;
+  }
+
+  .describe-vlm-chat-conversation-bar {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--describe-chat-line-soft, rgba(127, 127, 127, 0.28));
+    overflow: hidden;
+  }
+
+  .describe-vlm-chat-conversation-head {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 32px;
+  }
+
+  .describe-vlm-chat-conversation-tabs {
+    grid-column: 2;
+    grid-row: 1;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .describe-vlm-chat-conversation-tab,
+  .describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-tab {
+    width: auto;
+    min-width: 88px;
+    max-width: 190px;
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+
+  .describe-vlm-chat-controls {
+    grid-row: 3;
+  }
+
+  .describe-vlm-chat-chat-area {
+    grid-row: 4;
+  }
+
+  .describe-vlm-chat-status {
+    grid-row: 5;
+  }
+
+  .describe-vlm-chat-compose {
+    grid-row: 6;
+  }
+
+  .describe-vlm-chat-compose-toolbar {
+    overflow: visible;
+  }
+}
+
 #describe_vlm_model_bar {
   display: flex !important;
   align-items: center !important;
@@ -6850,6 +7165,7 @@ html.describe-vlm-chat-resizing * {
     max-height: min(72vh, 720px);
     display: flex;
     flex-direction: column;
+    min-height: 0;
     overflow: hidden;
     color: var(--body-text-color);
     background: #202126;
@@ -6894,15 +7210,25 @@ html.describe-vlm-chat-resizing * {
 }
 
 .simpleai-prompt-info-body {
-    overflow: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 12px;
     line-height: 1.45;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    box-sizing: border-box;
 }
 
 .simpleai-prompt-info-body > div {
+    max-width: 100%;
     background: transparent !important;
     color: var(--body-text-color) !important;
     padding: 0 !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .simpleai-toolbox-note-overlay {
