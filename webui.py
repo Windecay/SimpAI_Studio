@@ -1205,6 +1205,20 @@ def _format_generation_eta(seconds):
     hours, minutes = divmod(minutes, 60)
     return f"ETA:{hours}h {minutes:02d}m"
 
+
+def _generation_preview_batch_key(title):
+    text = str(title or "").strip()
+    status = modules.html.parse_generation_progress_text(text)
+    step = status.get("step")
+    if step is not None:
+        total_steps = status.get("total_steps") or ""
+        image_index = status.get("image_index")
+        image_count = status.get("image_count")
+        image_key = f"|image:{image_index}/{image_count}" if image_index is not None and image_count is not None else ""
+        return f"sampling:{step}/{total_steps}{image_key}"
+    return text
+
+
 def _minimax_h3_generation_prompt_validation(task, state):
     inferred = minimax_h3_prompt_compiler.validate_task_prompt(task)
     if inferred is not None:
@@ -1492,7 +1506,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     next_preview_ui_time = local_start_time
     last_preview_shown_title = ""
     last_preview_shown_percentage = 0
-    waiting_for_new_step_frame = False
+    preview_batch_key = None
     preview_interval = generation_preview_interval(is_mobile)
     last_preview_image = None
     max_video_preview_cache = 128
@@ -1600,9 +1614,8 @@ def generate_clicked(task: worker.AsyncTask, state):
                 force_unlock_update = True
 
             if task.content_type == 'video' and len(preview_cache) > 1 and current_time >= next_preview_ui_time:
-                head_flag = task.yields[0][0] if len(task.yields) > 0 else None
-
-                can_rotate_now = (len(task.yields) == 0) or (head_flag != 'preview')
+                has_pending_preview = any(item and item[0] == 'preview' for item in task.yields)
+                can_rotate_now = not has_pending_preview
                 if can_rotate_now:
                     preview_cache_index = (preview_cache_index + 1) % len(preview_cache)
                     cached_image = preview_cache[preview_cache_index]
@@ -1636,44 +1649,41 @@ def generate_clicked(task: worker.AsyncTask, state):
 
                 if flag == 'preview':
                     last_update_time = current_time
-                    previous_percentage = last_preview_backend_percentage
                     percentage, title, image = product
                     display_percentage, eta_text = generation_progress_display(percentage, title, current_time)
-                    new_step_frame_arrived = False
+                    last_preview_backend_percentage = percentage
+                    incoming_batch_key = _generation_preview_batch_key(title)
+                    pending_batch_without_frame = (
+                        image is None
+                        and preview_batch_key is not None
+                        and incoming_batch_key != preview_batch_key
+                    )
+                    if pending_batch_without_frame or (image is None and preview_batch_key is None):
+                        continue
 
-                    title_changed = title != last_preview_title
-                    percentage_reset = False
-                    if previous_percentage > 1.5:
-                        percentage_reset = percentage < previous_percentage and percentage <= 1.0
-                    else:
-                        percentage_reset = percentage < previous_percentage and percentage <= 0.05
-                    step_changed = title_changed or percentage_reset
-                    if step_changed:
-                        last_preview_title = title
-                        waiting_for_new_step_frame = True
-                        if task.content_type != 'video':
-                            preview_cache = []
-                            preview_cache_index = 0
+                    new_step_frame_arrived = image is not None and (
+                        preview_batch_key is None or incoming_batch_key != preview_batch_key
+                    )
+                    if new_step_frame_arrived:
+                        preview_batch_key = incoming_batch_key
+                        preview_cache = []
+                        preview_cache_index = 0
+                        last_preview_image = None
 
                     if image is not None:
                         last_preview_image = image
-                        if waiting_for_new_step_frame:
-                            preview_cache = []
-                            preview_cache_index = 0
-                            waiting_for_new_step_frame = False
-                            new_step_frame_arrived = True
-
+                        last_preview_title = title
                         preview_cache.append(image)
                         if task.content_type == 'video' and len(preview_cache) > max_video_preview_cache:
                             overflow = len(preview_cache) - max_video_preview_cache
                             del preview_cache[:overflow]
                             preview_cache_index = max(0, preview_cache_index - overflow)
 
-                    last_preview_backend_percentage = percentage
                     last_preview_percentage = display_percentage
                     last_preview_eta_text = eta_text
+                    step_changed = new_step_frame_arrived
                     image_to_show = image
-                    if image_to_show is None and (not waiting_for_new_step_frame or task.content_type == 'video'):
+                    if image_to_show is None:
                         if last_preview_image is not None:
                             image_to_show = last_preview_image
                         elif len(preview_cache) > 0:

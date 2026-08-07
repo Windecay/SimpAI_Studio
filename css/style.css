@@ -5126,7 +5126,7 @@ html.describe-vlm-chat-resizing * {
 
 .describe-vlm-chat-controls {
   display: grid;
-  grid-template-columns: 140px clamp(180px, 24%, 260px) minmax(215px, 1fr);
+  grid-template-columns: 140px 150px clamp(180px, 24%, 260px) minmax(215px, 1fr);
   align-items: start;
   gap: 10px;
   padding: 10px 14px;
@@ -6601,6 +6601,7 @@ html.describe-vlm-chat-resizing * {
   .describe-vlm-chat-compose:has([data-describe-vlm-chat-stop][hidden]) {
     grid-template-columns: minmax(0, 1fr) 38px;
   }
+
 }
 
 /* VLM chat layout: keep the conversation list beside the work area and let
@@ -6778,7 +6779,7 @@ html.describe-vlm-chat-resizing * {
 .describe-vlm-chat-controls {
   grid-column: 2;
   grid-row: 2;
-  grid-template-columns: minmax(100px, 0.75fr) minmax(128px, 0.95fr) minmax(145px, 1.3fr);
+  grid-template-columns: minmax(140px, 180px) minmax(120px, 150px) minmax(220px, 1fr) minmax(220px, 1.15fr);
   min-width: 0;
 }
 
@@ -19069,4 +19070,76 @@ button[aria-label="Edit"][title="Edit"] {
     .describe-vlm-chat-preference-preset button {
         width: 100%;
     }
+}
+
+/* VLM chat settings: keep four columns on wide panels and switch to two
+   columns before the controls can force horizontal overflow. */
+.describe-vlm-chat-panel {
+  width: min(980px, calc(100vw - 28px)) !important;
+}
+
+.describe-vlm-chat-controls {
+  grid-template-columns:
+    minmax(140px, 0.9fr)
+    minmax(112px, 132px)
+    minmax(170px, 1.1fr)
+    minmax(210px, 1.35fr);
+}
+
+.describe-vlm-chat-controls > *,
+.describe-vlm-chat-controls label,
+.describe-vlm-chat-controls select,
+.describe-vlm-chat-controls textarea,
+.describe-vlm-chat-template-picker {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.describe-vlm-chat-max-tokens-field {
+  max-width: 132px;
+}
+
+@container (min-width: 700px) and (max-width: 860px) {
+  .describe-vlm-chat-controls {
+    grid-template-columns:
+      minmax(150px, 0.95fr)
+      minmax(112px, 132px)
+      minmax(210px, 1.35fr);
+  }
+
+  .describe-vlm-chat-system-field,
+  .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+  }
+
+  .describe-vlm-chat-max-tokens-field {
+    max-width: 132px;
+  }
+}
+
+@container (max-width: 699px) {
+  .describe-vlm-chat-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .describe-vlm-chat-template-field,
+  .describe-vlm-chat-system-field,
+  .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+  }
+
+  .describe-vlm-chat-max-tokens-field {
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .describe-vlm-chat-system-field,
+  .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+  }
 }

@@ -1455,7 +1455,12 @@ def build_runtime_payload(payload):
     prompt_actions_enabled = bool(prompt_options.get("enable_prompt_skills") and prompt_options.get("chat_mode") not in {"raw", "guide"})
     generation_actions_enabled = bool(prompt_options.get("enable_generation_actions"))
     prompt_mode_active = prompt_options.get("chat_mode") in {"prompt", "guide", "creative"} or prompt_actions_enabled
-    max_tokens = 2048 if prompt_mode_active else 3072
+    default_max_tokens = 2048 if prompt_mode_active else 3072
+    try:
+        requested_max_tokens = int(payload.get("max_tokens"))
+    except (TypeError, ValueError):
+        requested_max_tokens = default_max_tokens
+    max_tokens = max(64, min(8192, requested_max_tokens))
     params = {
         "mode": "chat",
         "agent_mode": "raw",
@@ -1630,6 +1635,46 @@ def _extract_json_object(text):
                 return value
         except Exception:
             continue
+    return None
+
+
+def _visible_response_text(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if re.search(r"\\(?:n|r|t|u[0-9a-fA-F]{4}|[\\\"/])", text):
+        try:
+            decoded = json.loads(f'"{text}"')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            decoded = text
+        if isinstance(decoded, str):
+            text = decoded.strip()
+    nested = _extract_json_object(text)
+    if nested is not None and text.lstrip().startswith("{"):
+        return json.dumps(nested, ensure_ascii=False, indent=2)
+    return text
+
+
+def _response_reply_value(data):
+    if not isinstance(data, dict):
+        return None
+    for key in (
+        "reply",
+        "message",
+        "text",
+        "response",
+        "answer",
+        "content",
+        "回复",
+        "回答",
+        "答复",
+        "响应",
+        "内容",
+    ):
+        if key in data and data.get(key) not in (None, ""):
+            return data.get(key)
     return None
 
 
@@ -2902,6 +2947,7 @@ def parse_limited_response(
     text,
     lang="cn",
     allow_actions=True,
+    extract_reply_fields=False,
     allow_generation=False,
     default_generation_preset="Z-imageT",
     available_media_refs=None,
@@ -2911,11 +2957,17 @@ def parse_limited_response(
     parameter_profiles=None,
     preferred_parameter_profile="",
 ):
-    if not allow_actions:
+    if not allow_actions and not extract_reply_fields:
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
     data = _extract_json_object(text)
     if not isinstance(data, dict):
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
+    response_value = _response_reply_value(data)
+    if not allow_actions:
+        reply = _visible_response_text(response_value)
+        if not reply:
+            reply = json.dumps(data, ensure_ascii=False, indent=2)
+        return {"reply": reply, "actions": [], "raw_json": data}
     actions = normalize_limited_actions(
         data.get("actions"),
         allow_generation=allow_generation,
@@ -2940,7 +2992,7 @@ def parse_limited_response(
             parameter_profiles=parameter_profiles,
             preferred_parameter_profile=preferred_parameter_profile,
         )
-    reply = str(data.get("reply") or data.get("message") or data.get("text") or "").strip()
+    reply = _visible_response_text(response_value)
     if not reply and actions:
         reply = _localized_default_reply(actions[0].get("type"), lang)
     return {"reply": reply or str(text or "").strip(), "actions": actions, "raw_json": data}
@@ -3513,6 +3565,7 @@ def run_describe_vlm_chat(payload):
         user_message=payload.get("message") or "",
         parameter_profiles=params.get("describe_parameter_profiles"),
         preferred_parameter_profile=params.get("describe_creative_preference_parameter_profile") or "",
+        extract_reply_fields=params.get("describe_chat_mode") != "raw",
     )
     if params.get("describe_generation_actions_enabled"):
         previous_prompt = _latest_history_creative_prompt(

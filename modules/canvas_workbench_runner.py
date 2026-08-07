@@ -2163,15 +2163,35 @@ def _normalize_percent(value):
     return max(0.0, min(1.0, number))
 
 
+def _preview_batch_key(message):
+    text = str(message or "").strip()
+    try:
+        from modules import html
+
+        status = html.parse_generation_progress_text(text)
+    except Exception:
+        status = {}
+    step = status.get("step")
+    if step is not None:
+        total_steps = status.get("total_steps") or ""
+        image_index = status.get("image_index")
+        image_count = status.get("image_count")
+        image_key = f"|image:{image_index}/{image_count}" if image_index is not None and image_count is not None else ""
+        return f"sampling:{step}/{total_steps}{image_key}"
+    return text
+
+
 def _preview_from_product(product):
     try:
         percentage, title, image = product
     except Exception:
         return {}
     preview = _image_like_to_preview_frame(image) if image is not None else None
+    message = str(title or "")
     return {
         "percent": _normalize_percent(percentage),
-        "message": str(title or ""),
+        "message": message,
+        "step_key": _preview_batch_key(message),
         "preview": preview,
     }
 
@@ -2196,12 +2216,13 @@ def _append_preview_stream_frame(record, preview_payload):
         return
 
     message = str(preview_payload.get("message") or "")
+    step_key = str(preview_payload.get("step_key") or _preview_batch_key(message) or message)
     previous_step_key = str(record.get("preview_step_key") or "")
-    if message and message != previous_step_key:
+    if step_key and step_key != previous_step_key:
         record["preview_frames"] = []
-        record["preview_step_key"] = message
+        record["preview_step_key"] = step_key
     elif not previous_step_key:
-        record["preview_step_key"] = message
+        record["preview_step_key"] = step_key
 
     try:
         serial = int(record.get("preview_serial") or 0) + 1
@@ -2210,7 +2231,7 @@ def _append_preview_stream_frame(record, preview_payload):
 
     next_frame = copy.deepcopy(frame)
     next_frame["serial"] = serial
-    next_frame["step_key"] = record.get("preview_step_key") or message
+    next_frame["step_key"] = record.get("preview_step_key") or step_key or message
     if preview_payload.get("percent") is not None:
         next_frame["percent"] = preview_payload.get("percent")
     next_frame["created_at"] = _iso_from_ts(time.time())

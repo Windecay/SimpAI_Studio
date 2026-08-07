@@ -30,6 +30,9 @@
     const MAX_HISTORY_TURNS = 18;
     const HISTORY_BUDGET = 6200;
     const FULL_HISTORY_BUDGET = 9000;
+    const CHAT_MAX_TOKENS_MIN = 64;
+    const CHAT_MAX_TOKENS_MAX = 8192;
+    const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192]);
     const DESCRIBE_VLM_MODEL_CHOICES = [
         'Qwen3.5-9B-abliterated-Q4_K_M',
         'Qwen3.5-9B-abliterated-Q2_K',
@@ -161,6 +164,37 @@
         return 'chat';
     }
 
+    function normalizeChatMaxTokens(value, fallback = 0) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            const fallbackValue = Number(fallback);
+            return Number.isFinite(fallbackValue) && fallbackValue > 0 ? Math.round(fallbackValue) : 0;
+        }
+        const bounded = Math.max(CHAT_MAX_TOKENS_MIN, Math.min(CHAT_MAX_TOKENS_MAX, Math.round(parsed)));
+        return CHAT_MAX_TOKEN_CHOICES.reduce((nearest, choice) => (
+            Math.abs(choice - bounded) < Math.abs(nearest - bounded) ? choice : nearest
+        ), CHAT_MAX_TOKEN_CHOICES[0]);
+    }
+
+    function defaultChatMaxTokensForMode(mode) {
+        return ['prompt', 'guide', 'creative'].includes(normalizeChatMode(mode)) ? 2048 : 3072;
+    }
+
+    function effectiveChatMaxTokens(mode = state.chatMode) {
+        return normalizeChatMaxTokens(state.maxTokens, 0) || defaultChatMaxTokensForMode(mode);
+    }
+
+    function renderChatMaxTokenOptions() {
+        const selected = normalizeChatMaxTokens(state.maxTokens, 0);
+        const options = [
+            `<option value="0" ${selected === 0 ? 'selected' : ''}>${escapeHtml(localText('Auto', '自动'))}</option>`
+        ];
+        CHAT_MAX_TOKEN_CHOICES.forEach((choice) => {
+            options.push(`<option value="${choice}" ${selected === choice ? 'selected' : ''}>${choice}</option>`);
+        });
+        return options.join('');
+    }
+
     function normalizeChatWindowLayout(value) {
         if (!value || typeof value !== 'object') return null;
         const finite = (item) => {
@@ -224,6 +258,7 @@
             return {
                 chatMode: normalizeChatMode(data.chatMode),
                 customSystemPrompt: String(data.customSystemPrompt || ''),
+                maxTokens: normalizeChatMaxTokens(data.maxTokens, 0),
                 ...selection,
                 systemPromptManualOverride: !!data.systemPromptManualOverride,
                 unloadAfterChat: !!data.unloadAfterChat,
@@ -233,6 +268,7 @@
             return {
                 chatMode: 'chat',
                 customSystemPrompt: '',
+                maxTokens: 0,
                 systemPromptTemplateId: '',
                 systemPromptPickerValue: NO_SYSTEM_PROMPT_PICKER_VALUE,
                 baseSystemPromptContent: '',
@@ -271,6 +307,7 @@
         missingVlmModelRequest: null,
         chatMode: savedChatSettings.chatMode,
         customSystemPrompt: savedChatSettings.customSystemPrompt,
+        maxTokens: savedChatSettings.maxTokens,
         systemPromptTemplateId: savedChatSettings.systemPromptTemplateId,
         systemPromptPickerValue: savedChatSettings.systemPromptPickerValue,
         baseSystemPromptContent: savedChatSettings.baseSystemPromptContent,
@@ -593,6 +630,7 @@
             window.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
                 chatMode: state.chatMode,
                 customSystemPrompt: state.customSystemPrompt,
+                maxTokens: normalizeChatMaxTokens(state.maxTokens, 0),
                 systemPromptTemplateId: state.systemPromptTemplateId,
                 systemPromptPickerValue: state.systemPromptPickerValue,
                 baseSystemPromptContent: state.baseSystemPromptContent,
@@ -736,12 +774,17 @@
         if (!modal) return;
         syncConversationControls(modal);
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
+        const maxTokens = modal.querySelector('[data-describe-vlm-chat-max-tokens]');
         const system = modal.querySelector('[data-describe-vlm-chat-system]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const unload = modal.querySelector('[data-describe-vlm-chat-unload-after]');
         const autoImage = modal.querySelector('[data-describe-vlm-chat-auto-previous-image]');
         const modeHint = modal.querySelector('[data-describe-vlm-chat-mode-hint]');
         if (mode) mode.value = state.chatMode;
+        if (maxTokens) {
+            maxTokens.innerHTML = renderChatMaxTokenOptions();
+            maxTokens.value = String(normalizeChatMaxTokens(state.maxTokens, 0));
+        }
         syncSystemPromptTemplateControls(modal);
         if (system && system.value !== state.customSystemPrompt) system.value = state.customSystemPrompt;
         if (unload) unload.checked = !!state.unloadAfterChat;
@@ -2375,6 +2418,7 @@
       <option value="prompt" ${state.chatMode === 'prompt' ? 'selected' : ''}>${escapeHtml(t('Prompt Assistant', '提示词助手'))}</option>
       <option value="raw" ${state.chatMode === 'raw' ? 'selected' : ''}>${escapeHtml(t('Raw Model', '原始模型'))}</option>
     </select></label>
+    <label class="describe-vlm-chat-max-tokens-field" title="${escapeHtml(localText('Choose the output token budget.', '选择输出 Token 预算。'))}"><span>${escapeHtml(localText('Max output tokens', '最大输出 Token'))}</span><select data-describe-vlm-chat-max-tokens aria-label="${escapeHtml(localText('Max output tokens', '最大输出 Token'))}">${renderChatMaxTokenOptions()}</select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><div class="describe-vlm-chat-template-picker"><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select><button type="button" class="describe-vlm-chat-template-manage" data-describe-vlm-chat-user-template-open title="${escapeHtml(localText('Manage user documents', '管理用户项目'))}" aria-label="${escapeHtml(localText('Manage user documents', '管理用户项目'))}"><i class="fa-solid fa-folder-plus"></i></button></div></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
     <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(chatModeHint(state.chatMode))}</div>
@@ -6372,6 +6416,7 @@
             unload_after_chat: !!runtime.unloadAfterChat,
             free_after: !!runtime.unloadAfterChat,
             prompt_options: readDescribePromptOptions(),
+            max_tokens: effectiveChatMaxTokens(selectedMode),
             creative_preferences: normalizeCreativePreference(runtime.creativePreference),
             preset_capabilities: selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [],
             parameter_profiles: selectedMode === 'creative' ? creativeParameterProfilesPayload() : [],
@@ -6737,6 +6782,11 @@
     });
 
     document.addEventListener('change', (evt) => {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-max-tokens]')) {
+            state.maxTokens = normalizeChatMaxTokens(evt.target.value, 0);
+            saveChatSettings();
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-auto-generate]')) {
             setCreativePreference({ auto_generate: !!evt.target.checked }, 'preference_card');
             return;

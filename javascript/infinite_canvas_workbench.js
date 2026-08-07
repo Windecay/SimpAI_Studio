@@ -20983,17 +20983,36 @@ ${renderRunnableNodeStatusFoot(node)}
         return true;
     }
 
+    function resultPreviewFreshFrames(response) {
+        const stream = response?.preview_stream;
+        if (!stream || typeof stream !== 'object') return [];
+        return (Array.isArray(stream.frames_delta) ? stream.frames_delta : [])
+            .filter((frame) => frame && typeof frame === 'object' && resultPreviewFrameSrc(frame));
+    }
+
     function applyResultPreviewStream(resultNode, response, state) {
         const stream = response?.preview_stream;
         if (!resultNode || !stream || typeof stream !== 'object') return false;
-        const framesDelta = Array.isArray(stream.frames_delta) ? stream.frames_delta : [];
-        if (!framesDelta.length && !Number(stream.latest_serial || 0)) return false;
+        const framesDelta = resultPreviewFreshFrames(response);
+        if (!framesDelta.length) {
+            const player = resultPreviewPlayers.get(resultNode.id);
+            if (player?.frames?.length && isCanvasRunActiveState(state)) {
+                startResultPreviewPlayback(resultNode.id);
+                return true;
+            }
+            return false;
+        }
         let player = resultPreviewPlayers.get(resultNode.id);
         if (!player) {
             player = { frames: [], index: 0, lastSerial: 0, stepKey: '', fps: 8, timer: 0 };
             resultPreviewPlayers.set(resultNode.id, player);
         }
-        const stepKey = String(stream.step_key || '');
+        const stepKey = String(
+            framesDelta[framesDelta.length - 1]?.step_key
+            || framesDelta[0]?.step_key
+            || stream.step_key
+            || ''
+        );
         if (stepKey && player.stepKey && stepKey !== player.stepKey) {
             player.frames = [];
             player.index = 0;
@@ -21031,10 +21050,11 @@ ${renderRunnableNodeStatusFoot(node)}
     function appendResultNodePreviewFrames(resultNode, response, state) {
         if (!resultNode || !isCanvasRunActiveState(state)) return;
         const stream = response?.preview_stream || {};
-        const streamFrames = Array.isArray(stream.frames_delta) ? stream.frames_delta : [];
+        const hasPreviewStream = !!(response?.preview_stream && typeof response.preview_stream === 'object');
+        const streamFrames = resultPreviewFreshFrames(response);
         const incoming = streamFrames.length
             ? streamFrames
-            : (response?.preview ? [response.preview] : []);
+            : (hasPreviewStream ? [] : (response?.preview ? [response.preview] : []));
         if (!incoming.length) return;
         const stepKey = String(stream.step_key || incoming[incoming.length - 1]?.step_key || '');
         let frames = Array.isArray(resultNode.preview_frames) ? resultNode.preview_frames.slice(-11) : [];
@@ -43737,6 +43757,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         const run = project.runs.find(item => item.id === runId);
         const ok = !!(response && response.ok);
         const state = response?.state || (ok ? 'queued' : 'failed');
+        const hasPreviewStream = !!(response?.preview_stream && typeof response.preview_stream === 'object');
+        const hasFreshPreviewFrames = resultPreviewFreshFrames(response).length > 0;
         if (run) {
             run.state = state;
             run.backend = 'async_task';
@@ -43795,7 +43817,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 message: ok ? (response?.message || state) : `Run failed: ${response?.error || 'unknown error'}`
             });
             applyResultPreviewStream(resultNode, response, state);
-            if (response?.preview) {
+            if (response?.preview && (!hasPreviewStream || hasFreshPreviewFrames)) {
                 resultNode.preview = cloneRunValue(response.preview, null);
             }
             appendResultNodePreviewFrames(resultNode, response, state);
