@@ -356,7 +356,8 @@
             creativeDirectorBusy: !!source.creativeDirectorBusy,
             creativeDirectorAbortController: source.creativeDirectorAbortController || null,
             creativeDirectorRequestId: String(source.creativeDirectorRequestId || ''),
-            persistenceDirty: !!source.persistenceDirty
+            persistenceDirty: !!source.persistenceDirty,
+            deleted: !!source.deleted
         };
     }
 
@@ -399,6 +400,38 @@
             creativeDirectorAbortController: state.creativeDirectorAbortController,
             creativeDirectorRequestId: state.creativeDirectorRequestId,
             persistenceDirty: state.persistenceDirty
+        });
+    }
+
+    function createEmptyConversationRuntime(source = {}, conversationId = '') {
+        return createConversationRuntime({
+            conversationId: conversationId || uid('describe_vlm_chat'),
+            chatMode: source.chatMode,
+            customSystemPrompt: source.customSystemPrompt,
+            systemPromptTemplateId: source.systemPromptTemplateId,
+            systemPromptPickerValue: source.systemPromptPickerValue,
+            baseSystemPromptContent: source.baseSystemPromptContent,
+            userSystemPromptTemplateId: source.userSystemPromptTemplateId,
+            userSystemPromptTemplateName: source.userSystemPromptTemplateName,
+            userSystemPromptContent: source.userSystemPromptContent,
+            systemPromptManualOverride: source.systemPromptManualOverride,
+            autoAttachPreviousImage: source.autoAttachPreviousImage,
+            unloadAfterChat: source.unloadAfterChat,
+            messages: [],
+            pendingImages: [],
+            creativePreference: normalizeCreativePreference(null),
+            creativePreferenceExpanded: normalizeChatMode(source.chatMode) === 'creative',
+            creativeInitiative: normalizeCreativeInitiative(null),
+            busy: false,
+            requestToken: 0,
+            activeAbortController: null,
+            activeRequestId: '',
+            creativeGenerationPolls: new Map(),
+            creativeDirectorBusy: false,
+            creativeDirectorAbortController: null,
+            creativeDirectorRequestId: '',
+            persistenceDirty: false,
+            deleted: false
         });
     }
 
@@ -649,10 +682,18 @@
         return `${text.slice(0, 48)}${text.length > 48 ? '...' : ''}`;
     }
 
+    function conversationRecordsForView() {
+        const records = Array.isArray(state.conversationCatalog)
+            ? state.conversationCatalog.slice()
+            : [];
+        const currentId = String(state.conversationId || '').trim() || ensureConversationId();
+        const hasCurrent = records.some((record) => String(record?.conversation_id || '').trim() === currentId);
+        if (!hasCurrent) records.push(conversationPayload());
+        return records;
+    }
+
     function renderConversationOptions() {
-        const records = state.conversationCatalog.length
-            ? state.conversationCatalog
-            : [conversationPayload()];
+        const records = conversationRecordsForView();
         return records.map((record, index) => {
             const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
             return `<option value="${escapeHtml(id)}" ${id === state.conversationId ? 'selected' : ''}>${escapeHtml(conversationTitleForRecord(record, index))}</option>`;
@@ -660,14 +701,16 @@
     }
 
     function renderConversationTabs() {
-        const records = state.conversationCatalog.length
-            ? state.conversationCatalog
-            : [conversationPayload()];
+        const records = conversationRecordsForView();
         return records.map((record, index) => {
             const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
             const title = conversationTitleForRecord(record, index);
             const active = id === state.conversationId;
-            return `<button type="button" class="describe-vlm-chat-conversation-tab${active ? ' is-active' : ''}" data-describe-vlm-chat-conversation-tab="${escapeHtml(id)}"${active ? ' aria-current="page"' : ''} title="${escapeHtml(title)}"><span>${escapeHtml(title)}</span></button>`;
+            const canDelete = state.conversationCatalog.some((item) => String(item?.conversation_id || '').trim() === id);
+            const deleteButton = canDelete
+                ? `<button type="button" class="describe-vlm-chat-conversation-delete" data-describe-vlm-chat-conversation-delete="${escapeHtml(id)}" title="${escapeHtml(t('Delete conversation', '删除对话'))}" aria-label="${escapeHtml(t('Delete conversation', '删除对话'))}"><i class="fa-solid fa-trash"></i></button>`
+                : '';
+            return `<div class="describe-vlm-chat-conversation-tab-row"><button type="button" class="describe-vlm-chat-conversation-tab${active ? ' is-active' : ''}" data-describe-vlm-chat-conversation-tab="${escapeHtml(id)}"${active ? ' aria-current="page"' : ''} title="${escapeHtml(title)}"><span>${escapeHtml(title)}</span></button>${deleteButton}</div>`;
         }).join('');
     }
 
@@ -2712,6 +2755,10 @@
         });
     }
 
+    function conversationRecordHasHistory(record) {
+        return Array.isArray(record?.messages) && record.messages.length > 0;
+    }
+
     function readConversationCatalog() {
         const normalizeRecords = (items) => {
             const seen = new Set();
@@ -2719,7 +2766,7 @@
                 .map(normalizeConversationRecordForCatalog)
                 .filter((record) => {
                     const id = String(record?.conversation_id || '').trim();
-                    if (!id || seen.has(id)) return false;
+                    if (!id || seen.has(id) || !conversationRecordHasHistory(record)) return false;
                     seen.add(id);
                     return true;
                 })
@@ -2733,8 +2780,11 @@
             ) {
                 const records = normalizeRecords(stored.conversations);
                 if (records.length) {
+                    const storedActiveId = String(stored.active_id || '').trim();
                     return {
-                        activeId: String(stored.active_id || records[0].conversation_id || '').trim(),
+                        activeId: records.some((record) => String(record.conversation_id || '').trim() === storedActiveId)
+                            ? storedActiveId
+                            : String(records[0].conversation_id || '').trim(),
                         records
                     };
                 }
@@ -2743,7 +2793,7 @@
         try {
             const legacy = JSON.parse(window.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || 'null');
             const record = normalizeConversationRecordForCatalog(legacy);
-            if (record) {
+            if (record && conversationRecordHasHistory(record)) {
                 return {
                     activeId: String(record.conversation_id || '').trim(),
                     records: [record]
@@ -2764,10 +2814,11 @@
     function persistConversationCatalog() {
         ensureConversationCatalogLoaded();
         const records = state.conversationCatalog.slice(-MAX_SAVED_CONVERSATIONS);
+        const currentId = String(state.conversationId || '').trim();
         const payload = {
             schema: CONVERSATIONS_SCHEMA,
             version: CONVERSATIONS_VERSION,
-            active_id: String(state.conversationId || '').trim(),
+            active_id: records.some((record) => String(record?.conversation_id || '').trim() === currentId) ? currentId : '',
             saved_at: new Date().toISOString(),
             conversations: records
         };
@@ -2786,6 +2837,19 @@
         } catch (err) {
             return false;
         }
+    }
+
+    function removeConversationRecord(conversationId, persist = true) {
+        ensureConversationCatalogLoaded();
+        const id = String(conversationId || '').trim();
+        if (!id) return false;
+        const next = state.conversationCatalog.filter(
+            (item) => String(item?.conversation_id || '').trim() !== id
+        );
+        if (next.length === state.conversationCatalog.length) return false;
+        state.conversationCatalog = next;
+        if (persist) persistConversationCatalog();
+        return true;
     }
 
     function upsertConversationRecord(record) {
@@ -2807,9 +2871,20 @@
     function saveConversationSnapshot(runtime = null) {
         try {
             const target = runtime || syncCurrentRuntimeFromState();
+            if (target?.deleted) return;
             const snapshot = conversationPayload(target);
             const serialized = JSON.stringify(snapshot);
             if (serialized.length > 900000) return;
+            if (!conversationRecordHasHistory(snapshot)) {
+                const removed = removeConversationRecord(snapshot.conversation_id, false);
+                target.persistenceDirty = false;
+                if (isCurrentConversationRuntime(target)) state.persistenceDirty = false;
+                if (removed) persistConversationCatalog();
+                if (isCurrentConversationRuntime(target)) {
+                    syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
+                }
+                return;
+            }
             if (upsertConversationRecord(snapshot)) {
                 target.persistenceDirty = false;
                 if (isCurrentConversationRuntime(target)) {
@@ -2985,25 +3060,7 @@
         syncCurrentRuntimeFromState();
         saveConversationSnapshot();
         const current = currentConversationRuntime();
-        const runtime = createConversationRuntime({
-            conversationId: uid('describe_vlm_chat'),
-            chatMode: current.chatMode,
-            customSystemPrompt: current.customSystemPrompt,
-            systemPromptTemplateId: current.systemPromptTemplateId,
-            systemPromptPickerValue: current.systemPromptPickerValue,
-            baseSystemPromptContent: current.baseSystemPromptContent,
-            userSystemPromptTemplateId: current.userSystemPromptTemplateId,
-            userSystemPromptTemplateName: current.userSystemPromptTemplateName,
-            userSystemPromptContent: current.userSystemPromptContent,
-            systemPromptManualOverride: current.systemPromptManualOverride,
-            autoAttachPreviousImage: current.autoAttachPreviousImage,
-            unloadAfterChat: current.unloadAfterChat,
-            messages: [],
-            pendingImages: [],
-            creativePreference: normalizeCreativePreference(null),
-            creativePreferenceExpanded: normalizeChatMode(current.chatMode) === 'creative',
-            creativeInitiative: normalizeCreativeInitiative(null)
-        });
+        const runtime = createEmptyConversationRuntime(current);
         state.conversationRuntimes.set(runtime.conversationId, runtime);
         applyConversationRuntime(runtime);
         state.creativePreference = normalizeCreativePreference(null);
@@ -3018,40 +3075,121 @@
         setStatus(t('New conversation started.', '已新建对话。'));
     }
 
+    function deleteConversation(conversationId) {
+        ensureConversationCatalogLoaded();
+        const id = String(conversationId || '').trim();
+        const index = state.conversationCatalog.findIndex(
+            (item) => String(item?.conversation_id || '').trim() === id
+        );
+        if (!id || index < 0) return;
+
+        const isCurrent = id === state.conversationId;
+        const runtime = state.conversationRuntimes.get(id);
+        const nextRecord = state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null;
+        let requestId = String(runtime?.activeRequestId || '');
+        if (isCurrent) {
+            stopActiveConversationWork();
+        } else if (runtime) {
+            runtime.deleted = true;
+            runtime.requestToken += 1;
+            abortActiveChatRequest(runtime);
+            abortCreativeDirectorRequest(true, runtime);
+            stopCreativePolls(runtime);
+        }
+        const currentRuntime = isCurrent ? currentConversationRuntime() : null;
+        if (runtime) runtime.deleted = true;
+        removeConversationRecord(id, false);
+        state.conversationRuntimes.delete(id);
+
+        if (isCurrent) {
+            if (nextRecord) {
+                const nextRuntime = ensureConversationRuntime(nextRecord.conversation_id, nextRecord);
+                applyConversationRuntime(nextRuntime);
+            } else {
+                const blankRuntime = createEmptyConversationRuntime(currentRuntime || state);
+                state.conversationRuntimes.set(blankRuntime.conversationId, blankRuntime);
+                applyConversationRuntime(blankRuntime);
+            }
+            state.persistenceRestored = true;
+            state.persistenceDirty = false;
+            state.conversationCatalogActiveId = state.conversationId;
+            persistConversationCatalog();
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            syncChatSettingsControls(modal);
+            syncBusyControls(modal);
+            renderPendingImages();
+            renderMessages();
+            setStatus(nextRecord
+                ? t('Conversation deleted. Switched to another conversation.', '对话已删除，已切换到另一个对话。')
+                : t('Conversation deleted.', '对话已删除。'));
+        } else {
+            persistConversationCatalog();
+            syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
+            setStatus(t('Conversation deleted.', '对话已删除。'));
+        }
+        postJson('/describe-image/vlm-chat-clear', {
+            conversation_id: id,
+            clear_context: true
+        }).catch(() => {});
+        if (requestId) notifyBackendChatCancel(id, requestId).catch(() => {});
+    }
+
     async function clearConversation() {
         const previousConversationId = state.conversationId;
-        const previousRequestId = state.activeRequestId;
         stopActiveConversationWork();
         const runtime = currentConversationRuntime();
+        const index = state.conversationCatalog.findIndex(
+            (item) => String(item?.conversation_id || '').trim() === String(previousConversationId || '').trim()
+        );
+        const nextRecord = index >= 0
+            ? state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null
+            : null;
         runtime.messages = [];
         runtime.pendingImages = [];
         runtime.creativePreference = normalizeCreativePreference(null);
         runtime.creativePreferenceExpanded = normalizeChatMode(runtime.chatMode) === 'creative';
         runtime.creativeInitiative = normalizeCreativeInitiative(null);
         runtime.conversationId = previousConversationId || uid('describe_vlm_chat');
-        applyConversationRuntime(runtime);
+        runtime.persistenceDirty = false;
+        removeConversationRecord(previousConversationId, false);
+        if (nextRecord) {
+            runtime.deleted = true;
+            state.conversationRuntimes.delete(previousConversationId);
+            const nextRuntime = ensureConversationRuntime(nextRecord.conversation_id, nextRecord);
+            applyConversationRuntime(nextRuntime);
+        } else {
+            runtime.deleted = false;
+            state.conversationRuntimes.set(runtime.conversationId, runtime);
+            applyConversationRuntime(runtime);
+        }
         state.persistenceRestored = true;
-        state.persistenceDirty = true;
-        saveConversationSnapshot();
-        setStatus('');
+        state.persistenceDirty = false;
+        state.conversationCatalogActiveId = state.conversationId;
+        persistConversationCatalog();
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         renderPendingImages();
         renderMessages();
-        state.conversationCatalogActiveId = state.conversationId;
+        setStatus(nextRecord
+            ? t('Chat cleared. Switched to another conversation.', '对话已清空，已切换到另一个对话。')
+            : '');
         if (!previousConversationId) return;
         const response = await postJson('/describe-image/vlm-chat-clear', {
             conversation_id: previousConversationId,
             clear_context: true
         });
         if (!response?.ok) {
-            setConversationStatus(runtime, t('Chat cleared locally; backend context clear failed.', '已清空本地对话；后端上下文清理失败。'), true);
+            setStatus(t('Chat cleared locally; backend context clear failed.', '已清空本地对话；后端上下文清理失败。'), true);
         }
     }
 
     function confirmClearConversation() {
         return window.confirm(t('Clear the current chat? This cannot be undone.', '确认清理当前对话？此操作无法撤销。'));
+    }
+
+    function confirmDeleteConversation() {
+        return window.confirm(t('Delete this conversation? This cannot be undone.', '确认删除这个对话？此操作无法撤销。'));
     }
 
     function positionOpenButton(host, textarea, anchorHost) {
@@ -6379,6 +6517,15 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-maximize]')) {
             toggleFloatingPanelMaximize(modal.querySelector('.describe-vlm-chat-panel'));
+            return;
+        }
+        const conversationDelete = evt.target.closest('[data-describe-vlm-chat-conversation-delete]');
+        if (conversationDelete) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            if (confirmDeleteConversation()) {
+                deleteConversation(conversationDelete.getAttribute('data-describe-vlm-chat-conversation-delete'));
+            }
             return;
         }
         const conversationTab = evt.target.closest('[data-describe-vlm-chat-conversation-tab]');

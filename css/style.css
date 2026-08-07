@@ -6672,6 +6672,15 @@ html.describe-vlm-chat-resizing * {
   scrollbar-width: thin;
 }
 
+.describe-vlm-chat-conversation-tab-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+}
+
 .describe-vlm-chat-conversation-tab,
 .describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-tab {
   display: flex;
@@ -6692,6 +6701,45 @@ html.describe-vlm-chat-resizing * {
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
+}
+
+.describe-vlm-chat-conversation-tab-row .describe-vlm-chat-conversation-tab {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.describe-vlm-chat-conversation-delete,
+.describe-vlm-chat-conversation-bar .describe-vlm-chat-conversation-delete {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 34px;
+  min-width: 26px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid transparent !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--describe-chat-muted, #a4a8b4) !important;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.58;
+}
+
+.describe-vlm-chat-conversation-tab-row:hover .describe-vlm-chat-conversation-delete,
+.describe-vlm-chat-conversation-delete:focus-visible {
+  border-color: rgba(248, 113, 113, 0.46) !important;
+  background: rgba(127, 29, 29, 0.32) !important;
+  color: #fecaca !important;
+  opacity: 1;
+}
+
+.describe-vlm-chat-conversation-delete:hover {
+  border-color: rgba(248, 113, 113, 0.68) !important;
+  background: rgba(127, 29, 29, 0.52) !important;
+  color: #fff1f2 !important;
+  opacity: 1;
 }
 
 .describe-vlm-chat-conversation-tab span {
@@ -6838,6 +6886,16 @@ html.describe-vlm-chat-resizing * {
     max-width: 190px;
     min-height: 32px;
     padding: 5px 8px;
+  }
+
+  .describe-vlm-chat-conversation-tab-row {
+    width: auto;
+    max-width: 216px;
+  }
+
+  .describe-vlm-chat-conversation-delete {
+    height: 32px;
+    min-height: 32px;
   }
 
   .describe-vlm-chat-controls {
