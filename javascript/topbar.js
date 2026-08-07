@@ -2406,7 +2406,9 @@ function showPromptInfoOverlayFromInfobox() {
     if (!body) return;
     if (source) {
         const prose = source.querySelector(".prose") || source;
-        body.innerHTML = prose.innerHTML || source.innerHTML || "<p>info</p>";
+        const fragment = document.createDocumentFragment();
+        for (const child of prose.childNodes) fragment.appendChild(child.cloneNode(true));
+        body.replaceChildren(fragment.childNodes.length ? fragment : document.createTextNode("info"));
         const sourceGroup = source.closest(".gr-group");
         if (sourceGroup) sourceGroup.style.display = "none";
     } else if (!body.innerHTML) {

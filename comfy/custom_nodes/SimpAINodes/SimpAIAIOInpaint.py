@@ -38,12 +38,18 @@ def _engine_enabled(config):
     return str(config.get("engine", "")).strip().casefold() not in ("", "none", "disabled")
 
 
+def _uses_flux_fill(config):
+    return str(config.get("engine", "")).strip().casefold() == "fp8"
+
+
 class _SimpAIAIOInpaintBase:
     FAMILY = "flux"
 
     @classmethod
     def INPUT_TYPES(cls):
         optional = {}
+        if cls.FAMILY == "flux":
+            optional["inpaint_model"] = ("MODEL", {"lazy": True})
         if cls.FAMILY in ("sdxl", "qwen"):
             optional["inpaint_control_net"] = ("CONTROL_NET", {"lazy": True})
         optional["progress_node_id"] = ("STRING", {"default": ""})
@@ -70,14 +76,16 @@ class _SimpAIAIOInpaintBase:
     CATEGORY = "SimpAI/AIO/Inpaint"
 
     def check_lazy_status(self, model, positive, negative, vae, inpaint, seed, steps, cfg,
-                          sampler_name, scheduler, inpaint_control_net=None, progress_node_id="",
+                          sampler_name, scheduler, inpaint_model=None, inpaint_control_net=None, progress_node_id="",
                           use_differential_diffusion=True):
+        if self.FAMILY == "flux" and _uses_flux_fill(inpaint) and inpaint_model is None:
+            return ["inpaint_model"]
         if self.FAMILY in ("sdxl", "qwen") and _engine_enabled(inpaint) and inpaint_control_net is None:
             return ["inpaint_control_net"]
         return []
 
     def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
-               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
+               inpaint_model=None, inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         graph = GraphBuilder()
         image = inpaint["image"]
         mask = _mask_from_config(graph, inpaint)
@@ -85,7 +93,12 @@ class _SimpAIAIOInpaintBase:
 
         engine_enabled = _engine_enabled(inpaint)
         if self.FAMILY == "sdxl" and engine_enabled and inpaint_control_net is not None:
-            prepared = graph.node("InpaintPreprocessor", image=image, mask=mask)
+            prepared = graph.node(
+                "InpaintPreprocessor",
+                image=image,
+                mask=mask,
+                black_pixel_for_xinsir_cn=True,
+            )
             conditioned = graph.node(
                 "ControlNetApplyAdvanced",
                 positive=positive,
@@ -120,6 +133,8 @@ class _SimpAIAIOInpaintBase:
         if inpaint.get("disable_initial_latent", False):
             latent = graph.node("VAEEncodeForInpaint", pixels=image, vae=vae, mask=mask, grow_mask_by=16).out(0)
 
+        if self.FAMILY == "flux" and _uses_flux_fill(inpaint) and inpaint_model is not None:
+            model = inpaint_model
         model = _patch_differential_diffusion(graph, model, use_differential_diffusion)
 
         sampled = graph.node(

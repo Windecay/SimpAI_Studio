@@ -152,6 +152,16 @@
       "title": "If else"
     }
   },
+  "789": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "inpaint_model"
+    }
+  },
   "532": {
     "inputs": {
       "control_net_name": "flux.1-dev_controlnet_union_pro_2.0.safetensors"
@@ -1008,6 +1018,10 @@
         "aio_nag_model",
         0
       ],
+      "inpaint_model": [
+        "789",
+        0
+      ],
       "positive": [
         "aio_reference_4",
         1
@@ -1173,6 +1187,10 @@
         "aio_reference_4",
         0
       ],
+      "inpaint_model": [
+        "789",
+        0
+      ],
       "clip": [
         "784",
         0
@@ -1229,10 +1247,10 @@
         "728",
         8
       ],
-      "inpaint_model": [
-        "aio_reference_4",
-        0
-      ]
+    "inpaint_model": [
+      "aio_reference_4",
+      0
+    ]
     },
     "class_type": "SimpAIAIOImproveDetailFlux",
     "_meta": {

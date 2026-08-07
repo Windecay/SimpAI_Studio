@@ -4,6 +4,7 @@ import copy
 import re
 import math
 import time
+from html import escape
 from urllib.parse import unquote, urlparse
 import gradio as gr
 import modules.config as config
@@ -47,13 +48,28 @@ def make_infobox_markdown(info, theme):
         regen_manifest.LABEL,
         'SimpleAI Regen Manifest',
     }
+
+    def normalize_value(value):
+        if isinstance(value, (list, tuple)):
+            values = [normalize_value(item) for item in value]
+            return values[0] if len(values) == 1 else '\n'.join(str(item) for item in values)
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False)
+        return value
+
+    def render_value(value):
+        value = normalize_value(value)
+        value = escape(str(value), quote=False)
+        return value.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br/>')
+
     # 为 div 添加 padding，特别是右侧留出空间给关闭按钮 (×)
     html = f'<div style="background: {bgcolor}; padding: 10px 35px 10px 15px; border-radius: 8px;">'
     if info:
         for key in info:
-            if key in hidden_keys or info[key] in [None, '', 'None']:
+            value = normalize_value(info[key])
+            if key in hidden_keys or value in [None, '', 'None']:
                 continue
-            html += f'<b>{key}:</b> {info[key]}<br/>'
+            html += f'<b>{escape(str(key))}:</b> {render_value(value)}<br/>'
     else:
         html += '<p>info</p>'
     html += '</div>'

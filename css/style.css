@@ -7212,19 +7212,21 @@ html.describe-vlm-chat-resizing * {
     display: none;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 12px;
     background: rgba(0, 0, 0, 0.42);
     z-index: 2600;
     box-sizing: border-box;
 }
 
 .simpleai-prompt-info-card {
-    width: min(760px, calc(100vw - 48px));
-    max-height: min(72vh, 720px);
+    width: min(760px, calc(100vw - 24px));
+    height: min(720px, calc(100dvh - 24px));
+    max-height: min(720px, calc(100dvh - 24px));
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
+    box-sizing: border-box;
     color: var(--body-text-color);
     background: #202126;
     border: 1px solid rgba(255, 255, 255, 0.12);

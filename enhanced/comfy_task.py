@@ -129,6 +129,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("clip_model", "CLIPLoaderGGUF_Any:clip_model:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoader_Any:clip_model2:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoaderGGUF_Any:clip_model2:clip_name")
+    if task_method == "flux_aio":
+        comfy_params.update_mapping_rule("inpaint_model", "UNETLoader:inpaint_model:unet_name")
     if 'base_model_gguf' in default_params:
         comfy_params.delete_params(['base_model'])
     if 'base_model_gguf2' in default_params:

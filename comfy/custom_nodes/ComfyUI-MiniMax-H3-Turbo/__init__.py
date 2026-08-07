@@ -114,13 +114,16 @@ def _egrid():
     return _EGRID
 
 
-def _unique_t(timestep, shift_v, shift_a, has_vis_cond):
+def _unique_t(timestep, shift_v, shift_a, has_vis_cond, has_aud_cond=False,
+              visual_cond_t=0.999, audio_cond_t=1.0):
     sv = float((timestep.flatten()[0] / 1000.0).clamp(min=1e-6))
     t_v = 1.0 - sv
     t_a = 1.0 - _time_shift_sigma(sv, shift_v, shift_a)
     s = {t_v, t_a}
     if has_vis_cond:
-        s.add(max(t_v, 0.999))
+        s.add(max(t_v, visual_cond_t))
+    if has_aud_cond:
+        s.add(max(t_a, audio_cond_t))
     return sorted(s)
 
 
@@ -260,7 +263,7 @@ def _inject_adaln_egrid(new_model, dm, lora, adaln, strength):
     neither a bypass adapter nor a merged weight patch. Re-inject it at run time —
     a shared silu(t_emb) interpolated from the bundled E-grid each forward, plus a
     forward-attribute patch on each adaln projection that adds B @ A @ silu(t_emb)
-    (see _make_adaln_forward). Peak memory is negligible (M <= 3 rows), so this is
+    (see _make_adaln_forward). Peak memory is negligible (only a few rows), so this is
     identical in both the bypass and low_vram modes."""
     E = _egrid()
     shared = {"silu_temb": None}
@@ -271,8 +274,27 @@ def _inject_adaln_egrid(new_model, dm, lora, adaln, strength):
         ts = args[1] if len(args) > 1 else kwargs.get("timestep")
         ctx = args[2] if len(args) > 2 else kwargs.get("context")
         payload = kwargs.get("minimax_payload") or {}
-        has_vc = bool(payload.get("keyframes") or payload.get("refs"))
-        us = _unique_t(ts, shift_v, shift_a, has_vc)
+        layout = payload.get("layout")
+        segments = getattr(layout, "segments", None)
+        if segments is not None:
+            # Mirror MiniMaxH3Model._forward so the curve rows match t_emb exactly.
+            has_vc = any(k in ("cond", "ref_img") for _, _, k in segments)
+            has_ac = any(k == "ref_audio" for _, _, k in segments)
+        else:
+            refs = payload.get("refs") or []
+            has_vc = bool(payload.get("keyframes")) or any(
+                isinstance(r, dict) and r.get("kind") in ("image", "video", "video_audio")
+                for r in refs
+            )
+            has_ac = bool(payload.get("cond_audio_latents")) or any(
+                isinstance(r, dict)
+                and r.get("kind") in ("audio", "video_audio")
+                and r.get("ref_audio_t", 0) > 0
+                for r in refs
+            )
+        vis_aug = float(payload.get("visual_cond_noise_aug", 0.999))
+        aud_aug = float(payload.get("audio_cond_noise_aug", 1.0))
+        us = _unique_t(ts, shift_v, shift_a, has_vc, has_ac, vis_aug, aud_aug)
         shared["silu_temb"] = _interp_egrid(us, E, ctx.device, ctx.dtype)
         return executor(*args, **kwargs)
 

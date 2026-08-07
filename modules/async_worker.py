@@ -2488,7 +2488,11 @@ def worker():
                     if async_task.inpaint_disable_initial_latent:
                         async_task.params_backend['i2i_inpaint_disable_initial_latent'] = async_task.inpaint_disable_initial_latent
                     inpaint_engine_model_index = f'{async_task.task_method}_{async_task.inpaint_engine}'
-                    if inpaint_engine_model_index in flags.inpaint_engine_model_names:
+                    if async_task.task_method == 'flux_aio':
+                        async_task.params_backend.pop('inpaint_model', None)
+                        if inpaint_engine_model_index in flags.inpaint_engine_model_names:
+                            async_task.params_backend['inpaint_model'] = flags.inpaint_engine_model_names[inpaint_engine_model_index]
+                    elif inpaint_engine_model_index in flags.inpaint_engine_model_names:
                         async_task.base_model_name = flags.inpaint_engine_model_names[inpaint_engine_model_index]
                         if async_task.task_class in ('Flux', 'Qwen'):
                             is_safetensors_model = _model_type_from_name(async_task.base_model_name) == 1

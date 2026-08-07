@@ -2011,6 +2011,18 @@
         return file ? `file:${file.name || 'selected'}` : '';
     }
 
+    function audioSourceFromHost(host) {
+        const source = mediaSourceFromHost(host, 'audio');
+        if (source) return source;
+        const waveform = host?.querySelector?.('[data-testid^="waveform-"]');
+        if (!waveform) return '';
+        const uploadButton = Array.from(waveform.querySelectorAll?.('button') || []).find((button) => {
+            const label = `${button?.getAttribute?.('aria-label') || ''} ${button?.textContent || ''}`.toLowerCase();
+            return /upload|\u4e0a\u4f20/.test(label);
+        });
+        return uploadButton ? '' : 'waveform:audio';
+    }
+
     function sceneCanvasMediaInfo() {
         const host = findById('scene_canvas');
         if (!host) return { available: false, preview: '' };
@@ -2030,23 +2042,29 @@
     }
 
     function sceneMediaInfo(id, selector) {
-        const source = mediaSourceFromHost(findById(id), selector);
+        const host = findById(id);
+        const source = selector === 'audio'
+            ? audioSourceFromHost(host)
+            : mediaSourceFromHost(host, selector);
         return { available: !!source, preview: source.startsWith('file:') ? '' : source };
     }
 
     function sceneHiddenSlots(source) {
         const state = languageState(source);
         const scene = state.scene_frontend && typeof state.scene_frontend === 'object' ? state.scene_frontend : {};
-        const raw = Object.prototype.hasOwnProperty.call(state, '__scene_disvisible')
+        const hasResolvedHidden = Object.prototype.hasOwnProperty.call(state, '__scene_disvisible');
+        const raw = hasResolvedHidden
             ? state.__scene_disvisible
             : scene.disvisible;
         const hidden = new Set((Array.isArray(raw) ? raw : String(raw || '').split(','))
             .map((item) => String(item || '').trim())
             .filter(Boolean));
-        const enabled = new Set(Array.isArray(scene.divisible) ? scene.divisible.map(String) : []);
-        ['scene_input_image3', 'scene_input_image4'].forEach((slot) => {
-            if (!hidden.has(slot) && !enabled.has(slot)) hidden.add(slot);
-        });
+        if (!hasResolvedHidden) {
+            const enabled = new Set(Array.isArray(scene.divisible) ? scene.divisible.map(String) : []);
+            ['scene_input_image3', 'scene_input_image4'].forEach((slot) => {
+                if (!hidden.has(slot) && !enabled.has(slot)) hidden.add(slot);
+            });
+        }
         return hidden;
     }
 
