@@ -19143,3 +19143,116 @@ button[aria-label="Edit"][title="Edit"] {
     grid-column: 1 / -1;
   }
 }
+
+/* Keep the compact desktop window useful: the model selector shares the
+   title row, and helper text does not take space from the message list. */
+@media (min-width: 641px) {
+  .describe-vlm-chat-head {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: 8px;
+    min-height: 48px;
+    padding: 7px 10px;
+  }
+
+  .describe-vlm-chat-title,
+  .describe-vlm-chat-model-pill,
+  .describe-vlm-chat-head-actions {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .describe-vlm-chat-model-pill {
+    height: 30px;
+    padding: 0 7px;
+    gap: 4px;
+  }
+
+  .describe-vlm-chat-model-pill select {
+    width: auto;
+    min-width: 0;
+  }
+}
+
+@container (min-width: 400px) and (max-width: 699px) {
+  .describe-vlm-chat-mode-hint {
+    display: none !important;
+  }
+
+  .describe-vlm-chat-system-field textarea {
+    height: 36px;
+    min-height: 36px;
+    max-height: min(120px, 22dvh);
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  .describe-vlm-chat-controls select {
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .describe-vlm-chat-template-manage {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+}
+
+/* Keep the settings header short when the saved floating window is narrow. */
+@container (min-width: 400px) and (max-width: 699px) {
+  .describe-vlm-chat-panel {
+    grid-template-columns: clamp(112px, 22%, 140px) minmax(0, 1fr);
+  }
+
+  .describe-vlm-chat-controls {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+
+  .describe-vlm-chat-template-field {
+    grid-column: 3;
+  }
+
+  .describe-vlm-chat-system-field,
+  .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+  }
+
+  .describe-vlm-chat-controls select {
+    height: 38px;
+    min-height: 38px;
+    padding: 0 8px;
+  }
+
+  .describe-vlm-chat-system-field textarea {
+    height: 42px;
+    min-height: 42px;
+    max-height: min(140px, 24dvh);
+  }
+
+  .describe-vlm-chat-mode-hint {
+    max-height: 30px;
+    margin-top: -1px;
+    overflow: hidden;
+    line-height: 1.25;
+  }
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .describe-vlm-chat-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 8px;
+    padding: 7px 8px;
+  }
+
+  .describe-vlm-chat-template-field,
+  .describe-vlm-chat-system-field,
+  .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+  }
+}

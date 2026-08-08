@@ -15,8 +15,8 @@
       "steps": 20,
       "var_number": 0,
       "var_number2": 0,
-      "var_number3": 0,
-      "var_number4": 0,
+      "var_number3": 12.0,
+      "var_number4": 3.0,
       "var_number5": 0,
       "var_number6": 0,
       "var_number7": 0,
@@ -88,7 +88,7 @@
       "scheduler": ["1", 31],
       "steps": ["1", 9],
       "denoise": 1,
-      "model": ["68", 0]
+      "model": ["69", 0]
     },
     "class_type": "BasicScheduler",
     "_meta": {"title": "H3 Scheduler"}
@@ -114,7 +114,7 @@
   },
   "12": {
     "inputs": {
-      "model": ["68", 0],
+      "model": ["69", 0],
       "conditioning": ["11", 0]
     },
     "class_type": "BasicGuider",
@@ -400,5 +400,14 @@
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {"title": "lora_10"}
+  },
+  "69": {
+    "inputs": {
+      "shift_video": ["1", 12],
+      "shift_audio": ["1", 13],
+      "model": ["68", 0]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {"title": "ModelSamplingMiniMaxH3"}
   }
 }

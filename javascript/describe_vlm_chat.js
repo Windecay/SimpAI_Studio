@@ -201,8 +201,12 @@
             const number = Number(item);
             return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
         };
-        const left = finite(value.left);
-        const top = finite(value.top);
+        const coordinate = (item) => {
+            const number = Number(item);
+            return Number.isFinite(number) ? Math.round(number) : null;
+        };
+        const left = coordinate(value.left);
+        const top = coordinate(value.top);
         const width = finite(value.width);
         const height = finite(value.height);
         if (left === null && top === null && width === null && height === null) return null;
@@ -730,19 +734,34 @@
         return records;
     }
 
+    function conversationDisplayTitles(records) {
+        const titles = (Array.isArray(records) ? records : [])
+            .map((record, index) => conversationTitleForRecord(record, index));
+        const totals = new Map();
+        titles.forEach((title) => totals.set(title, (totals.get(title) || 0) + 1));
+        const occurrences = new Map();
+        return titles.map((title) => {
+            const occurrence = (occurrences.get(title) || 0) + 1;
+            occurrences.set(title, occurrence);
+            return totals.get(title) > 1 ? `${occurrence}. ${title}` : title;
+        });
+    }
+
     function renderConversationOptions() {
         const records = conversationRecordsForView();
+        const titles = conversationDisplayTitles(records);
         return records.map((record, index) => {
             const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
-            return `<option value="${escapeHtml(id)}" ${id === state.conversationId ? 'selected' : ''}>${escapeHtml(conversationTitleForRecord(record, index))}</option>`;
+            return `<option value="${escapeHtml(id)}" ${id === state.conversationId ? 'selected' : ''}>${escapeHtml(titles[index] || conversationTitleForRecord(record, index))}</option>`;
         }).join('');
     }
 
     function renderConversationTabs() {
         const records = conversationRecordsForView();
+        const titles = conversationDisplayTitles(records);
         return records.map((record, index) => {
             const id = String(record?.conversation_id || state.conversationId || ensureConversationId()).trim();
-            const title = conversationTitleForRecord(record, index);
+            const title = titles[index] || conversationTitleForRecord(record, index);
             const active = id === state.conversationId;
             const canDelete = state.conversationCatalog.some((item) => String(item?.conversation_id || '').trim() === id);
             const deleteButton = canDelete
@@ -1930,6 +1949,9 @@
 
     function setImportantStyle(el, name, value) {
         if (!el) return;
+        if (el.matches?.('.describe-vlm-chat-panel') && ['transform', 'left', 'top', 'right', 'bottom'].includes(name)) {
+            el.style.setProperty('inset', 'auto', 'important');
+        }
         el.style.setProperty(name, value, 'important');
     }
 
@@ -1967,7 +1989,7 @@
     function clearCompactFloatingPanelLayout(panel) {
         if (!panel || panel.dataset.describeVlmChatCompactFrame !== '1') return false;
         delete panel.dataset.describeVlmChatCompactFrame;
-        ['transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
+        ['inset', 'transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
             .forEach((name) => panel.style.removeProperty(name));
         return true;
     }
@@ -2070,23 +2092,46 @@
     function applySavedFloatingPanelLayout(panel, margin = 12) {
         if (applyCompactFloatingPanelLayout(panel)) return true;
         const layout = state.windowLayout;
-        if (!panel || !layout) return false;
+        if (!panel) return false;
+        if (!layout) {
+            ['inset', 'transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
+                .forEach((name) => panel.style.removeProperty(name));
+            return false;
+        }
         const bounds = floatingResizeViewportBounds(margin);
-        if (Number.isFinite(layout.width) && Number.isFinite(layout.height)) {
+        if (layout.resized && Number.isFinite(layout.width) && Number.isFinite(layout.height)) {
             applyFloatingPanelSize(panel, layout.width, layout.height, bounds, false);
         }
-        if (layout.resized) panel.dataset.describeVlmChatResized = '1';
+        if (layout.resized) {
+            panel.dataset.describeVlmChatResized = '1';
+        } else {
+            delete panel.dataset.describeVlmChatResized;
+            ['width', 'height', 'max-width', 'max-height']
+                .forEach((name) => panel.style.removeProperty(name));
+        }
 
         const rect = panel.getBoundingClientRect();
         if (!rect.width || !rect.height) return false;
-        if (Number.isFinite(layout.left) && Number.isFinite(layout.top)) {
+        if (Number.isFinite(layout.left) || Number.isFinite(layout.top)) {
             const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-            const left = clamp(layout.left, margin, Math.max(margin, window.innerWidth - margin - rect.width));
-            const top = clamp(layout.top, margin, Math.max(margin, window.innerHeight - margin - rect.height));
-            if (layout.moved) panel.dataset.describeVlmChatMoved = '1';
+            const left = clamp(
+                Number.isFinite(layout.left) ? layout.left : rect.left,
+                margin,
+                Math.max(margin, window.innerWidth - margin - rect.width)
+            );
+            const top = clamp(
+                Number.isFinite(layout.top) ? layout.top : rect.top,
+                margin,
+                Math.max(margin, window.innerHeight - margin - rect.height)
+            );
+            if (layout.moved) {
+                panel.dataset.describeVlmChatMoved = '1';
+            } else {
+                delete panel.dataset.describeVlmChatMoved;
+            }
             setImportantStyle(panel, 'transform', 'none');
-            setImportantStyle(panel, 'left', `${Math.round(left)}px`);
-            setImportantStyle(panel, 'top', `${Math.round(top)}px`);
+            setImportantStyle(panel, 'left', Math.round(left) + 'px');
+            setImportantStyle(panel, 'top', Math.round(top) + 'px');
             setImportantStyle(panel, 'right', 'auto');
             setImportantStyle(panel, 'bottom', 'auto');
         }
@@ -2143,7 +2188,7 @@
                 if (!restore.moved) delete panel.dataset.describeVlmChatMoved;
                 if (!restore.resized) delete panel.dataset.describeVlmChatResized;
             } else {
-                ['transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
+                ['inset', 'transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
                     .forEach((name) => panel.style.removeProperty(name));
                 applySavedFloatingPanelLayout(panel);
             }
@@ -2173,7 +2218,7 @@
         const leftCompactMode = clearCompactFloatingPanelLayout(panel);
         if (panel.dataset.describeVlmChatMaximized === '1') {
             applyMaximizedFloatingPanelLayout(panel);
-        } else if (leftCompactMode) {
+        } else if (leftCompactMode || state.windowLayout) {
             applySavedFloatingPanelLayout(panel);
         } else if (panel.dataset.describeVlmChatMoved === '1' || panel.dataset.describeVlmChatResized === '1') {
             clampFloatingPanelSizeToViewport(panel);
@@ -2503,7 +2548,7 @@
                 applyMaximizedFloatingPanelLayout(panel);
                 return;
             }
-            if (applySavedFloatingPanelLayout(panel)) return;
+            applySavedFloatingPanelLayout(panel);
             if (panel?.dataset.describeVlmChatResized === '1') clampFloatingPanelSizeToViewport(panel);
             if (panel?.dataset.describeVlmChatMoved === '1' || panel?.dataset.describeVlmChatResized === '1') keepFloatingPanelInViewport(panel);
         });
@@ -3549,7 +3594,6 @@
         state.requestToken += 1;
         state.busy = false;
         abortCreativeDirectorRequest(true);
-        state.conversationId = uid('describe_vlm_chat');
         if (previousConversationId) {
             postJson('/describe-image/vlm-chat-clear', {
                 conversation_id: previousConversationId,
