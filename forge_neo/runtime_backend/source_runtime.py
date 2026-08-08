@@ -108,7 +108,7 @@ _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = ""
 _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 _SOURCE_BACKEND_BOOTSTRAP_PACKAGES: tuple[tuple[str, str], ...] = (
-    ("comfy-kitchen", "0.2.26"),
+    ("comfy-kitchen", "0.2.28"),
 )
 
 
@@ -2310,6 +2310,59 @@ def run_source_backend_upscale(image: object, request: object, progress_callback
     return _SOURCE_BACKEND_SESSION.run(
         request=request,
         mode="upscale",
+        payload=payload,
+        data_root=data_root,
+        model_ref=model_ref,
+        timeout=timeout,
+        started=started,
+        progress_callback=progress_callback,
+        control_callback=control_callback,
+    )
+
+
+def run_source_tipo_prompt(values: dict[str, Any], progress_callback=None, control_callback=None):
+    from forge_neo.runtime import ForgeNeoRequest, ForgeNeoResult
+    from forge_neo.tipo_compat import tipo_arg_dict
+
+    started = time.monotonic()
+    if control_callback is not None and control_callback() in {"stopped", "skipped"}:
+        return ForgeNeoResult(status="stopped", error="TIPO prompt generation was interrupted before start.")
+
+    tipo_values = tipo_arg_dict(values)
+    tag_prompt = str(tipo_values.get("tag_prompt") or "").strip()
+    nl_prompt = str(tipo_values.get("nl_prompt") or "")
+    if not tag_prompt and not nl_prompt.strip():
+        return ForgeNeoResult(status="error", error="TIPO requires a tag or natural language prompt.")
+
+    payload_values = dict(tipo_values)
+    payload_values["aspect_ratio"] = float(values.get("aspect_ratio") or 1.0)
+    payload_values["send_images"] = False
+    payload_values["save_images"] = False
+    payload = {
+        "mode": "tipo_prompt",
+        "payload": payload_values,
+    }
+    data_root = _default_data_root().resolve()
+    model_ref_value = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_MODEL_REF", "") or "").strip()
+    model_ref = Path(model_ref_value).resolve() if model_ref_value else None
+    timeout = float(
+        os.environ.get(
+            "FORGE_NEO_SOURCE_BACKEND_TIPO_TIMEOUT",
+            os.environ.get("FORGE_NEO_SOURCE_BACKEND_TIMEOUT", "1800"),
+        )
+        or 1800
+    )
+    request = ForgeNeoRequest(
+        mode="txt2img",
+        prompt=tag_prompt,
+        seed=int(tipo_values.get("seed", -1) or -1),
+        send_images=False,
+        save_images=False,
+        force_task_id="forge-neo-tipo-prompt",
+    )
+    return _SOURCE_BACKEND_SESSION.run(
+        request=request,
+        mode="tipo_prompt",
         payload=payload,
         data_root=data_root,
         model_ref=model_ref,

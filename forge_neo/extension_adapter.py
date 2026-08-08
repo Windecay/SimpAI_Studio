@@ -43,6 +43,7 @@ BUILTIN_EXTENSIONS_DIR = WEBUI_ROOT / "extensions-builtin"
 
 TAGCOMPLETE_EXTENSION = "sd-webui-tagcomplete-neo"
 PROMPT_ALL_IN_ONE_EXTENSION = "sd-webui-prompt-all-in-one-forgeneo"
+TIPO_EXTENSION = "tipo"
 WD14_TAGGER_EXTENSION = "stable-diffusion-webui-wd14-tagger"
 ADETAILER_EXTENSION = "adetailer"
 ADETAILER_EXTENSION_DIRNAME = "ADetailer-Neo"
@@ -66,6 +67,7 @@ SUPPORTED_PROMPT_EXTENSIONS = (TAGCOMPLETE_EXTENSION, PROMPT_ALL_IN_ONE_EXTENSIO
 FIRST_BATCH_PROMPT_EXTENSION_PROFILES = (TAGCOMPLETE_EXTENSION, PROMPT_ALL_IN_ONE_EXTENSION)
 PRIORITY_EXTENSION_PROFILES = (
     DYNAMIC_PROMPTS_EXTENSION,
+    TIPO_EXTENSION,
     WD14_TAGGER_EXTENSION,
     ADETAILER_EXTENSION,
     REGIONAL_PROMPTER_EXTENSION,
@@ -249,6 +251,37 @@ PROMPT_ALL_IN_ONE_PROFILE = ForgeNeoExtensionProfile(
         "Uses lightweight Forge Neo /physton_prompt API routes.",
         "Translation routes call the installed Prompt All In One translator backend.",
         "OpenAI generation and MBart50 remain disabled unless configured later.",
+    ),
+)
+
+TIPO_PROFILE = ForgeNeoExtensionProfile(
+    name=TIPO_EXTENSION,
+    display_name="TIPO",
+    family="prompt-helper",
+    support_level="priority-profile",
+    extension_dirname="z-tipo-extension",
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/KohakuBlueleaf/z-tipo-extension.git",
+    repository_layout="standalone",
+    source_branch="main",
+    required_files=(
+        "install.py",
+        "scripts/tipo.py",
+        "tipo_installer/__init__.py",
+        "tipo_installer/scheme.py",
+        "tipo_installer/hardware.py",
+        "tipo_installer/pkg.py",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "before_process",
+        "process",
+        "prompt_gen_only",
+    ),
+    notes=(
+        "Forge Neo uses the installed source TIPOScript for generation-time prompt upsampling.",
+        "The native Forge Neo prompt area supplies TIPO's alwayson arguments without loading the source WebUI UI.",
+        "TIPO controls are created only when the z-tipo-extension profile is installed and enabled.",
     ),
 )
 
@@ -1012,6 +1045,7 @@ PROMPT_STYLE_EXTENSION_PROFILE_OBJECTS = (STYLE_ORGANIZER_PROFILE,)
 PROFILE_ONLY_EXTENSION_PROFILE_OBJECTS: tuple[ForgeNeoExtensionProfile, ...] = ()
 EXTENSION_PROFILES = (
     *PROMPT_EXTENSION_PROFILES,
+    TIPO_PROFILE,
     DYNAMIC_PROMPTS_PROFILE,
     WD14_TAGGER_PROFILE,
     ADETAILER_PROFILE,
@@ -1570,6 +1604,10 @@ def adetailer_available() -> bool:
 
 def dynamic_prompts_available() -> bool:
     return extension_profile_available(DYNAMIC_PROMPTS_EXTENSION)
+
+
+def tipo_available() -> bool:
+    return extension_profile_available(TIPO_EXTENSION)
 
 
 def regional_prompter_available() -> bool:

@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import random
 import re
 import shlex
 import sys
@@ -1704,6 +1705,33 @@ def _source_dynamic_prompts_extension_roots() -> list[Path]:
     return roots
 
 
+def _source_tipo_extension_roots() -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add(value: str | os.PathLike[str] | None) -> None:
+        if value is None:
+            return
+        text = str(value or "").strip()
+        if not text:
+            return
+        path = Path(text).expanduser()
+        key = _source_path_key(path)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
+    add(os.environ.get("FORGE_NEO_SOURCE_BACKEND_TIPO_ROOT"))
+    backend_root = _SOURCE_BACKEND_ROOT or _LOCAL_SOURCE_WEBUI_ROOT
+    add(backend_root / "extensions" / "z-tipo-extension")
+    if _SOURCE_DATA_ROOT is not None:
+        add(_SOURCE_DATA_ROOT / "extensions" / "z-tipo-extension")
+    if _SOURCE_ROOT is not None:
+        add(_SOURCE_ROOT / "extensions" / "z-tipo-extension")
+    return roots
+
+
 def _register_source_script_classes(module: types.ModuleType, script_path: Path, extension_root: Path) -> int:
     from modules import scripts
 
@@ -1826,6 +1854,49 @@ def _ensure_source_dynamic_prompts_adapter_script() -> dict[str, Any]:
     )
 
 
+def _ensure_source_tipo_script() -> dict[str, Any]:
+    from modules import scripts
+
+    searched: list[str] = []
+    errors: list[str] = []
+    for extension_root in _source_tipo_extension_roots():
+        script_path = extension_root / "scripts" / "tipo.py"
+        searched.append(str(script_path))
+        if not script_path.is_file():
+            continue
+        if _source_script_data_has_path(scripts, script_path):
+            return {
+                "loaded": False,
+                "already_loaded": True,
+                "path": str(script_path),
+            }
+
+        module_name = "_forge_neo_source_adapter_tipo"
+        try:
+            module = _import_source_file(module_name, script_path)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+            sys.modules.pop(module_name, None)
+            continue
+        registered = _register_source_script_classes(module, script_path, extension_root)
+        if registered:
+            _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
+            return {
+                "loaded": True,
+                "registered": registered,
+                "path": str(script_path),
+                "extension_root": str(extension_root),
+                "errors": errors,
+            }
+
+    return {
+        "loaded": False,
+        "missing": True,
+        "searched": searched,
+        "errors": errors,
+    }
+
+
 def _source_script_from_class_data(script_data: object, *, is_img2img: bool) -> object | None:
     try:
         script = script_data.script_class()
@@ -1929,6 +2000,44 @@ def _ensure_source_runner_has_dynamic_prompts_script(runner: object, *, is_img2i
         "title": _source_script_title(script).strip(),
         "path": str(getattr(script, "filename", "") or ""),
         "direct_instance": True,
+    }
+
+
+def _ensure_source_runner_has_tipo_script(runner: object, *, is_img2img: bool) -> dict[str, Any]:
+    if _source_runner_has_requested_scripts(runner, {"tipo"}):
+        return {"added": False, "reason": "already present"}
+
+    from modules import scripts
+
+    adapter_result = _ensure_source_tipo_script()
+    for script_data in list(getattr(scripts, "scripts_data", []) or []):
+        script = _source_script_from_class_data(script_data, is_img2img=is_img2img)
+        if script is None or _source_script_title(script).strip().lower() != "tipo":
+            continue
+        try:
+            visibility = script.show(script.is_img2img)
+        except Exception as exc:
+            return {
+                "added": False,
+                "adapter": adapter_result,
+                "title": "TIPO",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if visibility != scripts.AlwaysVisible:
+            continue
+        script.alwayson = True
+        _append_source_script_to_runner(runner, script)
+        return {
+            "added": True,
+            "adapter": adapter_result,
+            "title": _source_script_title(script).strip(),
+            "path": str(getattr(script_data, "path", "") or ""),
+        }
+
+    return {
+        "added": False,
+        "adapter": adapter_result,
+        "missing": True,
     }
 
 
@@ -2821,6 +2930,8 @@ def _prepare_source_script_opts(requested_names: set[str]) -> dict[str, Any]:
 
 def _ensure_source_adapter_scripts(requested_names: set[str], runner: object) -> dict[str, Any]:
     adapter_scripts: dict[str, Any] = {}
+    if "tipo" in requested_names and not _source_runner_has_requested_scripts(runner, {"tipo"}):
+        adapter_scripts["tipo"] = _ensure_source_tipo_script()
     if "dynamic prompts" in requested_names and not _source_runner_has_requested_scripts(runner, {"dynamic prompts"}):
         adapter_scripts["dynamic_prompts"] = _ensure_source_dynamic_prompts_script()
     if "adetailer" in requested_names and not _source_runner_has_requested_scripts(runner, {"adetailer"}):
@@ -2946,6 +3057,43 @@ def _normalize_source_controlnet_payload(payload: dict[str, Any]) -> dict[str, A
 
 def _source_script_api_defaults(script: object) -> list[Any]:
     title = _source_script_title(script).strip().lower()
+    if title == "tipo":
+        try:
+            from kgen import models
+            from kgen.metainfo import TIPO_DEFAULT_FORMAT
+
+            model_choices = [
+                f"{model_name} | {file}"
+                for model_name, ggufs in models.tipo_model_list
+                for file in ggufs
+            ] + [item[0] for item in models.tipo_model_list]
+            model = model_choices[0] if model_choices else ""
+            format_choices = list(TIPO_DEFAULT_FORMAT)
+            format_name = format_choices[0] if format_choices else "custom"
+            format_value = TIPO_DEFAULT_FORMAT.get(format_name, "")
+        except Exception:
+            model = ""
+            format_name = "custom"
+            format_value = ""
+        return [
+            False,
+            "After applying other prompt processings",
+            -1,
+            False,
+            "long",
+            "long",
+            "",
+            format_name,
+            format_value,
+            0.5,
+            0.95,
+            80,
+            model,
+            False,
+            False,
+            "",
+            "",
+        ]
     if _source_script_matches_requested(title, "dynamic prompts"):
         from forge_neo.dynamic_prompts_compat import dynamic_prompts_arg_list
 
@@ -3316,6 +3464,11 @@ def _ensure_source_api_script_defaults(api: object, *, mode: str, payload: dict[
         _filter_source_runner_scripts(runner, requested_names)
         _assign_source_script_api_ranges(runner)
         initialized_ranges = True
+    if "tipo" in requested_names and not _source_runner_has_requested_scripts(runner, {"tipo"}):
+        adapter_scripts["tipo_runner"] = _ensure_source_runner_has_tipo_script(runner, is_img2img=is_img2img)
+        _filter_source_runner_scripts(runner, requested_names)
+        _assign_source_script_api_ranges(runner)
+        initialized_ranges = True
     if "dynamic prompts" in requested_names and not _source_runner_has_requested_scripts(runner, {"dynamic prompts"}):
         adapter_scripts["dynamic_prompts_adapter"] = _ensure_source_dynamic_prompts_adapter_script()
         runner.initialize_scripts(is_img2img=is_img2img)
@@ -3416,6 +3569,76 @@ def _get_source_context(data_root: Path) -> dict[str, Any]:
         "source_extra_networks": source_extra_networks,
     }
     return _SOURCE_CONTEXT
+
+
+def _run_tipo_prompt(payload: dict[str, Any], data_root: Path, source_root: Path) -> dict[str, Any]:
+    started = time.monotonic()
+    _get_source_context(data_root)
+    adapter_result = _ensure_source_tipo_script()
+    if adapter_result.get("missing"):
+        return {
+            "ok": False,
+            "error": "TIPO extension script is not available.",
+            "source_script_setup": adapter_result,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+        }
+
+    from forge_neo.tipo_compat import tipo_arg_dict
+    from modules import scripts
+
+    script = None
+    for script_data in list(getattr(scripts, "scripts_data", []) or []):
+        candidate = _source_script_from_class_data(script_data, is_img2img=False)
+        if candidate is not None and _source_script_title(candidate).strip().lower() == "tipo":
+            script = candidate
+            break
+    if script is None:
+        return {
+            "ok": False,
+            "error": "TIPO script could not be initialized.",
+            "source_script_setup": adapter_result,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+        }
+
+    values = tipo_arg_dict(payload)
+    format_select = str(values.get("format_select") or "custom")
+    if format_select != "custom":
+        try:
+            from kgen.metainfo import TIPO_DEFAULT_FORMAT
+
+            values["format"] = TIPO_DEFAULT_FORMAT.get(format_select, values.get("format", ""))
+        except Exception:
+            pass
+    seed = int(values.get("seed", -1) or -1)
+    if seed == -1:
+        seed = random.randrange(2**31 - 1)
+
+    result = script._process(
+        str(values.get("tag_prompt") or ""),
+        str(values.get("nl_prompt") or ""),
+        float(payload.get("aspect_ratio") or 1.0),
+        seed,
+        str(values.get("tag_length") or "long").replace(" ", "_"),
+        str(values.get("nl_length") or "long").replace(" ", "_"),
+        str(values.get("ban_tags") or ""),
+        format_select,
+        str(values.get("format") or ""),
+        float(values.get("temperature", 0.5) or 0.5),
+        float(values.get("top_p", 0.95) or 0.95),
+        int(values.get("top_k", 80) or 80),
+        str(values.get("model") or ""),
+        bool(values.get("gguf_cpu", False)),
+        bool(values.get("no_formatting", False)),
+        str(values.get("tag_prompt") or ""),
+    )
+    _emit_event(_stage_event(1.0, "TIPO prompt generated", "TIPO 提示词已生成"))
+    return {
+        "ok": True,
+        "info": str(result or ""),
+        "prompt": str(result or ""),
+        "source_script_setup": adapter_result,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
 
 
 def _run_txt2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
@@ -3697,6 +3920,8 @@ def _serve_loop(data_root: Path, source_root: Path) -> int:
                 result = _run_controlnet_detect(payload, data_root, source_root)
             elif mode == "upscale":
                 result = _run_upscale(payload, data_root)
+            elif mode == "tipo_prompt":
+                result = _run_tipo_prompt(payload, data_root, source_root)
             elif mode == "unload_models":
                 result = _run_unload_models()
             elif mode == "txt2img":
@@ -3740,6 +3965,13 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        repo_root = Path(__file__).resolve().parents[2]
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        from forge_neo.tipo_runtime import ensure_tipo_kgen_startup
+
+        ensure_tipo_kgen_startup(python_executable=sys.executable)
+
         if args.serve:
             if args.backend_root is None or args.data_root is None:
                 raise ValueError("--serve requires --backend-root and --data-root")
@@ -3763,6 +3995,8 @@ def main() -> int:
             result = _run_controlnet_detect(payload, data_root, source_root)
         elif mode == "upscale":
             result = _run_upscale(payload, data_root)
+        elif mode == "tipo_prompt":
+            result = _run_tipo_prompt(payload, data_root, source_root)
         elif mode == "unload_models":
             result = _run_unload_models()
         elif mode == "txt2img":

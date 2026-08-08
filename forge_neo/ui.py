@@ -47,6 +47,7 @@ from forge_neo.extension_adapter import (
     see_through_available,
     storyboard_assistant_available,
     TAGCOMPLETE_EXTENSION,
+    tipo_available,
     trellis2_available,
     wd14_tagger_available,
     wd14_interrogate_payload,
@@ -57,6 +58,16 @@ from forge_neo.regional_prompter_compat import (
     REGIONAL_PROMPTER_ARG_KEYS,
     REGIONAL_PROMPTER_OPTION_CHOICES,
     regional_prompter_arg_dict,
+)
+from forge_neo.tipo_compat import (
+    TIPO_ARG_KEYS,
+    TIPO_LENGTH_CHOICES,
+    TIPO_TIMING_AFTER,
+    TIPO_TIMING_BEFORE,
+    tipo_arg_dict,
+    tipo_default_values,
+    tipo_format_choices,
+    tipo_model_choices,
 )
 from forge_neo.extensions import (
     ADAPTED_AVAILABLE_EXTENSION_SOURCE,
@@ -495,6 +506,8 @@ ADETAILER_UNIT_FIELD_NAMES = (
 ADETAILER_UNIT_FIELD_COUNT = len(ADETAILER_UNIT_FIELD_NAMES)
 ADETAILER_FIELD_COUNT = 2 + ADETAILER_UNIT_COUNT * ADETAILER_UNIT_FIELD_COUNT
 DYNAMIC_PROMPTS_FIELD_COUNT = len(DYNAMIC_PROMPTS_ARG_KEYS)
+TIPO_FIELD_COUNT = len(TIPO_ARG_KEYS)
+IMG2IMG_EXTRA_FIELD_COUNT = 32
 REGIONAL_PROMPTER_FIELD_COUNT = len(REGIONAL_PROMPTER_ARG_KEYS)
 FORGE_COUPLE_FIELD_COUNT = len(FORGE_COUPLE_ARG_KEYS)
 SCRIPT_PANEL_FIELD_COUNT = 5
@@ -5153,14 +5166,24 @@ def _build_request(
     *integrated_and_img2img,
 ) -> ForgeNeoRequest:
     integrated_values = list(integrated_and_img2img[:INTEGRATED_FIELD_COUNT])
-    img2img_image = integrated_and_img2img[INTEGRATED_FIELD_COUNT] if len(integrated_and_img2img) > INTEGRATED_FIELD_COUNT else None
-    img2img_extras = integrated_and_img2img[INTEGRATED_FIELD_COUNT + 1 :]
+    extras_start = INTEGRATED_FIELD_COUNT
+    if mode == "txt2img":
+        compact_extras = integrated_and_img2img[extras_start:]
+        img2img_extras = compact_extras[:1]
+        tipo_values = compact_extras[1 : 1 + TIPO_FIELD_COUNT]
+    else:
+        tipo_start = extras_start + IMG2IMG_EXTRA_FIELD_COUNT
+        img2img_extras = integrated_and_img2img[extras_start:tipo_start]
+        tipo_values = integrated_and_img2img[tipo_start : tipo_start + TIPO_FIELD_COUNT]
+    img2img_image = img2img_extras[0] if img2img_extras else None
 
     def extra(index: int, default=None):
         return img2img_extras[index] if index < len(img2img_extras) else default
 
     def integrated(index: int, default=None):
         return integrated_values[index] if index < len(integrated_values) else default
+
+    tipo_args = tipo_arg_dict(tipo_values)
 
     sketch_image = extra(0)
     sketch_foreground = extra(1)
@@ -5456,6 +5479,8 @@ def _build_request(
         adetailer_args=adetailer_args,
         dynamic_prompts_enabled=bool(dynamic_prompts_enabled),
         dynamic_prompts_args=dynamic_prompts_args,
+        tipo_enabled=bool(tipo_args.get("enabled", False)),
+        tipo_args=tipo_args,
         regional_prompter_enabled=bool(regional_prompter_enabled),
         regional_prompter_args=regional_prompter_args,
         forge_couple_enabled=bool(forge_couple_enabled),
@@ -8004,6 +8029,230 @@ def _controlnet_suffix(unit_index: int, suffix: str) -> str:
     if unit_index == 0:
         return f"controlnet_{suffix}"
     return f"controlnet_unit_{unit_index + 1}_{suffix}"
+
+
+def _tipo_inputs(controls: dict[str, object]) -> list[gr.components.Component]:
+    return [controls[key] for key in TIPO_ARG_KEYS]
+
+
+def _tipo_status_update(message: str, *, visible: bool = True):
+    body = html_lib.escape(str(message or ""))
+    return gr.update(value=f'<div class="forge-neo-tipo-status">{body}</div>', visible=visible)
+
+
+def _tipo_generate_prompt_clicked(
+    state,
+    current_prompt,
+    tag_prompt,
+    nl_prompt,
+    width,
+    height,
+    *values,
+):
+    tipo_values = tipo_arg_dict(values)
+    tipo_values["tag_prompt"] = str(tag_prompt or "").strip() or str(current_prompt or "").strip()
+    tipo_values["nl_prompt"] = str(nl_prompt or "")
+    try:
+        from forge_neo.runtime_backend.source_runtime import run_source_tipo_prompt
+
+        result = run_source_tipo_prompt(
+            {
+                **tipo_values,
+                "aspect_ratio": float(width or 1.0) / max(float(height or 1.0), 1.0),
+            }
+        )
+    except Exception as exc:
+        return current_prompt or "", _tipo_status_update(_status(state, f"TIPO failed: {exc}", f"TIPO 处理失败：{exc}"))
+
+    if result.status != "finished":
+        return current_prompt or "", _tipo_status_update(
+            _status(state, result.error or "TIPO is unavailable.", result.error or "TIPO 当前不可用。")
+        )
+    output = str(result.infotext or "").strip()
+    if not output:
+        return current_prompt or "", _tipo_status_update(_status(state, "TIPO returned an empty prompt.", "TIPO 没有返回提示词。"))
+    return output, gr.update(value="", visible=False)
+
+
+def _create_tipo_controls(prefix: str, *, is_img2img: bool) -> dict[str, object]:
+    defaults = tipo_default_values()
+    format_choices, format_values = tipo_format_choices()
+    model_choices = tipo_model_choices() or [""]
+    tab_name = "img2img" if is_img2img else "txt2img"
+    controls: dict[str, object] = {}
+    with gr.Column(
+        elem_id=_forge_elem(prefix, "tipo"),
+        elem_classes=["forge-neo-tipo-panel"],
+    ):
+        with gr.Row(elem_classes=["forge-neo-tipo-input-row"]):
+            controls["tag_prompt"] = gr.Textbox(
+                label=_label("Tag Prompt", "标签提示词"),
+                lines=2,
+                max_lines=4,
+                placeholder=_label("Tags for TIPO", "供 TIPO 优化的标签"),
+                elem_id=_forge_elem(prefix, "tipo_tag_prompt"),
+            )
+            controls["nl_prompt"] = gr.Textbox(
+                label=_label("Natural Language Prompt", "自然语言提示词"),
+                lines=2,
+                max_lines=4,
+                placeholder=_label("Optional natural language prompt", "可选的自然语言提示词"),
+                elem_id=_forge_elem(prefix, "tipo_nl_prompt"),
+            )
+        with gr.Row(elem_classes=["forge-neo-tipo-toolbar"]):
+            controls["generate"] = gr.Button(
+                _label("Generate Prompt", "生成提示词"),
+                elem_id=_forge_elem(prefix, "tipo_generate"),
+                min_width=150,
+            )
+            controls["status"] = gr.HTML("", visible=False, elem_id=_forge_elem(prefix, "tipo_status"))
+        with gr.Accordion(
+            _label("TIPO", "TIPO"),
+            open=False,
+            elem_id=f"{tab_name}_tipo_settings",
+            elem_classes=["forge-neo-tipo-settings"],
+        ):
+            controls["enabled"] = gr.Checkbox(
+                value=bool(defaults["enabled"]),
+                label=_label("Enable TIPO during generation", "生成时启用 TIPO"),
+                elem_id=_forge_elem(prefix, "tipo_enabled"),
+            )
+            with gr.Row(elem_classes=["forge-neo-tipo-settings-row"]):
+                controls["timing"] = gr.Dropdown(
+                    _localized_value_choices(
+                        [
+                            (TIPO_TIMING_BEFORE, "在其它提示词处理前"),
+                            (TIPO_TIMING_AFTER, "在其它提示词处理后"),
+                        ]
+                    ),
+                    value=defaults["timing"],
+                    label=_label("Upsampling timing", "优化时机"),
+                    elem_id=_forge_elem(prefix, "tipo_timing"),
+                )
+                controls["seed"] = gr.Number(
+                    value=defaults["seed"],
+                    precision=0,
+                    minimum=-1,
+                    label=_label("Upsampling seed", "优化种子"),
+                    elem_id=_forge_elem(prefix, "tipo_seed"),
+                )
+                controls["follow_generation_seed"] = gr.Checkbox(
+                    value=bool(defaults["follow_generation_seed"]),
+                    label=_label("Follow generation seed", "跟随生成种子"),
+                    elem_id=_forge_elem(prefix, "tipo_follow_generation_seed"),
+                )
+            with gr.Row(elem_classes=["forge-neo-tipo-settings-row"]):
+                controls["tag_length"] = gr.Dropdown(
+                    _localized_value_choices(
+                        [(value, {"very short": "很短", "short": "短", "long": "长", "very long": "很长"}[value]) for value in TIPO_LENGTH_CHOICES]
+                    ),
+                    value=defaults["tag_length"],
+                    label=_label("Tags length", "标签长度"),
+                    elem_id=_forge_elem(prefix, "tipo_tag_length"),
+                )
+                controls["nl_length"] = gr.Dropdown(
+                    _localized_value_choices(
+                        [(value, {"very short": "很短", "short": "短", "long": "长", "very long": "很长"}[value]) for value in TIPO_LENGTH_CHOICES]
+                    ),
+                    value=defaults["nl_length"],
+                    label=_label("Natural language length", "自然语言长度"),
+                    elem_id=_forge_elem(prefix, "tipo_nl_length"),
+                )
+                controls["ban_tags"] = gr.Textbox(
+                    value=defaults["ban_tags"],
+                    label=_label("Ban tags", "排除标签"),
+                    placeholder=_label("Separate with commas", "使用逗号分隔"),
+                    elem_id=_forge_elem(prefix, "tipo_ban_tags"),
+                )
+            with gr.Row(elem_classes=["forge-neo-tipo-settings-row"]):
+                controls["format_select"] = gr.Dropdown(
+                    format_choices,
+                    value=defaults["format_select"],
+                    label=_label("Prompt format", "提示词格式"),
+                    elem_id=_forge_elem(prefix, "tipo_format"),
+                )
+                controls["temperature"] = gr.Slider(
+                    0.1,
+                    1.5,
+                    value=defaults["temperature"],
+                    step=0.05,
+                    label="Temperature",
+                    elem_id=_forge_elem(prefix, "tipo_temperature"),
+                )
+                controls["top_p"] = gr.Slider(
+                    0.0,
+                    1.0,
+                    value=defaults["top_p"],
+                    step=0.05,
+                    label="Top-p",
+                    elem_id=_forge_elem(prefix, "tipo_top_p"),
+                )
+                controls["top_k"] = gr.Slider(
+                    0,
+                    150,
+                    value=defaults["top_k"],
+                    step=1,
+                    label="Top-k",
+                    elem_id=_forge_elem(prefix, "tipo_top_k"),
+                )
+            controls["format"] = gr.TextArea(
+                value=defaults["format"],
+                label=_label("Custom prompt format", "自定义提示词格式"),
+                visible=defaults["format_select"] == "custom",
+                elem_id=_forge_elem(prefix, "tipo_custom_format"),
+            )
+            controls["format_select"].change(
+                lambda value: gr.update(
+                    visible=value == "custom",
+                    value=format_values.get(value, defaults["format"]),
+                ),
+                inputs=[controls["format_select"]],
+                outputs=[controls["format"]],
+                show_progress=False,
+            )
+            with gr.Row(elem_classes=["forge-neo-tipo-settings-row"]):
+                controls["model"] = gr.Dropdown(
+                    model_choices,
+                    value=defaults["model"],
+                    allow_custom_value=True,
+                    label=_label("Model", "模型"),
+                    elem_id=_forge_elem(prefix, "tipo_model"),
+                )
+                controls["gguf_cpu"] = gr.Checkbox(
+                    value=bool(defaults["gguf_cpu"]),
+                    label=_label("Use CPU for GGUF", "GGUF 使用 CPU"),
+                    elem_id=_forge_elem(prefix, "tipo_gguf_cpu"),
+                )
+                controls["no_formatting"] = gr.Checkbox(
+                    value=bool(defaults["no_formatting"]),
+                    label=_label("No formatting", "不使用格式化"),
+                    elem_id=_forge_elem(prefix, "tipo_no_formatting"),
+                )
+    return controls
+
+
+def _wire_tipo_controls(
+    controls: dict[str, object],
+    *,
+    prompt: gr.components.Component,
+    width: gr.components.Component,
+    height: gr.components.Component,
+    state: gr.State,
+) -> None:
+    controls["generate"].click(
+        _tipo_generate_prompt_clicked,
+        inputs=[
+            state,
+            prompt,
+            controls["tag_prompt"],
+            controls["nl_prompt"],
+            width,
+            height,
+            *_tipo_inputs(controls),
+        ],
+        outputs=[prompt, controls["status"]],
+        show_progress=True,
+    )
 
 
 def _integrated_inputs(controls: dict[str, object]) -> list[gr.components.Component]:
@@ -12722,6 +12971,8 @@ def create_app() -> gr.Blocks:
                             txt_styles = _create_style_controls("", styles, apply_button=style_apply_quick)
                             txt_style_grid = _create_style_grid_bridge("")
 
+                    txt_tipo = _create_tipo_controls("", is_img2img=False) if tipo_available() else None
+
                     with gr.Row(elem_classes=["forge-neo-workspace"]):
                         with gr.Column(scale=1, elem_classes=["forge-neo-params"]):
                             with gr.Tabs():
@@ -13038,6 +13289,7 @@ def create_app() -> gr.Blocks:
                         refiner_switch_at,
                         *_integrated_inputs({**txt_integrated, **script_controls, "mahiro": mahiro, "script": script}),
                         img2img_image,
+                        *(_tipo_inputs(txt_tipo) if txt_tipo else []),
                     ]
                     for hires_input in (hires_fix, width, height, hr_scale, hr_resize_x, hr_resize_y):
                         hires_input.change(
@@ -13102,6 +13354,8 @@ def create_app() -> gr.Blocks:
                     _wire_controlnet_image_tools(txt_integrated, width, height, state, status, preset)
                     _wire_batch_edit_controls(txt_integrated, state)
                     _wire_script_controls(script, script_controls)
+                    if txt_tipo:
+                        _wire_tipo_controls(txt_tipo, prompt=prompt, width=width, height=height, state=state)
                     _wire_extra_network_browser(txt_ti_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
                     _wire_extra_network_browser(txt_checkpoint_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
                     _wire_extra_network_browser(txt_lora_browser, preset, prompt, negative_prompt, checkpoint, lora_dropdown)
@@ -13157,6 +13411,8 @@ def create_app() -> gr.Blocks:
                                 img_style_apply_quick = _tool_button("📋", elem_id="forge_neo_img2img_style_apply")
                             img_styles = _create_style_controls("img2img", styles, apply_button=img_style_apply_quick)
                             img_style_grid = _create_style_grid_bridge("img2img")
+
+                    img_tipo = _create_tipo_controls("img2img", is_img2img=True) if tipo_available() else None
 
                     with gr.Row(elem_classes=["forge-neo-workspace"]):
                         with gr.Column(scale=1, elem_classes=["forge-neo-params"]):
@@ -13701,6 +13957,7 @@ def create_app() -> gr.Blocks:
                             img_batch_use_png_info,
                             img_batch_png_info_props,
                             img_batch_png_info_dir,
+                            *(_tipo_inputs(img_tipo) if img_tipo else []),
                         ],
                         outputs=[img_gallery, img_infotext, img_infotext_raw, img_status, img_gallery_selected_index, img_output_actions],
                     )
@@ -13803,6 +14060,8 @@ def create_app() -> gr.Blocks:
                     _wire_controlnet_image_tools(img_integrated, img_width, img_height, state, img_status, preset)
                     _wire_batch_edit_controls(img_integrated, state)
                     _wire_script_controls(img_script, img_script_controls)
+                    if img_tipo:
+                        _wire_tipo_controls(img_tipo, prompt=img_prompt, width=img_width, height=img_height, state=state)
                     _wire_extra_network_browser(img_ti_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)
                     _wire_extra_network_browser(img_checkpoint_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)
                     _wire_extra_network_browser(img_lora_browser, preset, img_prompt, img_negative, checkpoint, img_lora_dropdown)

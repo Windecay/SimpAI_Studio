@@ -187,6 +187,8 @@ class ForgeNeoRequest:
     forge_couple_args: object = field(default_factory=dict)
     dynamic_prompts_enabled: bool = False
     dynamic_prompts_args: object = field(default_factory=dict)
+    tipo_enabled: bool = False
+    tipo_args: object = field(default_factory=dict)
     seed_variance_enabled: bool = False
     seed_variance_delta: int = 1
     seed_variance_strength: float = 0.25

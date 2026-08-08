@@ -20,6 +20,7 @@ from forge_neo.bootstrap import ensure_shared_token
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_SCRIPT_BASE_NAME, dynamic_prompts_arg_dict, dynamic_prompts_arg_list
 from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_KEYS, forge_couple_arg_dict, forge_couple_arg_list
 from forge_neo.regional_prompter_compat import regional_prompter_arg_dict, regional_prompter_arg_list
+from forge_neo.tipo_compat import tipo_arg_list
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1378,6 +1379,12 @@ def _source_dynamic_prompts_args(request: object) -> list[object]:
     return dynamic_prompts_arg_list(normalized_args)
 
 
+def _source_tipo_args(request: object) -> list[object]:
+    if not bool(getattr(request, "tipo_enabled", False)):
+        return []
+    return tipo_arg_list(getattr(request, "tipo_args", None))
+
+
 def _source_integrated_alwayson_scripts(request: object) -> dict[str, Any]:
     scripts: dict[str, Any] = {}
     mode = _source_backend_mode(request)
@@ -1463,6 +1470,9 @@ def _source_integrated_alwayson_scripts(request: object) -> dict[str, Any]:
     dynamic_prompts_args = _source_dynamic_prompts_args(request)
     if dynamic_prompts_args:
         scripts[DYNAMIC_PROMPTS_SCRIPT_BASE_NAME] = {"args": dynamic_prompts_args}
+    tipo_args = _source_tipo_args(request)
+    if tipo_args:
+        scripts["TIPO"] = {"args": tipo_args}
 
     return scripts
 

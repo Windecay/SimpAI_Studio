@@ -72,6 +72,7 @@ def _launch() -> tuple[object, str, str | None]:
     from forge_neo.bootstrap import ensure_config, ensure_shared_token
     from forge_neo.extension_adapter import extension_allowed_paths, install_extension_adapter_routes
     from forge_neo.restart import ensure_server_state
+    from forge_neo.tipo_runtime import ensure_tipo_kgen_startup
     from forge_neo.ui import create_app
     from modules.auth import auth_enabled, check_auth
     from ui.bootstrap import launch_root_app
@@ -80,6 +81,7 @@ def _launch() -> tuple[object, str, str | None]:
     ensure_server_state()
     modules_config = ensure_config()
     apply_assets()
+    ensure_tipo_kgen_startup(python_executable=sys.executable)
     try:
         from forge_neo.runtime_backend.source_runtime import start_source_backend_service
 

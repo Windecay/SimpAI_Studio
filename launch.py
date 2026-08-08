@@ -698,10 +698,10 @@ def check_base_environment():
     ensure_llama_cpp_runtime(runtime_profile)
 
     update_pkgs = [
-        ('comfyui-frontend-package', '1.48.6', None),
-        ('comfyui-workflow-templates', '0.11.31', None),
+        ('comfyui-frontend-package', '1.48.7', None),
+        ('comfyui-workflow-templates', '0.11.37', None),
         ('comfyui-embedded-docs', '0.5.9', None),
-        ('comfy-kitchen', '0.2.26', None),
+        ('comfy-kitchen', '0.2.28', None),
         ('comfy-aimdo', '0.4.13', None),
         ('av', '17.0.0', None),
         ('PyOpenGL', None, '>=3.1.8'),
@@ -1064,6 +1064,13 @@ shared.args = ini_args()
 shared.token, shared.sysinfo = check_base_environment()
 
 prepare_environment()
+
+try:
+    from forge_neo.tipo_runtime import ensure_tipo_kgen_startup
+
+    ensure_tipo_kgen_startup(python_executable=python)
+except Exception as exc:
+    logger.warning(f"TIPO dependency bootstrap failed: {type(exc).__name__}: {exc}")
 
 
 shared.upstream_did = shared.token.get_upstream_did()

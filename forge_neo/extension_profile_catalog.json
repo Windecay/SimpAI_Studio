@@ -5,6 +5,7 @@
   "supported": [
     "sd-webui-tagcomplete-neo",
     "sd-webui-prompt-all-in-one-forgeneo",
+    "tipo",
     "sd-dynamic-prompts",
     "stable-diffusion-webui-wd14-tagger",
     "adetailer",
@@ -34,6 +35,7 @@
   ],
   "priority_profiles": [
     "sd-dynamic-prompts",
+    "tipo",
     "stable-diffusion-webui-wd14-tagger",
     "adetailer",
     "sd-neo-regional-prompter",
@@ -96,6 +98,21 @@
       "source_branch": "main",
       "source_commit": "da8342c",
       "source_commit_date": "2026-02-27 12:04:27 +0800"
+    },
+    {
+      "id": "tipo",
+      "display_name": "TIPO",
+      "family": "prompt-helper",
+      "support_level": "priority-profile",
+      "extension_dirname": "z-tipo-extension",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/KohakuBlueleaf/z-tipo-extension.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/z-tipo-extension",
+      "source_branch": "main",
+      "source_commit": "",
+      "source_commit_date": ""
     },
     {
       "id": "sd-dynamic-prompts",
@@ -486,6 +503,45 @@
         "Uses lightweight Forge Neo /physton_prompt API routes.",
         "Translation routes call the installed Prompt All In One translator backend.",
         "OpenAI generation and MBart50 remain disabled unless configured later."
+      ]
+    },
+    {
+      "name": "tipo",
+      "display_name": "TIPO",
+      "family": "prompt-helper",
+      "support_level": "priority-profile",
+      "extension_dirname": "z-tipo-extension",
+      "adapter_scope": "alwayson-args",
+      "remote_url": "https://github.com/KohakuBlueleaf/z-tipo-extension.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/z-tipo-extension",
+      "source_branch": "main",
+      "source_commit": "",
+      "source_commit_date": "",
+      "required_files": [
+        "install.py",
+        "scripts/tipo.py",
+        "tipo_installer/__init__.py",
+        "tipo_installer/scheme.py",
+        "tipo_installer/hardware.py",
+        "tipo_installer/pkg.py"
+      ],
+      "javascript_files": [],
+      "css_files": [],
+      "runtime_files": [],
+      "routes": [],
+      "source_routes": [],
+      "source_callbacks": [
+        "scripts.AlwaysVisible",
+        "before_process",
+        "process",
+        "prompt_gen_only"
+      ],
+      "notes": [
+        "Forge Neo uses the installed source TIPOScript for generation-time prompt upsampling.",
+        "The native Forge Neo prompt area supplies TIPO's alwayson arguments without loading the source WebUI UI.",
+        "TIPO controls are created only when the z-tipo-extension profile is installed and enabled."
       ]
     },
     {
