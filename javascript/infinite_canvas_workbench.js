@@ -123,7 +123,7 @@
     let vlmSystemPromptTemplateRequest = null;
     const CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY || 'simpai.canvas.agentPresetQueues.v1';
     const CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE || ['Z-imageT'];
-    const CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE || ['Flux2-KleinEdit'];
+    const CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE || ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'];
     const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE || ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'];
     const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE || ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'];
     const CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE || ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'];
@@ -6330,6 +6330,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const labels = {
             anima: t('Anima / hybrid anime prompt', 'Anima / 混合动漫提示词'),
             minimax_h3: t('MiniMax H3 / structured audiovisual prompt', 'MiniMax H3 / 结构化视听提示词'),
+            minimax_h3_image_edit: t('MiniMax H3 / image editing prompt', 'MiniMax H3 / 图像编辑提示词'),
             qwen_natural: t('Qwen / Chinese natural prompt', 'Qwen / 中文自然语言提示词'),
             wan_video_cn: t('Wan / Chinese video prompt', 'Wan / 中文视频动态提示词'),
             flux_t5_en: t('FLUX/T5XXL / English prompt', 'FLUX/T5XXL / 英文提示词'),
@@ -6393,6 +6394,11 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         let key = purposeText.includes('outpaint') ? 'outpaint_instruction' : 'unknown_default';
         const taskMethodLower = taskMethod.toLowerCase();
         const taskMethodIsChinese = /(?:^|[_-])cn$/.test(taskMethodLower);
+        const isH3ImageEdit = hasH3Compiler && (
+            /(?:^|[^a-z0-9])r2i(?:$|[^a-z0-9])|reference[_\s-]*to[_\s-]*image|image[_\s-]*edit/i.test(haystack)
+            || (purposeText.includes('edit') && !/(?:r2v|video)/i.test(haystack))
+        );
+        if (key === 'unknown_default' && isH3ImageEdit) key = 'minimax_h3_image_edit';
         if (key === 'unknown_default' && hasH3Compiler) key = 'minimax_h3';
         if (key === 'unknown_default') {
             if (/(^|[^a-z0-9])anima(?:[_\s-]?aio|-base|$|[^a-z0-9])|anima-base-v/i.test(haystack)) key = 'anima';
@@ -7404,6 +7410,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
     function canvasAgentPromptTargetInstruction(target) {
         const key = String(target?.key || 'unknown_default');
         if (key === 'minimax_h3') return 'Final prompt target: MiniMax H3 structured audiovisual prompt. Follow the selected H3 compiler mode exactly, including required section labels, shot markers, timing, and available <Picture N>, <Video N>, and <Audio N> references.';
+        if (key === 'minimax_h3_image_edit') return 'Final prompt target: MiniMax H3 image-editing prompt. Preserve the source image identity, composition, pose, subject count, lighting, and unchanged content unless the user explicitly asks for a change. Refer to uploaded images only as existing <Picture N> labels in upload order. This route outputs a still image and does not use video or audio references.';
         if (key === 'anima') return 'Final prompt target: Anima hybrid prompt. Write English Anima/Danbooru anchors first, then short English nltags control sentences when useful. Do not write a generic Qwen paragraph or Chinese prompt.';
         if (key === 'wan_video_cn') return 'Final prompt target: Wan / UMT5 Chinese video prompt. Write Chinese natural language focused on action progression, camera movement, temporal continuity, and what remains stable.';
         if (key === 'flux_t5_en') return 'Final prompt target: FLUX/T5XXL English prompt. The final prompt must be English natural language only; no Chinese characters.';
@@ -29617,7 +29624,7 @@ ${renderGenerationMetadataInspectorSection(node)}
     </section>
     <section class="sai-settings-section">
       <h3>${escapeHtml(t('Fallback Rules', 'Fallback 规则'))}</h3>
-      <div class="sai-settings-note">${escapeHtml(t('If a ready preset is selected, Agent tries it before the local queue. Auto queues: T2I starts with Z-imageT, image edit with Flux2-KleinEdit, I2V with Wan(I2V), T2V with Wan(T2V), and video edit with Wan-Extent. Audio has no default queue until you configure an audio-capable preset. If your prompt names a preset, Agent can use that as a temporary override when enabled.', '如果已选择 ready preset，Agent 会先尝试它，再走本地队列。Auto 队列：文生图从 Z-imageT 开始，图片编辑从 Flux2-KleinEdit 开始，图生视频从 Wan(I2V) 开始，文生视频从 Wan(T2V) 开始，视频编辑从 Wan-Extent 开始。音频默认不绑定队列，直到你配置支持音频的 preset。开启指令覆盖后，如果提示词里点名 preset，Agent 会临时采用它。'))}</div>
+      <div class="sai-settings-note">${escapeHtml(t('If a ready preset is selected, Agent tries it before the local queue. Auto queues: T2I starts with Z-imageT, image edit with Flux2-KleinEdit then MiniMax-H3(R2I), I2V with Wan(I2V), T2V with Wan(T2V), and video edit with Wan-Extent. Audio has no default queue until you configure an audio-capable preset. If your prompt names a preset, Agent can use that as a temporary override when enabled.', '如果已选择 ready preset，Agent 会先尝试它，再走本地队列。Auto 队列：文生图从 Z-imageT 开始，图片编辑依次尝试 Flux2-KleinEdit 和 MiniMax-H3(R2I)，图生视频从 Wan(I2V) 开始，文生视频从 Wan(T2V) 开始，视频编辑从 Wan-Extent 开始。音频默认不绑定队列，直到你配置支持音频的 preset。开启指令覆盖后，如果提示词里点名 preset，Agent 会临时采用它。'))}</div>
     </section>` : `
     <section class="sai-settings-section">
       <h3>${escapeHtml(t('Canvas View', '画布视图'))}</h3>

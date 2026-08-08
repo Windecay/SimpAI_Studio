@@ -3090,7 +3090,7 @@ def _relative_prompt_file(path):
     return os.path.relpath(path, ROOT_DIR).replace("\\", "/")
 
 
-def _read_prompt_rows(path):
+def _read_prompt_rows(path, lang="cn"):
     rows = []
     if not os.path.isfile(path):
         return rows
@@ -3099,7 +3099,15 @@ def _read_prompt_rows(path):
         for index, row in enumerate(reader):
             if not isinstance(row, dict):
                 continue
-            prompt = _clean_text(row.get("prompt"))
+            fallback_prompt = _clean_text(row.get("prompt"))
+            prompt_en = _clean_text(row.get("prompt_en"))
+            prompt_cn = _clean_text(row.get("prompt_cn"))
+            prompt = (
+                (prompt_en if _clean_lang(lang) == "en" else prompt_cn)
+                or fallback_prompt
+                or prompt_cn
+                or prompt_en
+            )
             if not prompt:
                 continue
             target = PROMPT_TARGETS.get(_clean_text(row.get("target")).lower(), "positive_prompt")
@@ -3176,7 +3184,7 @@ def _dedupe_prompt_rows(rows):
 def list_prompt_recommendations(preset_name, scene_theme="", lang="cn", limit=12):
     rows = []
     for path in _candidate_prompt_files(preset_name):
-        rows.extend(_read_prompt_rows(path))
+        rows.extend(_read_prompt_rows(path, lang=lang))
     rows = [row for row in rows if _scene_theme_matches(row.get("scene_theme"), scene_theme)]
     rows = _dedupe_prompt_rows(rows)
     rows.sort(key=lambda row: (-_safe_int(row.get("weight"), 100), str(row.get("id") or "")))

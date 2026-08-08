@@ -1,0 +1,285 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt_en,prompt_cn,seed_terms,weight
+h3_r2i_local_edit,Basic,positive_prompt,replace,Precise local edit,精准局部编辑,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the main subject, visible identity, clothing, pose, composition, lighting, and unchanged background.
+
+summary:
+[reference generation] Perform a precise local image edit on <Picture 1> and preserve all unrelated content.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the subject identity, composition, pose, lighting, and every area outside the requested edit.
+
+detailed_description:
+[Shot 1] 0-5s Apply the user's requested local change only to the specified area of <Picture 1>. Keep boundaries, perspective, texture, shadow, and contact with surrounding objects coherent. Camera: Static Shot, locked framing, no reframing. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为主体身份、可见外观、服装、姿态、构图、光照和未修改背景的依据。
+
+summary:
+[reference generation] 对 <Picture 1> 执行用户指定的精准局部图像编辑，并保留其他未涉及内容。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留主体身份、构图、姿态、光照，以及指定修改区域之外的全部内容。
+
+detailed_description:
+[Shot 1] 0-5s 只在 <Picture 1> 的指定区域执行用户指定的局部修改。保持边界、透视、纹理、阴影和与周围物体的接触关系自然一致。Camera: Static Shot，固定构图，不重新取景。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|local edit|identity preserved|composition preserved",145
+h3_r2i_object_remove,Basic,positive_prompt,replace,Object removal and repair,移除物体并修复背景,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the visible subject, scene geometry, surface texture, lighting, and occlusion relationships.
+
+summary:
+[reference generation] Remove the user-specified object from <Picture 1> and repair the exposed area naturally.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the subject, camera framing, perspective, lighting, texture, and all content except the requested object.
+
+detailed_description:
+[Shot 1] 0-5s Remove only the user-specified object from <Picture 1>. Reconstruct the background using matching perspective, texture, lighting, reflections, shadows, and occlusion so the edit is invisible. Camera: Static Shot, locked framing, no reframing. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为可见主体、场景结构、表面纹理、光照和遮挡关系的依据。
+
+summary:
+[reference generation] 移除 <Picture 1> 中用户指定的物体，并自然修复暴露出的区域。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留主体、镜头构图、透视、光照、纹理，以及指定物体以外的全部内容。
+
+detailed_description:
+[Shot 1] 0-5s 只移除 <Picture 1> 中用户指定的物体。按照原有透视、纹理、光照、反射、阴影和遮挡关系重建背景，让修改区域自然融入画面。Camera: Static Shot，固定构图，不重新取景。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|object removal|background repair|occlusion",140
+h3_r2i_background_replace,Basic,positive_prompt,replace,Background replacement with subject lock,换背景保持主体,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the subject identity, face, hairstyle, clothing, pose, silhouette, and original proportions.
+
+summary:
+[reference generation] Replace the background of <Picture 1> while keeping the main subject unchanged.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the subject identity, face, hairstyle, clothing, pose, silhouette, and requested foreground details; change only the background.
+
+detailed_description:
+[Shot 1] 0-5s Place the subject from <Picture 1> in the user-specified new environment. Keep the subject's identity, pose, clothing, hair, and silhouette unchanged, and match the new background's light direction, color temperature, depth of field, perspective, and contact shadow to the subject. Camera: Static Shot, same framing and viewpoint as <Picture 1>. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为主体身份、脸部、发型、服装、姿态、轮廓和原始比例的依据。
+
+summary:
+[reference generation] 更换 <Picture 1> 的背景，同时保持主体不变。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留主体身份、脸部、发型、服装、姿态、轮廓和指定前景细节，只修改背景。
+
+detailed_description:
+[Shot 1] 0-5s 将 <Picture 1> 的主体放入用户指定的新环境。保持主体身份、姿态、服装、发型和轮廓不变，让新背景的光线方向、色温、景深、透视和接触阴影与主体自然匹配。Camera: Static Shot，保持与 <Picture 1> 相同的构图和视角。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|background replacement|subject lock|lighting match",135
+h3_r2i_clothing_transfer,Basic,positive_prompt,replace,Reference clothing transfer,参考服装迁移,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the target person's identity, face, hairstyle, body proportions, pose, and scene.
+<Subject 2> (<Picture 2>): Use <Picture 2> as the authority for the source garment's cut, color, material, texture, decorations, and layering.
+
+summary:
+[reference generation] Transfer the clothing attributes from <Picture 2> to the target subject in <Picture 1>.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the target identity, face, hairstyle, body proportions, pose, and scene.
+<Picture 2>: attribute_transfer — transfer only the requested clothing design, material, color, texture, and details.
+
+detailed_description:
+[Shot 1] 0-5s Dress the person from <Picture 1> in the user-selected clothing from <Picture 2>. Keep the target identity, face, hair, body proportions, pose, and background unchanged. Fit the garment to the target body with natural folds, seams, occlusion, contact shadows, and lighting. Camera: Static Shot, same framing as <Picture 1>. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为目标人物身份、脸部、发型、身体比例、姿态和场景的依据。
+<Subject 2> (<Picture 2>): 以 <Picture 2> 作为源服装版型、颜色、材质、纹理、装饰和层次的依据。
+
+summary:
+[reference generation] 将 <Picture 2> 的服装属性迁移到 <Picture 1> 的目标人物身上。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留目标人物身份、脸部、发型、身体比例、姿态和场景。
+<Picture 2>: attribute_transfer — 只迁移用户指定的服装版型、材质、颜色、纹理和细节。
+
+detailed_description:
+[Shot 1] 0-5s 让 <Picture 1> 中的人物穿上 <Picture 2> 中用户指定的服装。保持目标人物身份、脸部、发型、身体比例、姿态和背景不变，让服装自然贴合身体，形成可信的褶皱、接缝、遮挡、接触阴影和受光。Camera: Static Shot，保持与 <Picture 1> 相同的构图。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|<Picture 2>|clothing transfer|identity preserved",132
+h3_r2i_style_lighting_transfer,Basic,positive_prompt,replace,Style and lighting transfer,风格与光照迁移,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the target subject, identity, pose, composition, and scene content.
+<Subject 2> (<Picture 2>): Use <Picture 2> as the authority for the requested visual style, palette, lighting direction, material treatment, and atmosphere.
+
+summary:
+[reference generation] Transfer the requested visual style and lighting qualities from <Picture 2> to <Picture 1> without changing the target subject.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the target identity, pose, composition, geometry, and scene content.
+<Picture 2>: attribute_transfer — transfer only the requested style, color relationships, lighting, texture, and atmosphere.
+
+detailed_description:
+[Shot 1] 0-5s Re-render <Picture 1> with the user-requested style and lighting cues from <Picture 2>. Preserve the target subject, pose, composition, geometry, and important details while matching color relationships, light direction, shadow softness, material response, and atmospheric depth. Camera: Static Shot, same framing and viewpoint as <Picture 1>. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为目标主体、身份、姿态、构图和场景内容的依据。
+<Subject 2> (<Picture 2>): 以 <Picture 2> 作为用户指定视觉风格、色彩关系、光照方向、材质表现和氛围的依据。
+
+summary:
+[reference generation] 将 <Picture 2> 的用户指定视觉风格和光照特征迁移到 <Picture 1>，不改变目标主体。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留目标身份、姿态、构图、空间结构和场景内容。
+<Picture 2>: attribute_transfer — 只迁移用户指定的风格、颜色关系、光照、纹理和氛围。
+
+detailed_description:
+[Shot 1] 0-5s 按照用户指定的 <Picture 2> 风格和光照特征重绘 <Picture 1>。保留目标主体、姿态、构图、空间结构和重要细节，同时匹配颜色关系、光线方向、阴影柔和度、材质反应和空气透视。Camera: Static Shot，保持与 <Picture 1> 相同的构图和视角。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|<Picture 2>|style transfer|lighting transfer",129
+h3_r2i_pose_transfer,Basic,positive_prompt,replace,Pose reference transfer,参考图姿态迁移,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the target person's identity, face, hairstyle, clothing, body proportions, and visual style.
+<Subject 2> (<Picture 2>): Use <Picture 2> as the authority for the requested pose, limb angles, gesture, and body orientation.
+
+summary:
+[reference generation] Transfer the pose from <Picture 2> to the person in <Picture 1> while preserving the target identity.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the target identity, face, hairstyle, clothing, body proportions, and visual style.
+<Picture 2>: attribute_transfer — transfer the requested pose, gesture, limb angles, and body orientation.
+
+detailed_description:
+[Shot 1] 0-5s Make the person from <Picture 1> adopt the user-requested pose from <Picture 2>. Preserve the target identity, face, hairstyle, clothing, body proportions, and style; keep hands, feet, joints, balance, shadows, and contact with the scene anatomically coherent. Camera: Static Shot, preserve the framing and viewpoint of <Picture 1>. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为目标人物身份、脸部、发型、服装、身体比例和视觉风格的依据。
+<Subject 2> (<Picture 2>): 以 <Picture 2> 作为用户指定姿态、肢体角度、手势和身体朝向的依据。
+
+summary:
+[reference generation] 将 <Picture 2> 的姿态迁移给 <Picture 1> 中的人物，同时保持目标身份。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留目标身份、脸部、发型、服装、身体比例和视觉风格。
+<Picture 2>: attribute_transfer — 迁移用户指定的姿态、手势、肢体角度和身体朝向。
+
+detailed_description:
+[Shot 1] 0-5s 让 <Picture 1> 中的人物采用 <Picture 2> 的用户指定姿态。保留目标身份、脸部、发型、服装、身体比例和画风，确保手脚、关节、重心、阴影以及与场景的接触关系自然可信。Camera: Static Shot，保持 <Picture 1> 的构图和视角。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|<Picture 2>|pose transfer|identity preserved",126
+h3_r2i_product_scene_composite,Basic,positive_prompt,replace,Product and scene composite,商品与场景合成,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the product or main subject's shape, branding, material, color, and proportions.
+<Subject 2> (<Picture 2>): Use <Picture 2> as the authority for the target scene, composition, perspective, lighting, color temperature, and depth.
+
+summary:
+[reference generation] Place the product from <Picture 1> naturally into the scene from <Picture 2>.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the product identity, shape, branding, material, color, and proportions.
+<Picture 2>: attribute_transfer — transfer the requested scene composition, perspective, lighting, color temperature, and depth.
+
+detailed_description:
+[Shot 1] 0-5s Composite the product from <Picture 1> into the user-requested scene based on <Picture 2>. Keep the product shape, branding, material, scale, reflections, contact shadow, occlusion, and camera perspective consistent with the scene. Camera: Static Shot, use the final requested product presentation framing. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为商品或主体形状、品牌标识、材质、颜色和比例的依据。
+<Subject 2> (<Picture 2>): 以 <Picture 2> 作为目标场景、构图、透视、光照、色温和景深的依据。
+
+summary:
+[reference generation] 将 <Picture 1> 中的商品自然合成到 <Picture 2> 的场景中。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留商品身份、形状、品牌标识、材质、颜色和比例。
+<Picture 2>: attribute_transfer — 迁移用户指定的场景构图、透视、光照、色温和景深。
+
+detailed_description:
+[Shot 1] 0-5s 根据 <Picture 2> 将 <Picture 1> 中的商品合成到用户指定的场景。保持商品形状、品牌标识、材质、比例、反射、接触阴影、遮挡和镜头透视与场景一致。Camera: Static Shot，使用用户指定的最终商品展示构图。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|<Picture 2>|product composite|perspective match",123
+h3_r2i_multi_person_composite,Basic,positive_prompt,replace,Multi-person identity composite,多人物身份合成,"subject_definitions:
+<Subject 1> (<Picture 1>): Use <Picture 1> as the authority for the first person's identity, face, hairstyle, clothing, and body proportions.
+<Subject 2> (<Picture 2>): Use <Picture 2> as the authority for the second person's identity, face, hairstyle, clothing, and body proportions.
+
+summary:
+[reference generation] Compose the people from <Picture 1> and <Picture 2> into one coherent scene while preserving both identities.
+
+retention_analysis:
+<Picture 1>: fully_preserved — preserve the first person's identity, face, hairstyle, clothing, and proportions.
+<Picture 2>: fully_preserved — preserve the second person's identity, face, hairstyle, clothing, and proportions.
+
+detailed_description:
+[Shot 1] 0-5s Place the people from <Picture 1> and <Picture 2> together in the user-requested scene with natural spacing, eye lines, scale, pose relationship, and interaction. Keep both identities, clothing, body proportions, lighting, shadows, and scene perspective coherent. Camera: Static Shot, use the requested group composition. Dialogue and visible text: None. Synchronized sound: Silence.
+
+overall_soundscape:
+Silence.
+
+non_diegetic_music:
+N/A","subject_definitions:
+<Subject 1> (<Picture 1>): 以 <Picture 1> 作为第一人物身份、脸部、发型、服装和身体比例的依据。
+<Subject 2> (<Picture 2>): 以 <Picture 2> 作为第二人物身份、脸部、发型、服装和身体比例的依据。
+
+summary:
+[reference generation] 将 <Picture 1> 和 <Picture 2> 中的人物合成到同一连贯场景，同时保持双方身份。
+
+retention_analysis:
+<Picture 1>: fully_preserved — 保留第一人物的身份、脸部、发型、服装和比例。
+<Picture 2>: fully_preserved — 保留第二人物的身份、脸部、发型、服装和比例。
+
+detailed_description:
+[Shot 1] 0-5s 将 <Picture 1> 和 <Picture 2> 中的人物放入用户指定的同一场景，安排自然的站位、视线、尺度、姿态关系和互动。保持双方身份、服装、身体比例、光照、阴影和场景透视自然一致。Camera: Static Shot，使用用户指定的合影构图。Dialogue and visible text: 无。Synchronized sound: 静音。
+
+overall_soundscape:
+静音。
+
+non_diegetic_music:
+N/A","<Picture 1>|<Picture 2>|identity preserved|multi-person composite",120

@@ -121,6 +121,7 @@ VLM_PERSONA_HAIR_STYLE_TAGS = {
 VLM_PERSONA_LOOKUP_MAX_CANDIDATES = 6
 VLM_SKILL_INDEX_FILE = "skill_index.json"
 VLM_IMAGE_PROMPT_SKILL_FILE = "image_prompting.md"
+VLM_IMAGE_EDIT_SKILL_FILE = "image_editing.md"
 VLM_DANBOORU_TAG_PROMPT_SKILL_FILE = "danbooru_tag_prompting.md"
 VLM_ANIMA_PROMPT_SKILL_FILE = "anima_prompting.md"
 VLM_NATURAL_PROMPT_ACTION_SKILL_FILE = "natural_prompt_action.md"
@@ -272,13 +273,93 @@ def _canvas_vlm_prompt_rewrite_request(params, payload):
             return True
     return False
 
+
+def _canvas_vlm_prompt_rewrite_purpose(params=None, payload=None):
+    candidates = []
+    if isinstance(payload, dict):
+        candidates.append(payload.get("node_id"))
+    if isinstance(params, dict):
+        candidates.append(params.get("node_id"))
+    for value in candidates:
+        text = str(value or "").strip().lower()
+        if text.startswith("canvas_agent_prompt_rewrite:"):
+            return text.split(":", 1)[1].strip()
+    return ""
+
+
+def _canvas_target_is_image_edit(target=None):
+    data = target if isinstance(target, dict) else {}
+    haystack = " ".join(
+        str(data.get(key) or "").strip().lower()
+        for key in ("key", "name", "label", "task_method", "source", "prompt_compiler")
+    )
+    return bool(re.search(
+        r"(?:r2i|reference[_\s-]*to[_\s-]*image|image[_\s-]*edit|edit[_\s-]*image|"
+        r"imageedit|qwenedit|kleinedit|inpaint|outpaint|retouch)",
+        haystack,
+        re.I,
+    ))
+
+
+def _canvas_vlm_image_edit_intent(prompt):
+    text = str(prompt or "").strip().lower()
+    if not text:
+        return False
+    terms = (
+        "image_edit",
+        "edit_image",
+        "image editing",
+        "edit this image",
+        "modify this image",
+        "retouch this image",
+        "reference-to-image",
+        "reference to image",
+        "r2i",
+        "图片编辑",
+        "编辑这张图",
+        "编辑图片",
+        "修改这张图",
+        "修改图片",
+        "改图",
+        "修图",
+        "扩图",
+        "擦除",
+        "替换",
+        "重绘",
+    )
+    return any(term in text for term in terms)
+
+
+def _canvas_vlm_prompt_rewrite_target(payload):
+    if not isinstance(payload, dict):
+        return {}
+    agent_context = payload.get("agent_context") if isinstance(payload.get("agent_context"), dict) else {}
+    targets = agent_context.get("prompt_generation_targets") if isinstance(agent_context.get("prompt_generation_targets"), dict) else {}
+    purpose = _canvas_vlm_prompt_rewrite_purpose(payload=payload)
+    text_target = targets.get("text_to_image") if isinstance(targets.get("text_to_image"), dict) else {}
+    edit_target = targets.get("image_edit") if isinstance(targets.get("image_edit"), dict) else {}
+    if purpose == "image_edit" and _canvas_target_is_image_edit(text_target):
+        target = text_target
+    elif purpose == "image_edit":
+        target = edit_target
+    else:
+        target = text_target
+    return dict(target)
+
+
+def _canvas_vlm_prompt_rewrite_is_image_edit(payload, target=None):
+    return (
+        _canvas_vlm_prompt_rewrite_purpose(payload=payload) == "image_edit"
+        or _canvas_target_is_image_edit(target)
+    )
+
 def _canvas_vlm_prompt_rewrite_target_summary(payload):
     if not isinstance(payload, dict):
         return "unknown/default"
-    agent_context = payload.get("agent_context") if isinstance(payload.get("agent_context"), dict) else {}
-    targets = agent_context.get("prompt_generation_targets") if isinstance(agent_context.get("prompt_generation_targets"), dict) else {}
-    target = targets.get("text_to_image") if isinstance(targets.get("text_to_image"), dict) else {}
-    target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
+    target = _canvas_vlm_prompt_rewrite_target(payload)
+    target_key = str(target.get("key") or "").strip()
+    if not target_key:
+        target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
     fields = []
     for key in ("label", "name", "backend_engine", "task_method", "text_encoder", "prompt_format", "prompt_compiler"):
         value = str(target.get(key) or "").strip()
@@ -409,29 +490,40 @@ def _canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target=None):
 
 def _canvas_vlm_prompt_rewrite_required_docs(payload):
     payload = payload if isinstance(payload, dict) else {}
-    target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
-    target = _canvas_prompt_target_for_payload(payload, target_key)
+    target = _canvas_vlm_prompt_rewrite_target(payload)
+    target_key = str(target.get("key") or "").strip()
+    if not target_key:
+        target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
+        target = _canvas_prompt_target_for_payload(payload, target_key)
+    required = [VLM_IMAGE_EDIT_SKILL_FILE] if _canvas_vlm_prompt_rewrite_is_image_edit(payload, target) else []
     if minimax_h3_prompt_compiler.target_compiler(target):
-        return _canvas_h3_prompt_writing_skill_files(payload=payload, target=target)
+        return required + _canvas_h3_prompt_writing_skill_files(payload=payload, target=target)
     if _canvas_is_anima_prompt_target_key(target_key, target):
-        return [VLM_ANIMA_PROMPT_SKILL_FILE]
+        return required + [VLM_ANIMA_PROMPT_SKILL_FILE]
     if target_key in CANVAS_DANBOORU_TARGET_KEYS:
-        return [VLM_DANBOORU_TAG_PROMPT_SKILL_FILE]
+        return required + [VLM_DANBOORU_TAG_PROMPT_SKILL_FILE]
     if _canvas_is_natural_prompt_target_key(target_key):
-        return [VLM_IMAGE_PROMPT_SKILL_FILE]
-    return [VLM_IMAGE_PROMPT_SKILL_FILE]
+        return required + [VLM_IMAGE_PROMPT_SKILL_FILE]
+    return required + [VLM_IMAGE_PROMPT_SKILL_FILE]
 
 
 def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target = _canvas_vlm_prompt_rewrite_target_summary(payload)
-    target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
-    target_meta = _canvas_prompt_target_for_payload(payload if isinstance(payload, dict) else {}, target_key)
+    target_payload = payload if isinstance(payload, dict) else {}
+    target_meta = _canvas_vlm_prompt_rewrite_target(target_payload)
+    target_key = str(target_meta.get("key") or "").strip()
+    if not target_key:
+        target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(target_payload)
+        target_meta = _canvas_prompt_target_for_payload(target_payload, target_key)
     h3_instructions = minimax_h3_prompt_compiler.build_system_instructions(target_meta)
     if h3_instructions:
+        h3_required_docs = _canvas_h3_prompt_writing_skill_files(payload=payload, target=target_meta)
+        if _canvas_vlm_prompt_rewrite_is_image_edit(payload, target_meta):
+            h3_required_docs = [VLM_IMAGE_EDIT_SKILL_FILE] + h3_required_docs
         h3_skill_docs = _canvas_read_vlm_skill_docs(
             "MiniMax H3",
             VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
-            required_docs=_canvas_h3_prompt_writing_skill_files(payload=payload, target=target_meta),
+            required_docs=h3_required_docs,
             required_only=True,
             language=_canvas_vlm_skill_language(payload=payload, target=target_meta),
         )
@@ -4357,8 +4449,15 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
     payload_agent_context = payload.get("agent_context") if isinstance(payload.get("agent_context"), dict) else {}
     payload_targets = payload_agent_context.get("prompt_generation_targets") if isinstance(payload_agent_context, dict) else {}
     payload_text_target = payload_targets.get("text_to_image") if isinstance(payload_targets.get("text_to_image"), dict) else {}
-    target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
-    h3_target = payload_text_target or {"key": target_key}
+    payload_edit_target = payload_targets.get("image_edit") if isinstance(payload_targets.get("image_edit"), dict) else {}
+    image_edit_request = _canvas_vlm_image_edit_intent(effective_prompt)
+    preferred_edit_target = payload_text_target if _canvas_target_is_image_edit(payload_text_target) else payload_edit_target
+    h3_target = preferred_edit_target if image_edit_request and preferred_edit_target else payload_text_target
+    target_key = str(h3_target.get("key") or "").strip()
+    if not target_key:
+        target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
+    h3_target = h3_target or {"key": target_key}
+    image_edit_request = image_edit_request or _canvas_target_is_image_edit(h3_target)
     h3_prompt_required = bool(minimax_h3_prompt_compiler.target_compiler(h3_target))
     h3_skill_files = _canvas_h3_prompt_writing_skill_files(
         params=params,
@@ -4534,6 +4633,8 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
             required_docs.extend(h3_skill_files)
         elif anima_prompt_required:
             required_docs.append(VLM_ANIMA_PROMPT_SKILL_FILE)
+        if image_edit_request:
+            required_docs.append(VLM_IMAGE_EDIT_SKILL_FILE)
         if preset_guide_required:
             required_docs.append(VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE)
         if not prompt_rewrite_request and (prompt_skill_intent or preset_guide_required):
@@ -4552,7 +4653,7 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
         elif anima_prompt_required:
             doc_budget = max(doc_budget, 18000 if compact_prompt else 20000)
         if preset_guide_required:
-            doc_budget = max(doc_budget, 18000 if compact_prompt else 24000)
+            doc_budget = max(doc_budget, 30000 if compact_prompt else 32000)
         elif not prompt_rewrite_request and VLM_PRESET_TOOL_CALLING_SKILL_FILE in required_docs:
             doc_budget = max(doc_budget, 10000 if compact_prompt else 14000)
         docs = _canvas_read_vlm_skill_docs(

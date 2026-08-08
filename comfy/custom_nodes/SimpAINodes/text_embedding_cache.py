@@ -29,6 +29,7 @@ TEXT_ENCODE_NAME_EXCLUDES = ("loader", "saver")
 EXPLICIT_TEXT_CACHE_NODE_TYPES = frozenset({
     "MiniMaxH3ImageToVideo",
     "MiniMaxH3ReferenceToVideo",
+    "MiniMaxH3ReferenceToImage",
     "PainterFluxImageEdit",
     "PainterQwenImageEditPlus",
     "TextImageEncodeQwenVL",

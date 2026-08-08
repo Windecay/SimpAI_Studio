@@ -253,6 +253,16 @@
       "reason": "Preset family recommendations, workflow routing, and owner-specific tool meanings depend on the owner's product knowledge."
     },
     {
+      "key": "image_editing",
+      "title": "Image Editing Agent Skill / 图像编辑 Agent Skill",
+      "doc": "image_editing.md",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/image_editing.md",
+      "reason": "Source-image preservation, ordered picture references, edit scope, and the MiniMax-H3(R2I) still-image route require owner-reviewed behavior."
+    },
+    {
       "key": "runtime_canvas_snapshot",
       "title": "Runtime Canvas Snapshot",
       "doc": "",

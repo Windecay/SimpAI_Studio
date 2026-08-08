@@ -4,7 +4,7 @@
     window.SimpAICanvasWorkbenchCanvasAgent = Object.assign({}, window.SimpAICanvasWorkbenchCanvasAgent || {}, {
         CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY: 'simpai.canvas.agentPresetQueues.v1',
         CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE: ['Z-imageT'],
-        CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE: ['Flux2-KleinEdit'],
+        CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE: ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'],
         CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE: ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'],
         CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE: ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'],
         CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE: ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'],

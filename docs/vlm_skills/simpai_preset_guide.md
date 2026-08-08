@@ -401,3 +401,14 @@ SimpAI UI guide skill:
 - Keep the structured `theme_labels.en` and `theme_labels.zh` values for VLM
   Chat and Canvas catalog display. These labels are selected from
   `state.__lang` and are separate from ordinary `theme_title` localization.
+
+## 2026-08-08 MiniMax H3 图编 / R2I
+
+- `MiniMax-H3(R2I)` is the MiniMax H3 still-image editing route. It uses the
+  H3 reference compiler and accepts one to five ordered picture references.
+- Recommend it after the normal image-edit queue candidates when the user asks
+  for H3 reference-image editing, multi-image editing, or object transfer.
+- It emits an image result and forbids video and audio references. Do not route
+  an R2I request to `MiniMax-H3(R2V)`.
+- Keep the visible Chinese name as `MiniMax-H3图编`; select it from
+  `state.__lang` rather than hard-coding a translated preset key.

@@ -50,3 +50,8 @@ Related acceptance checklist:
 - `../vlm-agent-prompt-acceptance.md`: repeatable checks for prompt target
   recognition, final prompt quality, confirmation-card safety, and manual
   output matrix cases.
+
+Image editing skill:
+- `image_editing.md`: bilingual source-grounded editing rules, ordered
+  `<Picture N>` references, unchanged-content preservation, and the
+  `MiniMax-H3(R2I)` still-image route used by Canvas Agent and VLM Chat.

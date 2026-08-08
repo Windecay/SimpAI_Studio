@@ -101,13 +101,16 @@ GENERATION_TASK_ALIASES = {
     "reference_to_video": "multi_image_to_video",
     "ref_to_video": "multi_image_to_video",
     "r2v": "multi_image_to_video",
+    "reference_to_image": "image_edit",
+    "ref_to_image": "image_edit",
+    "r2i": "image_edit",
     "multi_i2v": "multi_image_to_video",
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit"),
-    "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
-    "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
-    "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)"),
+    "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
+    "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
+    "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
 }
 CREATIVE_ASPECT_RATIOS = {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "7:4", "4:7"}
 _CANCEL_TTL_SECONDS = 1800
@@ -145,6 +148,7 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
     "For video work, use text_to_video with no image refs, image_to_video with one image ref, and multi_image_to_video with two or more image refs in the user's intended order. "
     "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) uses one to five ordered reference images. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
+    "MiniMax-H3(R2I) is the still-image editing route: use image_edit or multi_image_edit with one to five ordered image refs, preserve the source image unless the user asks to change it, and never add video or audio refs. "
     "For image_face_swap, when two attached inputs are available, include exactly two media refs in this order: the target/base image first, then the source face-identity image. Never invent missing refs; the application will request them. The application prefers the automatic QwenFaceSwap route when its models are ready; it does not require a painted mask. "
     "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo and image-input editing to Krea2-ImageEdit; do not promise the wrong family member. "
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
@@ -578,7 +582,7 @@ def _describe_vlm_skills_dir():
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "vlm_skills")
 
 
-def _describe_read_vlm_skill_file(filename, max_chars=24000):
+def _describe_read_vlm_skill_file(filename, max_chars=30000):
     clean = str(filename or "").replace("\\", "/").strip()
     if not clean or clean.startswith("/") or ".." in clean.split("/"):
         return ""
@@ -2084,7 +2088,7 @@ GENERATION_PRESET_PRIORITIES = {
     "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "NunFlux_fp4", "NunFlux_int4", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
     "image_background_removal": ("Removebg", "OneKeyKontext"),
     "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
-    "image_object_transfer": ("QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "OneKeyKontext", "Swap+", "NunSwap_fp4", "NunSwap_int4"),
+    "image_object_transfer": ("QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+", "NunSwap_fp4", "NunSwap_int4"),
     "image_outpaint": ("OneKey-Outpaint",),
     "image_relight": ("Relight", "Flux2-AngleLight", "OneKeyKontext"),
     "image_style_transfer": ("StyleTransfer+",),
@@ -2100,7 +2104,7 @@ GENERATION_PRESET_PRIORITIES = {
 
 def _generation_preset_priorities(task):
     return GENERATION_PRESET_PRIORITIES.get(task) or (
-        ("Flux2-KleinEdit", "Krea2-ImageEdit", "QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext")
+        ("Flux2-KleinEdit", "Krea2-ImageEdit", "QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )
