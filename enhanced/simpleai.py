@@ -3,6 +3,8 @@ import sys
 import shutil
 import re
 import json
+import copy
+import getpass
 import importlib.util
 import gradio as gr
 import shared
@@ -36,6 +38,274 @@ def is_advanced_logs_enabled():
 utils.echo_off = not is_advanced_logs_enabled()
 args_comfyd = [[]]
 modelsinfo_filename = 'models_info.json'
+
+
+_NativeComfyTaskParams = ComfyTaskParams
+
+
+def _workflow_file_names(flow_name):
+    flow_name = str(flow_name or '').strip()
+    if not flow_name:
+        return []
+    if flow_name.lower().endswith('.json'):
+        return [flow_name]
+    return [f'{flow_name}_api.json', f'{flow_name}.json']
+
+
+def _path_error_text(error):
+    if isinstance(error, PermissionError):
+        return f'{type(error).__name__}: {error}'
+    if isinstance(error, FileNotFoundError):
+        return f'{type(error).__name__}: {error}'
+    return f'{type(error).__name__}: {error}'
+
+
+def _probe_workflow_path(path):
+    path = os.path.abspath(str(path))
+    result = {
+        'path': path,
+        'exists': False,
+        'size': None,
+        'python_read': False,
+        'extended_path_read': None,
+        'parse': 'missing',
+        'api_nodes': 0,
+        'error': None,
+    }
+    try:
+        file_stat = os.stat(path)
+        result['exists'] = True
+        result['size'] = file_stat.st_size
+    except FileNotFoundError:
+        return result
+    except Exception as exc:
+        result['parse'] = 'stat_error'
+        result['error'] = _path_error_text(exc)
+        return result
+
+    try:
+        with open(path, 'r', encoding='utf-8') as workflow_handle:
+            workflow = json.load(workflow_handle)
+        result['python_read'] = True
+        result['parse'] = 'ok'
+        if isinstance(workflow, dict):
+            result['api_nodes'] = sum(
+                1
+                for node in workflow.values()
+                if isinstance(node, dict) and node.get('class_type')
+            )
+        result['_workflow'] = workflow
+    except Exception as exc:
+        result['parse'] = 'read_error'
+        result['error'] = _path_error_text(exc)
+
+    if os.name == 'nt' and len(path) >= 2 and path[1] == ':':
+        extended_path = f'\\\\?\\{path}'
+        try:
+            with open(extended_path, 'rb') as workflow_handle:
+                workflow_handle.read(1)
+            result['extended_path_read'] = True
+        except Exception as exc:
+            result['extended_path_read'] = _path_error_text(exc)
+    return result
+
+
+def _append_workflow_candidate(candidates, source, path):
+    if not path:
+        return
+    normalized = os.path.abspath(str(path))
+    if any(item['path'] == normalized for item in candidates):
+        return
+    candidates.append({'source': source, 'path': normalized})
+
+
+def _workflow_candidates(flow_name, user_did):
+    file_names = _workflow_file_names(flow_name)
+    candidates = []
+    token = getattr(shared, 'token', None)
+
+    if token is not None and user_did:
+        for file_name in file_names[:1]:
+            try:
+                _append_workflow_candidate(
+                    candidates,
+                    'user',
+                    token.get_path_in_user_dir(user_did, os.path.join('workflows', file_name)),
+                )
+            except Exception as exc:
+                logger.warning(
+                    '[Generate][ComfyDebug] user workflow path lookup failed: did=%s error=%s',
+                    user_did,
+                    _path_error_text(exc),
+                )
+
+    if token is not None:
+        for file_name in file_names:
+            try:
+                _append_workflow_candidate(
+                    candidates,
+                    'native_root',
+                    token.get_path_in_root_dir('workflows', file_name),
+                )
+            except Exception as exc:
+                logger.warning(
+                    '[Generate][ComfyDebug] native workflow path lookup failed: file=%s error=%s',
+                    file_name,
+                    _path_error_text(exc),
+                )
+
+    for source, base in (
+        ('shared_root', getattr(shared, 'root', '')),
+        ('launcher_dir', os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ''),
+        ('cwd', os.getcwd()),
+    ):
+        if not base:
+            continue
+        for file_name in file_names:
+            _append_workflow_candidate(
+                candidates,
+                source,
+                os.path.join(base, 'workflows', file_name),
+            )
+    return candidates
+
+
+def _load_fallback_workflow(flow_name, user_did):
+    probes = []
+    selected = None
+    for candidate in _workflow_candidates(flow_name, user_did):
+        probe = _probe_workflow_path(candidate['path'])
+        probe['source'] = candidate['source']
+        probes.append(probe)
+        if selected is None and probe.get('parse') == 'ok' and probe.get('api_nodes', 0) > 0:
+            selected = probe
+
+    diagnostics = {
+        'user': getpass.getuser(),
+        'pid': os.getpid(),
+        'user_did': user_did,
+        'workflow': str(flow_name or ''),
+        'candidates': [
+            {key: value for key, value in item.items() if key != '_workflow'}
+            for item in probes
+        ],
+    }
+    logger.warning('[Generate][ComfyDebug] workflow_read_probe=%s', diagnostics)
+    if selected is None:
+        return None, diagnostics
+    return selected['_workflow'], diagnostics
+
+
+def _apply_workflow_mapping(workflow, params, mapping):
+    if not isinstance(workflow, dict):
+        return None, {'reason': 'workflow_root_is_not_object'}
+    if not isinstance(mapping, dict):
+        return None, {'reason': 'mapping_is_not_object'}
+
+    prompt = copy.deepcopy(workflow)
+    applied = 0
+    missing = []
+    for param_key, targets in mapping.items():
+        if param_key not in params:
+            continue
+        if isinstance(targets, str):
+            targets = [targets]
+        if not isinstance(targets, (list, tuple)):
+            missing.append(f'{param_key}:invalid_targets')
+            continue
+
+        param_applied = False
+        for target in targets:
+            parts = str(target).split(':', 2)
+            if len(parts) != 3:
+                missing.append(f'{param_key}:{target}')
+                continue
+            class_type, title, input_name = parts
+            for node_id, node in prompt.items():
+                if not isinstance(node, dict):
+                    continue
+                if node.get('class_type') != class_type:
+                    continue
+                node_title = node.get('_meta', {}).get('title')
+                if node_title != title and str(node_id) != title:
+                    continue
+                inputs = node.setdefault('inputs', {})
+                inputs[input_name] = params[param_key]
+                applied += 1
+                param_applied = True
+        if not param_applied:
+            missing.append(param_key)
+
+    api_nodes = sum(
+        1
+        for node in prompt.values()
+        if isinstance(node, dict) and node.get('class_type')
+    )
+    if api_nodes == 0:
+        return None, {'reason': 'workflow_has_no_api_nodes', 'mapping_keys': len(mapping)}
+    return prompt, {
+        'mapping_keys': len(mapping),
+        'api_nodes': api_nodes,
+        'applied': applied,
+        'missing': missing[:20],
+    }
+
+
+class ComfyTaskParams(_NativeComfyTaskParams):
+    """Use the native mapper first and keep generation working when file IO fails there."""
+
+    def __init__(self, params, user_did=''):
+        super().__init__(params, user_did)
+        self._user_did = user_did
+
+    def convert2comfy(self, flow_name):
+        native_error = None
+        try:
+            converted = super().convert2comfy(flow_name)
+            if isinstance(converted, dict) and converted:
+                return converted
+        except Exception as exc:
+            converted = {}
+            native_error = _path_error_text(exc)
+
+        workflow, diagnostics = _load_fallback_workflow(flow_name, self._user_did)
+        if workflow is None:
+            logger.error(
+                '[Generate][ComfyDebug] workflow conversion failed: native_error=%s diagnostics=%s',
+                native_error,
+                diagnostics,
+            )
+            return converted if isinstance(converted, dict) else {}
+
+        try:
+            workflow_json = json.dumps(workflow, ensure_ascii=False)
+            mapping = self.get_key_mapped(workflow_json)
+            params = self.get_params()
+            fallback_prompt, mapping_info = _apply_workflow_mapping(workflow, params, mapping)
+        except Exception as exc:
+            logger.error(
+                '[Generate][ComfyDebug] Python workflow fallback failed: error=%s diagnostics=%s',
+                _path_error_text(exc),
+                diagnostics,
+            )
+            return converted if isinstance(converted, dict) else {}
+
+        if fallback_prompt is None:
+            logger.error(
+                '[Generate][ComfyDebug] Python workflow fallback produced no prompt: mapping_info=%s diagnostics=%s',
+                mapping_info,
+                diagnostics,
+            )
+            return converted if isinstance(converted, dict) else {}
+
+        logger.warning(
+            '[Generate][ComfyDebug] native workflow conversion returned empty; using Python workflow fallback: '
+            'nodes=%s mapping_info=%s diagnostics=%s',
+            len(fallback_prompt),
+            mapping_info,
+            diagnostics,
+        )
+        return fallback_prompt
 
 def init_modelsinfo(models_root, path_map):
     global modelsinfo_filename

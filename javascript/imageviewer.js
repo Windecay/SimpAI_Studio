@@ -68,7 +68,14 @@ function selected_gallery_index() {
 }
 
 function simpleaiSyncGallerySelectionIntoState(state) {
-    const targetState = state && typeof state === 'object' ? state : {};
+    const incomingState = state && typeof state === 'object' ? state : {};
+    const liveState = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
+        ? window.simpleaiTopbarSystemParams
+        : null;
+    // Gradio 6 can pass a component-event snapshot without the current Scene keys.
+    const targetState = liveState && liveState !== incomingState
+        ? Object.assign({}, liveState, incomingState)
+        : incomingState;
     const app = typeof gradioApp === 'function' ? gradioApp() : document;
     const roots = ['#finished_gallery', '#final_gallery']
         .map((selector) => app.querySelector(selector))
@@ -82,11 +89,9 @@ function simpleaiSyncGallerySelectionIntoState(state) {
     const selectedIndex = button ? buttons.indexOf(button) : -1;
     if (selectedIndex < 0) return targetState;
 
-    const liveState = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-        ? window.simpleaiTopbarSystemParams
-        : targetState;
-    const browserPaths = Array.isArray(liveState.__main_gallery_browser_paths)
-        ? liveState.__main_gallery_browser_paths
+    const selectionState = liveState || targetState;
+    const browserPaths = Array.isArray(selectionState.__main_gallery_browser_paths)
+        ? selectionState.__main_gallery_browser_paths
         : (Array.isArray(targetState.__main_gallery_browser_paths) ? targetState.__main_gallery_browser_paths : []);
     const media = simpleaiGalleryButtonMedia(button);
     const mediaSrc = simpleaiMediaSrc(media);
@@ -94,7 +99,7 @@ function simpleaiSyncGallerySelectionIntoState(state) {
     if (!mediaPath) mediaPath = simpleaiGalleryFilePathFromSrc(simpleaiGalleryDisplayPreviewOriginalSrc(mediaSrc));
     if (!mediaPath && selectedIndex < browserPaths.length) mediaPath = String(browserPaths[selectedIndex] || '');
 
-    const livePromptInfo = Array.isArray(liveState.prompt_info) ? liveState.prompt_info : [];
+    const livePromptInfo = Array.isArray(selectionState.prompt_info) ? selectionState.prompt_info : [];
     const statePromptInfo = Array.isArray(targetState.prompt_info) ? targetState.prompt_info : [];
     const choice = livePromptInfo.length ? livePromptInfo[0] : (statePromptInfo.length ? statePromptInfo[0] : null);
     targetState.prompt_info = [choice, selectedIndex];

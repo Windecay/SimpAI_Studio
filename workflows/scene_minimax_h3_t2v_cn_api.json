@@ -150,7 +150,7 @@
       "format": "MP4",
       "codec": "h264",
       "fps": 24,
-      "crf": 19,
+      "crf": 18,
       "images": ["14", 0],
       "audio": ["15", 0]
     },

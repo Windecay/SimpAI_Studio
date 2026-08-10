@@ -5,6 +5,7 @@ import queue
 from contextlib import contextmanager
 import os
 import sys
+import getpass
 import args_manager
 from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
@@ -941,6 +942,95 @@ def worker():
                 logger.info(f'Task Type == {async_task.content_type}')
                 if async_task.content_type == 'video':
                     extra_data['is_vhs'] = True
+
+                workflow_name = str(comfy_task.name or '')
+                workflow_files = [workflow_name]
+                if not workflow_name.lower().endswith('.json'):
+                    workflow_files = [f'{workflow_name}_api.json', f'{workflow_name}.json']
+                workflow_bases = [
+                    os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else '',
+                    os.getcwd(),
+                    os.path.abspath(str(getattr(shared, 'root', os.getcwd()))),
+                ]
+                workflow_candidates = []
+                try:
+                    user_workflow_path = shared.token.get_path_in_user_dir(
+                        async_task.user_did,
+                        os.path.join('workflows', workflow_files[0]),
+                    )
+                    if user_workflow_path:
+                        workflow_candidates.append(('user', os.path.abspath(user_workflow_path)))
+                except Exception as exc:
+                    logger.info('[Generate][ComfyDebug] user workflow path lookup failed: %s', exc)
+                for workflow_base in workflow_bases:
+                    if not workflow_base:
+                        continue
+                    for workflow_file in workflow_files:
+                        candidate = os.path.abspath(os.path.join(workflow_base, 'workflows', workflow_file))
+                        if not any(path == candidate for _source, path in workflow_candidates):
+                            workflow_candidates.append(('root', candidate))
+                workflow_probe = []
+                for source, path in workflow_candidates:
+                    probe = {
+                        'source': source,
+                        'path': path,
+                        'stat': 'missing',
+                        'size': None,
+                        'read': False,
+                        'extended_read': None,
+                        'parse': 'missing',
+                        'error': None,
+                    }
+                    try:
+                        probe['size'] = os.stat(path).st_size
+                        probe['stat'] = 'ok'
+                    except FileNotFoundError:
+                        workflow_probe.append(probe)
+                        continue
+                    except Exception as exc:
+                        probe['stat'] = f'{type(exc).__name__}: {exc}'
+                        probe['parse'] = 'stat_error'
+                        probe['error'] = f'{type(exc).__name__}: {exc}'
+                        workflow_probe.append(probe)
+                        continue
+                    try:
+                        with open(path, 'r', encoding='utf-8') as workflow_handle:
+                            json.load(workflow_handle)
+                        probe['read'] = True
+                        probe['parse'] = 'ok'
+                    except Exception as exc:
+                        probe['parse'] = 'read_error'
+                        probe['error'] = f'{type(exc).__name__}: {exc}'
+                    if os.name == 'nt' and len(path) >= 2 and path[1] == ':':
+                        extended_path = f'\\\\?\\{path}'
+                        try:
+                            with open(extended_path, 'rb') as workflow_handle:
+                                workflow_handle.read(1)
+                            probe['extended_read'] = True
+                        except Exception as exc:
+                            probe['extended_read'] = f'{type(exc).__name__}: {exc}'
+                    workflow_probe.append(probe)
+                logger.info(
+                    '[Generate][ComfyDebug] workflow=%s workflow_probe=%s user=%s pid=%s user_did=%s argv0=%s cwd=%s shared_root=%s',
+                    workflow_name,
+                    workflow_probe,
+                    getpass.getuser(),
+                    os.getpid(),
+                    async_task.user_did,
+                    sys.argv[0] if sys.argv else '',
+                    os.getcwd(),
+                    getattr(shared, 'root', ''),
+                )
+                try:
+                    native_sysinfo = json.loads(shared.token.get_sysinfo().to_json())
+                    logger.info(
+                        '[Generate][ComfyDebug] native_root_dir=%s native_exe_dir=%s native_exe_name=%s',
+                        native_sysinfo.get('root_dir'),
+                        native_sysinfo.get('exe_dir'),
+                        native_sysinfo.get('exe_name'),
+                    )
+                except Exception as exc:
+                    logger.info('[Generate][ComfyDebug] native sysinfo unavailable: %s', exc)
 
                 with use_progress_profile(comfy_task.progress_profile):
                     imgs = comfypipeline.process_flow(

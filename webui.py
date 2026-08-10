@@ -4184,12 +4184,14 @@ with shared.gradio_root:
                             gallery_browser_load_btn = gr.Button("Gallery browser load", size="sm", visible=True, elem_id="gallery_browser_load_btn", elem_classes=["sai-gradio-hidden-bridge"])
                             gallery_index = gr.Dropdown(choices=None, value=None, show_label=False, allow_custom_value=True, elem_id="gallery_index_bridge", elem_classes=["sai-gradio-hidden-bridge"])
                     with gr.Column(scale=1, visible=True, elem_classes=['scene_panel', 'simpai-mounted-hidden'], elem_id='scene_panel') as scene_panel:
-                        with gr.Row(elem_id="scene_primary_row"):
-                            scene_additional_prompt = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, elem_id='scene_additional_prompt', elem_classes=['scene_input', 'simpai-mounted-hidden'])
+                        with gr.Column(elem_id="scene_primary_row"):
+                            with gr.Row(elem_id="scene_prompt_row"):
+                                scene_additional_prompt = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, elem_id='scene_additional_prompt', elem_classes=['scene_input', 'simpai-mounted-hidden'])
                             scene_theme_initial_choices = [choice for choice in modules.flags.scene_themes if str(choice).strip()]
                             if not scene_theme_initial_choices:
                                 scene_theme_initial_choices = ["Scene Theme / 场景主题"]
-                            scene_theme = gr.Radio(choices=scene_theme_initial_choices, label="Themes", value=scene_theme_initial_choices[0], visible=False, elem_id='scene_theme')
+                            with gr.Row(elem_id="scene_theme_row"):
+                                scene_theme = gr.Radio(choices=scene_theme_initial_choices, label="Themes", value=scene_theme_initial_choices[0], visible=False, elem_id='scene_theme')
                         with gr.Row(elem_id="scene_duration_row"):
                             scene_video_duration = gr.Slider(label='Video Duration(s)', minimum=0.1, maximum=60, step=0.1, value=5.0, visible=True, elem_id="scene_video_duration", elem_classes=['simpai-mounted-hidden'])
                             scene_var_number = gr.Slider(label='Duration(s)', minimum=0, maximum=60, step=1, value=0, visible=True, elem_id="scene_var_number", elem_classes=['simpai-mounted-hidden'])
