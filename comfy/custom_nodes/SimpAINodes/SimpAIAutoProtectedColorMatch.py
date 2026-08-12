@@ -131,7 +131,13 @@ class SimpAIAutoProtectedColorMatch:
                     "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.05,
                     "tooltip": "Below this confidence the correction is bypassed; 0 disables the check",
                 }),
-            }
+            },
+            "optional": {
+                "lock_batch_parameters": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Fit once from the first frame and reuse the same correction for the full batch",
+                }),
+            },
         }
 
     RETURN_TYPES = ("IMAGE", "MASK", "FLOAT", "BOOLEAN")
@@ -141,7 +147,7 @@ class SimpAIAutoProtectedColorMatch:
 
     def match(
         self, reference_image, edited_image, strength, sample_fraction, analysis_size,
-        mask_sensitivity, mask_expand, confidence_threshold,
+        mask_sensitivity, mask_expand, confidence_threshold, lock_batch_parameters=False,
     ):
         if reference_image.ndim != 4 or edited_image.ndim != 4:
             raise ValueError("Auto-Protected Color Match expects IMAGE tensors in BHWC format.")
@@ -159,6 +165,44 @@ class SimpAIAutoProtectedColorMatch:
         active = []
         output_height, output_width = edited_image.shape[1:3]
         analysis_height, analysis_width = _analysis_size(output_height, output_width, analysis_size)
+
+        if lock_batch_parameters and edited_image.shape[0] > 1:
+            reference = reference_image[0:1].to(device=edited_image.device, dtype=torch.float32)
+            edited = edited_image[0:1].to(dtype=torch.float32)
+            reference = _resize_bhwc(reference, output_height, output_width)
+            reference_analysis = _resize_bhwc(reference, analysis_height, analysis_width)[..., :3]
+            edited_analysis = _resize_bhwc(edited, analysis_height, analysis_width)[..., :3]
+
+            reference_blurred = F.avg_pool2d(
+                reference_analysis.movedim(-1, 1), kernel_size=5, stride=1, padding=2, count_include_pad=False
+            ).movedim(1, -1)
+            edited_blurred = F.avg_pool2d(
+                edited_analysis.movedim(-1, 1), kernel_size=5, stride=1, padding=2, count_include_pad=False
+            ).movedim(1, -1)
+            coefficients, residual, selected = _fit_channel_affine(
+                edited_blurred.reshape(-1, 3), reference_blurred.reshape(-1, 3), sample_fraction
+            )
+            confidence = _match_confidence(
+                edited_analysis.reshape(-1, 3), reference_analysis.reshape(-1, 3), coefficients,
+                analysis_height, analysis_width, sample_fraction,
+            )
+            correction_active = strength > 0.0 and confidence >= confidence_threshold
+
+            corrected = edited_image.clone()
+            if correction_active:
+                gain = coefficients[:, 0].to(device=edited_image.device, dtype=edited_image.dtype)
+                offset = coefficients[:, 1].to(device=edited_image.device, dtype=edited_image.dtype)
+                corrected_rgb = edited_image[..., :3] * gain + offset
+                corrected[..., :3] = (
+                    edited_image[..., :3] + strength * (corrected_rgb - edited_image[..., :3])
+                ).clamp(0.0, 1.0)
+
+            mask = _change_mask(
+                residual, selected, analysis_height, analysis_width, output_height, output_width,
+                mask_sensitivity, mask_expand,
+            )[0].to(device=edited_image.device, dtype=edited_image.dtype)
+            masks = mask.unsqueeze(0).expand(edited_image.shape[0], -1, -1).clone()
+            return corrected, masks, confidence, correction_active
 
         for reference, edited in zip(reference_image, edited_image):
             reference = reference.unsqueeze(0).to(device=edited.device, dtype=torch.float32)

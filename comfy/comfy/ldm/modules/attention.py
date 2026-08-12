@@ -628,6 +628,9 @@ def _comfy_kitchen_int8_inputs(q, k, v, heads, mask, skip_reshape, enable_gqa):
         q, k, v = _reshape_qkv_to_heads(q, k, v, b, heads, dim_head, enable_gqa, expand_kv=False)
         q, k, v = map(lambda t: t.transpose(1, 2), (q, k, v))
 
+    # Comfy Kitchen's INT8 quantization kernel requires aligned contiguous strides.
+    q, k, v = map(lambda t: t.contiguous(), (q, k, v))
+
     if mask is not None:
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)

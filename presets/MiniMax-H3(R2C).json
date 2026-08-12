@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["image_to_video", "multi_image_to_video", "audio_to_video", "image_audio_to_video", "video_audio_to_video"],
+  "supported_tasks": ["video_extend"],
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
@@ -21,21 +21,23 @@
       "theme_labels": {
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"}
       },
-      "theme_title": "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]",
+      "theme_title": "MiniMax H3 Video Continuation [Previous video + optional 1-5 identity images]",
       "director_capability": {
         "image_policy": "optional",
-        "audio_policy": "optional",
-        "video_policy": "optional",
+        "audio_policy": "forbidden",
+        "video_policy": "required",
         "max_images": 5,
         "min_images": 0,
         "image_modes": ["none", "reference_set"],
-        "video_modes": ["explicit"],
+        "video_modes": ["explicit", "previous_segment"],
+        "chain_output": "last_result",
+        "requires_sequential": true,
         "duration_strategy": "shot",
         "audio_output": "generated",
-        "mixed_segments": true
+        "mixed_segments": false
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4", "scene_reference_video", "minimax_h3_storyboard_control"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",
@@ -47,21 +49,22 @@
         "scene_var_number8",
         "scene_var_number9",
         "scene_var_number10",
-        "scene_switch_option1",
         "scene_switch_option2",
         "scene_switch_option3",
         "scene_switch_option4",
         "scene_refiner_model",
+        "scene_reference_video",
+        "scene_audio",
         "sam3_input_video",
         "sam3_mask_video",
         "scene_batch"
       ],
       "prompt": {"Basic": ""},
-      "task_method": {"Basic": "minimax_h3_r2v_cn"},
+      "task_method": {"Basic": "minimax_h3_r2c_cn"},
       "prompt_compiler": {"Basic": "minimax_h3_ref2va"},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
+        "Basic": "Write only what happens after the previous H3 clip ends. Use the uploaded previous video as the continuation source; optional uploaded pictures are identity and appearance references labeled <Picture 1>, <Picture 2>, and so on. Preserve the previous clip's subject identity, clothing, objects, background, lighting, camera direction, motion direction, pacing, and style. Continue the last action naturally without restarting the scene, replacing the main subject, adding unrelated subjects, or inventing media. Keep the generated audio coherent with the previous clip."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
@@ -76,9 +79,10 @@
       "var_number4_max": 100.0,
       "var_number4": {"Basic": 3.0},
       "aspect_ratio": [
-        "640*640",
+        "origin|Original",
         "864*480",
         "480*864",
+        "640*640",
         "736*576",
         "576*736",
         "800*544",
@@ -87,16 +91,20 @@
         "576*1024"
       ],
       "resolution_control": {
-        "mode": "standard",
-        "source": "none",
-        "base_width": 640,
-        "base_height": 640,
+        "mode": "video_keep_input_area",
+        "source": "scene_video",
+        "base_width": 864,
+        "base_height": 480,
         "quantize": 32,
         "interactive": true,
-        "frontend_preprocess": false,
-        "preprocess_target": "none",
-        "preprocess_fit": "pad"
+        "frontend_preprocess": true,
+        "preprocess_target": "video",
+        "preprocess_fit": "scale",
+        "preprocess_duration_limit": false,
+        "preserve_audio": true
       },
+      "switch_option1_title": "Append Original Video",
+      "switch_option1": {"Basic": true},
       "image_preprocessor_method": [["-normalization"]],
       "overwrite_step_min": 1,
       "overwrite_step_max": 50
@@ -121,7 +129,7 @@
   "default_scheduler": "beta",
   "default_performance": "Speed",
   "default_styles": [],
-  "default_aspect_ratio": "640*640",
+  "default_aspect_ratio": "origin|Original",
   "default_image_number": 1,
   "default_overwrite_step": 8,
   "default_prompt_negative": "",
@@ -135,6 +143,7 @@
     "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
     "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
-    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl"
   ]
 }

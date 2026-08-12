@@ -62,13 +62,22 @@ class SimpAIOptionalVideoPath:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "INT", "AUDIO")
-    RETURN_NAMES = ("IMAGE", "frame_count", "AUDIO")
+    RETURN_TYPES = ("IMAGE", "INT", "AUDIO", "FLOAT")
+    RETURN_NAMES = ("IMAGE", "frame_count", "AUDIO", "source_fps")
     FUNCTION = "load_video"
     CATEGORY = "SimpAI/video"
 
     def load_video(self, video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, duration=0.0):
-        return _load_video_frames(video, force_rate, frame_load_cap, skip_first_frames, select_every_nth, "Optional reference video", duration)
+        return _load_video_frames(
+            video,
+            force_rate,
+            frame_load_cap,
+            skip_first_frames,
+            select_every_nth,
+            "Optional reference video",
+            duration,
+            return_fps=True,
+        )
 
     @classmethod
     def IS_CHANGED(cls, video, **kwargs):
@@ -107,7 +116,15 @@ class SimpAIOptionalReferenceVideoPath:
     CATEGORY = "SimpAI/video"
 
     def load_video(self, reference_video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, duration=0.0):
-        return _load_video_frames(reference_video, force_rate, frame_load_cap, skip_first_frames, select_every_nth, "Optional reference video", duration)
+        return _load_video_frames(
+            reference_video,
+            force_rate,
+            frame_load_cap,
+            skip_first_frames,
+            select_every_nth,
+            "Optional reference video",
+            duration,
+        )
 
     @classmethod
     def IS_CHANGED(cls, reference_video, **kwargs):
@@ -236,10 +253,19 @@ def _load_audio_value(path, label, allow_missing_stream=False, start_time=0.0, d
     return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
 
 
-def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, label="Optional video", duration=0.0):
+def _load_video_frames(
+    video,
+    force_rate=0,
+    frame_load_cap=0,
+    skip_first_frames=0,
+    select_every_nth=1,
+    label="Optional video",
+    duration=0.0,
+    return_fps=False,
+):
     path = _resolve_video_path(video)
     if not path:
-        return (None, 0, None)
+        return (None, 0, None, 0.0) if return_fps else (None, 0, None)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"{label} file not found: {video}")
 
@@ -254,6 +280,7 @@ def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=
         raise ValueError(f"{label} could not be opened: {path}")
 
     source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+    loaded_fps = source_fps / select_every_nth if source_fps > 0.0 else 0.0
     frames = []
     audio_start_time = 0.0
     audio_duration = duration
@@ -261,7 +288,7 @@ def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=
         if duration > 0.0 and source_fps > 0.0:
             source_start_index = skip_first_frames
             capture.set(cv2.CAP_PROP_POS_FRAMES, source_start_index)
-            target_fps = force_rate if force_rate > 0.0 else source_fps / select_every_nth
+            target_fps = force_rate if force_rate > 0.0 else loaded_fps
             frame_limits = []
             if frame_load_cap > 0:
                 frame_limits.append(frame_load_cap)
@@ -316,7 +343,12 @@ def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=
     if not frames:
         raise RuntimeError(f"{label} produced no frames: {path}")
     audio = _load_audio_value(path, f"{label} audio", allow_missing_stream=True, start_time=audio_start_time, duration=audio_duration)
-    return (torch.from_numpy(np.stack(frames, axis=0)), len(frames), audio)
+    if force_rate > 0.0:
+        loaded_fps = force_rate
+    result = (torch.from_numpy(np.stack(frames, axis=0)), len(frames), audio)
+    if return_fps:
+        return result + (float(loaded_fps),)
+    return result
 
 
 NODE_CLASS_MAPPINGS = {
