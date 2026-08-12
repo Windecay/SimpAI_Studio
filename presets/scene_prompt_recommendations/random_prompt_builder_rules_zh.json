@@ -24,6 +24,12 @@
           "water_pour_shoulder", "sheet_pull_over", "blouse_unbutton_hint", "lotion_apply_leg",
           "bath_sponge_scrub", "bubble_bath_blow", "hair_flip_side", "lip_bite_look",
           "strap_adjust", "waist_twist_look", "hip_turn_profile"
+        ],
+        "camera": [
+          "collarbone_jewelry_crop", "back_blade_crop", "waist_shadow_detail", "hip_fabric_silhouette",
+          "covered_bust_line_crop", "covered_hip_profile", "covered_crotch_fabric_detail",
+          "leg_cross_texture_closeup", "wet_swimwear_curve_detail", "covered_bust_robe_shadow",
+          "hand_rest_hip_swimwear", "cropped_bust_hip_triptych"
         ]
       },
       "demote": {
@@ -82,7 +88,7 @@
           "sheer_pantyhose": 4,
           "garter_belt_set": 4,
           "thigh_high_socks": 3,
-          "lingerie_fashion": 12
+          "bustier_corset": 12
         },
         "action": {
           "water_pour_shoulder": 10,
@@ -96,6 +102,20 @@
           "bubble_bath_blow": 4,
           "hair_flip_side": 4,
           "strap_adjust": 4
+        },
+        "camera": {
+          "collarbone_jewelry_crop": 0.57,
+          "back_blade_crop": 0.47,
+          "waist_shadow_detail": 0.57,
+          "hip_fabric_silhouette": 0.57,
+          "covered_bust_line_crop": 0.65,
+          "covered_hip_profile": 0.65,
+          "covered_crotch_fabric_detail": 0.36,
+          "leg_cross_texture_closeup": 0.52,
+          "wet_swimwear_curve_detail": 0.52,
+          "covered_bust_robe_shadow": 0.47,
+          "hand_rest_hip_swimwear": 0.47,
+          "cropped_bust_hip_triptych": 0.52
         }
       }
     }

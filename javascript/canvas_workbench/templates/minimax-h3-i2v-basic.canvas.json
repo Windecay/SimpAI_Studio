@@ -353,8 +353,6 @@
           "scene_audio",
           "scene_var_number",
           "scene_var_number2",
-          "scene_var_number3",
-          "scene_var_number4",
           "scene_var_number5",
           "scene_var_number6",
           "scene_var_number7",
@@ -448,6 +446,26 @@
             "max": 15
           },
           {
+            "key": "scene_var_number3",
+            "label": "Video Shift",
+            "type": "number",
+            "default": 12.0,
+            "visible": true,
+            "interactive": true,
+            "min": 0.01,
+            "max": 100.0
+          },
+          {
+            "key": "scene_var_number4",
+            "label": "Audio Shift",
+            "type": "number",
+            "default": 3.0,
+            "visible": true,
+            "interactive": true,
+            "min": 0.01,
+            "max": 100.0
+          },
+          {
             "key": "scene_aspect_ratio",
             "label": "Aspect Ratio",
             "type": "choice",
@@ -472,6 +490,8 @@
             "supported_tasks": [],
             "defaults": {
               "scene_video_duration": 5,
+              "scene_var_number3": 12.0,
+              "scene_var_number4": 3.0,
               "scene_aspect_ratio": "640*640",
               "prompt": ""
             },
@@ -653,6 +673,8 @@
         "seed_random": true,
         "image_seed": 0,
         "scene_video_duration": 5,
+        "scene_var_number3": 12.0,
+        "scene_var_number4": 3.0,
         "scene_aspect_ratio": "640*640"
       },
       "status": "idle",

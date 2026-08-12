@@ -462,8 +462,6 @@
           "scene_additional_prompt_2",
           "scene_var_number",
           "scene_var_number2",
-          "scene_var_number3",
-          "scene_var_number4",
           "scene_var_number5",
           "scene_var_number6",
           "scene_var_number7",
@@ -561,6 +559,26 @@
             "max": 15
           },
           {
+            "key": "scene_var_number3",
+            "label": "Video Shift",
+            "type": "number",
+            "default": 12.0,
+            "visible": true,
+            "interactive": true,
+            "min": 0.01,
+            "max": 100.0
+          },
+          {
+            "key": "scene_var_number4",
+            "label": "Audio Shift",
+            "type": "number",
+            "default": 3.0,
+            "visible": true,
+            "interactive": true,
+            "min": 0.01,
+            "max": 100.0
+          },
+          {
             "key": "scene_aspect_ratio",
             "label": "Aspect Ratio",
             "type": "choice",
@@ -592,6 +610,8 @@
             ],
             "defaults": {
               "scene_video_duration": 5,
+              "scene_var_number3": 12.0,
+              "scene_var_number4": 3.0,
               "scene_aspect_ratio": "640*640",
               "prompt": ""
             },
@@ -774,13 +794,15 @@
         "prompt": null,
         "negative_prompt": null
       },
-      "params": {
-        "prompt": "<Picture 1> 提供主要人物与身份，<Video 1> 提供镜头运动和动作节奏，<Video 2> 提供表演方式，<Audio 1> 提供声线或声音风格。人物在场景中自然前行，镜头平稳跟随并缓慢靠近，画面运动和声音保持同步。",
-        "negative_prompt": "",
-        "seed_random": true,
-        "image_seed": 0,
-        "scene_video_duration": 5,
-        "scene_aspect_ratio": "640*640"
+        "params": {
+          "prompt": "<Picture 1> 提供主要人物与身份，<Video 1> 提供镜头运动和动作节奏，<Video 2> 提供表演方式，<Audio 1> 提供声线或声音风格。人物在场景中自然前行，镜头平稳跟随并缓慢靠近，画面运动和声音保持同步。",
+          "negative_prompt": "",
+          "seed_random": true,
+          "image_seed": 0,
+          "scene_video_duration": 5,
+          "scene_var_number3": 12.0,
+          "scene_var_number4": 3.0,
+          "scene_aspect_ratio": "640*640"
       },
       "status": "idle",
       "collapsed": false,
