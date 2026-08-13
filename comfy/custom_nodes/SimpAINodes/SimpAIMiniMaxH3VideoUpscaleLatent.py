@@ -5,7 +5,6 @@ import comfy.ldm.common_dit
 import comfy.model_management
 import comfy.nested_tensor
 import comfy.utils
-import nodes
 from comfy_api.latest import io
 
 
@@ -17,6 +16,16 @@ H3_AUDIO_LATENT_PLANES = 2
 H3_SPATIAL_DOWNSCALE = 16
 H3_UPSCALE_METHODS = ("nearest", "bilinear", "bicubic")
 H3_DIT_SPATIAL_MULTIPLE = 2
+
+
+def _max_resolution():
+    try:
+        import nodes
+
+        return int(nodes.MAX_RESOLUTION)
+    except Exception:
+        # Keep schema-only imports usable in lightweight test/runtime environments.
+        return 32768
 
 
 def _align_frame_count(length):
@@ -112,6 +121,27 @@ def _upscale_video_latent(video_latent, scale_by, method):
     target_h = _snap_h3_spatial_size(round(video_latent.shape[-2] * scale_by))
     target_w = _snap_h3_spatial_size(round(video_latent.shape[-1] * scale_by))
     return _resize_latent_spatial(video_latent, target_h, target_w, method)
+
+
+def _resize_video_like_latent(latent, width, height, method):
+    target_h = int(height) // H3_SPATIAL_DOWNSCALE
+    target_w = int(width) // H3_SPATIAL_DOWNSCALE
+    if target_h < 1 or target_w < 1:
+        raise ValueError("MiniMax H3 target width and height must be at least 16")
+    if latent.ndim == 4:
+        latent = _resize_latent_spatial(latent, target_h, target_w, method)
+        return comfy.ldm.common_dit.pad_to_patch_size(
+            latent.unsqueeze(2), (1, H3_DIT_SPATIAL_MULTIPLE, H3_DIT_SPATIAL_MULTIPLE)
+        ).squeeze(2)
+    if latent.ndim == 5:
+        latent = _resize_latent_spatial(latent, target_h, target_w, method)
+        return comfy.ldm.common_dit.pad_to_patch_size(
+            latent, (1, H3_DIT_SPATIAL_MULTIPLE, H3_DIT_SPATIAL_MULTIPLE)
+        )
+    raise ValueError(
+        "MiniMax H3 visual latent needs 4 or 5 dimensions: "
+        f"{tuple(latent.shape)}"
+    )
 
 
 def _extract_latent_members(samples):
@@ -223,13 +253,18 @@ def _encode_source_audio(audio_vae, source_audio, target_t):
     return _fit_audio_latent(audio_latent, target_t)
 
 
-def _upscale_latent_dict(latent, scale_by, method):
+def _upscale_latent_dict(latent, scale_by, method, target_width=None, target_height=None):
     if not isinstance(latent, dict) or "samples" not in latent:
         raise ValueError("MiniMax H3 latent upscale needs a LATENT dict with samples")
 
     out = latent.copy()
     members, was_nested = _extract_latent_members(latent["samples"])
-    video_up = _upscale_video_like_latent(members[0], scale_by, method)
+    if target_width and target_height:
+        video_up = _resize_video_like_latent(
+            members[0], target_width, target_height, method
+        )
+    else:
+        video_up = _upscale_video_like_latent(members[0], scale_by, method)
 
     if was_nested:
         out["samples"] = _wrap_latent_members([video_up, *members[1:]], True)
@@ -243,7 +278,12 @@ def _upscale_latent_dict(latent, scale_by, method):
         ) or getattr(noise_mask, "is_nested", False)
         if is_nested_mask:
             mask_members, _ = _extract_latent_members(noise_mask)
-            mask_video_up = _upscale_video_like_latent(mask_members[0], scale_by, method)
+            if target_width and target_height:
+                mask_video_up = _resize_video_like_latent(
+                    mask_members[0], target_width, target_height, method
+                )
+            else:
+                mask_video_up = _upscale_video_like_latent(mask_members[0], scale_by, method)
             out["noise_mask"] = _wrap_latent_members(
                 [mask_video_up, *mask_members[1:]], True
             )
@@ -253,177 +293,26 @@ def _upscale_latent_dict(latent, scale_by, method):
     return out
 
 
-def _has_nonzero_latent(samples):
-    members, _ = _extract_latent_members(samples)
-    return any(torch.count_nonzero(member).item() > 0 for member in members)
-
-
-def _add_noise_nested_latent(
-    model,
-    noise,
-    sigmas,
+def _upscale_and_prepare_clean_latent(
     latent,
-    *,
-    renoise_indices=None,
-    noise_strengths=None,
+    scale_by,
+    method,
+    target_width=None,
+    target_height=None,
 ):
-    if len(sigmas) == 0:
-        return latent
-    if not isinstance(latent, dict) or "samples" not in latent:
-        raise ValueError("MiniMax H3 latent re-noise needs a LATENT dict with samples")
+    """Upscale only the visual member and keep the AV latent clean.
 
-    out = latent.copy()
-    latent_image = latent["samples"]
-    noisy = noise.generate_noise(latent)
-
-    model_sampling = model.get_model_object("model_sampling")
-    process_latent_out = model.get_model_object("process_latent_out")
-    process_latent_in = model.get_model_object("process_latent_in")
-    sigma_start = sigmas[0]
-
-    latent_members, was_nested = _extract_latent_members(latent_image)
-    noise_members, noise_was_nested = _extract_latent_members(noisy)
-    if len(latent_members) != len(noise_members):
-        raise ValueError(
-            "MiniMax H3 noise and latent member counts differ: "
-            f"{len(noise_members)} vs {len(latent_members)}"
-        )
-
-    if renoise_indices is None:
-        renoise_set = set(range(len(latent_members)))
-    else:
-        renoise_set = set(renoise_indices)
-        for index in renoise_set:
-            if index < 0 or index >= len(latent_members):
-                raise IndexError(
-                    f"MiniMax H3 re-noise index {index} is out of range for "
-                    f"{len(latent_members)} latent members"
-                )
-
-    shift_latents = _has_nonzero_latent(latent_image)
-    result_members = []
-    for index, (latent_member, noise_member) in enumerate(
-        zip(latent_members, noise_members)
-    ):
-        latent_in = process_latent_in(latent_member) if shift_latents else latent_member
-        if index in renoise_set:
-            strength = 1.0 if noise_strengths is None else float(
-                noise_strengths.get(index, 1.0)
-            )
-            strength = max(0.0, min(1.0, strength))
-            if strength <= 0.0:
-                mixed = latent_in
-            elif strength >= 1.0:
-                mixed = model_sampling.noise_scaling(
-                    sigma_start, noise_member, latent_in
-                )
-            else:
-                mixed = model_sampling.noise_scaling(
-                    sigma_start, noise_member * strength, latent_in
-                )
-        else:
-            mixed = latent_in
-
-        if hasattr(model_sampling, "inverse_noise_scaling"):
-            mixed = model_sampling.inverse_noise_scaling(sigma_start, mixed)
-        mixed = process_latent_out(mixed)
-        result_members.append(torch.nan_to_num(mixed, nan=0.0, posinf=0.0, neginf=0.0))
-
-    out["samples"] = _wrap_latent_members(
-        result_members, was_nested or noise_was_nested
+    The second sampler owns noise generation and denoise strength.  This keeps
+    the first-pass result from being noised once in this node and again by the
+    sampler.
+    """
+    return _upscale_latent_dict(
+        latent,
+        scale_by,
+        method,
+        target_width=target_width,
+        target_height=target_height,
     )
-    return out
-
-
-def _upscale_and_add_noise(latent, scale_by, method, model, noise, sigmas, audio_denoise):
-    upscaled = _upscale_latent_dict(latent, scale_by, method)
-    members, was_nested = _extract_latent_members(upscaled["samples"])
-
-    if was_nested and len(members) >= 2:
-        audio_strength = max(0.0, min(1.0, float(audio_denoise)))
-        if audio_strength <= 0.0:
-            renoise_indices = (0,)
-            noise_strengths = None
-        elif audio_strength >= 1.0:
-            renoise_indices = (0, 1)
-            noise_strengths = None
-        else:
-            renoise_indices = (0, 1)
-            noise_strengths = {1: audio_strength}
-    else:
-        renoise_indices = None
-        noise_strengths = None
-
-    return _add_noise_nested_latent(
-        model,
-        noise,
-        sigmas,
-        upscaled,
-        renoise_indices=renoise_indices,
-        noise_strengths=noise_strengths,
-    )
-
-
-def _upscale_minimax_ref_block(block, scale_by, method):
-    out = dict(block)
-    if out.get("kind") == "audio":
-        return out
-
-    latent = out.get("latent")
-    if latent is None:
-        return out
-
-    latent = _upscale_video_like_latent(latent, scale_by, method)
-    out["latent"] = latent
-    if latent.ndim == 5:
-        out["latent_t"] = int(latent.shape[2])
-        out["latent_h"] = int(latent.shape[-2])
-        out["latent_w"] = int(latent.shape[-1])
-    elif latent.ndim == 4:
-        out["latent_h"] = int(latent.shape[-2])
-        out["latent_w"] = int(latent.shape[-1])
-    return out
-
-
-def _upscale_minimax_keyframe(keyframe, scale_by, method):
-    out = dict(keyframe)
-    latent = out.get("latent")
-    if latent is not None:
-        out["latent"] = _upscale_video_like_latent(latent, scale_by, method)
-    return out
-
-
-def _upscale_minimax_conditioning(conditioning, scale_by, method):
-    if conditioning is None:
-        return None
-
-    out = []
-    for entry in conditioning:
-        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
-            out.append(entry)
-            continue
-
-        embedding, meta = entry[0], entry[1]
-        if not isinstance(meta, dict):
-            out.append(entry)
-            continue
-
-        new_meta = meta.copy()
-        refs = meta.get("minimax_refs")
-        if refs is not None:
-            new_meta["minimax_refs"] = [
-                _upscale_minimax_ref_block(ref, scale_by, method) for ref in refs
-            ]
-
-        keyframes = meta.get("minimax_keyframes")
-        if keyframes is not None:
-            new_meta["minimax_keyframes"] = [
-                _upscale_minimax_keyframe(keyframe, scale_by, method)
-                for keyframe in keyframes
-            ]
-
-        out.append([embedding, new_meta])
-    return out
 
 
 class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
@@ -431,16 +320,16 @@ class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="SimpAIMiniMaxH3VideoUpscaleLatent",
-            display_name="SimpAI MiniMax H3 视频放大初始 Latent",
+            display_name="SimpAI MiniMax H3 Initial Latent / H3 视频初始 Latent",
             category="conditioning/video_models",
             description=(
-                "实验节点：把源视频或已有 H3 AV latent 处理成低去噪参考生成的初始 latent，"
-                "配合 R2V reference context 使用。"
+                "Prepare a low-denoise H3 AV latent from source media or an existing latent for reference generation. / "
+                "把源媒体或已有 H3 AV latent 处理成低去噪参考生成的初始 latent。"
             ),
             inputs=[
                 io.Vae.Input("vae", optional=True),
-                io.Int.Input("width", default=1024, min=32, max=nodes.MAX_RESOLUTION, step=32),
-                io.Int.Input("height", default=576, min=32, max=nodes.MAX_RESOLUTION, step=32),
+                io.Int.Input("width", default=1024, min=32, max=_max_resolution(), step=32),
+                io.Int.Input("height", default=576, min=32, max=_max_resolution(), step=32),
                 io.Int.Input(
                     "length",
                     default=124,
@@ -448,14 +337,14 @@ class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
                     max=3600,
                     step=17,
                     tooltip=(
-                        "H3 24 fps 帧数，会对齐到 17k+5。"
+                        "H3 frame count at 24 fps; aligned to 17k+5. / H3 24 fps 帧数，会对齐到 17k+5。"
                     ),
                 ),
                 io.Image.Input(
                     "source_video",
                     optional=True,
                     tooltip=(
-                        "要编码成初始 latent 的源视频帧。"
+                        "Source video frames to encode. / 要编码成初始 latent 的源视频帧。"
                     ),
                 ),
                 io.Latent.Input("source_latent", optional=True),
@@ -465,7 +354,7 @@ class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
                     optional=True,
                     advanced=True,
                     tooltip=(
-                        "可选的源音频，用于编码 H3 初始 audio latent。"
+                        "Optional source audio for the initial H3 audio latent. / 可选的源音频，用于编码 H3 初始 audio latent。"
                     ),
                 ),
             ],
@@ -540,12 +429,12 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="SimpAIMiniMaxH3LatentUpscaleCombined",
-            display_name="SimpAI MiniMax H3 latent 二次采样放大",
+            display_name="SimpAI MiniMax H3 Latent 2 Pass / H3 latent 双采样放大",
             category="conditioning/video_models",
             is_experimental=True,
             description=(
-                "放大第一阶段输出的 H3 video latent，保留 audio latent，按第二阶段首个 sigma "
-                "重新准备采样输入；同时更新 reference 和 keyframe 的视觉 latent。"
+                "Upscale the first-pass H3 video latent and preserve the audio latent. Conditioning inputs are compatibility pass-throughs and must be re-encoded by an H3 conditioning node. / "
+                "放大第一阶段 H3 video latent 并保留 audio latent。条件输入仅为兼容透传，必须由 H3 条件节点重新编码。"
             ),
             inputs=[
                 io.Latent.Input("samples"),
@@ -555,18 +444,39 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
                     options=list(H3_UPSCALE_METHODS),
                     default="bicubic",
                 ),
-                io.Model.Input("model"),
-                io.Noise.Input("noise"),
-                io.Sigmas.Input("sigmas"),
+                io.Model.Input("model", optional=True, advanced=True),
+                io.Noise.Input("noise", optional=True, advanced=True),
+                io.Sigmas.Input("sigmas", optional=True, advanced=True),
                 io.Float.Input(
                     "audio_denoise",
-                    default=1.0,
+                    default=0.0,
                     min=0.0,
                     max=1.0,
                     step=0.05,
+                    optional=True,
+                    advanced=True,
                     tooltip=(
-                        "audio latent 的二次采样强度。0 保留第一阶段音频，1 完全按首个 sigma 重新加噪。"
+                        "Deprecated compatibility input; second-pass audio stays clean. / "
+                        "兼容旧工作流的参数；双采样音频保持干净，不在此节点重复加噪。"
                     ),
+                ),
+                io.Int.Input(
+                    "target_width",
+                    default=0,
+                    min=0,
+                    max=_max_resolution(),
+                    step=32,
+                    optional=True,
+                    advanced=True,
+                ),
+                io.Int.Input(
+                    "target_height",
+                    default=0,
+                    min=0,
+                    max=_max_resolution(),
+                    step=32,
+                    optional=True,
+                    advanced=True,
                 ),
                 io.Conditioning.Input("positive", optional=True),
                 io.Conditioning.Input("negative", optional=True),
@@ -584,27 +494,31 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
         samples,
         scale_by,
         upscale_method,
-        model,
-        noise,
-        sigmas,
-        audio_denoise,
+        model=None,
+        noise=None,
+        sigmas=None,
+        audio_denoise=0.0,
         positive=None,
         negative=None,
+        target_width=None,
+        target_height=None,
     ) -> io.NodeOutput:
-        latent = _upscale_and_add_noise(
+        target_width = int(target_width) if target_width else None
+        target_height = int(target_height) if target_height else None
+        if (target_width is None) != (target_height is None):
+            raise ValueError("MiniMax H3 target_width and target_height must be provided together")
+        if target_width is not None:
+            if target_width < 32 or target_height < 32:
+                raise ValueError("MiniMax H3 target width and height must be at least 32")
+            if target_width % 32 != 0 or target_height % 32 != 0:
+                raise ValueError("MiniMax H3 target width and height must be multiples of 32")
+
+        latent = _upscale_and_prepare_clean_latent(
             samples,
             scale_by,
             upscale_method,
-            model,
-            noise,
-            sigmas,
-            audio_denoise,
-        )
-        positive = _upscale_minimax_conditioning(
-            positive, scale_by, upscale_method
-        )
-        negative = _upscale_minimax_conditioning(
-            negative, scale_by, upscale_method
+            target_width=target_width,
+            target_height=target_height,
         )
         return io.NodeOutput(latent, positive, negative)
 
@@ -616,9 +530,9 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpAIMiniMaxH3VideoUpscaleLatent": (
-        "SimpAI MiniMax H3 视频放大初始 Latent"
+        "SimpAI MiniMax H3 Initial Latent / H3 视频初始 Latent"
     ),
     "SimpAIMiniMaxH3LatentUpscaleCombined": (
-        "SimpAI MiniMax H3 latent 二次采样放大"
+        "SimpAI MiniMax H3 Latent 2 Pass / H3 latent 双采样放大"
     ),
 }

@@ -1,4 +1,109 @@
-id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
-h3_t2v_neon_rain,Basic,positive_prompt,replace,Neon rain sequence,霓虹雨夜短片,"雨夜城市街道，镜头贴近湿润路面缓慢前移，霓虹倒影随着车辆经过而流动，一名撑伞人物从画面深处走近。音频：细密雨声、远处车流、轻微低频氛围音乐，声场随镜头自然变化。","雨夜|霓虹|镜头前移|环境音",130
-h3_t2v_product_reveal,Basic,positive_prompt,replace,Cinematic product reveal,电影感产品展示,"黑色摄影棚中，一件金属产品从阴影里逐渐显现，镜头环绕半圈并停在正面特写，边缘光突出材质和轮廓。音频：克制的电子脉冲、细微机械声和结尾短促提示音。","产品展示|环绕镜头|金属材质|电子音效",120
-h3_t2v_coastal_morning,Basic,positive_prompt,replace,Coastal morning,海岸清晨,"清晨海岸，镜头从礁石缓慢升起并望向海面，阳光穿过薄雾，海鸟掠过远处浪线。音频：海浪、轻风、稀疏海鸟声和柔和弦乐，不使用对白。","海岸|清晨|镜头上升|自然声音",110
+id,scene_theme,target,mode,title_en,title_cn,prompt_en,prompt_cn,seed_terms,weight
+h3_t2v_neon_rain,*,positive_prompt,replace,Neon rain sequence,霓虹雨夜短片,"integrated_multimodal_description:
+[Shot 1] 0-5s On a rain-soaked city street at night, a person under a black umbrella walks from the deep background toward the foreground while neon reflections ripple across the pavement as cars pass.
+Camera: Low-angle Tracking Shot, moving forward slowly at ankle height over a medium distance, then making a gentle slow tilt up into a medium shot.
+Dialogue and visible text: None.
+Synchronized sound: Dense rain striking the street and umbrella, distant traffic passing from left to right, and soft footsteps through shallow water.
+
+overall_soundscape:
+Continuous close rain, umbrella impacts, wet footsteps, and distant traffic whose perspective changes naturally as the camera advances.
+
+non_diegetic_music:
+A restrained low-frequency electronic ambience, quiet beneath the rain.","integrated_multimodal_description:
+[Shot 1] 0-5s 雨夜的城市街道上，一名撑黑伞的人物从画面深处走向前景，车辆经过时，霓虹倒影在湿润路面上连续流动。
+Camera: Low-angle Tracking Shot，镜头贴近脚踝高度，以中等移动幅度缓慢向前跟随，结尾再以轻微幅度缓慢抬升到人物中景。
+Dialogue and visible text: 无。
+Synchronized sound: 密集雨滴敲击街道和伞面，远处车辆从左向右经过，脚步轻踏浅水。
+
+overall_soundscape:
+整体环境声音由近处连续雨声、伞面雨滴、湿润脚步和远处车流组成，声音透视随着镜头前进自然变化。
+
+non_diegetic_music:
+克制的低频电子氛围音乐，音量低于雨声。","雨夜|霓虹|Tracking Shot|环境声音",140
+h3_t2v_product_reveal,*,positive_prompt,replace,Cinematic product reveal,电影感产品展示,"integrated_multimodal_description:
+[Shot 1] 0-2s In a black studio, a brushed-metal product rests almost entirely in shadow while a narrow rim light begins to trace its silhouette.
+Camera: Slow Push In, moving forward a short distance at a very slow speed from a centered medium-wide composition.
+Dialogue and visible text: None.
+Synchronized sound: A faint electrical hum and one soft mechanical click as the rim light turns on.
+[Shot 2] 2-5s The key light sweeps across the product, revealing its brushed texture and precise edges as it completes a controlled half turn and stops facing the camera.
+Camera: Slow Orbit Right, circling through a medium arc at an even slow speed and settling into a centered close-up.
+Dialogue and visible text: None.
+Synchronized sound: A restrained servo movement, a soft metallic resonance, and a short confirmation tone at the final stop.
+
+overall_soundscape:
+Clean studio silence shaped by a low electrical bed, synchronized mechanical movement, subtle metal resonance, and the final confirmation tone.
+
+non_diegetic_music:
+Sparse electronic pulses that rise gently during the reveal and stop cleanly on the final frame.","integrated_multimodal_description:
+[Shot 1] 0-2s 黑色摄影棚中，一件拉丝金属产品几乎完全隐藏在阴影里，一道狭窄轮廓光开始勾勒它的外形。
+Camera: Slow Push In，镜头从居中的中远景以较小移动幅度、极慢速度向前推进。
+Dialogue and visible text: 无。
+Synchronized sound: 微弱电流底噪，轮廓灯亮起时出现一次轻柔机械卡嗒声。
+[Shot 2] 2-5s 主光扫过产品表面，拉丝纹理和精确边缘逐渐显现，产品受控旋转半圈，最后正对镜头停止。
+Camera: Slow Orbit Right，镜头以中等环绕幅度、均匀慢速向右运动，最终停在居中的近景特写。
+Dialogue and visible text: 无。
+Synchronized sound: 克制的伺服电机声、轻微金属共振，以及停止时的一声短促确认音。
+
+overall_soundscape:
+整体声音保持干净的摄影棚空间感，由低沉电流底噪、同步机械运动、细微金属共振和结尾确认音组成。
+
+non_diegetic_music:
+稀疏的电子脉冲随产品显现缓慢增强，并在最终画面干净停止。","产品展示|Push In|Orbit Right|同步音效",130
+h3_t2v_coastal_morning,*,positive_prompt,replace,Coastal morning,海岸清晨,"integrated_multimodal_description:
+[Shot 1] 0-3s At dawn on a rocky coast, low mist drifts above the water while pale sunlight begins to break through and small waves wash around the foreground rocks.
+Camera: Crane Up, rising slowly through a medium vertical distance from a low rock-level view toward the horizon.
+Dialogue and visible text: None.
+Synchronized sound: Layered shore waves, light wind across the rocks, and water draining through narrow gaps.
+[Shot 2] 3-5s The camera clears the rocks to reveal the open sea as two seabirds cross the distant sunlit wave line.
+Camera: Slow Pan Right, rotating through a small arc at a gentle speed while holding the horizon level.
+Dialogue and visible text: None.
+Synchronized sound: A wider wash of surf, soft wind, and two distant seabird calls moving across the stereo field.
+
+overall_soundscape:
+Natural coastal ambience with continuous surf, light wind, water moving between rocks, and sparse distant seabirds.
+
+non_diegetic_music:
+N/A","integrated_multimodal_description:
+[Shot 1] 0-3s 清晨的礁石海岸上，低雾贴着水面缓慢飘动，淡金色阳光开始穿透雾层，小浪不断冲刷前景礁石。
+Camera: Crane Up，镜头从贴近礁石的低机位，以中等垂直幅度缓慢升向海平线。
+Dialogue and visible text: 无。
+Synchronized sound: 层叠海浪、掠过礁石的轻风，以及海水从狭窄石缝中退去的声音。
+[Shot 2] 3-5s 镜头越过礁石显露开阔海面，两只海鸟从远处被阳光照亮的浪线前飞过。
+Camera: Slow Pan Right，镜头保持海平线水平，以较小旋转幅度、轻缓速度向右摇摄。
+Dialogue and visible text: 无。
+Synchronized sound: 更开阔的浪潮声、柔和风声，以及两声随海鸟横向移动的远处鸣叫。
+
+overall_soundscape:
+自然海岸环境声音由连续浪潮、轻风、礁石缝隙水声和稀疏的远处海鸟声组成。
+
+non_diegetic_music:
+N/A","海岸|清晨|Crane Up|自然环境声音",120
+h3_t2v_station_dialogue,*,positive_prompt,replace,Late-night platform dialogue,深夜站台对白,"integrated_multimodal_description:
+[Shot 1] 0-3s On an almost empty train platform at night, a young woman (S1) stands beneath a cold overhead lamp as the glow of an approaching train grows along the rails. She looks toward her companion just outside the frame and takes one calm breath.
+Camera: Medium-wide Static Shot, locked at eye level with no travel and no rotation while the approaching light expands in depth.
+Dialogue and visible text: (S1) <d>[English] We still have time.</d>
+Synchronized sound: Fluorescent lamp hum, distant rail vibration, a soft breath, and the first metallic rhythm of the approaching train.
+[Shot 2] 3-5s Wind from the arriving train lifts the edge of her coat; she turns toward the tracks and the headlights brighten behind her.
+Camera: Slow Push In, advancing a short distance at a gentle speed from medium-wide to medium close-up.
+Dialogue and visible text: None.
+Synchronized sound: Growing wheel noise, wind pressing across the platform, and fabric flutter synchronized with her coat.
+
+overall_soundscape:
+An empty late-night platform with fluorescent hum, increasing rail vibration, approaching wheels, moving air, the spoken line from (S1), and synchronized fabric movement.
+
+non_diegetic_music:
+N/A","integrated_multimodal_description:
+[Shot 1] 0-3s 深夜几乎空无一人的火车站台上，一名年轻女子 (S1) 站在冷白顶灯下，驶近列车的光芒沿铁轨逐渐增强。她看向画外的同伴，平静地吸了一口气。
+Camera: Medium-wide Static Shot，镜头固定在平视高度，无位移、无旋转，让远处列车灯光在景深中持续扩大。
+Dialogue and visible text: (S1) <d>[Chinese] 我们还来得及。</d>
+Synchronized sound: 荧光灯低鸣、远处铁轨震动、轻微吸气声，以及列车接近时最初出现的金属节奏。
+[Shot 2] 3-5s 进站列车带起的风掀动她的衣角，她转身面向铁轨，车灯在身后迅速变亮。
+Camera: Slow Push In，镜头以较小移动幅度、轻缓速度从中远景推进到中近景。
+Dialogue and visible text: 无。
+Synchronized sound: 逐渐增强的车轮声、横扫站台的风声，以及与衣角摆动同步的布料声。
+
+overall_soundscape:
+深夜空站台的整体环境声音包括荧光灯低鸣、不断增强的铁轨震动、驶近车轮、流动风声、(S1) 的对白和同步布料声。
+
+non_diegetic_music:
+N/A","站台|对白|<d>|Push In|列车声音",110

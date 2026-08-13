@@ -3422,6 +3422,24 @@ document.addEventListener("DOMContentLoaded", function() {
     const setVisible = (id, visible) => visibility?.setVisible?.(id, visible);
     const getText = (id) => visibility?.text?.(id) || '';
     const getChecked = (id) => visibility?.checkboxChecked?.(id);
+    let lastResolvedSceneVisibilityParams = null;
+
+    function sceneVisibilityParamsResolution(params) {
+        if (!params || typeof params !== 'object') return { resolved: false, params: null };
+        const hasSceneFlag = Object.prototype.hasOwnProperty.call(params, '__is_scene_frontend');
+        const hasSceneSchema = Object.prototype.hasOwnProperty.call(params, 'scene_frontend');
+        return { resolved: hasSceneFlag || hasSceneSchema, params };
+    }
+
+    function resolveSceneVisibilityParams(paramsOverride) {
+        const candidate = paramsOverride !== undefined ? paramsOverride : getTopbarParams();
+        const resolution = sceneVisibilityParamsResolution(candidate);
+        if (resolution.resolved) {
+            lastResolvedSceneVisibilityParams = resolution.params;
+            return resolution.params;
+        }
+        return lastResolvedSceneVisibilityParams || null;
+    }
 
     visibility?.registerMany?.([
         { id: 'prompt_wildcards', group: 'prompt-panel' },
@@ -3533,10 +3551,11 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function syncTopbarPanelVisibility() {
+        const paramsOverride = arguments.length ? arguments[0] : undefined;
         const imageChecked = getChecked('input_image_checkbox');
         const ttsChecked = getChecked('qwen_tts_checkbox');
         const advancedChecked = getChecked('advanced_checkbox');
-        const params = getTopbarParams();
+        const params = resolveSceneVisibilityParams(paramsOverride);
         const isScene = isSceneFrontendParams(params);
         if (imageChecked !== null) {
             const showImagePanel = !!imageChecked && !isScene;
@@ -3636,9 +3655,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function sceneSelectedThemeValue() {
-        const panel = document.getElementById('scene_panel');
-        if (!panel) return '';
-        const checked = panel.querySelector('input[type="radio"]:checked');
+        const root = document.getElementById('scene_theme') || document.getElementById('scene_panel');
+        if (!root) return '';
+        const checked = root.querySelector('input[type="radio"]:checked');
         if (!checked) return '';
         return String(checked.value || checked.getAttribute('value') || '');
     }
@@ -3685,7 +3704,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function syncSceneFrontendVisibility() {
-        const params = getTopbarParams();
+        const paramsOverride = arguments.length ? arguments[0] : undefined;
+        const params = resolveSceneVisibilityParams(paramsOverride);
+        if (!params) return;
         const sceneFrontend = params && typeof params === 'object' ? params.scene_frontend : null;
         const isScene = isSceneFrontendParams(params);
         const preset = String((params && (params.__preset || params.preset)) || '').trim();
@@ -3818,21 +3839,23 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function syncAllMountedDynamicVisibility() {
-        syncTopbarPanelVisibility();
+        const paramsOverride = arguments.length ? arguments[0] : undefined;
+        syncTopbarPanelVisibility(paramsOverride);
         syncPromptPanelVisibility();
         syncInpaintMaskVisibility();
         syncEnhanceMaskVisibility();
-        syncSceneFrontendVisibility();
+        syncSceneFrontendVisibility(paramsOverride);
         try { window.SimpAISketch?.releaseHidden?.(); } catch (e) {}
     }
 
     let mountedVisibilityTimers = [];
     function scheduleAllMountedDynamicVisibility() {
+        const paramsOverride = arguments.length ? arguments[0] : undefined;
         for (const timer of mountedVisibilityTimers) {
             window.clearTimeout(timer);
         }
         mountedVisibilityTimers = [0, 160, 520].map((delay) => window.setTimeout(() => {
-            syncAllMountedDynamicVisibility();
+            syncAllMountedDynamicVisibility(paramsOverride);
         }, delay));
     }
 
@@ -3844,6 +3867,12 @@ document.addEventListener("DOMContentLoaded", function() {
     window.syncEnhanceMaskControlsVisibility = () => scheduleAllMountedDynamicVisibility();
     window.syncTopbarMountedPanelVisibility = () => visibility?.schedule?.(syncTopbarPanelVisibility);
     window.syncGradio6MountedDynamicVisibility = () => scheduleAllMountedDynamicVisibility();
+    window.syncGradio6MountedDynamicVisibilityWithState = (traceLabel, stateOverride) => {
+        const override = stateOverride !== undefined
+            ? stateOverride
+            : (traceLabel && typeof traceLabel === 'object' ? traceLabel : undefined);
+        scheduleAllMountedDynamicVisibility(override);
+    };
 
     document.addEventListener('input', (event) => {
         if (event.target?.closest?.('#input_image_checkbox, #qwen_tts_checkbox, #advanced_checkbox, #prompt_panel_checkbox, #wc_method, #inpaint_advanced_masking_checkbox, #inpaint_mask_model, [id^="enhance_mask_model_"]')) {

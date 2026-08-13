@@ -430,6 +430,27 @@
             "max": 100.0
           },
           {
+            "key": "scene_var_number5",
+            "label": "Downsample factor",
+            "type": "number",
+            "default": 1.5,
+            "visible": true,
+            "interactive": true,
+            "min": 1.0,
+            "max": 4.0
+          },
+          {
+            "key": "scene_var_number6",
+            "label": "2-pass denoise",
+            "type": "number",
+            "default": 0.25,
+            "visible": true,
+            "interactive": true,
+            "min": 0.0,
+            "max": 1.0,
+            "step": 0.01
+          },
+          {
             "key": "scene_aspect_ratio",
             "label": "Aspect Ratio",
             "type": "choice",
@@ -457,6 +478,8 @@
               "scene_video_duration": 5,
               "scene_var_number3": 12.0,
               "scene_var_number4": 3.0,
+              "scene_var_number5": 1.5,
+              "scene_var_number6": 0.25,
               "scene_aspect_ratio": "864*480",
               "prompt": ""
             },
@@ -638,6 +661,8 @@
         "scene_video_duration": 5,
         "scene_var_number3": 12.0,
         "scene_var_number4": 3.0,
+        "scene_var_number5": 1.5,
+        "scene_var_number6": 0.25,
         "scene_aspect_ratio": "864*480"
       },
       "status": "idle",

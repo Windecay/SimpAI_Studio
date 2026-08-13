@@ -4355,6 +4355,18 @@ function refresh_topbar_status_js(system_params) {
         } catch (e) {}
         return;
     }
+    if (isStaleSystemParamsForSceneTheme(system_params)) {
+        try {
+            simpaiUiTrace("log", "[UI-TRACE] refresh_topbar_status_js.skip_stale_theme", {
+                incoming: system_params && system_params.__scene_theme,
+                incoming_revision: sceneThemeRevision(system_params),
+                current: window.simpleaiTopbarSystemParams && window.simpleaiTopbarSystemParams.__scene_theme,
+                current_revision: sceneThemeRevision(window.simpleaiTopbarSystemParams),
+            });
+        } catch (e) {}
+        scheduleCurrentSceneThemeDefaultRecovery("refresh_topbar_status_js.stale_theme");
+        return;
+    }
     if (!Object.prototype.hasOwnProperty.call(system_params, "__canvas_model_catalog") && previousSystemParams.__canvas_model_catalog) {
         system_params.__canvas_model_catalog = previousSystemParams.__canvas_model_catalog;
     }
@@ -4829,6 +4841,25 @@ function applyScenePresetDefaultValue(controlId, value, props) {
 function applyScenePresetDefaults(system_params, traceLabel) {
     if (!system_params || typeof system_params !== "object") return false;
     if (!system_params.__is_scene_frontend || isStaleSystemParamsForPreset(system_params)) return false;
+    const liveParams = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    const expectedPreset = normalizePresetName(system_params.__preset);
+    const livePreset = normalizePresetName(liveParams && liveParams.__preset);
+    if (expectedPreset && livePreset && expectedPreset !== livePreset) return false;
+    const expectedThemeRevision = sceneThemeRevision(system_params);
+    const liveThemeRevision = sceneThemeRevision(liveParams);
+    if (liveThemeRevision > expectedThemeRevision) {
+        try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.skip_theme_revision", { trace: traceLabel || "", expectedThemeRevision, liveThemeRevision }); } catch (e) {}
+        return false;
+    }
+    const expectedTheme = String(system_params.__scene_theme || system_params.scene_theme || "").trim();
+    const liveTheme = String(liveParams && (liveParams.__scene_theme || liveParams.scene_theme) || "").trim();
+    const selectedTheme = typeof sceneSelectedThemeValue === "function" ? sceneSelectedThemeValue() : "";
+    if (expectedTheme && ((liveTheme && expectedTheme !== liveTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
+        try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.skip_theme_mismatch", { trace: traceLabel || "", expectedTheme, liveTheme }); } catch (e) {}
+        return false;
+    }
     const defaults = system_params.__scene_defaults;
     if (!defaults || typeof defaults !== "object") return false;
     const propsByControl = system_params.__scene_control_props && typeof system_params.__scene_control_props === "object"
@@ -4915,6 +4946,22 @@ function scheduleScenePresetDefaultSync(system_params, traceLabel) {
         if (token !== scenePresetDefaultSyncToken) return;
         if (scenePresetUserEditAt > startedAt) {
             try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.skip_user_edit", { trace: traceLabel || "", delay }); } catch (e) {}
+            return;
+        }
+        const current = window.simpleaiTopbarSystemParams
+            || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+            || null;
+        const expectedTheme = String(system_params.__scene_theme || system_params.scene_theme || "").trim();
+        const currentTheme = String(current && (current.__scene_theme || current.scene_theme) || "").trim();
+        const expectedThemeRevision = sceneThemeRevision(system_params);
+        const currentThemeRevision = sceneThemeRevision(current);
+        if (currentThemeRevision > expectedThemeRevision) {
+            try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.cancel_theme_revision", { trace: traceLabel || "", delay, expectedThemeRevision, currentThemeRevision }); } catch (e) {}
+            return;
+        }
+        const selectedTheme = typeof sceneSelectedThemeValue === "function" ? sceneSelectedThemeValue() : "";
+        if (expectedTheme && ((currentTheme && expectedTheme !== currentTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
+            try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.cancel_theme_changed", { trace: traceLabel || "", delay, expectedTheme, currentTheme, selectedTheme }); } catch (e) {}
             return;
         }
         applyScenePresetDefaults(system_params, `${traceLabel || "scene_defaults"}+${delay}ms`);
@@ -5307,6 +5354,71 @@ function setSceneAuxControlVisible(id, visible) {
     return true;
 }
 
+function markSimpleAISceneThemeChanged(theme, systemParamsOverride) {
+    const incoming = systemParamsOverride && typeof systemParamsOverride === "object"
+        ? systemParamsOverride
+        : null;
+    if (incoming) {
+        const incomingPreset = normalizePresetName(incoming.__preset || incoming.preset);
+        const pendingPreset = normalizePresetName(
+            topbarPendingPreset && Date.now() < topbarPendingPresetUntil
+                ? topbarPendingPreset
+                : null
+        );
+        const current = window.simpleaiTopbarSystemParams
+            || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+            || null;
+        const activePreset = pendingPreset
+            || normalizePresetName(topbarLastPreset)
+            || normalizePresetName(current && (current.__preset || current.preset));
+        if (
+            incoming.__scene_theme_event_rejected
+            || isStaleSystemParamsForPreset(incoming)
+            || (incomingPreset && activePreset && incomingPreset !== activePreset)
+        ) {
+            try {
+                simpaiUiTrace("log", "[UI-TRACE] scene_theme.user_change_rejected", {
+                    incoming_preset: incomingPreset,
+                    active_preset: activePreset,
+                    rejected: !!incoming.__scene_theme_event_rejected,
+                });
+            } catch (e) {}
+            return false;
+        }
+    }
+    const incomingTheme = String(incoming && (incoming.__scene_theme || incoming.scene_theme) || "").trim();
+    const nextTheme = incomingTheme || String(theme || "").trim();
+    if (!nextTheme) return false;
+    scenePresetDefaultSyncToken += 1;
+    scenePresetUserEditAt = Date.now();
+    const current = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    if (current && typeof current === "object") {
+        current.__scene_theme = nextTheme;
+        current.scene_theme = nextTheme;
+        if (incoming) {
+            const revision = sceneThemeRevision(incoming);
+            if (revision > 0) current.__scene_theme_revision = revision;
+            if (incoming.__scene_theme_preset) {
+                current.__scene_theme_preset = incoming.__scene_theme_preset;
+            }
+            if (incoming.__scene_defaults && typeof incoming.__scene_defaults === "object") {
+                current.__scene_defaults = incoming.__scene_defaults;
+            }
+            if (incoming.__scene_control_props && typeof incoming.__scene_control_props === "object") {
+                current.__scene_control_props = incoming.__scene_control_props;
+            }
+            if (incoming.__scene_task_method) {
+                current.__scene_task_method = incoming.__scene_task_method;
+            }
+        }
+    }
+    try { simpaiUiTrace("log", "[UI-TRACE] scene_theme.user_changed", { theme: nextTheme }); } catch (e) {}
+    return true;
+}
+window.markSimpleAISceneThemeChanged = markSimpleAISceneThemeChanged;
+
 function isCurrentSystemParamsForLtxGuide(systemParams) {
     if (!systemParams || typeof systemParams !== "object") return true;
     if (isStaleSystemParamsForPreset(systemParams)) return false;
@@ -5351,6 +5463,41 @@ function syncLtxGuideControlContent(systemParams) {
         try { window.SimpAILTXGuideEditor?.syncSceneControl?.(latestParams); } catch (e) {}
     });
     return false;
+}
+
+function sceneThemeRevision(system_params) {
+    if (!system_params || typeof system_params !== "object") return 0;
+    const value = Number(system_params.__scene_theme_revision);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function isStaleSystemParamsForSceneTheme(system_params) {
+    if (!system_params || typeof system_params !== "object") return false;
+    const current = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    if (!current || typeof current !== "object") return false;
+    if (!system_params.__is_scene_frontend || !current.__is_scene_frontend) return false;
+    const incomingPreset = normalizePresetName(system_params.__preset);
+    const currentPreset = normalizePresetName(current.__preset);
+    if (incomingPreset && currentPreset && incomingPreset !== currentPreset) return false;
+    const incomingRevision = sceneThemeRevision(system_params);
+    const currentRevision = sceneThemeRevision(current);
+    if (currentRevision > incomingRevision) return true;
+    if (currentRevision !== incomingRevision) return false;
+    const incomingTheme = String(system_params.__scene_theme || system_params.scene_theme || "").trim();
+    const currentTheme = String(current.__scene_theme || current.scene_theme || "").trim();
+    return !!(incomingTheme && currentTheme && incomingTheme !== currentTheme);
+}
+
+function scheduleCurrentSceneThemeDefaultRecovery(reason) {
+    const current = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    if (!current || typeof current !== "object" || !current.__is_scene_frontend) return;
+    try {
+        scheduleScenePresetDefaultSync(current, reason || "stale_theme_recovery");
+    } catch (e) {}
 }
 
 function setLtxGuideControlVisible(requestedVisible, systemParams) {
@@ -6054,9 +6201,9 @@ function sceneTaskMethodNeedsThemeMatch(sceneFrontend) {
 }
 
 function sceneSelectedThemeValue() {
-    const panel = document.getElementById("scene_panel");
-    if (!panel) return "";
-    const checked = panel.querySelector('input[type="radio"]:checked');
+    const root = document.getElementById("scene_theme") || document.getElementById("scene_panel");
+    if (!root) return "";
+    const checked = root.querySelector('input[type="radio"]:checked');
     if (!checked) return "";
     return String(checked.value || checked.getAttribute("value") || "");
 }
@@ -6202,6 +6349,16 @@ function refresh_topbar_status_js_for_preset_nav(system_params) {
                 latest: topbarLastPreset,
             });
         } catch (e) {}
+        return;
+    }
+    if (isStaleSystemParamsForSceneTheme(system_params)) {
+        try {
+            simpaiUiTrace("log", "[UI-TRACE] preset_nav_js.skip_stale_theme", {
+                incoming: system_params && system_params.__scene_theme,
+                incoming_revision: sceneThemeRevision(system_params),
+            });
+        } catch (e) {}
+        scheduleCurrentSceneThemeDefaultRecovery("preset_nav.stale_theme");
         return;
     }
     if (presetSwitched) {
@@ -12624,6 +12781,13 @@ function hasSimpleAIComparableInputFromDom() {
         return isRendered(root) && (hasSketchPayload(root) || hasLoadedImage(root));
     });
 }
+
+function isSceneThemeSwitchInProgress() {
+    const params = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    return !!(params && params.__is_scene_frontend && params.switch_scene_theme);
+}
 window.hasSimpleAIComparableInputFromDom = hasSimpleAIComparableInputFromDom;
 
 function syncPostGenerationResultControls(stateOverride) {
@@ -13581,7 +13745,9 @@ function syncSceneAndAdvancedColumns(traceLabel, isSceneFrontend) {
         document.documentElement.classList.toggle("simpai-scene-frontend", isScene);
         document.documentElement.classList.toggle("simpai-scene-parameter-normalized", isScene);
     } catch (e) {}
-    setPanelVisibleById("scene_panel", isScene);
+    if (isScene || !isSceneThemeSwitchInProgress()) {
+        setPanelVisibleById("scene_panel", isScene);
+    }
     if (isScene) {
         setPanelVisibleById("image_input_panel", false);
         try { document.documentElement.classList.remove("simpai-engine-class-visible"); } catch (e) {}

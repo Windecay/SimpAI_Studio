@@ -301,6 +301,27 @@
             "max": 100.0
           },
           {
+            "key": "scene_var_number5",
+            "label": "Downsample factor",
+            "type": "number",
+            "default": 1.5,
+            "visible": true,
+            "interactive": true,
+            "min": 1.0,
+            "max": 4.0
+          },
+          {
+            "key": "scene_var_number6",
+            "label": "2-pass denoise",
+            "type": "number",
+            "default": 0.25,
+            "visible": true,
+            "interactive": true,
+            "min": 0.0,
+            "max": 1.0,
+            "step": 0.01
+          },
+          {
             "key": "scene_aspect_ratio",
             "label": "Aspect Ratio",
             "type": "choice",
@@ -328,6 +349,8 @@
               "scene_video_duration": 5,
               "scene_var_number3": 12.0,
               "scene_var_number4": 3.0,
+              "scene_var_number5": 1.5,
+              "scene_var_number6": 0.25,
               "scene_aspect_ratio": "864*480",
               "prompt": ""
             },
@@ -425,8 +448,10 @@
       "model_requirements": {
         "model_list": [
           "diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "loras,minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
           "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
           "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
+          "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
           "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
         ],
         "has_model_probe": true,
@@ -450,6 +475,8 @@
         "scene_video_duration": 5,
         "scene_var_number3": 12.0,
         "scene_var_number4": 3.0,
+        "scene_var_number5": 1.5,
+        "scene_var_number6": 0.25,
         "scene_aspect_ratio": "864*480"
       },
       "status": "idle",

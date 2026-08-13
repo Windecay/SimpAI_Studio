@@ -400,21 +400,55 @@ def describe_prompt_for_scene(state, img, scene_theme, additional_prompt):
 def extract_scene_image(value):
     return normalize_gradio_image_value(value)
 
-def switch_scene_theme_select(state):
+def switch_scene_theme_select(state, theme=None):
+    if not isinstance(state, dict):
+        state = {}
+    scenes = state.get("scene_frontend", {})
+    resolved_theme = _resolve_scene_theme_name(scenes, theme)
+    if resolved_theme:
+        state["scene_theme"] = resolved_theme
+        state["__scene_theme_preset"] = state.get("__preset")
+        task_method = get_scene_task_method(scenes, resolved_theme)
+        if task_method:
+            state["task_method"] = task_method
     state["switch_scene_theme"] = True
+    try:
+        state["__scene_theme_revision"] = int(state.get("__scene_theme_revision", 0) or 0) + 1
+    except Exception:
+        state["__scene_theme_revision"] = 1
     return state
 
 def _resolve_scene_theme_name(scenes: dict, theme):
-    if isinstance(theme, str) and theme:
-        return theme
     themes = scenes.get("theme", []) if isinstance(scenes, dict) else []
     if isinstance(themes, str):
-        return themes
+        themes = [themes] if themes else []
     if isinstance(themes, (list, tuple)):
-        for t in themes:
-            if isinstance(t, str) and t:
-                return t
+        themes = [t for t in themes if isinstance(t, str) and t]
+        if isinstance(theme, str) and theme and (not themes or theme in themes):
+            return theme
+        return themes[0] if themes else ""
+    elif isinstance(theme, str) and theme:
+        return theme
     return ""
+
+
+def _resolve_active_scene_theme(state, theme=None):
+    scenes = state.get("scene_frontend", {}) if isinstance(state, dict) else {}
+    if isinstance(state, dict):
+        preset_name = str(state.get("__preset") or "").strip()
+        theme_owner = str(state.get("__scene_theme_preset") or "").strip()
+        state_theme = state.get("scene_theme")
+        if isinstance(state_theme, str) and state_theme and (not theme_owner or not preset_name or theme_owner == preset_name):
+            return _resolve_scene_theme_name(scenes, state_theme)
+    return _resolve_scene_theme_name(scenes, theme)
+
+
+def scene_theme_event_matches_preset(state, source_preset=None):
+    if not isinstance(state, dict):
+        return True
+    current_preset = str(state.get("__preset") or "").strip()
+    source_preset = str(source_preset or "").strip()
+    return not (current_preset and source_preset and current_preset != source_preset)
 
 
 def _scene_generation_step_default(state_or_scene, theme=None, default=None):
@@ -508,9 +542,14 @@ def switch_scene_theme_standard_generation_defaults(state, theme=None):
     return gr_update(**update)
 
 
+def switch_scene_theme_select_with_standard_generation_defaults(state, theme=None):
+    state = switch_scene_theme_select(state, theme)
+    return state, switch_scene_theme_standard_generation_defaults(state, theme)
+
+
 def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, theme=None, video=None, audio=None):
     scenes = state.get("scene_frontend",{})
-    theme = _resolve_scene_theme_name(scenes, theme)
+    theme = _resolve_active_scene_theme(state, theme)
     visible = scene_disvisible_with_optional_inputs(scenes)
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number
@@ -756,8 +795,9 @@ def switch_scene_theme_safe(state, image_number, canvas_image, input_image1, add
     # (for example scene_steps=20 while Wan-Outpaint has maximum=12). Keep this event
     # path free of slider/dropdown inputs and rebuild scene controls from preset defaults.
     scenes = state.get("scene_frontend", {}) if isinstance(state, dict) else {}
-    resolved_theme = _resolve_scene_theme_name(scenes, theme)
-    if not isinstance(state, dict) or not state.get("switch_scene_theme", False):
+    switch_flag = bool(isinstance(state, dict) and state.get("switch_scene_theme", False))
+    resolved_theme = _resolve_active_scene_theme(state, theme)
+    if not switch_flag:
         if simpai_ui_trace_enabled():
             try:
                 logger.info(
@@ -867,8 +907,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             "step": 1,
         }
         if is_scene_frontend:
-            theme = _resolve_scene_theme_name(enginedata_dict.get("scene_frontend", {}), state_params.get("scene_theme"))
-            update.update(_scene_generation_step_update_props(enginedata_dict, theme))
+            update.update(_scene_generation_step_update_props(enginedata_dict, scene_theme_default))
         if value is not None:
             update["value"] = value
         return gr_update(**update)
@@ -892,8 +931,10 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         params_backend.update(dict(task_method=engine_display_str.split(':')[1]))
     if is_scene_frontend:
         scenes = enginedata_dict.get("scene_frontend", {})
-        themes = scenes.get('theme', []) if isinstance(scenes, dict) else []
-        scene_theme_default = themes[0] if isinstance(themes, list) and themes else None
+        preset_name = str(presetdata_dict.get("preset") or state_params.get("__preset") or "").strip()
+        theme_owner = str(state_params.get("__scene_theme_preset") or "").strip()
+        preferred_theme = state_params.get("scene_theme") if preset_name and theme_owner == preset_name else None
+        scene_theme_default = _resolve_scene_theme_name(scenes, preferred_theme)
         scene_task_method = get_scene_task_method(scenes, scene_theme_default)
         if scene_task_method:
             params_backend.update(dict(task_method=scene_task_method))
@@ -1088,7 +1129,11 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(skip_update())  # image_tools_checkbox is a user setting
         results.append(gr_update(visible=True))
         themes = scenes.get('theme', [])
-        theme_default = themes[0] if themes else None
+        if isinstance(themes, str):
+            themes = [themes] if themes else []
+        if isinstance(themes, (list, tuple)):
+            themes = [theme for theme in themes if isinstance(theme, str) and theme]
+        theme_default = scene_theme_default if scene_theme_default in themes else (themes[0] if themes else None)
         themes_title = scene_localized_text(state_params, scenes, 'theme_title', '')
         scene_theme_update = get_layout_update_label_and_choice_visible_inter(themes_title, themes, theme_default, 'scene_theme', visible, inter)
         results.append(scene_theme_update)

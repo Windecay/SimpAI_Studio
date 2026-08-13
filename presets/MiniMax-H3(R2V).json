@@ -17,9 +17,10 @@
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
       "version": "v1.1",
-      "theme": ["Basic"],
+      "theme": ["Basic", "2 pass"],
       "theme_labels": {
-        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"}
+        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
+        "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
       "theme_title": "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]",
       "director_capability": {
@@ -41,8 +42,6 @@
         "scene_additional_prompt_2",
         "scene_var_number",
         "scene_var_number2",
-        "scene_var_number5",
-        "scene_var_number6",
         "scene_var_number7",
         "scene_var_number8",
         "scene_var_number9",
@@ -56,25 +55,36 @@
         "sam3_mask_video",
         "scene_batch"
       ],
-      "prompt": {"Basic": ""},
-      "task_method": {"Basic": "minimax_h3_r2v_cn"},
-      "prompt_compiler": {"Basic": "minimax_h3_ref2va"},
+      "prompt": {"Basic": "", "2 pass": ""},
+      "task_method": {"Basic": "minimax_h3_r2v_cn", "2 pass": "minimax_h3_r2v_2_pass_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_ref2va", "2 pass": "minimax_h3_ref2va"},
+      "overwrite_step": {"Basic": 8, "2 pass": 12},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
+        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media.",
+        "2 pass": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
       "video_duration_max": 15,
-      "video_duration": {"Basic": 5},
+      "video_duration": {"Basic": 5, "2 pass": 5},
       "var_number3_title": "Video Shift",
       "var_number3_min": 0.01,
       "var_number3_max": 100.0,
-      "var_number3": {"Basic": 12.0},
+      "var_number3": {"Basic": 12.0, "2 pass": 12.0},
       "var_number4_title": "Audio Shift",
       "var_number4_min": 0.01,
       "var_number4_max": 100.0,
-      "var_number4": {"Basic": 3.0},
+      "var_number4": {"Basic": 3.0, "2 pass": 3.0},
+      "var_number5_title": "Downsample factor",
+      "var_number5_min": 1.0,
+      "var_number5_max": 4.0,
+      "var_number5": {"Basic": 1.5, "2 pass": 1.5},
+      "var_number6_title": "2-pass denoise",
+      "var_number6_min": 0.0,
+      "var_number6_max": 1.0,
+      "var_number6_step": 0.01,
+      "var_number6": {"Basic": 0.25, "2 pass": 0.25},
       "aspect_ratio": [
         "640*640",
         "864*480",
@@ -108,7 +118,7 @@
   "default_upscale_model": "default",
   "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   "default_loras": [
-    ["minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1.0],
+    ["minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 2.0],
     ["None", 1],
     ["None", 1],
     ["None", 1],

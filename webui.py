@@ -73,7 +73,7 @@ from modules.auth import auth_enabled, check_auth
 from modules.access_mode import is_local_mode, user_can_download_models, user_can_generate, user_has_full_local_access
 import modules.identity_access as identity_access
 import modules.util as util
-from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_select, switch_scene_theme_ready_to_gen, get_welcome_image, describe_prompt_for_scene, extract_scene_image
+from modules.meta_parser import switch_scene_theme, switch_scene_theme_safe, switch_scene_theme_ready_to_gen, get_welcome_image, describe_prompt_for_scene, extract_scene_image
 
 import comfy.comfy_version as comfy_version
 import enhanced.gallery as gallery_util
@@ -11221,11 +11221,31 @@ with shared.gradio_root:
         load_parameter_button.click(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 
-        scene_theme.select(switch_scene_theme_select, inputs=state_topbar, outputs=state_topbar, queue=False, show_progress=False) \
+        def switch_scene_theme_ui_state(state, theme, event_context, evt: gr.SelectData):
+            selected_theme = getattr(evt, "value", None) if getattr(evt, "selected", True) is not False else None
+            if not isinstance(selected_theme, str) or not selected_theme.strip():
+                selected_theme = theme
+            source_preset = ""
+            if isinstance(event_context, dict):
+                source_preset = str(
+                    event_context.get("__scene_theme_event_preset")
+                    or event_context.get("__preset")
+                    or ""
+                ).strip()
+            if not modules.meta_parser.scene_theme_event_matches_preset(state, source_preset):
+                topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
+                topbar_params["__scene_theme_event_rejected"] = True
+                return state, gr_update(), topbar_params
+            state, overwrite_step_update = modules.meta_parser.switch_scene_theme_select_with_standard_generation_defaults(state, selected_theme)
+            topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
+            topbar_params["__scene_theme_event_rejected"] = False
+            return state, overwrite_step_update, topbar_params
+
+        scene_theme.select(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
+                   .then(fn=None, inputs=[scene_theme, system_params], js='(theme,params)=>{try{if(params&&params.__scene_theme_event_rejected){if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);return;} const resolvedTheme=String((params&&params.__scene_theme)||theme||"").trim(); if(window.markSimpleAISceneThemeChanged) window.markSimpleAISceneThemeChanged(resolvedTheme,params); if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] scene_theme_user_change_guard_failed",e);}}', queue=False, show_progress=False) \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
-                   .then(modules.meta_parser.switch_scene_theme_standard_generation_defaults, inputs=[state_topbar, scene_theme], outputs=[overwrite_step], queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
-                   .then(lambda: None, js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
+                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); const resolvedTheme=String((state&&state.scene_theme)||theme||'').trim(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(lambda state: None, inputs=[state_topbar], js='(state)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", state); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
                    .then(batch_utils.refresh_scene_batch_target, inputs=[state_topbar, scene_batch_target], outputs=[scene_batch_target], queue=False, show_progress=False)

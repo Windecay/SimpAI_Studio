@@ -648,5 +648,9 @@
     "Output FPS [RIFE when higher than generation FPS]": "Output FPS [RIFE when higher than generation FPS]",
     "LTX generation FPS": "LTX generation FPS",
     "Output FPS after RIFE interpolation [16 = no interpolation]": "Output FPS after RIFE interpolation [16 = no interpolation]",
-    "Motion boost strength [single-image only; >1 increases motion]": "Motion boost strength [single-image only; >1 increases motion]"
+    "Motion boost strength [single-image only; >1 increases motion]": "Motion boost strength [single-image only; >1 increases motion]",
+    "Second pass": "Second pass",
+    "Downsample factor": "Downsample factor",
+    "Second-pass denoise": "Second-pass denoise",
+    "2-pass denoise": "2-pass denoise"
 }

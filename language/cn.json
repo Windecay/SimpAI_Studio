@@ -1842,5 +1842,9 @@
   "Output FPS [RIFE when higher than generation FPS]": "输出每秒帧率[高于生成帧率时使用补帧]",
   "LTX generation FPS": "LTX 生成帧率",
   "Output FPS after RIFE interpolation [16 = no interpolation]": "RIFE 插帧后的输出帧率 [16 = 不插帧]",
-  "Motion boost strength [single-image only; >1 increases motion]": "运动增强强度 [仅单首帧；>1 增强运动]"
+  "Motion boost strength [single-image only; >1 increases motion]": "运动增强强度 [仅单首帧；>1 增强运动]",
+  "2 pass": "双采样",
+  "Downsample factor": "首采降采系数",
+  "Second-pass denoise": "二采降噪",
+  "2-pass denoise": "双采样降噪"
 }

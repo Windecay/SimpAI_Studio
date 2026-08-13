@@ -1076,6 +1076,8 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
         initial_scene_theme = _resolve_scene_theme(initial_scene_frontend, None)
         if initial_scene_theme:
             state_params["scene_theme"] = initial_scene_theme
+            state_params["__scene_theme_preset"] = state_params.get("__preset", initial_preset)
+            state_params["__scene_theme_revision"] = 1
         initial_task_method = initial_scene_frontend.get('task_method', '')
         if isinstance(initial_task_method, list):
             initial_task_method = initial_task_method[0] if initial_task_method else ''
@@ -3002,6 +3004,11 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
         scene_theme = _resolve_scene_theme(scene_frontend, None)
         if scene_theme:
             state_params["scene_theme"] = scene_theme
+            state_params["__scene_theme_preset"] = preset
+        try:
+            state_params["__scene_theme_revision"] = int(state_params.get("__scene_theme_revision", 0) or 0) + 1
+        except Exception:
+            state_params["__scene_theme_revision"] = 1
         task_method = scene_frontend['task_method']
         if isinstance(task_method, list):
             task_method = task_method[0]
@@ -3014,6 +3021,11 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
         if 'scene_frontend' in state_params:
             del state_params["scene_frontend"]
         state_params.pop("scene_theme", None)
+        state_params.pop("__scene_theme_preset", None)
+        try:
+            state_params["__scene_theme_revision"] = int(state_params.get("__scene_theme_revision", 0) or 0) + 1
+        except Exception:
+            state_params["__scene_theme_revision"] = 1
         task_method = preset_prepared.get('engine', {}).get('backend_params', modules.flags.get_engine_default_backend_params(engine)).get('task_method', 'text2image')
         if isinstance(task_method, str) and engine == 'Fooocus':
             task_method = 'text2image'
@@ -3179,6 +3191,19 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
     )
     engine_disvisible = _resolve_engine_disvisible_for_state(state_params)
     engine_disinteractive = _resolve_engine_disinteractive_for_state(state_params)
+    scenes = state_params.get("scene_frontend", None)
+    if isinstance(scenes, dict) and len(results) > 10:
+        current_preset = str(state_params.get("__preset") or "").strip()
+        theme_owner = str(state_params.get("__scene_theme_preset") or "").strip()
+        preferred_theme = state_params.get("scene_theme") if current_preset and theme_owner == current_preset else None
+        active_theme = _resolve_scene_theme(scenes, preferred_theme)
+        if active_theme:
+            state_params["scene_theme"] = active_theme
+            state_params["__scene_theme_preset"] = current_preset
+            results[10] = meta_parser.switch_scene_theme_standard_generation_defaults(
+                state_params,
+                active_theme,
+            )
     if len(results) > 18:
         results[10] = _main_param_update_with_engine_visibility(
             results[10],
@@ -3193,7 +3218,6 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
             engine_disinteractive,
         )
     hidden_models = set(engine_disvisible if isinstance(engine_disvisible, list) else [])
-    scenes = state_params.get("scene_frontend", None)
     scenes_disvisible = []
     if isinstance(scenes, dict):
         scenes_disvisible = _scene_disvisible_with_optional_inputs(scenes)
@@ -4014,7 +4038,11 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         or config.default_refiner_model_name
     )
     refiner_switch_visible = backend_engine == "Fooocus" and "refiner_model" not in hidden_models and preset_refiner_model != "None"
-    scene_theme = _resolve_scene_theme(scene_frontend, state.get("scene_theme", None))
+    scene_theme_owner = str(state.get("__scene_theme_preset") or "").strip()
+    current_preset = str(state.get("__preset") or "").strip()
+    preferred_scene_theme = state.get("scene_theme", None) if current_preset and scene_theme_owner == current_preset else None
+    scene_theme = _resolve_scene_theme(scene_frontend, preferred_scene_theme)
+    resolved_scene_theme_owner = current_preset if scene_theme else ""
     scene_task_method = ""
     if isinstance(scene_frontend, dict):
         raw_task_method = scene_frontend.get("task_method", "")
@@ -4141,6 +4169,8 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __engine_disvisible=engine_disvisible,
         __scene_disvisible=scene_disvisible,
         __scene_theme=scene_theme,
+        __scene_theme_preset=resolved_scene_theme_owner,
+        __scene_theme_revision=int(state.get("__scene_theme_revision", 0) or 0),
         __scene_defaults=_build_scene_default_payload(
             scene_frontend,
             scene_theme,
