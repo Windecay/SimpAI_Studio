@@ -81,16 +81,11 @@
             "video_duration": {
                 "Bernini-VideoUpscale": 0
             },
-            "var_number_min": 1,
-            "var_number_max": 10,
-            "var_number": {
-                "Basic": 5
-            },
       "var_number3_title": "Redraw strength",
       "var_number3_min": 0.0,
       "var_number3_max": 0.5,
       "var_number3": {
-        "Bernini-VideoUpscale": 0.28
+        "Bernini-VideoUpscale": 0.20
       },
       "var_number2_title": "Override FPS (0 = source)",
       "var_number2_min": 0,
@@ -98,31 +93,15 @@
       "var_number2": {
         "Bernini-VideoUpscale": 0
       },
-      "var_number4_title": "VACE strength",
+      "var_number4_title": "VACE continuation strength",
       "var_number4_min": 0.0,
       "var_number4_max": 2.0,
       "var_number4": {
         "Bernini-VideoUpscale": 1.0
       },
-      "var_number5_title": "Texture strength",
-      "var_number5_min": 0.0,
-      "var_number5_max": 1.0,
-      "var_number5": {
-        "Bernini-VideoUpscale": 0.05
-      },
-      "var_number6_title": "Focus persistence",
-      "var_number6_min": 0.0,
-      "var_number6_max": 0.95,
-      "var_number6": {
-        "Bernini-VideoUpscale": 0.65
-      },
       "switch_option1_title": "Use Tiled VAE Decode",
       "switch_option1": {
         "Bernini-VideoUpscale": false
-      },
-      "switch_option2_title": "Enhance detail",
-      "switch_option2": {
-        "Bernini-VideoUpscale": true
       },
             "aspect_ratio": [
                 "832|1:1",
@@ -134,8 +113,8 @@
             "resolution_control": {
                 "mode": "video_keep_input_area",
                 "source": "scene_video",
-                "base_width": 1280,
-                "base_height": 1280,
+                "base_width": 832,
+                "base_height": 832,
                 "quantize": 16,
                 "interactive": true,
                 "frontend_preprocess": true,
@@ -155,7 +134,7 @@
             "var_number8_min": 1,
             "var_number8_max": 33,
             "var_number8": {
-                "Bernini-VideoUpscale": 5
+                "Bernini-VideoUpscale": 13
             },
             "prompt": {
                 "Bernini-VideoUpscale": "高清细节，保持原视频人物、构图、动作、镜头运动和光影，时间连续，纹理自然"

@@ -184,6 +184,7 @@ def javascript_html():
     image_viewer_js_path = webpath('javascript/imageviewer.js')
     topbar_js_path = webpath('javascript/topbar.js')
     canvg_min_js_path = webpath('javascript/umd.min.js')
+    workspace_recovery_path = webpath('javascript/workspace_recovery.js')
     status_monitor_path = webpath('javascript/status_monitor.js') 
     infinite_canvas_workbench_css_path = webpath('css/infinite_canvas_workbench.css')
     tag_cart_css_path = webpath('css/tag_cart.css')
@@ -404,6 +405,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{canvas_workbench_utils_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_api_path}"></script>\n'
     head += f'<script type="text/javascript">window.SimpAIInfiniteCanvasLazyAssets={infinite_canvas_lazy_assets_json};</script>\n'
+    head += f'<script type="text/javascript" src="{workspace_recovery_path}"></script>\n'
     head += f'<script type="text/javascript" src="{status_monitor_path}"></script>\n'
     head += f'<script type="text/javascript" src="{webui_danbooru_autocomplete_path}"></script>\n'
     head += f'<script type="text/javascript" src="{scene_prompt_recommendations_path}"></script>\n'

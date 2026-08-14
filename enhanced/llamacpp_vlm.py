@@ -252,6 +252,8 @@ class LlamaCppVLM:
             "Qwen3.5-Thinking": Qwen35ChatHandler,
             "Qwen3.6": Qwen35ChatHandler,
             "Qwen3.6-Thinking": Qwen35ChatHandler,
+            "Qwen3.8": Qwen35ChatHandler,
+            "Qwen3.8-Thinking": Qwen35ChatHandler,
             "Qwen3-ASR": Qwen3ASRChatHandler,
             "LLaVA-1.5": Llava15ChatHandler,
             "LLaVA-1.6": Llava16ChatHandler,
@@ -302,7 +304,12 @@ class LlamaCppVLM:
             kwargs["force_reasoning"] = think_mode
             kwargs["image_max_tokens"] = int(image_max_tokens or 0)
             kwargs["image_min_tokens"] = int(image_min_tokens or 0)
-        elif chat_handler_name in ("Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking", "Gemma4"):
+        elif chat_handler_name in (
+            "Qwen3.5", "Qwen3.5-Thinking",
+            "Qwen3.6", "Qwen3.6-Thinking",
+            "Qwen3.8", "Qwen3.8-Thinking",
+            "Gemma4",
+        ):
             kwargs["enable_thinking"] = think_mode
         elif chat_handler_name in (
             "MiniCPM-v4.5", "MiniCPM-v4.5-Thinking",
@@ -854,6 +861,7 @@ class LlamaCppVLM:
             "Qwen3-VL", "Qwen3-VL-Thinking",
             "Qwen3.5", "Qwen3.5-Thinking",
             "Qwen3.6", "Qwen3.6-Thinking",
+            "Qwen3.8", "Qwen3.8-Thinking",
         ):
             return
         try:

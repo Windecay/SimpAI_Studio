@@ -15,6 +15,7 @@ from comfy_api.latest import io
 
 LOG = logging.getLogger(__name__)
 _SEED_MASK = 0xFFFFFFFFFFFFFFFF
+_VACE_TRANSITION_LATENTS = 2
 
 
 def _frames_to_latents(frame_count):
@@ -90,37 +91,68 @@ def _timeline_noise(samples, start, seed):
     return torch.cat(pieces, dim=2).contiguous()
 
 
+def _build_vace_masks(control, prefix):
+    noise_mask = torch.ones(
+        (control.shape[0], 1, control.shape[2], control.shape[3], control.shape[4]),
+        device=control.device,
+        dtype=control.dtype,
+    )
+    if int(prefix) > 0:
+        noise_mask[:, :, : int(prefix)] = 0
+
+    vace_mask = noise_mask.clone()
+    if 0 < int(prefix) < int(control.shape[2]):
+        ramp_count = min(
+            _VACE_TRANSITION_LATENTS,
+            int(control.shape[2]) - int(prefix),
+        )
+        if ramp_count > 0:
+            ramp = torch.arange(
+                1,
+                ramp_count + 1,
+                device=control.device,
+                dtype=control.dtype,
+            ).reshape(1, 1, ramp_count, 1, 1) / float(ramp_count + 1)
+            vace_mask[:, :, int(prefix) : int(prefix) + ramp_count] = ramp
+    return noise_mask, vace_mask
+
+
 def _apply_vace_conditioning(positive, negative, control, neutral, prefix, strength):
     if neutral.ndim != 5 or tuple(neutral.shape[:2]) != tuple(control.shape[:2]):
         raise ValueError("Neutral Wan VACE latent must match the control batch and channels / 中性 Wan VACE Latent 的批次和通道必须与控制 Latent 一致")
     if tuple(neutral.shape[3:]) != tuple(control.shape[3:]):
         raise ValueError("Neutral Wan VACE latent must match the control spatial size / 中性 Wan VACE Latent 的空间尺寸必须与控制 Latent 一致")
 
-    mask = torch.ones(
-        (control.shape[0], 1, control.shape[2], control.shape[3], control.shape[4]),
-        device=control.device,
-        dtype=control.dtype,
-    )
-    if int(prefix) > 0:
-        mask[:, :, : int(prefix)] = 0
+    noise_mask, vace_mask = _build_vace_masks(control, prefix)
 
     neutral = _pad_latent(neutral, control.shape[2]).to(
         device=control.device,
         dtype=control.dtype,
     )
-    inactive = control * (1 - mask) + neutral * mask
-    reactive = neutral * (1 - mask) + control * mask
+    # VACE is a continuation signal. Keep the generated tail only in the
+    # fixed prefix; the body must stay neutral so Bernini can rebuild detail
+    # from the source latent without copying its blur into every segment.
+    if int(prefix) > 0:
+        vace_control = neutral.clone()
+        vace_control[:, :, : int(prefix)] = control[:, :, : int(prefix)]
+    else:
+        vace_control = neutral
+    inactive = vace_control * (1 - vace_mask) + neutral * vace_mask
+    reactive = neutral * (1 - vace_mask) + vace_control * vace_mask
     vace_frames = torch.cat((inactive, reactive), dim=1).contiguous()
-    vace_mask = mask.repeat(1, 64, 1, 1, 1).contiguous()
+    vace_mask = vace_mask.repeat(1, 64, 1, 1, 1).contiguous()
     values = {
         "vace_frames": [vace_frames],
         "vace_mask": [vace_mask],
-        "vace_strength": [float(strength)],
+        # The first segment has no continuation source, so leave VACE out of
+        # that pass instead of letting its zero context alter the Bernini
+        # detail pass.
+        "vace_strength": [float(strength) if int(prefix) > 0 else 0.0],
     }
     return (
         node_helpers.conditioning_set_values(positive, values, append=True),
         node_helpers.conditioning_set_values(negative, values, append=True),
-        mask,
+        noise_mask,
     )
 
 
@@ -176,8 +208,10 @@ class SimpAIWanVaceLatentLoop(io.ComfyNode):
             category="SimpAI/video",
             description=(
                 "Samples a long Wan2.1 latent in sequential temporal chunks. The generated tail "
-                "of each chunk is fixed as VACE motion context for the next chunk. / "
-                "按时间顺序分段采样长 Wan2.1 Latent，并将每段生成结果的尾部固定为下一段的 VACE 动作上下文。"
+                "of each chunk is fixed as VACE motion context for the next chunk; the chunk body "
+                "stays neutral to preserve Bernini detail reconstruction. / "
+                "按时间顺序分段采样长 Wan2.1 Latent，每段尾部只作为下一段的 VACE 接续上下文，"
+                "主体时间段保持中性以保留 Bernini 的细节重绘能力。"
             ),
             inputs=[
                 io.Model.Input("model", display_name="model / 模型"),
@@ -189,7 +223,7 @@ class SimpAIWanVaceLatentLoop(io.ComfyNode):
                 io.Sigmas.Input("sigmas", display_name="sigmas / Sigma 序列"),
                 io.Int.Input("chunk_frames", display_name="chunk_frames / 分段帧数", default=81, min=5, max=nodes.MAX_RESOLUTION, step=4),
                 io.Int.Input("context_frames", display_name="context_frames / 上下文帧数", default=17, min=1, max=nodes.MAX_RESOLUTION, step=4),
-                io.Float.Input("vace_strength", display_name="vace_strength / VACE 强度", default=1.0, min=0.0, max=10.0, step=0.01),
+                io.Float.Input("vace_strength", display_name="vace_strength / VACE 接续强度", default=1.0, min=0.0, max=10.0, step=0.01),
                 io.Float.Input("cfg", display_name="cfg / CFG", default=1.0, min=0.0, max=100.0, step=0.1),
                 io.Int.Input(
                     "seed",

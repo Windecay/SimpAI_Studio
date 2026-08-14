@@ -54,7 +54,8 @@ from ui.components import sketch_cache as sketch_payload_cache
 from ui.generation_performance import force_generation_preview, generation_preview_interval
 from ui.generation_sync import synchronize_generation_inputs
 from ui.layout.floating import floating_card, floating_panel, floating_shell
-from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
+from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app, wait_for_frontend_port_release
+from ui.workspace_recovery import install_workspace_recovery
 from ui.frontend_http_guard import configure_frontend_http_guard
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update as skip_component_update
 from ui.events.topbar import (
@@ -2801,6 +2802,13 @@ def _ensure_frontend_port_available():
     host = _frontend_bind_host()
     if simpleai.is_port_available(current_port, host):
         return
+    if wait_for_frontend_port_release(
+        simpleai.is_port_available,
+        port=current_port,
+        host=host,
+    ):
+        logging.info(f"端口 {current_port} 已释放，继续使用原地址")
+        return
 
     new_port = _find_available_frontend_port(current_port + 1)
     if new_port != current_port:
@@ -2819,6 +2827,14 @@ def _launch_root_app_with_frontend_port_retry(**kwargs):
             current_port_int = int(current_port)
         except (TypeError, ValueError):
             current_port_int = 8186
+        host = _frontend_bind_host()
+        if wait_for_frontend_port_release(
+            simpleai.is_port_available,
+            port=current_port_int,
+            host=host,
+        ):
+            logging.info(f"端口 {current_port_int} 已释放，继续使用原地址")
+            return launch_root_app(shared.gradio_root, **kwargs)
         new_port = _find_available_frontend_port(current_port_int + 1)
         if new_port == current_port_int:
             raise
@@ -8418,7 +8434,7 @@ with shared.gradio_root:
                                                 reserved_vram = gr.Slider(label='Reserved VRAM(GB)', minimum=0, maximum=24, step=0.1, value=ads.get_admin_default('reserved_vram'), info='Reserve VRAM to prevent OOM or Slow inference.')
                                                 cache_ram_enable = gr.Checkbox(label='Enable Cache RAM', value=ads.get_admin_default('cache_ram_enable'), info='When disabled, always use Classic cache mode.')
                                                 cache_ram = gr.Slider(label='Cache RAM(GB)', minimum=0, maximum=96, step=0.1, value=ads.get_admin_default('cache_ram'), interactive=ads.get_admin_default('cache_ram_enable'), info='[BETA]Set RAM cache threshold. 0: Classic; >0: RAM Pressure mode (auto-purge when available RAM is low).')
-                                                wavespeed_strength = gr.Slider(label='wavespeed_strength', minimum=0, maximum=1, step=0.01, value=ads.get_admin_default('wavespeed_strength'), info='Wavespeed optimization strength to improve inference speed on FLUX/H3 presets.')
+                                                wavespeed_strength = gr.Slider(label='wavespeed_strength', minimum=0, maximum=1, step=0.01, value=ads.get_admin_default('wavespeed_strength'), info='Wavespeed optimization strength to improve inference speed on FLUX presets.')
                                             with gr.Row(visible=True if not args_manager.args.disable_backend else False):
                                                 translation_methods = gr.Radio(label='Translation methods', choices=modules.flags.translation_methods, value=ads.get_admin_default('translation_methods'))
                                             with gr.Row():
@@ -9172,7 +9188,7 @@ with shared.gradio_root:
                 restore_defaults_cancel_btn.click(lambda: gr_update(visible=False), inputs=None, outputs=restore_defaults_panel, queue=False, show_progress=False)
                 restore_defaults_confirm_btn.click(topbar.restore_all_defaults, inputs=[state_topbar], outputs=[restore_defaults_panel, progress_window, language_ui, background_theme, preset_instruction] + user_app_ctrls + admin_ctrls + [output_format], queue=False, show_progress=False) \
                     .then(fn=lambda: None,inputs=None,outputs=None,queue=False,show_progress=False,
-                        js='()=>{try{refresh_style_localization();refresh_style_layout();}catch(e){} try{localizeWholePage();}catch(e){} try{setCookie("ailang","",-1);}catch(e){} try{const url=new URL(window.location.href); const theme=(typeof topbarLastTheme==="string" && topbarLastTheme)?topbarLastTheme:(url.searchParams.get("__theme")||"dark"); url.searchParams.delete("__lang"); url.searchParams.delete("__theme"); url.searchParams.delete("t"); const rest=url.searchParams.toString(); const t=`${Date.now()}.${Math.floor(Math.random()*10000)}`; const base=`${url.origin}${url.pathname}`; const parts=[`__theme=${encodeURIComponent(theme)}`, `t=${encodeURIComponent(t)}`]; if(rest) parts.push(rest); window.location.replace(`${base}?${parts.join("&")}`);}catch(e){}}'
+                        js='()=>{try{refresh_style_localization();refresh_style_layout();}catch(e){} try{localizeWholePage();}catch(e){} try{setCookie("ailang","",-1);}catch(e){} try{const url=new URL(window.location.href); const theme=(typeof topbarLastTheme==="string" && topbarLastTheme)?topbarLastTheme:(url.searchParams.get("__theme")||"dark"); url.searchParams.delete("__lang"); url.searchParams.delete("t"); url.searchParams.set("__theme",theme); window.history.replaceState(null,"",url.toString()); if(typeof apply_theme_without_reload==="function") apply_theme_without_reload(theme);}catch(e){}}'
                     )
 
 
@@ -12162,7 +12178,7 @@ with shared.gradio_root:
         welcome_media_load_inputs=[state_topbar, state_is_generating],
         welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
     )
-    bind_topbar_load_chain(
+    topbar_load_chain = bind_topbar_load_chain(
         root_blocks=shared.gradio_root,
         topbar_module=topbar,
         system_params=system_params,
@@ -12238,6 +12254,7 @@ with shared.gradio_root:
         welcome_media_load_inputs=[state_topbar, state_is_generating],
         welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
     )
+    workspace_recovery = install_workspace_recovery(shared.gradio_root, after_event=topbar_load_chain)
 
 def dump_default_english_config():
     from modules.localization import dump_english_config

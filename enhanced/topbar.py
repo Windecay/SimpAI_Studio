@@ -963,6 +963,9 @@ function(system_params) {
         system_params["__session"]=sessionCookie;
     else if (sessionLocal)
         system_params["__session"]=sessionLocal;
+    if (window.SimpAIWorkspaceRecovery && typeof window.SimpAIWorkspaceRecovery.prepareInitialSystemParams === "function") {
+        system_params = window.SimpAIWorkspaceRecovery.prepareInitialSystemParams(system_params);
+    }
     return system_params;
 }
 '''
@@ -1034,6 +1037,17 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     initial_preset = get_initial_nav_preset(state_params)
     if "__preset" not in state_params.keys():
         state_params.update({"__preset": initial_preset})
+    workspace_reconnect_pending = bool(state_params.pop("__workspace_reconnect_pending", False))
+    workspace_reconnect_owner = state_params.pop("__workspace_reconnect_owner", "")
+    workspace_reconnect_requested_at = state_params.pop("__workspace_reconnect_requested_at", 0)
+    if workspace_reconnect_pending:
+        logger.info(
+            "[UI-TRACE] workspace_recovery.bootstrap | owner=%s, preset=%r, scene_theme=%r, requested_at=%s",
+            workspace_reconnect_owner,
+            state_params.get("__preset"),
+            state_params.get("__scene_theme") or state_params.get("scene_theme"),
+            workspace_reconnect_requested_at,
+        )
     # The browser can keep the state object across a reload. Refresh the
     # device classification from the current request so a session opened on
     # desktop does not keep desktop layout values when it is later opened on
@@ -1073,7 +1087,11 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     initial_scene_frontend = initial_preset_prepared.get('engine', {}).get('scene_frontend', None)
     if initial_scene_frontend:
         state_params["scene_frontend"] = initial_scene_frontend
-        initial_scene_theme = _resolve_scene_theme(initial_scene_frontend, None)
+        initial_scene_theme_preference = _preferred_scene_theme_for_preset(
+            state_params,
+            state_params.get("__preset"),
+        )
+        initial_scene_theme = _resolve_scene_theme(initial_scene_frontend, initial_scene_theme_preference)
         if initial_scene_theme:
             state_params["scene_theme"] = initial_scene_theme
             state_params["__scene_theme_preset"] = state_params.get("__preset", initial_preset)
@@ -3001,7 +3019,8 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     scene_frontend = preset_prepared.get('engine', {}).get('scene_frontend', None)
     if scene_frontend:
         state_params.update({"scene_frontend": scene_frontend})
-        scene_theme = _resolve_scene_theme(scene_frontend, None)
+        scene_theme_preference = _preferred_scene_theme_for_preset(state_params, preset)
+        scene_theme = _resolve_scene_theme(scene_frontend, scene_theme_preference)
         if scene_theme:
             state_params["scene_theme"] = scene_theme
             state_params["__scene_theme_preset"] = preset
@@ -3869,6 +3888,17 @@ def _scene_value_by_theme(scene_frontend, theme, key, default):
         if isinstance(value, dict):
             return value.get(theme, next(iter(value.values()), default))
         return value
+
+
+def _preferred_scene_theme_for_preset(state_params, preset):
+    if not isinstance(state_params, dict):
+        return None
+    target_preset = str(preset or "").strip()
+    theme_owner = str(state_params.get("__scene_theme_preset") or "").strip()
+    if not target_preset or theme_owner != target_preset:
+        return None
+    preferred = state_params.get("__scene_theme") or state_params.get("scene_theme")
+    return preferred if isinstance(preferred, str) and preferred.strip() else None
 
 
 def _resolve_scene_theme(scene_frontend, current_theme=None):

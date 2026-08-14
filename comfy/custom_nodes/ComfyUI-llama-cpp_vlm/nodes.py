@@ -60,7 +60,11 @@ except:
     
 try:
     from llama_cpp.llama_chat_format import Qwen35ChatHandler
-    chat_handlers += ["Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking"]
+    chat_handlers += [
+        "Qwen3.5", "Qwen3.5-Thinking",
+        "Qwen3.6", "Qwen3.6-Thinking",
+        "Qwen3.8", "Qwen3.8-Thinking",
+    ]
 except:
     Qwen35ChatHandler = None
     
@@ -162,7 +166,7 @@ class LLAMA_CPP_STORAGE:
     def load_model(cls, config):
         def get_chat_handler(chat_handler):
             match chat_handler:
-                case "Qwen3.5"|"Qwen3.5-Thinking"|"Qwen3.6"|"Qwen3.6-Thinking":
+                case "Qwen3.5"|"Qwen3.5-Thinking"|"Qwen3.6"|"Qwen3.6-Thinking"|"Qwen3.8"|"Qwen3.8-Thinking":
                     return Qwen35ChatHandler
                 case "Qwen3-VL"|"Qwen3-VL-Thinking":
                     return Qwen3VLChatHandler
@@ -257,6 +261,7 @@ class LLAMA_CPP_STORAGE:
                 "GLM-4.6V", "GLM-4.6V-Thinking",
                 "Qwen3.5", "Qwen3.5-Thinking",
                 "Qwen3.6", "Qwen3.6-Thinking",
+                "Qwen3.8", "Qwen3.8-Thinking",
                 "Gemma4",
             ]:
                 kwargs["enable_thinking"] = think_mode
@@ -282,6 +287,7 @@ class LLAMA_CPP_STORAGE:
                     "GLM-4.6V", "GLM-4.6V-Thinking",
                     "Qwen3.5", "Qwen3.5-Thinking",
                     "Qwen3.6", "Qwen3.6-Thinking",
+                    "Qwen3.8", "Qwen3.8-Thinking",
                     "Gemma4",
                 ]:
                     kwargs["enable_thinking"] = think_mode
@@ -682,7 +688,9 @@ class llama_cpp_instruct_adv:
             LLAMA_CPP_STORAGE.clean()
         else:
             if LLAMA_CPP_STORAGE.current_config["chat_handler"] in [
-                "Qwen3.5", "Qwen3.5-Thinking", "Qwen3.6", "Qwen3.6-Thinking"
+                "Qwen3.5", "Qwen3.5-Thinking",
+                "Qwen3.6", "Qwen3.6-Thinking",
+                "Qwen3.8", "Qwen3.8-Thinking",
             ]:
                 LLAMA_CPP_STORAGE.llm.n_tokens = 0
                 LLAMA_CPP_STORAGE.llm._ctx.memory_clear(True)

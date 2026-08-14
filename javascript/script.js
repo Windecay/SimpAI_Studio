@@ -4836,10 +4836,27 @@ function playNotification() {
 }
 
 function set_theme(theme) {
-    var gradioURL = window.location.href;
-    if (!gradioURL.includes('?__theme=')) {
-        window.location.replace(gradioURL + '?__theme=' + theme);
-    }
+    const normalizedTheme = String(theme || '').toLowerCase() === 'light' ? 'light' : 'dark';
+    let effectiveTheme = normalizedTheme;
+    const applyTheme = function () {
+        [document.documentElement, document.body].filter(Boolean).forEach(function (element) {
+            element.setAttribute('data-theme', effectiveTheme);
+            element.classList.toggle('dark', effectiveTheme === 'dark');
+            element.classList.toggle('light', effectiveTheme === 'light');
+        });
+    };
+    try {
+        const url = new URL(window.location.href);
+        const urlTheme = String(url.searchParams.get('__theme') || '').toLowerCase();
+        if (urlTheme === 'light' || urlTheme === 'dark') {
+            effectiveTheme = urlTheme;
+        } else {
+            url.searchParams.set('__theme', normalizedTheme);
+            window.history.replaceState(null, '', url.toString());
+        }
+    } catch (error) {}
+    applyTheme();
+    if (!document.body) document.addEventListener('DOMContentLoaded', applyTheme, { once: true });
 }
 
 function htmlDecode(input) {

@@ -392,7 +392,7 @@
     "inputs": {
       "shift": 3,
       "model": [
-        "78",
+        "308",
         0
       ]
     },
@@ -462,6 +462,26 @@
   },
   "291": {
     "inputs": {
+      "chunk_frames": [
+        "1",
+        0
+      ],
+      "context_frames": [
+        "295",
+        0
+      ],
+      "vace_strength": [
+        "150",
+        13
+      ],
+      "cfg": [
+        "150",
+        8
+      ],
+      "seed": [
+        "8",
+        0
+      ],
       "model": [
         "287",
         0
@@ -488,26 +508,6 @@
       ],
       "sigmas": [
         "289",
-        0
-      ],
-      "chunk_frames": [
-        "1",
-        0
-      ],
-      "context_frames": [
-        "295",
-        0
-      ],
-      "vace_strength": [
-        "150",
-        13
-      ],
-      "cfg": [
-        "150",
-        8
-      ],
-      "seed": [
-        "8",
         0
       ]
     },
@@ -593,15 +593,15 @@
   },
   "297": {
     "inputs": {
-      "image": [
-        "191",
-        0
-      ],
       "size": [
         "296",
         0
       ],
-      "method": "repeat last"
+      "method": "repeat last",
+      "image": [
+        "191",
+        0
+      ]
     },
     "class_type": "ImageExpandBatch+",
     "_meta": {
@@ -622,6 +622,146 @@
     "class_type": "Evaluate Integers",
     "_meta": {
       "title": "Decode temporal window / 解码时间窗口"
+    }
+  },
+  "299": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "300": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "299",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "301": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "300",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "302": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "301",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "303": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "302",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "304": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "303",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "305": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "306": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "305",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "307": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "306",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "308": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "307",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
     }
   }
 }

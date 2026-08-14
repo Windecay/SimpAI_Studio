@@ -19,7 +19,9 @@
         hasAdminAPI: false,
         initialPositionMoved: false, // 新增初始位置标记
         statusEdgeDockSide: '',
-        isReconnectVisible: false    // 是否显示重连按钮
+        isReconnectVisible: false,   // 是否显示重连按钮
+        reloadScheduled: false,
+        restartDetectedTimestamp: null
     };
 
     function readCookie(name) {
@@ -70,6 +72,13 @@
         return dict[source] || String(cn ?? source);
     }
 
+    function tr(key) {
+        const source = String(key ?? '');
+        if (getStatusMonitorLang() === 'en') return source;
+        const dict = window.localization && typeof window.localization === 'object' ? window.localization : {};
+        return dict[source] || source;
+    }
+
     function pastedImagesMessage(count) {
         const n = Number(count) || 0;
         return t(`Pasted ${n} ${n === 1 ? 'image' : 'images'}`, `已粘贴 ${n} 张`);
@@ -112,8 +121,9 @@
 
     const reconnectBtn = document.createElement('button');
     reconnectBtn.className = 'reconnect-btn';
-    reconnectBtn.textContent = ` ${t('Reconnect', '重连')}`;
-    reconnectBtn.onclick = () => window.location.reload();
+    reconnectBtn.textContent = ` ${tr('Reconnect')}`;
+    reconnectBtn.disabled = false;
+    reconnectBtn.onclick = requestWorkspaceReload;
 
     // VRAM 占用百分比
     const vramUsage = document.createElement('div');
@@ -713,12 +723,15 @@
             isCanvasWorkbenchStandaloneActive(),
             !!transferState.expanded,
             transferState.items.length,
-            transferState.hintOverride || ''
+            transferState.hintOverride || '',
+            !!state.reloadScheduled
         ]);
         if (staticKey === lastLocalizedStaticKey) return;
         lastLocalizedStaticKey = staticKey;
         backToAdminBtn.textContent = t('Back to Admin', '返回管理窗口');
-        reconnectBtn.textContent = ` ${t('Reconnect', '重连')}`;
+        reconnectBtn.textContent = state.reloadScheduled
+            ? ` ${tr('Restoring workspace')}`
+            : ` ${tr('Reconnect')}`;
         canvasWorkbenchLabel.textContent = canvasWorkbenchLazyState.loadingPromise ? t('Loading', '加载中') : t('iCanvas', '无限画布');
         canvasWorkbenchToggleBtn.title = canvasWorkbenchLazyState.loadingPromise
             ? t('Loading Infinite Canvas', '正在加载无限画布')
@@ -1877,32 +1890,24 @@
     async function fetchAppStatus() {
         try {
             const headers = { 'Content-Type': 'application/json' };
-            let response = await fetch('/gradio_api/run/get_start_timestamp', {
+            const response = await fetch('/gradio_api/run/get_start_timestamp', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers,
                 body: JSON.stringify({ data: [] })
             });
-            if (!response.ok) {
-                response = await fetch('/gradio_api/run/predict', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers,
-                    body: JSON.stringify({
-                        fn_index: 0,
-                        data: []
-                    })
-                });
-            }
-
             if (!response.ok) throw new Error(t('Request failed', '请求失败'));
 
             const result = await response.json();
             const parts = String(result.data[0] || '').split(',');
             const [timestampStr, queueSizeStr, vramTotalStr, ramTotalStr, vramUsedStr, ramUsedStr, onlineUsersStr, onlineDomainUsersStr, onlineNodesStr, pendingAccessCountStr, isAdminStr] = parts;
+            const timestamp = Number.parseFloat(timestampStr);
+            if (!Number.isFinite(timestamp) || timestamp <= 0) {
+                throw new Error('Invalid server start timestamp');
+            }
 
             return {
-                timestamp: parseFloat(timestampStr),
+                timestamp,
                 queueSize: parseInt(queueSizeStr),
                 ramUsed: parseInt(ramUsedStr),
                 ramTotal: parseInt(ramTotalStr),
@@ -1968,12 +1973,13 @@
             updatedAt: Date.now()
         };
         window.dispatchEvent(new CustomEvent('simpai:status-monitor-updated', { detail: window.SimpAIStatusMonitorData }));
-        state.isReconnectVisible = (statusType === 'exception' || statusType === 'disconnected');
+        state.isReconnectVisible = (statusType === 'exception' || statusType === 'disconnected' || statusType === 'recovering');
 
         const statusMap = {
             connected: { text: t('Connected', '连接'), shortText: 'OK', class: 'status-connected' },
             disconnected: { text: t('Disconnected', '断开'), shortText: 'OFF', class: 'status-disconnected' },
-            exception: { text: t('Error', '异常'), shortText: 'ERR', class: 'status-exception' }
+            exception: { text: t('Error', '异常'), shortText: 'ERR', class: 'status-exception' },
+            recovering: { text: tr('Restoring workspace'), shortText: 'SYNC', class: 'status-exception' }
         };
         const { text, shortText, class: statusClass } = statusMap[statusType];
         const nextStatusTitle = [
@@ -2030,7 +2036,11 @@
             queueBadge.textContent = `Q:${queueNumber}`;
             queueBadge.title = `${t('Queue', '队列')}: ${queueNumber}`;
             firstRow.appendChild(queueBadge);
-        } else if (statusType === 'exception' || statusType === 'disconnected') {
+        } else if (statusType === 'exception' || statusType === 'disconnected' || statusType === 'recovering') {
+            reconnectBtn.textContent = statusType === 'recovering'
+                ? ` ${tr('Restoring workspace')}`
+                : ` ${tr('Reconnect')}`;
+            reconnectBtn.disabled = statusType === 'recovering';
             firstRow.appendChild(reconnectBtn);
             if (statusType === 'disconnected') {
                 const retryText = document.createElement('span');
@@ -2074,6 +2084,26 @@
         }
     }
 
+    function requestWorkspaceReload() {
+        if (state.reloadScheduled) return;
+        state.reloadScheduled = true;
+        updateStatusUI('recovering');
+        try {
+            window.SimpAIWorkspaceRecovery?.prepareForManualReconnect();
+        } catch (error) {}
+        try {
+            window.SimpAIStudioPerformance?.mark?.('workspace.reload_requested', {
+                source: 'reconnect_button',
+                user_requested: true,
+                visibility: document.visibilityState,
+            }, { urgent: true });
+        } catch (error) {}
+        window.dispatchEvent(new CustomEvent('simpai:workspace-reload-requested', {
+            detail: { requestedAt: Date.now(), source: 'reconnect_button', userRequested: true }
+        }));
+        window.setTimeout(() => window.location.reload(), 150);
+    }
+
     async function performHealthCheck() {
         checkAdminAPIAvailability();
         const statusData = await fetchAppStatus();
@@ -2094,6 +2124,7 @@
         }
 
         if (statusData.timestamp === state.initialTimestamp) {
+            state.restartDetectedTimestamp = null;
             updateStatusUI(
                 'connected',
                 statusData.queueSize,
@@ -2108,7 +2139,31 @@
                 statusData.isAdmin,
             );
         } else {
-            updateStatusUI('exception');
+            if (state.restartDetectedTimestamp !== statusData.timestamp) {
+                state.restartDetectedTimestamp = statusData.timestamp;
+                try {
+                    window.SimpAIStudioPerformance?.mark?.('workspace.restart_detected', {
+                        initial_timestamp: state.initialTimestamp,
+                        current_timestamp: statusData.timestamp,
+                        queue_size: statusData.queueSize,
+                        visibility: document.visibilityState,
+                        auto_reload: false,
+                    }, { urgent: true });
+                } catch (error) {}
+            }
+            updateStatusUI(
+                'exception',
+                statusData.queueSize,
+                statusData.ramUsed,
+                statusData.ramTotal,
+                statusData.vramUsed,
+                statusData.vramTotal,
+                statusData.onlineUsers,
+		        statusData.onlineDomainUsers,
+		        statusData.onlineNodes,
+                statusData.pendingAccessCount,
+                statusData.isAdmin,
+            );
         }
     }
 

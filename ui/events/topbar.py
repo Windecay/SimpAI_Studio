@@ -806,12 +806,19 @@ def bind_topbar_navigation_events(
                 queue=False,
                 show_progress=False,
             )
-            chain.then(
-                fn=None,
+            chain = chain.then(
+                fn=lambda: None,
                 js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
                 queue=False,
                 show_progress=False,
             )
+        chain.then(
+            fn=lambda x: None,
+            inputs=system_params,
+            js="(x)=>{const p=x&&typeof x==='object'?x:{}; const preset=String(p.__preset||p.preset||'').trim(); const seq=(Number(window.__simpleai_preset_nav_completion_seq)||0)+1; const detail={preset:preset,seq:seq,completed_at:Date.now()}; window.__simpleai_preset_nav_completion_seq=seq; window.__simpleai_preset_nav_completed=detail; try{window.dispatchEvent(new CustomEvent('simpai:preset-nav-completed',{detail:detail}));}catch(e){} try{window.SimpAIStudioPerformance?.mark?.('preset.navigation_finished',{preset:preset,completion_seq:seq});}catch(e){}}",
+            queue=False,
+            show_progress=False,
+        )
 
 
 def bind_topbar_load_chain(
@@ -1281,7 +1288,7 @@ def bind_topbar_load_chain(
         fn=lambda: None,
         js="bindPluginBtn",
     ).then(
-        fn=lambda: True,
+        fn=lambda: time.time_ns(),
         outputs=[ui_ready_state],
         queue=False,
         show_progress=False,
@@ -1301,7 +1308,7 @@ def bind_topbar_load_chain(
             queue=False,
             show_progress=False,
         ).then(
-            fn=None,
+            fn=lambda: None,
             js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
             queue=False,
             show_progress=False,
@@ -1315,6 +1322,8 @@ def bind_topbar_load_chain(
             queue=False,
             show_progress=False,
         )
+
+    return load_chain
 
 
 def bind_topbar_identity_events(

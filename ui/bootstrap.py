@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import gradio as gr
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -37,6 +39,27 @@ def create_root_blocks(*, title: str, concurrency_count: int = 5) -> gr.Blocks:
     blocks = gr.Blocks(title=title)
     setattr(blocks, "_simpai_launch_theme", _create_default_theme())
     return queue_blocks(blocks, concurrency_count=concurrency_count)
+
+
+def wait_for_frontend_port_release(
+    is_port_available,
+    *,
+    port: int,
+    host: str,
+    timeout: float = 8.0,
+    poll_interval: float = 0.25,
+) -> bool:
+    """Wait briefly for a previous frontend listener to release its port."""
+    timeout = max(0.0, float(timeout))
+    poll_interval = max(0.01, float(poll_interval))
+    deadline = time.monotonic() + timeout
+    while True:
+        if is_port_available(port, host):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(poll_interval, remaining))
 
 
 def _hide_gradio_event_docs(blocks: gr.Blocks) -> None:

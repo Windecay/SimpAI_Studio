@@ -162,6 +162,7 @@ def _metadata_text(metadata, filename):
 def infer_gguf_handler(metadata, filename):
     text = _metadata_text(metadata, filename)
     mappings = (
+        (("qwen3.8", "qwen38", "qwen-3.8"), "Qwen3.8", "Qwen 3.8"),
         (("qwen3.6", "qwen36", "qwen-3.6"), "Qwen3.6", "Qwen 3.6"),
         (("qwen3.5", "qwen35", "qwen-3.5"), "Qwen3.5", "Qwen 3.5"),
         (("qwen3-vl", "qwen3vl", "qwen-3-vl"), "Qwen3-VL", "Qwen 3 VL"),

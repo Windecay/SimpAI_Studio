@@ -3055,8 +3055,17 @@ async function set_language_by_ui(newLanguage) {
         }
         const url = new URL(window.location.href);
         url.searchParams.set("__lang", newLocale);
-        url.searchParams.set("t", `${Date.now()}.${Math.floor(Math.random() * 10000)}`);
-        window.location.replace(url.toString());
+        url.searchParams.delete("t");
+        window.history.replaceState(null, "", url.toString());
+        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object"
+            ? window.simpleaiTopbarSystemParams
+            : {};
+        params.__lang = newLocale;
+        window.simpleaiTopbarSystemParams = params;
+        if (topbarLastSystemParams && typeof topbarLastSystemParams === "object") {
+            topbarLastSystemParams.__lang = newLocale;
+        }
+        window.dispatchEvent(new CustomEvent("simpai:system-params-updated", { detail: params }));
     } catch (e) {
         console.error("update __lang url failed:", e);
     }
@@ -3217,20 +3226,42 @@ function localizePresetStoreUi() {
 }
 
 
-function set_theme_by_ui(theme) {
-    const gradioURL = window.location.href;
-    const urls = gradioURL.split('?');
-    const params = new URLSearchParams(window.location.search);
-    const url_params = Object.fromEntries(params);
-    let url_lang = locale_lang;
-    if (url_params["__lang"]!=null) {
-        url_lang=url_params["__lang"];
+function apply_theme_without_reload(theme) {
+    const normalizedTheme = String(theme || "").toLowerCase() === "light" ? "light" : "dark";
+    [document.documentElement, document.body].filter(Boolean).forEach(function (element) {
+        element.setAttribute("data-theme", normalizedTheme);
+        element.classList.toggle("dark", normalizedTheme === "dark");
+        element.classList.toggle("light", normalizedTheme === "light");
+    });
+    topbarLastTheme = normalizedTheme;
+    const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object"
+        ? window.simpleaiTopbarSystemParams
+        : {};
+    params.__theme = normalizedTheme;
+    window.simpleaiTopbarSystemParams = params;
+    if (topbarLastSystemParams && typeof topbarLastSystemParams === "object") {
+        topbarLastSystemParams.__theme = normalizedTheme;
     }
-    if (url_params["__theme"]!=null) {
-        url_theme=url_params["__theme"];
-	if (url_theme == theme) 
-	    return
-	window.location.replace(urls[0]+"?__theme="+theme+"&__lang="+url_lang+"&t="+Date.now()+"."+Math.floor(Math.random() * 10000));
+    try { setLinkColor(normalizedTheme); } catch (e) {}
+    try {
+        ensureTopbarNavStylesApplied(topbarLastPreset, normalizedTheme, topbarLastNavNameList || [], 0);
+    } catch (e) {}
+    try {
+        window.dispatchEvent(new CustomEvent("simpai:system-params-updated", { detail: params }));
+    } catch (e) {}
+}
+
+function set_theme_by_ui(theme) {
+    const normalizedTheme = String(theme || "").toLowerCase() === "light" ? "light" : "dark";
+    apply_theme_without_reload(normalizedTheme);
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("__theme", normalizedTheme);
+        url.searchParams.set("__lang", url.searchParams.get("__lang") || locale_lang);
+        url.searchParams.delete("t");
+        window.history.replaceState(null, "", url.toString());
+    } catch (e) {
+        console.error("update __theme url failed:", e);
     }
 }
 
