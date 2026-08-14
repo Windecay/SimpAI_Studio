@@ -107,13 +107,13 @@
       "overwrite_step_max": 50
     }
   },
-  "default_model": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+  "default_model": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
   "default_refiner": "None",
   "default_refiner_switch": 0.5,
   "default_upscale_model": "default",
   "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   "default_loras": [
-    ["minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 2.0],
+    ["minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", 1.0],
     ["None", 1],
     ["None", 1],
     ["None", 1],
@@ -123,7 +123,7 @@
   "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
   "default_sample_sharpness": 2,
   "default_sampler": "er_sde",
-  "default_scheduler": "beta",
+  "default_scheduler": "simple",
   "default_performance": "Speed",
   "default_styles": [],
   "default_aspect_ratio": "1024*1024",
@@ -135,7 +135,7 @@
   "lora_downloads": {},
   "vae_downloads": {},
   "model_list": [
-    "diffusion_models,minimax_h3_ref2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     "loras,minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
     "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",

@@ -417,27 +417,11 @@
     "class_type": "SimpAIOptionalTrimAudioDuration",
     "_meta": {"title": "H3 Video 2 Audio Align"}
   },
-  "57": {
-    "inputs": {"value": 0},
-    "class_type": "easy float",
-    "_meta": {"title": "wavespeed_strength"}
-  },
-  "58": {
-    "inputs": {
-      "reuse_threshold": ["57", 0],
-      "start_percent": 0.3,
-      "end_percent": 0.8,
-      "verbose": false,
-      "model": ["45", 0]
-    },
-    "class_type": "EasyCache",
-    "_meta": {"title": "H3 EasyCache"}
-  },
   "59": {
     "inputs": {
       "lora_name": "placeholder.safetensors",
       "strength_model": 0,
-      "model": ["58", 0]
+      "model": ["45", 0]
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {"title": "lora_1"}

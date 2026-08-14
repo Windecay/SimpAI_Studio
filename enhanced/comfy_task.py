@@ -40,6 +40,10 @@ def _register_runtime_preview_nodes():
     })
     # Dynamic UltimateSDUpscale events use the outer AIO node as display_node.
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update(AIO_UOV_PREVIEW_NODE_CLASS_TYPES)
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3UpscaleLoop")
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3UpscaleLoop")
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
     install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
     install_progress_profile_reset_filter(comfyclient_pipeline)
@@ -123,12 +127,18 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("scheduler", "SceneInput:SceneInput:scheduler")
         comfy_params.update_mapping_rule("video_duration", "SceneInput:SceneInput:video_duration")
         comfy_params.update_mapping_rule("video", "SimpAIOptionalVideoPath:SimpAIOptionalVideoPath:video")
+        comfy_params.update_mapping_rule("video", "SimpAIH3UpscaleLoop:H3 Upscale Loop:source_video")
         comfy_params.update_mapping_rule("reference_video", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath:reference_video")
         comfy_params.update_mapping_rule("audio", "SimpAIOptionalAudioPath:SimpAIOptionalAudioPath:audio")
         comfy_params.update_mapping_rule("clip_model", "CLIPLoader_Any:clip_model:clip_name")
         comfy_params.update_mapping_rule("clip_model", "CLIPLoaderGGUF_Any:clip_model:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoader_Any:clip_model2:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoaderGGUF_Any:clip_model2:clip_name")
+        if "bernini_video_upscale" in task_method_l:
+            comfy_params.update_mapping_rule(
+                "base_model",
+                "DiffusionModelLoaderKJ:base_model:model_name",
+            )
     if task_method == "flux_aio":
         comfy_params.update_mapping_rule("inpaint_model", "UNETLoader:inpaint_model:unet_name")
     if 'base_model_gguf' in default_params:

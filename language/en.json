@@ -603,6 +603,8 @@
     "Focus persistence": "Focus persistence",
     "Override FPS (0 = source)": "Override FPS (0 = source)",
     "Historical prefix frames": "Historical prefix frames",
+    "VACE strength": "VACE strength",
+    "VACE context frames": "VACE context frames",
     "Video Restore": "Video Restore",
     "Remove Subtitles": "Remove Subtitles",
     "Remove Watermark": "Remove Watermark",

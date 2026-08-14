@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["text_to_video"],
+  "supported_tasks": ["video_upscale"],
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
@@ -7,34 +7,46 @@
     "disvisible": [
       "input_image_checkbox",
       "prompt_panel_checkbox",
-      "performance_selection"
+      "performance_selection",
+      "scheduler_name",
+      "sampler_name",
+      "guidance_scale",
+      "negative_prompt",
+      "base_model",
+      "refiner_model",
+      "loras"
     ],
     "disinteractive": [
       "input_image_checkbox",
       "prompt_panel_checkbox",
-      "performance_selection"
+      "performance_selection",
+      "scheduler_name",
+      "sampler_name",
+      "guidance_scale",
+      "negative_prompt",
+      "base_model",
+      "refiner_model",
+      "loras"
     ],
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
       "version": "v1.1",
-      "theme": ["Basic", "2 pass"],
-      "theme_labels": {
-        "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
-        "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
-      },
-      "theme_title": "MiniMax H3 Text-to-Video",
+      "theme": ["Video Upscale"],
+      "theme_title": "MiniMax H3 Video Upscale [Video required, full duration processed in segments]",
       "director_capability": {
         "image_policy": "forbidden",
         "audio_policy": "forbidden",
-        "video_policy": "forbidden",
+        "video_policy": "required",
         "max_images": 0,
         "min_images": 0,
         "image_modes": ["none"],
-        "duration_strategy": "shot",
-        "audio_output": "generated",
+        "video_modes": ["explicit"],
+        "director_supported": false,
+        "duration_strategy": "video_min",
+        "audio_output": "source_audio",
         "mixed_segments": false
       },
-      "divisible": ["minimax_h3_storyboard_control"],
+      "disable_canvas_mask": true,
       "disvisible": [
         "scene_canvas_image",
         "scene_input_image1",
@@ -43,11 +55,13 @@
         "scene_input_image4",
         "scene_additional_prompt",
         "scene_additional_prompt_2",
-        "scene_video",
         "scene_reference_video",
         "scene_audio",
         "scene_var_number",
         "scene_var_number2",
+        "scene_var_number4",
+        "scene_var_number5",
+        "scene_var_number6",
         "scene_var_number7",
         "scene_var_number8",
         "scene_var_number9",
@@ -56,63 +70,60 @@
         "scene_switch_option2",
         "scene_switch_option3",
         "scene_switch_option4",
+        "scene_image_number",
+        "scene_use_lora",
+        "scene_base_model",
         "scene_refiner_model",
         "sam3_input_video",
         "sam3_mask_video",
         "scene_batch"
       ],
-      "prompt": {"Basic": "", "2 pass": ""},
-      "task_method": {"Basic": "minimax_h3_t2v_cn", "2 pass": "minimax_h3_t2v_2_pass_cn"},
-      "prompt_compiler": {"Basic": "minimax_h3_t2va", "2 pass": "minimax_h3_t2va"},
-      "overwrite_step": {"Basic": 8, "2 pass": 12},
-      "multimodal_prompt": {"Basic": ""},
-      "agent_prompt": {
-        "Basic": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media.",
-        "2 pass": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media."
+      "prompt": {
+        "Video Upscale": "Use <Video 1> as the exact source. Restore clearer detail and cleaner edges at the target resolution while preserving its subjects, identities, objects, visible text, motion, timing, camera path, composition, lighting, colors, dialogue, music, and sound effects. Do not add, remove, replace, restage, or retime content."
       },
-      "video_duration_title": "Video Duration(s)",
-      "video_duration_min": 0.2,
-      "video_duration_max": 15,
-      "video_duration": {"Basic": 5, "2 pass": 5},
-      "var_number3_title": "Video Shift",
-      "var_number3_min": 0.01,
-      "var_number3_max": 100.0,
-      "var_number3": {"Basic": 12.0, "2 pass": 12.0},
-      "var_number4_title": "Audio Shift",
-      "var_number4_min": 0.01,
-      "var_number4_max": 100.0,
-      "var_number4": {"Basic": 3.0, "2 pass": 3.0},
-      "var_number5_title": "Downsample factor",
-      "var_number5_min": 1.0,
-      "var_number5_max": 4.0,
-      "var_number5": {"Basic": 1.5, "2 pass": 1.5},
-      "var_number6_title": "2-pass denoise",
-      "var_number6_min": 0.0,
-      "var_number6_max": 1.0,
-      "var_number6_step": 0.01,
-      "var_number6": {"Basic": 0.25, "2 pass": 0.25},
+      "task_method": {
+        "Video Upscale": "minimax_h3_upscale_cn"
+      },
+      "overwrite_step": {
+        "Video Upscale": 4
+      },
+      "agent_prompt": {
+        "Video Upscale": "Write a concise video restoration instruction that refers to the uploaded source as <Video 1>. Preserve all content, identity, motion, timing, camera movement, composition, visible text, colors, dialogue, music, and sound effects. Request only clearer detail and cleaner edges at the selected resolution. Do not invent or alter content."
+      },
+      "var_number3_title": "Redraw strength",
+      "var_number3_min": 0.0,
+      "var_number3_max": 0.5,
+      "var_number3": {
+        "Video Upscale": 0.25
+      },
+      "scene_steps_title": "Sampling steps",
+      "video_duration_title": "Segment duration(s)",
+      "video_duration_min": 1,
+      "video_duration_max": 8,
+      "video_duration": {
+        "Video Upscale": 4
+      },
       "aspect_ratio": [
-        "864*480",
-        "480*864",
-        "640*640",
-        "736*576",
-        "576*736",
-        "800*544",
-        "544*800",
-        "1024*576",
-        "576*1024"
+        "1024|1:1",
+        "960|1:1",
+        "832|1:1",
+        "1280|1:1",
+        "1536|1:1"
       ],
       "resolution_control": {
-        "mode": "standard",
-        "source": "none",
-        "base_width": 864,
-        "base_height": 480,
+        "mode": "video_keep_input_area",
+        "source": "scene_video",
+        "base_width": 1024,
+        "base_height": 1024,
         "quantize": 32,
         "interactive": true,
         "frontend_preprocess": false,
         "preprocess_target": "none",
-        "preprocess_fit": "scale"
+        "preprocess_fit": "scale",
+        "preprocess_duration_limit": false,
+        "preserve_audio": true
       },
+      "image_preprocessor_method": [["-normalization"]],
       "overwrite_step_min": 1,
       "overwrite_step_max": 50
     }
@@ -136,9 +147,10 @@
   "default_scheduler": "simple",
   "default_performance": "Speed",
   "default_styles": [],
-  "default_aspect_ratio": "864*480",
+  "default_aspect_ratio": "1024*1024",
   "default_image_number": 1,
-  "default_overwrite_step": 8,
+  "default_overwrite_step": 4,
+  "default_prompt": "Use <Video 1> as the exact source. Restore clearer detail and cleaner edges at the target resolution while preserving its subjects, identities, objects, visible text, motion, timing, camera path, composition, lighting, colors, dialogue, music, and sound effects. Do not add, remove, replace, restage, or retime content.",
   "default_prompt_negative": "",
   "checkpoint_downloads": {},
   "embeddings_downloads": {},
@@ -149,7 +161,6 @@
     "loras,minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
     "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
-    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
-    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors"
   ]
 }

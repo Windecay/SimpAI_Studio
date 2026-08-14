@@ -66,17 +66,6 @@
     "class_type": "ModelPatchTorchSettings",
     "_meta": {"title": "H3 FP16 Accumulation / H3 FP16 累积"}
   },
-  "10": {
-    "inputs": {
-      "reuse_threshold": 0,
-      "start_percent": 0.3,
-      "end_percent": 0.8,
-      "verbose": false,
-      "model": ["9", 0]
-    },
-    "class_type": "EasyCache",
-    "_meta": {"title": "Easy Cache"}
-  },
   "11": {
     "inputs": {
       "clip": ["2", 0],
@@ -95,7 +84,7 @@
   },
   "12": {
     "inputs": {
-      "model": ["10", 0],
+      "model": ["9", 0],
       "conditioning": ["11", 0]
     },
     "class_type": "BasicGuider",
@@ -126,7 +115,7 @@
       "scheduler": "simple",
       "steps": 20,
       "denoise": 0.25,
-      "model": ["10", 0]
+      "model": ["9", 0]
     },
     "class_type": "BasicScheduler",
     "_meta": {"title": "Low Denoise Scheduler / 低重绘调度器"}

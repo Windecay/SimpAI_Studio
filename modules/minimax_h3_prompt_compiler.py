@@ -118,6 +118,8 @@ def target_compiler(target):
     if "minimax" not in haystack.lower() or "h3" not in haystack.lower():
         return None
     task_method = _clean_text(data.get("task_method")).lower()
+    if "minimax_h3_upscale" in task_method:
+        return None
     if "r2v" in task_method or "r2i" in task_method:
         return {"id": COMPILER_ID, "route": "reference"}
     if "i2v" in task_method:

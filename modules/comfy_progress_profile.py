@@ -8,6 +8,27 @@ import wave
 from dataclasses import dataclass
 
 
+H3_FPS = 24
+H3_CONTEXT_FRAMES = 22
+H3_MIN_GENERATION_FRAMES = 39
+
+
+def _h3_segment_count(total_frames, segment_frames):
+    """Match SimpAIH3UpscaleLoop's short-tail segment planning."""
+    total_frames = max(1, int(total_frames))
+    segment_frames = max(1, int(segment_frames))
+    count = 0
+    output_start = 0
+    while output_start < total_frames:
+        remaining = total_frames - output_start
+        overlap = min(H3_CONTEXT_FRAMES, output_start) if output_start > 0 else 0
+        if count and remaining + overlap < H3_MIN_GENERATION_FRAMES:
+            break
+        output_start += min(segment_frames, remaining)
+        count += 1
+    return max(1, count)
+
+
 @dataclass(frozen=True)
 class ProgressProfile:
     name: str
@@ -101,8 +122,12 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None,
         return _build_wan_animate_profile(method, params, steps, probe)
     if "wan_scail2" in method:
         return _build_scail2_profile(params, steps, probe)
-    if "bernini_video_edit" in method or "bernini_video_upscale" in method:
+    if "bernini_video_upscale" in method:
+        return _build_bernini_vace_upscale_profile(params, steps, probe, fps_probe)
+    if "bernini_video_edit" in method:
         return _build_bernini_video_edit_profile(params, steps, probe, fps_probe)
+    if "minimax_h3_upscale" in method:
+        return _build_minimax_h3_upscale_profile(params, steps, probe)
     return None
 
 
@@ -265,6 +290,67 @@ def _build_bernini_video_edit_profile(params, steps, probe, fps_probe):
     )
 
 
+def _build_bernini_vace_upscale_profile(params, steps, probe, fps_probe):
+    video_path = _media_path(params.get("video"))
+    duration = _probe_positive_duration(probe, video_path)
+    frame_rate = _positive_float(params.get("var_number2"))
+    if frame_rate is None:
+        frame_rate = _positive_float(fps_probe(video_path)) or 16.0
+    if duration is None:
+        return None
+
+    total_frames = max(1, int(duration * frame_rate))
+    duration_limit = _positive_float(params.get("video_duration"))
+    if duration_limit is not None:
+        total_frames = min(total_frames, max(1, int(round(duration_limit * frame_rate))))
+
+    target_frames = _positive_int(params.get("var_number7")) or 81
+    segment_frames = _best_segment_frames(
+        total_frames,
+        target_frames,
+        min_frames=33,
+        max_frames=185,
+    )
+    context_setting = _positive_int(params.get("var_number8")) or 5
+    context_frames = min(_floor_4n_plus_1(context_setting), segment_frames - 4)
+    padded_frames = _align_4n_plus_1(total_frames)
+    total_latents = _frames_to_wan_latents(padded_frames)
+    segment_latents = _frames_to_wan_latents(segment_frames)
+    context_latents = _frames_to_wan_latents(context_frames)
+    pass_count = _pass_count(
+        total_latents,
+        segment_latents,
+        segment_latents - context_latents,
+    )
+    return ProgressProfile(
+        name="bernini_vace_upscale_segments",
+        pass_steps=steps,
+        pass_count=pass_count,
+        total_steps=steps * pass_count,
+        source_duration=total_frames / frame_rate,
+        known_total_sampler_classes=("SimpAIWanVaceLatentLoop",),
+    )
+
+
+def _build_minimax_h3_upscale_profile(params, steps, probe):
+    video_path = _media_path(params.get("video"))
+    duration = _probe_positive_duration(probe, video_path)
+    segment_duration = _positive_float(params.get("video_duration")) or 3.0
+    if duration is None:
+        return None
+    total_frames = max(1, int(round(duration * H3_FPS)))
+    segment_frames = max(1, int(round(segment_duration * H3_FPS)))
+    pass_count = _h3_segment_count(total_frames, segment_frames)
+    return ProgressProfile(
+        name="minimax_h3_upscale_segments",
+        pass_steps=steps,
+        pass_count=pass_count,
+        total_steps=steps * pass_count,
+        source_duration=duration,
+        known_total_sampler_classes=("SimpAIH3UpscaleLoop",),
+    )
+
+
 def _probe_positive_duration(probe, path):
     if not path:
         return None
@@ -319,6 +405,10 @@ def _pass_count(total_frames, first_keep, repeat_keep):
     if total_frames <= first_keep:
         return 1
     return 1 + int(math.ceil((total_frames - first_keep) / repeat_keep))
+
+
+def _frames_to_wan_latents(frame_count):
+    return ((max(1, int(frame_count)) - 1) // 4) + 1
 
 
 def _strict_4n_plus_1_cap(value):

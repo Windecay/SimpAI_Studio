@@ -58,7 +58,10 @@ class SimpAIOptionalVideoPath:
                 "select_every_nth": ("INT", {"default": 1, "min": 1, "max": 999999, "step": 1}),
             },
             "optional": {
+                "start_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 999999999.0, "step": 0.01}),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 999999999.0, "step": 0.01}),
+                "metadata_only": ("BOOLEAN", {"default": False}),
+                "load_audio": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -67,7 +70,18 @@ class SimpAIOptionalVideoPath:
     FUNCTION = "load_video"
     CATEGORY = "SimpAI/video"
 
-    def load_video(self, video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, duration=0.0):
+    def load_video(
+        self,
+        video,
+        force_rate=0,
+        frame_load_cap=0,
+        skip_first_frames=0,
+        select_every_nth=1,
+        start_time=0.0,
+        duration=0.0,
+        metadata_only=False,
+        load_audio=True,
+    ):
         return _load_video_frames(
             video,
             force_rate,
@@ -76,12 +90,15 @@ class SimpAIOptionalVideoPath:
             select_every_nth,
             "Optional reference video",
             duration,
+            start_time=start_time,
+            metadata_only=metadata_only,
+            load_audio=load_audio,
             return_fps=True,
         )
 
     @classmethod
     def IS_CHANGED(cls, video, **kwargs):
-        return _file_hash(_resolve_video_path(video))
+        return _video_change_token(video, kwargs)
 
     @classmethod
     def VALIDATE_INPUTS(cls, video, **kwargs):
@@ -106,7 +123,10 @@ class SimpAIOptionalReferenceVideoPath:
                 "select_every_nth": ("INT", {"default": 1, "min": 1, "max": 999999, "step": 1}),
             },
             "optional": {
+                "start_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 999999999.0, "step": 0.01}),
                 "duration": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 999999999.0, "step": 0.01}),
+                "metadata_only": ("BOOLEAN", {"default": False}),
+                "load_audio": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -115,7 +135,18 @@ class SimpAIOptionalReferenceVideoPath:
     FUNCTION = "load_video"
     CATEGORY = "SimpAI/video"
 
-    def load_video(self, reference_video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, duration=0.0):
+    def load_video(
+        self,
+        reference_video,
+        force_rate=0,
+        frame_load_cap=0,
+        skip_first_frames=0,
+        select_every_nth=1,
+        start_time=0.0,
+        duration=0.0,
+        metadata_only=False,
+        load_audio=True,
+    ):
         return _load_video_frames(
             reference_video,
             force_rate,
@@ -124,11 +155,14 @@ class SimpAIOptionalReferenceVideoPath:
             select_every_nth,
             "Optional reference video",
             duration,
+            start_time=start_time,
+            metadata_only=metadata_only,
+            load_audio=load_audio,
         )
 
     @classmethod
     def IS_CHANGED(cls, reference_video, **kwargs):
-        return _file_hash(_resolve_video_path(reference_video))
+        return _video_change_token(reference_video, kwargs)
 
     @classmethod
     def VALIDATE_INPUTS(cls, reference_video, **kwargs):
@@ -253,6 +287,20 @@ def _load_audio_value(path, label, allow_missing_stream=False, start_time=0.0, d
     return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
 
 
+def _video_change_token(video, inputs):
+    values = (
+        float(inputs.get("force_rate", 0) or 0),
+        int(inputs.get("frame_load_cap", 0) or 0),
+        int(inputs.get("skip_first_frames", 0) or 0),
+        int(inputs.get("select_every_nth", 1) or 1),
+        float(inputs.get("start_time", 0.0) or 0.0),
+        float(inputs.get("duration", 0.0) or 0.0),
+        bool(inputs.get("metadata_only", False)),
+        bool(inputs.get("load_audio", True)),
+    )
+    return f"{_file_hash(_resolve_video_path(video))}:{values!r}"
+
+
 def _load_video_frames(
     video,
     force_rate=0,
@@ -261,6 +309,9 @@ def _load_video_frames(
     select_every_nth=1,
     label="Optional video",
     duration=0.0,
+    start_time=0.0,
+    metadata_only=False,
+    load_audio=True,
     return_fps=False,
 ):
     path = _resolve_video_path(video)
@@ -274,6 +325,35 @@ def _load_video_frames(
     select_every_nth = max(1, int(select_every_nth or 1))
     force_rate = max(0.0, float(force_rate or 0))
     duration = max(0.0, float(duration or 0.0))
+    start_time = max(0.0, float(start_time or 0.0))
+
+    if metadata_only:
+        capture = cv2.VideoCapture(path)
+        if not capture.isOpened():
+            raise ValueError(f"{label} could not be opened: {path}")
+        try:
+            source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+            source_frames = max(0, int(round(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)))
+        finally:
+            capture.release()
+        loaded_fps = force_rate if force_rate > 0.0 else source_fps / select_every_nth
+        skipped_frames = skip_first_frames
+        if source_fps > 0.0:
+            skipped_frames += int(math.floor(start_time * source_fps + 1e-9))
+        available_frames = max(0, source_frames - skipped_frames)
+        if source_fps > 0.0 and available_frames > 0 and loaded_fps > 0.0:
+            total_frames = max(1, int(math.ceil(available_frames / source_fps * loaded_fps - 1e-9)))
+        else:
+            total_frames = available_frames
+        if duration > 0.0 and loaded_fps > 0.0:
+            total_frames = min(total_frames, max(1, int(round(duration * loaded_fps))))
+        if frame_load_cap > 0:
+            total_frames = min(total_frames, frame_load_cap)
+        audio = _load_audio_value(path, f"{label} audio", allow_missing_stream=True) if load_audio else None
+        result = (None, total_frames, audio)
+        if return_fps:
+            return result + (float(loaded_fps),)
+        return result
 
     capture = cv2.VideoCapture(path)
     if not capture.isOpened():
@@ -286,9 +366,12 @@ def _load_video_frames(
     audio_duration = duration
     try:
         if duration > 0.0 and source_fps > 0.0:
-            source_start_index = skip_first_frames
-            capture.set(cv2.CAP_PROP_POS_FRAMES, source_start_index)
             target_fps = force_rate if force_rate > 0.0 else loaded_fps
+            target_start_index = int(round(start_time * target_fps))
+            source_start_index = skip_first_frames + int(
+                math.floor(target_start_index * (source_fps / select_every_nth) / target_fps + 1e-9)
+            ) * select_every_nth
+            capture.set(cv2.CAP_PROP_POS_FRAMES, source_start_index)
             frame_limits = []
             if frame_load_cap > 0:
                 frame_limits.append(frame_load_cap)
@@ -300,7 +383,14 @@ def _load_video_frames(
             current_frame = None
             target_index = 0
             while target_frame_count is None or target_index < target_frame_count:
-                selected_index = source_start_index + int(math.floor(target_index * (source_fps / select_every_nth) / target_fps + 1e-9)) * select_every_nth
+                selected_index = skip_first_frames + int(
+                    math.floor(
+                        (target_start_index + target_index)
+                        * (source_fps / select_every_nth)
+                        / target_fps
+                        + 1e-9
+                    )
+                ) * select_every_nth
                 while current_source_index < selected_index:
                     ok, current_frame = capture.read()
                     if not ok:
@@ -318,18 +408,21 @@ def _load_video_frames(
         else:
             target_interval = (1.0 / force_rate) if force_rate > 0 and source_fps > 0 else None
             next_target_time = 0.0
-            frame_index = -1
+            source_start_index = skip_first_frames + int(math.floor(start_time * source_fps + 1e-9)) if source_fps > 0.0 else skip_first_frames
+            if source_start_index > 0:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, source_start_index)
+            frame_index = source_start_index - 1
             while True:
                 ok, frame = capture.read()
                 if not ok:
                     break
                 frame_index += 1
-                if frame_index < skip_first_frames:
+                if frame_index < source_start_index:
                     continue
-                if (frame_index - skip_first_frames) % select_every_nth != 0:
+                if (frame_index - source_start_index) % select_every_nth != 0:
                     continue
                 if target_interval is not None:
-                    current_time = frame_index / source_fps
+                    current_time = (frame_index - source_start_index) / source_fps
                     if current_time + 1e-6 < next_target_time:
                         continue
                     next_target_time += target_interval
@@ -337,12 +430,21 @@ def _load_video_frames(
                 frames.append(frame.astype(np.float32) / 255.0)
                 if frame_load_cap > 0 and len(frames) >= frame_load_cap:
                     break
+            audio_start_time = source_start_index / source_fps if source_fps > 0.0 else start_time
     finally:
         capture.release()
 
     if not frames:
         raise RuntimeError(f"{label} produced no frames: {path}")
-    audio = _load_audio_value(path, f"{label} audio", allow_missing_stream=True, start_time=audio_start_time, duration=audio_duration)
+    audio = None
+    if load_audio:
+        audio = _load_audio_value(
+            path,
+            f"{label} audio",
+            allow_missing_stream=True,
+            start_time=audio_start_time,
+            duration=audio_duration,
+        )
     if force_rate > 0.0:
         loaded_fps = force_rate
     result = (torch.from_numpy(np.stack(frames, axis=0)), len(frames), audio)

@@ -873,40 +873,12 @@
       "title": "H3 Video 2 Audio Align"
     }
   },
-  "57": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "wavespeed_strength"
-    }
-  },
-  "58": {
-    "inputs": {
-      "reuse_threshold": [
-        "57",
-        0
-      ],
-      "start_percent": 0.3,
-      "end_percent": 0.8,
-      "verbose": false,
-      "model": [
-        "45",
-        0
-      ]
-    },
-    "class_type": "EasyCache",
-    "_meta": {
-      "title": "H3 EasyCache"
-    }
-  },
   "59": {
     "inputs": {
       "lora_name": "placeholder.safetensors",
       "strength_model": 0,
       "model": [
-        "58",
+        "45",
         0
       ]
     },
@@ -1499,14 +1471,36 @@
       "context_length": "22",
       "vae": ["5", 0],
       "audio_context_length": 22,
-      "context_frames": ["76", 0],
+      "context_frames": ["92", 0],
       "audio_vae": ["6", 0],
-      "context_audio": ["49", 2],
+      "context_audio": ["93", 0],
       "prefer_video": true
     },
     "class_type": "SimpAIMiniMaxH3MotionContext",
     "_meta": {
-      "title": "H3 2-pass Motion Context / H3 双采样动作上下文"
+      "title": "H3 双采样动作上下文"
+    }
+  },
+  "92": {
+    "inputs": {
+      "image": ["86", 0],
+      "batch_index": 0,
+      "length": 22
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "H3 双采样上下文画面"
+    }
+  },
+  "93": {
+    "inputs": {
+      "audio": ["85", 0],
+      "start_index": 0,
+      "duration": 0.9166666666666666
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {
+      "title": "H3 双采样上下文音频"
     }
   }
 }

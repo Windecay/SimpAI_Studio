@@ -1,0 +1,442 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "Use <Video 1> as the exact source. Restore clearer detail and cleaner edges at the target resolution while preserving its subjects, identities, objects, visible text, motion, timing, camera path, composition, lighting, colors, dialogue, music, and sound effects. Do not add, remove, replace, restage, or retime content.",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 1024,
+      "height": 1024,
+      "cfg": 1,
+      "steps": 4,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 0.25,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "er_sde",
+      "scheduler": "simple",
+      "video_duration": 4
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seed": 0
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "3": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "7": {
+    "inputs": {
+      "unet_name": "placeholder.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "base_model_gguf"
+    }
+  },
+  "8": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Safetensors Type"
+    }
+  },
+  "9": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "1",
+        24
+      ],
+      "b": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "H3 Model Type"
+    }
+  },
+  "10": {
+    "inputs": {
+      "boolean": [
+        "9",
+        0
+      ],
+      "on_true": [
+        "3",
+        0
+      ],
+      "on_false": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "H3 Model Loader"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {
+      "title": "MiniMax H3 Memory Efficient Sage Attention Patch"
+    }
+  },
+  "12": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "H3 FP16 Accumulation"
+    }
+  },
+  "13": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "14": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "1",
+        26
+      ],
+      "b": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "H3 CLIP Type"
+    }
+  },
+  "15": {
+    "inputs": {
+      "boolean": [
+        "14",
+        0
+      ],
+      "on_true": [
+        "4",
+        0
+      ],
+      "on_false": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "H3 CLIP Loader"
+    }
+  },
+  "18": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_1"
+    }
+  },
+  "19": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "20": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "21": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "22": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "21",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "23": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "24": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "25": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "26": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "27": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
+    }
+  },
+  "28": {
+    "inputs": {
+      "shift_video": 12,
+      "shift_audio": 3,
+      "model": [
+        "27",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {
+      "title": "ModelSamplingMiniMaxH3"
+    }
+  },
+  "29": {
+    "inputs": {
+      "source_video": "",
+      "prompt": [
+        "1",
+        0
+      ],
+      "width": [
+        "1",
+        6
+      ],
+      "height": [
+        "1",
+        7
+      ],
+      "segment_duration": [
+        "1",
+        32
+      ],
+      "steps": [
+        "1",
+        9
+      ],
+      "denoise": [
+        "1",
+        12
+      ],
+      "sampler_name": [
+        "1",
+        30
+      ],
+      "scheduler": [
+        "1",
+        31
+      ],
+      "seed": [
+        "2",
+        0
+      ],
+      "fps": 24,
+      "context_frames": 5,
+      "model": [
+        "28",
+        0
+      ],
+      "clip": [
+        "15",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "SimpAIH3UpscaleLoop",
+    "_meta": {
+      "title": "H3 Upscale Loop"
+    }
+  },
+  "30": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": 24,
+      "crf": 18,
+      "images": [
+        "29",
+        0
+      ],
+      "audio": [
+        "29",
+        1
+      ]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {
+      "title": "SaveVideoWebsocket"
+    }
+  }
+}

@@ -41,10 +41,11 @@ class SimpAIBerniniBestFrameWindow(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="SimpAIBerniniBestFrameWindow",
-            display_name="SimpAI Bernini Best Frame Window",
+            display_name="SimpAI Bernini Best Frame Window / Bernini 最佳分段帧数",
             category="image/video",
             description=(
-                "Choose a legal 4n+1 segment frame count while keeping the target as a VRAM limit."
+                "Choose a legal 4n+1 segment frame count while keeping the target as a VRAM limit. / "
+                "在目标显存限制内选择符合 4n+1 的分段帧数。"
             ),
             inputs=[
                 io.Int.Input("total_frames", default=81, min=1, max=100000, step=1),
@@ -70,5 +71,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SimpAIBerniniBestFrameWindow": "SimpAI Bernini Best Frame Window",
+    "SimpAIBerniniBestFrameWindow": "SimpAI Bernini Best Frame Window / Bernini 最佳分段帧数",
 }

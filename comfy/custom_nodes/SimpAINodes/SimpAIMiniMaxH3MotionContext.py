@@ -199,7 +199,13 @@ class SimpAIMiniMaxH3MotionContext(io.ComfyNode):
             return io.NodeOutput(conditioning, 0)
 
         use_frame_context = context_frames is not None and (bool(prefer_video) or context_latent is None)
-        _ensure_patches(require_payload=context_latent is not None or context_audio is not None)
+        _ensure_patches(
+            require_payload=(
+                context_latent is not None
+                or context_frames is not None
+                or context_audio is not None
+            )
+        )
         target_video = _video_from_latent(latent)
         target_latent_t = int(target_video.shape[2])
         target_height = int(target_video.shape[3]) * 16
