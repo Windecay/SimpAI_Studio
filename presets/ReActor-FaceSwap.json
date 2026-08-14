@@ -157,6 +157,7 @@
         "insightface,models/buffalo_l/genderage.onnx,1322532,0,",
         "insightface,models/buffalo_l/w600k_r50.onnx,174383860,0,",
         "controlnet,facerestore_models/GFPGANv1.4.pth,348632874,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/facerestore_models/GFPGANv1.4.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/facerestore_models/GFPGANv1.4.pth",
-        "controlnet,detection_Resnet50_Final.pth,109497761,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/detection_Resnet50_Final.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/detection_Resnet50_Final.pth"
+        "controlnet,detection_Resnet50_Final.pth,109497761,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/detection_Resnet50_Final.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/detection_Resnet50_Final.pth",
+        "controlnet,parsing_parsenet.pth,85331193,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/parsing_parsenet.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/parsing_parsenet.pth"
     ]
 }

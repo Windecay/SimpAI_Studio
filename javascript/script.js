@@ -6273,7 +6273,7 @@ function initResolutionControlWidget(widget, options = {}) {
     const useSceneSelection = () => isSceneActive() && !!_rc_getRoot(sceneSelectionId);
     const getActiveProfile = () => useSceneSelection() ? _rc_getResolutionProfile() : {};
     const getProfileSourceIds = (profile) => {
-        if (Array.isArray(profile.source_ids) && profile.source_ids.length) return profile.source_ids;
+        if (Array.isArray(profile.source_ids)) return profile.source_ids;
         const source = String(profile.source || '').trim();
         if (source === 'scene_canvas') return ['scene_canvas'];
         if (source === 'scene_input_image1') return ['scene_input_image1'];
@@ -6289,7 +6289,7 @@ function initResolutionControlWidget(widget, options = {}) {
     const getSourceIds = () => {
         if (useSceneSelection()) {
             const profileIds = getProfileSourceIds(getActiveProfile());
-            if (profileIds && profileIds.length) return profileIds;
+            if (profileIds !== null) return profileIds;
             return payload.sceneSourceIds || [];
         }
         return payload.sourceIds || [];

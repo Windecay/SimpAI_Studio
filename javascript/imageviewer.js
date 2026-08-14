@@ -267,6 +267,63 @@ function simpleaiGalleryOriginalDownloadSrc(displaySrc, originalSrc) {
         : '';
 }
 
+function simpleaiGalleryCachedPreviewDownloadTarget(preview) {
+    if (!preview?.querySelectorAll) return null;
+    const poster = Array.from(preview.querySelectorAll('.media-button img, img')).find((img) => {
+        return Boolean(simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img)));
+    }) || null;
+    if (!poster) return null;
+    const displaySrc = simpleaiMediaSrc(poster);
+    const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
+    if (!previewOriginalSrc) return null;
+    const downloadSrc = simpleaiGalleryOriginalDownloadSrc(displaySrc, previewOriginalSrc);
+    if (!downloadSrc) return null;
+    return {
+        displaySrc,
+        originalSrc: previewOriginalSrc,
+        downloadSrc,
+    };
+}
+
+function simpleaiIsGalleryDownloadButton(button) {
+    if (!button) return false;
+    const marker = [
+        button.getAttribute?.('aria-label'),
+        button.getAttribute?.('title'),
+        button.getAttribute?.('data-testid'),
+        button.getAttribute?.('data-lucide'),
+        button.className,
+        button.textContent,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return marker.includes('download') || marker.includes('下载');
+}
+
+function simpleaiTriggerGalleryCachedPreviewDownload(target) {
+    if (!target?.downloadSrc) return false;
+    const link = document.createElement('a');
+    link.href = target.downloadSrc;
+    link.download = simpleaiGalleryImageFileName(target.originalSrc);
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => link.remove(), 0);
+    return true;
+}
+
+function simpleaiHandleCachedGalleryPreviewDownload(event) {
+    const target = event?.target;
+    const button = target?.closest?.('button, a, [role="button"]');
+    if (!button || !simpleaiIsGalleryDownloadButton(button)) return false;
+    const preview = button.closest?.('#finished_gallery .gallery-container > .preview, #final_gallery .gallery-container > .preview');
+    if (!preview) return false;
+    const downloadTarget = simpleaiGalleryCachedPreviewDownloadTarget(preview);
+    if (!downloadTarget) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return simpleaiTriggerGalleryCachedPreviewDownload(downloadTarget);
+}
+
 function simpleaiOriginalGalleryImageSrc(img) {
     const src = simpleaiMediaSrc(img);
     return simpleaiGalleryDisplayPreviewOriginalSrc(src) || src;
@@ -1857,6 +1914,7 @@ window.simpleaiSyncCachedGalleryVideoPreviews = simpleaiSyncCachedGalleryVideoPr
 document.addEventListener('click', function(event) {
     const target = event.target;
     if (!target || !target.closest) return;
+    if (simpleaiHandleCachedGalleryPreviewDownload(event)) return;
     if (simpleaiManagedGalleryRoot(target)) {
         simpleaiMarkGalleryPreviewOpenPending(target);
         simpleaiSyncGalleryStateSoon();

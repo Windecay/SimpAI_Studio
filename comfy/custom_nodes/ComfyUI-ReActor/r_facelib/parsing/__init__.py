@@ -5,8 +5,19 @@ from .bisenet import BiSeNet
 from .parsenet import ParseNet
 import os
 import folder_paths
-models_dir = folder_paths.models_dir
-FACE_MODELS_PATH = os.path.join(models_dir, "controlnet")
+
+
+def resolve_parsing_model(model_url):
+    model_name = os.path.basename(model_url)
+    model_path = folder_paths.get_full_path("controlnet", model_name)
+    if model_path is not None:
+        return model_path
+    return load_file_from_url(
+        url=model_url,
+        model_dir=folder_paths.get_folder_paths("controlnet")[0],
+        progress=True,
+        file_name=None,
+    )
 
 def init_parsing_model(model_name='bisenet', half=False, device='cuda'):
     if model_name == 'bisenet':
@@ -18,7 +29,7 @@ def init_parsing_model(model_name='bisenet', half=False, device='cuda'):
     else:
         raise NotImplementedError(f'{model_name} is not implemented.')
 
-    model_path = load_file_from_url(url=model_url, model_dir=FACE_MODELS_PATH, progress=True, file_name=None)
+    model_path = resolve_parsing_model(model_url)
     load_net = torch.load(model_path, map_location=lambda storage, loc: storage)
     model.load_state_dict(load_net, strict=True)
     model.eval()

@@ -692,6 +692,20 @@
         return t('Please analyze the attached reference image.', '请分析附加引用图。');
     }
 
+    function parseCreativeRunCommand(value) {
+        const source = String(value || '').replace(/\r\n/g, '\n').trim();
+        if (!source) return null;
+        const lines = source.split('\n');
+        const firstLine = String(lines.shift() || '').trim();
+        if (!/^\/run(?![A-Za-z0-9_])/i.test(firstLine)) return null;
+        const inlinePrompt = firstLine.slice(4).trim();
+        const multilinePrompt = lines.join('\n').trim();
+        return {
+            command: 'run',
+            prompt: [inlinePrompt, multilinePrompt].filter(Boolean).join('\n').trim(),
+        };
+    }
+
     function shouldSendCurrentPromptToVlm(mode, message) {
         return normalizeChatMode(mode) === 'prompt';
     }
@@ -6405,12 +6419,25 @@
         }
         const pendingImages = runtime.pendingImages.slice();
         if (!typed && !pendingImages.length) return;
+        const directRun = selectedMode === 'creative' ? parseCreativeRunCommand(typed) : null;
+        const directRunPrompt = directRun
+            ? String(directRun.prompt || readComponentValue('positive_prompt') || '').trim()
+            : '';
+        const isDirectRun = Boolean(directRun);
+        if (isDirectRun && !directRunPrompt) {
+            setConversationStatus(runtime, t(
+                'Enter a prompt after /run, or fill the main prompt box first.',
+                '请在 /run 后填写提示词，或先填写主提示词框。'
+            ), true);
+            return;
+        }
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
         const supportsImageInput = !customApi || customApi.supports_images !== false;
+        const canSendImages = isDirectRun || supportsImageInput;
         const requestedPreviousImage = !pendingImages.length && runtime.autoAttachPreviousImage && Boolean(latestConversationImageCandidate(messages));
-        const requestedImagesButUnsupported = !supportsImageInput && Boolean(pendingImages.length || requestedPreviousImage);
-        if (!typed && pendingImages.length && !supportsImageInput) {
+        const requestedImagesButUnsupported = !isDirectRun && !supportsImageInput && Boolean(pendingImages.length || requestedPreviousImage);
+        if (!typed && pendingImages.length && !canSendImages) {
             setConversationStatus(runtime, t(
                 'The selected Custom API has image input disabled.',
                 '当前 Custom API 未启用图像输入。'
@@ -6418,7 +6445,7 @@
             return;
         }
         if (isCurrentConversationRuntime(runtime)) updateAnswerModelIndicator(modal);
-        const modelReady = await ensureSelectedVlmModelReady(version);
+        const modelReady = isDirectRun ? true : await ensureSelectedVlmModelReady(version);
         if (requestToken !== runtime.requestToken) return;
         if (!modelReady) return;
         if (selectedMode === 'creative') {
@@ -6441,8 +6468,8 @@
             setStatus('');
         }
 
-        const message = typed || defaultMessageForMode(selectedMode, pendingImages);
-        const includeCurrentPrompt = shouldSendCurrentPromptToVlm(selectedMode, message);
+        const message = isDirectRun ? directRunPrompt : typed || defaultMessageForMode(selectedMode, pendingImages);
+        const includeCurrentPrompt = !isDirectRun && shouldSendCurrentPromptToVlm(selectedMode, message);
         const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET, messages);
         const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET, messages);
         if (history.omitted > 0) {
@@ -6451,7 +6478,7 @@
 
         const images = [];
         const sentPendingImages = [];
-        if (supportsImageInput) {
+        if (canSendImages) {
             for (const image of pendingImages) {
                 if (images.length >= MAX_ATTACHMENTS) break;
                 if (image?.data_url) {
@@ -6494,7 +6521,7 @@
         const userMessage = {
             id: uid('describe_vlm_chat_user'),
             role: 'user',
-            content: message,
+            content: isDirectRun ? inputSnapshot : message,
             image_count: images.length,
             images: images.map(imageSummary),
             _image_payloads: images.filter((image) => mediaKind(image) === 'image')
@@ -6513,6 +6540,8 @@
         }
         const payload = {
             message,
+            request_kind: isDirectRun ? 'direct_run' : '',
+            direct_prompt: isDirectRun ? message : '',
             current_prompt: includeCurrentPrompt ? readComponentValue('positive_prompt') : '',
             include_current_prompt: includeCurrentPrompt,
             conversation_id: runtime.conversationId,

@@ -1217,6 +1217,155 @@ def _normalize_creative_preferences(value):
     }
 
 
+H3_DIRECT_PROMPT_SECTION_RE = re.compile(
+    r"(?mi)^(?:integrated_multimodal_description|overall_soundscape|non_diegetic_music|"
+    r"subject_definitions|summary|retention_analysis|detailed_description)\s*:\s*"
+)
+
+
+def _direct_run_task(prompt, media_refs, preferred_preset, preset_capabilities):
+    refs = media_refs if isinstance(media_refs, list) else []
+    capabilities = preset_capabilities if isinstance(preset_capabilities, list) else []
+    preferred = _preset_capability_map(capabilities).get(str(preferred_preset or "").strip().lower())
+    prompt_text = str(prompt or "")
+    is_h3_prompt = bool(H3_DIRECT_PROMPT_SECTION_RE.search(prompt_text))
+    has_visual_reference_token = bool(re.search(r"<(?:Picture|Video|Audio)\s+\d+>", prompt_text, re.I))
+
+    if is_h3_prompt:
+        if preferred and preferred.get("output_type") == "video":
+            candidates = (
+                ("multi_image_to_video", "image_to_video", "text_to_video")
+                if len(refs) > 1
+                else ("image_to_video", "text_to_video")
+                if refs or has_visual_reference_token
+                else ("text_to_video",)
+            )
+            for task in candidates:
+                if _preset_supports_generation_task(preferred.get("name"), task, len(refs), capabilities):
+                    return task
+        return (
+            "multi_image_to_video"
+            if len(refs) > 1
+            else "image_to_video"
+            if refs
+            else "text_to_video"
+        )
+
+    if preferred:
+        supported = preferred.get("supported_tasks") if isinstance(preferred.get("supported_tasks"), list) else []
+        for task in supported:
+            if _preset_supports_generation_task(preferred.get("name"), task, len(refs), capabilities):
+                return task
+    return _normalize_generation_task(None, refs, prompt)
+
+
+def _materialize_direct_run_media(payload, conversation_id):
+    sources = _media_sources_from_payload(payload, conversation_id)
+    if not sources:
+        return [], []
+
+    from modules import canvas_workbench_assets
+
+    asset_refs = []
+    for source in sources:
+        resolved = canvas_workbench_assets.materialize_node_asset(
+            payload.get("project_id") or "default",
+            {},
+            source,
+        )
+        asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
+        if isinstance(asset_ref, dict):
+            asset_refs.append(asset_ref)
+
+    manifest = _media_manifest_from_payload(payload)
+    media_refs = []
+    for position, asset_ref in enumerate(asset_refs):
+        match = re.search(r":(?:image|video):(\d+)$", str(asset_ref.get("node_id") or ""))
+        source_index = int(match.group(1)) if match else position
+        if 0 <= source_index < len(manifest):
+            ref = str(manifest[source_index].get("ref") or "").strip()
+            if ref and ref not in media_refs:
+                media_refs.append(ref)
+    return media_refs, _describe_input_media_assets(payload, asset_refs)
+
+
+def _build_direct_run_result(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    conversation_id = str(payload.get("conversation_id") or "").strip()
+    request_id = str(payload.get("request_id") or "").strip()
+    if _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode")) != "creative":
+        return _describe_vlm_chat_failure(
+            {"ok": False, "error": "Direct run is only available in Creative mode."},
+            "direct_run_mode",
+        )
+
+    prompt = _clean_multiline_text(
+        payload.get("direct_prompt") or payload.get("message") or payload.get("current_prompt"),
+        limit=16000,
+    )
+    if not prompt:
+        return _describe_vlm_chat_failure(
+            {"ok": False, "error": "Direct run prompt is empty."},
+            "direct_run_validation",
+        )
+
+    preferences = _normalize_creative_preferences(payload.get("creative_preferences"))
+    capabilities = _normalize_preset_capabilities(payload.get("preset_capabilities"))
+    parameter_profiles = _normalize_parameter_profiles(payload.get("parameter_profiles"))
+    media_refs, input_media_assets = _materialize_direct_run_media(payload, conversation_id)
+    media_ref_set = set(media_refs)
+    available_media_refs = [
+        item for item in _media_manifest_from_payload(payload)
+        if str(item.get("ref") or "").strip() in media_ref_set
+    ]
+    task = _direct_run_task(prompt, media_refs, preferences.get("preset"), capabilities)
+    action = {
+        "type": "generate_image",
+        "target": "canvas_run",
+        "task": task,
+        "media_refs": media_refs,
+        "task_request": {
+            "task": task,
+            "media_refs": media_refs,
+            "instruction": prompt,
+        },
+        "prompt": prompt,
+        "preset": preferences.get("preset") or "",
+        "aspect_ratio": "auto",
+        "image_number": 1,
+    }
+    actions = compile_creative_action_plans(
+        [action],
+        available_media_refs,
+        capabilities,
+        preferences.get("preset") or "",
+        "",
+        parameter_profiles,
+        preferences.get("parameter_profile") or "",
+    )
+    generation = next((item for item in actions if item.get("type") == "generate_image"), None)
+    if not generation:
+        return _describe_vlm_chat_failure(
+            {"ok": False, "error": "Direct run could not prepare a generation action."},
+            "direct_run_action",
+        )
+    return {
+        "ok": True,
+        "conversation_id": conversation_id,
+        "request_id": request_id,
+        "direct_run": True,
+        "text": _localized_creative_generation_reply(
+            actions,
+            payload.get("lang"),
+            auto_generate=preferences.get("auto_generate", False),
+        ),
+        "limited_actions": actions,
+        "input_media_assets": input_media_assets,
+        "creative_director_suppressed": True,
+        "agent_actions": [],
+    }
+
+
 def _prompt_skill_section(options, lang):
     options = options if isinstance(options, dict) else {}
     mode = options.get("mode") or _prompt_mode_from_options(options)
@@ -3512,6 +3661,8 @@ def run_describe_vlm_chat(payload):
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
     request_kind = str(payload.get("request_kind") or "").strip().lower()
+    if request_kind == "direct_run":
+        return _build_direct_run_result(payload)
     if request_kind == "creative_offer" and not _creative_offer_uses_custom_api(payload):
         if is_describe_vlm_chat_cancelled(conversation_id, request_id):
             clear_describe_vlm_chat_cancel(conversation_id, request_id)
