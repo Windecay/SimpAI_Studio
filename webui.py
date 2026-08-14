@@ -15180,44 +15180,126 @@ async def canvas_workbench_vlm_cancel_endpoint(payload: dict = Body(default={}))
 
 @app.post("/describe-image/vlm-chat-run")
 async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
+    error_id = f"vlm-chat-{uuid.uuid4().hex[:10]}"
+    request_meta = {
+        "conversation_id": "",
+        "request_id": "",
+        "request_kind": "",
+        "version": "",
+        "chat_mode": "",
+        "image_count": 0,
+        "has_visual_media": False,
+    }
+
+    def compact_log_value(value, limit=800):
+        return re.sub(r"\s+", " ", str(value or "")).strip()[:limit]
+
+    def request_summary(source):
+        source = source if isinstance(source, dict) else {}
+        raw_images = source.get("images") if isinstance(source.get("images"), list) else []
+        if not raw_images and isinstance(source.get("image"), dict):
+            raw_images = [source.get("image")]
+        image_count = sum(
+            1
+            for item in raw_images
+            if isinstance(item, dict) and str(item.get("data_url") or "").strip()
+        )
+        return {
+            "conversation_id": compact_log_value(source.get("conversation_id"), 160),
+            "request_id": compact_log_value(source.get("request_id"), 160),
+            "request_kind": compact_log_value(source.get("request_kind"), 80),
+            "version": compact_log_value(source.get("version"), 160),
+            "chat_mode": compact_log_value(source.get("chat_mode"), 80),
+            "image_count": image_count,
+            "has_visual_media": image_count > 0,
+        }
+
     try:
         if not isinstance(payload, dict):
+            logger.warning(
+                "Describe Image VLM chat rejected: error_id=%s failure_stage=payload_validation reason=payload_not_object",
+                error_id,
+            )
             return JSONResponse(
-                {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
+                {
+                    "ok": False,
+                    "error": "Bad Request",
+                    "details": "Payload must be an object.",
+                    "error_id": error_id,
+                    "failure_stage": "payload_validation",
+                },
                 status_code=400,
             )
 
+        request_meta = request_summary(payload)
         started = time.monotonic()
         logger.info(
-            "Describe Image VLM chat request received: conversation_id=%s, has_visual_media=%s",
-            payload.get("conversation_id") or "",
-            bool(
-                (isinstance(payload.get("image"), dict) and payload.get("image", {}).get("data_url"))
-                or any(
-                    isinstance(item, dict) and item.get("data_url")
-                    for item in (payload.get("images") if isinstance(payload.get("images"), list) else [])
-                )
-            ),
+            "Describe Image VLM chat request received: error_id=%s conversation_id=%s request_id=%s request_kind=%s version=%s chat_mode=%s images=%s has_visual_media=%s",
+            error_id,
+            request_meta["conversation_id"],
+            request_meta["request_id"],
+            request_meta["request_kind"],
+            request_meta["version"],
+            request_meta["chat_mode"],
+            request_meta["image_count"],
+            request_meta["has_visual_media"],
         )
         result = await run_in_threadpool(lambda: describe_vlm_chat.run_describe_vlm_chat(payload))
+        if not isinstance(result, dict):
+            result = {
+                "ok": False,
+                "error": "Invalid VLM response.",
+                "failure_stage": "vlm_runtime",
+            }
+        if not result.get("ok"):
+            result = dict(result)
+            result.setdefault("error_id", error_id)
+            result.setdefault("failure_stage", "vlm_runtime")
+            result.setdefault("conversation_id", request_meta["conversation_id"])
+            result.setdefault("request_id", request_meta["request_id"])
+            if result.get("cancelled"):
+                logger.info(
+                    "Describe Image VLM chat cancelled: error_id=%s failure_stage=%s conversation_id=%s request_id=%s details=%s",
+                    error_id,
+                    result.get("failure_stage") or "cancel_check",
+                    request_meta["conversation_id"],
+                    request_meta["request_id"],
+                    compact_log_value(result.get("details") or result.get("error")),
+                )
+            else:
+                logger.error(
+                    "Describe Image VLM chat failed: error_id=%s failure_stage=%s conversation_id=%s request_id=%s error=%s details=%s",
+                    error_id,
+                    result.get("failure_stage") or "vlm_runtime",
+                    request_meta["conversation_id"],
+                    request_meta["request_id"],
+                    compact_log_value(result.get("error")),
+                    compact_log_value(result.get("details")),
+                )
         logger.info(
-            "Describe Image VLM chat completed: elapsed=%.3fs, ok=%s, actions=%s",
+            "Describe Image VLM chat completed: error_id=%s elapsed=%.3fs ok=%s actions=%s",
+            error_id,
             time.monotonic() - started,
-            result.get("ok") if isinstance(result, dict) else False,
-            len((result or {}).get("limited_actions") or []) if isinstance(result, dict) else 0,
+            result.get("ok"),
+            len(result.get("limited_actions") or []),
         )
-        return JSONResponse(result, status_code=200 if isinstance(result, dict) and result.get("ok") else 400)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
-        import traceback
-        try:
-            traceback.print_exc()
-        except ValueError:
-            pass
+        logger.exception(
+            "Describe Image VLM chat exception: error_id=%s failure_stage=endpoint_exception conversation_id=%s request_id=%s",
+            error_id,
+            request_meta.get("conversation_id") or "",
+            request_meta.get("request_id") or "",
+        )
         return JSONResponse(
             {
                 "ok": False,
                 "error": "Describe Image VLM/LLM AI Chat Error",
                 "details": str(e),
+                "error_id": error_id,
+                "failure_stage": "endpoint_exception",
+                "conversation_id": request_meta.get("conversation_id") or "",
+                "request_id": request_meta.get("request_id") or "",
             },
             status_code=500,
         )
@@ -15264,6 +15346,7 @@ async def describe_image_vlm_chat_clear_endpoint(payload: dict = Body(default={}
             )
             if payload.get("clear_context", True):
                 vlm.clear_conversation(conversation_id or None)
+                describe_vlm_chat.clear_describe_vlm_chat_cancels_for_conversation(conversation_id)
             return {"ok": True, "conversation_id": conversation_id, "message": "Describe Image VLM chat context cleared."}
 
         result = await run_in_threadpool(safe_process)

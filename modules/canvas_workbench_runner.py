@@ -19,6 +19,8 @@ from modules import minimax_h3_prompt_compiler
 from enhanced import parameter_profiles
 from modules.access_mode import user_can_generate
 
+logger = logging.getLogger("canvas_workbench")
+
 try:
     import simpleai_base.api_params as api_params
 except Exception:

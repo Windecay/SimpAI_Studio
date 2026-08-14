@@ -404,8 +404,22 @@ def request_describe_vlm_chat_cancel(conversation_id="", request_id=""):
 
 def clear_describe_vlm_chat_cancel(conversation_id="", request_id=""):
     key = _cancel_key(conversation_id, request_id)
+    keys = {key}
+    if key[0] and key[1]:
+        keys.add((key[0], ""))
     with _CANCELLED_REQUESTS_LOCK:
-        _CANCELLED_REQUESTS.pop(key, None)
+        for candidate in keys:
+            _CANCELLED_REQUESTS.pop(candidate, None)
+
+
+def clear_describe_vlm_chat_cancels_for_conversation(conversation_id=""):
+    conversation_key = str(conversation_id or "").strip()
+    if not conversation_key:
+        return
+    with _CANCELLED_REQUESTS_LOCK:
+        for key in list(_CANCELLED_REQUESTS):
+            if key[0] == conversation_key:
+                _CANCELLED_REQUESTS.pop(key, None)
 
 
 def is_describe_vlm_chat_cancelled(conversation_id="", request_id=""):
@@ -3483,6 +3497,16 @@ def _describe_input_media_assets(payload, asset_refs):
     return assets
 
 
+def _describe_vlm_chat_failure(result, stage):
+    failure = dict(result) if isinstance(result, dict) else {
+        "ok": False,
+        "error": "Invalid VLM response.",
+    }
+    failure.setdefault("ok", False)
+    failure.setdefault("failure_stage", str(stage or "runtime"))
+    return failure
+
+
 def run_describe_vlm_chat(payload):
     payload = payload if isinstance(payload, dict) else {}
     conversation_id = str(payload.get("conversation_id") or "").strip()
@@ -3491,14 +3515,14 @@ def run_describe_vlm_chat(payload):
     if request_kind == "creative_offer" and not _creative_offer_uses_custom_api(payload):
         if is_describe_vlm_chat_cancelled(conversation_id, request_id):
             clear_describe_vlm_chat_cancel(conversation_id, request_id)
-            return {
+            return _describe_vlm_chat_failure({
                 "ok": False,
                 "cancelled": True,
                 "conversation_id": conversation_id,
                 "request_id": request_id,
                 "error": "Stopped.",
                 "details": "Stopped by user.",
-            }
+            }, "cancel_check")
         return {
             "ok": True,
             "conversation_id": conversation_id,
@@ -3508,34 +3532,34 @@ def run_describe_vlm_chat(payload):
         }
     built = build_creative_offer_runtime_payload(payload) if request_kind == "creative_offer" else build_runtime_payload(payload)
     if not built.get("ok"):
-        return built
+        return _describe_vlm_chat_failure(built, "payload_build")
 
     from modules import canvas_vlm_runtime
 
     runtime_payload = built["runtime_payload"]
     if is_describe_vlm_chat_cancelled(conversation_id, request_id):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
-        return {
+        return _describe_vlm_chat_failure({
             "ok": False,
             "cancelled": True,
             "conversation_id": conversation_id,
             "request_id": request_id,
             "error": "Stopped.",
             "details": "Stopped by user.",
-        }
+        }, "cancel_check")
     result = canvas_vlm_runtime.canvas_vlm_run(runtime_payload)
     if is_describe_vlm_chat_cancelled(conversation_id, request_id):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
-        return {
+        return _describe_vlm_chat_failure({
             "ok": False,
             "cancelled": True,
             "conversation_id": conversation_id,
             "request_id": request_id,
             "error": "Stopped.",
             "details": "Stopped by user.",
-        }
+        }, "cancel_check")
     if not isinstance(result, dict) or not result.get("ok"):
-        return result if isinstance(result, dict) else {"ok": False, "error": "Invalid VLM response."}
+        return _describe_vlm_chat_failure(result, "vlm_runtime")
 
     if request_kind == "creative_offer":
         preference = _normalize_creative_preferences(payload.get("creative_preferences"))

@@ -882,6 +882,64 @@
         return true;
     }
 
+    function describeVlmChatRequestSummary(endpoint, payload) {
+        const source = payload && typeof payload === 'object' ? payload : {};
+        const rawImages = Array.isArray(source.images)
+            ? source.images
+            : (source.image && typeof source.image === 'object' ? [source.image] : []);
+        const imageCount = rawImages.filter((item) => item && item.data_url).length;
+        return {
+            endpoint: String(endpoint || ''),
+            conversation_id: String(source.conversation_id || '').trim().slice(0, 160),
+            request_id: String(source.request_id || '').trim().slice(0, 160),
+            request_kind: String(source.request_kind || '').trim().slice(0, 80),
+            version: String(source.version || source.params?.version || '').trim().slice(0, 160),
+            chat_mode: String(source.chat_mode || source.params?.mode || '').trim().slice(0, 80),
+            image_count: imageCount,
+            has_visual_media: imageCount > 0
+        };
+    }
+
+    function logDescribeVlmChatFailure(endpoint, payload, info = {}) {
+        const compact = (value, limit = 1200) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+        const summary = describeVlmChatRequestSummary(endpoint, payload);
+        try {
+            console.error('[SimpAI VLM Chat] request failed', Object.assign(summary, {
+                http_status: Number(info.http_status) || null,
+                error_id: compact(info.error_id, 160),
+                failure_stage: compact(info.failure_stage, 120),
+                error: compact(info.error),
+                details: compact(info.details),
+                transport_error: compact(info.transport_error)
+            }));
+        } catch (err) {
+            try { console.error('[SimpAI VLM Chat] request failed', err); } catch (ignored) {}
+        }
+    }
+
+    function describeVlmChatFailure(response) {
+        const detail = String(response?.details || response?.error || '').trim()
+            || t('The VLM chat request failed.', 'VLM 对话请求失败。');
+        if (response?.cancelled) return detail;
+        const stageLabels = {
+            payload_validation: t('request validation', '请求校验'),
+            payload_build: t('request preparation', '请求准备'),
+            cancel_check: t('cancel check', '取消检查'),
+            vlm_runtime: t('VLM runtime', 'VLM 运行'),
+            endpoint_exception: t('server endpoint', '服务接口')
+        };
+        const stage = stageLabels[String(response?.failure_stage || '').trim()]
+            || String(response?.failure_stage || '').trim();
+        const errorId = String(response?.error_id || '').trim();
+        const suffix = [
+            stage ? t(`stage: ${stage}`, `阶段：${stage}`) : '',
+            errorId ? t(`error ID: ${errorId}`, `错误编号：${errorId}`) : ''
+        ].filter(Boolean).join(t('; ', '；'));
+        return suffix
+            ? t(`VLM chat failed: ${detail} (${suffix})`, `VLM 对话失败：${detail}（${suffix}）`)
+            : detail;
+    }
+
     async function postJson(endpoint, payload, options = {}) {
         try {
             const response = await fetch(endpoint, {
@@ -897,18 +955,30 @@
                 data = null;
             }
             if (!response.ok) {
-                return Object.assign({}, data || {}, {
+                const failure = Object.assign({}, data || {}, {
                     ok: false,
                     error: data?.error || `HTTP ${response.status}`,
                     details: data?.details || response.statusText || ''
                 });
+                if (!failure.aborted) {
+                    logDescribeVlmChatFailure(endpoint, payload, Object.assign({}, failure, {
+                        http_status: response.status
+                    }));
+                }
+                return failure;
             }
-            return data || { ok: false, error: 'empty response' };
+            const result = data || { ok: false, error: 'empty response' };
+            if (result?.ok === false && !result?.aborted) {
+                logDescribeVlmChatFailure(endpoint, payload, result);
+            }
+            return result;
         } catch (err) {
             if (err?.name === 'AbortError') {
                 return { ok: false, aborted: true, error: 'aborted' };
             }
-            return { ok: false, error: err?.message || String(err || 'request failed') };
+            const failure = { ok: false, error: err?.message || String(err || 'request failed') };
+            logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error });
+            return failure;
         }
     }
 
@@ -1884,6 +1954,15 @@
         if (response?.ok && response.ready) {
             state.missingVlmModelRequest = null;
             return true;
+        }
+
+        if (response?.ok && !response.ready) {
+            logDescribeVlmChatFailure('/canvas-workbench/vlm-model-status', payload, {
+                error_id: response.error_id,
+                failure_stage: 'model_status',
+                error: response.error || 'VLM model is not ready.',
+                details: response.message || response.details || '',
+            });
         }
 
         const missingRows = Array.isArray(response?.missing_models) ? response.missing_models : [];
@@ -3111,7 +3190,7 @@
         runtime.lastAutoReferencedDescribeMediaKey = '';
         if (hadChatWork) replacePendingAssistant(t('Stopped.', '已停止。'), runtime.messages);
         applyConversationRuntime(runtime);
-        if (previousConversationId || previousRequestId) {
+        if (previousRequestId) {
             notifyBackendChatCancel(previousConversationId, previousRequestId).catch(() => {});
         }
         return { previousConversationId, previousRequestId };
@@ -3411,10 +3490,11 @@
     }
 
     async function notifyBackendChatCancel(conversationId, requestId) {
-        if (!conversationId && !requestId) return;
+        const normalizedRequestId = String(requestId || '').trim();
+        if (!normalizedRequestId) return;
         await postJson('/describe-image/vlm-chat-cancel', {
             conversation_id: conversationId || '',
-            request_id: requestId || ''
+            request_id: normalizedRequestId
         });
     }
 
@@ -6497,7 +6577,7 @@
         );
         const reply = response?.ok
             ? visibleReplyFromResponse(response, completion)
-            : (response?.details || response?.error || t('VLM/LLM AI chat failed.', 'VLM/LLM AI对话失败。'));
+            : describeVlmChatFailure(response);
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             role: 'assistant',
