@@ -231,13 +231,18 @@ def expand_area_to_minimum(area, image_shape, minimum_size=MIN_INPAINT_CONTEXT):
     a, b, c, d = area
     image_height, image_width = image_shape[:2]
     short_side = min(image_height, image_width)
-    minimum_short_side = min(max(1, int(minimum_size)), short_side // 2)
-    if image_height <= image_width:
-        minimum_height = minimum_short_side
-        minimum_width = min(image_width, int(round(minimum_short_side * image_width / image_height)))
+    minimum_size = max(1, int(minimum_size))
+    if short_side >= minimum_size:
+        minimum_height = minimum_size
+        minimum_width = minimum_size
     else:
-        minimum_width = minimum_short_side
-        minimum_height = min(image_height, int(round(minimum_short_side * image_height / image_width)))
+        minimum_short_side = max(1, short_side // 2)
+        if image_height <= image_width:
+            minimum_height = minimum_short_side
+            minimum_width = min(image_width, int(round(minimum_short_side * image_width / image_height)))
+        else:
+            minimum_width = minimum_short_side
+            minimum_height = min(image_height, int(round(minimum_short_side * image_height / image_width)))
 
     target_height = max(b - a, minimum_height)
     target_width = max(d - c, minimum_width)
