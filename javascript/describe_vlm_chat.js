@@ -33,6 +33,11 @@
     const CHAT_MAX_TOKENS_MIN = 64;
     const CHAT_MAX_TOKENS_MAX = 8192;
     const CHAT_MAX_TOKEN_CHOICES = Object.freeze([256, 512, 1024, 2048, 3072, 4096, 8192]);
+    const VLM_VRAM_POLICY_CHOICES = Object.freeze([
+        { value: 'relaxed', label: ['Relaxed', '宽松'] },
+        { value: 'standard', label: ['Standard', '标准'] },
+        { value: 'extreme', label: ['Extreme', '极限'] }
+    ]);
     const DESCRIBE_VLM_MODEL_CHOICES = [
         'Qwen3.5-9B-abliterated-Q4_K_M',
         'Qwen3.5-9B-abliterated-Q2_K',
@@ -166,6 +171,24 @@
         return 'chat';
     }
 
+    function normalizeVlmVramPolicy(value) {
+        const policy = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+        return VLM_VRAM_POLICY_CHOICES.some((item) => item.value === policy) ? policy : 'extreme';
+    }
+
+    function vlmVramPolicyLabel(value) {
+        const policy = normalizeVlmVramPolicy(value);
+        const item = VLM_VRAM_POLICY_CHOICES.find((entry) => entry.value === policy);
+        return t(item?.label?.[0] || policy, item?.label?.[1] || policy);
+    }
+
+    function renderVlmVramPolicyOptions() {
+        const selected = normalizeVlmVramPolicy(state.vramPolicy);
+        return VLM_VRAM_POLICY_CHOICES.map((item) => (
+            `<option value="${item.value}" ${selected === item.value ? 'selected' : ''}>${escapeHtml(t(item.label[0], item.label[1]))}</option>`
+        )).join('');
+    }
+
     function normalizeChatMaxTokens(value, fallback = 0) {
         const parsed = Number(value);
         if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -265,6 +288,7 @@
                 chatMode: normalizeChatMode(data.chatMode),
                 customSystemPrompt: String(data.customSystemPrompt || ''),
                 maxTokens: normalizeChatMaxTokens(data.maxTokens, 0),
+                vramPolicy: normalizeVlmVramPolicy(data.vramPolicy),
                 ...selection,
                 systemPromptManualOverride: !!data.systemPromptManualOverride,
                 unloadAfterChat: !!data.unloadAfterChat,
@@ -275,6 +299,7 @@
                 chatMode: 'chat',
                 customSystemPrompt: '',
                 maxTokens: 0,
+                vramPolicy: 'extreme',
                 systemPromptTemplateId: '',
                 systemPromptPickerValue: NO_SYSTEM_PROMPT_PICKER_VALUE,
                 baseSystemPromptContent: '',
@@ -314,6 +339,11 @@
         chatMode: savedChatSettings.chatMode,
         customSystemPrompt: savedChatSettings.customSystemPrompt,
         maxTokens: savedChatSettings.maxTokens,
+        vramPolicy: normalizeVlmVramPolicy(savedChatSettings.vramPolicy),
+        vlmRuntimeStatusPollTimer: null,
+        vlmRuntimeStatusRequest: null,
+        vlmRuntimeStatus: null,
+        vlmRuntimeStatusResponse: null,
         systemPromptTemplateId: savedChatSettings.systemPromptTemplateId,
         systemPromptPickerValue: savedChatSettings.systemPromptPickerValue,
         baseSystemPromptContent: savedChatSettings.baseSystemPromptContent,
@@ -637,6 +667,7 @@
                 chatMode: state.chatMode,
                 customSystemPrompt: state.customSystemPrompt,
                 maxTokens: normalizeChatMaxTokens(state.maxTokens, 0),
+                vramPolicy: normalizeVlmVramPolicy(state.vramPolicy),
                 systemPromptTemplateId: state.systemPromptTemplateId,
                 systemPromptPickerValue: state.systemPromptPickerValue,
                 baseSystemPromptContent: state.baseSystemPromptContent,
@@ -810,6 +841,7 @@
         syncConversationControls(modal);
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
         const maxTokens = modal.querySelector('[data-describe-vlm-chat-max-tokens]');
+        const vramPolicy = modal.querySelector('[data-describe-vlm-chat-vram-policy]');
         const system = modal.querySelector('[data-describe-vlm-chat-system]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const unload = modal.querySelector('[data-describe-vlm-chat-unload-after]');
@@ -819,6 +851,10 @@
         if (maxTokens) {
             maxTokens.innerHTML = renderChatMaxTokenOptions();
             maxTokens.value = String(normalizeChatMaxTokens(state.maxTokens, 0));
+        }
+        if (vramPolicy) {
+            vramPolicy.innerHTML = renderVlmVramPolicyOptions();
+            vramPolicy.value = normalizeVlmVramPolicy(state.vramPolicy);
         }
         syncSystemPromptTemplateControls(modal);
         if (system && system.value !== state.customSystemPrompt) system.value = state.customSystemPrompt;
@@ -831,6 +867,7 @@
         }
         if (input) input.setAttribute('placeholder', chatInputPlaceholder(state.chatMode));
         updateAnswerModelIndicator(modal);
+        updateVlmRuntimeStatus(modal);
     }
 
     function componentHost(elemId) {
@@ -1897,7 +1934,10 @@
     function buildVlmModelStatusPayload(version) {
         const cleanVersion = resolveVlmVersion(version);
         const customApi = readDescribeCustomApi(cleanVersion);
-        const params = { version: cleanVersion };
+        const params = {
+            version: cleanVersion,
+            vram_policy: normalizeVlmVramPolicy(state.vramPolicy)
+        };
         if (customApi) {
             Object.assign(params, {
                 custom_provider: customApi.provider || 'custom',
@@ -1964,6 +2004,7 @@
         version = resolveVlmVersion(version);
         const { payload, customApi } = buildVlmModelStatusPayload(version);
         const response = await postJson('/canvas-workbench/vlm-model-status', payload);
+        updateVlmRuntimeStatus(document.getElementById('describe_vlm_chat_modal'), response);
         if (response?.ok && response.ready) {
             state.missingVlmModelRequest = null;
             return true;
@@ -1988,6 +2029,123 @@
         const message = response?.message || response?.details || response?.error || t('VLM model is not ready.', 'VLM 模型未就绪。');
         setStatus(message, true);
         return false;
+    }
+
+    function formatVlmGb(value, fallback = '--') {
+        const number = Number(value);
+        return Number.isFinite(number) && number >= 0 ? number.toFixed(1) : fallback;
+    }
+
+    function formatVlmRuntimeStatus(response = state.vlmRuntimeStatusResponse) {
+        const selectedVersion = resolveVlmVersion(readSelectedVlmVersion());
+        if (selectedVersion === 'Custom') {
+            return localText('Remote API selected', '当前使用远程 API');
+        }
+        if (response?.state === 'missing' || (response?.ready === false && response?.missing_count > 0)) {
+            return t('Model files are missing', '模型文件缺失');
+        }
+        if (response?.backend && response.backend !== 'llamacpp' && response.backend !== 'custom_api') {
+            return t('This model does not use llama.cpp', '当前模型不使用 llama.cpp');
+        }
+        const runtime = response?.runtime_status || state.vlmRuntimeStatus;
+        if (!runtime) {
+            return localText('Waiting for model status', '等待模型状态');
+        }
+
+        const currentPolicy = vlmVramPolicyLabel(runtime.policy || state.vramPolicy);
+        const policyPending = runtime.policy_pending
+            ? localText(
+                `Active ${currentPolicy}; reload for ${vlmVramPolicyLabel(runtime.requested_policy)}`,
+                `当前使用${currentPolicy}；重新请求后使用${vlmVramPolicyLabel(runtime.requested_policy)}`
+            )
+            : '';
+        const total = formatVlmGb(runtime.gpu_total_gb);
+        const used = formatVlmGb(runtime.gpu_used_gb);
+        const memory = localText(`VRAM ${used} / ${total} GB`, `显存 ${used} / ${total} GB`);
+        if (runtime.loaded && runtime.state === 'ready') {
+            const gpuLayers = `${Number(runtime.gpu_layers) || 0}/${Number(runtime.total_layers) || 0}`;
+            const cpuLayers = `${Number(runtime.cpu_layers) || 0}`;
+            return localText(
+                [policyPending, `GPU layers ${gpuLayers}`, `CPU layers ${cpuLayers}`, memory].filter(Boolean).join(' · '),
+                [policyPending, `GPU 层 ${gpuLayers}`, `CPU 层 ${cpuLayers}`, memory].filter(Boolean).join(' · ')
+            );
+        }
+        return localText(
+            [policyPending, 'Model not loaded', memory].filter(Boolean).join(' · '),
+            [policyPending, '模型未加载', memory].filter(Boolean).join(' · ')
+        );
+    }
+
+    function updateVlmRuntimeStatus(modal = document.getElementById('describe_vlm_chat_modal'), response) {
+        if (response !== undefined) {
+            state.vlmRuntimeStatusResponse = response || null;
+            state.vlmRuntimeStatus = response?.runtime_status || null;
+        }
+        const status = modal?.querySelector?.('[data-describe-vlm-chat-runtime-status]');
+        const value = status?.querySelector?.('[data-describe-vlm-chat-runtime-status-value]');
+        if (!status || !value) return;
+        const policy = status.querySelector('[data-describe-vlm-chat-vram-policy]');
+        if (policy) {
+            policy.innerHTML = renderVlmVramPolicyOptions();
+            policy.value = normalizeVlmVramPolicy(state.vramPolicy);
+        }
+        value.textContent = formatVlmRuntimeStatus();
+        const runtime = state.vlmRuntimeStatus;
+        const titleParts = [];
+        if (runtime?.loaded) {
+            const budget = formatVlmGb(runtime.layer_budget_gb);
+            const kvCache = formatVlmGb(runtime.kv_cache_gb);
+            if (budget !== '--') titleParts.push(localText(`Layer budget: ${budget} GB`, `层预算：${budget} GB`));
+            if (kvCache !== '--') titleParts.push(localText(`KV cache: ${kvCache} GB`, `KV cache：${kvCache} GB`));
+            titleParts.push(localText(
+                `K/V offload: ${runtime.offload_kqv ? 'on' : 'off'}`,
+                `K/V offload：${runtime.offload_kqv ? '开启' : '关闭'}`
+            ));
+        }
+        if (titleParts.length) status.setAttribute('title', titleParts.join(localText('; ', '；')));
+        else status.removeAttribute('title');
+        status.classList.toggle('is-ready', !!runtime?.loaded && runtime.state === 'ready');
+        status.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
+    }
+
+    async function refreshVlmRuntimeStatus() {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal || modal.hidden) return null;
+        if (state.vlmRuntimeStatusRequest) return state.vlmRuntimeStatusRequest;
+        const version = resolveVlmVersion(readSelectedVlmVersion());
+        const { payload } = buildVlmModelStatusPayload(version);
+        const request = postJson('/canvas-workbench/vlm-model-status', payload);
+        state.vlmRuntimeStatusRequest = request;
+        try {
+            const response = await request;
+            updateVlmRuntimeStatus(modal, response);
+            return response;
+        } catch (err) {
+            updateVlmRuntimeStatus(modal, null);
+            return null;
+        } finally {
+            if (state.vlmRuntimeStatusRequest === request) state.vlmRuntimeStatusRequest = null;
+        }
+    }
+
+    function stopVlmRuntimeStatusPolling() {
+        if (state.vlmRuntimeStatusPollTimer) {
+            window.clearInterval(state.vlmRuntimeStatusPollTimer);
+            state.vlmRuntimeStatusPollTimer = null;
+        }
+        state.vlmRuntimeStatusRequest = null;
+    }
+
+    function startVlmRuntimeStatusPolling() {
+        stopVlmRuntimeStatusPolling();
+        refreshVlmRuntimeStatus().catch(() => {});
+        state.vlmRuntimeStatusPollTimer = window.setInterval(() => {
+            if (!modalIsOpen()) {
+                stopVlmRuntimeStatusPolling();
+                return;
+            }
+            refreshVlmRuntimeStatus().catch(() => {});
+        }, 2000);
     }
 
     function currentAnswerModelLabel() {
@@ -2561,6 +2719,7 @@
     <label class="describe-vlm-chat-max-tokens-field" title="${escapeHtml(localText('Choose the output token budget.', '选择输出 Token 预算。'))}"><span>${escapeHtml(localText('Max output tokens', '最大输出 Token'))}</span><select data-describe-vlm-chat-max-tokens aria-label="${escapeHtml(localText('Max output tokens', '最大输出 Token'))}">${renderChatMaxTokenOptions()}</select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><div class="describe-vlm-chat-template-picker"><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select><button type="button" class="describe-vlm-chat-template-manage" data-describe-vlm-chat-user-template-open title="${escapeHtml(localText('Manage user documents', '管理用户项目'))}" aria-label="${escapeHtml(localText('Manage user documents', '管理用户项目'))}"><i class="fa-solid fa-folder-plus"></i></button></div></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
+    <div class="describe-vlm-chat-runtime-status" data-describe-vlm-chat-runtime-status aria-live="polite"><i class="fa-solid fa-memory" aria-hidden="true"></i><select class="describe-vlm-chat-runtime-policy" data-describe-vlm-chat-vram-policy aria-label="${escapeHtml(t('VRAM policy', '显存策略'))}" title="${escapeHtml(t('Choose how much VRAM llama.cpp may use.', '选择 llama.cpp 使用的显存档位。'))}">${renderVlmVramPolicyOptions()}</select><span data-describe-vlm-chat-runtime-status-value>${escapeHtml(t('Waiting for model status', '等待模型状态'))}</span><button type="button" data-describe-vlm-chat-runtime-status-refresh title="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}" aria-label="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}"><i class="fa-solid fa-rotate"></i></button></div>
     <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(chatModeHint(state.chatMode))}</div>
   </div>
   <div class="describe-vlm-chat-chat-area">
@@ -2633,6 +2792,7 @@
         autoReferenceDescribeInputMedia().catch(() => {});
         installDescribeFloatingLayer(modal);
         document.documentElement.classList.add('describe-vlm-chat-open');
+        startVlmRuntimeStatusPolling();
         window.requestAnimationFrame(() => {
             const panel = modal.querySelector('.describe-vlm-chat-panel');
             if (describeCompactViewport()) {
@@ -3181,6 +3341,7 @@
     function closeModal() {
         const modal = ensureModal();
         closeUserSystemPromptTemplateDialog(modal);
+        stopVlmRuntimeStatusPolling();
         modal.hidden = true;
         document.documentElement.classList.remove('describe-vlm-chat-open');
     }
@@ -6280,6 +6441,7 @@
             history: history.messages,
             history_full: fullHistory.messages,
             version: options.version,
+            vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
             custom_api: options.custom_api,
             unload_after_chat: !!runtime.unloadAfterChat,
             creative_preferences: preference,
@@ -6554,6 +6716,7 @@
             },
             images,
             version,
+            vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
             custom_api: customApi,
             chat_mode: selectedMode,
             user_system_prompt: customSystemPrompt,
@@ -6818,6 +6981,10 @@
             });
             return;
         }
+        if (evt.target.closest('[data-describe-vlm-chat-runtime-status-refresh]')) {
+            refreshVlmRuntimeStatus().catch(() => {});
+            return;
+        }
         const rollbackMessage = evt.target.closest('[data-describe-vlm-chat-rollback]');
         if (rollbackMessage) {
             rollbackChatToMessage(rollbackMessage.getAttribute('data-describe-vlm-chat-rollback')).catch(() => {
@@ -6942,6 +7109,15 @@
             saveChatSettings();
             return;
         }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-vram-policy]')) {
+            state.vramPolicy = normalizeVlmVramPolicy(evt.target.value);
+            state.vlmRuntimeStatus = null;
+            state.vlmRuntimeStatusResponse = null;
+            saveChatSettings();
+            updateVlmRuntimeStatus(document.getElementById('describe_vlm_chat_modal'));
+            refreshVlmRuntimeStatus().catch(() => {});
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-auto-generate]')) {
             setCreativePreference({ auto_generate: !!evt.target.checked }, 'preference_card');
             return;
@@ -7051,6 +7227,10 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-model-select]')) {
             setDescribeVlmVersionFromHeader(evt.target.value);
+            state.vlmRuntimeStatus = null;
+            state.vlmRuntimeStatusResponse = null;
+            updateVlmRuntimeStatus(document.getElementById('describe_vlm_chat_modal'));
+            refreshVlmRuntimeStatus().catch(() => {});
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-conversation-select]')) {

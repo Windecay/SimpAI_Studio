@@ -217,6 +217,7 @@ from modules.llama_cpp_runtime import (
     is_llama_cpp_memory_error,
     llama_cpp_gpu_budget,
     llama_cpp_gpu_layer_attempts,
+    normalize_llama_cpp_vram_policy,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.vlm_model_catalog import gguf_int_values
@@ -233,12 +234,15 @@ class LlamaCppVLM:
         self.current_n_ctx = None
         self.current_image_min_tokens = None
         self.current_image_max_tokens = None
+        self.current_vram_policy = "extreme"
+        self.current_target_n_gpu_layers = None
         self.current_n_gpu_layers = None
         self.current_total_layers = None
         self.current_gpu_layer_size_gb = None
         self.current_kv_cache_gb = None
         self.current_mmproj_size_gb = None
         self.current_offload_kqv = None
+        self.current_vram_estimate = {}
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
 
@@ -510,13 +514,14 @@ class LlamaCppVLM:
         except Exception:
             return 0.0
 
-    def _calculate_auto_n_gpu_layers(self, model_path, mmproj_path, n_ctx, loaded_model_credit_gb=0.0):
+    def _calculate_auto_n_gpu_layers(self, model_path, mmproj_path, n_ctx, loaded_model_credit_gb=0.0, vram_policy="extreme"):
         memory_management = ldm_patched.modules.model_management
         memory_management.soft_empty_cache(True)
         budget = llama_cpp_gpu_budget(
             memory_management.get_free_memory(),
             memory_management.get_total_memory(),
             reclaimable_gb=loaded_model_credit_gb,
+            policy=vram_policy,
         )
         total_layers = self._get_layer_count(model_path)
 
@@ -532,7 +537,17 @@ class LlamaCppVLM:
             n_kv_heads,
         )
         offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
-        available_vram_gb = budget["gpu_budget_gb"] - (kv_cache_gb if offload_kqv else 0.0)
+        kv_cache_reserved_gb = (
+            kv_cache_gb
+            if budget.get("reserve_kv_cache") and offload_kqv
+            else 0.0
+        )
+        # The extreme policy gives the layer estimator the whole budget and
+        # lets the memory retry sequence handle KV-cache pressure. The other
+        # policies reserve the estimated KV cache before selecting layers.
+        available_vram_gb = budget["gpu_budget_gb"]
+        if kv_cache_reserved_gb:
+            available_vram_gb = max(0.0, available_vram_gb - kv_cache_reserved_gb)
 
         weight_overhead = 1.15
         mmproj_size_gb = 0.0
@@ -543,19 +558,22 @@ class LlamaCppVLM:
             "loaded_model_credit_gb": max(0.0, float(loaded_model_credit_gb or 0.0)),
             "kv_cache_gb": kv_cache_gb,
             "kv_cache_from_metadata": kv_cache_from_metadata,
+            "kv_cache_reserved_gb": kv_cache_reserved_gb,
             "offload_kqv": offload_kqv,
             "mmproj_size_gb": mmproj_size_gb,
             "available_vram_gb": available_vram_gb,
+            "layer_budget_gb": available_vram_gb,
             "total_layers": total_layers,
             "layer_size_gb": None,
         }
         logger.info(
             "llama.cpp VRAM budget: free=%.2fGB, total=%.2fGB, reserve=%.2fGB, "
-            "budget=%.2fGB, kv_cache=%.2fGB (%s), offload_kqv=%s, weights=%.2fGB",
+            "budget=%.2fGB, policy=%s, kv_cache=%.2fGB (%s), offload_kqv=%s, layer_budget=%.2fGB",
             budget["free_vram_gb"],
             budget["total_vram_gb"],
             budget["reserve_gb"],
             budget["gpu_budget_gb"],
+            budget["policy"],
             kv_cache_gb,
             "metadata" if kv_cache_from_metadata else "fallback",
             offload_kqv,
@@ -580,19 +598,21 @@ class LlamaCppVLM:
             n_gpu_layers = max(0, int(available_vram_gb / layer_size_gb))
 
         n_gpu_layers = min(n_gpu_layers, total_layers)
+        estimate["target_n_gpu_layers"] = n_gpu_layers
         logger.info(f"Result: n_gpu_layers = {n_gpu_layers}")
         return n_gpu_layers, estimate
 
-    def load_model(self, model_name, chat_handler_name, n_gpu_layers=-1, n_ctx=8192, image_min_tokens=0, image_max_tokens=0, mmproj_name=None):
+    def load_model(self, model_name, chat_handler_name, n_gpu_layers=-1, n_ctx=8192, image_min_tokens=0, image_max_tokens=0, mmproj_name=None, vram_policy="extreme"):
         if not LLAMA_CPP_AVAILABLE:
             logger.error("llama-cpp-python is not correctly installed or CUDA libraries are missing.")
             return
 
         with self.lock:
+            vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
-            same_loaded_model = (
+            same_model_identity = (
                 self.llm is not None
                 and self.current_model_path == model_path
                 and self.current_mmproj_path == mmproj_path
@@ -601,17 +621,19 @@ class LlamaCppVLM:
                 and self.current_image_min_tokens == int(image_min_tokens or 0)
                 and self.current_image_max_tokens == int(image_max_tokens or 0)
             )
+            same_loaded_model = same_model_identity and self.current_vram_policy == vram_policy
 
             auto_n_gpu_layers = n_gpu_layers == -1
             auto_estimate = {}
             if auto_n_gpu_layers:
                 try:
-                    current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path) if same_loaded_model else 0.0
+                    current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path) if same_model_identity else 0.0
                     n_gpu_layers, auto_estimate = self._calculate_auto_n_gpu_layers(
                         model_path,
                         mmproj_path,
                         n_ctx,
                         loaded_model_credit_gb=current_credit_gb,
+                        vram_policy=vram_policy,
                     )
                 except Exception as e:
                     logger.warning(f"llama.cpp VRAM calculation failed: {e}. Using CPU memory settings.")
@@ -621,6 +643,7 @@ class LlamaCppVLM:
                         "offload_kqv": False,
                     }
 
+            target_n_gpu_layers = n_gpu_layers
             if same_loaded_model:
                 current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
                 target_score = self._gpu_layer_score(n_gpu_layers, auto_estimate.get("total_layers") or self.current_total_layers)
@@ -700,12 +723,18 @@ class LlamaCppVLM:
             self.current_n_ctx = int(n_ctx)
             self.current_image_min_tokens = int(image_min_tokens or 0)
             self.current_image_max_tokens = int(image_max_tokens or 0)
+            self.current_vram_policy = vram_policy
+            self.current_target_n_gpu_layers = target_n_gpu_layers
             self.current_n_gpu_layers = loaded_layers
             self.current_total_layers = total_layers
             self.current_gpu_layer_size_gb = auto_estimate.get("layer_size_gb")
             self.current_kv_cache_gb = auto_estimate.get("kv_cache_gb")
             self.current_mmproj_size_gb = auto_estimate.get("mmproj_size_gb")
             self.current_offload_kqv = loaded_offload_kqv
+            self.current_vram_estimate = dict(auto_estimate)
+            self.current_vram_estimate["target_n_gpu_layers"] = target_n_gpu_layers
+            self.current_vram_estimate["loaded_n_gpu_layers"] = loaded_layers
+            self.current_vram_estimate["loaded_offload_kqv"] = loaded_offload_kqv
             ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
 
     def free_model(self, clear_conversations=False):
@@ -727,15 +756,67 @@ class LlamaCppVLM:
             self.current_image_max_tokens = None
             self.current_n_gpu_layers = None
             self.current_total_layers = None
+            self.current_target_n_gpu_layers = None
             self.current_gpu_layer_size_gb = None
             self.current_kv_cache_gb = None
             self.current_mmproj_size_gb = None
             self.current_offload_kqv = None
+            self.current_vram_estimate = {}
             if clear_conversations:
                 self.clear_conversation()
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+    def get_runtime_status(self, vram_policy=None):
+        acquired = self.lock.acquire(blocking=False)
+        try:
+            return self._runtime_status_snapshot(vram_policy)
+        finally:
+            if acquired:
+                self.lock.release()
+
+    def _runtime_status_snapshot(self, vram_policy=None):
+        requested_policy = normalize_llama_cpp_vram_policy(vram_policy or self.current_vram_policy)
+        memory_management = ldm_patched.modules.model_management
+        gpu_total_gb = 0.0
+        gpu_free_gb = 0.0
+        try:
+            gpu_total_gb = max(0.0, float(memory_management.get_total_memory()) / (1024 ** 3))
+            gpu_free_gb = max(0.0, float(memory_management.get_free_memory()) / (1024 ** 3))
+        except Exception:
+            pass
+
+        total_layers = max(0, int(self.current_total_layers or 0))
+        gpu_layers = self.current_n_gpu_layers
+        if gpu_layers == -1:
+            gpu_layers = total_layers
+        elif gpu_layers is None:
+            gpu_layers = 0
+        gpu_layers = max(0, min(total_layers, int(gpu_layers)))
+        loaded = self.llm is not None
+        loaded_policy = normalize_llama_cpp_vram_policy(self.current_vram_policy)
+        estimate = dict(self.current_vram_estimate or {})
+        return {
+            "loaded": loaded,
+            "state": "ready" if loaded else "not_loaded",
+            "policy": loaded_policy if loaded else requested_policy,
+            "requested_policy": requested_policy,
+            "policy_pending": bool(loaded and loaded_policy != requested_policy),
+            "model": os.path.basename(self.current_model_path or ""),
+            "model_path": self.current_model_path or "",
+            "gpu_layers": gpu_layers if loaded else 0,
+            "total_layers": total_layers if loaded else 0,
+            "cpu_layers": max(0, total_layers - gpu_layers) if loaded else 0,
+            "target_gpu_layers": int(self.current_target_n_gpu_layers or 0) if loaded else 0,
+            "offload_kqv": bool(self.current_offload_kqv) if loaded else False,
+            "gpu_used_gb": max(0.0, gpu_total_gb - gpu_free_gb),
+            "gpu_free_gb": gpu_free_gb,
+            "gpu_total_gb": gpu_total_gb,
+            "gpu_budget_gb": estimate.get("gpu_budget_gb"),
+            "layer_budget_gb": estimate.get("layer_budget_gb"),
+            "kv_cache_gb": estimate.get("kv_cache_gb"),
+        }
 
     def clear_conversation(self, conversation_id=None):
         with self.lock:

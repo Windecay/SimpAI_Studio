@@ -3,11 +3,44 @@ import sys
 
 
 LLAMA_CPP_RUNTIME_VERSION = "0.3.44"
-LLAMA_CPP_GPU_USAGE_CAP = 0.85
-LLAMA_CPP_VRAM_RESERVE_RATIO = 0.15
-LLAMA_CPP_MIN_VRAM_RESERVE_GB = 2.0
+# Keep a small Windows/allocator margin while allowing 24 GB cards to reach
+# roughly 22 GB of llama.cpp allocations when the rest of the GPU is free.
+LLAMA_CPP_GPU_USAGE_CAP = 0.99
+LLAMA_CPP_VRAM_RESERVE_RATIO = 0.05
+LLAMA_CPP_MIN_VRAM_RESERVE_GB = 1.0
 LLAMA_CPP_UNKNOWN_KV_GB_AT_16K = 4.0
 _GIB = float(1024 ** 3)
+
+LLAMA_CPP_VRAM_POLICIES = {
+    "relaxed": {
+        "gpu_usage_cap": 0.90,
+        "reserve_ratio": 0.15,
+        "min_reserve_gb": 2.0,
+        "reserve_kv_cache": True,
+    },
+    "standard": {
+        "gpu_usage_cap": 0.95,
+        "reserve_ratio": 0.10,
+        "min_reserve_gb": 1.5,
+        "reserve_kv_cache": True,
+    },
+    "extreme": {
+        "gpu_usage_cap": LLAMA_CPP_GPU_USAGE_CAP,
+        "reserve_ratio": LLAMA_CPP_VRAM_RESERVE_RATIO,
+        "min_reserve_gb": LLAMA_CPP_MIN_VRAM_RESERVE_GB,
+        "reserve_kv_cache": False,
+    },
+}
+
+
+def normalize_llama_cpp_vram_policy(policy):
+    value = str(policy or "extreme").strip().lower().replace("-", "_")
+    return value if value in LLAMA_CPP_VRAM_POLICIES else "extreme"
+
+
+def llama_cpp_vram_policy_config(policy="extreme"):
+    name = normalize_llama_cpp_vram_policy(policy)
+    return name, dict(LLAMA_CPP_VRAM_POLICIES[name])
 LLAMA_CPP_MODELSCOPE_BASE = (
     "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama"
 )
@@ -25,20 +58,28 @@ _WHEEL_HASHES = {
 }
 
 
-def llama_cpp_gpu_budget(free_vram_bytes, total_vram_bytes, reclaimable_gb=0.0):
+def llama_cpp_gpu_budget(free_vram_bytes, total_vram_bytes, reclaimable_gb=0.0, policy="extreme"):
+    policy_name, policy_config = llama_cpp_vram_policy_config(policy)
+    usage_cap = float(policy_config["gpu_usage_cap"])
+    reserve_ratio = float(policy_config["reserve_ratio"])
+    min_reserve_gb = float(policy_config["min_reserve_gb"])
     free_vram_gb = max(0.0, float(free_vram_bytes or 0) / _GIB)
     total_vram_gb = max(0.0, float(total_vram_bytes or 0) / _GIB)
     reclaimable_gb = max(0.0, float(reclaimable_gb or 0.0))
     effective_free_gb = free_vram_gb + reclaimable_gb
 
     if total_vram_gb > 0:
-        capped_vram_gb = min(effective_free_gb, total_vram_gb * LLAMA_CPP_GPU_USAGE_CAP)
-        reserve_gb = max(LLAMA_CPP_MIN_VRAM_RESERVE_GB, total_vram_gb * LLAMA_CPP_VRAM_RESERVE_RATIO)
+        capped_vram_gb = min(effective_free_gb, total_vram_gb * usage_cap)
+        reserve_gb = max(min_reserve_gb, total_vram_gb * reserve_ratio)
     else:
-        capped_vram_gb = effective_free_gb * LLAMA_CPP_GPU_USAGE_CAP
-        reserve_gb = LLAMA_CPP_MIN_VRAM_RESERVE_GB
+        capped_vram_gb = effective_free_gb * usage_cap
+        reserve_gb = min_reserve_gb
 
     return {
+        "policy": policy_name,
+        "gpu_usage_cap": usage_cap,
+        "reserve_ratio": reserve_ratio,
+        "reserve_kv_cache": bool(policy_config["reserve_kv_cache"]),
         "free_vram_gb": effective_free_gb,
         "total_vram_gb": total_vram_gb,
         "capped_vram_gb": capped_vram_gb,

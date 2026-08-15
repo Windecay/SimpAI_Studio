@@ -21,6 +21,7 @@ import modules.util as util
 import modules.vlm_api_profiles as vlm_api_profiles
 import shared
 from enhanced.vlm import VLM, vlm
+from enhanced.llamacpp_vlm import llamacpp_vlm
 from modules.access_mode import user_can_download_models
 from modules.custom_llm_api import (
     api_format_supported,
@@ -205,6 +206,7 @@ def canvas_vlm_model_status(payload):
             "ready": ready,
             "state": "ready" if ready else "custom",
             "version": version_name,
+            "backend": "custom_api",
             "model": model,
             "missing_count": 0,
             "missing_models": [],
@@ -280,11 +282,15 @@ def canvas_vlm_model_status(payload):
         and all(str(item.get("url") or "").strip() for item in missing)
     )
     ready = len(missing) == 0
+    runtime_status = None
+    if backend == "llamacpp":
+        runtime_status = llamacpp_vlm.get_runtime_status(params.get("vram_policy"))
     return {
         "ok": True,
         "ready": ready,
         "state": "ready" if ready else "missing",
         "version": version_name,
+        "backend": backend,
         "model": model_name,
         "missing_count": len(missing),
         "missing_models": missing,
@@ -292,6 +298,8 @@ def canvas_vlm_model_status(payload):
         "download_disabled": not bool(can_download),
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "message": "VLM model files are ready." if ready else f"{len(missing)} VLM model file(s) are missing. Download before running.",
+        "vram_policy": (runtime_status or {}).get("policy") or str(params.get("vram_policy") or "extreme"),
+        "runtime_status": runtime_status,
     }
 
 def canvas_queue_vlm_model_downloads(payload):
@@ -905,6 +913,7 @@ def canvas_vlm_run(payload):
 
     stage_started = time.monotonic()
     VLM.set_version(version_name)
+    params["vram_policy"] = VLM.set_vram_policy(params.get("vram_policy"))
     _canvas_vlm_add_timing(params, "set_version", time.monotonic() - stage_started)
 
     image_input = None

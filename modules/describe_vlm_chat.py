@@ -8,6 +8,7 @@ import threading
 import time
 
 import modules.canvas_danbooru_service as canvas_danbooru_service
+from modules.llama_cpp_runtime import normalize_llama_cpp_vram_policy
 import modules.vlm_api_profiles as vlm_api_profiles
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 
@@ -1618,6 +1619,7 @@ def build_runtime_payload(payload):
     current_prompt = str(payload.get("current_prompt") or "")
     media_sources = _media_sources_from_payload(payload, conversation_id)
     prompt_options = _prompt_options_from_payload(payload, lang)
+    vram_policy = normalize_llama_cpp_vram_policy(payload.get("vram_policy"))
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     prompt_actions_enabled = bool(prompt_options.get("enable_prompt_skills") and prompt_options.get("chat_mode") not in {"raw", "guide"})
     generation_actions_enabled = bool(prompt_options.get("enable_generation_actions"))
@@ -1680,6 +1682,7 @@ def build_runtime_payload(payload):
         "top_p": 0.85 if prompt_mode_active else 0.9,
         "top_k": 40,
         "repetition_penalty": 1.05,
+        "vram_policy": vram_policy,
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -1763,6 +1766,7 @@ def build_creative_offer_runtime_payload(payload):
         "top_p": 0.8,
         "top_k": 30,
         "repetition_penalty": 1.03,
+        "vram_policy": normalize_llama_cpp_vram_policy(payload.get("vram_policy")),
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:

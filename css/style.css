@@ -19073,7 +19073,7 @@ button[aria-label="Edit"][title="Edit"] {
     }
 }
 
-/* VLM chat settings: keep four columns on wide panels and switch to two
+/* VLM chat settings: keep three columns on wide panels and switch to two
    columns before the controls can force horizontal overflow. */
 .describe-vlm-chat-panel {
   width: min(980px, calc(100vw - 28px)) !important;
@@ -19082,7 +19082,6 @@ button[aria-label="Edit"][title="Edit"] {
 .describe-vlm-chat-controls {
   grid-template-columns:
     minmax(140px, 0.9fr)
-    minmax(112px, 132px)
     minmax(170px, 1.1fr)
     minmax(210px, 1.35fr);
 }
@@ -19104,7 +19103,7 @@ button[aria-label="Edit"][title="Edit"] {
   .describe-vlm-chat-controls {
     grid-template-columns:
       minmax(150px, 0.95fr)
-      minmax(112px, 132px)
+      minmax(170px, 1.1fr)
       minmax(210px, 1.35fr);
   }
 
@@ -19253,7 +19252,72 @@ button[aria-label="Edit"][title="Edit"] {
 
   .describe-vlm-chat-template-field,
   .describe-vlm-chat-system-field,
+  .describe-vlm-chat-runtime-status,
   .describe-vlm-chat-mode-hint {
     grid-column: 1 / -1;
   }
+}
+
+.describe-vlm-chat-system-field,
+.describe-vlm-chat-runtime-status {
+  grid-column: 1 / -1;
+}
+
+.describe-vlm-chat-runtime-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--describe-chat-line-soft);
+  color: color-mix(in srgb, var(--body-text-color, #f8fafc) 72%, transparent);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.describe-vlm-chat-runtime-status > i {
+  flex: 0 0 auto;
+  color: #f5b82e;
+}
+
+.describe-vlm-chat-runtime-status > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-runtime-policy {
+  flex: 0 0 auto;
+  width: 82px !important;
+  min-width: 82px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 5px !important;
+  border-radius: 5px !important;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-runtime-status.is-ready > i {
+  color: #22c55e;
+}
+
+.describe-vlm-chat-runtime-status.is-error > i {
+  color: #f87171;
+}
+
+.describe-vlm-chat-runtime-status button {
+  flex: 0 0 auto;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  margin-left: auto;
+  padding: 0 !important;
+  border: 1px solid var(--border-color-primary, #4b5563) !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+}
+
+.describe-vlm-chat-runtime-status button:hover {
+  background: var(--describe-chat-button-hover) !important;
 }

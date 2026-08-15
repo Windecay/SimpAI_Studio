@@ -64,7 +64,7 @@
   },
   "82": {
     "inputs": {
-      "image": "welcome.png.png"
+      "image": "welcome.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -235,7 +235,7 @@
   },
   "110": {
     "inputs": {
-      "image": "481ef3f7822883b3888746266719e868.jpg"
+      "image": "welcome.png"
     },
     "class_type": "LoadImage",
     "_meta": {
