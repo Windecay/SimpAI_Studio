@@ -261,6 +261,14 @@ def normalize_gradio_sketch_value(value, image_mode="RGBA", preserve_mask_color=
     return {"image": image, "mask": normalize_gradio_mask_value(None, image.shape, preserve_mask_color)}
 
 
+def normalize_gradio_inpaint_value(value):
+    """Convert the JSON string emitted by the custom inpaint canvas to its backend shape."""
+    if not isinstance(value, str):
+        return value
+    normalized = normalize_gradio_sketch_value(value, image_mode="RGBA")
+    return normalized if isinstance(normalized, dict) else value
+
+
 def resize_image(im, width=None, height=None, resize_mode=1, min_side=None, max_side=None):
     """
     Resizes an image with the specified resize_mode, width, and height.

@@ -209,7 +209,7 @@ class AsyncTask:
         self.results = []
         from modules.flags import Performance, MetadataScheme, ip_list, disabled, task_class_mapping, default_vae, default_clip
         from modules.lora_params import sync_loras_to_params_backend
-        from modules.util import get_enabled_loras
+        from modules.util import get_enabled_loras, normalize_gradio_inpaint_value
         import uuid
         import args_manager
         import re
@@ -284,7 +284,22 @@ class AsyncTask:
         self.uov_method = args.pop()
         self.uov_input_image = args.pop()
         self.outpaint_selections = args.pop()
-        self.inpaint_input_image = args.pop()
+        raw_inpaint_input_image = args.pop()
+        self.inpaint_input_image = normalize_gradio_inpaint_value(raw_inpaint_input_image)
+        if raw_inpaint_input_image is not self.inpaint_input_image:
+            image_value = self.inpaint_input_image.get('image') if isinstance(self.inpaint_input_image, dict) else None
+            mask_value = self.inpaint_input_image.get('mask') if isinstance(self.inpaint_input_image, dict) else None
+            logger.info(
+                '[UI-TRACE] inpaint_input.normalize | current_tab=%r, source_type=%s, normalized_type=%s, '
+                'image_type=%s, image_shape=%r, mask_type=%s, mask_shape=%r',
+                self.current_tab,
+                type(raw_inpaint_input_image).__name__,
+                type(self.inpaint_input_image).__name__,
+                type(image_value).__name__ if image_value is not None else None,
+                getattr(image_value, 'shape', None),
+                type(mask_value).__name__ if mask_value is not None else None,
+                getattr(mask_value, 'shape', None),
+            )
         self.inpaint_additional_prompt = args.pop()
         self.inpaint_mask_image_upload = args.pop()
 
