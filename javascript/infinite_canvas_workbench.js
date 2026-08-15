@@ -127,8 +127,8 @@
     const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE || ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'];
     const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE || ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'];
     const CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE || ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'];
-    const CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX2.3(TA2V)', 'LTX2.3(IA2V)'];
-    const CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX2.3(IA2V)', 'LTX2.3(TA2V)'];
+    const CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX(TA2V)', 'LTX(IA2V)'];
+    const CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX(IA2V)', 'LTX(TA2V)'];
     const CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET || 'LTX-Outpaint';
     const CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET || 'Wan-Remover';
     const CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET || 'Bernini-VideoEdit';
@@ -10663,13 +10663,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         if (Array.isArray(entry?.schema?.themes) && entry.schema.themes.length > 1 && !audioVideoTheme) {
             resetCanvasAgentRunInfo();
             showToast(t('Selected preset has no audio-to-video mode.', '所选 preset 没有音频转视频模式。'));
-            setCanvasAgentMessage(t('No audio-to-video mode: choose an LTX2.3 TA2V/IA2V preset whose mode is Text+Audio to Video or Image+Audio to Video.', '没有音频转视频模式：请选择模式为 Text+Audio to Video 或 Image+Audio to Video 的 LTX2.3 TA2V/IA2V preset。'));
+            setCanvasAgentMessage(t('No audio-to-video mode: choose an LTX TA2V/IA2V preset whose mode is Text+Audio to Video or Image+Audio to Video.', '没有音频转视频模式：请选择模式为 Text+Audio to Video 或 Image+Audio to Video 的 LTX TA2V/IA2V preset。'));
             return;
         }
         if (!audioSlotPreview) {
             resetCanvasAgentRunInfo();
             showToast(t('Selected preset has no compatible audio input.', '所选 preset 没有兼容音频输入槽。'));
-            setCanvasAgentMessage(t('No compatible audio input: choose an LTX2.3 TA2V/IA2V style preset that exposes scene_audio.', '没有兼容音频输入：请选择暴露 scene_audio 的 LTX2.3 TA2V/IA2V 类 preset。'));
+            setCanvasAgentMessage(t('No compatible audio input: choose an LTX TA2V/IA2V style preset that exposes scene_audio.', '没有兼容音频输入：请选择暴露 scene_audio 的 LTX TA2V/IA2V 类 preset。'));
             return;
         }
         const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
@@ -11058,7 +11058,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             details: resolved.prompt,
             note: [
                 opts.plan?.reason ? `${t('Plan', '计划')}: ${opts.plan.reason}` : '',
-                t('Hunyuan-Foley remains a Video -> Audio preset route; LTX2.3 TA2V/IA2V remains an Audio + Text/Image -> Video preset route.', 'Hunyuan-Foley 仍是 Video -> Audio preset 路线；LTX2.3 TA2V/IA2V 仍是 Audio + Text/Image -> Video preset 路线。')
+                t('Hunyuan-Foley remains a Video -> Audio preset route; LTX TA2V/IA2V remains an Audio + Text/Image -> Video preset route.', 'Hunyuan-Foley 仍是 Video -> Audio preset 路线；LTX TA2V/IA2V 仍是 Audio + Text/Image -> Video preset 路线。')
             ].filter(Boolean).join('\n'),
             actions: [
                 { value: 'continue', label: t('Generate audio', '生成音频'), icon: 'fa-play', primary: true },
@@ -19456,7 +19456,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     function isLtx23MultiGuidePresetNode(node) {
         if (!node || node.type !== 'preset') return false;
         const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
-        if (taskMethod.includes('ltx2.3_i2v') || taskMethod.includes('ltx2.3_ia2v') || taskMethod.includes('ltx2.3_extent')) return true;
+        if (taskMethod.includes('ltx_i2v') || taskMethod.includes('ltx_ia2v') || taskMethod.includes('ltx_extent')) return true;
         const text = [
             node.title,
             node.preset?.name,
@@ -19609,7 +19609,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             node?.runtime?.scene_theme,
             getPresetTheme(node)
         ].filter(Boolean).join(' ').toLowerCase();
-        return taskMethod.includes('ltx2.3_extent') || /ltx2\.3\s*\(extent\)/.test(text)
+        return taskMethod.includes('ltx_extent') || /ltx2\.3\s*\(extent\)/.test(text)
             ? 'video_extent'
             : 'keyframes';
     }
@@ -19730,7 +19730,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             );
             return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
   <i class="fa-solid fa-sliders"></i>
-  <span><b>${escapeHtml(t('LTX2.3 Extent Guides', 'LTX2.3 续写引导'))}</b><span>${escapeHtml(summary)}</span></span>
+  <span><b>${escapeHtml(t('LTX Extent Guides', 'LTX 续写引导'))}</b><span>${escapeHtml(summary)}</span></span>
   <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
 </div>`;
         }
@@ -19744,7 +19744,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const summary = t(`First ${first} | ${middle} | Last ${last}`, `首帧 ${first} | ${middle} | 尾帧 ${last}`);
         return `<div class="sai-style-transfer-link-panel sai-ltx23-guide-panel">
   <i class="fa-solid fa-sliders"></i>
-  <span><b>${escapeHtml(t('LTX2.3 Keyframe Guides', 'LTX2.3 关键帧引导'))}</b><span>${escapeHtml(summary)}</span></span>
+  <span><b>${escapeHtml(t('LTX Keyframe Guides', 'LTX 关键帧引导'))}</b><span>${escapeHtml(summary)}</span></span>
   <button type="button" data-node-action="edit-ltx23-guides"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
 </div>`;
     }
@@ -19796,7 +19796,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   ${renderNodeStateBadges(node)}
   ${isStyleTransferPresetNode(node) ? `<button type="button" data-node-action="add-style-selector" title="${escapeHtml(t('Add or focus Style Selector', '添加或定位 Style Selector'))}"><i class="fa-solid fa-palette"></i></button>` : ''}
   ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
-  ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
+  ${isLtx23MultiGuidePresetNode(node) ? `<button type="button" data-node-action="edit-ltx23-guides" title="${escapeHtml(t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'))}"><i class="fa-solid fa-sliders"></i></button>` : ''}
   ${isMiniMaxH3PresetNode(node) ? `<button type="button" data-node-action="edit-h3-storyboard" title="${escapeHtml(t('Edit MiniMax H3 storyboard', '编辑 MiniMax H3 分镜表'))}"><i class="fa-solid fa-table-list"></i></button>` : ''}
   <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
@@ -28938,7 +28938,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                 items.push({ label: t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'), icon: 'fa-face-smile', action: () => openLivePortraitVideoExpressionPresetEditor(node) });
             }
             if (isLtx23MultiGuidePresetNode(node)) {
-                items.push({ label: t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导'), icon: 'fa-sliders', action: () => openLtx23GuidePresetEditor(node) });
+                items.push({ label: t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导'), icon: 'fa-sliders', action: () => openLtx23GuidePresetEditor(node) });
             }
             items.push({ label: t('X/Y/Z Plot', 'X/Y/Z 对比生成'), icon: 'fa-table-cells-large', action: () => openXyzPlotPanel(node) });
             items.push({ label: t('Check/download models', '检查/下载模型'), icon: 'fa-cloud-arrow-down', action: () => handlePresetModelAction(node) });
@@ -30789,23 +30789,23 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             },
             {
                 id: 'qwen_tts_director_ltx23_ta2v',
-                title: t('Qwen TTS + Director + LTX2.3 TA2V', 'Qwen TTS + Director + LTX2.3 音频视频'),
-                description: t('A runnable chain where Qwen TTS creates narration audio, Director Timeline writes prompt_override, and LTX2.3 TA2V generates the video.', '可运行链路：Qwen TTS 生成旁白音频，Director Timeline 输出 prompt_override，LTX2.3 TA2V 生成视频。'),
+                title: t('Qwen TTS + Director + LTX TA2V', 'Qwen TTS + Director + LTX 音频视频'),
+                description: t('A runnable chain where Qwen TTS creates narration audio, Director Timeline writes prompt_override, and LTX TA2V generates the video.', '可运行链路：Qwen TTS 生成旁白音频，Director Timeline 输出 prompt_override，LTX TA2V 生成视频。'),
                 category: 'video',
-                tags: ['video', 'audio', 'tts', 'qwen', 'director', 'timeline', 'ltx', 'ltx2.3', 'ta2v', 'prompt_override', 'runnable', '旁白', '导演'],
+                tags: ['video', 'audio', 'tts', 'qwen', 'director', 'timeline', 'ltx', 'ltx', 'ta2v', 'prompt_override', 'runnable', '旁白', '导演'],
                 typeLabel: t('Audio-driven director video', '音频驱动导演视频'),
                 modelDependency: {
                     mode: 'requires_models',
                     label: t('Requires TTS + LTX models', '需要 TTS 和 LTX 模型'),
-                    note: t('Requires Qwen3-TTS VoiceDesign plus LTX2.3 TA2V model files; run TTS before LTX2.3.', '需要 Qwen3-TTS VoiceDesign 和 LTX2.3 TA2V 模型；先生成 TTS 音频，再运行 LTX2.3。'),
+                    note: t('Requires Qwen3-TTS VoiceDesign plus LTX TA2V model files; run TTS before LTX.', '需要 Qwen3-TTS VoiceDesign 和 LTX TA2V 模型；先生成 TTS 音频，再运行 LTX。'),
                     models: [
                         'Qwen/Qwen3-TTS-Tokenizer-12Hz',
                         'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign',
-                        'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',
-                        'ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors',
-                        'gemma_3_12B_it_fpmixed.safetensors',
-                        'LTX23_audio_vae_bf16.safetensors',
-                        'LTX23_video_vae_bf16.safetensors',
+                        'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors',
+                        'gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors',
+                        'ltx-2.5-audio-vae-bf16.safetensors',
+                        'ltx-2.5-video-vae-bf16.safetensors',
+                        'ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors',
                         'flownet.pkl'
                     ]
                 },
@@ -30814,20 +30814,21 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             },
             {
                 id: 'ltx23_insight_toolbox',
-                title: t('LTX2.3 Insight ToolBox', 'LTX2.3 Insight 视频修复工具箱'),
-                description: t('A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.', '可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。'),
+                title: t('LTX Insight ToolBox', 'LTX Insight 视频修复工具箱'),
+                description: t('A runnable LTX Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.', '可运行的 LTX Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。'),
                 category: 'video',
-                tags: ['video', 'ltx', 'ltx2.3', 'insight', 'restoration', 'upscale', 'watermark-removal', 'subtitle-removal', 'ic-lora', 'runnable', '视频修复', '去水印', '去字幕'],
+                tags: ['video', 'ltx', 'ltx', 'insight', 'restoration', 'upscale', 'watermark-removal', 'subtitle-removal', 'ic-lora', 'runnable', '视频修复', '去水印', '去字幕'],
                 typeLabel: t('Video restoration', '视频修复'),
                 modelDependency: {
                     mode: 'requires_models',
                     label: t('Requires video + LTX models', '需要视频和 LTX 模型'),
-                    note: t('Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.', '需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。'),
+                    note: t('Requires the LTX transformer, text encoder, audio/video VAEs, spatial upscaler, task IC-LoRAs, RIFE, and a source video.', '需要 LTX transformer、文本编码器、音频/视频 VAE、spatial upscaler、任务 IC-LoRA、RIFE，以及源视频。'),
                     models: [
-                        'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',
-                        'ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors',
-                        'gemma_3_12B_it_fpmixed.safetensors',
-                        'LTX23_video_vae_bf16.safetensors',
+                        'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors',
+                        'gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors',
+                        'ltx-2.5-audio-vae-bf16.safetensors',
+                        'ltx-2.5-video-vae-bf16.safetensors',
+                        'ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors',
                         'ltx2.3-video-restoration-general.safetensors',
                         'ltx2.3-ic-video-upscale-general.safetensors',
                         'ltx2.3-ic-watermark-remove-general.safetensors',
@@ -40281,15 +40282,15 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         const mode = ltx23GuideModeForPreset(node);
         return window.SimpAILTXGuideEditor.open({
             title: mode === 'video_extent'
-                ? t('LTX2.3 Extent Guides', 'LTX2.3 续写引导')
-                : t('LTX2.3 Keyframe Guides', 'LTX2.3 关键帧引导'),
+                ? t('LTX Extent Guides', 'LTX 续写引导')
+                : t('LTX Keyframe Guides', 'LTX 关键帧引导'),
             context: 'canvas',
             mode,
             guideConfig: node.params?.scene_additional_prompt || '',
             langState: window.simpleaiTopbarSystemParams || { __lang: document.documentElement.lang || 'en' },
             modalMount: canvasOverlayHost(),
             onConfirm: (response) => {
-                pushHistory('Update LTX2.3 keyframe guides');
+                pushHistory('Update LTX keyframe guides');
                 const current = getNode(node.id) || node;
                 current.params = Object.assign({}, current.params || {}, {
                     scene_additional_prompt: response?.guide_config || ''

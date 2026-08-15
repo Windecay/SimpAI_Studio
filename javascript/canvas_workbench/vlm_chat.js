@@ -11,7 +11,6 @@
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
-        'Gemma3-12B-TextEncoder',
         'Qwen3VL-4B-TextEncoder',
         'Custom'
     ];
@@ -60,7 +59,6 @@
             'Qwen3.5-9B-abliterated-Q6_K': 8192,
             'Qwen3.5-9B-abliterated-Q8_0': 8192,
             'Gemma4-12B-it-heretic-Q4_K_XL': 8192,
-            'Gemma3-12B-TextEncoder': 32768,
             'Qwen3VL-4B-TextEncoder': 32768,
             'Custom': 32768
         },

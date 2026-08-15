@@ -4336,7 +4336,7 @@ with shared.gradio_root:
                             gr.HTML(
                                 value="""
 <div id="ltx_guide_scene_control" class="sai-ltx-guide-scene-control" tabindex="0">
-  <button type="button" class="sai-ltx-guide-scene-open" data-ltx-guide-scene-open title="Edit LTX2.3 keyframe guides">
+  <button type="button" class="sai-ltx-guide-scene-open" data-ltx-guide-scene-open title="Edit LTX keyframe guides">
     <i class="fa-solid fa-sliders"></i><span data-ltx-guide-scene-label>Keyframe Guides / 关键帧引导</span>
   </button>
   <small data-ltx-guide-scene-status>First 1 | M1 Auto/0.7 · M2 Auto/0.7 · M3 Auto/0.7 | Last 1</small>

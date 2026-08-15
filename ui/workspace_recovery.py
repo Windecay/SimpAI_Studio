@@ -90,6 +90,15 @@ def _component_text(value: Any) -> str:
     return str(key if key is not None else value).strip()
 
 
+def _is_custom_sketch_component(component: Any) -> bool:
+    raw_classes = getattr(component, "elem_classes", None)
+    if isinstance(raw_classes, str):
+        classes = {raw_classes}
+    else:
+        classes = {str(value) for value in (raw_classes or [])}
+    return "simpai-custom-sketch-source" in classes
+
+
 def _event_input_ids(blocks: Any) -> set[int]:
     result: set[int] = set()
     for block_fn in getattr(blocks, "fns", {}).values():
@@ -121,6 +130,11 @@ def _is_hidden_internal_component(component: Any) -> bool:
 
 
 def _is_workspace_component(component: Any, input_ids: set[int]) -> bool:
+    # The sketch canvas is a Textbox with instance-level preprocess/postprocess
+    # bridges. Gradio recreates plain Textbox instances for value updates, which
+    # would drop that bridge and turn canvas payloads back into JSON strings.
+    if _is_custom_sketch_component(component):
+        return False
     kind = _component_kind(component)
     component_id = getattr(component, "_id", None)
     if kind is None or component_id not in input_ids:

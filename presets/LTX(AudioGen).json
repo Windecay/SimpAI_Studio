@@ -1,5 +1,7 @@
 {
-    "supported_tasks": ["video_to_audio"],
+    "supported_tasks": [
+        "video_to_audio"
+    ],
     "default_engine": {
         "backend_engine": "LTX",
         "engine_type": "video",
@@ -20,7 +22,7 @@
                 "Video to Audio[Output Original Video]",
                 "Video to Video + Audio[Redraw Video]"
             ],
-            "theme_title": "LTX2.3 Video Audio Generator [Upload video]",
+            "theme_title": "LTX Video Audio Generator [Upload video]",
             "director_capability": {
                 "image_policy": "forbidden",
                 "video_policy": "required",
@@ -54,6 +56,7 @@
                 "scene_var_number9",
                 "scene_var_number10",
                 "scene_aspect_ratio",
+                "scene_switch_option1",
                 "scene_switch_option2",
                 "scene_switch_option3",
                 "scene_switch_option4",
@@ -67,8 +70,8 @@
                 "Video to Video + Audio[Redraw Video]": "画面中的角色长叹一声，说：“你在哪里，我好想你。”"
             },
             "task_method": {
-                "Video to Audio[Output Original Video]": "ltx2.3_audio_gen_cn",
-                "Video to Video + Audio[Redraw Video]": "ltx2.3_video_to_av_cn"
+                "Video to Audio[Output Original Video]": "ltx_audio_gen_cn",
+                "Video to Video + Audio[Redraw Video]": "ltx_video_to_av_cn"
             },
             "multimodal_prompt": {
                 "Video to Audio[Output Original Video]": "",
@@ -98,7 +101,7 @@
                 "Video to Audio[Output Original Video]": 480,
                 "Video to Video + Audio[Redraw Video]": 480
             },
-            "switch_option1_title": "Use Gemma3 12B for video analysis",
+            "switch_option1_title": "Use Qwen3VL 4B for video analysis",
             "switch_option1": {
                 "Video to Audio[Output Original Video]": false,
                 "Video to Video + Audio[Redraw Video]": false
@@ -122,7 +125,7 @@
                 "source": "scene_video",
                 "base_width": 720,
                 "base_height": 720,
-                "quantize": 16,
+                "quantize": 64,
                 "interactive": true,
                 "frontend_preprocess": false,
                 "preprocess_target": "video",
@@ -133,18 +136,16 @@
             "overwrite_step_max": 12
         }
     },
-    "default_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-    "previous_default_models": [
-        "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors"
-    ],
+    "default_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+    "previous_default_models": [],
     "default_refiner": "None",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
-    "default_clip_model": "gemma_3_12B_it_fpmixed.safetensors",
+    "default_clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
     "default_loras": [
         [
-            "ltx\\ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-            0.6
+            "None",
+            1
         ],
         [
             "None",
@@ -179,14 +180,12 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors,21505993064,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "loras,ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,2741024390,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-        "loras,ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors,628203616,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors",
-        "text_encoders,ltx-2.3_text_projection_bf16.safetensors,2312149072,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors",
-        "text_encoders,gemma_3_12B_it_fpmixed.safetensors,13708659515,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
-        "vae,LTX23_audio_vae_bf16.safetensors,364855188,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors",
-        "vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors",
-        "vae,taeltx2_3.safetensors,23531296,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors",
-        "text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors"
+        "diffusion_models,ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors,21504034224,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372971786,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        "vae,ltx-2.5-video-vae-bf16.safetensors,1472223346,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-video-vae-bf16.safetensors",
+        "vae,ltx-2.5-audio-vae-bf16.safetensors,364866540,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-audio-vae-bf16.safetensors",
+        "latent_upscale_models,ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors,995778752,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+        "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl"
     ]
 }

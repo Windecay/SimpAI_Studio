@@ -12,7 +12,11 @@
         "zh": "只包含一个空白图像节点，用于上传本地图片。"
       },
       "category": "starter",
-      "tags": ["starter", "image", "upload"],
+      "tags": [
+        "starter",
+        "image",
+        "upload"
+      ],
       "type_label": {
         "en": "Image upload",
         "zh": "图片上传"
@@ -42,7 +46,12 @@
         "zh": "用 Text、Translation、通配符助手和提示贴演示提示词搭建流程。"
       },
       "category": "starter",
-      "tags": ["starter", "prompt", "text", "wildcards"],
+      "tags": [
+        "starter",
+        "prompt",
+        "text",
+        "wildcards"
+      ],
       "type_label": {
         "en": "Prompt tools",
         "zh": "提示词工具"
@@ -72,7 +81,14 @@
         "zh": "不依赖模型的入门画布，讲解 Preset 节点、提示词接线、配置、模型状态、运行队列和结果。"
       },
       "category": "starter",
-      "tags": ["starter", "preset", "config", "models", "queue", "result"],
+      "tags": [
+        "starter",
+        "preset",
+        "config",
+        "models",
+        "queue",
+        "result"
+      ],
       "type_label": {
         "en": "Preset guide",
         "zh": "Preset 引导"
@@ -102,7 +118,14 @@
         "zh": "不依赖模型的指南，讲解 Models ready、Missing、Checking、Queued、Check failed，以及运行前该做什么。"
       },
       "category": "starter",
-      "tags": ["starter", "models", "readiness", "missing", "download", "preset"],
+      "tags": [
+        "starter",
+        "models",
+        "readiness",
+        "missing",
+        "download",
+        "preset"
+      ],
       "type_label": {
         "en": "Model guide",
         "zh": "模型引导"
@@ -132,7 +155,12 @@
         "zh": "安全演示排队任务、结果占位、重试/历史概念和下游复用。"
       },
       "category": "starter",
-      "tags": ["starter", "queue", "result", "history"],
+      "tags": [
+        "starter",
+        "queue",
+        "result",
+        "history"
+      ],
       "type_label": {
         "en": "Workflow guide",
         "zh": "工作流引导"
@@ -162,7 +190,15 @@
         "zh": "可运行的 Anima classic 文生图模板，包含提示词 Text 节点、Models、Resolution、Advanced Config、运行队列和结果占位。"
       },
       "category": "image",
-      "tags": ["image", "anima", "t2i", "classic", "preset", "anime", "runnable"],
+      "tags": [
+        "image",
+        "anima",
+        "t2i",
+        "classic",
+        "preset",
+        "anime",
+        "runnable"
+      ],
       "type_label": {
         "en": "Runnable preset",
         "zh": "可运行 Preset"
@@ -198,7 +234,16 @@
         "zh": "可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、Preset 内部提示词默认值、配置节点和结果占位。"
       },
       "category": "image",
-      "tags": ["image", "flux", "flux2", "a2r", "edit", "anime-to-real", "preset", "runnable"],
+      "tags": [
+        "image",
+        "flux",
+        "flux2",
+        "a2r",
+        "edit",
+        "anime-to-real",
+        "preset",
+        "runnable"
+      ],
       "type_label": {
         "en": "Image edit preset",
         "zh": "图像编辑 Preset"
@@ -236,7 +281,15 @@
         "zh": "可运行的 Wan2.2 文生视频模板，包含动态提示词、视频参数、模型检查、运行队列和视频结果占位。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan2.2", "t2v", "text-to-video", "motion", "runnable"],
+      "tags": [
+        "video",
+        "wan",
+        "wan2.2",
+        "t2v",
+        "text-to-video",
+        "motion",
+        "runnable"
+      ],
       "type_label": {
         "en": "Text to video",
         "zh": "文生视频"
@@ -274,7 +327,16 @@
         "zh": "可运行的 MiniMax H3 文生视频模板，包含原生生成音频、模型检查、分辨率控制和视频结果。"
       },
       "category": "video",
-      "tags": ["video", "minimax", "h3", "t2v", "text-to-video", "native-audio", "runnable", "文生视频"],
+      "tags": [
+        "video",
+        "minimax",
+        "h3",
+        "t2v",
+        "text-to-video",
+        "native-audio",
+        "runnable",
+        "文生视频"
+      ],
       "type_label": {
         "en": "Text to video",
         "zh": "文生视频"
@@ -310,7 +372,18 @@
         "zh": "可运行的 MiniMax H3 图生视频模板，使用必需首帧和可选尾帧，并生成原生音频。"
       },
       "category": "video",
-      "tags": ["video", "minimax", "h3", "i2v", "image-to-video", "first-frame", "last-frame", "native-audio", "runnable", "图生视频"],
+      "tags": [
+        "video",
+        "minimax",
+        "h3",
+        "i2v",
+        "image-to-video",
+        "first-frame",
+        "last-frame",
+        "native-audio",
+        "runnable",
+        "图生视频"
+      ],
       "type_label": {
         "en": "Image to video",
         "zh": "图生视频"
@@ -346,7 +419,21 @@
         "zh": "可运行的 MiniMax H3 多参考视频模板，支持最多五张图片、两个带配对音轨的视频和一个独立音频参考。"
       },
       "category": "video",
-      "tags": ["video", "minimax", "h3", "r2v", "reference-to-video", "multi-image", "multi-modal", "video-reference", "audio-reference", "ordered-references", "native-audio", "runnable", "多参考视频"],
+      "tags": [
+        "video",
+        "minimax",
+        "h3",
+        "r2v",
+        "reference-to-video",
+        "multi-image",
+        "multi-modal",
+        "video-reference",
+        "audio-reference",
+        "ordered-references",
+        "native-audio",
+        "runnable",
+        "多参考视频"
+      ],
       "type_label": {
         "en": "Mixed references to video",
         "zh": "多参考视频"
@@ -384,7 +471,20 @@
         "zh": "可运行的 Director Timeline 模板，生成两个 MiniMax H3 分镜，并在合成分段视频时保留模型生成的音频。"
       },
       "category": "video",
-      "tags": ["video", "director", "timeline", "minimax", "h3", "t2v", "native-audio", "prompt_override", "result", "runnable", "导演", "分镜"],
+      "tags": [
+        "video",
+        "director",
+        "timeline",
+        "minimax",
+        "h3",
+        "t2v",
+        "native-audio",
+        "prompt_override",
+        "result",
+        "runnable",
+        "导演",
+        "分镜"
+      ],
       "type_label": {
         "en": "Director video with audio",
         "zh": "导演分镜音画"
@@ -420,7 +520,19 @@
         "zh": "可运行的 Director Timeline 模板，按分镜运行 Wan2.2 T2V，并把分段视频 Result 放入 Timeline 合成。"
       },
       "category": "video",
-      "tags": ["video", "director", "timeline", "wan", "wan2.2", "t2v", "prompt_override", "result", "runnable", "导演", "分镜"],
+      "tags": [
+        "video",
+        "director",
+        "timeline",
+        "wan",
+        "wan2.2",
+        "t2v",
+        "prompt_override",
+        "result",
+        "runnable",
+        "导演",
+        "分镜"
+      ],
       "type_label": {
         "en": "Director video",
         "zh": "导演分镜视频"
@@ -458,7 +570,17 @@
         "zh": "不依赖模型的 Director 后期模板，把分段视频 Result 放入现有 Timeline，并渲染最终视频 Result。"
       },
       "category": "video",
-      "tags": ["video", "director", "timeline", "result", "mix", "model-free", "导演", "分镜", "合成"],
+      "tags": [
+        "video",
+        "director",
+        "timeline",
+        "result",
+        "mix",
+        "model-free",
+        "导演",
+        "分镜",
+        "合成"
+      ],
       "type_label": {
         "en": "Timeline mix",
         "zh": "Timeline 合成"
@@ -488,7 +610,15 @@
         "zh": "可运行的 Wan2.2 图生视频模板，包含首帧和可选尾帧占位、运动提示词、模型检查和视频结果占位。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan2.2", "i2v", "image-to-video", "motion", "runnable"],
+      "tags": [
+        "video",
+        "wan",
+        "wan2.2",
+        "i2v",
+        "image-to-video",
+        "motion",
+        "runnable"
+      ],
       "type_label": {
         "en": "Image to video",
         "zh": "图生视频"
@@ -527,7 +657,20 @@
         "zh": "可运行的 Wan-Extent 视频延长模板，支持接入已生成或导入的视频，并提供可选目标尾帧、续写提示词、模型检查和视频结果占位。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan2.2", "extend", "extension", "continue", "last frame", "Wan-Extent", "runnable", "延长", "续写", "目标尾帧"],
+      "tags": [
+        "video",
+        "wan",
+        "wan2.2",
+        "extend",
+        "extension",
+        "continue",
+        "last frame",
+        "Wan-Extent",
+        "runnable",
+        "延长",
+        "续写",
+        "目标尾帧"
+      ],
       "type_label": {
         "en": "Video extend",
         "zh": "视频延长"
@@ -568,7 +711,17 @@
         "zh": "可运行的音频模板，通过文本和自然语言音色描述生成语音。"
       },
       "category": "audio",
-      "tags": ["audio", "tts", "qwen", "qwen3-tts", "voice-design", "speech", "runnable", "配音", "音色"],
+      "tags": [
+        "audio",
+        "tts",
+        "qwen",
+        "qwen3-tts",
+        "voice-design",
+        "speech",
+        "runnable",
+        "配音",
+        "音色"
+      ],
       "type_label": {
         "en": "Text to speech",
         "zh": "文本转语音"
@@ -602,7 +755,18 @@
         "zh": "可运行的音频模板，用参考音频克隆音色并朗读新的目标文本。"
       },
       "category": "audio",
-      "tags": ["audio", "tts", "qwen", "qwen3-tts", "voice-clone", "reference-audio", "speech", "runnable", "克隆", "参考音频"],
+      "tags": [
+        "audio",
+        "tts",
+        "qwen",
+        "qwen3-tts",
+        "voice-clone",
+        "reference-audio",
+        "speech",
+        "runnable",
+        "克隆",
+        "参考音频"
+      ],
       "type_label": {
         "en": "Voice clone",
         "zh": "音色克隆"
@@ -636,7 +800,18 @@
         "zh": "可运行的音频模板，使用 Qwen TTS 内置音色快速生成旁白。"
       },
       "category": "audio",
-      "tags": ["audio", "tts", "qwen", "qwen3-tts", "custom-voice", "speaker", "narration", "runnable", "预设音色", "旁白"],
+      "tags": [
+        "audio",
+        "tts",
+        "qwen",
+        "qwen3-tts",
+        "custom-voice",
+        "speaker",
+        "narration",
+        "runnable",
+        "预设音色",
+        "旁白"
+      ],
       "type_label": {
         "en": "Preset voice",
         "zh": "预设音色"
@@ -670,7 +845,18 @@
         "zh": "可运行的音频模板，把“角色: 台词”脚本生成为合并的多角色对话音频。"
       },
       "category": "audio",
-      "tags": ["audio", "tts", "qwen", "qwen3-tts", "dialogue", "multi-speaker", "script", "runnable", "多角色", "对话"],
+      "tags": [
+        "audio",
+        "tts",
+        "qwen",
+        "qwen3-tts",
+        "dialogue",
+        "multi-speaker",
+        "script",
+        "runnable",
+        "多角色",
+        "对话"
+      ],
       "type_label": {
         "en": "Dialogue",
         "zh": "多角色对话"
@@ -696,15 +882,25 @@
     {
       "id": "ltx23_ta2v_basic",
       "title": {
-        "en": "LTX2.3 Text+Audio to Video",
-        "zh": "LTX2.3 文本+音频生成视频"
+        "en": "LTX Text+Audio to Video",
+        "zh": "LTX 文本+音频生成视频"
       },
       "description": {
-        "en": "A runnable audio-driven video template using LTX2.3 with a replaceable audio input, prompt, configs, model checks, and video Result placeholder.",
-        "zh": "可运行的 LTX2.3 音频驱动视频模板，包含可替换音频输入、提示词、配置、模型检查和视频 Result 占位。"
+        "en": "A runnable audio-driven video template using LTX with a replaceable audio input, prompt, configs, model checks, and video Result placeholder.",
+        "zh": "可运行的 LTX 音频驱动视频模板，包含可替换音频输入、提示词、配置、模型检查和视频 Result 占位。"
       },
       "category": "video",
-      "tags": ["video", "audio", "ltx", "ltx2.3", "ta2v", "text-audio-to-video", "soundtrack", "runnable", "音频驱动"],
+      "tags": [
+        "video",
+        "audio",
+        "ltx",
+        "ltx2.5",
+        "ta2v",
+        "text-audio-to-video",
+        "soundtrack",
+        "runnable",
+        "音频驱动"
+      ],
       "type_label": {
         "en": "Audio to video",
         "zh": "音频生成视频"
@@ -716,15 +912,15 @@
           "zh": "需要音频和模型"
         },
         "note": {
-          "en": "Requires LTX2.3 transformer, text encoders, audio/video VAEs, distilled LoRA, upscaler, RIFE, and an audio clip.",
-          "zh": "需要 LTX2.3 transformer、文本编码器、音频/视频 VAE、蒸馏 LoRA、upscaler、RIFE，以及一段音频。"
+          "en": "Requires LTX transformer, text encoder, audio/video VAEs, spatial upscaler, RIFE, and an audio clip.",
+          "zh": "需要 LTX transformer、文本编码器、音频/视频 VAE、spatial upscaler、RIFE，以及一段音频。"
         },
         "models": [
-          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "gemma_3_12B_it_fpmixed.safetensors",
-          "LTX23_audio_vae_bf16.safetensors",
-          "LTX23_video_vae_bf16.safetensors",
+          "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "ltx-2.5-audio-vae-bf16.safetensors",
+          "ltx-2.5-video-vae-bf16.safetensors",
+          "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "flownet.pkl"
         ]
       },
@@ -734,15 +930,29 @@
     {
       "id": "qwen_tts_director_ltx23_ta2v",
       "title": {
-        "en": "Qwen TTS + Director + LTX2.3 TA2V",
-        "zh": "Qwen TTS + Director + LTX2.3 音频视频"
+        "en": "Qwen TTS + Director + LTX TA2V",
+        "zh": "Qwen TTS + Director + LTX 音频视频"
       },
       "description": {
-        "en": "A runnable chain where Qwen TTS creates narration audio, Director Timeline writes prompt_override, and LTX2.3 TA2V generates the video.",
-        "zh": "可运行链路：Qwen TTS 生成旁白音频，Director Timeline 输出 prompt_override，LTX2.3 TA2V 生成视频。"
+        "en": "A runnable chain where Qwen TTS creates narration audio, Director Timeline writes prompt_override, and LTX TA2V generates the video.",
+        "zh": "可运行链路：Qwen TTS 生成旁白音频，Director Timeline 输出 prompt_override，LTX TA2V 生成视频。"
       },
       "category": "video",
-      "tags": ["video", "audio", "tts", "qwen", "director", "timeline", "ltx", "ltx2.3", "ta2v", "prompt_override", "runnable", "旁白", "导演"],
+      "tags": [
+        "video",
+        "audio",
+        "tts",
+        "qwen",
+        "director",
+        "timeline",
+        "ltx",
+        "ltx2.5",
+        "ta2v",
+        "prompt_override",
+        "runnable",
+        "旁白",
+        "导演"
+      ],
       "type_label": {
         "en": "Audio-driven director video",
         "zh": "音频驱动导演视频"
@@ -754,17 +964,15 @@
           "zh": "需要 TTS 和 LTX 模型"
         },
         "note": {
-          "en": "Requires Qwen3-TTS VoiceDesign plus LTX2.3 TA2V model files; run TTS before LTX2.3.",
-          "zh": "需要 Qwen3-TTS VoiceDesign 和 LTX2.3 TA2V 模型；先生成 TTS 音频，再运行 LTX2.3。"
+          "en": "Requires Qwen3-TTS VoiceDesign plus LTX TA2V model files; run TTS before LTX.",
+          "zh": "需要 Qwen3-TTS VoiceDesign 和 LTX TA2V 模型；先生成 TTS 音频，再运行 LTX。"
         },
         "models": [
-          "Qwen/Qwen3-TTS-Tokenizer-12Hz",
-          "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
-          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "gemma_3_12B_it_fpmixed.safetensors",
-          "LTX23_audio_vae_bf16.safetensors",
-          "LTX23_video_vae_bf16.safetensors",
+          "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "ltx-2.5-audio-vae-bf16.safetensors",
+          "ltx-2.5-video-vae-bf16.safetensors",
+          "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "flownet.pkl"
         ]
       },
@@ -782,7 +990,18 @@
         "zh": "可运行的口型视频模板，把人物图片和语音音频连接到 InfiniteTalk。"
       },
       "category": "video",
-      "tags": ["video", "audio", "image", "infinitetalk", "lip-sync", "talking-portrait", "tts-chain", "runnable", "口型", "数字人"],
+      "tags": [
+        "video",
+        "audio",
+        "image",
+        "infinitetalk",
+        "lip-sync",
+        "talking-portrait",
+        "tts-chain",
+        "runnable",
+        "口型",
+        "数字人"
+      ],
       "type_label": {
         "en": "Lip sync video",
         "zh": "口型视频"
@@ -820,7 +1039,17 @@
         "zh": "可运行的 Foley 模板，为导入或生成的源视频添加生成音效。"
       },
       "category": "video",
-      "tags": ["video", "audio", "foley", "hunyuan", "sound-effects", "timeline", "runnable", "拟音", "音效"],
+      "tags": [
+        "video",
+        "audio",
+        "foley",
+        "hunyuan",
+        "sound-effects",
+        "timeline",
+        "runnable",
+        "拟音",
+        "音效"
+      ],
       "type_label": {
         "en": "Video foley",
         "zh": "视频拟音"
@@ -857,7 +1086,18 @@
         "zh": "无模型依赖的 Timeline 模板，演示视频、图片、音频、关键帧、渲染和 Result 复用。"
       },
       "category": "starter",
-      "tags": ["starter", "timeline", "composite", "video", "audio", "image", "result", "model-free", "剪辑", "合成"],
+      "tags": [
+        "starter",
+        "timeline",
+        "composite",
+        "video",
+        "audio",
+        "image",
+        "result",
+        "model-free",
+        "剪辑",
+        "合成"
+      ],
       "type_label": {
         "en": "Timeline guide",
         "zh": "Timeline 引导"
@@ -888,7 +1128,19 @@
         "zh": "可运行的两步图像链：Anima 先生成 Result，Flux2-A2R 再把它复用为 scene_canvas_image。"
       },
       "category": "image",
-      "tags": ["image", "result", "reuse", "chain", "anima", "flux2", "a2r", "workflow", "runnable", "复用", "串联"],
+      "tags": [
+        "image",
+        "result",
+        "reuse",
+        "chain",
+        "anima",
+        "flux2",
+        "a2r",
+        "workflow",
+        "runnable",
+        "复用",
+        "串联"
+      ],
       "type_label": {
         "en": "Result chain",
         "zh": "结果复用链"
@@ -926,7 +1178,18 @@
         "zh": "可运行的 Wan-Animate 模板，使用源视频、SAM3 遮罩视频和参考图替换物体。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-animate", "sam3", "object-replace", "mask", "reference-image", "runnable", "物体替换", "视频编辑"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-animate",
+        "sam3",
+        "object-replace",
+        "mask",
+        "reference-image",
+        "runnable",
+        "物体替换",
+        "视频编辑"
+      ],
       "type_label": {
         "en": "Video edit preset",
         "zh": "视频编辑 Preset"
@@ -965,7 +1228,18 @@
         "zh": "可运行的 Wan-Animate 人脸替换模板，包含源视频、SAM3 人脸遮罩和人脸参考图。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-animate", "sam3", "face-swap", "mask", "reference-image", "runnable", "人脸替换", "口型"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-animate",
+        "sam3",
+        "face-swap",
+        "mask",
+        "reference-image",
+        "runnable",
+        "人脸替换",
+        "口型"
+      ],
       "type_label": {
         "en": "Face swap preset",
         "zh": "人脸替换 Preset"
@@ -1004,7 +1278,18 @@
         "zh": "可运行的视频移除模板，使用源视频和 SAM3 遮罩视频重建被移除区域。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-remover", "sam3", "removal", "inpaint", "mask", "runnable", "视频移除", "局部编辑"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-remover",
+        "sam3",
+        "removal",
+        "inpaint",
+        "mask",
+        "runnable",
+        "视频移除",
+        "局部编辑"
+      ],
       "type_label": {
         "en": "Video removal",
         "zh": "视频移除"
@@ -1040,7 +1325,19 @@
         "zh": "可运行的 Qwen TTS 到 Timeline 链路：旁白音频 Result 与视频混剪后渲染为最终视频 Result。"
       },
       "category": "video",
-      "tags": ["video", "audio", "tts", "qwen", "timeline", "voiceover", "mix", "result", "runnable", "配音", "混剪"],
+      "tags": [
+        "video",
+        "audio",
+        "tts",
+        "qwen",
+        "timeline",
+        "voiceover",
+        "mix",
+        "result",
+        "runnable",
+        "配音",
+        "混剪"
+      ],
       "type_label": {
         "en": "Voiceover timeline",
         "zh": "配音 Timeline"
@@ -1074,7 +1371,19 @@
         "zh": "可运行的 Wan-Animate 人物替换模板，预载源视频、SAM3 遮罩和人物参考占位素材。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-animate", "sam3", "person-replace", "mask", "reference-image", "reserved-input", "runnable", "人物替换", "视频编辑"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-animate",
+        "sam3",
+        "person-replace",
+        "mask",
+        "reference-image",
+        "reserved-input",
+        "runnable",
+        "人物替换",
+        "视频编辑"
+      ],
       "type_label": {
         "en": "Person replace preset",
         "zh": "人物替换 Preset"
@@ -1164,7 +1473,17 @@
         "zh": "可运行的 Wan-Swap 换脸模板，预载源视频和人脸参考占位素材。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-swap", "face-swap", "reference-image", "reserved-input", "runnable", "换脸", "人脸替换"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-swap",
+        "face-swap",
+        "reference-image",
+        "reserved-input",
+        "runnable",
+        "换脸",
+        "人脸替换"
+      ],
       "type_label": {
         "en": "Face swap preset",
         "zh": "换脸 Preset"
@@ -1203,7 +1522,18 @@
         "zh": "可运行的 Wan-Swap 动作迁移模板，预载动作视频和主体参考占位素材。"
       },
       "category": "video",
-      "tags": ["video", "wan", "wan-swap", "motion-transfer", "pose", "reference-image", "reserved-input", "runnable", "动作迁移", "姿态迁移"],
+      "tags": [
+        "video",
+        "wan",
+        "wan-swap",
+        "motion-transfer",
+        "pose",
+        "reference-image",
+        "reserved-input",
+        "runnable",
+        "动作迁移",
+        "姿态迁移"
+      ],
       "type_label": {
         "en": "Motion transfer",
         "zh": "动作迁移"
@@ -1234,15 +1564,29 @@
     {
       "id": "ltx23_insight_toolbox",
       "title": {
-        "en": "LTX2.3 Insight ToolBox",
-        "zh": "LTX2.3 Insight 视频修复工具箱"
+        "en": "LTX Insight ToolBox",
+        "zh": "LTX Insight 视频修复工具箱"
       },
       "description": {
-        "en": "A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
-        "zh": "可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
+        "en": "A runnable LTX Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
+        "zh": "可运行的 LTX Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
       },
       "category": "video",
-      "tags": ["video", "ltx", "ltx2.3", "insight", "restoration", "upscale", "watermark-removal", "subtitle-removal", "ic-lora", "runnable", "视频修复", "去水印", "去字幕"],
+      "tags": [
+        "video",
+        "ltx",
+        "ltx2.5",
+        "insight",
+        "restoration",
+        "upscale",
+        "watermark-removal",
+        "subtitle-removal",
+        "ic-lora",
+        "runnable",
+        "视频修复",
+        "去水印",
+        "去字幕"
+      ],
       "type_label": {
         "en": "Video restoration",
         "zh": "视频修复"
@@ -1254,14 +1598,15 @@
           "zh": "需要视频和 LTX 模型"
         },
         "note": {
-          "en": "Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.",
-          "zh": "需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。"
+          "en": "Requires the LTX transformer, text encoder, video VAE, spatial upscaler, task IC-LoRAs, RIFE, and a source video.",
+          "zh": "需要 LTX transformer、文本编码器、视频 VAE、spatial upscaler、任务 IC-LoRA、RIFE，以及源视频。"
         },
         "models": [
-          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "gemma_3_12B_it_fpmixed.safetensors",
-          "LTX23_video_vae_bf16.safetensors",
+          "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "ltx-2.5-audio-vae-bf16.safetensors",
+          "ltx-2.5-video-vae-bf16.safetensors",
+          "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "ltx2.3-video-restoration-general.safetensors",
           "ltx2.3-ic-video-upscale-general.safetensors",
           "ltx2.3-ic-watermark-remove-general.safetensors",
@@ -1283,7 +1628,18 @@
         "zh": "可运行的 Nvidia-VSR 视频超分模板，预载源视频占位素材，并包含可选插帧设置。"
       },
       "category": "video",
-      "tags": ["video", "nvidia", "vsr", "upscale", "super-resolution", "interpolation", "reserved-input", "runnable", "视频超分", "插帧"],
+      "tags": [
+        "video",
+        "nvidia",
+        "vsr",
+        "upscale",
+        "super-resolution",
+        "interpolation",
+        "reserved-input",
+        "runnable",
+        "视频超分",
+        "插帧"
+      ],
       "type_label": {
         "en": "Video upscale",
         "zh": "视频超分"

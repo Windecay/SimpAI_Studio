@@ -214,12 +214,12 @@ SimpAI UI guide skill:
 - Wan video routes have strong consistency, many specialized extensions, and
   strong directed workflows, but T2V/I2V duration is limited and VRAM
   requirements are high.
-- LTX2.3 is better when the user needs more flexible duration, dynamic VRAM use,
+- LTX is better when the user needs more flexible duration, dynamic VRAM use,
   or text/audio multimodal video input/output. It can still consume a lot of
   system RAM.
 - LTX-Outpaint is a specialized IC-LoRA-enhanced video outpaint route.
-- For LTX2.3 video restoration, HD enhancement, watermark removal, or subtitle
-  removal, recommend LTX2.3(InsightTool). Its themes are Video Restore,
+- For LTX video restoration, HD enhancement, watermark removal, or subtitle
+  removal, recommend LTX(InsightTool). Its themes are Video Restore,
   Video Upscale, Remove Watermark, and Remove Subtitles; it requires a source
   video and uses task-specific IC-LoRA adapters.
 - Wan-Animate and Wan-Swap are directed presets based on Animate-style
@@ -283,7 +283,7 @@ SimpAI UI guide skill:
 - chained after text-to-image generation.
 - Flux1.Fill model for general-purpose image boundary extension.
 - SAM3-mask and no-SAM3-mask variants.
-- LTX2.3(InsightTool) for video restoration, HD enhancement, watermark removal,
+- LTX(InsightTool) for video restoration, HD enhancement, watermark removal,
   and subtitle removal.
 - Qwen自由视角+ / QwenMultiAngle / Qwen-MultiAngle Free Viewpoint.
 - QwenPose and Flux2-KleinPose are pose-driven final-image editors.

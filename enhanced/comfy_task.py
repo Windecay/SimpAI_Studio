@@ -134,6 +134,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("clip_model", "CLIPLoaderGGUF_Any:clip_model:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoader_Any:clip_model2:clip_name")
         comfy_params.update_mapping_rule("clip_model2", "CLIPLoaderGGUF_Any:clip_model2:clip_name")
+        if task_class == "LTX":
+            comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
         if "bernini_video_upscale" in task_method_l:
             comfy_params.update_mapping_rule(
                 "base_model",

@@ -1,7 +1,7 @@
 {
   "schema": "simpai.canvas.workbench.v1",
   "id": "ltx23_ta2v_basic",
-  "title": "LTX2.3 文本+音频生成视频",
+  "title": "LTX 文本+音频生成视频",
   "created_at": "2026-05-23T00:00:00Z",
   "updated_at": "2026-06-05T06:43:45Z",
   "viewport": {
@@ -65,7 +65,7 @@
       "w": 520,
       "h": 135,
       "title": "Audio-Driven Video / 音频驱动视频",
-      "text": "Use LTX2.3 Text+Audio to Video when a soundtrack, speech, or rhythm should guide the generated clip. Replace the Audio node first. / 当音乐、语音或节奏需要引导生成视频时，使用 LTX2.3 Text+Audio to Video。请先替换 Audio 节点。",
+      "text": "Use LTX Text+Audio to Video when a soundtrack, speech, or rhythm should guide the generated clip. Replace the Audio node first. / 当音乐、语音或节奏需要引导生成视频时，使用 LTX Text+Audio to Video。请先替换 Audio 节点。",
       "style": {
         "color": "#f8fafc",
         "background": "#164e63",
@@ -137,46 +137,66 @@
       "target_preset_id": "ltx23_ta2v_preset",
       "config": {
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "values": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
-            },
-            {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
               "model": "None",
               "weight": 1
             }
@@ -186,7 +206,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -241,7 +261,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -251,10 +271,10 @@
       "y": -96,
       "w": 445,
       "h": 660,
-      "title": "LTX2.3 Text+Audio to Video",
+      "title": "LTX Text+Audio to Video",
       "preset": {
-        "name": "LTX2.3(TA2V)",
-        "display_name": "LTX2.3(TA2V)",
+        "name": "LTX(TA2V)",
+        "display_name": "LTX(TA2V)",
         "snapshot_hash": null,
         "snapshot": {
           "default_styles": [],
@@ -267,7 +287,7 @@
         "engine_type": "video",
         "scene_frontend": "v1.1",
         "scene_theme": "Text+Audio to Video",
-        "task_method": "ltx2.3_ta2v_cn"
+        "task_method": "ltx_ta2v_cn"
       },
       "schema": {
         "version": "v1.1",
@@ -275,7 +295,7 @@
           "Text+Audio to Video"
         ],
         "default_theme": "Text+Audio to Video",
-        "theme_title": "LTX2.3 Text+Audio to Video",
+        "theme_title": "LTX Text+Audio to Video",
         "disvisible": [
           "scene_canvas_image",
           "scene_input_image1",
@@ -394,7 +414,7 @@
         ],
         "per_theme": {
           "Text+Audio to Video": {
-            "task_method": "ltx2.3_ta2v_cn",
+            "task_method": "ltx_ta2v_cn",
             "defaults": {
               "scene_var_number": 8,
               "scene_var_number2": 30,
@@ -415,46 +435,66 @@
       "models_config": {
         "mode": "external_override",
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "overrides": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
-            },
-            {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
               "model": "None",
               "weight": 1
             }
@@ -533,29 +573,23 @@
         "updated_at": "2026-05-23T00:00:00Z"
       },
       "model_requirements": {
-        "default_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "previous_default_models": [
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors"
-        ],
+        "default_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "previous_default_models": [],
         "model_list": [
-          "diffusion_models,ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors,21505993064,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "loras,ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,2741024390,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "loras,ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors,628203616,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors",
-          "text_encoders,ltx-2.3_text_projection_bf16.safetensors,2312149072,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors",
-          "text_encoders,gemma_3_12B_it_fpmixed.safetensors,13708659515,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
-          "latent_upscale_models,ltx-2.3-spatial-upscaler-x2-1.1.safetensors,995743560,0,https://www.modelscope.cn/models/Lightricks/LTX-2.3/resolve/master/ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-          "vae,LTX23_audio_vae_bf16.safetensors,364855188,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors",
-          "vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors",
-          "vae,taeltx2_3.safetensors,23531296,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors",
+          "diffusion_models,ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors,21504034224,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372971786,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae,ltx-2.5-video-vae-bf16.safetensors,1472223346,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-video-vae-bf16.safetensors",
+          "vae,ltx-2.5-audio-vae-bf16.safetensors,364866540,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-audio-vae-bf16.safetensors",
+          "latent_upscale_models,ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors,995778752,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
         ],
         "has_model_probe": true,
-        "source": "presets/LTX2.3(TA2V).json"
+        "source": "presets/LTX(TA2V).json"
       },
       "model_status": {
         "state": "unknown",
         "missing_count": 0,
-        "message": "Model requirements loaded from presets/LTX2.3(TA2V).json; replace audio and check models before running."
+        "message": "Model requirements loaded from presets/LTX(TA2V).json; replace audio and check models before running."
       },
       "upload_slots": {
         "scene_audio": "ltx23_ta2v_audio"
@@ -577,8 +611,9 @@
       "collapsed": false,
       "source": {
         "kind": "template_runnable_preset",
-        "preset": "LTX2.3(TA2V)"
-      }
+        "preset": "LTX(TA2V)"
+      },
+      "model_dependency": null
     },
     {
       "id": "ltx23_ta2v_advanced",
@@ -617,7 +652,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -639,7 +674,7 @@
         "step": 0,
         "total_steps": 11,
         "percent": 0,
-        "message": "Replace audio, check models, then run LTX2.3 TA2V."
+        "message": "Replace audio, check models, then run LTX TA2V."
       },
       "preview": null,
       "asset": null,
@@ -708,19 +743,19 @@
   "template": {
     "id": "ltx23_ta2v_basic",
     "title": {
-      "en": "LTX2.3 Text+Audio to Video",
-      "zh": "LTX2.3 文本+音频生成视频"
+      "en": "LTX Text+Audio to Video",
+      "zh": "LTX 文本+音频生成视频"
     },
     "description": {
-      "en": "A runnable audio-driven video template using LTX2.3 with a replaceable audio input, prompt, configs, model checks, and video Result placeholder.",
-      "zh": "可运行的 LTX2.3 音频驱动视频模板，包含可替换音频输入、提示词、配置、模型检查和视频 Result 占位。"
+      "en": "A runnable audio-driven video template using LTX with a replaceable audio input, prompt, configs, model checks, and video Result placeholder.",
+      "zh": "可运行的 LTX 音频驱动视频模板，包含可替换音频输入、提示词、配置、模型检查和视频 Result 占位。"
     },
     "category": "video",
     "tags": [
       "video",
       "audio",
       "ltx",
-      "ltx2.3",
+      "ltx2.5",
       "ta2v",
       "text-audio-to-video",
       "soundtrack",
@@ -738,15 +773,15 @@
         "zh": "需要音频和模型"
       },
       "note": {
-        "en": "Requires LTX2.3 transformer, text encoders, audio/video VAEs, distilled LoRA, upscaler, RIFE, and an audio clip.",
-        "zh": "需要 LTX2.3 transformer、文本编码器、音频/视频 VAE、蒸馏 LoRA、upscaler、RIFE，以及一段音频。"
+        "en": "Requires LTX transformer, text encoder, audio/video VAEs, spatial upscaler, RIFE, and an audio clip.",
+        "zh": "需要 LTX transformer、文本编码器、音频/视频 VAE、spatial upscaler、RIFE，以及一段音频。"
       },
       "models": [
-        "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-        "gemma_3_12B_it_fpmixed.safetensors",
-        "LTX23_audio_vae_bf16.safetensors",
-        "LTX23_video_vae_bf16.safetensors",
+        "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        "ltx-2.5-audio-vae-bf16.safetensors",
+        "ltx-2.5-video-vae-bf16.safetensors",
+        "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
         "flownet.pkl"
       ]
     },

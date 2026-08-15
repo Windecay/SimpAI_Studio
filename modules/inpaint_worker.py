@@ -55,6 +55,7 @@ class InpaintHead(torch.nn.Module):
 
 
 current_task = None
+MIN_INPAINT_CONTEXT = 384
 
 
 def _odd_kernel_size(size, ratio, max_size):
@@ -71,6 +72,18 @@ def mask_blend_parameters(image_height, image_width):
     blur_kernel_size = _odd_kernel_size(short_side, 0.05, 129)
     blur_radius = max(0.2, blur_kernel_size / 5)
     return dilation_kernel_size, blur_kernel_size, blur_radius
+
+
+def _blend_parameters_for_mask(mask):
+    indices = np.where(mask > 0)
+    if len(indices[0]) == 0:
+        height, width = mask.shape[:2]
+    else:
+        height = int(np.max(indices[0]) - np.min(indices[0]) + 1)
+        width = int(np.max(indices[1]) - np.min(indices[1]) + 1)
+    _, blur_kernel_size, sigma = mask_blend_parameters(height, width)
+    blur_kernel_size = max(3, blur_kernel_size)
+    return blur_kernel_size, max(0.2, blur_kernel_size / 5)
 
 
 def _mask_to_image_shape(mask, image):
@@ -214,6 +227,30 @@ def solve_abcd(x, a, b, c, d, k):
     return a, b, c, d
 
 
+def expand_area_to_minimum(area, image_shape, minimum_size=MIN_INPAINT_CONTEXT):
+    a, b, c, d = area
+    image_height, image_width = image_shape[:2]
+    short_side = min(image_height, image_width)
+    minimum_short_side = min(max(1, int(minimum_size)), short_side // 2)
+    if image_height <= image_width:
+        minimum_height = minimum_short_side
+        minimum_width = min(image_width, int(round(minimum_short_side * image_width / image_height)))
+    else:
+        minimum_width = minimum_short_side
+        minimum_height = min(image_height, int(round(minimum_short_side * image_height / image_width)))
+
+    target_height = max(b - a, minimum_height)
+    target_width = max(d - c, minimum_width)
+
+    center_y = (a + b) / 2.0
+    center_x = (c + d) / 2.0
+    a = int(round(center_y - target_height / 2.0))
+    c = int(round(center_x - target_width / 2.0))
+    a = max(0, min(a, image_height - target_height))
+    c = max(0, min(c, image_width - target_width))
+    return a, a + target_height, c, c + target_width
+
+
 def fooocus_fill(image, mask):
     current_image = image.copy()
     raw_image = image.copy()
@@ -233,6 +270,7 @@ class InpaintWorker:
         mask = _mask_to_image_shape(mask, image)
         a, b, c, d = compute_initial_abcd(mask > 0)
         a, b, c, d = solve_abcd(mask, a, b, c, d, k=k)
+        a, b, c, d = expand_area_to_minimum((a, b, c, d), mask.shape)
 
         # interested area
         self.interested_area = (a, b, c, d)
@@ -257,6 +295,7 @@ class InpaintWorker:
 
         # soft pixels
         self.mask = morphological_open(mask)
+        self.blend_mask = mask
         self.image = image
 
         # ending
@@ -334,14 +373,10 @@ class InpaintWorker:
         fg = img.astype(np.float32)
         bg = self.image.copy().astype(np.float32)
         
-        mask = _mask_to_image_shape(self.mask, self.image)
-        mask_height, mask_width = mask.shape[:2]
-        kernel_size, blur_kernel_size, sigma = mask_blend_parameters(mask_height, mask_width)
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        dilated_mask = cv2.dilate(mask, kernel, iterations=1)
-
+        mask = _mask_to_image_shape(getattr(self, 'blend_mask', self.mask), self.image)
+        blur_kernel_size, sigma = _blend_parameters_for_mask(mask)
         w = cv2.GaussianBlur(
-            dilated_mask,
+            mask,
             (blur_kernel_size, blur_kernel_size),
             sigma,
             borderType=cv2.BORDER_REPLICATE

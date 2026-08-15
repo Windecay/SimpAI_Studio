@@ -53,8 +53,10 @@ GEMMA4_HERETIC_MODELSCOPE_BASE = (
 )
 GEMMA4_HERETIC_GGUF = "gemma-4-12B-it-heretic-QAT-UD-Q4_K_XL.gguf"
 GEMMA4_HERETIC_MMPROJ = "mmproj-BF16.gguf"
-COMFY_GEMMA3_12B_FILE = "gemma_3_12B_it_fpmixed.safetensors"
 COMFY_QWEN3VL_4B_FILE = "qwen3vl_4b_fp8_scaled.safetensors"
+VLM_VERSION_ALIASES = {
+    "Gemma3-12B-TextEncoder": "Gemma4-12B-it-heretic-Q4_K_XL",
+}
 
 
 def _safe_stop_comfyd_for_vlm():
@@ -463,14 +465,6 @@ class VLM:
         "Qwen3.5-9B-abliterated-Q6_K": _huihui_qwen35_vlm_config("Q6_K"),
         "Qwen3.5-9B-abliterated-Q8_0": _huihui_qwen35_vlm_config("Q8_0"),
         "Gemma4-12B-it-heretic-Q4_K_XL": _gemma4_heretic_vlm_config(),
-        "Gemma3-12B-TextEncoder": _comfy_textgen_vlm_config(
-            "Gemma 3 12B · Reuse Text Encoder",
-            COMFY_GEMMA3_12B_FILE,
-            "ltxv",
-            "gemma3_12b",
-            "https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
-            13708659515,
-        ),
         "Qwen3VL-4B-TextEncoder": _comfy_textgen_vlm_config(
             "Qwen 3 VL 4B · Reuse Text Encoder",
             COMFY_QWEN3VL_4B_FILE,
@@ -528,6 +522,7 @@ class VLM:
         version = str(version).strip()
         if version == cls.CUSTOM_VERSION:
             return cls.CUSTOM_VERSION
+        version = VLM_VERSION_ALIASES.get(version, version)
         if version in cls.VERSIONS:
             return version
         if isinstance(version, str) and version.endswith("-Thinking"):

@@ -8,20 +8,286 @@
     const DATA_STATE_PREFIX = 'simpai.studio.workspace.data.v1.';
     const MANUAL_RECONNECT_KEY = 'simpai.studio.workspace.manual-reconnect.v1';
     const MANUAL_RECONNECT_VERSION = 1;
+    const PAGE_LIFECYCLE_KEY = 'simpai.studio.workspace.page-lifecycle.v1';
+    const PAGE_LIFECYCLE_VERSION = 1;
     const MANUAL_RECONNECT_MAX_AGE_MS = 30 * 60 * 1000;
     const RESTORE_DELAY_MS = 450;
     const RESTORE_READY_TIMEOUT_MS = 30 * 1000;
     const RESTORE_READY_SETTLE_MS = 650;
     const RESTORE_POST_NAV_SETTLE_MS = 350;
     const WORKSPACE_STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+    const AUTO_RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+    const RESTORE_PROGRESS_ID = 'workspace_restore_progress';
+    const RESTORE_PROGRESS_MIN_VISIBLE_MS = 260;
+    const RESTORE_PROGRESS_HIDE_DELAY_MS = 220;
+    const RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS = 900;
 
     let restoreCompleted = false;
     let restoreRequested = false;
     let restoreRequest = null;
+    let automaticRestoreChecked = false;
+    let automaticRestoreCandidate = null;
     let restoreStartedAt = 0;
     let preserveUiSnapshotUntilUnload = false;
     let captureSuspended = false;
     let captureTimer = 0;
+    let restoreLayoutEnabled = true;
+    let restoreProgressActive = false;
+    let restoreProgressValue = 0;
+    let restoreProgressStartedAt = 0;
+    let restoreProgressSoftTimer = 0;
+    let restoreProgressHideTimer = 0;
+    let restoreProgressTargetPreset = '';
+    let restoreProgressFailed = false;
+
+    function restoreProgressLanguage() {
+        const candidates = [];
+        try {
+            const search = new URLSearchParams(window.location.search || '');
+            candidates.push(search.get('__lang'));
+        } catch (error) {}
+        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
+            ? window.simpleaiTopbarSystemParams
+            : {};
+        candidates.push(params.__lang, window.locale_lang);
+        try { candidates.push(localStorage.getItem('ailang')); } catch (error) {}
+        const value = candidates.map((item) => String(item || '').trim().toLowerCase()).find(Boolean) || 'en';
+        return value.startsWith('en') ? 'en' : 'cn';
+    }
+
+    function restoreProgressText(key, fallback) {
+        const source = String(key || '');
+        if (restoreProgressLanguage() === 'en') return source;
+        const dict = window.localization && typeof window.localization === 'object' ? window.localization : {};
+        return dict[source] || String(fallback || source);
+    }
+
+    function restoreProgressTemplate(key, values) {
+        let text = restoreProgressText(key, key);
+        for (const [name, value] of Object.entries(values || {})) {
+            text = text.replace(new RegExp(`\\{${name}\\}`, 'g'), String(value ?? ''));
+        }
+        return text;
+    }
+
+    function restoreProgressHost() {
+        if (!document?.createElement || !document?.body || typeof document.getElementById !== 'function') return null;
+        let host = document.getElementById(RESTORE_PROGRESS_ID);
+        if (host) return host;
+
+        host = document.createElement('div');
+        host.id = RESTORE_PROGRESS_ID;
+        host.setAttribute('aria-hidden', 'true');
+        Object.assign(host.style, {
+            position: 'fixed',
+            inset: '0',
+            zIndex: '10000',
+            pointerEvents: 'none',
+            opacity: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(0, 0, 0, 0.18)',
+            backdropFilter: 'blur(1.5px)',
+            transition: 'opacity 160ms ease',
+        });
+
+        const card = document.createElement('div');
+        Object.assign(card.style, {
+            width: 'min(560px, calc(100vw - 32px))',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            background: 'rgba(20, 20, 24, 0.92)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 12px 34px rgba(0,0,0,0.28)',
+            backdropFilter: 'blur(8px)',
+            transform: 'translateY(8px)',
+            transition: 'transform 160ms ease',
+        });
+
+        const header = document.createElement('div');
+        Object.assign(header.style, {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+        });
+        const label = document.createElement('div');
+        label.id = 'workspace_restore_progress_label';
+        Object.assign(label.style, {
+            fontSize: '13px',
+            fontWeight: '600',
+            color: 'rgba(255,255,255,0.96)',
+        });
+        const percent = document.createElement('div');
+        percent.id = 'workspace_restore_progress_percent';
+        Object.assign(percent.style, {
+            fontSize: '12px',
+            color: 'rgba(255,255,255,0.72)',
+        });
+        const track = document.createElement('div');
+        Object.assign(track.style, {
+            marginTop: '8px',
+            height: '4px',
+            borderRadius: '999px',
+            overflow: 'hidden',
+            background: 'rgba(255,255,255,0.10)',
+        });
+        const bar = document.createElement('div');
+        bar.id = 'workspace_restore_progress_bar';
+        Object.assign(bar.style, {
+            width: '0%',
+            height: '100%',
+            borderRadius: '999px',
+            background: 'linear-gradient(90deg, #ff8a3d 0%, #5aa2ff 100%)',
+            transition: 'width 180ms ease',
+        });
+
+        header.appendChild(label);
+        header.appendChild(percent);
+        track.appendChild(bar);
+        card.appendChild(header);
+        card.appendChild(track);
+        host.appendChild(card);
+        document.body.appendChild(host);
+        return host;
+    }
+
+    function restoreProgressUpdate(value, label) {
+        if (!restoreProgressActive) return;
+        const host = restoreProgressHost();
+        if (!host) return;
+        const progress = Math.max(0, Math.min(100, Number(value) || 0));
+        restoreProgressValue = Math.max(restoreProgressValue, progress);
+        const labelNode = document.getElementById('workspace_restore_progress_label');
+        const percentNode = document.getElementById('workspace_restore_progress_percent');
+        const bar = document.getElementById('workspace_restore_progress_bar');
+        if (labelNode && label) labelNode.textContent = label;
+        if (percentNode) percentNode.textContent = `${Math.round(restoreProgressValue)}%`;
+        if (bar) bar.style.width = `${restoreProgressValue}%`;
+        host.style.opacity = '1';
+        const card = host.firstElementChild;
+        if (card?.style) card.style.transform = 'translateY(0)';
+    }
+
+    function stopRestoreProgressSoftTimer() {
+        if (!restoreProgressSoftTimer) return;
+        window.clearInterval(restoreProgressSoftTimer);
+        restoreProgressSoftTimer = 0;
+    }
+
+    function startRestoreProgressSoftTimer() {
+        stopRestoreProgressSoftTimer();
+        restoreProgressSoftTimer = window.setInterval(() => {
+            if (!restoreProgressActive) {
+                stopRestoreProgressSoftTimer();
+                return;
+            }
+            const elapsed = Math.max(0, Date.now() - restoreProgressStartedAt);
+            let target = 24;
+            if (elapsed > 450) target = 38;
+            if (elapsed > 1200) target = 48;
+            if (elapsed > 2600) target = 57;
+            if (elapsed > 6000) target = 64;
+            if (restoreProgressValue >= target) return;
+            restoreProgressUpdate(
+                Math.min(target, restoreProgressValue + Math.max(1, (target - restoreProgressValue) * 0.18)),
+                restoreProgressText('Waiting for server', 'Waiting for server')
+            );
+        }, 120);
+    }
+
+    function startRestoreProgress(request) {
+        if (restoreProgressHideTimer) {
+            window.clearTimeout(restoreProgressHideTimer);
+            restoreProgressHideTimer = 0;
+        }
+        restoreProgressActive = true;
+        restoreProgressValue = 0;
+        restoreProgressStartedAt = Date.now();
+        restoreProgressTargetPreset = normalizedPresetName(request?.context?.preset || '');
+        restoreProgressFailed = false;
+        const host = restoreProgressHost();
+        if (host) {
+            host.style.opacity = '0';
+            const card = host.firstElementChild;
+            if (card?.style) card.style.transform = 'translateY(8px)';
+            const bar = document.getElementById('workspace_restore_progress_bar');
+            if (bar) {
+                bar.style.transition = 'none';
+                bar.style.width = '0%';
+                try { void bar.offsetWidth; } catch (error) {}
+                bar.style.transition = 'width 180ms ease';
+            }
+        }
+        restoreProgressUpdate(8, restoreProgressText('Restoring workspace', 'Restoring workspace'));
+        if (host) {
+            startRestoreProgressSoftTimer();
+            try { document.body.style.cursor = 'progress'; } catch (error) {}
+        }
+    }
+
+    function updateRestoreProgress(value, key, values) {
+        if (!restoreProgressActive) return;
+        restoreProgressUpdate(value, restoreProgressTemplate(key, values || {}));
+    }
+
+    function hideRestoreProgress(delay) {
+        if (!document || typeof document.getElementById !== 'function') {
+            restoreProgressActive = false;
+            restoreProgressValue = 0;
+            restoreProgressTargetPreset = '';
+            restoreProgressFailed = false;
+            return;
+        }
+        const host = document.getElementById(RESTORE_PROGRESS_ID);
+        if (!host) {
+            restoreProgressActive = false;
+            restoreProgressValue = 0;
+            restoreProgressTargetPreset = '';
+            restoreProgressFailed = false;
+            return;
+        }
+        host.style.opacity = '0';
+        const card = host.firstElementChild;
+        if (card?.style) card.style.transform = 'translateY(8px)';
+        restoreProgressHideTimer = window.setTimeout(() => {
+            restoreProgressHideTimer = 0;
+            restoreProgressActive = false;
+            restoreProgressValue = 0;
+            restoreProgressTargetPreset = '';
+            restoreProgressFailed = false;
+        }, Math.max(0, Number(delay) || RESTORE_PROGRESS_HIDE_DELAY_MS));
+    }
+
+    function finishRestoreProgress(success, errorKey) {
+        if (!restoreProgressActive) return;
+        if (!success) restoreProgressFailed = true;
+        if (success && restoreProgressFailed) {
+            stopRestoreProgressSoftTimer();
+            try { document.body.style.cursor = ''; } catch (error) {}
+            hideRestoreProgress(RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS);
+            return;
+        }
+        stopRestoreProgressSoftTimer();
+        try { document.body.style.cursor = ''; } catch (error) {}
+        const elapsed = Date.now() - restoreProgressStartedAt;
+        const complete = () => {
+            if (success) {
+                restoreProgressUpdate(100, restoreProgressText('Workspace restored', 'Workspace restored'));
+            } else {
+                restoreProgressUpdate(96, restoreProgressText(errorKey || 'Workspace restore timed out', 'Workspace restore timed out'));
+            }
+            hideRestoreProgress(success ? RESTORE_PROGRESS_HIDE_DELAY_MS : RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS);
+        };
+        if (success && elapsed < RESTORE_PROGRESS_MIN_VISIBLE_MS) {
+            restoreProgressUpdate(88, restoreProgressText('Restoring parameters', 'Restoring parameters'));
+            window.setTimeout(complete, RESTORE_PROGRESS_MIN_VISIBLE_MS - elapsed);
+            return;
+        }
+        complete();
+    }
 
     function rootNode() {
         try {
@@ -60,10 +326,24 @@
         return String(candidates.find((value) => String(value || '').trim()) || '');
     }
 
+    function liveTopbarParams() {
+        const candidates = [];
+        if (window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object') {
+            candidates.push(window.simpleaiTopbarSystemParams);
+        }
+        try {
+            if (typeof topbarLastSystemParams !== 'undefined' && topbarLastSystemParams && typeof topbarLastSystemParams === 'object') {
+                candidates.push(topbarLastSystemParams);
+            }
+        } catch (error) {}
+        if (window.system_params && typeof window.system_params === 'object') {
+            candidates.push(window.system_params);
+        }
+        return candidates.find((value) => value && typeof value === 'object') || {};
+    }
+
     function ownerSource() {
-        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-            ? window.simpleaiTopbarSystemParams
-            : {};
+        const params = liveTopbarParams();
         const candidates = [
             params.__did,
             params.did,
@@ -103,6 +383,23 @@
         return `${DATA_STATE_PREFIX}${String(owner || ownerKey())}`;
     }
 
+    function domPresetName() {
+        const candidates = [];
+        try {
+            candidates.push(document.activeElement);
+            const root = rootNode();
+            candidates.push(...Array.from(root.querySelectorAll?.(
+                'button.bar_button.selected, button.bar_button[aria-pressed="true"], [id^="bar"].selected'
+            ) || []));
+        } catch (error) {}
+        for (const candidate of candidates) {
+            if (!candidate || !/^bar\d+$/.test(String(candidate.id || ''))) continue;
+            const value = presetNameForButton(candidate);
+            if (value) return value;
+        }
+        return '';
+    }
+
     function emptyWorkspaceSnapshot() {
         return { schema: 1, workspaces: {}, updated_at: Date.now() };
     }
@@ -110,6 +407,125 @@
     function snapshotExpired(snapshot) {
         const updatedAt = Number(snapshot?.updated_at || 0);
         return Number.isFinite(updatedAt) && updatedAt > 0 && Date.now() - updatedAt > WORKSPACE_STATE_MAX_AGE_MS;
+    }
+
+    function navigationType() {
+        try {
+            const entries = window.performance?.getEntriesByType?.('navigation') || [];
+            const type = String(entries[0]?.type || '').trim();
+            if (type) return type;
+        } catch (error) {}
+        try {
+            const legacyType = Number(window.performance?.navigation?.type);
+            if (legacyType === 1) return 'reload';
+            if (legacyType === 2) return 'back_forward';
+        } catch (error) {}
+        return '';
+    }
+
+    function pageLocationPath() {
+        return `${String(window.location?.pathname || '')}${String(window.location?.search || '')}`;
+    }
+
+    function readPageLifecycle() {
+        try {
+            const marker = JSON.parse(sessionStorage.getItem(PAGE_LIFECYCLE_KEY) || 'null');
+            const currentPath = pageLocationPath();
+            const markerOwner = String(marker?.owner || '').trim();
+            const markerSessionKey = String(marker?.session_key || '').trim();
+            const currentSessionKey = reconnectSessionKey();
+            const sessionMismatch = !!(markerSessionKey && currentSessionKey && markerSessionKey !== currentSessionKey);
+            const invalid = !marker
+                || marker.version !== PAGE_LIFECYCLE_VERSION
+                || !markerOwner
+                || marker.path !== currentPath
+                || !Number.isFinite(Number(marker.updated_at))
+                || Date.now() - Number(marker.updated_at) > AUTO_RESTORE_MAX_AGE_MS
+                || sessionMismatch;
+            if (invalid) {
+                if (marker) sessionStorage.removeItem(PAGE_LIFECYCLE_KEY);
+                return null;
+            }
+            return marker;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function rememberPageLifecycle(reason) {
+        try {
+            sessionStorage.setItem(PAGE_LIFECYCLE_KEY, JSON.stringify({
+                version: PAGE_LIFECYCLE_VERSION,
+                owner: ownerKey(),
+                session_key: reconnectSessionKey(),
+                path: pageLocationPath(),
+                reason: String(reason || 'pagehide'),
+                updated_at: Date.now(),
+            }));
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function clearPageLifecycle() {
+        try {
+            sessionStorage.removeItem(PAGE_LIFECYCLE_KEY);
+        } catch (error) {}
+    }
+
+    function automaticRestoreRequest() {
+        if (automaticRestoreCandidate) return automaticRestoreCandidate;
+        if (automaticRestoreChecked) return null;
+        automaticRestoreChecked = true;
+
+        const type = navigationType();
+        const lifecycle = readPageLifecycle();
+        const documentWasDiscarded = !!window.document?.wasDiscarded;
+        const pageWasRestored = !!window.__simpai_page_was_restored;
+        if (type !== 'reload' && type !== 'back_forward' && !lifecycle && !documentWasDiscarded && !pageWasRestored) {
+            return null;
+        }
+
+        // During the first part of a new Gradio page, topbar identity can still
+        // be unset. Prefer the owner captured from the page that was hidden.
+        const owner = String(lifecycle?.owner || ownerKey());
+        const uiSnapshot = readUiSnapshot(owner);
+        const dataSnapshot = workspaceSnapshot(owner);
+        const updatedAt = Math.max(
+            Number(uiSnapshot?.updated_at || 0),
+            Number(dataSnapshot?.updated_at || 0),
+        );
+        if (!updatedAt || Date.now() - updatedAt > AUTO_RESTORE_MAX_AGE_MS) return null;
+        if (!uiSnapshot && !dataSnapshot) return null;
+
+        const request = {
+            version: MANUAL_RECONNECT_VERSION,
+            owner,
+            session_key: reconnectSessionKey(),
+            pathname: String(window.location?.pathname || ''),
+            requested_at: Date.now(),
+            context: uiSnapshot?.context || currentWorkspaceContext(),
+            snapshot: dataSnapshot || emptyWorkspaceSnapshot(),
+            value_count: storedWorkspaceValueCount(owner),
+            source: 'browser_history',
+            navigation_type: type,
+            lifecycle_reason: lifecycle?.reason || '',
+        };
+        automaticRestoreCandidate = request;
+        markPerformance('workspace.auto_restore_candidate', {
+            owner,
+            navigation_type: type,
+            preset: request.context?.preset || '',
+            value_count: request.value_count,
+        }, true);
+        return request;
+    }
+
+    function activeRestoreRequest() {
+        const manual = pendingManualReconnectRequest();
+        if (manual) return manual;
+        return automaticRestoreRequest();
     }
 
     function workspaceSnapshot(owner) {
@@ -205,10 +621,13 @@
     }
 
     function currentWorkspaceContext() {
-        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-            ? window.simpleaiTopbarSystemParams
-            : {};
-        const preset = String(params.__preset || params.preset || '').trim();
+        const params = liveTopbarParams();
+        let lastPreset = '';
+        try {
+            if (typeof topbarLastPreset !== 'undefined') lastPreset = topbarLastPreset;
+        } catch (error) {}
+        const completedPreset = window.__simpleai_preset_nav_completed?.preset || '';
+        const preset = String(params.__preset || params.preset || lastPreset || completedPreset || domPresetName() || '').trim();
         const sceneTheme = String(
             params.__scene_theme
             || params.scene_theme
@@ -299,6 +718,8 @@
         restoreCompleted = false;
         restoreRequested = false;
         restoreRequest = null;
+        restoreLayoutEnabled = true;
+        automaticRestoreCandidate = null;
         restoreStartedAt = 0;
         const owner = ownerKey();
         const uiSnapshot = readUiSnapshot(owner);
@@ -336,12 +757,16 @@
 
     function prepareInitialSystemParams(systemParams) {
         const params = systemParams && typeof systemParams === 'object' ? systemParams : {};
-        const request = pendingManualReconnectRequest();
+        const request = activeRestoreRequest();
         if (!request) return params;
+        if (!restoreProgressActive) startRestoreProgress(request);
+        else restoreProgressUpdate(12, restoreProgressText('Restoring workspace', 'Restoring workspace'));
+        restoreRequest = request;
+        restoreLayoutEnabled = request.source !== 'browser_history';
+        automaticRestoreCandidate = null;
         captureSuspended = true;
         restoreCompleted = false;
         restoreRequested = false;
-        restoreRequest = request;
         restoreStartedAt = Date.now();
         const context = request.context && typeof request.context === 'object' ? request.context : {};
         const preset = String(context.preset || '').trim();
@@ -358,10 +783,12 @@
         params.__workspace_reconnect_pending = true;
         params.__workspace_reconnect_owner = request.owner;
         params.__workspace_reconnect_requested_at = request.requested_at;
-        clearManualReconnectRequest(request);
+        if (request.source !== 'browser_history') clearManualReconnectRequest(request);
+        else clearPageLifecycle();
         markPerformance('workspace.restore_marker_consumed', {
             owner: request.owner,
             requested_at: request.requested_at,
+            source: request.source || 'manual_reconnect',
         }, true);
         markPerformance('workspace.restore_bootstrap', {
             owner: request.owner,
@@ -405,10 +832,13 @@
     }
 
     function currentPresetName() {
-        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-            ? window.simpleaiTopbarSystemParams
-            : {};
-        return normalizedPresetName(params.__preset || params.preset || '');
+        const params = liveTopbarParams();
+        let lastPreset = '';
+        try {
+            if (typeof topbarLastPreset !== 'undefined') lastPreset = topbarLastPreset;
+        } catch (error) {}
+        const completedPreset = window.__simpleai_preset_nav_completed?.preset || '';
+        return normalizedPresetName(params.__preset || params.preset || lastPreset || completedPreset || domPresetName() || '');
     }
 
     function presetNavigationActive() {
@@ -433,10 +863,12 @@
     }
 
     async function waitForStudioUiReady(request) {
+        updateRestoreProgress(16, 'Waiting for server');
         const deadline = Date.now() + RESTORE_READY_TIMEOUT_MS;
         while (Date.now() < deadline) {
             if (window.__simpleai_ui_ready === true) {
                 await wait(RESTORE_READY_SETTLE_MS);
+                updateRestoreProgress(30, 'Restoring workspace');
                 return true;
             }
             await wait(100);
@@ -450,8 +882,15 @@
 
     async function ensureReconnectPreset(request) {
         const target = normalizedPresetName(request?.context?.preset || '');
-        if (!target) return true;
-        if (currentPresetName() === target && !presetNavigationActive()) return true;
+        if (!target) {
+            updateRestoreProgress(48, 'Restoring parameters');
+            return true;
+        }
+        updateRestoreProgress(38, 'Switching to {preset}...', { preset: target });
+        if (currentPresetName() === target && !presetNavigationActive()) {
+            updateRestoreProgress(64, 'Applying {preset}...', { preset: target });
+            return true;
+        }
 
         let baselineCompletion = presetNavigationCompletion();
         let buttonClicked = false;
@@ -478,6 +917,7 @@
                 && completion.preset === target;
             if (currentPresetName() === target && !presetNavigationActive() && navigationFinished) {
                 await wait(RESTORE_POST_NAV_SETTLE_MS);
+                updateRestoreProgress(68, 'Applying {preset}...', { preset: target });
                 markPerformance('workspace.restore_preset_navigation_ready', {
                     preset: target,
                     completion_seq: completion.seq,
@@ -492,6 +932,7 @@
             button_clicked: buttonClicked,
             candidates: candidateNames.slice(0, 40),
         }, true);
+        finishRestoreProgress(false, 'Workspace restore timed out');
         return false;
     }
 
@@ -500,13 +941,15 @@
     }
 
     async function prepareRestoreRequest(fallbackState, fallbackOwner) {
-        const request = restoreRequest || pendingManualReconnectRequest();
+        const request = restoreRequest || activeRestoreRequest();
         if (!request) return [emptyRestoreSnapshot(), ownerKey() || fallbackOwner || 'local'];
         restoreRequest = request;
+        if (!restoreProgressActive) startRestoreProgress(request);
+        restoreLayoutEnabled = request.source !== 'browser_history';
         if (!restoreStartedAt) restoreStartedAt = Date.now();
         captureSuspended = true;
         restoreRequested = true;
-        clearManualReconnectRequest(request);
+        if (request.source !== 'browser_history') clearManualReconnectRequest(request);
         const uiReady = await waitForStudioUiReady(request);
         const presetReady = await ensureReconnectPreset(request);
         if (!presetReady) {
@@ -525,6 +968,7 @@
         const stored = workspaceSnapshot(request.owner);
         const fallback = fallbackState && typeof fallbackState === 'object' ? fallbackState : null;
         const snapshot = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
+        updateRestoreProgress(82, 'Restoring parameters');
         markPerformance('workspace.restore_values_ready', {
             owner: request.owner,
             preset: currentPresetName(),
@@ -535,7 +979,9 @@
             ),
             value_count: storedWorkspaceValueCount(request.owner),
             ui_ready: uiReady,
-            snapshot_source: requestSnapshot ? 'manual_reconnect' : (stored ? 'workspace_storage' : 'browser_state'),
+            snapshot_source: requestSnapshot
+                ? (request.source === 'browser_history' ? 'browser_history' : 'manual_reconnect')
+                : (stored ? 'workspace_storage' : 'browser_state'),
         }, true);
         return [snapshot, request.owner];
     }
@@ -804,18 +1250,27 @@
         }
     }
 
+    function syncRestoredDynamicVisibility() {
+        try { window.syncTopbarMountedPanelVisibility?.('workspace_restore'); } catch (error) {}
+        try { window.syncGradio6MountedDynamicVisibility?.(); } catch (error) {}
+        try { window.syncMainLayoutResponsiveStack?.(); } catch (error) {}
+    }
+
     function restoreUiState(owner) {
         if (!restoreRequested && !owner) return false;
         const restoreOwner = String(owner || restoreRequest?.owner || ownerKey());
         const snapshot = readUiSnapshot(restoreOwner);
         if (!snapshot) return false;
         const root = rootNode();
-        restoreTabs(root, snapshot.tabs);
-        restoreAccordions(root, snapshot.accordions);
+        if (restoreLayoutEnabled) {
+            restoreTabs(root, snapshot.tabs);
+            restoreAccordions(root, snapshot.accordions);
+        }
         restoreFocus(root, snapshot.focus);
         window.requestAnimationFrame(() => {
             window.scrollTo(Number(snapshot.scroll_x) || 0, Number(snapshot.scroll_y) || 0);
         });
+        syncRestoredDynamicVisibility();
         return true;
     }
 
@@ -832,7 +1287,11 @@
         restoreUiState(request.owner);
         window.setTimeout(() => restoreUiState(request.owner), 250);
         window.setTimeout(() => restoreUiState(request.owner), 800);
-        clearManualReconnectRequest(request);
+        window.setTimeout(syncRestoredDynamicVisibility, 120);
+        window.setTimeout(syncRestoredDynamicVisibility, 520);
+        finishRestoreProgress(true);
+        if (request.source !== 'browser_history') clearManualReconnectRequest(request);
+        else clearPageLifecycle();
         markPerformance('workspace.restore_finished', {
             owner: request.owner,
             preset: currentPresetName(),
@@ -844,25 +1303,55 @@
             elapsed_ms: restoreStartedAt ? Math.max(0, Date.now() - restoreStartedAt) : 0,
         }, true);
         window.dispatchEvent(new CustomEvent('simpai:workspace-restored', {
-            detail: { owner: request.owner, restoredAt: Date.now(), source: 'manual_reconnect' },
+            detail: {
+                owner: request.owner,
+                restoredAt: Date.now(),
+                source: request.source || 'manual_reconnect',
+            },
         }));
         restoreRequested = false;
         restoreRequest = null;
+        automaticRestoreCandidate = null;
         preserveUiSnapshotUntilUnload = false;
         captureSuspended = false;
         return true;
     }
 
     function prepareForReload() {
-        if (captureWritesBlocked()) return true;
+        if (captureWritesBlocked()) {
+            markPerformance('workspace.pagehide_capture', {
+                owner: ownerKey(),
+                preset: currentWorkspaceContext().preset,
+                scene_theme: currentWorkspaceContext().scene_theme,
+                captured_fields: 0,
+                ui_snapshot_saved: false,
+                skipped: true,
+            }, true);
+            return true;
+        }
         const active = document.activeElement;
         captureWorkspaceField(active);
         if (active?.dispatchEvent) {
             try { active.dispatchEvent(new Event('input', { bubbles: true })); } catch (error) {}
             try { active.dispatchEvent(new Event('change', { bubbles: true })); } catch (error) {}
         }
-        captureAllWorkspaceFields();
-        captureNow();
+        const capturedFields = captureAllWorkspaceFields();
+        const uiSnapshotSaved = captureNow();
+        const context = currentWorkspaceContext();
+        markPerformance('workspace.pagehide_capture', {
+            owner: ownerKey(),
+            preset: context.preset,
+            scene_theme: context.scene_theme,
+            captured_fields: capturedFields,
+            ui_snapshot_saved: uiSnapshotSaved,
+            skipped: false,
+        }, true);
+        return true;
+    }
+
+    function prepareForPageHide() {
+        prepareForReload();
+        rememberPageLifecycle('pagehide');
         return true;
     }
 
@@ -876,10 +1365,12 @@
         prepareForManualReconnect,
         markManualReconnect,
         pendingManualReconnectRequest,
+        automaticRestoreRequest,
         prepareInitialSystemParams,
         prepareRestoreRequest,
         finishRestore,
         restoreUiState,
+        prepareForPageHide,
     };
 
     captureSuspended = !!pendingManualReconnectRequest();
@@ -894,8 +1385,14 @@
     }, true);
     document.addEventListener('click', () => scheduleCapture(220), true);
     window.addEventListener('scroll', () => scheduleCapture(250), { passive: true });
-    window.addEventListener('pagehide', prepareForReload);
-    window.addEventListener('beforeunload', prepareForReload);
+    window.addEventListener('pagehide', prepareForPageHide);
+    window.addEventListener('beforeunload', prepareForPageHide);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') prepareForPageHide();
+    });
+    window.addEventListener('pageshow', (event) => {
+        if (event?.persisted) window.__simpai_page_was_restored = true;
+    });
 
     if (typeof window.onUiLoaded === 'function') {
         window.onUiLoaded(scheduleUiRestore);

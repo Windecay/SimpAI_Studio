@@ -26,10 +26,39 @@ INVALID_API_KEY_MESSAGE = (
 MISSING_MODEL_ID_MESSAGE = "Model ID cannot be identified from the provided model file"
 
 
+MODEL_FOLDERS = ("checkpoints", "diffusion_models")
+
+
+def model_filename_list() -> list[str]:
+    """Every model the node can read a model id from, in folder order and de-duplicated.
+
+    A name present in both folders is listed once; resolve_model_path resolves
+    it the same way round, so the entry always refers to the same file the
+    combo offered.
+    """
+    names = []
+    for folder in MODEL_FOLDERS:
+        for name in folder_paths.get_filename_list(folder):
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def resolve_model_path(ckpt_name: str) -> str:
+    """Full path of ckpt_name, looked up in the folder order the combo used."""
+    for folder in MODEL_FOLDERS:
+        path = folder_paths.get_full_path(folder, ckpt_name)
+        if path is not None:
+            return path
+    raise ValueError(
+        f"Model file '{ckpt_name}' was not found in any of: {', '.join(MODEL_FOLDERS)}."
+    )
+
+
 def extract_model_id(ckpt_name: str) -> str:
     model_id_key = "encrypted_wandb_properties"
     with safe_open(
-        folder_paths.get_full_path_or_raise("checkpoints", ckpt_name),
+        resolve_model_path(ckpt_name),
         framework="pt",
         device="cpu",
     ) as f:
@@ -86,8 +115,12 @@ class GemmaAPITextEncode:
                     },
                 ),
                 "ckpt_name": (
-                    folder_paths.get_filename_list("checkpoints"),
-                    {"tooltip": "The name of the checkpoint (model) to load."},
+                    model_filename_list(),
+                    {
+                        "tooltip": "The model to read the API model id from. "
+                        "Either a checkpoint or a diffusion model; it must "
+                        "carry the model id in its safetensors metadata."
+                    },
                 ),
             },
         }

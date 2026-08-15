@@ -224,8 +224,19 @@ class SimpAIAIOInpaintZImage(_SimpAIAIOInpaintBase):
                inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         if not _engine_enabled(inpaint):
             return super().expand(
-                model, positive, negative, vae, inpaint, seed, steps, cfg,
-                sampler_name, scheduler, inpaint_control_net, progress_node_id, use_differential_diffusion,
+                model=model,
+                positive=positive,
+                negative=negative,
+                vae=vae,
+                inpaint=inpaint,
+                seed=seed,
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+                inpaint_control_net=inpaint_control_net,
+                progress_node_id=progress_node_id,
+                use_differential_diffusion=use_differential_diffusion,
             )
         graph = GraphBuilder()
         image = inpaint["image"]

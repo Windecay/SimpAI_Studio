@@ -15,7 +15,7 @@
         8
       ],
       "model": [
-        "374",
+        "507",
         0
       ],
       "positive": [
@@ -59,8 +59,8 @@
         29
       ],
       "clip": [
-        "499",
-        1
+        "332",
+        0
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -115,8 +115,8 @@
         0
       ],
       "clip": [
-        "499",
-        1
+        "332",
+        0
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -147,19 +147,18 @@
   },
   "332": {
     "inputs": {
-      "clip_name1": "gemma_3_12B_it_fpmixed.safetensors",
-      "clip_name2": "ltx-2.3_text_projection_bf16.safetensors",
+      "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
       "type": "ltxv",
       "device": "default"
     },
-    "class_type": "DualCLIPLoader",
+    "class_type": "CLIPLoader",
     "_meta": {
       "title": "clip_model"
     }
   },
   "333": {
     "inputs": {
-      "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+      "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
     },
     "class_type": "LatentUpscaleModelLoader",
     "_meta": {
@@ -168,7 +167,7 @@
   },
   "335": {
     "inputs": {
-      "vae_name": "LTX23_audio_vae_bf16.safetensors",
+      "vae_name": "ltx-2.5-audio-vae-bf16.safetensors",
       "device": "main_device",
       "weight_dtype": "bf16"
     },
@@ -207,32 +206,6 @@
       "title": "LTXV Chunk FeedForward (optional)"
     }
   },
-  "374": {
-    "inputs": {
-      "preview_rate": 8,
-      "model": [
-        "507",
-        0
-      ],
-      "vae": [
-        "375",
-        0
-      ]
-    },
-    "class_type": "LTX2SamplingPreviewOverride",
-    "_meta": {
-      "title": "LTX2 Sampling Preview Override"
-    }
-  },
-  "375": {
-    "inputs": {
-      "vae_name": "taeltx2_3.safetensors"
-    },
-    "class_type": "VAELoader",
-    "_meta": {
-      "title": "Tiny VAE (for sampler previews)"
-    }
-  },
   "421": {
     "inputs": {
       "frames_number": 97,
@@ -250,7 +223,7 @@
   },
   "453": {
     "inputs": {
-      "unet_name": "placeholder.safetensors",
+      "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -260,13 +233,11 @@
   },
   "454": {
     "inputs": {
-      "vae_name": "LTX23_video_vae_bf16.safetensors",
-      "device": "main_device",
-      "weight_dtype": "bf16"
+      "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
     },
-    "class_type": "VAELoaderKJ",
+    "class_type": "VAELoader",
     "_meta": {
-      "title": "VAELoader KJ"
+      "title": "vae_model"
     }
   },
   "459": {
@@ -287,25 +258,6 @@
     "class_type": "LTX2_NAG",
     "_meta": {
       "title": "LTX2 NAG"
-    }
-  },
-  "499": {
-    "inputs": {
-      "lora_name": "ltx\\gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors",
-      "strength_model": 1,
-      "strength_clip": 1,
-      "model": [
-        "627",
-        0
-      ],
-      "clip": [
-        "332",
-        0
-      ]
-    },
-    "class_type": "LoraLoader",
-    "_meta": {
-      "title": "Load LoRA (Model and CLIP)"
     }
   },
   "507": {
@@ -507,7 +459,7 @@
       "sage_attention": "auto",
       "allow_compile": false,
       "model": [
-        "627",
+        "643",
         0
       ]
     },
@@ -531,7 +483,7 @@
       "batch_size": 16,
       "use_fp16": true,
       "images": [
-        "640",
+        "646",
         0
       ]
     },
@@ -563,7 +515,7 @@
         0
       ],
       "on_false": [
-        "640",
+        "646",
         0
       ]
     },
@@ -789,7 +741,7 @@
       "keep_proportion": "stretch",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
-      "divisible_by": 16,
+      "divisible_by": 64,
       "device": "cpu",
       "image": [
         "639",
@@ -854,11 +806,11 @@
         0
       ],
       "latent": [
-        "643",
+        "644",
         0
       ],
       "image": [
-        "635",
+        "645",
         0
       ]
     },
@@ -957,9 +909,9 @@
       "title": "LayerUtility: ColorImage"
     }
   },
-  "627": {
+  "626": {
     "inputs": {
-      "lora_name": "ltx\\ltx2.3-ic-subtitles-remove-general.safetensors",
+      "lora_name": "ltx\\ltx2.3-ic-watermark-remove-general.safetensors",
       "strength_model": 1,
       "model": [
         "613",
@@ -1067,7 +1019,7 @@
         0
       ],
       "on_true": [
-        "639",
+        "614",
         0
       ],
       "on_false": [
@@ -1118,7 +1070,7 @@
       "keep_proportion": "stretch",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
-      "divisible_by": 16,
+      "divisible_by": 1,
       "device": "cpu",
       "image": [
         "567",
@@ -1158,8 +1110,22 @@
   },
   "643": {
     "inputs": {
+      "lora_name": "ltx\\ltx2.3-ic-subtitles-remove-general.safetensors",
+      "strength_model": 1,
+      "model": [
+        "626",
+        0
+      ]
+    },
+    "class_type": "LTXICLoRALoaderModelOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 IC-LoRA Loader Model Only"
+    }
+  },
+  "644": {
+    "inputs": {
       "pixels": [
-        "635",
+        "645",
         0
       ],
       "vae": [
@@ -1170,6 +1136,39 @@
     "class_type": "VAEEncode",
     "_meta": {
       "title": "VAE Encode"
+    }
+  },
+  "645": {
+    "inputs": {
+      "images": [
+        "635",
+        0
+      ],
+      "vae": [
+        "454",
+        0
+      ],
+      "time_scale_factor": 8
+    },
+    "class_type": "SimpAILTXVFramePad",
+    "_meta": {
+      "title": "SimpAI LTX Frame Pad / LTX 视频帧补齐"
+    }
+  },
+  "646": {
+    "inputs": {
+      "images": [
+        "640",
+        0
+      ],
+      "target_frame_count": [
+        "645",
+        1
+      ]
+    },
+    "class_type": "SimpAILTXVFrameTrim",
+    "_meta": {
+      "title": "SimpAI LTX Frame Trim / LTX 视频帧裁剪"
     }
   }
 }

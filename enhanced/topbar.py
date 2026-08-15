@@ -323,13 +323,13 @@ PRESET_STORE_ORDER = [
     "Wan-Remover",
     "InfiniteTalk",
     "InfiniteTalk-AV2V",
-    "LTX2.3(I2V)",
-    "LTX2.3(Extent)",
-    "LTX2.3(IA2V)",
-    "LTX2.3(T2V)",
-    "LTX2.3(TA2V)",
-    "LTX2.3(AudioGen)",
-    "LTX2.3(InsightTool)",
+    "LTX(I2V)",
+    "LTX(Extent)",
+    "LTX(IA2V)",
+    "LTX(T2V)",
+    "LTX(TA2V)",
+    "LTX(AudioGen)",
+    "LTX(InsightTool)",
     "LTX-Outpaint",
     "Nvidia-VSR",
     "Hunyuan-Foley",
@@ -2574,15 +2574,15 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                 "switch_option1",
                 False,
             )
-        ltx23_audio_gen_task = "ltx2.3_audio_gen" in scene_task_method_l
+        ltx_audio_gen_task = "ltx_audio_gen" in scene_task_method_l
         scene_audio_required = (
             ("infinitetalk" in scene_task_method_l)
-            or ("ltx2.3" in scene_task_method_l and scene_audio_policy == "required")
-            or ("ltx2.3_ia2v" in scene_task_method_l)
-            or ("ltx2.3_ta2v" in scene_task_method_l)
+            or ("ltx_" in scene_task_method_l and scene_audio_policy == "required")
+            or ("ltx_ia2v" in scene_task_method_l)
+            or ("ltx_ta2v" in scene_task_method_l)
             or (
-                "ltx2.3" in scene_task_method_l
-                and not ltx23_audio_gen_task
+                "ltx_" in scene_task_method_l
+                and not ltx_audio_gen_task
                 and not scene_audio_policy
                 and bool(scene_switch_option1_effective)
             )

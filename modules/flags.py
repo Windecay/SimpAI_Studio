@@ -119,7 +119,7 @@ inpaint_engine_versions = {
     "nun_fp4_aio": ['Nun_fp4','None'],
     "wan_aio_cn": ['VACE'],
     "qwen_aio_cn": ['Qwen_Inpaint'],
-    "z_image_turbo_aio_cn": ['LanPaint'],
+    "z_image_turbo_aio_cn": ['LanPaint', 'None'],
     "anima_aio": ['anima_inpainting', 'None']
     }
 inpaint_engine_model_names = {
@@ -291,7 +291,7 @@ task_class_mapping = {
             'HyDiT'  : 'Hunyuan-DiT',
             'Flux'   : 'Flux.1',
             'Wan'    : 'Wan2.2',
-            'LTX'    : 'LTX2.3',
+            'LTX'    : 'LTX',
             'Qwen'   : 'Qwen',
             'Z-image': 'Z-image',
             'Cloud': 'Cloud API',
@@ -302,6 +302,8 @@ def get_taskclass_by_fullname(fullname):
     for taskclass, fname in task_class_mapping.items():
         if fname == fullname:
             return taskclass
+    if fullname == 'LTX':
+        return 'LTX'
     return None
 
 comfy_classes = ['Comfy', 'SD3x', 'HyDiT', 'Flux', 'Wan', 'LTX', 'Qwen', 'Z-image']
@@ -384,7 +386,7 @@ default_class_params = {
         'available_sampler_name': comfy_sampler_list,
         'available_scheduler_name': comfy_scheduler_list,
         'backend_params': {
-            "task_method": "ltx2.3_t2v_cn",
+            "task_method": "ltx_t2v_cn",
             },
         },
     'Qwen': {

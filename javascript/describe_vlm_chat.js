@@ -39,7 +39,6 @@
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
-        'Gemma3-12B-TextEncoder',
         'Qwen3VL-4B-TextEncoder'
     ];
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
@@ -4473,8 +4472,8 @@
     function creativeCompatiblePresetEntry(task, inputCount = 0) {
         const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
         const taskPriorities = {
-            text_to_video: ['MiniMax-H3(T2V)', 'Wan(T2V)', 'LTX2.3(T2V)', 'Wan-TTP'],
-            image_to_video: ['MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Wan(I2V)', 'Dasiwa(I2V)', 'LTX2.3(I2V)'],
+            text_to_video: ['MiniMax-H3(T2V)', 'Wan(T2V)', 'LTX(T2V)', 'Wan-TTP'],
+            image_to_video: ['MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Wan(I2V)', 'Dasiwa(I2V)', 'LTX(I2V)'],
             multi_image_to_video: ['MiniMax-H3(R2V)', 'MiniMax-H3(I2V)', 'Wan(I2V)', 'Dasiwa(I2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
             image_restore: ['Imagerepair+'],

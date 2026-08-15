@@ -1,0 +1,1147 @@
+{
+  "100": {
+    "inputs": {
+      "sigmas": "1.0, 0.9375, 0.8125, 0.5625, 0.25, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "ManualSigmas"
+    }
+  },
+  "103": {
+    "inputs": {
+      "cfg": [
+        "578",
+        8
+      ],
+      "model": [
+        "507",
+        0
+      ],
+      "positive": [
+        "617",
+        0
+      ],
+      "negative": [
+        "617",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFGGuider"
+    }
+  },
+  "107": {
+    "inputs": {
+      "frame_rate": [
+        "586",
+        0
+      ],
+      "positive": [
+        "121",
+        0
+      ],
+      "negative": [
+        "110",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXVConditioning"
+    }
+  },
+  "110": {
+    "inputs": {
+      "text": [
+        "578",
+        29
+      ],
+      "clip": [
+        "332",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative_prompt"
+    }
+  },
+  "115": {
+    "inputs": {
+      "noise_seed": [
+        "584",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "119": {
+    "inputs": {
+      "noise": [
+        "115",
+        0
+      ],
+      "guider": [
+        "103",
+        0
+      ],
+      "sampler": [
+        "138",
+        0
+      ],
+      "sigmas": [
+        "100",
+        0
+      ],
+      "latent_image": [
+        "343",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "121": {
+    "inputs": {
+      "text": [
+        "578",
+        0
+      ],
+      "clip": [
+        "332",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "125": {
+    "inputs": {
+      "av_latent": [
+        "119",
+        1
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "138": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "332": {
+    "inputs": {
+      "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "333": {
+    "inputs": {
+      "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "Load Latent Upscale Model"
+    }
+  },
+  "335": {
+    "inputs": {
+      "vae_name": "ltx-2.5-audio-vae-bf16.safetensors",
+      "device": "main_device",
+      "weight_dtype": "bf16"
+    },
+    "class_type": "VAELoaderKJ",
+    "_meta": {
+      "title": "VAELoader KJ"
+    }
+  },
+  "343": {
+    "inputs": {
+      "video_latent": [
+        "617",
+        2
+      ],
+      "audio_latent": [
+        "421",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "357": {
+    "inputs": {
+      "chunks": 4,
+      "dim_threshold": 4096,
+      "model": [
+        "601",
+        0
+      ]
+    },
+    "class_type": "LTXVChunkFeedForward",
+    "_meta": {
+      "title": "LTXV Chunk FeedForward (optional)"
+    }
+  },
+  "421": {
+    "inputs": {
+      "frames_number": 97,
+      "frame_rate": 24,
+      "batch_size": 1,
+      "audio_vae": [
+        "335",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV Empty Latent Audio"
+    }
+  },
+  "453": {
+    "inputs": {
+      "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "454": {
+    "inputs": {
+      "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "459": {
+    "inputs": {
+      "nag_scale": 11,
+      "nag_alpha": 0.25,
+      "nag_tau": 2.5,
+      "inplace": false,
+      "model": [
+        "357",
+        0
+      ],
+      "nag_cond_video": [
+        "107",
+        1
+      ]
+    },
+    "class_type": "LTX2_NAG",
+    "_meta": {
+      "title": "LTX2 NAG"
+    }
+  },
+  "507": {
+    "inputs": {
+      "weight": 4,
+      "model": [
+        "459",
+        0
+      ],
+      "latent": [
+        "343",
+        0
+      ]
+    },
+    "class_type": "LTXVEnhanceAVideoKJ",
+    "_meta": {
+      "title": "LTXV Enhance A Video KJ"
+    }
+  },
+  "548": {
+    "inputs": {
+      "expression": "round(a/1000*b/8)*8+1",
+      "values.b": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "567": {
+    "inputs": {
+      "spatial_tiles": 4,
+      "spatial_overlap": 2,
+      "temporal_tile_length": 16,
+      "temporal_overlap": 2,
+      "last_frame_fix": false,
+      "working_device": "auto",
+      "working_dtype": "auto",
+      "vae": [
+        "454",
+        0
+      ],
+      "latents": [
+        "618",
+        2
+      ]
+    },
+    "class_type": "LTXVSpatioTemporalTiledVAEDecode",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXV Spatio Temporal Tiled VAE Decode"
+    }
+  },
+  "578": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "welcome.png",
+      "ip_image1": "welcome.png",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "welcome.png",
+      "inpaint_mask": "welcome.png",
+      "width": 1024,
+      "height": 1024,
+      "cfg": 1,
+      "steps": 11,
+      "var_number": 5,
+      "var_number2": 24,
+      "var_number3": 24,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 8
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "579": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": [
+        "594",
+        0
+      ],
+      "crf": 19,
+      "images": [
+        "600",
+        0
+      ],
+      "audio": [
+        "616",
+        2
+      ]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {
+      "title": "SaveVideoWebsocket"
+    }
+  },
+  "580": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "605",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_1"
+    }
+  },
+  "581": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "580",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "582": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "581",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "583": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "582",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "584": {
+    "inputs": {
+      "seed": 0
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "586": {
+    "inputs": {
+      "value": [
+        "578",
+        16
+      ]
+    },
+    "class_type": "JWIntegerToFloat",
+    "_meta": {
+      "title": "Integer to Float"
+    }
+  },
+  "587": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "626",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "589": {
+    "inputs": {
+      "source_fps": [
+        "586",
+        0
+      ],
+      "target_fps": [
+        "590",
+        0
+      ],
+      "scale": 2,
+      "model_name": "flownet.pkl",
+      "batch_size": 16,
+      "use_fp16": true,
+      "images": [
+        "646",
+        0
+      ]
+    },
+    "class_type": "RIFEInterpolation",
+    "_meta": {
+      "title": "RIFE Frame Interpolation"
+    }
+  },
+  "590": {
+    "inputs": {
+      "value": [
+        "578",
+        11
+      ]
+    },
+    "class_type": "JWIntegerToFloat",
+    "_meta": {
+      "title": "Integer to Float"
+    }
+  },
+  "591": {
+    "inputs": {
+      "boolean": [
+        "592",
+        0
+      ],
+      "on_true": [
+        "589",
+        0
+      ],
+      "on_false": [
+        "646",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "592": {
+    "inputs": {
+      "comparison": "a > b",
+      "a": [
+        "590",
+        0
+      ],
+      "b": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "594": {
+    "inputs": {
+      "boolean": [
+        "592",
+        0
+      ],
+      "on_true": [
+        "590",
+        0
+      ],
+      "on_false": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "600": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "591",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "LayerUtility: Purge VRAM V2"
+    }
+  },
+  "601": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "587",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "604": {
+    "inputs": {
+      "unet_name": "placeholder.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "base_model_gguf"
+    }
+  },
+  "605": {
+    "inputs": {
+      "boolean": [
+        "607",
+        0
+      ],
+      "on_true": [
+        "453",
+        0
+      ],
+      "on_false": [
+        "604",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "606": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "607": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "578",
+        24
+      ],
+      "b": [
+        "606",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "608": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "583",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "609": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "608",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "610": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "609",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "611": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "612": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "611",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "613": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "612",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
+    }
+  },
+  "614": {
+    "inputs": {
+      "width": [
+        "578",
+        6
+      ],
+      "height": [
+        "578",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 64,
+      "device": "cpu",
+      "image": [
+        "639",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "615": {
+    "inputs": {
+      "video_info": [
+        "616",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoLoaded",
+    "_meta": {
+      "title": "Video Info (Loaded) 🎥🅥🅗🅢"
+    }
+  },
+  "616": {
+    "inputs": {
+      "video": "example.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": [
+        "641",
+        0
+      ],
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "617": {
+    "inputs": {
+      "frame_idx": 0,
+      "strength": 1,
+      "latent_downscale_factor": 1,
+      "crop": "disabled",
+      "use_tiled_encode": false,
+      "tile_size": 256,
+      "tile_overlap": 64,
+      "positive": [
+        "107",
+        0
+      ],
+      "negative": [
+        "107",
+        1
+      ],
+      "vae": [
+        "454",
+        0
+      ],
+      "latent": [
+        "643",
+        0
+      ],
+      "image": [
+        "645",
+        0
+      ]
+    },
+    "class_type": "LTXAddVideoICLoRAGuide",
+    "_meta": {
+      "title": "🅛🅣🅧 Add Video IC-LoRA Guide"
+    }
+  },
+  "618": {
+    "inputs": {
+      "positive": [
+        "617",
+        0
+      ],
+      "negative": [
+        "617",
+        1
+      ],
+      "latent": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "LTXVCropGuides",
+    "_meta": {
+      "title": "LTXVCropGuides"
+    }
+  },
+  "619": {
+    "inputs": {
+      "start_index": 0,
+      "num_frames": 1,
+      "images": [
+        "635",
+        0
+      ]
+    },
+    "class_type": "GetImageRangeFromBatch",
+    "_meta": {
+      "title": "Get Image or Mask Range From Batch"
+    }
+  },
+  "622": {
+    "inputs": {
+      "amount": 1,
+      "image": [
+        "625",
+        0
+      ]
+    },
+    "class_type": "RepeatImageBatch",
+    "_meta": {
+      "title": "Repeat Image Batch"
+    }
+  },
+  "623": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "622",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "625": {
+    "inputs": {
+      "width": [
+        "614",
+        1
+      ],
+      "height": [
+        "614",
+        2
+      ],
+      "color": "#FFFFFF"
+    },
+    "class_type": "LayerUtility: ColorImage",
+    "_meta": {
+      "title": "LayerUtility: ColorImage"
+    }
+  },
+  "626": {
+    "inputs": {
+      "lora_name": "ltx\\ltx2.3-video-restoration-general.safetensors",
+      "strength_model": 1,
+      "model": [
+        "613",
+        0
+      ]
+    },
+    "class_type": "LTXICLoRALoaderModelOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 IC-LoRA Loader Model Only"
+    }
+  },
+  "628": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "615",
+        3
+      ],
+      "b": [
+        "578",
+        6
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "629": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "615",
+        4
+      ],
+      "b": [
+        "578",
+        7
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "630": {
+    "inputs": {
+      "目标A": [
+        "631",
+        0
+      ],
+      "比较对象B": [
+        "628",
+        0
+      ],
+      "比较对象C": [
+        "629",
+        0
+      ]
+    },
+    "class_type": "ZML_RelativeComparison",
+    "_meta": {
+      "title": "ZML_相等判断"
+    }
+  },
+  "631": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "Boolean"
+    }
+  },
+  "633": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "630",
+        0
+      ],
+      "b": [
+        "634",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "634": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "635": {
+    "inputs": {
+      "boolean": [
+        "633",
+        0
+      ],
+      "on_true": [
+        "614",
+        0
+      ],
+      "on_false": [
+        "614",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "639": {
+    "inputs": {
+      "source_fps": [
+        "615",
+        0
+      ],
+      "target_fps": [
+        "586",
+        0
+      ],
+      "scale": 2,
+      "model_name": "flownet.pkl",
+      "batch_size": 16,
+      "use_fp16": true,
+      "images": [
+        "616",
+        0
+      ]
+    },
+    "class_type": "RIFEInterpolation",
+    "_meta": {
+      "title": "RIFE Frame Interpolation"
+    }
+  },
+  "640": {
+    "inputs": {
+      "width": [
+        "578",
+        6
+      ],
+      "height": [
+        "578",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu",
+      "image": [
+        "567",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "641": {
+    "inputs": {
+      "value": "(a>0)*max(1, round(a*b))",
+      "a": [
+        "578",
+        32
+      ],
+      "b": [
+        "586",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Duration Limit Frame Cap"
+    }
+  },
+  "642": {
+    "inputs": {
+      "value": "(a>0)*max(1, round(a*16))"
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Duration Limit Frame Cap"
+    }
+  },
+  "643": {
+    "inputs": {
+      "pixels": [
+        "645",
+        0
+      ],
+      "vae": [
+        "454",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "645": {
+    "inputs": {
+      "images": [
+        "635",
+        0
+      ],
+      "vae": [
+        "454",
+        0
+      ],
+      "time_scale_factor": 8
+    },
+    "class_type": "SimpAILTXVFramePad",
+    "_meta": {
+      "title": "SimpAI LTX Frame Pad / LTX 视频帧补齐"
+    }
+  },
+  "646": {
+    "inputs": {
+      "images": [
+        "640",
+        0
+      ],
+      "target_frame_count": [
+        "645",
+        1
+      ]
+    },
+    "class_type": "SimpAILTXVFrameTrim",
+    "_meta": {
+      "title": "SimpAI LTX Frame Trim / LTX 视频帧裁剪"
+    }
+  }
+}

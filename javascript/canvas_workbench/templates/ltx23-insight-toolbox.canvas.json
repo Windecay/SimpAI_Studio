@@ -1,7 +1,7 @@
 {
   "schema": "simpai.canvas.workbench.v1",
   "id": "ltx23_insight_toolbox",
-  "title": "LTX2.3 Insight 视频修复工具箱",
+  "title": "LTX Insight 视频修复工具箱",
   "created_at": "2026-07-02T00:00:00Z",
   "updated_at": "2026-07-02T06:53:10Z",
   "viewport": {
@@ -64,7 +64,7 @@
       "y": -112,
       "w": 520,
       "h": 140,
-      "title": "LTX2.3 Insight ToolBox / 视频修复工具箱",
+      "title": "LTX Insight ToolBox / 视频修复工具箱",
       "text": "Use this template for video restoration, HD enhancement, watermark removal, or subtitle removal. Replace the source video before production runs. / 用于视频修复、高清增强、水印移除或字幕移除。正式任务前请替换源视频。",
       "style": {
         "color": "#f8fafc",
@@ -114,46 +114,66 @@
       "target_preset_id": "ltx23_insight_preset",
       "config": {
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "values": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
-            },
-            {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
               "model": "None",
               "weight": 1
             }
@@ -163,7 +183,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(InsightTool)"
+        "preset": "LTX(InsightTool)"
       },
       "collapsed": true
     },
@@ -223,7 +243,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(InsightTool)"
+        "preset": "LTX(InsightTool)"
       },
       "collapsed": false
     },
@@ -234,10 +254,10 @@
       "y": -96,
       "w": 445,
       "h": 670,
-      "title": "LTX2.3 Insight ToolBox",
+      "title": "LTX Insight ToolBox",
       "preset": {
-        "name": "LTX2.3(InsightTool)",
-        "display_name": "LTX2.3(InsightTool)",
+        "name": "LTX(InsightTool)",
+        "display_name": "LTX(InsightTool)",
         "snapshot_hash": null,
         "snapshot": {
           "default_styles": [],
@@ -250,7 +270,7 @@
         "engine_type": "video",
         "scene_frontend": "v1.1",
         "scene_theme": "Video Restore",
-        "task_method": "ltx2.3_restore_cn"
+        "task_method": "ltx_restore_cn"
       },
       "schema": {
         "version": "v1.1",
@@ -261,7 +281,7 @@
           "Remove Watermark"
         ],
         "default_theme": "Video Restore",
-        "theme_title": "LTX2.3 Insight ToolBox",
+        "theme_title": "LTX Insight ToolBox",
         "disvisible": [
           "scene_canvas_image",
           "scene_input_image1",
@@ -397,7 +417,7 @@
         ],
         "per_theme": {
           "Video Upscale": {
-            "task_method": "ltx2.3_upscale_cn",
+            "task_method": "ltx_upscale_cn",
             "defaults": {
               "scene_video_duration": 0,
               "scene_var_number": 0,
@@ -415,7 +435,7 @@
             }
           },
           "Video Restore": {
-            "task_method": "ltx2.3_restore_cn",
+            "task_method": "ltx_restore_cn",
             "defaults": {
               "scene_video_duration": 0,
               "scene_var_number": 0,
@@ -433,7 +453,7 @@
             }
           },
           "Remove Subtitles": {
-            "task_method": "ltx2.3_subtitles_remove_cn",
+            "task_method": "ltx_subtitles_remove_cn",
             "defaults": {
               "scene_video_duration": 0,
               "scene_var_number": 0,
@@ -451,7 +471,7 @@
             }
           },
           "Remove Watermark": {
-            "task_method": "ltx2.3_watermark_remove_cn",
+            "task_method": "ltx_watermark_remove_cn",
             "defaults": {
               "scene_video_duration": 0,
               "scene_var_number": 0,
@@ -485,46 +505,66 @@
       "models_config": {
         "mode": "external_override",
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "overrides": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
-            },
-            {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
               "model": "None",
               "weight": 1
             },
             {
-              "enabled": true,
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
               "model": "None",
               "weight": 1
             }
@@ -597,20 +637,14 @@
         "updated_at": "2026-07-02T00:00:00Z"
       },
       "model_requirements": {
-        "default_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "previous_default_models": [
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors"
-        ],
+        "default_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "previous_default_models": [],
         "model_list": [
-          "diffusion_models,ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors,21505993064,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "loras,ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,2741024390,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "loras,ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors,628203616,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors",
-          "text_encoders,ltx-2.3_text_projection_bf16.safetensors,2312149072,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors",
-          "text_encoders,gemma_3_12B_it_fpmixed.safetensors,13708659515,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
-          "latent_upscale_models,ltx-2.3-spatial-upscaler-x2-1.1.safetensors,995743560,0,https://www.modelscope.cn/models/Lightricks/LTX-2.3/resolve/master/ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-          "vae,LTX23_audio_vae_bf16.safetensors,364855188,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors",
-          "vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors",
-          "vae,taeltx2_3.safetensors,23531296,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors",
+          "diffusion_models,ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors,21504034224,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372971786,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae,ltx-2.5-video-vae-bf16.safetensors,1472223346,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-video-vae-bf16.safetensors",
+          "vae,ltx-2.5-audio-vae-bf16.safetensors,364866540,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-audio-vae-bf16.safetensors",
+          "latent_upscale_models,ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors,995778752,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "loras,ltx/ltx2.3-video-restoration-general.safetensors,100767488,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-video-restoration-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-video-restoration-general.safetensors",
           "loras,ltx/ltx2.3-ic-video-upscale-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-video-upscale-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-video-upscale-general.safetensors",
           "loras,ltx/ltx2.3-ic-watermark-remove-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-watermark-remove-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-watermark-remove-general.safetensors",
@@ -618,12 +652,12 @@
           "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
         ],
         "has_model_probe": true,
-        "source": "presets/LTX2.3(InsightTool).json"
+        "source": "presets/LTX(InsightTool).json"
       },
       "model_status": {
         "state": "unknown",
         "missing_count": 0,
-        "message": "Model requirements loaded from presets/LTX2.3(InsightTool).json; replace source video and check models before running."
+        "message": "Model requirements loaded from presets/LTX(InsightTool).json; replace source video and check models before running."
       },
       "upload_slots": {
         "scene_video": "ltx23_insight_source_video"
@@ -646,8 +680,9 @@
       "collapsed": false,
       "source": {
         "kind": "template_runnable_preset",
-        "preset": "LTX2.3(InsightTool)"
-      }
+        "preset": "LTX(InsightTool)"
+      },
+      "model_dependency": null
     },
     {
       "id": "ltx23_insight_result",
@@ -668,7 +703,7 @@
         "step": 0,
         "total_steps": 5,
         "percent": 0,
-        "message": "Replace source video, choose the task theme, check models, then run LTX2.3 Insight."
+        "message": "Replace source video, choose the task theme, check models, then run LTX Insight."
       },
       "preview": null,
       "asset": null,
@@ -730,18 +765,18 @@
   "template": {
     "id": "ltx23_insight_toolbox",
     "title": {
-      "en": "LTX2.3 Insight ToolBox",
-      "zh": "LTX2.3 Insight 视频修复工具箱"
+      "en": "LTX Insight ToolBox",
+      "zh": "LTX Insight 视频修复工具箱"
     },
     "description": {
-      "en": "A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
-      "zh": "可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
+      "en": "A runnable LTX Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
+      "zh": "可运行的 LTX Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
     },
     "category": "video",
     "tags": [
       "video",
       "ltx",
-      "ltx2.3",
+      "ltx2.5",
       "insight",
       "restoration",
       "upscale",
@@ -764,14 +799,14 @@
         "zh": "需要视频和 LTX 模型"
       },
       "note": {
-        "en": "Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.",
-        "zh": "需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。"
+        "en": "Requires the LTX transformer, text encoder, video VAE, spatial upscaler, task IC-LoRAs, RIFE, and a source video.",
+        "zh": "需要 LTX transformer、文本编码器、视频 VAE、spatial upscaler、任务 IC-LoRA、RIFE，以及源视频。"
       },
       "models": [
-        "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-        "gemma_3_12B_it_fpmixed.safetensors",
-        "LTX23_video_vae_bf16.safetensors",
+        "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        "ltx-2.5-video-vae-bf16.safetensors",
+        "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
         "ltx2.3-video-restoration-general.safetensors",
         "ltx2.3-ic-video-upscale-general.safetensors",
         "ltx2.3-ic-watermark-remove-general.safetensors",

@@ -34,7 +34,6 @@
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
-        'Gemma3-12B-TextEncoder',
         'Qwen3VL-4B-TextEncoder',
         'Custom'
     ]);
@@ -45,7 +44,6 @@
         'Qwen3.5-9B-abliterated-Q6_K': 8192,
         'Qwen3.5-9B-abliterated-Q8_0': 8192,
         'Gemma4-12B-it-heretic-Q4_K_XL': 8192,
-        'Gemma3-12B-TextEncoder': 32768,
         'Qwen3VL-4B-TextEncoder': 32768,
         'Custom': 32768
     });
@@ -188,7 +186,7 @@
         'nun_fp4_aio': ['Nun_fp4', 'None'],
         'wan_aio_cn': ['VACE'],
         'qwen_aio_cn': ['Qwen_Inpaint'],
-        'z_image_turbo_aio_cn': ['LanPaint']
+        'z_image_turbo_aio_cn': ['LanPaint', 'None']
     };
 
     const DEFAULT_NODE_SIZES = {

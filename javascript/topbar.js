@@ -6317,7 +6317,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const presetName = String((langSource && (langSource.__preset || langSource.preset)) || "").trim();
     const presetNameLower = presetName.toLowerCase();
     const showLtxGuideControl = !!(isScene
-        && (taskText.includes("ltx2.3_i2v") || taskText.includes("ltx2.3_ia2v") || taskText.includes("ltx2.3_extent") || /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(presetNameLower))
+        && (taskText.includes("ltx_i2v") || taskText.includes("ltx_ia2v") || taskText.includes("ltx_extent") || /ltx\s*\((i2v|ia2v|extent)\)/.test(presetNameLower))
         && !hidden.has("ltx_guide_control"));
     const showH3StoryboardControl = !!(isScene
         && (taskText.includes("minimax_h3") || /minimax[-_\s]*h3/.test(presetNameLower))

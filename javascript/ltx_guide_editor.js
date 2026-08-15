@@ -72,7 +72,7 @@
             state?.task_method,
             ...(taskMethods && typeof taskMethods === 'object' ? Object.values(taskMethods) : [])
         ].filter(Boolean).join(' ').toLowerCase();
-        return text.includes('ltx2.3_extent') || /ltx2\.3\s*\(extent\)/.test(text)
+        return text.includes('ltx_extent') || /ltx\s*\(extent\)/.test(text)
             ? 'video_extent'
             : 'keyframes';
     }
@@ -233,8 +233,8 @@
             : t('Keyframe Guides', '关键帧引导', source);
         if (status) status.textContent = configStatus(value, source, mode);
         if (button) button.title = isExtent
-            ? t('Edit LTX2.3 extent guides', '编辑 LTX2.3 续写引导', source)
-            : t('Edit LTX2.3 keyframe guides', '编辑 LTX2.3 关键帧引导', source);
+            ? t('Edit LTX extent guides', '编辑 LTX 续写引导', source)
+            : t('Edit LTX keyframe guides', '编辑 LTX 关键帧引导', source);
         return true;
     }
 
@@ -350,8 +350,8 @@
             ? `${extentSourceRowHtml(config, state)}${config.guides.map((_item, index) => extentGuideRowHtml(index, config, state)).join('')}`
             : `${rowHtml('first', 0, config, state)}${rowHtml('middle', 0, config, state)}${rowHtml('middle', 1, config, state)}${rowHtml('middle', 2, config, state)}${rowHtml('last', 0, config, state)}`;
         const modalTitle = opts.title || (isExtent
-            ? t('LTX2.3 Extent Guides', 'LTX2.3 续写引导', state)
-            : t('LTX2.3 Keyframe Guides', 'LTX2.3 关键帧引导', state));
+            ? t('LTX Extent Guides', 'LTX 续写引导', state)
+            : t('LTX Keyframe Guides', 'LTX 关键帧引导', state));
         const backdrop = document.createElement('div');
         backdrop.className = 'sai-ltxg-backdrop';
         backdrop.innerHTML = `<section class="sai-ltxg-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(modalTitle)}">

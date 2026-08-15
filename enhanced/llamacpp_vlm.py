@@ -890,6 +890,18 @@ class LlamaCppVLM:
             return system_msg
         return (system_msg + "\n" + guard).strip() if system_msg else guard
 
+    def _qwen38_non_thinking_kwargs(self):
+        handler_name = str(self.current_chat_handler_name or "")
+        model_path = str(self.current_model_path or "").lower()
+        if "thinking" in handler_name.lower():
+            return {}
+        if handler_name == "Qwen3.8" or "qwen3.8" in model_path or "qwen38" in model_path:
+            return {
+                "reasoning_budget": 0,
+                "reasoning_start_in_prompt": True,
+            }
+        return {}
+
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
              max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1):
         with self.lock:
@@ -923,7 +935,8 @@ class LlamaCppVLM:
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repetition_penalty,
-                    seed=seed if seed != -1 else None
+                    seed=seed if seed != -1 else None,
+                    **self._qwen38_non_thinking_kwargs(),
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
@@ -1013,7 +1026,8 @@ class LlamaCppVLM:
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repetition_penalty,
-                    seed=seed if seed != -1 else None
+                    seed=seed if seed != -1 else None,
+                    **self._qwen38_non_thinking_kwargs(),
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started

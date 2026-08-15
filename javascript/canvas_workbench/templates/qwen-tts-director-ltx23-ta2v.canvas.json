@@ -1,7 +1,7 @@
 {
   "schema": "simpai.canvas.workbench.v1",
   "id": "qwen_tts_director_ltx23_ta2v",
-  "title": "Qwen TTS + Director + LTX2.3 TA2V",
+  "title": "Qwen TTS + Director + LTX TA2V",
   "created_at": "2026-06-18T00:00:00Z",
   "updated_at": "2026-06-18T00:00:00Z",
   "viewport": {
@@ -45,7 +45,7 @@
     },
     {
       "id": "qwen_director_group_ltx",
-      "title": "3. LTX2.3 Video / LTX2.3 视频",
+      "title": "3. LTX Video / LTX 视频",
       "x": 1460,
       "y": -160,
       "w": 1588,
@@ -65,7 +65,7 @@
       "w": 500,
       "h": 125,
       "title": "Speech Guided Video / 语音驱动视频",
-      "text": "Qwen TTS creates narration audio. The same audio is referenced by Director Timeline and also sent to the LTX2.3 TA2V preset as scene_audio. / Qwen TTS 生成旁白音频，同一段音频会被导演时间轴引用，并作为 scene_audio 传给 LTX2.3 TA2V preset。",
+      "text": "Qwen TTS creates narration audio. The same audio is referenced by Director Timeline and also sent to the LTX TA2V preset as scene_audio. / Qwen TTS 生成旁白音频，同一段音频会被导演时间轴引用，并作为 scene_audio 传给 LTX TA2V preset。",
       "style": {
         "color": "#f8fafc",
         "background": "#164e63",
@@ -116,7 +116,7 @@
       },
       "status": {
         "state": "idle",
-        "message": "Run Qwen TTS first; the generated audio feeds Director and LTX2.3."
+        "message": "Run Qwen TTS first; the generated audio feeds Director and LTX."
       }
     },
     {
@@ -138,7 +138,7 @@
         "state": "placeholder",
         "queue_position": 0,
         "percent": 0,
-        "message": "Run Qwen TTS; this audio Result is used by Director and LTX2.3."
+        "message": "Run Qwen TTS; this audio Result is used by Director and LTX."
       },
       "preview": null,
       "asset": null,
@@ -233,7 +233,7 @@
       },
       "status": {
         "state": "idle",
-        "message": "Director prompt_override is sent to LTX2.3 prompt."
+        "message": "Director prompt_override is sent to LTX prompt."
       }
     },
     {
@@ -248,28 +248,68 @@
       "target_preset_id": "qwen_director_ltx_preset",
       "config": {
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "values": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
@@ -277,7 +317,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -309,7 +349,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -349,7 +389,7 @@
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX(TA2V)"
       }
     },
     {
@@ -359,10 +399,10 @@
       "y": -104,
       "w": 450,
       "h": 660,
-      "title": "LTX2.3 Text+Audio to Video",
+      "title": "LTX Text+Audio to Video",
       "preset": {
-        "name": "LTX2.3(TA2V)",
-        "display_name": "LTX2.3(TA2V)",
+        "name": "LTX(TA2V)",
+        "display_name": "LTX(TA2V)",
         "snapshot_hash": null,
         "snapshot": {
           "default_styles": [],
@@ -375,7 +415,7 @@
         "engine_type": "video",
         "scene_frontend": "v1.1",
         "scene_theme": "Text+Audio to Video",
-        "task_method": "ltx2.3_ta2v_cn"
+        "task_method": "ltx_ta2v_cn"
       },
       "schema": {
         "version": "v1.1",
@@ -447,7 +487,7 @@
         ],
         "per_theme": {
           "Text+Audio to Video": {
-            "task_method": "ltx2.3_ta2v_cn",
+            "task_method": "ltx_ta2v_cn",
             "defaults": {
               "scene_var_number": 8,
               "scene_var_number2": 30,
@@ -468,33 +508,73 @@
           "Text+Audio to Video"
         ],
         "default_theme": "Text+Audio to Video",
-        "theme_title": "LTX2.3 Text+Audio to Video"
+        "theme_title": "LTX Text+Audio to Video"
       },
       "models_config": {
         "mode": "external_override",
         "defaults": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
         "overrides": {
-          "base_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+          "base_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
           "refiner_model": "None",
-          "clip_model": "gemma_3_12B_it_fpmixed.safetensors",
-          "vae": "LTX23_video_vae_bf16.safetensors",
+          "clip_model": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae": "ltx-2.5-video-vae-bf16.safetensors",
           "loras": [
             {
-              "enabled": true,
-              "model": "ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-              "weight": 0.6
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
+            },
+            {
+              "enabled": false,
+              "model": "None",
+              "weight": 1
             }
           ]
         },
@@ -548,26 +628,23 @@
         "updated_at": "2026-06-18T00:00:00Z"
       },
       "model_requirements": {
-        "default_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-        "previous_default_models": [
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors"
-        ],
+        "default_model": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "previous_default_models": [],
         "model_list": [
-          "diffusion_models,ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors,21505993064,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
-          "loras,ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,2741024390,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
-          "text_encoders,ltx-2.3_text_projection_bf16.safetensors,2312149072,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors",
-          "text_encoders,gemma_3_12B_it_fpmixed.safetensors,13708659515,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors",
-          "vae,LTX23_audio_vae_bf16.safetensors,364855188,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors",
-          "vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors",
+          "diffusion_models,ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors,21504034224,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372971786,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "vae,ltx-2.5-video-vae-bf16.safetensors,1472223346,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-video-vae-bf16.safetensors",
+          "vae,ltx-2.5-audio-vae-bf16.safetensors,364866540,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-audio-vae-bf16.safetensors",
+          "latent_upscale_models,ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors,995778752,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
           "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
         ],
         "has_model_probe": true,
-        "source": "presets/LTX2.3(TA2V).json"
+        "source": "presets/LTX(TA2V).json"
       },
       "model_status": {
         "state": "unknown",
         "missing_count": 0,
-        "message": "Run Qwen TTS first, then check LTX2.3 models before generating video."
+        "message": "Run Qwen TTS first, then check LTX models before generating video."
       },
       "upload_slots": {
         "scene_audio": "qwen_director_audio_result"
@@ -589,8 +666,9 @@
       "collapsed": false,
       "source": {
         "kind": "template_runnable_preset",
-        "preset": "LTX2.3(TA2V)"
-      }
+        "preset": "LTX(TA2V)"
+      },
+      "model_dependency": null
     },
     {
       "id": "qwen_director_ltx_result",
@@ -599,7 +677,7 @@
       "y": -72,
       "w": 420,
       "h": 330,
-      "title": "LTX2.3 Video Result / LTX2.3 视频结果",
+      "title": "LTX Video Result / LTX 视频结果",
       "producer": {
         "preset_node_id": "qwen_director_ltx_preset",
         "run_id": null,
@@ -611,7 +689,7 @@
         "step": 0,
         "total_steps": 11,
         "percent": 0,
-        "message": "After Qwen audio is ready, run LTX2.3 TA2V."
+        "message": "After Qwen audio is ready, run LTX TA2V."
       },
       "preview": null,
       "asset": null,
@@ -692,8 +770,8 @@
   "batch_jobs": [],
   "template": {
     "id": "qwen_tts_director_ltx23_ta2v",
-    "title": "Qwen TTS + Director + LTX2.3 TA2V",
-    "description": "Qwen TTS narration becomes scene_audio while Director Timeline writes the LTX2.3 prompt_override.",
+    "title": "Qwen TTS + Director + LTX TA2V",
+    "description": "Qwen TTS narration becomes scene_audio while Director Timeline writes the LTX prompt_override.",
     "category": "video",
     "tags": [
       "qwen",
@@ -703,6 +781,6 @@
       "ta2v",
       "video",
       "runnable"
-      ]
+    ]
   }
 }

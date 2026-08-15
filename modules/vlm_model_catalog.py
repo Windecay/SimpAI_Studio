@@ -195,7 +195,8 @@ def _gguf_context_window(metadata, default=8192):
 
 
 def _stem_tokens(path):
-    stem = os.path.splitext(os.path.basename(path))[0].lower()
+    stem = os.path.basename(path)
+    stem = re.sub(r"\.(?:gguf|safetensors|bin|pt|pth|ckpt)$", "", stem, flags=re.IGNORECASE).lower()
     stem = re.sub(r"mmproj|projector|vision", " ", stem)
     stem = re.sub(r"\b(?:q\d+(?:_[a-z0-9]+)*|f16|f32|bf16|fp16|fp8|int\d+)\b", " ", stem)
     return {
@@ -209,10 +210,11 @@ def select_mmproj_for_model(model_path, candidates):
     candidates = sorted({os.path.abspath(path) for path in candidates}, key=str.lower)
     if len(candidates) == 1:
         return candidates[0]
-    model_tokens = _stem_tokens(model_path)
+    model_tokens = _stem_tokens(model_path) | _stem_tokens(os.path.dirname(model_path))
     scored = []
     for candidate in candidates:
-        score = len(model_tokens & _stem_tokens(candidate))
+        candidate_tokens = _stem_tokens(candidate) | _stem_tokens(os.path.dirname(candidate))
+        score = len(model_tokens & candidate_tokens)
         scored.append((score, candidate))
     scored.sort(key=lambda item: (-item[0], item[1].lower()))
     if not scored or scored[0][0] <= 0:
@@ -413,10 +415,13 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
 def _scan_gguf_items(llm_roots, claimed_paths):
     rows = []
     grouped = {}
+    projectors_by_root = {}
     for root, relative_path, absolute_path in _iter_model_files(llm_roots, {".gguf"}):
         grouped.setdefault(os.path.dirname(absolute_path), []).append((root, relative_path, absolute_path))
+        if "mmproj" in os.path.basename(absolute_path).lower():
+            root_key = os.path.normcase(os.path.abspath(root))
+            projectors_by_root.setdefault(root_key, []).append(absolute_path)
     for directory, entries in grouped.items():
-        projectors = [absolute for _, _, absolute in entries if "mmproj" in os.path.basename(absolute).lower()]
         for root, relative_path, absolute_path in entries:
             if "mmproj" in os.path.basename(absolute_path).lower() or os.path.normcase(absolute_path) in claimed_paths:
                 continue
@@ -424,6 +429,20 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             detected = infer_gguf_handler(metadata, os.path.basename(absolute_path))
             if not detected:
                 continue
+            projectors = [
+                absolute
+                for _, _, absolute in entries
+                if "mmproj" in os.path.basename(absolute).lower()
+            ]
+            if not projectors:
+                model_tokens = _stem_tokens(absolute_path) | _stem_tokens(directory)
+                projectors = [
+                    candidate
+                    for candidate in projectors_by_root.get(
+                        os.path.normcase(os.path.abspath(root)), []
+                    )
+                    if model_tokens & _stem_tokens(os.path.dirname(candidate))
+                ]
             mmproj_path = select_mmproj_for_model(absolute_path, projectors)
             mmproj_relative = os.path.relpath(mmproj_path, root).replace("\\", "/") if mmproj_path else ""
             context_window = _gguf_context_window(metadata)

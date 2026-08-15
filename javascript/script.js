@@ -3784,10 +3784,10 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
             try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}
         }
-        const showLtxGuideControl = (taskMethodLower.includes('ltx2.3_i2v')
-            || taskMethodLower.includes('ltx2.3_ia2v')
-            || taskMethodLower.includes('ltx2.3_extent')
-            || /ltx2\.3\s*\((i2v|ia2v|extent)\)/.test(preset.toLowerCase()))
+        const showLtxGuideControl = (taskMethodLower.includes('ltx_i2v')
+            || taskMethodLower.includes('ltx_ia2v')
+            || taskMethodLower.includes('ltx_extent')
+            || /ltx\s*\((i2v|ia2v|extent)\)/.test(preset.toLowerCase()))
             && !disvisible.has('ltx_guide_control');
         if (typeof window.simpaiSetLtxGuideControlVisible === 'function') {
             window.simpaiSetLtxGuideControlVisible(showLtxGuideControl, params || {});

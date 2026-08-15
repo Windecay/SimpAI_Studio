@@ -353,7 +353,7 @@ presets/welcome/welcome_z-ttp_m.jpg
 
 ## 制作和维护建议
 
-1. 以同后端、同用途的现有预置为模板。例如文生图看 `Z-imageT.json`，图片编辑看 `Flux2-KleinEdit.json` 或 `QwenEdit+.json`，视频看 `Wan(T2V).json` 或 `LTX2.3(TA2V).json`，音频看 `Hunyuan-Foley.json`。
+1. 以同后端、同用途的现有预置为模板。例如文生图看 `Z-imageT.json`，图片编辑看 `Flux2-KleinEdit.json` 或 `QwenEdit+.json`，视频看 `Wan(T2V).json` 或 `LTX(TA2V).json`，音频看 `Hunyuan-Foley.json`。
 2. 新预置优先维护 `model_list`，不要只写旧的 `*_downloads` 字段。
 3. 场景预置的 `theme`、`task_method`、`prompt`、自定义控件默认值要成组维护。主题名不一致时，界面会拿不到对应值。
 4. 需要自动尺寸候选时再写 `aspect_ratio_select_mode`。不需要时让第一项候选作为默认尺寸。

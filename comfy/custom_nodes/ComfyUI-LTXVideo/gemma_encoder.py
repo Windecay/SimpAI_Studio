@@ -1,5 +1,4 @@
 import logging
-from glob import glob
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -197,20 +196,15 @@ def ltxv_gemma_clip(encoder_path, ltxv_path, processor=None, dtype=None):
     return _LTXVGemmaTextEncoderModel
 
 
-def find_matching_dir(root_path: str, pattern: str) -> str:
-    """
-    Recursively search for files matching a glob pattern and return the parent directory of the first match.
-    """
-    matches = [
-        Path(p)
-        for p in glob(f"{root_path}/**", recursive=True)
-        if Path(p).match(pattern)
-    ]
-    if not matches:
+def gemma_model_dir(gemma_path: str) -> Path:
+    """Resolve the Gemma model directory from a selected weights file."""
+    model_dir = Path(folder_paths.get_full_path("text_encoders", gemma_path)).parent
+    if not (model_dir / "config.json").exists():
         raise FileNotFoundError(
-            f"No files matching pattern '{pattern}' found under {root_path}"
+            f"No config.json found for the selected Gemma model ({model_dir}). "
+            "Ensure the model's config, tokenizer and processor files are present."
         )
-    return str(matches[0].parent)
+    return model_dir
 
 
 @comfy_node(name="LTXVGemmaCLIPModelLoader", description="Gemma 3 Model Loader")
@@ -242,33 +236,29 @@ class LTXVGemmaCLIPModelLoader:
     OUTPUT_NODE = False
 
     def load_model(self, gemma_path: str, ltxv_path: str, max_length: int):
-        path = Path(folder_paths.get_full_path("text_encoders", gemma_path))
-        model_root = path.parents[1]
-        tokenizer_path = Path(find_matching_dir(model_root, "tokenizer.model"))
-        gemma_model_path = Path(find_matching_dir(model_root, "model*.safetensors"))
-        processor_path = Path(find_matching_dir(model_root, "preprocessor_config.json"))
-        tokenizer_class = ltxv_gemma_tokenizer(tokenizer_path, max_length=max_length)
+        model_dir = gemma_model_dir(gemma_path)
+        tokenizer_class = ltxv_gemma_tokenizer(model_dir, max_length=max_length)
 
         processor = None
         try:
             image_processor = AutoImageProcessor.from_pretrained(
-                str(processor_path),
+                str(model_dir),
                 local_files_only=True,
             )
             processor = Gemma3Processor(
                 image_processor=image_processor,
                 tokenizer=tokenizer_class().tokenizer,
             )
-            logger.info(f"Loaded processor from {model_root} - enhancement enabled")
+            logger.info(f"Loaded processor from {model_dir} - enhancement enabled")
         except Exception as e:
-            logger.warning(f"Could not load processor from {model_root}: {e}")
+            logger.warning(f"Could not load processor from {model_dir}: {e}")
 
         clip_dtype = torch.bfloat16
         ltxv_full_path = folder_paths.get_full_path("checkpoints", ltxv_path)
         clip_target = comfy.supported_models_base.ClipTarget(
             tokenizer=tokenizer_class,
             clip=ltxv_gemma_clip(
-                gemma_model_path, ltxv_full_path, processor=processor, dtype=clip_dtype
+                model_dir, ltxv_full_path, processor=processor, dtype=clip_dtype
             ),
         )
 
@@ -501,16 +491,21 @@ def _cat_with_padding(
     padding_length: int,
     value: int | float,
 ) -> torch.Tensor:
-    """Concatenate a tensor with a padding tensor of the given value."""
+    """Left-pad a tensor (prepend the padding) with the given value.
+
+    Decoder-only LLMs must be LEFT-padded for generation: right-padding makes the
+    trailing pad the sequence end, so generate() reads next-token logits from a
+    masked pad position instead of the real last token, producing degenerate output.
+    """
     return torch.cat(
         [
-            tensor,
             torch.full(
                 (1, padding_length),
                 value,
                 dtype=tensor.dtype,
                 device=tensor.device,
             ),
+            tensor,
         ],
         dim=1,
     )
