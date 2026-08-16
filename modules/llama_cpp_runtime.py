@@ -2,7 +2,7 @@ import platform
 import sys
 
 
-LLAMA_CPP_RUNTIME_VERSION = "0.3.44"
+LLAMA_CPP_RUNTIME_VERSION = "0.3.46"
 # Keep a small Windows/allocator margin while allowing 24 GB cards to reach
 # roughly 22 GB of llama.cpp allocations when the rest of the GPU is free.
 LLAMA_CPP_GPU_USAGE_CAP = 0.99
@@ -10,6 +10,26 @@ LLAMA_CPP_VRAM_RESERVE_RATIO = 0.05
 LLAMA_CPP_MIN_VRAM_RESERVE_GB = 1.0
 LLAMA_CPP_UNKNOWN_KV_GB_AT_16K = 4.0
 _GIB = float(1024 ** 3)
+
+# llama.cpp uses ggml type ids for the optional KV cache quantization fields.
+# Keep FP16 as the default because Q8_0 remains an experimental path for some
+# multimodal and hybrid model families.
+LLAMA_CPP_KV_CACHE_TYPES = {
+    "f16": {
+        "type_k": 1,  # GGML_TYPE_F16
+        "type_v": 1,
+        "bytes_per_element": 2.0,
+        "label": "FP16",
+        "experimental": False,
+    },
+    "q8_0": {
+        "type_k": 8,  # GGML_TYPE_Q8_0
+        "type_v": 8,
+        "bytes_per_element": 34.0 / 32.0,
+        "label": "Q8_0",
+        "experimental": True,
+    },
+}
 
 LLAMA_CPP_VRAM_POLICIES = {
     "relaxed": {
@@ -41,20 +61,32 @@ def normalize_llama_cpp_vram_policy(policy):
 def llama_cpp_vram_policy_config(policy="extreme"):
     name = normalize_llama_cpp_vram_policy(policy)
     return name, dict(LLAMA_CPP_VRAM_POLICIES[name])
+
+
+def normalize_llama_cpp_kv_cache_type(value):
+    name = str(value or "f16").strip().lower().replace("-", "_")
+    return name if name in LLAMA_CPP_KV_CACHE_TYPES else "f16"
+
+
+def llama_cpp_kv_cache_type_config(value="f16"):
+    name = normalize_llama_cpp_kv_cache_type(value)
+    return name, dict(LLAMA_CPP_KV_CACHE_TYPES[name])
+
+
 LLAMA_CPP_MODELSCOPE_BASE = (
     "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama"
 )
 
 
 _WHEEL_HASHES = {
-    ("Linux", 11): "a8d97c41b9ea0c522659893bdcb522e840461b3a74f2e4854d06dc988e111d88",
-    ("Linux", 12): "71e160611be01fc6caa26f63b78b52bef5c3422ef6ad5198332833ef66457d39",
-    ("Linux", 13): "975a2f351855219e0fc6cd399bc9fbb6cbd0cefd7ec1549daa50cbea676b70f9",
-    ("Linux", 14): "3c9046adfc0e54c7f606d5b3701c07c45179229df543514470a927527d41aaa8",
-    ("Windows", 11): "58625bae9dc028e0663336d1a78d6371e0c6eed4f0bad340c10d67501bfc51c5",
-    ("Windows", 12): "4259d6c57561551cb99a1f1660dd32bee57c706f8fc5b29bb2a306a449bdd154",
-    ("Windows", 13): "5d4e9bd44e11e1dfbb661debc87e35cef96cc95174b858eac1d234b6d2822ba8",
-    ("Windows", 14): "6a72f2f6b4ead4829ae6289179faeda95eec36de6813f40d88ff9a61b0d364d7",
+    ("Linux", 11): "e1a6c7b2085207bb2c6feae67b4c3a9d231ca4c6d31bee6ac874480705139cd8",
+    ("Linux", 12): "f037677db6f120e55d31e0a31a0fdaa6885406a06f0c3a9fd5cc5e79950642ec",
+    ("Linux", 13): "b4e9f923e6199a3ac61b129f5032c12b22b87bd20c2b3111669570702dbb5cfe",
+    ("Linux", 14): "c1fc35e0bf98ed2dc3938a5e605d4e46a95c13d39e87dd841ee8ac7083b86844",
+    ("Windows", 11): "8c5fc54ec3d4a44602fa5d4a9b19a3c971b02ac39b2993a4805adebee84fd07b",
+    ("Windows", 12): "3dbe2d390690e735588ded8f3629ce54489055d2767857f6823c19b42634b4a7",
+    ("Windows", 13): "46d9d7351b3af3ed798baa2eeef45fbfdf5ad1689df33867afe4bb9fd6854c7f",
+    ("Windows", 14): "17b52164d2e486587de8417b4134e00a6e167cb6e3f02579bcc2f72da13ed217",
 }
 
 
@@ -89,7 +121,15 @@ def llama_cpp_gpu_budget(free_vram_bytes, total_vram_bytes, reclaimable_gb=0.0, 
     }
 
 
-def estimate_llama_cpp_kv_cache_gb(n_ctx, total_layers, embedding_length, head_count, head_count_kv):
+def estimate_llama_cpp_kv_cache_gb(
+    n_ctx,
+    total_layers,
+    embedding_length,
+    head_count,
+    head_count_kv,
+    kv_cache_type="f16",
+):
+    _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
     try:
         context_tokens = max(1, int(n_ctx))
         layer_count = max(1, int(total_layers))
@@ -114,12 +154,23 @@ def estimate_llama_cpp_kv_cache_gb(n_ctx, total_layers, embedding_length, head_c
                 raise ValueError
             kv_head_layers = layer_count * kv_heads
 
-        # K and V are both fp16 by default. Keep 20% for allocator and graph overhead.
-        kv_bytes = context_tokens * kv_head_layers * head_dim * 2 * 2
+        # K and V use the selected ggml type. Keep 20% for allocator and graph overhead.
+        kv_bytes = (
+            context_tokens
+            * kv_head_layers
+            * head_dim
+            * float(kv_type_config["bytes_per_element"])
+            * 2
+        )
         return (kv_bytes / _GIB) * 1.2, True
     except (TypeError, ValueError, OverflowError):
         context_scale = max(1, int(n_ctx or 1)) / 16384.0
-        fallback_gb = LLAMA_CPP_UNKNOWN_KV_GB_AT_16K * context_scale
+        fallback_gb = (
+            LLAMA_CPP_UNKNOWN_KV_GB_AT_16K
+            * context_scale
+            * float(kv_type_config["bytes_per_element"])
+            / 2.0
+        )
         return max(0.5, fallback_gb), False
 
 

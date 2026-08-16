@@ -19,10 +19,16 @@ def _load_llama_cpp_runtime_helpers():
         raise ImportError(f"Unable to load llama.cpp runtime helpers: {module_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.llama_cpp_version_matches, module.select_llama_cpp_wheel
+    return (
+        module.LLAMA_CPP_RUNTIME_VERSION,
+        module.llama_cpp_version_matches,
+        module.select_llama_cpp_wheel,
+    )
 
 
-llama_cpp_version_matches, select_llama_cpp_wheel = _load_llama_cpp_runtime_helpers()
+LLAMA_CPP_RUNTIME_VERSION, llama_cpp_version_matches, select_llama_cpp_wheel = (
+    _load_llama_cpp_runtime_helpers()
+)
 
 ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
@@ -358,7 +364,8 @@ def install_llama_cpp_runtime_for_comfyd():
     artifact = select_llama_cpp_wheel()
     if not artifact:
         print(
-            "[Comfyd] No packaged llama.cpp wheel for this platform / 当前平台没有可用的 llama.cpp wheel: "
+            f"[Comfyd] No packaged llama.cpp {LLAMA_CPP_RUNTIME_VERSION} wheel for this platform / "
+            f"当前平台没有可用的 llama.cpp {LLAMA_CPP_RUNTIME_VERSION} wheel: "
             f"system={platform.system()}, machine={platform.machine()}, Python={sys.version_info.major}.{sys.version_info.minor}"
         )
         return False

@@ -4379,6 +4379,8 @@ def _canvas_vlm_effective_prompt(payload, prompt):
 
 def _canvas_vlm_isolate_rolling_history_for_prompt(payload, params, prompt):
     data = params if isinstance(params, dict) else {}
+    if _canvas_vlm_agent_mode(data) == "raw":
+        return False
     if _canvas_vlm_prompt_rewrite_request(data, payload):
         return False
     if _canvas_bool(data.get("disable_standalone_image_history_isolation"), False):

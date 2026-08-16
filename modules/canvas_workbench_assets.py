@@ -109,6 +109,60 @@ def _project_asset_path_from_relative(relative_path, root):
         return ""
 
 
+def _asset_id_digest(asset_id):
+    text = str(asset_id or "").strip().lower()
+    match = re.fullmatch(r"(?:asset|file):([0-9a-f]{16,64})", text)
+    return match.group(1) if match else ""
+
+
+def _resolve_asset_id_file_path(asset_id, root):
+    """Resolve a hashed Canvas asset ID without trusting a client-supplied path."""
+    digest = _asset_id_digest(asset_id)
+    if not digest or not root:
+        return ""
+    project_root = os.path.realpath(os.path.abspath(str(root)))
+    catalog_root = os.path.realpath(os.path.dirname(project_root))
+    roots = [project_root]
+    try:
+        for entry in os.scandir(catalog_root):
+            if not entry.is_dir():
+                continue
+            candidate_root = os.path.realpath(os.path.abspath(entry.path))
+            if os.path.commonpath([catalog_root, candidate_root]) != catalog_root:
+                continue
+            if candidate_root not in roots:
+                roots.append(candidate_root)
+    except OSError:
+        pass
+    filename_hint = digest[:16]
+    for candidate_root in roots:
+        bucket = os.path.join(candidate_root, digest[:2])
+        if not os.path.isdir(bucket):
+            continue
+        candidates = []
+        try:
+            for filename in os.listdir(bucket):
+                path = os.path.abspath(os.path.join(bucket, filename))
+                if not os.path.isfile(path):
+                    continue
+                if filename_hint in filename.lower():
+                    candidates.insert(0, path)
+                else:
+                    candidates.append(path)
+        except OSError:
+            continue
+        for path in candidates:
+            try:
+                real_path = os.path.realpath(path)
+                if os.path.commonpath([catalog_root, real_path]) != catalog_root:
+                    continue
+                if _sha256_file(real_path).lower().startswith(digest):
+                    return real_path
+            except OSError:
+                continue
+    return ""
+
+
 def _resolve_asset_file_path(asset, project_id, state_params):
     root, _ = _asset_root(project_id, state_params)
     for key in ("asset_relative_path", "relative_path"):
@@ -132,6 +186,9 @@ def _resolve_asset_file_path(asset, project_id, state_params):
         candidate = _project_asset_path_from_relative(value, root)
         if candidate and os.path.exists(candidate):
             return candidate
+    asset_id_path = _resolve_asset_id_file_path(asset.get("asset_id"), root)
+    if asset_id_path:
+        return asset_id_path
     return ""
 
 
@@ -752,32 +809,39 @@ def materialize_node_asset(project_id, state_params, source):
             role=role,
             metadata=asset,
         )
-    elif asset.get("path") or asset.get("output_path") or asset.get("asset_relative_path") or asset.get("relative_path"):
+    elif (
+        asset.get("path")
+        or asset.get("output_path")
+        or asset.get("asset_relative_path")
+        or asset.get("relative_path")
+        or _asset_id_digest(asset.get("asset_id"))
+    ):
         path = _resolve_asset_file_path(asset, project_id, state_params)
         root, _ = _asset_root(project_id, state_params)
-        resolved_relative_path = _asset_relative_path(path, root) if path else ""
-        main_ref = {
-            "kind": "existing_file",
-            "asset_id": asset.get("asset_id") or asset.get("asset_relative_path") or asset.get("path") or asset.get("output_path"),
-            "node_id": node_id,
-            "path": path,
-            "asset_relative_path": resolved_relative_path or asset.get("asset_relative_path") or asset.get("relative_path") or "",
-            "relative_path": resolved_relative_path or asset.get("relative_path") or asset.get("asset_relative_path") or "",
-            "asset_root": root if resolved_relative_path else asset.get("asset_root") or "",
-            "asset_root_key": "project_asset_root" if resolved_relative_path else asset.get("asset_root_key") or "",
-            "preview_url": _file_preview_url(path) if path else asset.get("preview_url") or "",
-            "output_path": asset.get("output_path") or "",
-            "original_output_path": asset.get("original_output_path") or "",
-            "mime": asset.get("mime"),
-            "width": asset.get("width"),
-            "height": asset.get("height"),
-            "duration": asset.get("duration"),
-            "fps": asset.get("fps"),
-            "frame_count": asset.get("frame_count"),
-            "waveform": _normalize_waveform_values(asset.get("waveform"), 160),
-            "size": asset.get("size"),
-            "generation_metadata": asset.get("generation_metadata") if isinstance(asset.get("generation_metadata"), dict) else {},
-        }
+        if path:
+            resolved_relative_path = _asset_relative_path(path, root)
+            main_ref = {
+                "kind": "existing_file",
+                "asset_id": asset.get("asset_id") or asset.get("asset_relative_path") or asset.get("path") or asset.get("output_path"),
+                "node_id": node_id,
+                "path": path,
+                "asset_relative_path": resolved_relative_path or asset.get("asset_relative_path") or asset.get("relative_path") or "",
+                "relative_path": resolved_relative_path or asset.get("relative_path") or asset.get("asset_relative_path") or "",
+                "asset_root": root if resolved_relative_path else asset.get("asset_root") or "",
+                "asset_root_key": "project_asset_root" if resolved_relative_path else asset.get("asset_root_key") or "",
+                "preview_url": _file_preview_url(path) if path else asset.get("preview_url") or "",
+                "output_path": asset.get("output_path") or "",
+                "original_output_path": asset.get("original_output_path") or "",
+                "mime": asset.get("mime"),
+                "width": asset.get("width"),
+                "height": asset.get("height"),
+                "duration": asset.get("duration"),
+                "fps": asset.get("fps"),
+                "frame_count": asset.get("frame_count"),
+                "waveform": _normalize_waveform_values(asset.get("waveform"), 160),
+                "size": asset.get("size"),
+                "generation_metadata": asset.get("generation_metadata") if isinstance(asset.get("generation_metadata"), dict) else {},
+            }
     elif asset:
         main_ref = {
             "kind": "browser_unmaterialized",

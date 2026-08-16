@@ -217,7 +217,9 @@ from modules.llama_cpp_runtime import (
     is_llama_cpp_memory_error,
     llama_cpp_gpu_budget,
     llama_cpp_gpu_layer_attempts,
+    llama_cpp_kv_cache_type_config,
     normalize_llama_cpp_vram_policy,
+    normalize_llama_cpp_kv_cache_type,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.vlm_model_catalog import gguf_int_values
@@ -235,6 +237,9 @@ class LlamaCppVLM:
         self.current_image_min_tokens = None
         self.current_image_max_tokens = None
         self.current_vram_policy = "extreme"
+        self.current_kv_cache_type = "f16"
+        self.current_requested_kv_cache_type = "f16"
+        self.current_kv_cache_type_supported = None
         self.current_target_n_gpu_layers = None
         self.current_n_gpu_layers = None
         self.current_total_layers = None
@@ -245,6 +250,16 @@ class LlamaCppVLM:
         self.current_vram_estimate = {}
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
+
+    @staticmethod
+    def _supports_kv_cache_quantization():
+        if not LLAMA_CPP_AVAILABLE or Llama is None:
+            return False
+        try:
+            parameters = inspect.signature(Llama).parameters
+            return "type_k" in parameters and "type_v" in parameters
+        except (TypeError, ValueError):
+            return False
 
     def get_chat_handler_class(self, name):
         handlers = {
@@ -514,8 +529,17 @@ class LlamaCppVLM:
         except Exception:
             return 0.0
 
-    def _calculate_auto_n_gpu_layers(self, model_path, mmproj_path, n_ctx, loaded_model_credit_gb=0.0, vram_policy="extreme"):
+    def _calculate_auto_n_gpu_layers(
+        self,
+        model_path,
+        mmproj_path,
+        n_ctx,
+        loaded_model_credit_gb=0.0,
+        vram_policy="extreme",
+        kv_cache_type="f16",
+    ):
         memory_management = ldm_patched.modules.model_management
+        kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
         memory_management.soft_empty_cache(True)
         budget = llama_cpp_gpu_budget(
             memory_management.get_free_memory(),
@@ -535,7 +559,9 @@ class LlamaCppVLM:
             n_embd,
             n_head,
             n_kv_heads,
+            kv_cache_type=kv_cache_type,
         )
+        _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
         offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
         kv_cache_reserved_gb = (
             kv_cache_gb
@@ -557,6 +583,12 @@ class LlamaCppVLM:
             **budget,
             "loaded_model_credit_gb": max(0.0, float(loaded_model_credit_gb or 0.0)),
             "kv_cache_gb": kv_cache_gb,
+            "kv_cache_type": kv_cache_type,
+            "kv_cache_type_bytes_per_element": kv_type_config["bytes_per_element"],
+            "kv_cache_type_savings_ratio": max(
+                0.0,
+                1.0 - float(kv_type_config["bytes_per_element"]) / 2.0,
+            ),
             "kv_cache_from_metadata": kv_cache_from_metadata,
             "kv_cache_reserved_gb": kv_cache_reserved_gb,
             "offload_kqv": offload_kqv,
@@ -568,7 +600,7 @@ class LlamaCppVLM:
         }
         logger.info(
             "llama.cpp VRAM budget: free=%.2fGB, total=%.2fGB, reserve=%.2fGB, "
-            "budget=%.2fGB, policy=%s, kv_cache=%.2fGB (%s), offload_kqv=%s, layer_budget=%.2fGB",
+            "budget=%.2fGB, policy=%s, kv_cache=%.2fGB (%s, type=%s), offload_kqv=%s, layer_budget=%.2fGB",
             budget["free_vram_gb"],
             budget["total_vram_gb"],
             budget["reserve_gb"],
@@ -576,6 +608,7 @@ class LlamaCppVLM:
             budget["policy"],
             kv_cache_gb,
             "metadata" if kv_cache_from_metadata else "fallback",
+            kv_cache_type,
             offload_kqv,
             available_vram_gb,
         )
@@ -602,13 +635,33 @@ class LlamaCppVLM:
         logger.info(f"Result: n_gpu_layers = {n_gpu_layers}")
         return n_gpu_layers, estimate
 
-    def load_model(self, model_name, chat_handler_name, n_gpu_layers=-1, n_ctx=8192, image_min_tokens=0, image_max_tokens=0, mmproj_name=None, vram_policy="extreme"):
+    def load_model(
+        self,
+        model_name,
+        chat_handler_name,
+        n_gpu_layers=-1,
+        n_ctx=8192,
+        image_min_tokens=0,
+        image_max_tokens=0,
+        mmproj_name=None,
+        vram_policy="extreme",
+        kv_cache_type="f16",
+    ):
         if not LLAMA_CPP_AVAILABLE:
             logger.error("llama-cpp-python is not correctly installed or CUDA libraries are missing.")
             return
 
         with self.lock:
             vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
+            requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
+            kv_cache_quantization_supported = self._supports_kv_cache_quantization()
+            effective_kv_cache_type = requested_kv_cache_type
+            if requested_kv_cache_type != "f16" and not kv_cache_quantization_supported:
+                effective_kv_cache_type = "f16"
+                logger.warning(
+                    "llama.cpp binding does not expose type_k/type_v; falling back from KV cache %s to FP16",
+                    requested_kv_cache_type,
+                )
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
@@ -621,7 +674,11 @@ class LlamaCppVLM:
                 and self.current_image_min_tokens == int(image_min_tokens or 0)
                 and self.current_image_max_tokens == int(image_max_tokens or 0)
             )
-            same_loaded_model = same_model_identity and self.current_vram_policy == vram_policy
+            same_loaded_model = (
+                same_model_identity
+                and self.current_vram_policy == vram_policy
+                and self.current_requested_kv_cache_type == requested_kv_cache_type
+            )
 
             auto_n_gpu_layers = n_gpu_layers == -1
             auto_estimate = {}
@@ -634,6 +691,7 @@ class LlamaCppVLM:
                         n_ctx,
                         loaded_model_credit_gb=current_credit_gb,
                         vram_policy=vram_policy,
+                        kv_cache_type=effective_kv_cache_type,
                     )
                 except Exception as e:
                     logger.warning(f"llama.cpp VRAM calculation failed: {e}. Using CPU memory settings.")
@@ -641,6 +699,7 @@ class LlamaCppVLM:
                     auto_estimate = {
                         "total_layers": self._get_layer_count(model_path),
                         "offload_kqv": False,
+                        "kv_cache_type": effective_kv_cache_type,
                     }
 
             target_n_gpu_layers = n_gpu_layers
@@ -686,36 +745,92 @@ class LlamaCppVLM:
 
             loaded_layers = None
             loaded_offload_kqv = None
+            loaded_kv_cache_type = None
             oom_type = getattr(ldm_patched.modules.model_management, "OOM_EXCEPTION", None)
-            for attempt_index, (attempt_layers, attempt_offload_kqv) in enumerate(load_attempts):
-                try:
-                    self.llm = Llama(
-                        model_path=model_path,
-                        chat_handler=self.chat_handler,
-                        n_gpu_layers=attempt_layers,
-                        n_ctx=n_ctx,
-                        offload_kqv=attempt_offload_kqv,
-                        verbose=False,
-                    )
-                    loaded_layers = attempt_layers
-                    loaded_offload_kqv = attempt_offload_kqv
-                    break
-                except Exception as e:
-                    self.llm = None
-                    has_next_attempt = attempt_index + 1 < len(load_attempts)
-                    if not has_next_attempt or not is_llama_cpp_memory_error(e, oom_type):
+            quantization_fallback = False
+            kv_cache_load_types = [effective_kv_cache_type]
+            if effective_kv_cache_type != "f16":
+                kv_cache_load_types.append("f16")
+            for kv_type_index, attempt_kv_cache_type in enumerate(kv_cache_load_types):
+                _, kv_type_config = llama_cpp_kv_cache_type_config(attempt_kv_cache_type)
+                for attempt_index, (attempt_layers, attempt_offload_kqv) in enumerate(load_attempts):
+                    try:
+                        llama_kwargs = {
+                            "model_path": model_path,
+                            "chat_handler": self.chat_handler,
+                            "n_gpu_layers": attempt_layers,
+                            "n_ctx": n_ctx,
+                            "offload_kqv": attempt_offload_kqv,
+                            "verbose": False,
+                        }
+                        if attempt_kv_cache_type != "f16":
+                            llama_kwargs.update({
+                                "type_k": kv_type_config["type_k"],
+                                "type_v": kv_type_config["type_v"],
+                            })
+                        self.llm = Llama(**llama_kwargs)
+                        loaded_layers = attempt_layers
+                        loaded_offload_kqv = attempt_offload_kqv
+                        loaded_kv_cache_type = attempt_kv_cache_type
+                        break
+                    except Exception as e:
+                        self.llm = None
+                        memory_error = is_llama_cpp_memory_error(e, oom_type)
+                        has_next_attempt = attempt_index + 1 < len(load_attempts)
+                        if memory_error and has_next_attempt:
+                            next_layers, next_offload_kqv = load_attempts[attempt_index + 1]
+                            logger.warning(
+                                "llama.cpp memory allocation failed with n_gpu_layers=%s, offload_kqv=%s, kv_cache_type=%s; "
+                                "retrying with n_gpu_layers=%s, offload_kqv=%s",
+                                attempt_layers,
+                                attempt_offload_kqv,
+                                attempt_kv_cache_type,
+                                next_layers,
+                                next_offload_kqv,
+                            )
+                            gc.collect()
+                            ldm_patched.modules.model_management.soft_empty_cache(True)
+                            continue
+                        if attempt_kv_cache_type != "f16" and kv_type_index + 1 < len(kv_cache_load_types):
+                            logger.warning(
+                                "llama.cpp rejected KV cache type %s (%s); retrying with FP16 KV cache",
+                                attempt_kv_cache_type,
+                                type(e).__name__,
+                            )
+                            quantization_fallback = True
+                            gc.collect()
+                            ldm_patched.modules.model_management.soft_empty_cache(True)
+                            break
                         raise
-                    next_layers, next_offload_kqv = load_attempts[attempt_index + 1]
-                    logger.warning(
-                        "llama.cpp memory allocation failed with n_gpu_layers=%s, offload_kqv=%s; "
-                        "retrying with n_gpu_layers=%s, offload_kqv=%s",
-                        attempt_layers,
-                        attempt_offload_kqv,
-                        next_layers,
-                        next_offload_kqv,
+                if self.llm is not None:
+                    break
+
+            if self.llm is None or loaded_kv_cache_type is None:
+                raise RuntimeError("llama.cpp failed to load the selected VLM")
+
+            if loaded_kv_cache_type != effective_kv_cache_type:
+                quantization_fallback = True
+                try:
+                    hparams = self._get_gguf_hparams(model_path)
+                    fallback_kv_cache_gb, fallback_from_metadata = estimate_llama_cpp_kv_cache_gb(
+                        n_ctx,
+                        total_layers,
+                        hparams.get("embedding_length"),
+                        hparams.get("head_count"),
+                        hparams.get("head_count_kv") or hparams.get("head_count"),
+                        kv_cache_type=loaded_kv_cache_type,
                     )
-                    gc.collect()
-                    ldm_patched.modules.model_management.soft_empty_cache(True)
+                    auto_estimate["kv_cache_gb"] = fallback_kv_cache_gb
+                    auto_estimate["kv_cache_from_metadata"] = fallback_from_metadata
+                    auto_estimate["kv_cache_type"] = loaded_kv_cache_type
+                    _, fallback_type_config = llama_cpp_kv_cache_type_config(loaded_kv_cache_type)
+                    auto_estimate["kv_cache_type_bytes_per_element"] = fallback_type_config["bytes_per_element"]
+                    auto_estimate["kv_cache_type_savings_ratio"] = max(
+                        0.0,
+                        1.0 - float(fallback_type_config["bytes_per_element"]) / 2.0,
+                    )
+                except Exception:
+                    pass
 
             self.current_model_path = model_path
             self.current_mmproj_path = mmproj_path
@@ -724,6 +839,9 @@ class LlamaCppVLM:
             self.current_image_min_tokens = int(image_min_tokens or 0)
             self.current_image_max_tokens = int(image_max_tokens or 0)
             self.current_vram_policy = vram_policy
+            self.current_kv_cache_type = loaded_kv_cache_type
+            self.current_requested_kv_cache_type = requested_kv_cache_type
+            self.current_kv_cache_type_supported = kv_cache_quantization_supported
             self.current_target_n_gpu_layers = target_n_gpu_layers
             self.current_n_gpu_layers = loaded_layers
             self.current_total_layers = total_layers
@@ -735,6 +853,10 @@ class LlamaCppVLM:
             self.current_vram_estimate["target_n_gpu_layers"] = target_n_gpu_layers
             self.current_vram_estimate["loaded_n_gpu_layers"] = loaded_layers
             self.current_vram_estimate["loaded_offload_kqv"] = loaded_offload_kqv
+            self.current_vram_estimate["requested_kv_cache_type"] = requested_kv_cache_type
+            self.current_vram_estimate["loaded_kv_cache_type"] = loaded_kv_cache_type
+            self.current_vram_estimate["kv_cache_quantization_supported"] = kv_cache_quantization_supported
+            self.current_vram_estimate["kv_cache_quantization_fallback"] = quantization_fallback
             ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
 
     def free_model(self, clear_conversations=False):
@@ -754,6 +876,9 @@ class LlamaCppVLM:
             self.current_n_ctx = None
             self.current_image_min_tokens = None
             self.current_image_max_tokens = None
+            self.current_kv_cache_type = "f16"
+            self.current_requested_kv_cache_type = "f16"
+            self.current_kv_cache_type_supported = None
             self.current_n_gpu_layers = None
             self.current_total_layers = None
             self.current_target_n_gpu_layers = None
@@ -768,16 +893,19 @@ class LlamaCppVLM:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def get_runtime_status(self, vram_policy=None):
+    def get_runtime_status(self, vram_policy=None, kv_cache_type=None):
         acquired = self.lock.acquire(blocking=False)
         try:
-            return self._runtime_status_snapshot(vram_policy)
+            return self._runtime_status_snapshot(vram_policy, kv_cache_type)
         finally:
             if acquired:
                 self.lock.release()
 
-    def _runtime_status_snapshot(self, vram_policy=None):
+    def _runtime_status_snapshot(self, vram_policy=None, kv_cache_type=None):
         requested_policy = normalize_llama_cpp_vram_policy(vram_policy or self.current_vram_policy)
+        requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(
+            kv_cache_type or self.current_requested_kv_cache_type
+        )
         memory_management = ldm_patched.modules.model_management
         gpu_total_gb = 0.0
         gpu_free_gb = 0.0
@@ -803,6 +931,16 @@ class LlamaCppVLM:
             "policy": loaded_policy if loaded else requested_policy,
             "requested_policy": requested_policy,
             "policy_pending": bool(loaded and loaded_policy != requested_policy),
+            "kv_cache_type": self.current_kv_cache_type if loaded else requested_kv_cache_type,
+            "requested_kv_cache_type": requested_kv_cache_type,
+            "kv_cache_type_pending": bool(
+                loaded and self.current_requested_kv_cache_type != requested_kv_cache_type
+            ),
+            "kv_cache_quantization_supported": self.current_kv_cache_type_supported,
+            "kv_cache_quantized": bool(loaded and self.current_kv_cache_type != "f16"),
+            "kv_cache_quantization_fallback": bool(
+                loaded and estimate.get("kv_cache_quantization_fallback")
+            ),
             "model": os.path.basename(self.current_model_path or ""),
             "model_path": self.current_model_path or "",
             "gpu_layers": gpu_layers if loaded else 0,
@@ -816,6 +954,7 @@ class LlamaCppVLM:
             "gpu_budget_gb": estimate.get("gpu_budget_gb"),
             "layer_budget_gb": estimate.get("layer_budget_gb"),
             "kv_cache_gb": estimate.get("kv_cache_gb"),
+            "kv_cache_savings_ratio": estimate.get("kv_cache_type_savings_ratio"),
         }
 
     def clear_conversation(self, conversation_id=None):

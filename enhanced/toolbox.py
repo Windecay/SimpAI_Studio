@@ -855,6 +855,37 @@ def _read_gallery_embedded_metadata(metadata, state_params):
     )
 
 
+def _resolve_regen_base_model(metadata_value, backend_value, state_params):
+    metadata_value = str(metadata_value or "").strip()
+    backend_value = str(backend_value or "").strip()
+    selected = metadata_value or backend_value
+    if not selected:
+        return ""
+
+    if (
+        metadata_value
+        and not regen_manifest.model_name_has_file_extension(metadata_value)
+        and backend_value
+        and regen_manifest.model_names_share_stem(metadata_value, backend_value)
+    ):
+        selected = backend_value
+
+    try:
+        choices = config.get_base_model_list(
+            state_params.get("engine") or state_params.get("backend_engine") or "Comfy",
+            state_params.get("task_method"),
+            use_model_filter=False,
+        )
+    except Exception as exc:
+        logger.warning("Regen base model catalog unavailable: %s", exc)
+        choices = []
+
+    resolved = regen_manifest.resolve_model_filename(selected, choices)
+    if resolved != metadata_value and metadata_value:
+        logger.info("Regen base model restored: %s -> %s", metadata_value, resolved)
+    return resolved
+
+
 def _apply_regen_manifest(parsed_parameters, state_params, manifest):
     if not isinstance(manifest, dict):
         return parsed_parameters
@@ -989,13 +1020,19 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         if isinstance(value, str) and value.strip():
             metadata_base_model = value.strip()
             break
-    if metadata_base_model is None:
-        value = backend_params.get("base_model")
-        if isinstance(value, str) and value.strip():
-            metadata_base_model = value.strip()
-    if metadata_base_model is not None:
-        restored["base_model"] = metadata_base_model
-        preset_prepared["base_model"] = metadata_base_model
+    backend_base_model = backend_params.get("base_model") or backend_params.get("base_model_gguf")
+    if isinstance(backend_base_model, str):
+        backend_base_model = backend_base_model.strip()
+    else:
+        backend_base_model = ""
+    restored_base_model = _resolve_regen_base_model(
+        metadata_base_model,
+        backend_base_model,
+        state_params,
+    )
+    if restored_base_model:
+        restored["base_model"] = restored_base_model
+        preset_prepared["base_model"] = restored_base_model
 
     for index in range(1, config.default_max_lora_number + 1):
         canonical_key = f"lora_combined_{index}"

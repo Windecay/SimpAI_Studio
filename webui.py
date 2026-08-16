@@ -39,6 +39,7 @@ import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_agent as canvas_vlm_agent
 import modules.canvas_vlm_runtime as canvas_vlm_runtime
 import modules.describe_vlm_chat as describe_vlm_chat
+import modules.vlm_roleplay as vlm_roleplay
 import modules.describe_media as describe_media
 import modules.cloud_image as cloud_image
 import modules.vlm_api_profiles as vlm_api_profiles
@@ -14186,6 +14187,7 @@ async def canvas_workbench_preset_model_downloads_endpoint(payload: dict = Body(
 
 _canvas_vlm_model_status = canvas_vlm_runtime.canvas_vlm_model_status
 _canvas_queue_vlm_model_downloads = canvas_vlm_runtime.canvas_queue_vlm_model_downloads
+_canvas_vlm_status_log_signatures = {}
 
 @app.get("/vlm-model-catalog")
 async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False):
@@ -14217,19 +14219,27 @@ async def canvas_workbench_vlm_model_status_endpoint(payload: dict = Body(...)):
 
         started = time.monotonic()
         params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
-        logger.info(
-            "Canvas VLM model status request received: node_id=%s, version=%s",
-            payload.get("node_id") or "",
-            params.get("version") or "",
-        )
         result = await run_in_threadpool(lambda: _canvas_vlm_model_status(payload))
-        logger.info(
-            "Canvas VLM model status completed: elapsed=%.3fs, ready=%s, state=%s, missing=%s",
-            time.monotonic() - started,
-            result.get("ready"),
-            result.get("state"),
-            result.get("missing_count"),
+        status_key = (
+            str(payload.get("node_id") or ""),
+            str(params.get("version") or ""),
         )
+        status_signature = (
+            bool(result.get("ready")),
+            str(result.get("state") or ""),
+            str(result.get("missing_count") if result.get("missing_count") is not None else ""),
+        )
+        if _canvas_vlm_status_log_signatures.get(status_key) != status_signature:
+            _canvas_vlm_status_log_signatures[status_key] = status_signature
+            logger.info(
+                "Canvas VLM model status changed: node_id=%s, version=%s, elapsed=%.3fs, ready=%s, state=%s, missing=%s",
+                status_key[0],
+                status_key[1],
+                time.monotonic() - started,
+                status_signature[0],
+                status_signature[1],
+                status_signature[2],
+            )
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
     except Exception as e:
         import traceback
@@ -15320,6 +15330,95 @@ async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
             },
             status_code=500,
         )
+
+def _roleplay_endpoint_user_did(payload, request):
+    authenticated = str(_get_request_identity_did(request) or "").strip()
+    if authenticated:
+        return authenticated
+    source = payload if isinstance(payload, dict) else {}
+    return str(source.get("user_did") or source.get("__user_did") or "guest").strip() or "guest"
+
+
+@app.post("/describe-image/vlm-roleplay/draft-from-system-prompt")
+async def describe_image_vlm_roleplay_draft_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    prompt = str(
+        payload.get("system_prompt")
+        or payload.get("custom_system_prompt")
+        or payload.get("user_system_prompt")
+        or ""
+    ).strip()
+    if not prompt:
+        return JSONResponse({"ok": False, "error": "system_prompt_required"}, status_code=400)
+    draft = await run_in_threadpool(vlm_roleplay.build_character_draft_from_system_prompt, prompt)
+    return JSONResponse(draft, status_code=200 if draft.get("ok") else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/branches/list")
+async def describe_image_vlm_roleplay_branches_list_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    session_id = str(payload.get("session_id") or payload.get("conversation_id") or "").strip()
+    if not session_id:
+        return JSONResponse({"ok": False, "error": "session_id_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    branches = await run_in_threadpool(
+        lambda: vlm_roleplay.list_roleplay_branches(session_id, user_did=user_did)
+    )
+    return JSONResponse({"ok": True, "session_id": session_id, "branches": branches}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/branches/load")
+async def describe_image_vlm_roleplay_branch_load_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    session_id = str(payload.get("session_id") or payload.get("conversation_id") or "").strip()
+    branch_id = str(payload.get("branch_id") or "main").strip()
+    if not session_id:
+        return JSONResponse({"ok": False, "error": "session_id_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    session = await run_in_threadpool(
+        lambda: vlm_roleplay.load_roleplay_branch(session_id, branch_id, user_did=user_did)
+    )
+    if not session:
+        return JSONResponse({"ok": False, "error": "branch_not_found", "session_id": session_id, "branch_id": branch_id}, status_code=404)
+    return JSONResponse({"ok": True, "session_id": session_id, "branch_id": session.get("active_branch_id", branch_id), "session": session}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/branches/save")
+async def describe_image_vlm_roleplay_branch_save_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    session_id = str(payload.get("session_id") or session.get("id") or session.get("conversation_id") or "").strip()
+    if not session_id:
+        return JSONResponse({"ok": False, "error": "session_id_required"}, status_code=400)
+    if session.get("id") != session_id:
+        session["id"] = session_id
+    branch_id = str(payload.get("branch_id") or session.get("active_branch_id") or "main").strip()
+    user_did = _roleplay_endpoint_user_did(payload, request)
+
+    def save_branch():
+        saved = vlm_roleplay.save_roleplay_session(session, user_did=user_did)
+        return vlm_roleplay.save_roleplay_branch(saved, branch_id=branch_id, user_did=user_did)
+
+    saved = await run_in_threadpool(save_branch)
+    return JSONResponse({"ok": True, "session_id": session_id, "branch_id": saved.get("active_branch_id", branch_id), "session": saved}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/branches/delete")
+async def describe_image_vlm_roleplay_branch_delete_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    session_id = str(payload.get("session_id") or payload.get("conversation_id") or "").strip()
+    branch_id = str(payload.get("branch_id") or "").strip()
+    if not session_id or not branch_id:
+        return JSONResponse({"ok": False, "error": "session_and_branch_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    removed = await run_in_threadpool(
+        lambda: vlm_roleplay.delete_roleplay_branch(session_id, branch_id, user_did=user_did)
+    )
+    if not removed:
+        return JSONResponse({"ok": False, "error": "branch_not_deleted", "session_id": session_id, "branch_id": branch_id}, status_code=400)
+    return JSONResponse({"ok": True, "session_id": session_id, "branch_id": branch_id}, status_code=200)
+
 
 @app.post("/describe-image/vlm-chat-cancel")
 async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={})):

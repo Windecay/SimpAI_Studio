@@ -32,6 +32,7 @@ from modules.launch_util import (
     target_path_install,
 )
 from modules.llama_cpp_runtime import (
+    LLAMA_CPP_RUNTIME_VERSION,
     llama_cpp_version_matches,
     select_llama_cpp_wheel,
 )
@@ -431,7 +432,8 @@ def ensure_llama_cpp_runtime(runtime_profile):
     artifact = select_llama_cpp_wheel()
     if not artifact:
         logger.warning(
-            "llama.cpp 0.3.44 has no packaged wheel for this platform: system=%s, machine=%s, Python=%s.%s",
+            "llama.cpp %s has no packaged wheel for this platform: system=%s, machine=%s, Python=%s.%s",
+            LLAMA_CPP_RUNTIME_VERSION,
             platform.system(),
             platform.machine(),
             sys.version_info.major,

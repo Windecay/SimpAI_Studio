@@ -8,6 +8,16 @@ KEY = "simpleai_regen_manifest"
 LABEL = "SimpleAI Regen Manifest"
 VIDEO_DURATION_KEY = "scene_video_duration"
 EXTRA_BACKEND_ARGS = (KEY, VIDEO_DURATION_KEY)
+_UNSET = object()
+_MODEL_FILE_EXTENSIONS = (
+    ".safetensors",
+    ".fooocus.patch",
+    ".ckpt",
+    ".gguf",
+    ".pth",
+    ".bin",
+    ".pt",
+)
 
 
 def ensure_api_params_backend_arg(api_params_module):
@@ -46,6 +56,107 @@ def sync_lora_backend_params(manifest, backend_params, max_lora_number):
         else:
             snapshot.pop(key, None)
     return manifest
+
+
+def sync_model_backend_params(
+    manifest,
+    base_model_name=_UNSET,
+    refiner_model_name=_UNSET,
+):
+    if not isinstance(manifest, dict):
+        return manifest
+
+    snapshot = manifest.get("backend_params")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+        manifest["backend_params"] = snapshot
+
+    for key, value in (
+        ("base_model", base_model_name),
+        ("base_model2", refiner_model_name),
+    ):
+        if value is _UNSET:
+            continue
+        text = str(value or "").strip()
+        if text and text.casefold() not in {"none", "auto", "default (model)"}:
+            snapshot[key] = json_safe(text)
+        else:
+            snapshot.pop(key, None)
+    return manifest
+
+
+def _normal_model_name(value):
+    return str(value or "").strip().replace("\\", "/").lstrip("/")
+
+
+def _model_name_without_extension(value):
+    normalized = _normal_model_name(value)
+    if not normalized:
+        return ""
+    head, separator, filename = normalized.rpartition("/")
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    return f"{head}{separator}{stem}" if separator else stem
+
+
+def _model_basename_stem(value):
+    return _model_name_without_extension(value).rsplit("/", 1)[-1].casefold()
+
+
+def model_names_share_stem(left, right):
+    left_stem = _model_basename_stem(left)
+    right_stem = _model_basename_stem(right)
+    return bool(left_stem and left_stem == right_stem)
+
+
+def model_name_has_file_extension(value):
+    filename = _normal_model_name(value).rsplit("/", 1)[-1].casefold()
+    return any(filename.endswith(extension) for extension in _MODEL_FILE_EXTENSIONS)
+
+
+def _unique_model_choice(items):
+    choices = list(dict.fromkeys(str(item) for item in items if str(item).strip()))
+    return choices[0] if len(choices) == 1 else None
+
+
+def resolve_model_filename(value, choices):
+    original = str(value or "").strip()
+    if not original or original.casefold() in {"none", "auto", "default (model)"}:
+        return original
+
+    candidates = []
+    for choice in choices or []:
+        choice_text = str(choice or "").strip()
+        if choice_text:
+            candidates.append((choice_text, _normal_model_name(choice_text)))
+    if not candidates:
+        return original
+
+    normalized = _normal_model_name(original)
+    matched = _unique_model_choice(choice for choice, key in candidates if key == normalized)
+    if matched:
+        return matched
+
+    normalized_casefold = normalized.casefold()
+    matched = _unique_model_choice(
+        choice for choice, key in candidates if key.casefold() == normalized_casefold
+    )
+    if matched:
+        return matched
+
+    stem_path = _model_name_without_extension(normalized).casefold()
+    matched = _unique_model_choice(
+        choice
+        for choice, key in candidates
+        if _model_name_without_extension(key).casefold() == stem_path
+    )
+    if matched:
+        return matched
+
+    basename_stem = _model_basename_stem(normalized)
+    matched = _unique_model_choice(
+        choice for choice, key in candidates if _model_basename_stem(key) == basename_stem
+    )
+    return matched or original
 
 
 def _is_data_url(value):

@@ -18,7 +18,10 @@ import ldm_patched.modules.model_management
 import modules.default_pipeline as pipeline
 import enhanced.all_parameters as ads
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
-from modules.llama_cpp_runtime import normalize_llama_cpp_vram_policy
+from modules.llama_cpp_runtime import (
+    normalize_llama_cpp_kv_cache_type,
+    normalize_llama_cpp_vram_policy,
+)
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
@@ -501,6 +504,7 @@ class VLM:
     custom_api_key = ""
     custom_supports_images = True
     vram_policy = "extreme"
+    kv_cache_type = "f16"
 
     remove_prefixs = [
         'A descriptive caption for this image could be: "',
@@ -615,6 +619,12 @@ class VLM:
         with cls.lock:
             cls.vram_policy = normalize_llama_cpp_vram_policy(policy)
             return cls.vram_policy
+
+    @classmethod
+    def set_kv_cache_type(cls, value):
+        with cls.lock:
+            cls.kv_cache_type = normalize_llama_cpp_kv_cache_type(value)
+            return cls.kv_cache_type
 
     @classmethod
     def get_custom_settings(cls):
@@ -1004,6 +1014,7 @@ class VLM:
                 image_max_tokens=VLM.image_max_tokens,
                 mmproj_name=VLM.mmproj_file or None,
                 vram_policy=VLM.vram_policy,
+                kv_cache_type=VLM.kv_cache_type,
             )
             return
 

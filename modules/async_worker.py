@@ -1205,6 +1205,11 @@ def worker():
                                          loras, async_task.vae_name, '')
             
             if getattr(async_task, 'simpleai_regen_manifest', None):
+                regen_manifest.sync_model_backend_params(
+                    async_task.simpleai_regen_manifest,
+                    base_model_name=async_task.base_model_name,
+                    refiner_model_name=async_task.refiner_model_name,
+                )
                 if async_task.save_metadata_to_images:
                     logger.info(
                         "Regen manifest attached to output metadata: preset=%s theme=%s",

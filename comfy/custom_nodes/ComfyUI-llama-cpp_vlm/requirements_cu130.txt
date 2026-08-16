@@ -1,0 +1,17 @@
+diskcache
+scipy
+numpy
+pillow
+gguf
+tqdm
+
+# Optional CUDA 13 requirements for standalone ComfyUI installations.
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp311-cp311-win_amd64.whl ; python_version == "3.11" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp312-cp312-win_amd64.whl ; python_version == "3.12" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp313-cp313-win_amd64.whl ; python_version == "3.13" and platform_system == "Windows" and platform_machine == "AMD64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp314-cp314-win_amd64.whl ; python_version == "3.14" and platform_system == "Windows" and platform_machine == "AMD64"
+
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp311-cp311-linux_x86_64.whl ; python_version == "3.11" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp312-cp312-linux_x86_64.whl ; python_version == "3.12" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp313-cp313-linux_x86_64.whl ; python_version == "3.13" and platform_system == "Linux" and platform_machine == "x86_64"
+llama-cpp-python @ https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/llama/llama_cpp_python-0.3.46+cu130-cp314-cp314-linux_x86_64.whl ; python_version == "3.14" and platform_system == "Linux" and platform_machine == "x86_64"

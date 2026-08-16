@@ -33,6 +33,7 @@ from modules.custom_llm_api import (
     request_json,
 )
 from modules.model_path_utils import find_model_in_dirs
+from modules.llama_cpp_runtime import normalize_llama_cpp_kv_cache_type
 
 logger = logging.getLogger(__name__)
 _CANVAS_VLM_CANCEL_TTL_SECONDS = 1800
@@ -284,7 +285,10 @@ def canvas_vlm_model_status(payload):
     ready = len(missing) == 0
     runtime_status = None
     if backend == "llamacpp":
-        runtime_status = llamacpp_vlm.get_runtime_status(params.get("vram_policy"))
+        runtime_status = llamacpp_vlm.get_runtime_status(
+            params.get("vram_policy"),
+            params.get("kv_cache_type"),
+        )
     return {
         "ok": True,
         "ready": ready,
@@ -299,6 +303,7 @@ def canvas_vlm_model_status(payload):
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "message": "VLM model files are ready." if ready else f"{len(missing)} VLM model file(s) are missing. Download before running.",
         "vram_policy": (runtime_status or {}).get("policy") or str(params.get("vram_policy") or "extreme"),
+        "kv_cache_type": (runtime_status or {}).get("kv_cache_type") or normalize_llama_cpp_kv_cache_type(params.get("kv_cache_type")),
         "runtime_status": runtime_status,
     }
 
@@ -914,6 +919,7 @@ def canvas_vlm_run(payload):
     stage_started = time.monotonic()
     VLM.set_version(version_name)
     params["vram_policy"] = VLM.set_vram_policy(params.get("vram_policy"))
+    params["kv_cache_type"] = VLM.set_kv_cache_type(params.get("kv_cache_type"))
     _canvas_vlm_add_timing(params, "set_version", time.monotonic() - stage_started)
 
     image_input = None
