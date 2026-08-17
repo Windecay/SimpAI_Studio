@@ -518,7 +518,7 @@ class LTXICLoRALoaderModelOnly(io.ComfyNode):
             return io.NodeOutput(model, latent_downscale_factor)
 
         model_lora, _ = comfy.sd.load_lora_for_models(
-            model, None, lora, strength_model, 0
+            model, None, lora, strength_model, 0, lora_metadata=metadata
         )
         return io.NodeOutput(model_lora, latent_downscale_factor)
 

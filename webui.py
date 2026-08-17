@@ -11238,10 +11238,8 @@ with shared.gradio_root:
         load_parameter_button.click(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 
-        def switch_scene_theme_ui_state(state, theme, event_context, evt: gr.SelectData):
-            selected_theme = getattr(evt, "value", None) if getattr(evt, "selected", True) is not False else None
-            if not isinstance(selected_theme, str) or not selected_theme.strip():
-                selected_theme = theme
+        def switch_scene_theme_ui_state(state, theme, event_context):
+            selected_theme = str(theme or "").strip()
             source_preset = ""
             if isinstance(event_context, dict):
                 source_preset = str(
@@ -11258,7 +11256,7 @@ with shared.gradio_root:
             topbar_params["__scene_theme_event_rejected"] = False
             return state, overwrite_step_update, topbar_params
 
-        scene_theme.select(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
+        scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
                    .then(fn=None, inputs=[scene_theme, system_params], js='(theme,params)=>{try{if(params&&params.__scene_theme_event_rejected){if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);return;} const resolvedTheme=String((params&&params.__scene_theme)||theme||"").trim(); if(window.markSimpleAISceneThemeChanged) window.markSimpleAISceneThemeChanged(resolvedTheme,params); if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] scene_theme_user_change_guard_failed",e);}}', queue=False, show_progress=False) \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); const resolvedTheme=String((state&&state.scene_theme)||theme||'').trim(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
@@ -15352,6 +15350,112 @@ async def describe_image_vlm_roleplay_draft_endpoint(payload: dict = Body(defaul
         return JSONResponse({"ok": False, "error": "system_prompt_required"}, status_code=400)
     draft = await run_in_threadpool(vlm_roleplay.build_character_draft_from_system_prompt, prompt)
     return JSONResponse(draft, status_code=200 if draft.get("ok") else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/character-image-action")
+async def describe_image_vlm_roleplay_character_image_action_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    action = await run_in_threadpool(
+        lambda: vlm_roleplay.build_character_reference_generation_action(
+            session,
+            payload.get("character_id"),
+            payload.get("image_request") or payload.get("request"),
+            turn_id=payload.get("turn_id") or session.get("active_turn_id") or "",
+            lang=payload.get("lang") or payload.get("__lang") or "cn",
+        )
+    )
+    if not action:
+        return JSONResponse({"ok": False, "error": "character_description_required"}, status_code=400)
+    return JSONResponse({"ok": True, "action": action}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/character-reference-apply")
+async def describe_image_vlm_roleplay_character_reference_apply_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    result = await run_in_threadpool(
+        lambda: vlm_roleplay.apply_character_reference_asset(
+            session,
+            payload.get("character_id"),
+            payload.get("asset_ids") or payload.get("asset_id"),
+            turn_id=payload.get("turn_id") or "",
+            expected_state_version=payload.get("expected_state_version"),
+        )
+    )
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409 if result.get("error") == "state_version_conflict" else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/appearance-image-action")
+async def describe_image_vlm_roleplay_appearance_image_action_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    action = await run_in_threadpool(
+        lambda: vlm_roleplay.build_character_appearance_generation_action(
+            session,
+            payload.get("character_id"),
+            payload.get("appearance_request") or payload.get("request"),
+            turn_id=payload.get("turn_id") or session.get("active_turn_id") or "",
+            lang=payload.get("lang") or payload.get("__lang") or "cn",
+        )
+    )
+    if not action:
+        return JSONResponse({"ok": False, "error": "character_reference_required"}, status_code=400)
+    return JSONResponse({"ok": True, "action": action}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/appearance-apply")
+async def describe_image_vlm_roleplay_appearance_apply_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    result = await run_in_threadpool(
+        lambda: vlm_roleplay.apply_current_appearance_assets(
+            session,
+            payload.get("character_id"),
+            payload.get("asset_ids") or payload.get("asset_id"),
+            turn_id=payload.get("turn_id") or "",
+            expected_state_version=payload.get("expected_state_version"),
+        )
+    )
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409 if result.get("error") == "state_version_conflict" else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/scene-image-action")
+async def describe_image_vlm_roleplay_scene_image_action_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    action = await run_in_threadpool(
+        lambda: vlm_roleplay.build_scene_reference_generation_action(
+            session,
+            payload.get("scene_request") or payload.get("request"),
+            turn_id=payload.get("turn_id") or session.get("active_turn_id") or "",
+            lang=payload.get("lang") or payload.get("__lang") or "cn",
+        )
+    )
+    if not action:
+        return JSONResponse({"ok": False, "error": "scene_description_required"}, status_code=400)
+    return JSONResponse({"ok": True, "action": action}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/scene-reference-apply")
+async def describe_image_vlm_roleplay_scene_reference_apply_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    result = await run_in_threadpool(
+        lambda: vlm_roleplay.apply_scene_reference_assets(
+            session,
+            payload.get("asset_ids") or payload.get("asset_id"),
+            turn_id=payload.get("turn_id") or "",
+            expected_state_version=payload.get("expected_state_version"),
+        )
+    )
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409 if result.get("error") == "state_version_conflict" else 400)
 
 
 @app.post("/describe-image/vlm-roleplay/branches/list")

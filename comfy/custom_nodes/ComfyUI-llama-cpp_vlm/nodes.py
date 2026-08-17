@@ -29,6 +29,13 @@ from llama_cpp.llama_chat_format import (
 # 基础 Chat Handlers 定义
 chat_handlers = ["None", "LLaVA-1.5", "LLaVA-1.6", "Moondream2", "nanoLLaVA", "llama3-Vision-Alpha", "MiniCPM-v2.6"]
 
+
+def _is_visual_component_filename(filename):
+    name = os.path.basename(str(filename or "")).lower()
+    if "mmproj" in name or "projector" in name:
+        return True
+    return bool(re.search(r"(?<![a-z0-9])vision(?![a-z0-9])", name))
+
 try:
     from llama_cpp.llama_chat_format import MTMDChatHandler
     chat_handlers += ["DeepSeek-OCR"]
@@ -529,8 +536,8 @@ class llama_cpp_model_loader:
     @classmethod
     def INPUT_TYPES(s):
         all_llms = folder_paths.get_filename_list("LLM")
-        model_list = [f for f in all_llms if "mmproj" not in f.lower()]
-        mmproj_list = ["None"] + [f for f in all_llms if "mmproj" in f.lower()]
+        model_list = [f for f in all_llms if not _is_visual_component_filename(f)]
+        mmproj_list = ["None"] + [f for f in all_llms if _is_visual_component_filename(f)]
             
         return {"required": {
             "model": (model_list,),

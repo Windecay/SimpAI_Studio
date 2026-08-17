@@ -64,7 +64,7 @@
   },
   "82": {
     "inputs": {
-      "image": "welcome.png.png"
+      "image": "welcome.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -73,7 +73,7 @@
   },
   "86": {
     "inputs": {
-      "value": 0.8
+      "value": 1.2
     },
     "class_type": "easy float",
     "_meta": {
@@ -233,15 +233,6 @@
       "title": "Model Patch Torch Settings"
     }
   },
-  "110": {
-    "inputs": {
-      "image": "合照1.webp"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "i2i_ip_image1"
-    }
-  },
   "111": {
     "inputs": {
       "aspect_ratio": "original",
@@ -266,148 +257,6 @@
       "title": "LayerUtility: ImageScaleByAspectRatio V2"
     }
   },
-  "124": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "var_number2"
-    }
-  },
-  "128": {
-    "inputs": {
-      "index": 0
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "129": {
-    "inputs": {
-      "index": [
-        "124",
-        0
-      ],
-      "value0": [
-        "78",
-        0
-      ],
-      "value1": [
-        "130",
-        0
-      ],
-      "value2": [
-        "132",
-        0
-      ],
-      "value3": [
-        "133",
-        0
-      ],
-      "value4": [
-        "134",
-        0
-      ],
-      "value5": [
-        "136",
-        0
-      ],
-      "value6": [
-        "137",
-        0
-      ],
-      "value7": [
-        "138",
-        0
-      ],
-      "value8": [
-        "135",
-        0
-      ],
-      "value9": [
-        "141",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "130": {
-    "inputs": {
-      "text": ""
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "132": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "133": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕，白平衡校正，"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "134": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕，白平衡校正，色彩分级，"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "135": {
-    "inputs": {
-      "text": "将图1的草图转换成真人写实照片，保持人物的动作姿势不变，修复图1中错误的人体结构和手部和腿部和脚，移除模糊和裂缝和噪点和灰尘和划痕，白平衡校正，色彩分级，保持源文件质量，修正曝光与色彩配置文件，现代专业级商业摄影照片，"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "136": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕，干净的皮肤，白平衡校正，色彩分级，保持源文件质量，修正曝光与色彩配置文件，"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "137": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕，白平衡校正，色彩分级，保持源文件质量，修正曝光与色彩配置文件，中国老照片，彩色胶片"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
-  "138": {
-    "inputs": {
-      "text": "移除模糊和裂缝和噪点和灰尘和划痕，白平衡校正，色彩分级，保持源文件质量，修正曝光与色彩配置文件，现代专业级商业棚拍摄影照片"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
-    }
-  },
   "140": {
     "inputs": {
       "value": "a*a/1000",
@@ -419,15 +268,6 @@
     "class_type": "SimpleMath+",
     "_meta": {
       "title": "🔧 Simple Math"
-    }
-  },
-  "141": {
-    "inputs": {
-      "text": "去除模糊与裂缝和划痕与噪点，产品精修，崭新的产品，白平衡校正，色彩分级，保持源文件质量，修正曝光与色彩配置文件，现代专业级商业摄影照片，"
-    },
-    "class_type": "ttN text",
-    "_meta": {
-      "title": "text"
     }
   },
   "142": {
@@ -572,7 +412,7 @@
   "75:74": {
     "inputs": {
       "text": [
-        "129",
+        "78",
         0
       ],
       "clip": [

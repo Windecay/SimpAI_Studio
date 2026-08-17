@@ -819,29 +819,44 @@ def materialize_node_asset(project_id, state_params, source):
         path = _resolve_asset_file_path(asset, project_id, state_params)
         root, _ = _asset_root(project_id, state_params)
         if path:
-            resolved_relative_path = _asset_relative_path(path, root)
-            main_ref = {
-                "kind": "existing_file",
-                "asset_id": asset.get("asset_id") or asset.get("asset_relative_path") or asset.get("path") or asset.get("output_path"),
-                "node_id": node_id,
-                "path": path,
-                "asset_relative_path": resolved_relative_path or asset.get("asset_relative_path") or asset.get("relative_path") or "",
-                "relative_path": resolved_relative_path or asset.get("relative_path") or asset.get("asset_relative_path") or "",
-                "asset_root": root if resolved_relative_path else asset.get("asset_root") or "",
-                "asset_root_key": "project_asset_root" if resolved_relative_path else asset.get("asset_root_key") or "",
-                "preview_url": _file_preview_url(path) if path else asset.get("preview_url") or "",
-                "output_path": asset.get("output_path") or "",
-                "original_output_path": asset.get("original_output_path") or "",
-                "mime": asset.get("mime"),
-                "width": asset.get("width"),
-                "height": asset.get("height"),
-                "duration": asset.get("duration"),
-                "fps": asset.get("fps"),
-                "frame_count": asset.get("frame_count"),
-                "waveform": _normalize_waveform_values(asset.get("waveform"), 160),
-                "size": asset.get("size"),
-                "generation_metadata": asset.get("generation_metadata") if isinstance(asset.get("generation_metadata"), dict) else {},
-            }
+            source_id = str(asset.get("asset_id") or "").strip()
+            durable_id = bool(_asset_id_digest(source_id))
+            if not durable_id:
+                mime = str(asset.get("mime") or mimetypes.guess_type(path)[0] or "").strip().lower()
+                role = "video" if mime.startswith("video/") else "audio" if mime.startswith("audio/") else "image"
+                main_ref = register_existing_file_asset(
+                    path,
+                    project_id,
+                    state_params,
+                    node_id=node_id,
+                    role=role,
+                    metadata=asset,
+                    copy_to_assets=True,
+                )
+            if not main_ref:
+                resolved_relative_path = _asset_relative_path(path, root)
+                main_ref = {
+                    "kind": "existing_file",
+                    "asset_id": source_id or asset.get("asset_relative_path") or asset.get("path") or asset.get("output_path"),
+                    "node_id": node_id,
+                    "path": path,
+                    "asset_relative_path": resolved_relative_path or asset.get("asset_relative_path") or asset.get("relative_path") or "",
+                    "relative_path": resolved_relative_path or asset.get("relative_path") or asset.get("asset_relative_path") or "",
+                    "asset_root": root if resolved_relative_path else asset.get("asset_root") or "",
+                    "asset_root_key": "project_asset_root" if resolved_relative_path else asset.get("asset_root_key") or "",
+                    "preview_url": _file_preview_url(path) if path else asset.get("preview_url") or "",
+                    "output_path": asset.get("output_path") or "",
+                    "original_output_path": asset.get("original_output_path") or "",
+                    "mime": asset.get("mime"),
+                    "width": asset.get("width"),
+                    "height": asset.get("height"),
+                    "duration": asset.get("duration"),
+                    "fps": asset.get("fps"),
+                    "frame_count": asset.get("frame_count"),
+                    "waveform": _normalize_waveform_values(asset.get("waveform"), 160),
+                    "size": asset.get("size"),
+                    "generation_metadata": asset.get("generation_metadata") if isinstance(asset.get("generation_metadata"), dict) else {},
+                }
     elif asset:
         main_ref = {
             "kind": "browser_unmaterialized",
@@ -966,7 +981,7 @@ def list_project_assets(project_id, state_params, options=None):
                             width, height = image.size
                     except Exception:
                         pass
-                items.append({
+                item = {
                     "name": filename,
                     "path": path,
                     "relative_path": os.path.relpath(path, root),
@@ -976,7 +991,16 @@ def list_project_assets(project_id, state_params, options=None):
                     "width": width,
                     "height": height,
                     "preview_url": _file_preview_url(path),
-                })
+                }
+                # Roleplay reference pickers need a durable ID instead of an
+                # absolute path. Keep the hash opt-in so the general asset
+                # manager does not pay for hashing every file on every scan.
+                if bool(options.get("include_asset_ids")):
+                    try:
+                        item["asset_id"] = f"file:{_sha256_file(path)[:24]}"
+                    except Exception:
+                        item["asset_id"] = ""
+                items.append(item)
             if truncated:
                 break
     return {

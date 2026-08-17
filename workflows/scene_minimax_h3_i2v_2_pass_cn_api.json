@@ -820,98 +820,32 @@
       "title": "H3 2-pass Guider / H3 双采样引导器"
     }
   },
-  "76": {
-    "inputs": {
-      "samples": [
-        "13",
-        0
-      ],
-      "vae": [
-        "5",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "H3 First-pass Video Decode"
-    }
-  },
-  "78": {
-    "inputs": {
-      "samples": [
-        "13",
-        0
-      ],
-      "vae": [
-        "6",
-        0
-      ]
-    },
-    "class_type": "VAEDecodeAudio",
-    "_meta": {
-      "title": "H3 First-pass Audio Decode"
-    }
-  },
   "79": {
     "inputs": {
-      "width": [
-        "1",
-        6
-      ],
-      "height": [
-        "1",
-        7
-      ],
-      "upscale_method": "nvidia_rtx_vsr",
-      "keep_proportion": "stretch",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 2,
-      "device": "cpu",
-      "image": [
-        "76",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "H3 RTX VSR Upscale"
-    }
-  },
-  "80": {
-    "inputs": {
-      "vae": [
-        "5",
-        0
-      ],
-      "width": [
-        "1",
-        6
-      ],
-      "height": [
-        "1",
-        7
-      ],
-      "length": [
-        "7",
+      "samples": [
+        "13",
         1
       ],
-      "source_video": [
-        "79",
-        0
+      "scale_by": [
+        "1",
+        14
       ],
-      "audio_vae": [
-        "6",
-        0
+      "upscale_method": "learned_3d",
+      "upscaler_model": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "upscaler_precision": "bf16",
+      "upscaler_device": "auto",
+      "target_width": [
+        "1",
+        6
       ],
-      "source_audio": [
-        "78",
-        0
+      "target_height": [
+        "1",
+        7
       ]
     },
-    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
+    "class_type": "SimpAIMiniMaxH3LatentUpscaleCombined",
     "_meta": {
-      "title": "H3 2-pass Clean AV Latent / H3 双采样干净 AV Latent"
+      "title": "H3 双采样潜空间放大"
     }
   },
   "81": {
@@ -933,7 +867,7 @@
         0
       ],
       "latent_image": [
-        "80",
+        "79",
         0
       ]
     },

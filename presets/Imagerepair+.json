@@ -16,7 +16,7 @@
             },
             "disable_canvas_mask": true,
             "disvisible": ["scene_additional_prompt","scene_additional_prompt_2","scene_video", "scene_audio","scene_input_image1","scene_input_image2",
-                "scene_var_number","scene_var_number3","scene_refiner_model","scene_switch_option1","scene_switch_option2", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
+                "scene_var_number","scene_var_number2","scene_var_number3","scene_refiner_model","scene_switch_option1","scene_switch_option2", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
                 ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "task_method": {
                 "Restore": "imagerepair_flux2_9b_edit_1024px_cn",
@@ -33,21 +33,13 @@
                 "Restore & colorize": [["-normalization"]],
                 "Slow high-fidelity 4-reference restore": [["-normalization"]]
             },
-            "var_number2_title": "9 restore prompts: 0 Custom, 1–2 Original-color restore, 3 White balance, 4–5 Colorize, 6 Color old photos, 7 Modern pro photography, 8 Fix face/hands/feet, 9 Product retouch",
-            "var_number2_min": 0,
-            "var_number2_max": 9,
-            "var_number2": {
-                "Restore": 2,
-                "Restore & colorize": 7,
-                "Slow high-fidelity 4-reference restore": 7
-            },
-            "var_number4_title": "Prompt adherence vs change: higher = follows more and changes more; default 0.8",
+            "var_number4_title": "Prompt influence strength [higher = follows prompt more]",
             "var_number4_min": 0,
             "var_number4_max": 3.0,
             "var_number4": {
-                "Restore": 0.75,
-                "Restore & colorize": 0.4,
-                "Slow high-fidelity 4-reference restore": 0.8
+                "Restore": 1.2,
+                "Restore & colorize": 1.2,
+                "Slow high-fidelity 4-reference restore": 1.2
             },
                 "aspect_ratio" : [ "1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
             "agent_prompt": {

@@ -1254,7 +1254,7 @@
   "Portrait": "人像",
   "Portrait retouch": "人像精修",
   "Pose recovery": "姿态还原",
-  "Prompt adherence vs change: higher = follows more and changes more; default 0.8": "提示遵循与变化值，值越大越遵循变化也越大，默认0.8",
+  "Prompt influence strength [higher = follows prompt more]": "提示词影响强度 [越高越跟随提示词]",
   "Prompt background": "提示词背景",
   "PuLID Flux Weight": "PulidFlux权重",
   "PVC figure": "手办",

@@ -9,6 +9,8 @@ LLAMA_CPP_GPU_USAGE_CAP = 0.99
 LLAMA_CPP_VRAM_RESERVE_RATIO = 0.05
 LLAMA_CPP_MIN_VRAM_RESERVE_GB = 1.0
 LLAMA_CPP_UNKNOWN_KV_GB_AT_16K = 4.0
+LLAMA_CPP_N_CTX_MIN = 512
+LLAMA_CPP_N_CTX_MAX = 131072
 _GIB = float(1024 ** 3)
 
 # llama.cpp uses ggml type ids for the optional KV cache quantization fields.
@@ -66,6 +68,27 @@ def llama_cpp_vram_policy_config(policy="extreme"):
 def normalize_llama_cpp_kv_cache_type(value):
     name = str(value or "f16").strip().lower().replace("-", "_")
     return name if name in LLAMA_CPP_KV_CACHE_TYPES else "f16"
+
+
+def normalize_llama_cpp_n_ctx(value, default=8192, maximum=None):
+    try:
+        fallback = int(default or 8192)
+    except (TypeError, ValueError):
+        fallback = 8192
+    fallback = max(LLAMA_CPP_N_CTX_MIN, min(fallback, LLAMA_CPP_N_CTX_MAX))
+    try:
+        upper = int(maximum) if maximum is not None else LLAMA_CPP_N_CTX_MAX
+    except (TypeError, ValueError):
+        upper = LLAMA_CPP_N_CTX_MAX
+    upper = max(LLAMA_CPP_N_CTX_MIN, min(upper, LLAMA_CPP_N_CTX_MAX))
+    upper = max(upper, fallback)
+    try:
+        requested = int(value)
+    except (TypeError, ValueError):
+        requested = fallback
+    if requested <= 0:
+        requested = fallback
+    return max(LLAMA_CPP_N_CTX_MIN, min(requested, upper))
 
 
 def llama_cpp_kv_cache_type_config(value="f16"):

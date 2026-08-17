@@ -26,6 +26,8 @@ MAX_LIST_ITEMS = 80
 MAX_MEMORY_ITEMS = 120
 MAX_EVENT_BYTES = 512 * 1024
 MAX_AUTOPLAY_TURNS = 1000
+MAX_CURRENT_APPEARANCE_IMAGES = 3
+MAX_ROLEPLAY_CHARACTERS = 20
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.:@-]+")
 AUTOPLAY_PHASES = {"idle", "running", "paused", "stopped", "completed", "error"}
 AUTOPLAY_EVENTS = {
@@ -125,6 +127,8 @@ def _normalize_skill_receipts(value: Any) -> list[dict[str, Any]]:
 
 
 def _clean_asset_ids(value: Any, limit: int = 5) -> list[str]:
+    if value and not isinstance(value, list):
+        value = [value]
     return [_id(item, "asset") for item in _clean_string_list(value, limit)]
 
 
@@ -134,6 +138,12 @@ def _normalize_character_runtime(value: Any) -> dict[str, Any]:
         "location": _text(source.get("location"), 500),
         "condition": _clean_string_list(source.get("condition"), 20),
         "appearance": _text(source.get("appearance"), 1200),
+        "current_appearance_asset_ids": _clean_asset_ids(
+            source.get("current_appearance_asset_ids") or source.get("current_appearance_asset_id"),
+            MAX_CURRENT_APPEARANCE_IMAGES,
+        ),
+        "appearance_revision": max(0, int(source.get("appearance_revision") or 0)),
+        "appearance_updated_turn_id": _text(source.get("appearance_updated_turn_id"), 200),
         "emotion": _text(source.get("emotion"), 500),
         "current_action": _text(source.get("current_action"), 1000),
         "inventory": _clean_string_list(source.get("inventory"), 40),
@@ -169,6 +179,40 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "created_at": _text(source.get("created_at"), 80) or _now(),
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
+
+
+def _normalize_character_cards(value: Any, primary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    cards: dict[str, dict[str, Any]] = {}
+    if isinstance(value, dict):
+        entries = list(value.items())
+    elif isinstance(value, list):
+        entries = [(index, item) for index, item in enumerate(value)]
+    else:
+        entries = []
+    for key, item in entries[: max(0, MAX_ROLEPLAY_CHARACTERS - 1)]:
+        source = _dict(item)
+        if not source.get("id"):
+            source["id"] = key
+        card = default_character_card(source)
+        cards[card["id"]] = card
+    primary_card = default_character_card(primary)
+    cards[primary_card["id"]] = primary_card
+    return dict(list(cards.items())[:MAX_ROLEPLAY_CHARACTERS])
+
+
+def _character_card_for_id(session: dict[str, Any], character_id: Any = "") -> dict[str, Any] | None:
+    target_id = _id(
+        character_id
+        or session.get("active_character_id")
+        or _dict(session.get("character")).get("id"),
+        "character",
+    )
+    cards = session.get("characters") if isinstance(session.get("characters"), dict) else {}
+    card = cards.get(target_id)
+    if isinstance(card, dict):
+        return card
+    active = session.get("character") if isinstance(session.get("character"), dict) else {}
+    return active if _id(active.get("id"), "character") == target_id else None
 
 
 def build_character_draft_from_system_prompt(prompt: Any) -> dict[str, Any]:
@@ -255,6 +299,116 @@ def build_character_draft_from_system_prompt(prompt: Any) -> dict[str, Any]:
     ]
     return {
         "ok": True,
+        "source_preserved": True,
+        "character": character,
+        "warnings": warnings,
+    }
+
+
+def build_roleplay_form_draft_prompt(
+    session: Any,
+    target: Any = "character",
+    request_text: Any = "",
+    lang: str = "cn",
+) -> str:
+    """Build a strict JSON prompt for an assistant-generated roleplay form draft."""
+    normalized = normalize_roleplay_session(session)
+    target_key = _text(target, 40).lower()
+    if target_key not in {"character", "scene"}:
+        target_key = "character"
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    if target_key == "scene":
+        shape = {
+            "scene": {
+                "location": "",
+                "time": "",
+                "weather": "",
+                "present_character_ids": [],
+                "current_event": "",
+                "scene_goal": "",
+            }
+        }
+        current = normalized["story_state"].get("scene", {})
+        subject = "scene"
+    else:
+        shape = {
+            "character": {
+                "name": "",
+                "identity": "",
+                "background": "",
+                "personality": "",
+                "speech_style": "",
+                "behavior_rules": [],
+                "first_message": "",
+                "example_dialogues": [],
+            }
+        }
+        current = normalized.get("character", {})
+        subject = "character"
+    return "\n\n".join(
+        [
+            f"You are the roleplay form assistant. Create one reviewable {subject} draft.",
+            f"Reply language: {reply_language}.",
+            "Return JSON only. Do not include markdown, explanations, or fields outside the requested shape.",
+            "Use the user's request and the supplied system prompt as source material. Fill missing details conservatively; do not invent unrelated lore.",
+            "The UI will show the draft to the player. Do not claim that anything has been saved or applied.",
+            "JSON shape:",
+            json.dumps(shape, ensure_ascii=False, indent=2),
+            "Current form value, which may be empty:",
+            json.dumps(current, ensure_ascii=False, indent=2),
+            "Player request for this draft:",
+            _text(request_text, 5000),
+        ]
+    ).strip()
+
+
+def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str, Any]:
+    """Parse and normalize an assistant-produced character or scene draft."""
+    target_key = _text(target, 40).lower()
+    if target_key not in {"character", "scene"}:
+        target_key = "character"
+    data = _extract_json_object(text)
+    if not isinstance(data, dict):
+        return {
+            "ok": False,
+            "target": target_key,
+            "warnings": ["form_draft_response_not_json"],
+        }
+    raw = data.get(target_key) if isinstance(data.get(target_key), dict) else data.get("draft")
+    raw = raw if isinstance(raw, dict) else data
+    if target_key == "scene":
+        scene = {
+            "location": _text(raw.get("location"), 500),
+            "time": _text(raw.get("time"), 200),
+            "weather": _text(raw.get("weather"), 200),
+            "present_character_ids": _clean_string_list(raw.get("present_character_ids"), 20),
+            "current_event": _text(raw.get("current_event"), 1000),
+            "scene_goal": _text(raw.get("scene_goal"), 1000),
+        }
+        warnings = [
+            f"missing_{field}"
+            for field in ("location", "current_event")
+            if not scene.get(field)
+        ]
+        return {"ok": True, "target": target_key, "scene": scene, "warnings": warnings}
+    character = default_character_card({
+        "name": raw.get("name"),
+        "identity": raw.get("identity"),
+        "background": raw.get("background"),
+        "personality": raw.get("personality"),
+        "speech_style": raw.get("speech_style"),
+        "behavior_rules": raw.get("behavior_rules"),
+        "first_message": raw.get("first_message"),
+        "example_dialogues": raw.get("example_dialogues"),
+    })
+    warnings = [
+        f"missing_{field}"
+        for field in ("name", "identity", "background", "personality", "speech_style")
+        if not character.get(field)
+    ]
+    return {
+        "ok": True,
+        "target": target_key,
         "source_preserved": True,
         "character": character,
         "warnings": warnings,
@@ -376,10 +530,21 @@ def normalize_story_state(value: Any = None) -> dict[str, Any]:
 
 def default_roleplay_session(value: Any = None) -> dict[str, Any]:
     source = _dict(value)
-    character = default_character_card(source.get("character") or source.get("character_card"))
+    primary_character = default_character_card(source.get("character") or source.get("character_card"))
+    characters = _normalize_character_cards(source.get("characters"), primary_character)
+    active_character_id = _id(
+        source.get("active_character_id") or primary_character.get("id"),
+        primary_character["id"],
+    )
+    if active_character_id not in characters:
+        active_character_id = primary_character["id"]
+    character = characters[active_character_id]
     persona = default_persona(source.get("persona") or source.get("player_persona"))
     state = normalize_story_state(source.get("story_state") or source.get("state"))
-    state["characters"].setdefault(character["id"], _normalize_character_runtime(source.get("character_runtime")))
+    for character_id in characters:
+        state["characters"].setdefault(character_id, _normalize_character_runtime(
+            source.get("character_runtime") if character_id == primary_character["id"] else None
+        ))
     return {
         "schema": SESSION_SCHEMA,
         "version": SESSION_VERSION,
@@ -387,6 +552,8 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "conversation_id": _text(source.get("conversation_id"), 200),
         "mode": "roleplay",
         "character": character,
+        "characters": characters,
+        "active_character_id": active_character_id,
         "persona": persona,
         "story_state": state,
         "active_branch_id": _branch_id(source.get("active_branch_id")),
@@ -428,6 +595,11 @@ def state_summary(session: Any) -> dict[str, Any]:
         "current_event": scene.get("current_event", ""),
         "scene_goal": scene.get("scene_goal", ""),
         "character": state["characters"].get(character_id, {}),
+        "characters": {
+            current_id: state["characters"].get(current_id, {})
+            for current_id in _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
+            if current_id in state["characters"]
+        },
         "open_threads": state.get("open_threads", [])[:12],
         "chapter_summary": state.get("chapter_summary", ""),
         "state_version": normalized["state_version"],
@@ -462,6 +634,16 @@ def visible_state_for_visual(session: Any) -> dict[str, Any]:
 def build_roleplay_system_prompt(session: Any, lang: str = "cn") -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    present_ids = _clean_string_list(
+        normalized["story_state"].get("scene", {}).get("present_character_ids"),
+        MAX_ROLEPLAY_CHARACTERS,
+    )
+    other_characters = [
+        card
+        for character_id, card in normalized.get("characters", {}).items()
+        if character_id != normalized["character"]["id"]
+        and (not present_ids or character_id in present_ids)
+    ]
     sections = [
         "You are the in-character actor in SimpAI Studio Roleplay mode.",
         f"Reply language: {reply_language}.",
@@ -471,6 +653,8 @@ def build_roleplay_system_prompt(session: Any, lang: str = "cn") -> str:
         "Treat the current story state as canonical when older dialogue conflicts with it.",
         "Character card:",
         json.dumps(normalized["character"], ensure_ascii=False, indent=2),
+        "Other configured characters visible in the current scene:",
+        json.dumps(other_characters, ensure_ascii=False, indent=2),
         "Player persona:",
         json.dumps(normalized["persona"], ensure_ascii=False, indent=2),
         "Current visible story state:",
@@ -544,8 +728,13 @@ def build_director_prompt(session: Any, user_message: str, assistant_reply: str,
             json.dumps(shape, ensure_ascii=False),
             "Current normalized state:",
             json.dumps(normalized["story_state"], ensure_ascii=False, indent=2),
-            "Locked character fields:",
-            json.dumps(normalized["character"].get("locked_fields", []), ensure_ascii=False),
+            "Configured character cards:",
+            json.dumps(normalized.get("characters", {}), ensure_ascii=False, indent=2),
+            "Locked character fields by character:",
+            json.dumps({
+                character_id: card.get("locked_fields", [])
+                for character_id, card in normalized.get("characters", {}).items()
+            }, ensure_ascii=False),
             "Latest user or player message:",
             _text(user_message, 5000),
             "Latest in-character reply:",
@@ -1303,29 +1492,65 @@ def evaluate_autoplay_step(
     }
 
 
-def _reference_asset_bindings(session: dict[str, Any]) -> list[dict[str, Any]]:
+def _reference_asset_bindings(
+    session: dict[str, Any],
+    snapshot: Any = None,
+) -> list[dict[str, Any]]:
     bindings: list[dict[str, Any]] = []
     seen: set[str] = set()
-    candidates = [
-        (session.get("character", {}), "character"),
-        (session.get("persona", {}), "player"),
-    ]
-    candidates.append((session.get("visual_config", {}), "scene"))
-    for owner, owner_type in candidates:
-        if not isinstance(owner, dict):
-            continue
-        ids = owner.get("reference_asset_ids") if isinstance(owner.get("reference_asset_ids"), list) else []
-        for asset_id in ids:
-            clean = _id(asset_id, "asset")
-            if not clean or clean in seen or len(bindings) >= 5:
-                continue
-            seen.add(clean)
-            bindings.append({
-                "asset_id": clean,
-                "owner_id": _id(owner.get("id"), owner_type),
-                "owner_type": owner_type,
-                "order": len(bindings) + 1,
-            })
+    state = session.get("story_state") if isinstance(session.get("story_state"), dict) else {}
+    runtime_characters = state.get("characters") if isinstance(state.get("characters"), dict) else {}
+    visual = _dict(snapshot)
+    visible_ids = _clean_string_list(visual.get("visible_characters"), 10)
+
+    def add(owner_id: Any, owner_type: str, asset_id: Any) -> None:
+        if len(bindings) >= 5:
+            return
+        clean = _id(asset_id, "asset")
+        identity = re.sub(r"^(?:asset|file):", "", clean, flags=re.IGNORECASE)
+        if not clean or identity in seen:
+            return
+        seen.add(identity)
+        bindings.append({
+            "asset_id": clean,
+            "owner_id": _id(owner_id, owner_type),
+            "owner_type": owner_type,
+            "order": len(bindings) + 1,
+        })
+
+    character = session.get("character", {}) if isinstance(session.get("character"), dict) else {}
+    character_id = _id(character.get("id"), "character")
+    character_cards = session.get("characters") if isinstance(session.get("characters"), dict) else {}
+    if not character_cards:
+        character_cards = {character_id: character}
+    character_ids = visible_ids or [character_id]
+    if snapshot is not None:
+        # The accepted current appearance is the first visual identity for a
+        # scene. Fixed character references remain available as identity anchors.
+        for current_id in character_ids:
+            runtime = runtime_characters.get(_id(current_id, "character"), {})
+            for asset_id in _clean_asset_ids(runtime.get("current_appearance_asset_ids"), MAX_CURRENT_APPEARANCE_IMAGES):
+                add(current_id, "character_current", asset_id)
+        for current_id in character_ids:
+            normalized_id = _id(current_id, "character")
+            card = character_cards.get(normalized_id, {})
+            if card.get("avatar_asset_id"):
+                add(normalized_id, "character", card.get("avatar_asset_id"))
+            for asset_id in card.get("reference_asset_ids", []):
+                add(normalized_id, "character", asset_id)
+    else:
+        active_card = character_cards.get(character_id, character)
+        if active_card.get("avatar_asset_id"):
+            add(character_id, "character", active_card.get("avatar_asset_id"))
+        for asset_id in active_card.get("reference_asset_ids", []):
+            add(character_id, "character", asset_id)
+
+    persona = session.get("persona", {}) if isinstance(session.get("persona"), dict) else {}
+    for asset_id in persona.get("reference_asset_ids", []):
+        add(persona.get("id"), "player", asset_id)
+    visual_config = session.get("visual_config", {}) if isinstance(session.get("visual_config"), dict) else {}
+    for asset_id in visual_config.get("reference_asset_ids", []):
+        add(visual_config.get("id"), "scene", asset_id)
     return bindings
 
 
@@ -1333,7 +1558,7 @@ def compile_visual_prompt(snapshot: Any, session: Any, lang: str = "cn") -> str:
     normalized = normalize_roleplay_session(session)
     visual = _dict(snapshot)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
-    references = _reference_asset_bindings(normalized)
+    references = _reference_asset_bindings(normalized, visual)
     reference_text = ", ".join(
         f"Picture {item['order']} = {item['owner_type']} reference ({item['asset_id']})"
         for item in references
@@ -1372,7 +1597,7 @@ def build_visual_generation_action(
     if frequency in {"off", "never", "disabled"}:
         return None
     snapshot = build_visual_snapshot(normalized, visual_candidate)
-    bindings = _reference_asset_bindings(normalized)
+    bindings = _reference_asset_bindings(normalized, snapshot)
     refs = [item["asset_id"] for item in bindings]
     task = "multi_image_edit" if len(refs) > 1 else "image_edit" if refs else "text_to_image"
     preferred = _text(normalized["visual_config"].get("preferred_preset"), 200)
@@ -1424,6 +1649,389 @@ def build_visual_generation_action(
         "turn_id": _text(turn_id, 200),
         "visual_snapshot": snapshot,
         "generation": {"state": "awaiting_confirmation", "assets": []},
+    }
+
+
+def build_character_appearance_generation_action(
+    session: Any,
+    character_id: Any = "",
+    appearance_request: Any = "",
+    *,
+    turn_id: str = "",
+    lang: str = "cn",
+) -> dict[str, Any] | None:
+    """Prepare a Flux2-KleinEdit action for a reviewable current-appearance image."""
+    normalized = normalize_roleplay_session(session)
+    character = _character_card_for_id(normalized, character_id)
+    if not character:
+        return None
+    target_id = _id(character.get("id"), "character")
+    current_ids = _clean_asset_ids(
+        normalized["story_state"].get("characters", {}).get(target_id, {}).get("current_appearance_asset_ids"),
+        1,
+    )
+    fixed_ids = []
+    if character.get("avatar_asset_id"):
+        fixed_ids.append(character.get("avatar_asset_id"))
+    fixed_ids.extend(character.get("reference_asset_ids", []))
+    refs = []
+    reference_types: list[str] = []
+    seen: set[str] = set()
+    for asset_id, owner_type in [
+        *[(item, "character_current") for item in current_ids],
+        *[(item, "character_fixed") for item in fixed_ids],
+    ]:
+        clean = _id(asset_id, "asset")
+        identity = re.sub(r"^(?:asset|file):", "", clean, flags=re.IGNORECASE)
+        if clean and identity not in seen:
+            seen.add(identity)
+            refs.append(clean)
+            reference_types.append(owner_type)
+    if not refs:
+        return None
+    runtime = normalized["story_state"].get("characters", {}).get(target_id, {})
+    request = _text(appearance_request, 1600)
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    prompt = "\n".join(
+        [
+            f"Edit the base image into the character's current appearance. Prompt language: {reply_language}.",
+            "Preserve the character's identity, face, hairstyle, body proportions, age, and recognizable traits from the fixed character reference.",
+            "Change only the current clothing, accessories, visible condition, and pose or expression required by the current state.",
+            "When a current appearance image is provided, use it as the base for visual continuity; use the fixed character references as identity anchors.",
+            f"Character name: {_text(character.get('name'), 200)}",
+            f"Identity: {_text(character.get('identity'), 1200)}",
+            f"Current appearance: {_text(runtime.get('appearance'), 1200)}",
+            f"Current condition: {', '.join(_clean_string_list(runtime.get('condition'), 20))}",
+            f"Current emotion: {_text(runtime.get('emotion'), 500)}",
+            f"Current action: {_text(runtime.get('current_action'), 1000)}",
+            f"Player-requested change: {request}",
+            "Do not add captions, interface text, or unrelated characters.",
+        ]
+    )
+    bindings = [
+        {
+            "asset_id": asset_id,
+            "owner_id": target_id,
+            "owner_type": reference_types[index],
+            "order": index + 1,
+        }
+        for index, asset_id in enumerate(refs[:5])
+    ]
+    return {
+        "type": "generate_image",
+        "target": "canvas_run",
+        "task": "image_edit",
+        "requested_task": "image_edit",
+        "media_refs": refs[:5],
+        "reference_bindings": bindings,
+        "media_inputs": [
+            {
+                "ref": item["asset_id"],
+                "role": "base_image" if item["order"] == 1 else f"reference_image_{item['order'] - 1}",
+                "name": f"Picture {item['order']}",
+                "type": "image",
+                "asset": {"asset_id": item["asset_id"], "name": f"Picture {item['order']}"},
+            }
+            for item in bindings
+        ],
+        "task_request": {
+            "task": "image_edit",
+            "media_refs": refs[:5],
+            "instruction": prompt,
+            "preset_hint": "Flux2-KleinEdit",
+            "aspect_ratio": "auto",
+            "image_number": 1,
+        },
+        "prompt": prompt,
+        "preset": "Flux2-KleinEdit",
+        "preset_source": "roleplay_state_image",
+        "aspect_ratio": "auto",
+        "image_number": 1,
+        "roleplay_state_image": True,
+        "appearance_character_id": target_id,
+        "session_id": normalized["id"],
+        "branch_id": normalized["active_branch_id"],
+        "state_version": normalized["state_version"],
+        "turn_id": _text(turn_id, 200),
+        "generation": {"state": "awaiting_confirmation", "assets": []},
+    }
+
+
+def build_character_reference_generation_action(
+    session: Any,
+    character_id: Any = "",
+    image_request: Any = "",
+    *,
+    turn_id: str = "",
+    lang: str = "cn",
+) -> dict[str, Any] | None:
+    """Prepare a text-to-image action for a character's fixed identity image."""
+    normalized = normalize_roleplay_session(session)
+    character = _character_card_for_id(normalized, character_id)
+    if not character:
+        return None
+    target_id = _id(character.get("id"), "character")
+    request = _text(image_request, 1600)
+    values = [
+        _text(character.get("name"), 200),
+        _text(character.get("identity"), 1200),
+        _text(character.get("background"), 1200),
+        _text(character.get("personality"), 1200),
+        _text(character.get("speech_style"), 1000),
+        request,
+    ]
+    if not any(values):
+        return None
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    prompt = "\n".join(
+        [
+            f"Create one character reference image. Prompt language: {reply_language}.",
+            "Show one complete character clearly in a stable, readable pose with a clean, unobtrusive background.",
+            "Keep the face, hairstyle, body proportions, age, clothing design, and visible traits consistent with the character description.",
+            "This image is the fixed identity reference for later story scenes, so prioritize recognizability over dramatic action.",
+            f"Character name: {_text(character.get('name'), 200)}",
+            f"Identity: {_text(character.get('identity'), 1200)}",
+            f"Background: {_text(character.get('background'), 1200)}",
+            f"Personality: {_text(character.get('personality'), 1200)}",
+            f"Speech style: {_text(character.get('speech_style'), 1000)}",
+            f"Player-requested image direction: {request}",
+            "Do not add captions, interface text, logos, unrelated characters, or extra limbs.",
+        ]
+    )
+    return {
+        "type": "generate_image",
+        "target": "canvas_run",
+        "task": "text_to_image",
+        "requested_task": "text_to_image",
+        "media_refs": [],
+        "reference_bindings": [],
+        "media_inputs": [],
+        "task_request": {
+            "task": "text_to_image",
+            "media_refs": [],
+            "instruction": prompt,
+            "preset_hint": "Flux2-Klein",
+            "aspect_ratio": "2:3",
+            "image_number": 1,
+        },
+        "prompt": prompt,
+        "preset": "Flux2-Klein",
+        "preset_source": "roleplay_character_reference",
+        "aspect_ratio": "2:3",
+        "image_number": 1,
+        "roleplay_character_image": True,
+        "character_reference_id": target_id,
+        "session_id": normalized["id"],
+        "branch_id": normalized["active_branch_id"],
+        "state_version": normalized["state_version"],
+        "turn_id": _text(turn_id, 200),
+        "generation": {"state": "awaiting_confirmation", "assets": []},
+    }
+
+
+def build_scene_reference_generation_action(
+    session: Any,
+    scene_request: Any = "",
+    *,
+    turn_id: str = "",
+    lang: str = "cn",
+) -> dict[str, Any] | None:
+    """Prepare a text-to-image action for the current scene reference image."""
+    normalized = normalize_roleplay_session(session)
+    scene = normalized["story_state"].get("scene", {}) if isinstance(normalized["story_state"].get("scene"), dict) else {}
+    request = _text(scene_request, 1600)
+    values = [
+        _text(scene.get("location"), 500),
+        _text(scene.get("time"), 200),
+        _text(scene.get("weather"), 200),
+        _text(scene.get("current_event"), 1000),
+        _text(scene.get("scene_goal"), 1000),
+        request,
+    ]
+    if not any(values):
+        return None
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    prompt = "\n".join(
+        [
+            f"Create one scene reference image. Prompt language: {reply_language}.",
+            "Show the location and atmosphere clearly in a stable establishing composition.",
+            "Prioritize architecture, terrain, lighting, weather, time of day, and important environmental details.",
+            "Do not add characters, captions, interface text, logos, or unrelated objects. This is an environment-only reference image.",
+            f"Location: {_text(scene.get('location'), 500)}",
+            f"Time: {_text(scene.get('time'), 200)}",
+            f"Weather: {_text(scene.get('weather'), 200)}",
+            f"Current event: {_text(scene.get('current_event'), 1000)}",
+            f"Scene goal: {_text(scene.get('scene_goal'), 1000)}",
+            f"Player-requested image direction: {request}",
+        ]
+    )
+    scene_id = _id(scene.get("id"), "scene")
+    return {
+        "type": "generate_image",
+        "target": "canvas_run",
+        "task": "text_to_image",
+        "requested_task": "text_to_image",
+        "media_refs": [],
+        "reference_bindings": [],
+        "media_inputs": [],
+        "task_request": {
+            "task": "text_to_image",
+            "media_refs": [],
+            "instruction": prompt,
+            "preset_hint": "Flux2-Klein",
+            "aspect_ratio": "16:9",
+            "image_number": 1,
+        },
+        "prompt": prompt,
+        "preset": "Flux2-Klein",
+        "preset_source": "roleplay_scene_reference",
+        "aspect_ratio": "16:9",
+        "image_number": 1,
+        "roleplay_scene_reference_image": True,
+        "scene_reference_id": scene_id,
+        "session_id": normalized["id"],
+        "branch_id": normalized["active_branch_id"],
+        "state_version": normalized["state_version"],
+        "turn_id": _text(turn_id, 200),
+        "generation": {"state": "awaiting_confirmation", "assets": []},
+    }
+
+
+def apply_character_reference_asset(
+    session: Any,
+    character_id: Any,
+    asset_ids: Any,
+    *,
+    turn_id: str = "",
+    expected_state_version: Any = None,
+) -> dict[str, Any]:
+    """Accept a generated image as the fixed character identity reference."""
+    normalized = normalize_roleplay_session(session)
+    expected = None
+    if expected_state_version is not None:
+        try:
+            expected = int(expected_state_version)
+        except (TypeError, ValueError):
+            expected = -1
+    if expected is not None and expected != normalized["state_version"]:
+        return {
+            "ok": False,
+            "error": "state_version_conflict",
+            "state_version": normalized["state_version"],
+            "session": normalized,
+        }
+    character = _character_card_for_id(normalized, character_id)
+    if not character:
+        return {"ok": False, "error": "character_not_found", "session": normalized}
+    target_id = _id(character.get("id"), "character")
+    ids = _clean_asset_ids(asset_ids, 1)
+    if not ids:
+        return {"ok": False, "error": "character_reference_asset_required", "session": normalized}
+    character["avatar_asset_id"] = ids[0]
+    character["revision"] = max(1, int(character.get("revision") or 1)) + 1
+    normalized["characters"][character["id"]] = character
+    if normalized.get("active_character_id") == character["id"]:
+        normalized["character"] = character
+    normalized["story_state"]["state_version"] = normalized["state_version"] + 1
+    normalized["state_version"] = normalized["story_state"]["state_version"]
+    normalized["story_state"]["updated_at"] = _now()
+    normalized["updated_at"] = _now()
+    return {
+        "ok": True,
+        "session": normalized,
+        "state_version": normalized["state_version"],
+        "character_id": target_id,
+        "asset_ids": ids,
+        "turn_id": _text(turn_id, 200),
+    }
+
+
+def apply_current_appearance_assets(
+    session: Any,
+    character_id: Any,
+    asset_ids: Any,
+    *,
+    turn_id: str = "",
+    expected_state_version: Any = None,
+) -> dict[str, Any]:
+    """Accept a generated appearance image without changing fixed references."""
+    normalized = normalize_roleplay_session(session)
+    expected = None
+    if expected_state_version is not None:
+        try:
+            expected = int(expected_state_version)
+        except (TypeError, ValueError):
+            expected = -1
+    if expected is not None and expected != normalized["state_version"]:
+        return {
+            "ok": False,
+            "error": "state_version_conflict",
+            "state_version": normalized["state_version"],
+            "session": normalized,
+        }
+    character = _character_card_for_id(normalized, character_id)
+    if not character:
+        return {"ok": False, "error": "character_not_found", "session": normalized}
+    target_id = _id(character.get("id"), "character")
+    ids = _clean_asset_ids(asset_ids, MAX_CURRENT_APPEARANCE_IMAGES)
+    if not ids:
+        return {"ok": False, "error": "appearance_asset_required", "session": normalized}
+    runtime = normalized["story_state"].setdefault("characters", {}).setdefault(
+        target_id,
+        _normalize_character_runtime(None),
+    )
+    runtime["current_appearance_asset_ids"] = ids
+    runtime["appearance_revision"] = max(0, int(runtime.get("appearance_revision") or 0)) + 1
+    runtime["appearance_updated_turn_id"] = _text(turn_id, 200)
+    normalized["story_state"]["state_version"] = normalized["state_version"] + 1
+    normalized["state_version"] = normalized["story_state"]["state_version"]
+    normalized["story_state"]["updated_at"] = _now()
+    normalized["updated_at"] = _now()
+    return {
+        "ok": True,
+        "session": normalized,
+        "state_version": normalized["state_version"],
+        "character_id": target_id,
+        "asset_ids": ids,
+    }
+
+
+def apply_scene_reference_assets(
+    session: Any,
+    asset_ids: Any,
+    *,
+    turn_id: str = "",
+    expected_state_version: Any = None,
+) -> dict[str, Any]:
+    """Accept a generated image as the fixed reference for the current scene."""
+    normalized = normalize_roleplay_session(session)
+    expected = None
+    if expected_state_version is not None:
+        try:
+            expected = int(expected_state_version)
+        except (TypeError, ValueError):
+            expected = -1
+    if expected is not None and expected != normalized["state_version"]:
+        return {
+            "ok": False,
+            "error": "state_version_conflict",
+            "state_version": normalized["state_version"],
+            "session": normalized,
+        }
+    ids = _clean_asset_ids(asset_ids, MAX_CURRENT_APPEARANCE_IMAGES)
+    if not ids:
+        return {"ok": False, "error": "scene_reference_asset_required", "session": normalized}
+    normalized["visual_config"]["reference_asset_ids"] = ids
+    normalized["story_state"]["state_version"] = normalized["state_version"] + 1
+    normalized["state_version"] = normalized["story_state"]["state_version"]
+    normalized["story_state"]["updated_at"] = _now()
+    normalized["updated_at"] = _now()
+    return {
+        "ok": True,
+        "session": normalized,
+        "state_version": normalized["state_version"],
+        "asset_ids": ids,
+        "turn_id": _text(turn_id, 200),
     }
 
 
@@ -1605,6 +2213,8 @@ __all__ = [
     "ROLEPLAY_SKILLS",
     "default_character_card",
     "build_character_draft_from_system_prompt",
+    "build_roleplay_form_draft_prompt",
+    "parse_roleplay_form_draft",
     "default_persona",
     "default_story_state",
     "default_roleplay_session",
@@ -1628,6 +2238,12 @@ __all__ = [
     "evaluate_autoplay_step",
     "compile_visual_prompt",
     "build_visual_generation_action",
+    "build_character_reference_generation_action",
+    "build_character_appearance_generation_action",
+    "build_scene_reference_generation_action",
+    "apply_character_reference_asset",
+    "apply_current_appearance_assets",
+    "apply_scene_reference_assets",
     "roleplay_user_root",
     "save_roleplay_session",
     "load_roleplay_session",

@@ -218,11 +218,12 @@ from modules.llama_cpp_runtime import (
     llama_cpp_gpu_budget,
     llama_cpp_gpu_layer_attempts,
     llama_cpp_kv_cache_type_config,
+    normalize_llama_cpp_n_ctx,
     normalize_llama_cpp_vram_policy,
     normalize_llama_cpp_kv_cache_type,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
-from modules.vlm_model_catalog import gguf_int_values
+from modules.vlm_model_catalog import gguf_int_values, is_visual_component_filename
 import ldm_patched.modules.model_management
 
 class LlamaCppVLM:
@@ -248,8 +249,56 @@ class LlamaCppVLM:
         self.current_mmproj_size_gb = None
         self.current_offload_kqv = None
         self.current_vram_estimate = {}
+        self.last_completion_stats = {}
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
+
+    def _record_completion_stats(self, output, elapsed_seconds):
+        response = output if isinstance(output, dict) else {}
+        usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
+        timings = response.get("timings") if isinstance(response.get("timings"), dict) else {}
+
+        def numeric(*values):
+            for value in values:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if number >= 0:
+                    return number
+            return 0.0
+
+        input_tokens = numeric(
+            usage.get("input_tokens"),
+            usage.get("prompt_tokens"),
+            timings.get("prompt_n"),
+        )
+        output_tokens = numeric(
+            usage.get("output_tokens"),
+            usage.get("completion_tokens"),
+            timings.get("predicted_n"),
+        )
+        total_tokens = numeric(usage.get("total_tokens")) or (
+            input_tokens + output_tokens if input_tokens or output_tokens else 0.0
+        )
+        elapsed = numeric(elapsed_seconds)
+        predicted_ms = numeric(timings.get("predicted_ms"))
+        generation_seconds = predicted_ms / 1000 if predicted_ms else elapsed
+        tokens_per_second = numeric(
+            timings.get("predicted_per_second"),
+            output_tokens / generation_seconds if output_tokens and generation_seconds else 0,
+        )
+        self.last_completion_stats = {
+            "input_tokens": int(round(input_tokens)) if input_tokens else 0,
+            "output_tokens": int(round(output_tokens)) if output_tokens else 0,
+            "total_tokens": int(round(total_tokens)) if total_tokens else 0,
+            "elapsed_seconds": round(elapsed, 3) if elapsed else 0,
+            "tokens_per_second": round(tokens_per_second, 2) if tokens_per_second else 0,
+        }
+
+    def get_last_completion_stats(self):
+        with self.lock:
+            return dict(self.last_completion_stats or {})
 
     @staticmethod
     def _supports_kv_cache_quantization():
@@ -470,7 +519,7 @@ class LlamaCppVLM:
             (
                 os.path.join(model_dir, name)
                 for name in os.listdir(model_dir)
-                if "mmproj" in name.lower() and name.lower().endswith(".gguf")
+                if is_visual_component_filename(name) and name.lower().endswith(".gguf")
             ),
             key=lambda value: value.lower(),
         )
@@ -528,6 +577,19 @@ class LlamaCppVLM:
             return credit_gb
         except Exception:
             return 0.0
+
+    def _prepare_gpu_memory_for_reload(self, reason):
+        logger.info("Preparing GPU memory for llama.cpp reload: %s", reason)
+        self.free_model()
+        memory_management = ldm_patched.modules.model_management
+        try:
+            memory_management.soft_empty_cache(True)
+        except Exception as e:
+            logger.debug("Unable to soft-empty the GPU cache before llama.cpp reload: %s", e)
+        try:
+            memory_management.print_memory_info("before llama.cpp VRAM calculation")
+        except Exception:
+            pass
 
     def _calculate_auto_n_gpu_layers(
         self,
@@ -652,6 +714,7 @@ class LlamaCppVLM:
             return
 
         with self.lock:
+            n_ctx = normalize_llama_cpp_n_ctx(n_ctx, default=8192)
             vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
             requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
             kv_cache_quantization_supported = self._supports_kv_cache_quantization()
@@ -682,46 +745,74 @@ class LlamaCppVLM:
 
             auto_n_gpu_layers = n_gpu_layers == -1
             auto_estimate = {}
+            reload_reason = "model or runtime settings changed"
+            if same_loaded_model:
+                if not auto_n_gpu_layers:
+                    if self.current_n_gpu_layers == n_gpu_layers:
+                        return
+                    reload_reason = "manual GPU layer count changed"
+                else:
+                    try:
+                        current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path)
+                        estimated_layers, auto_estimate = self._calculate_auto_n_gpu_layers(
+                            model_path,
+                            mmproj_path,
+                            n_ctx,
+                            loaded_model_credit_gb=current_credit_gb,
+                            vram_policy=vram_policy,
+                            kv_cache_type=effective_kv_cache_type,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "llama.cpp VRAM calculation failed while checking the loaded model: %s",
+                            e,
+                        )
+                        estimated_layers = self.current_n_gpu_layers or 0
+                    current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
+                    target_score = self._gpu_layer_score(
+                        estimated_layers,
+                        auto_estimate.get("total_layers") or self.current_total_layers,
+                    )
+                    if target_score > current_score:
+                        n_gpu_layers = estimated_layers
+                        reload_reason = "automatic GPU layer budget improved"
+                        logger.info(
+                            "Reloading llama.cpp VLM with higher GPU offload: current_n_gpu_layers=%s, target_n_gpu_layers=%s",
+                            self.current_n_gpu_layers,
+                            n_gpu_layers,
+                        )
+                    else:
+                        return
+
+            self._prepare_gpu_memory_for_reload(reload_reason)
+
             if auto_n_gpu_layers:
                 try:
-                    current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path) if same_model_identity else 0.0
                     n_gpu_layers, auto_estimate = self._calculate_auto_n_gpu_layers(
                         model_path,
                         mmproj_path,
                         n_ctx,
-                        loaded_model_credit_gb=current_credit_gb,
+                        loaded_model_credit_gb=0.0,
                         vram_policy=vram_policy,
                         kv_cache_type=effective_kv_cache_type,
                     )
                 except Exception as e:
-                    logger.warning(f"llama.cpp VRAM calculation failed: {e}. Using CPU memory settings.")
-                    n_gpu_layers = 0
+                    total_layers = self._get_layer_count(model_path)
+                    logger.error(
+                        "llama.cpp VRAM calculation failed after releasing the previous model: %s. "
+                        "Probing GPU layers through the staged loader instead of selecting CPU-only mode.",
+                        e,
+                    )
+                    n_gpu_layers = total_layers
                     auto_estimate = {
-                        "total_layers": self._get_layer_count(model_path),
+                        "total_layers": total_layers,
                         "offload_kqv": False,
                         "kv_cache_type": effective_kv_cache_type,
+                        "target_n_gpu_layers": total_layers,
+                        "vram_calculation_failed": True,
                     }
 
             target_n_gpu_layers = n_gpu_layers
-            if same_loaded_model:
-                current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
-                target_score = self._gpu_layer_score(n_gpu_layers, auto_estimate.get("total_layers") or self.current_total_layers)
-                if auto_n_gpu_layers and target_score > current_score:
-                    logger.info(
-                        "Reloading llama.cpp VLM with higher GPU offload: current_n_gpu_layers=%s, target_n_gpu_layers=%s",
-                        self.current_n_gpu_layers,
-                        n_gpu_layers,
-                    )
-                elif not auto_n_gpu_layers and self.current_n_gpu_layers != n_gpu_layers:
-                    logger.info(
-                        "Reloading llama.cpp VLM after n_gpu_layers changed: current_n_gpu_layers=%s, target_n_gpu_layers=%s",
-                        self.current_n_gpu_layers,
-                        n_gpu_layers,
-                    )
-                else:
-                    return
-
-            self.free_model()
 
             logger.info(f"Loading Main LLM from: {model_path}")
 
@@ -808,6 +899,24 @@ class LlamaCppVLM:
             if self.llm is None or loaded_kv_cache_type is None:
                 raise RuntimeError("llama.cpp failed to load the selected VLM")
 
+            logger.info(
+                "llama.cpp load result: target_gpu_layers=%s, loaded_gpu_layers=%s/%s, cpu_layers=%s, "
+                "offload_kqv=%s, kv_cache_type=%s",
+                target_n_gpu_layers,
+                loaded_layers,
+                total_layers,
+                max(0, total_layers - int(loaded_layers or 0)),
+                loaded_offload_kqv,
+                loaded_kv_cache_type,
+            )
+            if auto_n_gpu_layers and int(loaded_layers or 0) == 0 and int(target_n_gpu_layers or 0) > 0:
+                logger.warning(
+                    "llama.cpp auto offload ended at 0/%s GPU layers after staged allocation attempts; "
+                    "CPU fallback is active because GPU allocation attempts failed (target=%s)",
+                    total_layers,
+                    target_n_gpu_layers,
+                )
+
             if loaded_kv_cache_type != effective_kv_cache_type:
                 quantization_fallback = True
                 try:
@@ -887,24 +996,29 @@ class LlamaCppVLM:
             self.current_mmproj_size_gb = None
             self.current_offload_kqv = None
             self.current_vram_estimate = {}
+            self.last_completion_stats = {}
             if clear_conversations:
                 self.clear_conversation()
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def get_runtime_status(self, vram_policy=None, kv_cache_type=None):
+    def get_runtime_status(self, vram_policy=None, kv_cache_type=None, n_ctx=None):
         acquired = self.lock.acquire(blocking=False)
         try:
-            return self._runtime_status_snapshot(vram_policy, kv_cache_type)
+            return self._runtime_status_snapshot(vram_policy, kv_cache_type, n_ctx)
         finally:
             if acquired:
                 self.lock.release()
 
-    def _runtime_status_snapshot(self, vram_policy=None, kv_cache_type=None):
+    def _runtime_status_snapshot(self, vram_policy=None, kv_cache_type=None, n_ctx=None):
         requested_policy = normalize_llama_cpp_vram_policy(vram_policy or self.current_vram_policy)
         requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(
             kv_cache_type or self.current_requested_kv_cache_type
+        )
+        requested_n_ctx = normalize_llama_cpp_n_ctx(
+            n_ctx,
+            default=self.current_n_ctx or 8192,
         )
         memory_management = ldm_patched.modules.model_management
         gpu_total_gb = 0.0
@@ -941,6 +1055,9 @@ class LlamaCppVLM:
             "kv_cache_quantization_fallback": bool(
                 loaded and estimate.get("kv_cache_quantization_fallback")
             ),
+            "n_ctx": int(self.current_n_ctx or requested_n_ctx) if loaded else requested_n_ctx,
+            "requested_n_ctx": requested_n_ctx,
+            "n_ctx_pending": bool(loaded and int(self.current_n_ctx or 0) != requested_n_ctx),
             "model": os.path.basename(self.current_model_path or ""),
             "model_path": self.current_model_path or "",
             "gpu_layers": gpu_layers if loaded else 0,
@@ -1125,6 +1242,7 @@ class LlamaCppVLM:
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
              max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1):
         with self.lock:
+            self.last_completion_stats = {}
             if self.llm is None:
                 logger.error("Model not loaded")
                 return "Error: Model not loaded"
@@ -1160,6 +1278,7 @@ class LlamaCppVLM:
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
+                self._record_completion_stats(output, elapsed)
                 logger.info(
                     "LlamaCpp Chat stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",
                     elapsed,
@@ -1173,6 +1292,7 @@ class LlamaCppVLM:
                     self.conversation_messages[conversation_key] = self._sanitize_messages(messages)
                 return result
             except Exception as e:
+                self.last_completion_stats = {}
                 logger.error(f"LlamaCpp Chat Error: {str(e)}")
                 return f"Error during inference: {str(e)}"
             finally:
@@ -1180,6 +1300,7 @@ class LlamaCppVLM:
 
     def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None):
         with self.lock:
+            self.last_completion_stats = {}
             if self.llm is None:
                 logger.error("Model not loaded")
                 return "Error: Model not loaded"
@@ -1251,6 +1372,7 @@ class LlamaCppVLM:
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
+                self._record_completion_stats(output, elapsed)
                 logger.info(
                     "LlamaCpp Inference stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",
                     elapsed,
@@ -1260,6 +1382,7 @@ class LlamaCppVLM:
                 )
                 return result
             except Exception as e:
+                self.last_completion_stats = {}
                 logger.error(f"LlamaCpp Inference Error: {str(e)}")
                 return f"Error during inference: {str(e)}"
             finally:

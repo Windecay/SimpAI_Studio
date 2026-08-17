@@ -353,9 +353,12 @@
         },
         "models": [
           "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
           "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
           "minimax_h3_video_vae_int8_convrot.safetensors",
-          "minimax_h3_audio_vae_fp32.safetensors"
+          "taeh3.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors",
+          "minimax_h3_latent_upscaler_3d_bf16.safetensors"
         ]
       },
       "path": "javascript/canvas_workbench/templates/minimax-h3-t2v-basic.canvas.json",
@@ -400,9 +403,12 @@
         },
         "models": [
           "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
           "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
           "minimax_h3_video_vae_int8_convrot.safetensors",
-          "minimax_h3_audio_vae_fp32.safetensors"
+          "taeh3.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors",
+          "minimax_h3_latent_upscaler_3d_bf16.safetensors"
         ]
       },
       "path": "javascript/canvas_workbench/templates/minimax-h3-i2v-basic.canvas.json",
@@ -454,7 +460,8 @@
           "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
           "minimax_h3_video_vae_int8_convrot.safetensors",
           "taeh3.safetensors",
-          "minimax_h3_audio_vae_fp32.safetensors"
+          "minimax_h3_audio_vae_fp32.safetensors",
+          "minimax_h3_latent_upscaler_3d_bf16.safetensors"
         ]
       },
       "path": "javascript/canvas_workbench/templates/minimax-h3-r2v-basic.canvas.json",
@@ -501,9 +508,12 @@
         },
         "models": [
           "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
           "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
           "minimax_h3_video_vae_int8_convrot.safetensors",
-          "minimax_h3_audio_vae_fp32.safetensors"
+          "taeh3.safetensors",
+          "minimax_h3_audio_vae_fp32.safetensors",
+          "minimax_h3_latent_upscaler_3d_bf16.safetensors"
         ]
       },
       "path": "javascript/canvas_workbench/templates/director-minimax-h3-loop.canvas.json",

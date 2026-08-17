@@ -10,6 +10,7 @@ import time
 import modules.canvas_danbooru_service as canvas_danbooru_service
 from modules.llama_cpp_runtime import (
     normalize_llama_cpp_kv_cache_type,
+    normalize_llama_cpp_n_ctx,
     normalize_llama_cpp_vram_policy,
 )
 import modules.vlm_api_profiles as vlm_api_profiles
@@ -1218,6 +1219,10 @@ def _prompt_options_from_payload(payload, lang):
         "agent_routing": agent_routing,
         "roleplay_user_did": _clean_text(payload.get("user_did") or payload.get("__user_did")),
         "roleplay_request_kind": _clean_text(payload.get("roleplay_request_kind")) or "character",
+        "roleplay_form_target": _clean_text(payload.get("roleplay_form_target")) or "character",
+        "roleplay_form_request": _clean_multiline_text(
+            payload.get("roleplay_form_request") or payload.get("message") or ""
+        ),
         "roleplay_autoplay": _truthy(payload.get("roleplay_autoplay"), False),
         "history": payload.get("history") if isinstance(payload.get("history"), list) else [],
     }
@@ -1481,7 +1486,16 @@ def _describe_chat_system_prompt(options, lang):
     if chat_mode == "roleplay":
         roleplay_session = options.get("roleplay_session") or {}
         roleplay_request_kind = str(options.get("roleplay_request_kind") or "character").strip().lower()
-        if roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}:
+        if roleplay_request_kind in {"form_draft", "roleplay_form_draft", "draft"}:
+            sections.append(
+                vlm_roleplay.build_roleplay_form_draft_prompt(
+                    roleplay_session,
+                    options.get("roleplay_form_target") or "character",
+                    options.get("roleplay_form_request") or "",
+                    lang,
+                )
+            )
+        elif roleplay_request_kind in {"player_proxy", "proxy", "autoplay_player"}:
             sections.append(
                 vlm_roleplay.build_player_proxy_prompt(
                     roleplay_session,
@@ -1644,6 +1658,14 @@ def _custom_runtime_params(payload):
     return "Custom", params
 
 
+def _n_ctx_override(value):
+    try:
+        requested = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return normalize_llama_cpp_n_ctx(requested) if requested > 0 else 0
+
+
 def _prompt_for_runtime(message, current_prompt, include_current_prompt=False):
     message = str(message or "").strip()
     if not include_current_prompt:
@@ -1671,6 +1693,7 @@ def build_runtime_payload(payload):
     prompt_options = _prompt_options_from_payload(payload, lang)
     vram_policy = normalize_llama_cpp_vram_policy(payload.get("vram_policy"))
     kv_cache_type = normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type"))
+    n_ctx = _n_ctx_override(payload.get("n_ctx"))
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     roleplay_active = prompt_options.get("chat_mode") == "roleplay"
     prompt_actions_enabled = bool(
@@ -1717,6 +1740,8 @@ def build_runtime_payload(payload):
             if roleplay_active
             else 0
         ),
+        "roleplay_form_target": prompt_options["roleplay_form_target"],
+        "roleplay_form_request": prompt_options["roleplay_form_request"],
         "describe_prompt_target_preset": prompt_options["target_preset"],
         "describe_prompt_target_backend_engine": prompt_options["target_backend_engine"],
         "describe_prompt_target_task_method": prompt_options["target_task_method"],
@@ -1755,6 +1780,7 @@ def build_runtime_payload(payload):
         "repetition_penalty": 1.05,
         "vram_policy": vram_policy,
         "kv_cache_type": kv_cache_type,
+        "n_ctx": n_ctx,
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -1836,6 +1862,7 @@ def _build_roleplay_director_runtime_payload(payload, session, user_message, ass
         "repetition_penalty": 1.02,
         "vram_policy": normalize_llama_cpp_vram_policy(payload.get("vram_policy")),
         "kv_cache_type": normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type")),
+        "n_ctx": _n_ctx_override(payload.get("n_ctx")),
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -2075,6 +2102,7 @@ def build_creative_offer_runtime_payload(payload):
         "repetition_penalty": 1.03,
         "vram_policy": normalize_llama_cpp_vram_policy(payload.get("vram_policy")),
         "kv_cache_type": normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type")),
+        "n_ctx": _n_ctx_override(payload.get("n_ctx")),
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -4163,6 +4191,32 @@ def run_describe_vlm_chat(payload):
             "creative_director_mode": "custom_api",
         }
 
+    if request_kind == "roleplay_form_draft":
+        params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
+        target = params.get("roleplay_form_target") or payload.get("roleplay_form_target") or "character"
+        draft = vlm_roleplay.parse_roleplay_form_draft(
+            result.get("text") or result.get("raw_text") or "",
+            target,
+        )
+        if not draft.get("ok"):
+            return {
+                "ok": False,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "roleplay_form_draft_not_json",
+                "details": "The roleplay form assistant did not return a valid JSON draft.",
+                "form_draft": draft,
+            }
+        return {
+            "ok": True,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "form_draft": draft,
+            "text": "",
+            "limited_actions": [],
+            "agent_actions": [],
+        }
+
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
     parsed = parse_limited_response(
         result.get("text") or result.get("raw_text") or "",
@@ -4241,6 +4295,9 @@ def run_describe_vlm_chat(payload):
         "player_proxy",
         "proxy",
         "autoplay_player",
+        "form_draft",
+        "roleplay_form_draft",
+        "draft",
     }:
         roleplay_session = params.get("roleplay_session")
         roleplay_update = _run_roleplay_director(

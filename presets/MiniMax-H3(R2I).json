@@ -139,6 +139,7 @@
     "loras,minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
     "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
-    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors"
+    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
+    "latent_upscale_models,minimax_h3_latent_upscaler_3d_bf16.safetensors,690592992,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/latent_upscale_models/minimax_h3_latent_upscaler_3d_bf16.safetensors,https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_bf16.safetensors"
   ]
 }

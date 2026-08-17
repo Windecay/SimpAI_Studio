@@ -206,6 +206,13 @@ def _stem_tokens(path):
     }
 
 
+def is_visual_component_filename(filename):
+    name = os.path.basename(str(filename or "")).lower()
+    if "mmproj" in name or "projector" in name:
+        return True
+    return bool(re.search(r"(?<![a-z0-9])vision(?![a-z0-9])", name))
+
+
 def select_mmproj_for_model(model_path, candidates):
     candidates = sorted({os.path.abspath(path) for path in candidates}, key=str.lower)
     if len(candidates) == 1:
@@ -418,12 +425,12 @@ def _scan_gguf_items(llm_roots, claimed_paths):
     projectors_by_root = {}
     for root, relative_path, absolute_path in _iter_model_files(llm_roots, {".gguf"}):
         grouped.setdefault(os.path.dirname(absolute_path), []).append((root, relative_path, absolute_path))
-        if "mmproj" in os.path.basename(absolute_path).lower():
+        if is_visual_component_filename(absolute_path):
             root_key = os.path.normcase(os.path.abspath(root))
             projectors_by_root.setdefault(root_key, []).append(absolute_path)
     for directory, entries in grouped.items():
         for root, relative_path, absolute_path in entries:
-            if "mmproj" in os.path.basename(absolute_path).lower() or os.path.normcase(absolute_path) in claimed_paths:
+            if is_visual_component_filename(absolute_path) or os.path.normcase(absolute_path) in claimed_paths:
                 continue
             metadata = _cached_gguf_metadata(absolute_path)
             detected = infer_gguf_handler(metadata, os.path.basename(absolute_path))
@@ -432,7 +439,7 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             projectors = [
                 absolute
                 for _, _, absolute in entries
-                if "mmproj" in os.path.basename(absolute).lower()
+                if is_visual_component_filename(absolute)
             ]
             if not projectors:
                 model_tokens = _stem_tokens(absolute_path) | _stem_tokens(directory)

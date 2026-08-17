@@ -549,7 +549,8 @@ def switch_scene_theme_select_with_standard_generation_defaults(state, theme=Non
 
 def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, theme=None, video=None, audio=None):
     scenes = state.get("scene_frontend",{})
-    theme = _resolve_active_scene_theme(state, theme)
+    requested_theme = _resolve_scene_theme_name(scenes, theme)
+    theme = requested_theme or _resolve_active_scene_theme(state, theme)
     visible = scene_disvisible_with_optional_inputs(scenes)
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number
@@ -590,7 +591,16 @@ def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_ima
         elif input_img is not None:
             use_image = input_img
 
-    describe_prompt, img_is_ok = describe_prompt_for_scene(state, use_image, theme, f'{additional_prompt}{additional_prompt_2}') if ready_to_gen else ('', False)
+    # A theme's preset prompt is independent of whether the current media is
+    # ready for generation. Keep the prompt selector in sync even when the
+    # image check cannot pass yet; only the Generate button should depend on
+    # ready_to_gen.
+    describe_prompt, img_is_ok = describe_prompt_for_scene(
+        state,
+        use_image,
+        theme,
+        f'{additional_prompt}{additional_prompt_2}',
+    )
     task_method = scenes.get("task_method", {}).get(theme, "")
     if "infinitetalk" in (task_method or "").lower():
         return describe_prompt if describe_prompt else gr_update(), gr_update(interactive=bool(use_image is not None and audio is not None and img_is_ok))

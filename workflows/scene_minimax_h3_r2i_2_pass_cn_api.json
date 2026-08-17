@@ -985,71 +985,32 @@
       "title": "H3 2-pass Guider / H3 双采样引导器"
     }
   },
-  "76": {
+  "79": {
     "inputs": {
       "samples": [
         "13",
-        0
+        1
       ],
-      "vae": [
-        "5",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "H3 First-pass Image Decode"
-    }
-  },
-  "78": {
-    "inputs": {
-      "width": [
+      "scale_by": [
+        "1",
+        14
+      ],
+      "upscale_method": "learned_3d",
+      "upscaler_model": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "upscaler_precision": "bf16",
+      "upscaler_device": "auto",
+      "target_width": [
         "1",
         6
       ],
-      "height": [
+      "target_height": [
         "1",
         7
-      ],
-      "upscale_method": "nvidia_rtx_vsr",
-      "keep_proportion": "stretch",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 2,
-      "device": "cpu",
-      "image": [
-        "76",
-        0
       ]
     },
-    "class_type": "ImageResizeKJv2",
+    "class_type": "SimpAIMiniMaxH3LatentUpscaleCombined",
     "_meta": {
-      "title": "H3 RTX VSR Upscale"
-    }
-  },
-  "79": {
-    "inputs": {
-      "vae": [
-        "5",
-        0
-      ],
-      "width": [
-        "1",
-        6
-      ],
-      "height": [
-        "1",
-        7
-      ],
-      "length": 5,
-      "source_video": [
-        "78",
-        0
-      ]
-    },
-    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
-    "_meta": {
-      "title": "H3 2-pass Clean Image Latent / H3 双采样干净图像 Latent"
+      "title": "H3 双采样潜空间放大"
     }
   },
   "80": {

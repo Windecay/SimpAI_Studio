@@ -20,8 +20,10 @@ import enhanced.all_parameters as ads
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.llama_cpp_runtime import (
     normalize_llama_cpp_kv_cache_type,
+    normalize_llama_cpp_n_ctx,
     normalize_llama_cpp_vram_policy,
 )
+from modules.vlm_model_catalog import is_visual_component_filename
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
@@ -627,6 +629,29 @@ class VLM:
             return cls.kv_cache_type
 
     @classmethod
+    def default_n_ctx_for_version(cls, version=None):
+        config_data = cls.get_version_config(version or cls.current_version) or {}
+        try:
+            return normalize_llama_cpp_n_ctx(config_data.get("n_ctx"), default=8192)
+        except Exception:
+            return 8192
+
+    @classmethod
+    def n_ctx_limit_for_version(cls, version=None):
+        config_data = cls.get_version_config(version or cls.current_version) or {}
+        default = cls.default_n_ctx_for_version(version)
+        maximum = config_data.get("context_window") or config_data.get("n_ctx") or default
+        return normalize_llama_cpp_n_ctx(maximum, default=default)
+
+    @classmethod
+    def set_n_ctx(cls, value):
+        with cls.lock:
+            default = cls.default_n_ctx_for_version(cls.current_version)
+            maximum = cls.n_ctx_limit_for_version(cls.current_version)
+            cls.n_ctx = normalize_llama_cpp_n_ctx(value, default=default, maximum=maximum)
+            return cls.n_ctx
+
+    @classmethod
     def get_custom_settings(cls):
         return {
             "api_name": cls.custom_api_name,
@@ -973,7 +998,7 @@ class VLM:
                         continue
                     directory_ggufs = [
                         f for f in os.listdir(candidate)
-                        if f.endswith('.gguf') and "mmproj" not in f.lower()
+                        if f.endswith('.gguf') and not is_visual_component_filename(f)
                     ]
                     if directory_ggufs:
                         model_dir = candidate
@@ -988,7 +1013,10 @@ class VLM:
                 logger.error(f"Model directory not found: {model_dir}")
                 return
 
-            gguf_files = [f for f in os.listdir(model_dir) if f.endswith('.gguf') and "mmproj" not in f.lower()]
+            gguf_files = [
+                f for f in os.listdir(model_dir)
+                if f.endswith('.gguf') and not is_visual_component_filename(f)
+            ]
             if not gguf_files:
                 logger.error(f"No .gguf file found in {model_dir}")
                 return

@@ -33,7 +33,7 @@ from modules.custom_llm_api import (
     request_json,
 )
 from modules.model_path_utils import find_model_in_dirs
-from modules.llama_cpp_runtime import normalize_llama_cpp_kv_cache_type
+from modules.llama_cpp_runtime import normalize_llama_cpp_kv_cache_type, normalize_llama_cpp_n_ctx
 
 logger = logging.getLogger(__name__)
 _CANVAS_VLM_CANCEL_TTL_SECONDS = 1800
@@ -158,6 +158,52 @@ def _canvas_vlm_timing_snapshot(params):
     if not isinstance(timings, dict):
         return {}
     return {key: round(float(value or 0.0), 3) for key, value in timings.items()}
+
+
+def _canvas_vlm_enrich_completion(completion, elapsed_seconds=0.0):
+    metadata = dict(completion) if isinstance(completion, dict) else {}
+    usage = metadata.get("usage") if isinstance(metadata.get("usage"), dict) else {}
+
+    def numeric(*values):
+        for value in values:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if number >= 0:
+                return number
+        return 0.0
+
+    output_tokens = numeric(
+        metadata.get("output_tokens"),
+        usage.get("output_tokens"),
+        usage.get("completion_tokens"),
+    )
+    elapsed = numeric(elapsed_seconds)
+    tokens_per_second = numeric(
+        metadata.get("tokens_per_second"),
+        output_tokens / elapsed if output_tokens and elapsed else 0,
+    )
+    if elapsed:
+        metadata["elapsed_seconds"] = round(elapsed, 3)
+    if output_tokens:
+        metadata["output_tokens"] = int(round(output_tokens))
+    if tokens_per_second:
+        metadata["tokens_per_second"] = round(tokens_per_second, 2)
+    return metadata
+
+
+def _canvas_vlm_local_completion_stats():
+    if not bool(getattr(VLM, "is_llamacpp", False)):
+        return {}
+    getter = getattr(llamacpp_vlm, "get_last_completion_stats", None)
+    if not callable(getter):
+        return {}
+    try:
+        stats = getter()
+    except Exception:
+        return {}
+    return dict(stats) if isinstance(stats, dict) else {}
 
 
 def _canvas_vlm_store_two_stage_meta(params, meta):
@@ -285,9 +331,15 @@ def canvas_vlm_model_status(payload):
     ready = len(missing) == 0
     runtime_status = None
     if backend == "llamacpp":
+        requested_n_ctx = normalize_llama_cpp_n_ctx(
+            params.get("n_ctx"),
+            default=VLM.default_n_ctx_for_version(version_name),
+            maximum=VLM.n_ctx_limit_for_version(version_name),
+        )
         runtime_status = llamacpp_vlm.get_runtime_status(
             params.get("vram_policy"),
             params.get("kv_cache_type"),
+            requested_n_ctx,
         )
     return {
         "ok": True,
@@ -304,6 +356,11 @@ def canvas_vlm_model_status(payload):
         "message": "VLM model files are ready." if ready else f"{len(missing)} VLM model file(s) are missing. Download before running.",
         "vram_policy": (runtime_status or {}).get("policy") or str(params.get("vram_policy") or "extreme"),
         "kv_cache_type": (runtime_status or {}).get("kv_cache_type") or normalize_llama_cpp_kv_cache_type(params.get("kv_cache_type")),
+        "n_ctx": (runtime_status or {}).get("n_ctx") or normalize_llama_cpp_n_ctx(
+            params.get("n_ctx"),
+            default=VLM.default_n_ctx_for_version(version_name),
+            maximum=VLM.n_ctx_limit_for_version(version_name),
+        ),
         "runtime_status": runtime_status,
     }
 
@@ -559,9 +616,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         request_payload,
         timeout=180,
     )
-    _canvas_vlm_add_timing(params, "custom_main_api_call", time.monotonic() - main_started)
+    main_elapsed = time.monotonic() - main_started
+    _canvas_vlm_add_timing(params, "custom_main_api_call", main_elapsed)
     completion = extract_response_metadata(response)
     completion.update({"api_format": api_format, "max_tokens": max_tokens})
+    completion = _canvas_vlm_enrich_completion(completion, main_elapsed)
     text = canvas_extract_openai_text(response).strip()
 
     def review_llm_fn(messages, review_payload):
@@ -610,10 +669,12 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             retry_request,
             timeout=180,
         )
-        _canvas_vlm_add_timing(params, "custom_draft_retry_api_call", time.monotonic() - retry_started)
+        retry_elapsed = time.monotonic() - retry_started
+        _canvas_vlm_add_timing(params, "custom_draft_retry_api_call", retry_elapsed)
         retry_text = canvas_extract_openai_text(retry_response).strip()
         retry_completion = extract_response_metadata(retry_response)
         retry_completion.update({"api_format": api_format, "max_tokens": retry_max_tokens})
+        retry_completion = _canvas_vlm_enrich_completion(retry_completion, retry_elapsed)
         retry_actions = canvas_vlm_agent.extract_vlm_agent_actions(retry_text)
         retry_validation = canvas_vlm_agent.validate_llm_draft_response(retry_text, retry_actions, payload, params, prompt)
         draft_retry_meta = {
@@ -704,7 +765,6 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             "local_signal_level": two_stage_intent_meta.get("local_signal_level") or "",
             "locks": two_stage_intent_meta.get("locks") or {},
         }
-
     return {
         "ok": True,
         "text": display_text,
@@ -854,7 +914,11 @@ def canvas_vlm_run(payload):
         if not bool((VLM.get_version_config(version_name) or {}).get("is_llamacpp")):
             return int(requested_frames)
         version_cfg = VLM.get_version_config(version_name) or {}
-        n_ctx = int(version_cfg.get("n_ctx", 8192) or 8192)
+        n_ctx = normalize_llama_cpp_n_ctx(
+            params.get("n_ctx"),
+            default=version_cfg.get("n_ctx", 8192),
+            maximum=VLM.n_ctx_limit_for_version(version_name),
+        )
         image_tokens = int(version_cfg.get("image_min_tokens", 0) or version_cfg.get("image_max_tokens", 0) or 0)
         if image_tokens <= 0:
             return int(requested_frames)
@@ -918,6 +982,7 @@ def canvas_vlm_run(payload):
 
     stage_started = time.monotonic()
     VLM.set_version(version_name)
+    params["n_ctx"] = VLM.set_n_ctx(params.get("n_ctx"))
     params["vram_policy"] = VLM.set_vram_policy(params.get("vram_policy"))
     params["kv_cache_type"] = VLM.set_kv_cache_type(params.get("kv_cache_type"))
     _canvas_vlm_add_timing(params, "set_version", time.monotonic() - stage_started)
@@ -1044,6 +1109,7 @@ def canvas_vlm_run(payload):
     stateless_prompt_includes_text_history = False
     stateless_system_prompt = ""
     rolling_context_stats = {"omitted": 0, "chars": 0, "max_history": 0, "budget": 0}
+    completion_stats = {}
     stage_started = time.monotonic()
     if mode == "chat" and not stateless_llamacpp_chat:
         if bool(params.get("reset_context")):
@@ -1064,6 +1130,7 @@ def canvas_vlm_run(payload):
             repetition_penalty=repetition_penalty,
             seed=seed,
         )
+        completion_stats = _canvas_vlm_local_completion_stats()
     else:
         inference_prompt = prompt
         if stateless_llamacpp_chat:
@@ -1087,6 +1154,7 @@ def canvas_vlm_run(payload):
             seed=seed,
             system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
         )
+        completion_stats = _canvas_vlm_local_completion_stats()
         if (
             stateless_llamacpp_chat
             and isinstance(text, str)
@@ -1107,6 +1175,7 @@ def canvas_vlm_run(payload):
                 seed=seed,
                 system_prompt=stateless_system_prompt,
             )
+            completion_stats = _canvas_vlm_local_completion_stats()
     if text is None:
         text = ""
     _canvas_vlm_add_timing(params, "main_vlm_inference", time.monotonic() - stage_started)
@@ -1321,6 +1390,8 @@ def canvas_vlm_run(payload):
         "conversation_id": conversation_id if mode == "chat" else None,
         "params": response_params,
     }
+    if completion_stats:
+        result["completion"] = completion_stats
     logger.info(
         "Canvas VLM run completed: elapsed=%.3fs, actions=%s, review_enabled=%s, timings=%s",
         time.monotonic() - run_started,

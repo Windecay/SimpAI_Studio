@@ -1,11 +1,30 @@
 import torch
 import torch.nn.functional as F
+import importlib.util
+from pathlib import Path
 
 import comfy.ldm.common_dit
 import comfy.model_management
 import comfy.nested_tensor
 import comfy.utils
 from comfy_api.latest import io
+
+try:
+    from .SimpAIMiniMaxH3LearnedLatentUpscaler import (
+        H3_LEARNED_PRECISIONS,
+        scan_h3_latent_upscaler_models,
+        upscale_h3_video_latent,
+    )
+except ImportError:
+    _helper_path = Path(__file__).with_name("SimpAIMiniMaxH3LearnedLatentUpscaler.py")
+    _helper_spec = importlib.util.spec_from_file_location(
+        "simpai_h3_learned_latent_upscaler_test", _helper_path
+    )
+    _helper_module = importlib.util.module_from_spec(_helper_spec)
+    _helper_spec.loader.exec_module(_helper_module)
+    H3_LEARNED_PRECISIONS = _helper_module.H3_LEARNED_PRECISIONS
+    scan_h3_latent_upscaler_models = _helper_module.scan_h3_latent_upscaler_models
+    upscale_h3_video_latent = _helper_module.upscale_h3_video_latent
 
 
 H3_FPS = 24
@@ -14,7 +33,7 @@ H3_VIDEO_LATENT_CHANNELS = 24
 H3_AUDIO_LATENT_CHANNELS = 32
 H3_AUDIO_LATENT_PLANES = 2
 H3_SPATIAL_DOWNSCALE = 16
-H3_UPSCALE_METHODS = ("nearest", "bilinear", "bicubic")
+H3_UPSCALE_METHODS = ("nearest", "bilinear", "bicubic", "learned_2d", "learned_3d")
 H3_DIT_SPATIAL_MULTIPLE = 2
 
 
@@ -115,19 +134,54 @@ def _resize_video_latent(video_latent, width, height):
     return _resize_latent_spatial(video_latent, target_h, target_w, "bicubic")
 
 
-def _upscale_video_latent(video_latent, scale_by, method):
+def _upscale_video_latent(
+    video_latent,
+    scale_by,
+    method,
+    upscaler_model=None,
+    upscaler_precision="bf16",
+    upscaler_device="auto",
+):
     if scale_by <= 0:
         raise ValueError("MiniMax H3 latent upscale scale_by must be greater than zero")
+    if method in ("learned_2d", "learned_3d"):
+        return upscale_h3_video_latent(
+            video_latent,
+            scale_by=scale_by,
+            model_name=upscaler_model,
+            variant=method.removeprefix("learned_"),
+            precision=upscaler_precision,
+            device=upscaler_device,
+        )
     target_h = _snap_h3_spatial_size(round(video_latent.shape[-2] * scale_by))
     target_w = _snap_h3_spatial_size(round(video_latent.shape[-1] * scale_by))
     return _resize_latent_spatial(video_latent, target_h, target_w, method)
 
 
-def _resize_video_like_latent(latent, width, height, method):
+def _resize_video_like_latent(
+    latent,
+    width,
+    height,
+    method,
+    upscaler_model=None,
+    upscaler_precision="bf16",
+    upscaler_device="auto",
+):
     target_h = int(height) // H3_SPATIAL_DOWNSCALE
     target_w = int(width) // H3_SPATIAL_DOWNSCALE
     if target_h < 1 or target_w < 1:
         raise ValueError("MiniMax H3 target width and height must be at least 16")
+    if method in ("learned_2d", "learned_3d"):
+        return upscale_h3_video_latent(
+            latent,
+            scale_by=1.0,
+            target_width=int(width),
+            target_height=int(height),
+            model_name=upscaler_model,
+            variant=method.removeprefix("learned_"),
+            precision=upscaler_precision,
+            device=upscaler_device,
+        )
     if latent.ndim == 4:
         latent = _resize_latent_spatial(latent, target_h, target_w, method)
         return comfy.ldm.common_dit.pad_to_patch_size(
@@ -169,15 +223,40 @@ def _wrap_latent_members(members, was_nested):
     return members[0]
 
 
-def _upscale_video_like_latent(latent, scale_by, method):
+def _upscale_video_like_latent(
+    latent,
+    scale_by,
+    method,
+    upscaler_model=None,
+    upscaler_precision="bf16",
+    upscaler_device="auto",
+):
     if latent.ndim == 4:
-        latent = _upscale_video_latent(latent.unsqueeze(2), scale_by, method)
+        latent = _upscale_video_latent(
+            latent.unsqueeze(2),
+            scale_by,
+            method,
+            upscaler_model,
+            upscaler_precision,
+            upscaler_device,
+        )
+        if method in ("learned_2d", "learned_3d"):
+            return latent.squeeze(2)
         latent = comfy.ldm.common_dit.pad_to_patch_size(
             latent, (1, H3_DIT_SPATIAL_MULTIPLE, H3_DIT_SPATIAL_MULTIPLE)
         )
         return latent.squeeze(2)
     if latent.ndim == 5:
-        latent = _upscale_video_latent(latent, scale_by, method)
+        latent = _upscale_video_latent(
+            latent,
+            scale_by,
+            method,
+            upscaler_model,
+            upscaler_precision,
+            upscaler_device,
+        )
+        if method in ("learned_2d", "learned_3d"):
+            return latent
         return comfy.ldm.common_dit.pad_to_patch_size(
             latent, (1, H3_DIT_SPATIAL_MULTIPLE, H3_DIT_SPATIAL_MULTIPLE)
         )
@@ -253,7 +332,16 @@ def _encode_source_audio(audio_vae, source_audio, target_t):
     return _fit_audio_latent(audio_latent, target_t)
 
 
-def _upscale_latent_dict(latent, scale_by, method, target_width=None, target_height=None):
+def _upscale_latent_dict(
+    latent,
+    scale_by,
+    method,
+    target_width=None,
+    target_height=None,
+    upscaler_model=None,
+    upscaler_precision="bf16",
+    upscaler_device="auto",
+):
     if not isinstance(latent, dict) or "samples" not in latent:
         raise ValueError("MiniMax H3 latent upscale needs a LATENT dict with samples")
 
@@ -261,10 +349,23 @@ def _upscale_latent_dict(latent, scale_by, method, target_width=None, target_hei
     members, was_nested = _extract_latent_members(latent["samples"])
     if target_width and target_height:
         video_up = _resize_video_like_latent(
-            members[0], target_width, target_height, method
+            members[0],
+            target_width,
+            target_height,
+            method,
+            upscaler_model,
+            upscaler_precision,
+            upscaler_device,
         )
     else:
-        video_up = _upscale_video_like_latent(members[0], scale_by, method)
+        video_up = _upscale_video_like_latent(
+            members[0],
+            scale_by,
+            method,
+            upscaler_model,
+            upscaler_precision,
+            upscaler_device,
+        )
 
     if was_nested:
         out["samples"] = _wrap_latent_members([video_up, *members[1:]], True)
@@ -273,6 +374,7 @@ def _upscale_latent_dict(latent, scale_by, method, target_width=None, target_hei
 
     noise_mask = latent.get("noise_mask")
     if noise_mask is not None:
+        mask_method = "bicubic" if method in ("learned_2d", "learned_3d") else method
         is_nested_mask = isinstance(
             noise_mask, comfy.nested_tensor.NestedTensor
         ) or getattr(noise_mask, "is_nested", False)
@@ -280,15 +382,19 @@ def _upscale_latent_dict(latent, scale_by, method, target_width=None, target_hei
             mask_members, _ = _extract_latent_members(noise_mask)
             if target_width and target_height:
                 mask_video_up = _resize_video_like_latent(
-                    mask_members[0], target_width, target_height, method
+                    mask_members[0], target_width, target_height, mask_method
                 )
             else:
-                mask_video_up = _upscale_video_like_latent(mask_members[0], scale_by, method)
+                mask_video_up = _upscale_video_like_latent(
+                    mask_members[0], scale_by, mask_method
+                )
             out["noise_mask"] = _wrap_latent_members(
                 [mask_video_up, *mask_members[1:]], True
             )
         elif isinstance(noise_mask, torch.Tensor) and noise_mask.ndim >= 4:
-            out["noise_mask"] = _upscale_video_like_latent(noise_mask, scale_by, method)
+            out["noise_mask"] = _upscale_video_like_latent(
+                noise_mask, scale_by, mask_method
+            )
 
     return out
 
@@ -299,6 +405,9 @@ def _upscale_and_prepare_clean_latent(
     method,
     target_width=None,
     target_height=None,
+    upscaler_model=None,
+    upscaler_precision="bf16",
+    upscaler_device="auto",
 ):
     """Upscale only the visual member and keep the AV latent clean.
 
@@ -312,6 +421,9 @@ def _upscale_and_prepare_clean_latent(
         method,
         target_width=target_width,
         target_height=target_height,
+        upscaler_model=upscaler_model,
+        upscaler_precision=upscaler_precision,
+        upscaler_device=upscaler_device,
     )
 
 
@@ -427,6 +539,7 @@ class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
 class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
     @classmethod
     def define_schema(cls):
+        model_options = scan_h3_latent_upscaler_models()
         return io.Schema(
             node_id="SimpAIMiniMaxH3LatentUpscaleCombined",
             display_name="SimpAI MiniMax H3 Latent 2 Pass / H3 latent 双采样放大",
@@ -443,6 +556,24 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
                     "upscale_method",
                     options=list(H3_UPSCALE_METHODS),
                     default="bicubic",
+                ),
+                io.Combo.Input(
+                    "upscaler_model",
+                    options=model_options,
+                    default=model_options[0],
+                    advanced=True,
+                ),
+                io.Combo.Input(
+                    "upscaler_precision",
+                    options=list(H3_LEARNED_PRECISIONS),
+                    default="bf16",
+                    advanced=True,
+                ),
+                io.Combo.Input(
+                    "upscaler_device",
+                    options=["auto", "cuda", "cpu"],
+                    default="auto",
+                    advanced=True,
                 ),
                 io.Model.Input("model", optional=True, advanced=True),
                 io.Noise.Input("noise", optional=True, advanced=True),
@@ -502,6 +633,9 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
         negative=None,
         target_width=None,
         target_height=None,
+        upscaler_model=None,
+        upscaler_precision="bf16",
+        upscaler_device="auto",
     ) -> io.NodeOutput:
         target_width = int(target_width) if target_width else None
         target_height = int(target_height) if target_height else None
@@ -519,6 +653,9 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
             upscale_method,
             target_width=target_width,
             target_height=target_height,
+            upscaler_model=upscaler_model,
+            upscaler_precision=upscaler_precision,
+            upscaler_device=upscaler_device,
         )
         return io.NodeOutput(latent, positive, negative)
 
