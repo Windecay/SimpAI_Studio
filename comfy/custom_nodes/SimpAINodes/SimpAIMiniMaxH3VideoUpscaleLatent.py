@@ -166,15 +166,19 @@ def _resize_video_like_latent(
     upscaler_model=None,
     upscaler_precision="bf16",
     upscaler_device="auto",
+    scale_hint=None,
 ):
     target_h = int(height) // H3_SPATIAL_DOWNSCALE
     target_w = int(width) // H3_SPATIAL_DOWNSCALE
     if target_h < 1 or target_w < 1:
         raise ValueError("MiniMax H3 target width and height must be at least 16")
     if method in ("learned_2d", "learned_3d"):
+        if scale_hint is None:
+            source_h, source_w = latent.shape[-2:]
+            scale_hint = ((target_h / source_h) * (target_w / source_w)) ** 0.5
         return upscale_h3_video_latent(
             latent,
-            scale_by=1.0,
+            scale_by=scale_hint,
             target_width=int(width),
             target_height=int(height),
             model_name=upscaler_model,
@@ -356,6 +360,7 @@ def _upscale_latent_dict(
             upscaler_model,
             upscaler_precision,
             upscaler_device,
+            scale_hint=scale_by,
         )
     else:
         video_up = _upscale_video_like_latent(
@@ -382,7 +387,11 @@ def _upscale_latent_dict(
             mask_members, _ = _extract_latent_members(noise_mask)
             if target_width and target_height:
                 mask_video_up = _resize_video_like_latent(
-                    mask_members[0], target_width, target_height, mask_method
+                    mask_members[0],
+                    target_width,
+                    target_height,
+                    mask_method,
+                    scale_hint=scale_by,
                 )
             else:
                 mask_video_up = _upscale_video_like_latent(
