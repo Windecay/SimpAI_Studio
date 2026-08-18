@@ -155,7 +155,7 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
     "For video work, use text_to_video with no image refs, image_to_video with one image ref, and multi_image_to_video with two or more image refs in the user's intended order. "
     "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) uses one to five ordered reference images. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
-    "MiniMax-H3(R2I) is the still-image editing route: use image_edit or multi_image_edit with one to five ordered image refs, preserve the source image unless the user asks to change it, and never add video or audio refs. "
+    "MiniMax-H3(R2I) is the still-image text/reference route: use text_to_image when no image ref is supplied, or image_edit/multi_image_edit with one to five ordered image refs; preserve referenced identity and never add video or audio refs. "
     "For image_face_swap, when two attached inputs are available, include exactly two media refs in this order: the target/base image first, then the source face-identity image. Never invent missing refs; the application will request them. The application prefers the automatic QwenFaceSwap route when its models are ready; it does not require a painted mask. "
     "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo and image-input editing to Krea2-ImageEdit; do not promise the wrong family member. "
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
@@ -332,7 +332,7 @@ SimpAI UI guide skill:
   - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger reference consistency.
   - Nun/Nunchaku presets are 4-bit quantized variants that trade precision for speed and lower resource use. Use fp4 on RTX 50-series or newer GPUs; use int4 on older GPUs.
   - Directional Klein and Qwen presets are built for specific subjects or operations and usually include purpose-specific LoRAs.
-  - QwenNSFW is a community-merged single-checkpoint route aimed at unlocking restricted editing cases that the original QwenEdit may filter.
+  - QwenNSFW is a community-merged single-checkpoint route for direct text-to-image and restricted editing cases that the original QwenEdit may filter.
 - Image editing / retouching:
   - For instruction-based image editing, object add/remove/replace, text editing, style conversion, inpainting, or optional mask editing, recommend QwenEdit+ / Qwen-Edit-2511 first.
   - For image object transfer / item migration (图像物品迁移 / 物品替换 / 把一个物体迁移到另一张图), recommend Swap+ when the user wants strong painted-mask control. Swap+ uses the Flux1.Fill model and is suited for brush-mask-directed object migration or replacement. Flux2-Klein and QwenEdit are multimodal editors that can take multiple input images and replace objects by instruction, with optional brush masks; their mask function is useful but weaker than Swap+ for precise masked transfer.
@@ -2605,11 +2605,14 @@ def _preset_requires_manual_interaction(capability):
 
 
 GENERATION_PRESET_PRIORITIES = {
+    "text_to_image": ("MiniMax-H3(R2I)", "QwenNSFW", "Z-imageT", "Anima"),
     "text_to_video": ("MiniMax-H3(T2V)", "Wan(T2V)", "LTX(T2V)", "Wan-TTP"),
     "image_to_video": ("MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "Wan(I2V)", "Dasiwa(I2V)", "LTX(I2V)"),
     "multi_image_to_video": ("MiniMax-H3(R2V)", "MiniMax-H3(I2V)", "Wan(I2V)", "Dasiwa(I2V)"),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
     "image_restore": ("Imagerepair+", "OneKeyKontext"),
+    "image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext"),
+    "multi_image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext"),
     "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "NunFlux_fp4", "NunFlux_int4", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
     "image_background_removal": ("Removebg", "OneKeyKontext"),
     "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
@@ -2629,7 +2632,7 @@ GENERATION_PRESET_PRIORITIES = {
 
 def _generation_preset_priorities(task):
     return GENERATION_PRESET_PRIORITIES.get(task) or (
-        ("Flux2-KleinEdit", "Krea2-ImageEdit", "QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext")
+        ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )

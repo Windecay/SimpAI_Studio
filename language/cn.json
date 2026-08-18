@@ -1172,7 +1172,7 @@
   "MiniMax H3 Image-to-Video [Main image: first frame; Image 2: optional last frame]": "MiniMax H3 图生视频 [主图为首帧，图2可作尾帧]",
   "MiniMax H3 Reference-to-Video [Upload 1-5 reference images in order]": "MiniMax H3 多参考图生视频 [按顺序上传1-5张参考图]",
   "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]": "MiniMax H3 多参考视频 [最多5张图片、2个视频和1个音频参考]",
-  "MiniMax H3 Reference-to-Image [Up to 5 reference images]": "MiniMax H3 图像编辑/融图 [最多5张参考图]",
+  "MiniMax H3 Text/Reference-to-Image [Optional up to 5 reference images]": "MiniMax H3 文生/参考生图 [可选最多5张参考图]",
   "Video Shift": "视频偏移",
   "Audio Shift": "音频偏移",
   "LTX Text-to-Video [Optional audio input]": "LTX文生视频 [可选音频]",

@@ -1,5 +1,5 @@
 {
-    "supported_tasks": ["image_edit", "multi_image_edit"],
+    "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit"],
     "default_engine": {
         "backend_engine": "Qwen",
             "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],

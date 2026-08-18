@@ -527,8 +527,9 @@ def build_visual_draft_prompt(
             "This is a draft only. Do not start generation, do not update story state, and do not claim that an image was created.",
             "Use only facts visible in the current scene. Do not add off-stage, unconscious, or absent characters.",
             "visible_character_ids must contain only IDs from the provided character catalog. Keep the catalog order when possible.",
-            "The prompt must be an editable, complete image prompt for one coherent cinematic moment, with no captions or interface text.",
-            "Choose a Preset only when the player's request clearly names one; otherwise leave preset empty so the UI can choose a compatible default.",
+             "The prompt must be an editable, complete image prompt for one coherent cinematic moment, with no captions or interface text.",
+             "Reference images are optional. If a character has no reference image, use that character's textual identity, appearance, and current state from the catalog instead of removing the character.",
+             "Choose a Preset only when the player's request clearly names one; otherwise leave preset empty so the UI can choose a compatible default.",
             "Keep aspect_ratio to one of: auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2.",
             "JSON shape:",
             json.dumps(shape, ensure_ascii=False, indent=2),
@@ -2017,30 +2018,231 @@ def _reference_asset_bindings(
     return bindings
 
 
-def compile_visual_prompt(snapshot: Any, session: Any, lang: str = "cn") -> str:
+def _visual_owner_description(session: dict[str, Any], owner_id: Any, owner_type: str, snapshot: dict[str, Any]) -> str:
+    normalized = normalize_roleplay_session(session)
+    owner_key = _id(owner_id, owner_type or "owner")
+    if str(owner_type or "").startswith("character"):
+        cards = normalized.get("characters") if isinstance(normalized.get("characters"), dict) else {}
+        card = cards.get(owner_key) if isinstance(cards.get(owner_key), dict) else {}
+        runtime = normalized.get("story_state", {}).get("characters", {}).get(owner_key, {})
+        parts = [
+            _text(card.get("name") or owner_key, 200),
+            _text(card.get("identity"), 800),
+            _text(card.get("background"), 800),
+            _text(runtime.get("appearance"), 1200),
+            _text(runtime.get("state_text"), 1800),
+            "; ".join(
+                f"{item['label']}: {item['value']}"
+                for item in _clean_state_fields(runtime.get("state_fields"), 20)
+            ),
+            ", ".join(_clean_string_list(runtime.get("condition"), 20)),
+            _text(runtime.get("emotion"), 500),
+            _text(runtime.get("current_action"), 1000),
+        ]
+        return "; ".join(item for item in parts if item).strip()
+    if owner_type == "player":
+        persona = normalized.get("persona") if isinstance(normalized.get("persona"), dict) else {}
+        return "; ".join(
+            item for item in (
+                _text(persona.get("name") or owner_key, 200),
+                _text(persona.get("identity"), 800),
+                _text(persona.get("appearance"), 1200),
+            ) if item
+        ).strip()
+    scene = snapshot if isinstance(snapshot, dict) else {}
+    return "; ".join(
+        item for item in (
+            "scene reference",
+            _text(scene.get("location"), 500),
+            _text(scene.get("time"), 200),
+            _text(scene.get("weather"), 200),
+        ) if item
+    ).strip()
+
+
+def _visual_character_descriptions(session: dict[str, Any], snapshot: dict[str, Any]) -> list[str]:
+    normalized = normalize_roleplay_session(session)
+    cards = normalized.get("characters") if isinstance(normalized.get("characters"), dict) else {}
+    runtimes = normalized.get("story_state", {}).get("characters", {})
+    descriptions = []
+    for character_id in _clean_string_list(snapshot.get("visible_characters"), MAX_ROLEPLAY_CHARACTERS):
+        card = cards.get(character_id) if isinstance(cards.get(character_id), dict) else {}
+        runtime = runtimes.get(character_id) if isinstance(runtimes.get(character_id), dict) else {}
+        description = _visual_owner_description(normalized, character_id, "character", snapshot)
+        if description:
+            descriptions.append(description)
+        elif card.get("name"):
+            descriptions.append(_text(card.get("name"), 200))
+    return descriptions
+
+
+def _visual_reference_groups(references: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in references:
+        owner_type = _text(item.get("owner_type"), 80) or "owner"
+        owner_key = _id(item.get("owner_id"), owner_type)
+        groups.setdefault(owner_key, []).append(item)
+    return groups
+
+
+def compile_visual_prompt(
+    snapshot: Any,
+    session: Any,
+    lang: str = "cn",
+    prompt_hint: Any = "",
+) -> str:
     normalized = normalize_roleplay_session(session)
     visual = _dict(snapshot)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     references = _reference_asset_bindings(normalized, visual)
-    reference_text = ", ".join(
-        f"Picture {item['order']} = {item['owner_type']} reference ({item['asset_id']})"
-        for item in references
-    ) or "No character reference image is attached."
-    lines = [
-        f"Create one story scene image. Prompt language: {reply_language}.",
-        "Preserve the identity, face, hairstyle, body proportions, clothing continuity, and visible traits of every referenced character.",
-        "Do not introduce characters or facts that are absent from the visible scene.",
-        f"Reference order: {reference_text}",
+    character_descriptions = _visual_character_descriptions(normalized, visual)
+    prompt_direction = _text(prompt_hint, 6000)
+    is_chinese = reply_language == "Chinese"
+    preserve_text = "保留参考图中的可见主体特征。" if is_chinese else "Preserve the visible subject from the ordered reference images."
+    no_reference_intro = (
+        "没有附加参考图。请根据以下文字描述生成可见主体："
+        if is_chinese
+        else "No reference images are attached. Generate the visible subjects from the following textual descriptions:"
+    )
+    no_character_fallback = (
+        "没有可用的角色文字描述，只使用当前场景和动作事实。"
+        if is_chinese
+        else "No character description is available; use only the current scene and action facts."
+    )
+    grouped = _visual_reference_groups(references)
+    visible_character_ids = _clean_string_list(visual.get("visible_characters"), MAX_ROLEPLAY_CHARACTERS)
+    subject_lines = []
+    retention_lines = []
+    subject_index = 1
+
+    # Keep every visible character in the subject list. A missing character
+    # image changes the input mode for that subject, not whether the subject
+    # is rendered at all.
+    for character_id in visible_character_ids:
+        items = grouped.get(_id(character_id, "character"), [])
+        description = _visual_owner_description(normalized, character_id, "character", visual)
+        if items:
+            picture_tokens = ", ".join(f"<Picture {item['order']}>" for item in items)
+            subject_lines.append(
+                f"<Subject {subject_index}> ({picture_tokens}): {description or preserve_text}"
+            )
+            retention_lines.append(f"{picture_tokens}: fully_preserved")
+        else:
+            subject_lines.append(
+                f"<Subject {subject_index}> (text-only; no character reference image): "
+                f"{description or no_character_fallback}"
+            )
+            retention_lines.append(
+                f"Character {character_id}: text_identity_and_current_state_fully_preserved"
+            )
+        subject_index += 1
+
+    scene_reference_items = [
+        item for item in references
+        if _text(item.get("owner_type"), 80).lower() == "scene"
+    ]
+    environment_description = "; ".join(
+        item for item in (
+            _text(visual.get("location"), 500),
+            _text(visual.get("time"), 200),
+            _text(visual.get("weather"), 200),
+            _text(visual.get("action"), 1200),
+        )
+        if item
+    )
+    if scene_reference_items:
+        picture_tokens = ", ".join(
+            f"<Picture {item['order']}>" for item in scene_reference_items
+        )
+        subject_lines.append(
+            f"<Environment> ({picture_tokens}): "
+            f"{environment_description or preserve_text}"
+        )
+        retention_lines.append(f"{picture_tokens}: environment_continuity_fully_preserved")
+    else:
+        subject_lines.append(
+            "<Environment> (text-only; no scene reference image): "
+            f"{environment_description or no_character_fallback}"
+        )
+        retention_lines.append(
+            "Environment: text_location_time_weather_and_event_fully_preserved"
+        )
+
+    # Preserve any explicitly attached non-character reference, such as a
+    # player identity image, without letting it replace visible text-only roles.
+    handled_owner_keys = {
+        _id(character_id, "character") for character_id in visible_character_ids
+    }
+    handled_owner_keys.update(
+        _id(item.get("owner_id"), item.get("owner_type") or "owner")
+        for item in scene_reference_items
+    )
+    for owner_key, items in grouped.items():
+        if owner_key in handled_owner_keys:
+            continue
+        picture_tokens = ", ".join(f"<Picture {item['order']}>" for item in items)
+        owner_type = _text(items[0].get("owner_type"), 80) or "owner"
+        description = _visual_owner_description(normalized, owner_key, owner_type, visual)
+        subject_lines.append(
+            f"<Subject {subject_index}> ({picture_tokens}): {description or preserve_text}"
+        )
+        retention_lines.append(f"{picture_tokens}: fully_preserved")
+        subject_index += 1
+
+    subject_block = "\n".join(subject_lines)
+    if not subject_block:
+        subject_block = f"{no_reference_intro}\n{no_character_fallback}"
+    retention_block = (
+        "Identity and appearance continuity: fully_preserved.\n"
+        + "\n".join(retention_lines)
+        if retention_lines
+        else (
+            "Identity and appearance continuity: fully_preserved.\n文字描述中的身份、状态和环境：fully_preserved。"
+            if is_chinese
+            else "Identity and appearance continuity: fully_preserved.\nText-described identities, states, and environment: fully_preserved."
+        )
+    )
+    summary = (
+        "使用参考图和文字描述生成一张剧情场照。"
+        if is_chinese and references
+        else "根据角色、状态和环境的文字描述生成一张剧情场照。"
+        if is_chinese
+        else "Reference images are optional; generate the story scene from ordered references and textual descriptions."
+        if references
+        else "Text-to-image scene generation from textual character, state, and environment descriptions."
+    )
+    detail_parts = [
+        prompt_direction,
+        f"Visible characters: {', '.join(_clean_string_list(visual.get('visible_characters'), 10))}",
+        f"Character descriptions: {' | '.join(character_descriptions)}",
         f"Location: {_text(visual.get('location'), 500)}",
         f"Time: {_text(visual.get('time'), 200)}",
         f"Weather: {_text(visual.get('weather'), 200)}",
-        f"Visible characters: {', '.join(_clean_string_list(visual.get('visible_characters'), 10))}",
         f"Action: {_text(visual.get('action'), 1200)}",
         f"Appearance changes: {', '.join(_clean_string_list(visual.get('appearance_changes'), 20))}",
         f"Camera: {_text(visual.get('camera'), 300)}",
         f"Lighting: {_text(visual.get('lighting'), 300)}",
         f"Important props: {', '.join(_clean_string_list(visual.get('important_props'), 20))}",
-        "Render a coherent cinematic moment with readable composition and no captions or interface text.",
+        (
+            "生成一张构图清晰、连贯的电影感静态场照，不添加字幕、界面文字、额外角色、音频或视频内容。"
+            if is_chinese
+            else "Render one coherent cinematic still image with readable composition, no captions, no interface text, no extra characters, and no audio or video content."
+        ),
+    ]
+    detailed_description = "[Shot 1] " + "; ".join(item for item in detail_parts if _text(item))
+    lines = [
+        "subject_definitions:",
+        subject_block,
+        "summary:",
+        summary,
+        "retention_analysis:",
+        retention_block,
+        "detailed_description:",
+        detailed_description,
+        "overall_soundscape:",
+        "静音" if reply_language == "Chinese" else "Silence",
+        "non_diegetic_music:",
+        "N/A",
     ]
     return "\n".join(line for line in lines if _text(line)).strip()
 
@@ -2065,10 +2267,14 @@ def build_visual_generation_action(
     bindings = _reference_asset_bindings(normalized, snapshot)
     refs = [item["asset_id"] for item in bindings]
     task = "multi_image_edit" if len(refs) > 1 else "image_edit" if refs else "text_to_image"
-    candidate_preset = _text(visual_candidate.get("preset") or visual_candidate.get("preset_hint"), 200)
     preferred = _text(normalized["visual_config"].get("preferred_preset"), 200)
-    preset = candidate_preset or preferred or ("MiniMax-H3(R2I)" if refs else "Z-imageT")
-    prompt = _text(visual_candidate.get("prompt"), 8000) or compile_visual_prompt(snapshot, normalized, lang)
+    preset = preferred or "MiniMax-H3(R2I)"
+    prompt = compile_visual_prompt(
+        snapshot,
+        normalized,
+        lang,
+        prompt_hint=visual_candidate.get("prompt"),
+    )
     aspect_ratio = _text(visual_candidate.get("aspect_ratio"), 20) or normalized["visual_config"].get("aspect_ratio") or "16:9"
     try:
         image_number = max(1, min(4, int(visual_candidate.get("image_number") or 1)))
@@ -2108,7 +2314,7 @@ def build_visual_generation_action(
         },
         "prompt": prompt,
         "preset": preset,
-        "preset_source": "agent_auto" if candidate_preset else ("session_preference" if preferred else "roleplay_visual"),
+        "preset_source": "session_preference" if preferred else "roleplay_visual",
         "aspect_ratio": aspect_ratio,
         "image_number": image_number,
         "offer_text": offer_text,

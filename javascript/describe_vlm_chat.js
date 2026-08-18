@@ -8694,6 +8694,8 @@
             multi_image_to_video: ['MiniMax-H3(R2V)', 'MiniMax-H3(I2V)', 'Wan(I2V)', 'Dasiwa(I2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
             image_restore: ['Imagerepair+'],
+            image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext'],
+            multi_image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext'],
             image_detail_enhance: ['Z-imageT', 'Anima', 'Flux2-Klein', 'Qwen2512', 'Wan(T2I)', 'Flux1-dev', 'NunFlux_fp4', 'NunFlux_int4', 'Illustrious(OB)', 'Illustrious(MiaoKa)', 'ChenkinXL', 'SD1.5'],
             image_background_removal: ['Removebg'],
             image_object_removal: ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'Eraser'],
@@ -8709,8 +8711,8 @@
             image_depth_estimation: ['Depthstatue'],
             image_expression_transfer: ['LivePortrait Exp']
         };
-        const priorities = (taskPriorities[task] || ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenEdit+', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'MiniMax-H3(R2I)']).slice();
-        if (task === 'text_to_image') priorities.splice(0, priorities.length, CREATIVE_DEFAULT_PRESET, 'Anima');
+        const priorities = (taskPriorities[task] || ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
+        if (task === 'text_to_image') priorities.splice(0, priorities.length, 'MiniMax-H3(R2I)', 'QwenNSFW', CREATIVE_DEFAULT_PRESET, 'Anima');
         const readinessRank = { ready: 0, unknown: 1, missing: 2 };
         return candidates.slice().sort((left, right) => {
             const interactionDifference = Number(creativePresetRequiresManualInteraction(left)) - Number(creativePresetRequiresManualInteraction(right));
@@ -9004,9 +9006,20 @@
 
     function creativePresetOptions(action) {
         const noCompatibleRoute = action?.execution_plan?.status === 'no_compatible_route';
-        const selected = String(action?.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET));
         const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
         const task = creativeActionTask(action, inputCount);
+        let selected = String(action?.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET));
+        if (
+            action?.roleplay_visual
+            && !['user', 'session_preference'].includes(String(action?.preset_source || ''))
+            && (!creativePresetEntry(selected) || selected === 'MiniMax-H3(R2I)')
+        ) {
+            const automatic = creativeCompatiblePresetEntry(task, inputCount);
+            if (automatic) {
+                selected = automatic.name;
+                action.preset = selected;
+            }
+        }
         const rows = state.creativePresetCatalog.filter((entry) => creativePresetHasTaskRoute(entry, task, inputCount));
         if (noCompatibleRoute && !selected) {
             return `<option value="" selected disabled>${escapeHtml(localText('No compatible Preset', '没有兼容的 Preset'))}</option>`;
@@ -10106,6 +10119,15 @@
         const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
         const requestedTask = creativeActionTask(action, inputCount);
         let entry = creativePresetEntry(action.preset);
+        const automaticRoleplayRoute = action?.roleplay_visual
+            && !['user', 'session_preference'].includes(String(action?.preset_source || ''));
+        if (automaticRoleplayRoute && (!entry || String(action.preset || '') === 'MiniMax-H3(R2I)')) {
+            const automatic = creativeCompatiblePresetEntry(requestedTask, inputCount);
+            if (automatic) {
+                action.preset = automatic.name;
+                entry = automatic;
+            }
+        }
         if (!entry && String(action.preset || '').trim()) {
             action.generation.state = 'preset_missing';
             action.generation.error = localText(

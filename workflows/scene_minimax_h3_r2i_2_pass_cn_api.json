@@ -935,11 +935,11 @@
       ],
       "width": [
         "84",
-        0
+        1
       ],
       "height": [
         "85",
-        0
+        1
       ],
       "length": 5,
       "ref_image_size": "match",
@@ -1001,11 +1001,11 @@
       "upscaler_device": "auto",
       "target_width": [
         "84",
-        0
+        1
       ],
       "target_height": [
         "85",
-        0
+        1
       ]
     },
     "class_type": "SimpAIMiniMaxH3LatentUpscaleCombined",
@@ -1061,17 +1061,17 @@
   "84": {
     "inputs": {
       "expression": "ceil(a / 32) * 32",
-      "a": ["1", 6]
+      "values.a": ["1", 6]
     },
-    "class_type": "UtilityExpression",
+    "class_type": "ComfyMathExpression",
     "_meta": {"title": "H3 Final Width"}
   },
   "85": {
     "inputs": {
       "expression": "ceil(a / 32) * 32",
-      "a": ["1", 7]
+      "values.a": ["1", 7]
     },
-    "class_type": "UtilityExpression",
+    "class_type": "ComfyMathExpression",
     "_meta": {"title": "H3 Final Height"}
   },
   "86": {
@@ -1093,9 +1093,9 @@
     "inputs": {
       "expression": "a != b or c != d",
       "values.a": ["1", 6],
-      "values.b": ["84", 0],
+      "values.b": ["84", 1],
       "values.c": ["1", 7],
-      "values.d": ["85", 0]
+      "values.d": ["85", 1]
     },
     "class_type": "ComfyMathExpression",
     "_meta": {"title": "H3 Resize Needed"}

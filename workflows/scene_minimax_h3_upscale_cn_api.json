@@ -369,11 +369,11 @@
       ],
       "width": [
         "31",
-        0
+        1
       ],
       "height": [
         "32",
-        0
+        1
       ],
       "segment_duration": [
         "1",
@@ -480,9 +480,9 @@
     "inputs": {
       "expression": "a != b or c != d",
       "values.a": ["1", 6],
-      "values.b": ["31", 0],
+      "values.b": ["31", 1],
       "values.c": ["1", 7],
-      "values.d": ["32", 0]
+      "values.d": ["32", 1]
     },
     "class_type": "ComfyMathExpression",
     "_meta": {

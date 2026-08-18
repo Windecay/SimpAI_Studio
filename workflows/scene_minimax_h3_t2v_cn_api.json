@@ -103,8 +103,8 @@
       "clip": ["48", 0],
       "vae": ["5", 0],
       "prompt": ["1", 0],
-      "width": ["70", 0],
-      "height": ["71", 0],
+    "width": ["70", 1],
+    "height": ["71", 1],
       "length": ["7", 1]
     },
     "class_type": "MiniMaxH3ImageToVideo",
@@ -360,9 +360,9 @@
     "inputs": {
       "expression": "a != b or c != d",
       "values.a": ["1", 6],
-      "values.b": ["70", 0],
+      "values.b": ["70", 1],
       "values.c": ["1", 7],
-      "values.d": ["71", 0]
+      "values.d": ["71", 1]
     },
     "class_type": "ComfyMathExpression",
     "_meta": {"title": "H3 Resize Needed"}

@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["image_edit", "multi_image_edit", "image_object_transfer"],
+  "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit", "image_object_transfer"],
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
@@ -22,14 +22,14 @@
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
         "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
-      "theme_title": "MiniMax H3 Reference-to-Image [Up to 5 reference images]",
+      "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional up to 5 reference images]",
       "director_capability": {
-        "image_policy": "required",
+        "image_policy": "optional",
         "audio_policy": "forbidden",
         "video_policy": "forbidden",
         "max_images": 5,
-        "min_images": 1,
-        "image_modes": ["reference_set"],
+        "min_images": 0,
+        "image_modes": ["none", "reference_set"],
         "duration_strategy": "shot",
         "audio_output": "silent",
         "mixed_segments": false
@@ -66,8 +66,8 @@
       "overwrite_step": {"Basic": 10, "2 pass": 15},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Refer to uploaded images only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When the task includes a video timeline, use the exact requested duration and distribute visible changes across the full timeline instead of repeating a static pose. Do not invent dialogue, audio, video, or reference media.",
-        "2 pass": "Refer to uploaded images only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When the task includes a video timeline, use the exact requested duration and distribute visible changes across the full timeline instead of repeating a static pose. Do not invent dialogue, audio, video, or reference media."
+        "Basic": "Reference images are optional. When images are uploaded, refer to them only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When no image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media.",
+        "2 pass": "Reference images are optional. When images are uploaded, refer to them only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When no image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
