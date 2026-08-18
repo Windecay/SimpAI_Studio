@@ -1596,6 +1596,10 @@ def worker():
         tasks = []
         task_rng = random.Random(async_task.seed % (constants.MAX_SEED + 1))
         prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(prompt, task_rng, user_did=async_task.user_did)
+        needs_vlm_translation = (
+            not async_task.task_method.lower().endswith('_cn')
+            and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image']
+        )
         for i in range(image_number if arrays_mult==0 else arrays_mult):
             if arrays_mult==0 or not seed_fixed or not disable_seed_increment:
                 task_seed = (async_task.seed + i) % (constants.MAX_SEED + 1)  # randint is inclusive, % is not
@@ -1609,7 +1613,7 @@ def worker():
             task_extra_positive_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_positive_prompts]
             task_extra_negative_prompts = [wildcards.apply_wildcards(pmt, task_rng, user_did=async_task.user_did) for pmt in extra_negative_prompts]
            
-            if not async_task.task_method.lower().endswith('_cn') and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image']:
+            if needs_vlm_translation:
                 task_prompt = vlm.translate(task_prompt, async_task.translation_methods)
                 task_negative_prompt = vlm.translate(task_negative_prompt, async_task.translation_methods)
                 task_extra_positive_prompts = [vlm.translate(pmt, async_task.translation_methods) for pmt in extra_positive_prompts]
@@ -1668,23 +1672,24 @@ def worker():
             ))
         
         keep_vlm_model_loaded = getattr(async_task, 'keep_vlm_model_loaded', False)
-        may_auto_free_vlm = (not async_task.task_method.lower().endswith('_cn') and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image'])
-        if not keep_vlm_model_loaded and may_auto_free_vlm:
+        if not keep_vlm_model_loaded:
             logger.info(
-                '[VLM KeepLoaded] auto free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s source=async_worker.process_prompt',
+                '[VLM KeepLoaded] auto free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s translated=%s source=async_worker.process_prompt',
                 getattr(async_task, 'task_id', None),
                 getattr(async_task, 'task_method', None),
                 getattr(async_task, 'task_class', None),
                 keep_vlm_model_loaded,
+                needs_vlm_translation,
             )
             vlm.free_model()
-        elif keep_vlm_model_loaded and may_auto_free_vlm:
+        else:
             logger.info(
-                '[VLM KeepLoaded] skip free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s source=async_worker.process_prompt',
+                '[VLM KeepLoaded] skip free_model before diffusion task_id=%s task_method=%s task_class=%s keep_vlm_model_loaded=%s translated=%s source=async_worker.process_prompt',
                 getattr(async_task, 'task_id', None),
                 getattr(async_task, 'task_method', None),
                 getattr(async_task, 'task_class', None),
                 keep_vlm_model_loaded,
+                needs_vlm_translation,
             )
         if async_task.task_class in ['Fooocus']:
             if advance_progress:

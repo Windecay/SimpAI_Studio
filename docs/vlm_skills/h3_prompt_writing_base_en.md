@@ -31,6 +31,9 @@ When no cut is requested between endpoint frames, prefer one continuous shot. Ad
 
 ## Timeline And Sound
 
+- For 10-30 second outputs, structure the timeline as setup, action development, visible change, result, and ending. Do not compress the action into the opening and fill the remaining time with a static view.
+- Use roughly 1-4 shots for 10-15 seconds and 3-5 purposeful shots for 15-30 seconds; add a shot only when it changes viewpoint or meaningful information.
+
 - Start `integrated_multimodal_description` with `[Shot 1]`. Keep shot times increasing and inside the target duration; the final shot must reach the target duration.
 - In each shot, write visible action and subject state first, then `Camera:`, `Dialogue and visible text:`, and `Synchronized sound:` in that order.
 - Give each speaking or singing source a stable `(S1)`, `(S2)` ID. Put only spoken or sung words inside `<d>[Language] ...</d>`; write `None` when there is no dialogue.
@@ -38,4 +41,3 @@ When no cut is requested between endpoint frames, prefer one continuous shot. Ad
 - Use `overall_soundscape` for audible in-world ambience, action sounds, and dialogue-related sound. Use `non_diegetic_music` only for audience-only score, or `N/A` when there is none.
 
 Base modes allow only the picture tokens supported by the active mode: `T2VA` uses no pictures, `I2VA` and `L2VA` use only `<Picture 1>`, and `FL2VA` uses only `<Picture 1>` and `<Picture 2>`. Do not write `<Video N>` or `<Audio N>`, and do not invent, translate, or renumber media tokens.
-

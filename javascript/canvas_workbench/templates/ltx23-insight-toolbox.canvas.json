@@ -641,7 +641,7 @@
         "previous_default_models": [],
         "model_list": [
           "diffusion_models,ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors,21504034224,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
-          "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372971786,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "text_encoders,gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors,15372969374,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
           "vae,ltx-2.5-video-vae-bf16.safetensors,1472223346,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-video-vae-bf16.safetensors",
           "vae,ltx-2.5-audio-vae-bf16.safetensors,364866540,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/vae/ltx-2.5-audio-vae-bf16.safetensors",
           "latent_upscale_models,ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors,995778752,0,https://www.modelscope.cn/models/Lightricks/LTX-2.5/resolve/master/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",

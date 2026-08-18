@@ -290,7 +290,7 @@
       "fps": 24,
       "crf": 18,
       "images": [
-        "73",
+        "99",
         0
       ],
       "audio": [
@@ -1263,12 +1263,12 @@
         0
       ],
       "width": [
-        "77",
-        1
+        "95",
+        0
       ],
       "height": [
-        "78",
-        1
+        "96",
+        0
       ],
       "length": [
         "7",
@@ -1356,12 +1356,12 @@
       "upscaler_precision": "bf16",
       "upscaler_device": "auto",
       "target_width": [
-        "1",
-        6
+        "95",
+        0
       ],
       "target_height": [
-        "1",
-        7
+        "96",
+        0
       ]
     },
     "class_type": "SimpAIMiniMaxH3LatentUpscaleCombined",
@@ -1462,5 +1462,56 @@
     "_meta": {
       "title": "H3 2-pass Latent Context Decode"
     }
+  },
+  "95": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "a": ["1", 6]
+    },
+    "class_type": "UtilityExpression",
+    "_meta": {"title": "H3 Final Width"}
+  },
+  "96": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "a": ["1", 7]
+    },
+    "class_type": "UtilityExpression",
+    "_meta": {"title": "H3 Final Height"}
+  },
+  "97": {
+    "inputs": {
+      "image": ["73", 0],
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "H3 Restore Original Size"}
+  },
+  "98": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["1", 6],
+      "values.b": ["95", 0],
+      "values.c": ["1", 7],
+      "values.d": ["96", 0]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Resize Needed"}
+  },
+  "99": {
+    "inputs": {
+      "boolean": ["98", 2],
+      "on_true": ["97", 0],
+      "on_false": ["73", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Output Image"}
   }
 }

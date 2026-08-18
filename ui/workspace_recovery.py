@@ -44,6 +44,21 @@ _HIDDEN_INTERNAL_MARKERS = (
     "_hidden",
 )
 
+_RUNTIME_RANGE_COMPONENT_IDS = {
+    "scene_video_duration",
+    "scene_var_number",
+    "scene_var_number2",
+    "scene_var_number3",
+    "scene_var_number4",
+    "scene_var_number5",
+    "scene_var_number6",
+    "scene_var_number7",
+    "scene_var_number8",
+    "scene_var_number9",
+    "scene_var_number10",
+    "scene_steps",
+}
+
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _WINDOWS_FILE_URL_PATH = re.compile(r"^/[A-Za-z]:[\\/]")
 
@@ -237,19 +252,25 @@ def _matching_choice(value: Any, choices: list[Any]) -> tuple[bool, Any]:
     return False, value
 
 
-def _bounded_number(component: Any, value: Any) -> int | float | None:
+def _component_uses_runtime_range(component: Any) -> bool:
+    elem_id = _component_text(getattr(component, "elem_id", None))
+    return elem_id in _RUNTIME_RANGE_COMPONENT_IDS
+
+
+def _bounded_number(component: Any, value: Any, *, respect_bounds: bool = True) -> int | float | None:
     if value is None or value == "":
         return None
     try:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    minimum = getattr(component, "minimum", None)
-    maximum = getattr(component, "maximum", None)
-    if isinstance(minimum, (int, float)):
-        number = max(float(minimum), number)
-    if isinstance(maximum, (int, float)):
-        number = min(float(maximum), number)
+    if respect_bounds:
+        minimum = getattr(component, "minimum", None)
+        maximum = getattr(component, "maximum", None)
+        if isinstance(minimum, (int, float)):
+            number = max(float(minimum), number)
+        if isinstance(maximum, (int, float)):
+            number = min(float(maximum), number)
     precision = getattr(component, "precision", None)
     if precision == 0 or isinstance(value, int):
         return int(round(number))
@@ -343,7 +364,11 @@ def _restore_component_value(spec: WorkspaceComponentSpec, entry: Any) -> Any:
     if spec.kind == "textbox":
         return gr.update(value=value)
     if spec.kind in {"number", "slider"}:
-        number = _bounded_number(spec.component, value)
+        number = _bounded_number(
+            spec.component,
+            value,
+            respect_bounds=not _component_uses_runtime_range(spec.component),
+        )
         return gr.skip() if number is None and value not in (None, "") else gr.update(value=number)
     if spec.kind == "checkbox":
         if isinstance(value, str):

@@ -32,7 +32,9 @@ Never translate, renumber, delete, or invent these tokens. Define reusable subje
 
 ## Subjects, Speakers, And Timeline
 
+- For 10-30 second outputs, carry references and subject state through setup, development, visible change, result, and ending. Do not use references only in the opening and then introduce an unsupported subject or setting.
+- Use roughly 3-5 purposeful shots for 15-30 seconds. Prefer a continuous take or in-shot camera movement when the physical action remains continuous; add cuts for a real viewpoint, information, or target change.
+
 Keep the full appearance description in `subject_definitions`; use the relevant picture tokens directly in shots instead of repeating identity-preservation declarations. Do not merge different picture identities just because clothing, gender, style, or setting looks similar unless the user explicitly says they are the same identity.
 
 Keep speaking or singing sources bound consistently as `<Subject N> (S1)`, `<Subject N> (S2)`, and so on. Put only spoken words inside `<d>[Language] ...</d>`. Use `<scenetrans>` for dialogue continuing across shots and `<cutoff>` for dialogue truncated by the end of the video. In every shot, write visible action first, then `Camera:`, `Dialogue and visible text:`, and `Synchronized sound:`. Keep all timing within the target duration.
-

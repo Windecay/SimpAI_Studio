@@ -4,6 +4,7 @@ The network definitions follow the local Minimax H3 latent upscaler project,
 while the public helper keeps H3's AV latent and patch-size rules in Studio.
 """
 
+import gc
 import glob
 import logging
 import os
@@ -24,6 +25,8 @@ H3_DIT_SPATIAL_MULTIPLE = 2
 H3_SPATIAL_DOWNSCALE = 16
 H3_LEARNED_VARIANTS = ("2d", "3d")
 H3_LEARNED_PRECISIONS = ("bf16", "fp16", "fp32")
+H3_UPSCALER_MEMORY_SAFETY_BYTES = 512 * 1024 * 1024
+H3_UPSCALER_FEATURE_MULTIPLIER = 6
 
 LATENTS_MEAN = [
     0.858090341091156, -0.9606591463088989, 1.0661640167236328, -0.5090325474739075,
@@ -365,44 +368,64 @@ def _model_dtype(precision):
     }[precision]
 
 
+def _model_device(model):
+    try:
+        return next(model.parameters()).device
+    except (StopIteration, AttributeError):
+        return torch.device("cpu")
+
+
+def _model_parameter_bytes(model):
+    total = 0
+    for parameter in model.parameters():
+        total += parameter.numel() * parameter.element_size()
+    for buffer in model.buffers():
+        total += buffer.numel() * buffer.element_size()
+    return total
+
+
 def _load_model(model_name, variant, device, precision):
     path = _resolve_model_path(model_name)
-    cache_key = (os.path.abspath(path), variant, str(device), precision)
-    if cache_key in _MODEL_CACHE:
-        return _MODEL_CACHE[cache_key]
-    state_dict = _load_state_dict(path)
-    config = _detect_architecture(state_dict, variant)
-    if variant == "2d":
-        model = _VideoLatentResizer2D(
-            config["in_channels"],
-            config["channels"],
-            config["in_blocks"],
-            config["out_blocks"],
-            config["dropout"],
-            config["temporal_kernel"],
+    cache_key = (os.path.abspath(path), variant, precision)
+    model = _MODEL_CACHE.get(cache_key)
+    if model is None:
+        state_dict = _load_state_dict(path)
+        config = _detect_architecture(state_dict, variant)
+        if variant == "2d":
+            model = _VideoLatentResizer2D(
+                config["in_channels"],
+                config["channels"],
+                config["in_blocks"],
+                config["out_blocks"],
+                config["dropout"],
+                config["temporal_kernel"],
+            )
+        else:
+            model = _LatentResizer3D(
+                config["in_channels"],
+                config["channels"],
+                config["in_blocks"],
+                config["out_blocks"],
+                config["dropout"],
+                config["temporal_kernel"],
+            )
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        meaningful_missing = [key for key in missing if "attn" not in key]
+        if meaningful_missing or unexpected:
+            raise ValueError(
+                "The selected H3 latent upscaler checkpoint does not match its declared "
+                f"{variant} architecture (missing={meaningful_missing[:3]}, unexpected={unexpected[:3]})"
+            )
+        del state_dict
+        model = model.to(device="cpu", dtype=_model_dtype(precision)).eval()
+        _MODEL_CACHE[cache_key] = model
+        LOG.info(
+            "Loaded H3 learned latent upscaler: model=%s variant=%s precision=%s channels=%d",
+            os.path.basename(path), variant, precision, _model_hidden_channels(model),
         )
-    else:
-        model = _LatentResizer3D(
-            config["in_channels"],
-            config["channels"],
-            config["in_blocks"],
-            config["out_blocks"],
-            config["dropout"],
-            config["temporal_kernel"],
-        )
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    meaningful_missing = [key for key in missing if "attn" not in key]
-    if meaningful_missing or unexpected:
-        raise ValueError(
-            "The selected H3 latent upscaler checkpoint does not match its declared "
-            f"{variant} architecture (missing={meaningful_missing[:3]}, unexpected={unexpected[:3]})"
-        )
-    model = model.to(device=device, dtype=_model_dtype(precision)).eval()
-    _MODEL_CACHE[cache_key] = model
-    LOG.info(
-        "Loaded H3 learned latent upscaler: model=%s variant=%s precision=%s channels=%d",
-        os.path.basename(path), variant, precision, config["channels"],
-    )
+    target_dtype = _model_dtype(precision)
+    if _model_device(model) != device or next(model.parameters(), None).dtype != target_dtype:
+        model = model.to(device=device, dtype=target_dtype)
     return model
 
 
@@ -412,6 +435,104 @@ def _pad_latent_patch_size(samples):
     if pad_h or pad_w:
         samples = F.pad(samples, (0, pad_w, 0, pad_h))
     return samples
+
+
+def _model_hidden_channels(model):
+    conv_in = getattr(model, "conv_in", None)
+    if conv_in is None:
+        resizer = getattr(model, "resizer", None)
+        conv_in = getattr(resizer, "conv_in", None)
+    return int(getattr(conv_in, "out_channels", 512))
+
+
+def _estimate_upscaler_memory(video_latent, target_hw, model, precision, variant):
+    """Estimate a conservative inference peak for device selection."""
+    batch, channels, frames, source_h, source_w = map(int, video_latent.shape)
+    target_h, target_w = map(int, target_hw)
+    dtype_bytes = torch.tensor([], dtype=_model_dtype(precision)).element_size()
+    model_bytes = _model_parameter_bytes(model)
+    input_bytes = batch * channels * frames * source_h * source_w * dtype_bytes
+    output_bytes = batch * channels * frames * target_h * target_w * dtype_bytes
+    feature_area = max(source_h * source_w, target_h * target_w)
+    feature_bytes = (
+        batch
+        * _model_hidden_channels(model)
+        * frames
+        * feature_area
+        * dtype_bytes
+    )
+    feature_multiplier = H3_UPSCALER_FEATURE_MULTIPLIER
+    if variant == "3d":
+        feature_multiplier += 2
+    return (
+        model_bytes
+        + input_bytes * 4
+        + output_bytes * 3
+        + feature_bytes * feature_multiplier
+        + H3_UPSCALER_MEMORY_SAFETY_BYTES
+    )
+
+
+def _free_memory_for_upscaler(device, required_bytes):
+    try:
+        import comfy.model_management as model_management
+
+        model_management.free_memory(int(required_bytes), device)
+        return int(model_management.get_free_memory(device))
+    except Exception as err:
+        LOG.debug("Unable to query or free Comfy memory for H3 upscaler: %s", err)
+        try:
+            if device.type == "cuda":
+                return int(torch.cuda.mem_get_info(device)[0])
+        except Exception:
+            pass
+        return None
+
+
+def _empty_upscaler_cache(device):
+    if getattr(device, "type", None) != "cuda":
+        return
+    try:
+        import comfy.model_management as model_management
+
+        model_management.soft_empty_cache(True)
+    except Exception:
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+
+def _offload_upscaler_model(model):
+    try:
+        if _model_device(model).type == "cuda":
+            model.to(device="cpu")
+            gc.collect()
+            _empty_upscaler_cache(torch.device("cuda"))
+    except Exception as err:
+        LOG.debug("Unable to offload H3 latent upscaler model: %s", err)
+
+
+def _is_cuda_oom(error):
+    return isinstance(error, torch.cuda.OutOfMemoryError) or "out of memory" in str(error).lower()
+
+
+def _run_upscaler_once(model, video_latent, compute_device, compute_dtype, variant, scale_hint, target_hw):
+    source = video_latent.to(device=compute_device, dtype=compute_dtype).contiguous()
+    mean, std = _normalization(compute_device, compute_dtype)
+    source = (source - mean) / std
+    with torch.inference_mode():
+        if variant == "2d":
+            output = model(source, scale_hint, target_hw)
+        else:
+            output = model(
+                source,
+                scale_hint,
+                (int(source.shape[2]), int(target_hw[0]), int(target_hw[1])),
+            )
+    del source
+    output = _pad_latent_patch_size(output * std + mean)
+    return output
 
 
 def _device_for_request(device):
@@ -476,27 +597,89 @@ def upscale_h3_video_latent(
     if tuple(video_latent.shape[-2:]) == target_hw:
         return video_latent.squeeze(2) if squeeze_time else video_latent
 
-    compute_device = _device_for_request(device)
-    compute_dtype = _model_dtype(precision)
-    source = video_latent.to(device=compute_device, dtype=compute_dtype).contiguous()
-    mean, std = _normalization(compute_device, compute_dtype)
-    source = (source - mean) / std
     scale_hint = (
         scale_value
         if scale_by is not None
         else (float(target_hw[0]) / float(video_latent.shape[-2]))
     )
-    model = _load_model(model_name, variant, compute_device, precision)
-    with torch.inference_mode():
-        if variant == "2d":
-            output = model(source, scale_hint, target_hw)
-        else:
-            output = model(
-                source,
-                scale_hint,
-                (int(source.shape[2]), int(target_hw[0]), int(target_hw[1])),
+    requested_device = _device_for_request(device)
+    auto_device = device in (None, "auto")
+    compute_dtype = _model_dtype(precision)
+    model = None
+    required_memory = None
+    compute_device = requested_device
+
+    if requested_device.type == "cuda":
+        # Load once on CPU so device selection can use the actual checkpoint size.
+        model = _load_model(model_name, variant, torch.device("cpu"), precision)
+        required_memory = _estimate_upscaler_memory(
+            video_latent,
+            target_hw,
+            model,
+            precision,
+            variant,
+        )
+        free_memory = _free_memory_for_upscaler(requested_device, required_memory)
+        if free_memory is not None and free_memory < required_memory:
+            message = (
+                "H3 learned latent upscaler needs about "
+                f"{required_memory / 1024**3:.2f} GiB, but only "
+                f"{free_memory / 1024**3:.2f} GiB is available on {requested_device}"
             )
-    output = _pad_latent_patch_size(output * std + mean)
+            if auto_device:
+                LOG.warning("%s; using CPU for this upscale request", message)
+                compute_device = torch.device("cpu")
+            else:
+                raise RuntimeError(message + "; choose upscaler_device=auto or cpu")
+        else:
+            LOG.info(
+                "H3 learned latent upscaler using %s: estimated_peak=%.2f GiB free=%.2f GiB",
+                requested_device,
+                required_memory / 1024**3,
+                free_memory / 1024**3 if free_memory is not None else -1.0,
+            )
+
+    if model is None or _model_device(model) != compute_device:
+        try:
+            model = _load_model(model_name, variant, compute_device, precision)
+        except RuntimeError as err:
+            if not (auto_device and compute_device.type == "cuda" and _is_cuda_oom(err)):
+                raise
+            LOG.warning("H3 learned latent upscaler could not fit on %s; retrying on CPU", compute_device)
+            _offload_upscaler_model(model)
+            compute_device = torch.device("cpu")
+            model = _load_model(model_name, variant, compute_device, precision)
+
+    try:
+        try:
+            output = _run_upscaler_once(
+                model,
+                video_latent,
+                compute_device,
+                compute_dtype,
+                variant,
+                scale_hint,
+                target_hw,
+            )
+        except RuntimeError as err:
+            if not (auto_device and compute_device.type == "cuda" and _is_cuda_oom(err)):
+                raise
+            LOG.warning("H3 learned latent upscaler ran out of memory on %s; retrying on CPU", compute_device)
+            _offload_upscaler_model(model)
+            compute_device = torch.device("cpu")
+            model = _load_model(model_name, variant, compute_device, precision)
+            output = _run_upscaler_once(
+                model,
+                video_latent,
+                compute_device,
+                compute_dtype,
+                variant,
+                scale_hint,
+                target_hw,
+            )
+    finally:
+        _offload_upscaler_model(model)
+
     output = output.to(device=video_latent.device, dtype=video_latent.dtype)
     return output.squeeze(2) if squeeze_time else output
 

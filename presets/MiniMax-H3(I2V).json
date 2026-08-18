@@ -66,12 +66,12 @@
       "overwrite_step": {"Basic": 8, "2 pass": 12},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Do not invent dialogue or reference media.",
-        "2 pass": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Do not invent dialogue or reference media."
+        "Basic": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Use the exact requested duration. For 10-30 second outputs, distribute the transition across the full timeline with intermediate actions and camera movement instead of jumping between still poses. Do not invent dialogue or reference media.",
+        "2 pass": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Use the exact requested duration. For 10-30 second outputs, distribute the transition across the full timeline with intermediate actions and camera movement instead of jumping between still poses. Do not invent dialogue or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
-      "video_duration_max": 15,
+      "video_duration_max": 30,
       "video_duration": {"Basic": 5, "2 pass": 5},
       "var_number3_title": "Video Shift",
       "var_number3_min": 0.01,

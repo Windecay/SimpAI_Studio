@@ -31,6 +31,9 @@ non_diegetic_music:
 
 ## 时间线与声音
 
+- 目标时长为 10-30 秒时，按“建立状态、动作推进、可见变化、结果与收尾”组织时间线；不要在开头快速写完动作，再用静态镜头填满剩余时间。
+- 10-15 秒通常使用 1-4 个镜头，15-30 秒通常使用 3-5 个镜头；只有确有视角或信息变化时才增加镜头。
+
 - `integrated_multimodal_description` 从 `[Shot 1]` 开始。镜头按时间递增，时间范围不能超过目标时长，最后一个镜头必须到达目标时长。
 - 每个镜头依次写可见动作和主体状态，再写 `Camera:`、`Dialogue and visible text:`、`Synchronized sound:`。
 - 说话或歌唱的人物使用稳定的 `(S1)`、`(S2)` 编号。只有真实说出的词句放在 `<d>[Language] ...</d>` 中；没有对白写 `无`。
@@ -38,4 +41,3 @@ non_diegetic_music:
 - `overall_soundscape` 只写画面内可听见的环境声、动作声和对白相关声音；`non_diegetic_music` 只写观众听见但画面内没有声源的背景音乐，没有音乐写 `N/A`。
 
 基础模式只允许当前模式支持的图片 token：`T2VA` 不使用图片，`I2VA` 和 `L2VA` 只使用 `<Picture 1>`，`FL2VA` 只使用 `<Picture 1>` 和 `<Picture 2>`。不要写 `<Video N>` 或 `<Audio N>`，也不要新增、翻译或改编号。
-

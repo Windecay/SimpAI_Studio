@@ -103,8 +103,8 @@
       "clip": ["48", 0],
       "vae": ["5", 0],
       "prompt": ["1", 0],
-      "width": ["1", 6],
-      "height": ["1", 7],
+      "width": ["70", 0],
+      "height": ["71", 0],
       "length": ["7", 1],
       "first_frame": ["21", 0],
       "last_frame": ["25", 0]
@@ -153,7 +153,7 @@
       "codec": "h264",
       "fps": 24,
       "crf": 18,
-      "images": ["14", 0],
+    "images": ["76", 0],
       "audio": ["15", 0]
     },
     "class_type": "SaveVideoWebsocket",
@@ -393,5 +393,56 @@
     },
     "class_type": "MiniMaxH3SigmaShift",
     "_meta": {"title": "ModelSamplingMiniMaxH3"}
+  },
+  "70": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 6]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Width"}
+  },
+  "71": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 7]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Height"}
+  },
+  "74": {
+    "inputs": {
+      "image": ["14", 0],
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "H3 Restore Original Size"}
+  },
+  "75": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["1", 6],
+      "values.b": ["70", 0],
+      "values.c": ["1", 7],
+      "values.d": ["71", 0]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Resize Needed"}
+  },
+  "76": {
+    "inputs": {
+      "boolean": ["75", 2],
+      "on_true": ["74", 0],
+      "on_false": ["14", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Output Image"}
   }
 }

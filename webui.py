@@ -5694,6 +5694,8 @@ with shared.gradio_root:
                                         key = os.path.splitext(file_name)[0]
                                         text = ""
                                         if isinstance(payload, dict):
+                                            if payload.get("schema") == vlm_roleplay.CHARACTER_SCHEMA:
+                                                continue
                                             key = payload.get("name", key)
                                             text = payload.get("instruction", "")
                                         elif isinstance(payload, str):
@@ -15350,6 +15352,60 @@ async def describe_image_vlm_roleplay_draft_endpoint(payload: dict = Body(defaul
         return JSONResponse({"ok": False, "error": "system_prompt_required"}, status_code=400)
     draft = await run_in_threadpool(vlm_roleplay.build_character_draft_from_system_prompt, prompt)
     return JSONResponse(draft, status_code=200 if draft.get("ok") else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/characters/list")
+async def describe_image_vlm_roleplay_characters_list_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    characters = await run_in_threadpool(
+        lambda: vlm_roleplay.list_roleplay_characters(user_did=user_did)
+    )
+    return JSONResponse({"ok": True, "characters": characters}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/characters/load")
+async def describe_image_vlm_roleplay_character_load_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    character_id = str(payload.get("character_id") or payload.get("id") or "").strip()
+    if not character_id:
+        return JSONResponse({"ok": False, "error": "character_id_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    character = await run_in_threadpool(
+        lambda: vlm_roleplay.load_roleplay_character(character_id, user_did=user_did)
+    )
+    if not character:
+        return JSONResponse({"ok": False, "error": "character_not_found", "character_id": character_id}, status_code=404)
+    return JSONResponse({"ok": True, "character": character}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/characters/save")
+async def describe_image_vlm_roleplay_character_save_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_character = payload.get("character") if isinstance(payload.get("character"), dict) else payload
+    character = vlm_roleplay.default_character_card(raw_character)
+    if not character.get("name"):
+        return JSONResponse({"ok": False, "error": "character_name_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    saved = await run_in_threadpool(
+        lambda: vlm_roleplay.save_roleplay_character(character, user_did=user_did)
+    )
+    return JSONResponse({"ok": True, "character": saved}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/characters/delete")
+async def describe_image_vlm_roleplay_character_delete_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    character_id = str(payload.get("character_id") or payload.get("id") or "").strip()
+    if not character_id:
+        return JSONResponse({"ok": False, "error": "character_id_required"}, status_code=400)
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    removed = await run_in_threadpool(
+        lambda: vlm_roleplay.delete_roleplay_character(character_id, user_did=user_did)
+    )
+    if not removed:
+        return JSONResponse({"ok": False, "error": "character_not_deleted", "character_id": character_id}, status_code=404)
+    return JSONResponse({"ok": True, "character_id": character_id}, status_code=200)
 
 
 @app.post("/describe-image/vlm-roleplay/character-image-action")

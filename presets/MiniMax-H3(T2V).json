@@ -67,12 +67,12 @@
       "overwrite_step": {"Basic": 8, "2 pass": 12},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media.",
-        "2 pass": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media."
+        "Basic": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Use the exact requested duration. For 10-30 second outputs, pace the timeline across setup, action development, visible change, and a readable ending; prefer one continuous take when it preserves state better than extra cuts. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media.",
+        "2 pass": "Preserve the requested subject, action, camera movement, timing, style, dialogue, and on-screen text. Use the exact requested duration. For 10-30 second outputs, pace the timeline across setup, action development, visible change, and a readable ending; prefer one continuous take when it preserves state better than extra cuts. Add coherent visible motion and a matching audio layer when useful. Do not invent dialogue, lyrics, named characters, or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
-      "video_duration_max": 15,
+      "video_duration_max": 30,
       "video_duration": {"Basic": 5, "2 pass": 5},
       "var_number3_title": "Video Shift",
       "var_number3_min": 0.01,

@@ -1223,6 +1223,9 @@ def _prompt_options_from_payload(payload, lang):
         "roleplay_form_request": _clean_multiline_text(
             payload.get("roleplay_form_request") or payload.get("message") or ""
         ),
+        "roleplay_visual_request": _clean_multiline_text(
+            payload.get("roleplay_visual_request") or payload.get("message") or ""
+        ),
         "roleplay_autoplay": _truthy(payload.get("roleplay_autoplay"), False),
         "history": payload.get("history") if isinstance(payload.get("history"), list) else [],
     }
@@ -1486,7 +1489,16 @@ def _describe_chat_system_prompt(options, lang):
     if chat_mode == "roleplay":
         roleplay_session = options.get("roleplay_session") or {}
         roleplay_request_kind = str(options.get("roleplay_request_kind") or "character").strip().lower()
-        if roleplay_request_kind in {"form_draft", "roleplay_form_draft", "draft"}:
+        if roleplay_request_kind in {"visual_draft", "roleplay_visual_draft", "scene_image_draft"}:
+            sections.append(
+                vlm_roleplay.build_visual_draft_prompt(
+                    roleplay_session,
+                    options.get("history") or [],
+                    options.get("roleplay_visual_request") or "",
+                    lang,
+                )
+            )
+        elif roleplay_request_kind in {"form_draft", "roleplay_form_draft", "draft"}:
             sections.append(
                 vlm_roleplay.build_roleplay_form_draft_prompt(
                     roleplay_session,
@@ -1731,6 +1743,8 @@ def build_runtime_payload(payload):
         "roleplay_agent_role": (
             vlm_agent_router.ROLE_PLAYER_PROXY
             if prompt_options["roleplay_request_kind"] in {"player_proxy", "proxy", "autoplay_player"}
+            else vlm_agent_router.ROLE_VISUAL_DIRECTOR
+            if prompt_options["roleplay_request_kind"] in {"visual_draft", "roleplay_visual_draft", "scene_image_draft"}
             else vlm_agent_router.ROLE_CHARACTER_REPLY
         ) if roleplay_active else "",
         "roleplay_agent_routing": prompt_options.get("agent_routing") if roleplay_active else {},
@@ -1742,6 +1756,7 @@ def build_runtime_payload(payload):
         ),
         "roleplay_form_target": prompt_options["roleplay_form_target"],
         "roleplay_form_request": prompt_options["roleplay_form_request"],
+        "roleplay_visual_request": prompt_options["roleplay_visual_request"],
         "describe_prompt_target_preset": prompt_options["target_preset"],
         "describe_prompt_target_backend_engine": prompt_options["target_backend_engine"],
         "describe_prompt_target_task_method": prompt_options["target_task_method"],
@@ -1888,6 +1903,7 @@ def _build_roleplay_director_runtime_payload(payload, session, user_message, ass
 def _run_roleplay_director(payload, session, user_message, assistant_reply):
     payload = payload if isinstance(payload, dict) else {}
     normalized_session = vlm_roleplay.normalize_roleplay_session(session)
+    before_session = vlm_roleplay.normalize_roleplay_session(normalized_session)
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
     user_did = _clean_text(payload.get("user_did") or payload.get("__user_did"))
     autoplay_enabled = _truthy(payload.get("roleplay_autoplay"), False)
@@ -1963,6 +1979,11 @@ def _run_roleplay_director(payload, session, user_message, assistant_reply):
             applied.setdefault("warnings", []).append(str(applied.get("error") or "director_skill_failed"))
             applied["visual_candidate"] = parsed.get("visual_candidate") or {}
             applied["state_version"] = normalized_session.get("state_version", 0)
+        state_changes = vlm_roleplay.build_roleplay_state_changes(
+            before_session,
+            applied.get("session"),
+            applied.get("applied"),
+        )
         snapshot = vlm_roleplay.build_visual_snapshot(
             applied["session"],
             applied.get("visual_candidate"),
@@ -2010,6 +2031,7 @@ def _run_roleplay_director(payload, session, user_message, assistant_reply):
         applied["agent_route"] = result.get("agent_route") if isinstance(result, dict) else None
         applied["visual_snapshot"] = snapshot
         applied["visual_action"] = visual_action
+        applied["state_changes"] = state_changes
         if autoplay_enabled:
             applied["autoplay_decision"] = vlm_roleplay.evaluate_autoplay_step(
                 applied["session"],
@@ -4075,10 +4097,20 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None):
                 role == vlm_agent_router.ROLE_DIRECTOR_STATE
                 and not vlm_roleplay.parse_director_response(response_text).get("ok")
             )
-            if not response_text or invalid_director_json:
+            invalid_visual_json = (
+                role == vlm_agent_router.ROLE_VISUAL_DIRECTOR
+                and not vlm_roleplay.parse_visual_draft_response(response_text).get("ok")
+            )
+            if not response_text or invalid_director_json or invalid_visual_json:
                 result = dict(result)
                 result["ok"] = False
-                result["error"] = "director_response_not_json" if invalid_director_json else "empty_response"
+                result["error"] = (
+                    "director_response_not_json"
+                    if invalid_director_json
+                    else "visual_draft_response_not_json"
+                    if invalid_visual_json
+                    else "empty_response"
+                )
         last_result = result
         row = {
             "profile_id": attempt.get("profile_id") or "",
@@ -4218,6 +4250,56 @@ def run_describe_vlm_chat(payload):
         }
 
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
+    roleplay_request_kind = str(params.get("roleplay_request_kind") or payload.get("roleplay_request_kind") or "").strip().lower()
+    if request_kind in {"roleplay_visual_draft", "visual_draft"} or roleplay_request_kind in {
+        "visual_draft",
+        "roleplay_visual_draft",
+        "scene_image_draft",
+    }:
+        parsed_visual = vlm_roleplay.parse_visual_draft_response(
+            result.get("text") or result.get("raw_text") or ""
+        )
+        if not parsed_visual.get("ok"):
+            return {
+                "ok": False,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "roleplay_visual_draft_not_json",
+                "details": "The roleplay visual director did not return a valid JSON proposal.",
+                "roleplay_visual_candidate": parsed_visual,
+            }
+        session = vlm_roleplay.normalize_roleplay_session(params.get("roleplay_session") or {})
+        candidate = parsed_visual.get("candidate") or {}
+        visual_action = vlm_roleplay.build_visual_generation_action(
+            session,
+            candidate,
+            turn_id=request_id,
+            lang=payload.get("lang") or payload.get("__lang") or "cn",
+            manual=True,
+        )
+        if not visual_action:
+            return {
+                "ok": False,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "roleplay_visual_draft_unavailable",
+                "details": "The roleplay visual proposal could not be prepared.",
+            }
+        return {
+            "ok": True,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "text": "",
+            "limited_actions": [],
+            "agent_actions": [],
+            "roleplay_agent_route": result.get("agent_route"),
+            "roleplay_session": session,
+            "roleplay_state_version": session.get("state_version", 0),
+            "roleplay_visual_candidate": candidate,
+            "roleplay_visual_snapshot": visual_action.get("visual_snapshot") or {},
+            "roleplay_visual_action": visual_action,
+        }
+
     parsed = parse_limited_response(
         result.get("text") or result.get("raw_text") or "",
         (payload or {}).get("lang"),
@@ -4298,6 +4380,9 @@ def run_describe_vlm_chat(payload):
         "form_draft",
         "roleplay_form_draft",
         "draft",
+        "visual_draft",
+        "roleplay_visual_draft",
+        "scene_image_draft",
     }:
         roleplay_session = params.get("roleplay_session")
         roleplay_update = _run_roleplay_director(
@@ -4319,6 +4404,7 @@ def run_describe_vlm_chat(payload):
         result["roleplay_visual_candidate"] = roleplay_update.get("visual_candidate") or {}
         result["roleplay_visual_snapshot"] = roleplay_update.get("visual_snapshot") or {}
         result["roleplay_visual_action"] = roleplay_update.get("visual_action") or None
+        result["roleplay_state_changes"] = roleplay_update.get("state_changes") or []
         result["roleplay_autoplay_decision"] = roleplay_update.get("autoplay_decision") or None
     result["creative_director_suppressed"] = bool(
         params.get("describe_generation_actions_enabled")

@@ -61,12 +61,12 @@
       "overwrite_step": {"Basic": 8, "2 pass": 12},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media.",
-        "2 pass": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
+        "Basic": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. Use the exact requested duration. For 10-30 second outputs, assign references across a clear beginning, development, visible change, and ending while keeping subject identity, reference roles, and paired sound continuous. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media.",
+        "2 pass": "Refer to uploaded media only as <Picture 1>, <Video 1>, <Audio 1>, and so on, numbered independently by media type, and use only labels that exist. State which subject, identity, object, style, motion, camera move, voice, or sound comes from each reference. Use the exact requested duration. For 10-30 second outputs, assign references across a clear beginning, development, visible change, and ending while keeping subject identity, reference roles, and paired sound continuous. A reference video's soundtrack stays paired with that video. Do not invent dialogue or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
-      "video_duration_max": 15,
+      "video_duration_max": 30,
       "video_duration": {"Basic": 5, "2 pass": 5},
       "var_number3_title": "Video Shift",
       "var_number3_min": 0.01,

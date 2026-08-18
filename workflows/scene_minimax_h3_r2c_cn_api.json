@@ -104,8 +104,8 @@
       "vae": ["5", 0],
       "audio_vae": ["6", 0],
       "prompt": ["1", 0],
-      "width": ["1", 6],
-      "height": ["1", 7],
+      "width": ["77", 0],
+      "height": ["78", 0],
       "length": ["7", 1],
       "ref_image_size": "max",
       "ref_images.ref_image_0": ["21", 0],
@@ -159,7 +159,7 @@
       "codec": "h264",
       "fps": 24,
       "crf": 18,
-      "images": ["73", 0],
+      "images": ["81", 0],
       "audio": ["73", 1]
     },
     "class_type": "SaveVideoWebsocket",
@@ -596,5 +596,56 @@
     },
     "class_type": "SimpAIAutoProtectedColorMatch",
     "_meta": {"title": "H3 Auto-Protected Color Match"}
+  },
+  "77": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 6]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Width"}
+  },
+  "78": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 7]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Height"}
+  },
+  "79": {
+    "inputs": {
+      "image": ["73", 0],
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "H3 Restore Original Size"}
+  },
+  "80": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["1", 6],
+      "values.b": ["77", 0],
+      "values.c": ["1", 7],
+      "values.d": ["78", 0]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Resize Needed"}
+  },
+  "81": {
+    "inputs": {
+      "boolean": ["80", 2],
+      "on_true": ["79", 0],
+      "on_false": ["73", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Output Image"}
   }
 }

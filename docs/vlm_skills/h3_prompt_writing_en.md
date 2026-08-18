@@ -33,6 +33,9 @@ non_diegetic_music:
 
 ## Timeline
 
+- For 10-30 second outputs, distribute time across setup, action development, visible change, result, and ending; do not finish the meaningful action in the opening seconds and fill the remainder with a static hold.
+- Use roughly 1-4 shots for 10-15 seconds and 3-5 purposeful shots for 15-30 seconds. Prefer continuity over extra cuts.
+
 - Start `[Shot 1]` with the style, composition, subjects, environment, and key props.
 - Keep shots chronological. Later shot times must increase and stay inside the target duration.
 - Describe visible action, subject state, camera movement, and audible events together.

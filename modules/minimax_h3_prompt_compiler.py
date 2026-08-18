@@ -2,6 +2,8 @@ import re
 
 
 COMPILER_ID = "minimax_h3"
+H3_MIN_OUTPUT_DURATION = 4.0
+H3_MAX_OUTPUT_DURATION = 30.0
 MODE_T2VA = "T2VA"
 MODE_I2VA = "I2VA"
 MODE_FL2VA = "FL2VA"
@@ -85,9 +87,11 @@ def normalize_compiler(value):
     route_normalized = _clean_text(route).lower().replace("-", "_").replace(" ", "_")
     if route_normalized == "reference" or "ref2va" in route_normalized or "r2v" in route_normalized:
         route_id = "reference"
-    elif route_normalized == "last_frame" or "last_frame" in route_normalized or "l2va" in route_normalized:
+    elif "fl2va" in route_normalized:
+        route_id = "frame_anchor"
+    elif route_normalized == "last_frame" or "last_frame" in route_normalized or route_normalized.endswith("l2va"):
         route_id = "last_frame"
-    elif route_normalized == "frame_anchor" or "frame" in route_normalized or "i2v" in route_normalized or "fl2va" in route_normalized:
+    elif route_normalized == "frame_anchor" or "frame" in route_normalized or "i2v" in route_normalized:
         route_id = "frame_anchor"
     else:
         route_id = "text"
@@ -329,7 +333,10 @@ def build_system_instructions(target_or_compiler, context=None):
         "dialogue, endpoint frames, and requested style. Do not invent media labels or unsupported reference content. "
         "Every legal <Picture N>, <Video N>, and <Audio N> token already present in the user's prompt is immutable: keep "
         "its exact type and number, and never delete, translate, renumber, or reformat it. "
-        "Every shot must use an explicit [Shot N] START-ENDs interval marker in chronological order; Shot 1 must start at "
+        f"The H3 output duration must be between {H3_MIN_OUTPUT_DURATION:g} and {H3_MAX_OUTPUT_DURATION:g} seconds when supplied, "
+        "and the exact requested duration must be used. For 10-30 second outputs, distribute the timeline across a readable "
+        "opening state, action development, visible change, and ending result; do not compress all meaningful motion into the "
+        "opening seconds. Every shot must use an explicit [Shot N] START-ENDs interval marker in chronological order; Shot 1 must start at "
         "0 seconds, all later starts must increase, and the final end must match the target duration. Legacy prompts may "
         "still contain [Shot N] At MM:SS.mmm markers and must remain readable. Give each speaking or singing source a stable "
         "(S1), (S2), and so on. Put visible "
@@ -679,8 +686,13 @@ def validate_prompt(prompt, target_or_compiler, context=None):
     warnings = []
     if not text:
         return {"ok": False, "mode": mode, "errors": ["Prompt is empty."], "warnings": [], "references": {}}
-    if media["duration_seconds"] is not None and not (4 <= media["duration_seconds"] <= 15):
-        errors.append("MiniMax H3 output duration must be between 4 and 15 seconds.")
+    if media["duration_seconds"] is not None and not (
+        H3_MIN_OUTPUT_DURATION <= media["duration_seconds"] <= H3_MAX_OUTPUT_DURATION
+    ):
+        errors.append(
+            f"MiniMax H3 output duration must be between {H3_MIN_OUTPUT_DURATION:g} and "
+            f"{H3_MAX_OUTPUT_DURATION:g} seconds."
+        )
 
     required = REFERENCE_SECTIONS if mode == MODE_REF2VA else BASE_SECTIONS
     matches, _all_names, required_matches, values = _section_values(text, required)

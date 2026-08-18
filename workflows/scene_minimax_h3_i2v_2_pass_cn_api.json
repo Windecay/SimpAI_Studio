@@ -269,7 +269,7 @@
       "fps": 24,
       "crf": 18,
       "images": [
-        "14",
+        "88",
         0
       ],
       "audio": [
@@ -779,12 +779,12 @@
         0
       ],
       "width": [
-        "1",
-        6
+        "84",
+        0
       ],
       "height": [
-        "1",
-        7
+        "85",
+        0
       ],
       "length": [
         "7",
@@ -835,12 +835,12 @@
       "upscaler_precision": "bf16",
       "upscaler_device": "auto",
       "target_width": [
-        "1",
-        6
+        "84",
+        0
       ],
       "target_height": [
-        "1",
-        7
+        "85",
+        0
       ]
     },
     "class_type": "SimpAIMiniMaxH3LatentUpscaleCombined",
@@ -892,5 +892,56 @@
     },
     "class_type": "ComfyMathExpression",
     "_meta": {"title": "H3 2-pass Steps / H3 双采样步数"}
+  },
+  "84": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "a": ["1", 6]
+    },
+    "class_type": "UtilityExpression",
+    "_meta": {"title": "H3 Final Width"}
+  },
+  "85": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "a": ["1", 7]
+    },
+    "class_type": "UtilityExpression",
+    "_meta": {"title": "H3 Final Height"}
+  },
+  "86": {
+    "inputs": {
+      "image": ["14", 0],
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "H3 Restore Original Size"}
+  },
+  "87": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["1", 6],
+      "values.b": ["84", 0],
+      "values.c": ["1", 7],
+      "values.d": ["85", 0]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Resize Needed"}
+  },
+  "88": {
+    "inputs": {
+      "boolean": ["87", 2],
+      "on_true": ["86", 0],
+      "on_false": ["14", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Output Image"}
   }
 }

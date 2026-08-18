@@ -12,7 +12,7 @@
     const MAX_SHOTS = 20;
     const H3_FPS = 24;
     const H3_MIN_DURATION = 4;
-    const H3_MAX_DURATION = 15;
+    const H3_MAX_DURATION = 30;
     const MIN_SHOT_DURATION = Math.round((1 / H3_FPS) * 1000) / 1000;
     const DIALOGUE_CJK_CHARS_PER_SECOND = 4.5;
     const DIALOGUE_WORDS_PER_SECOND = 2.6;
@@ -74,6 +74,73 @@
                     camera: Object.freeze({
                         en: 'Hold on the result with a controlled push-in or pull-back.',
                         cn: '\u7a33\u5b9a\u505c\u7559\u5728\u7ed3\u679c\u4e0a\uff0c\u914d\u5408\u53d7\u63a7\u7684\u63a8\u8fdb\u6216\u62c9\u8fdc\u3002'
+                    }),
+                    dialogue: '',
+                    sound: ''
+                })
+            ])
+        }),
+        long_form: Object.freeze({
+            id: 'long_form',
+            label_en: 'Long-form progression',
+            label_cn: '\u957f\u65f6\u6bb5\u63a8\u8fdb',
+            shots: Object.freeze([
+                Object.freeze({
+                    description: Object.freeze({
+                        en: 'Establish the starting state, subject goal, setting, and visual anchors.',
+                        cn: '\u4ea4\u4ee3\u5f00\u573a\u72b6\u6001\u3001\u4e3b\u4f53\u76ee\u6807\u3001\u73af\u5883\u548c\u7a33\u5b9a\u7684\u89c6\u89c9\u7279\u5f81\u3002'
+                    }),
+                    camera: Object.freeze({
+                        en: 'Measured establishing move that reveals the subject and the direction of action.',
+                        cn: '\u4ee5\u53d7\u63a7\u7684\u5efa\u7acb\u955c\u5934\u5c55\u793a\u4e3b\u4f53\u548c\u52a8\u4f5c\u65b9\u5411\u3002'
+                    }),
+                    dialogue: '',
+                    sound: ''
+                }),
+                Object.freeze({
+                    description: Object.freeze({
+                        en: 'Begin the main action and show the first physical or emotional change.',
+                        cn: '\u5f00\u59cb\u4e3b\u8981\u52a8\u4f5c\uff0c\u5c55\u793a\u7b2c\u4e00\u4e2a\u53ef\u89c1\u7684\u7269\u7406\u6216\u60c5\u7eea\u53d8\u5316\u3002'
+                    }),
+                    camera: Object.freeze({
+                        en: 'Tracking or lateral move follows the subject through the first transition.',
+                        cn: '\u7528\u8ddf\u62cd\u6216\u6a2a\u79fb\u8ddf\u968f\u4e3b\u4f53\u5b8c\u6210\u7b2c\u4e00\u6b21\u72b6\u6001\u8f6c\u6362\u3002'
+                    }),
+                    dialogue: '',
+                    sound: ''
+                }),
+                Object.freeze({
+                    description: Object.freeze({
+                        en: 'Develop the action through a causal obstacle, interaction, or visible escalation.',
+                        cn: '\u901a\u8fc7\u6709\u56e0\u679c\u5173\u7cfb\u7684\u969c\u788d\u3001\u4ea4\u4e92\u6216\u5347\u7ea7\u63a8\u8fdb\u52a8\u4f5c\u3002'
+                    }),
+                    camera: Object.freeze({
+                        en: 'Change distance or viewpoint to keep the physical cause and effect readable.',
+                        cn: '\u6539\u53d8\u666f\u522b\u6216\u89c6\u89d2\uff0c\u8ba9\u52a8\u4f5c\u7684\u56e0\u679c\u5173\u7cfb\u4fdd\u6301\u6e05\u6670\u3002'
+                    }),
+                    dialogue: '',
+                    sound: ''
+                }),
+                Object.freeze({
+                    description: Object.freeze({
+                        en: 'Show the consequence, reaction, or decisive change while carrying forward the current state.',
+                        cn: '\u5c55\u793a\u540e\u679c\u3001\u53cd\u5e94\u6216\u5173\u952e\u53d8\u5316\uff0c\u5e76\u4fdd\u6301\u524d\u4e00\u6bb5\u7684\u8eab\u4f53\u548c\u73af\u5883\u72b6\u6001\u3002'
+                    }),
+                    camera: Object.freeze({
+                        en: 'Follow the result with a purposeful push, pull, pan, or reveal.',
+                        cn: '\u7528\u6709\u660e\u786e\u76ee\u7684\u7684\u63a8\u8fdb\u3001\u540e\u62c9\u3001\u6a2a\u79fb\u6216\u9732\u51fa\u8ddf\u968f\u7ed3\u679c\u3002'
+                    }),
+                    dialogue: '',
+                    sound: ''
+                }),
+                Object.freeze({
+                    description: Object.freeze({
+                        en: 'Resolve the action and hold on a readable final state or payoff.',
+                        cn: '\u89e3\u51b3\u52a8\u4f5c\uff0c\u5e76\u5728\u6e05\u6670\u7684\u6700\u7ec8\u72b6\u6001\u6216\u7ed3\u679c\u4e0a\u6536\u5c3e\u3002'
+                    }),
+                    camera: Object.freeze({
+                        en: 'Settle into a composed final view that preserves the ending state.',
+                        cn: '\u7a33\u5b9a\u5728\u5b8c\u6574\u6784\u56fe\u4e0a\uff0c\u4fdd\u7559\u52a8\u4f5c\u7ed3\u675f\u65f6\u7684\u6700\u7ec8\u72b6\u6001\u3002'
                     }),
                     dialogue: '',
                     sound: ''
@@ -691,9 +758,23 @@
         return roundSeconds(enabled ? Math.round(raw * H3_FPS) / H3_FPS : raw);
     }
 
-    function defaultShotStarts(duration, count = 3) {
+    function defaultShotCount(duration) {
         const total = Math.max(0.3, finiteNumber(duration, 5));
-        const size = Math.max(1, Math.round(finiteNumber(count, 3)));
+        if (total >= 20) return 5;
+        if (total >= 10) return 4;
+        return 3;
+    }
+
+    function defaultShotStarts(duration, count = null) {
+        const total = Math.max(0.3, finiteNumber(duration, 5));
+        const requested = count === null || count === undefined ? Number.NaN : Number(count);
+        const size = Math.max(
+            1,
+            Math.min(
+                MAX_SHOTS,
+                Number.isFinite(requested) ? Math.round(requested) : defaultShotCount(total)
+            )
+        );
         return Array.from({ length: size }, (_unused, index) => roundSeconds(total * index / size));
     }
 
