@@ -955,6 +955,8 @@ def _normalize_preset_capabilities(value, limit=100):
             "model_status": model_status,
             "backend_engine": _clean_text(item.get("backend_engine"))[:80],
             "task_method": _clean_text(item.get("task_method"))[:120],
+            "text_encoder": _clean_text(item.get("text_encoder"))[:120],
+            "prompt_format": _clean_text(item.get("prompt_format"))[:120],
             "purpose": _clean_text(item.get("purpose"))[:240],
             "image_slots": image_slots,
             "task_modes": task_modes,
@@ -1226,6 +1228,10 @@ def _prompt_options_from_payload(payload, lang):
         "roleplay_visual_request": _clean_multiline_text(
             payload.get("roleplay_visual_request") or payload.get("message") or ""
         ),
+        "roleplay_visual_prompt": _clean_multiline_text(payload.get("roleplay_visual_prompt") or ""),
+        "roleplay_visual_preset": _clean_text(payload.get("roleplay_visual_preset"))[:200],
+        "roleplay_visual_capability": payload.get("roleplay_visual_capability") if isinstance(payload.get("roleplay_visual_capability"), dict) else {},
+        "roleplay_visual_snapshot": payload.get("roleplay_visual_snapshot") if isinstance(payload.get("roleplay_visual_snapshot"), dict) else {},
         "roleplay_autoplay": _truthy(payload.get("roleplay_autoplay"), False),
         "history": payload.get("history") if isinstance(payload.get("history"), list) else [],
     }
@@ -1489,7 +1495,18 @@ def _describe_chat_system_prompt(options, lang):
     if chat_mode == "roleplay":
         roleplay_session = options.get("roleplay_session") or {}
         roleplay_request_kind = str(options.get("roleplay_request_kind") or "character").strip().lower()
-        if roleplay_request_kind in {"visual_draft", "roleplay_visual_draft", "scene_image_draft"}:
+        if roleplay_request_kind in {"visual_reformat", "roleplay_visual_reformat", "scene_prompt_reformat"}:
+            sections.append(
+                vlm_roleplay.build_visual_reformat_prompt(
+                    roleplay_session,
+                    options.get("roleplay_visual_snapshot") or {},
+                    options.get("roleplay_visual_prompt") or "",
+                    options.get("roleplay_visual_preset") or "",
+                    options.get("roleplay_visual_capability") or {},
+                    lang,
+                )
+            )
+        elif roleplay_request_kind in {"visual_draft", "roleplay_visual_draft", "scene_image_draft"}:
             sections.append(
                 vlm_roleplay.build_visual_draft_prompt(
                     roleplay_session,
@@ -1503,6 +1520,18 @@ def _describe_chat_system_prompt(options, lang):
                 vlm_roleplay.build_roleplay_form_draft_prompt(
                     roleplay_session,
                     options.get("roleplay_form_target") or "character",
+                    options.get("roleplay_form_request") or "",
+                    lang,
+                )
+            )
+        elif roleplay_request_kind in {
+            "character_image_prompt",
+            "roleplay_character_image_prompt",
+            "character_image_analysis",
+        }:
+            sections.append(
+                vlm_roleplay.build_character_image_analysis_prompt(
+                    roleplay_session,
                     options.get("roleplay_form_request") or "",
                     lang,
                 )
@@ -1744,7 +1773,14 @@ def build_runtime_payload(payload):
             vlm_agent_router.ROLE_PLAYER_PROXY
             if prompt_options["roleplay_request_kind"] in {"player_proxy", "proxy", "autoplay_player"}
             else vlm_agent_router.ROLE_VISUAL_DIRECTOR
-            if prompt_options["roleplay_request_kind"] in {"visual_draft", "roleplay_visual_draft", "scene_image_draft"}
+            if prompt_options["roleplay_request_kind"] in {
+                "visual_draft",
+                "roleplay_visual_draft",
+                "scene_image_draft",
+                "visual_reformat",
+                "roleplay_visual_reformat",
+                "scene_prompt_reformat",
+            }
             else vlm_agent_router.ROLE_CHARACTER_REPLY
         ) if roleplay_active else "",
         "roleplay_agent_routing": prompt_options.get("agent_routing") if roleplay_active else {},
@@ -1757,6 +1793,10 @@ def build_runtime_payload(payload):
         "roleplay_form_target": prompt_options["roleplay_form_target"],
         "roleplay_form_request": prompt_options["roleplay_form_request"],
         "roleplay_visual_request": prompt_options["roleplay_visual_request"],
+        "roleplay_visual_prompt": prompt_options["roleplay_visual_prompt"],
+        "roleplay_visual_preset": prompt_options["roleplay_visual_preset"],
+        "roleplay_visual_capability": prompt_options["roleplay_visual_capability"],
+        "roleplay_visual_snapshot": prompt_options["roleplay_visual_snapshot"],
         "describe_prompt_target_preset": prompt_options["target_preset"],
         "describe_prompt_target_backend_engine": prompt_options["target_backend_engine"],
         "describe_prompt_target_task_method": prompt_options["target_task_method"],
@@ -4226,8 +4266,10 @@ def run_describe_vlm_chat(payload):
             "creative_director_mode": "custom_api",
         }
 
+    params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
+    roleplay_request_kind = str(params.get("roleplay_request_kind") or payload.get("roleplay_request_kind") or "").strip().lower()
+
     if request_kind == "roleplay_form_draft":
-        params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
         target = params.get("roleplay_form_target") or payload.get("roleplay_form_target") or "character"
         draft = vlm_roleplay.parse_roleplay_form_draft(
             result.get("text") or result.get("raw_text") or "",
@@ -4252,8 +4294,62 @@ def run_describe_vlm_chat(payload):
             "agent_actions": [],
         }
 
-    params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
-    roleplay_request_kind = str(params.get("roleplay_request_kind") or payload.get("roleplay_request_kind") or "").strip().lower()
+    if request_kind in {"roleplay_character_image_prompt", "character_image_prompt"} or roleplay_request_kind in {
+        "character_image_prompt",
+        "roleplay_character_image_prompt",
+        "character_image_analysis",
+    }:
+        analysis = vlm_roleplay.parse_character_image_analysis_response(
+            result.get("text") or result.get("raw_text") or ""
+        )
+        if not analysis.get("ok"):
+            return {
+                "ok": False,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "character_image_analysis_not_json",
+                "details": "The character image analyst did not return a usable prompt.",
+                "character_image_prompt": analysis,
+            }
+        return {
+            "ok": True,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "text": "",
+            "limited_actions": [],
+            "agent_actions": [],
+            "character_image_prompt": analysis,
+        }
+
+    if request_kind in {"roleplay_visual_reformat", "visual_reformat"} or roleplay_request_kind in {
+        "visual_reformat",
+        "roleplay_visual_reformat",
+        "scene_prompt_reformat",
+    }:
+        parsed_reformat = vlm_roleplay.parse_visual_prompt_reformat_response(
+            result.get("text") or result.get("raw_text") or ""
+        )
+        if not parsed_reformat.get("ok"):
+            return {
+                "ok": False,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "error": "roleplay_visual_reformat_not_json",
+                "details": "The roleplay visual director did not return a usable adapted prompt.",
+                "roleplay_visual_candidate": parsed_reformat,
+            }
+        return {
+            "ok": True,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "text": "",
+            "limited_actions": [],
+            "agent_actions": [],
+            "roleplay_agent_route": result.get("agent_route"),
+            "roleplay_visual_prompt": parsed_reformat.get("prompt") or "",
+            "roleplay_visual_candidate": parsed_reformat.get("candidate") or {},
+        }
+
     if request_kind in {"roleplay_visual_draft", "visual_draft"} or roleplay_request_kind in {
         "visual_draft",
         "roleplay_visual_draft",
@@ -4386,6 +4482,12 @@ def run_describe_vlm_chat(payload):
         "visual_draft",
         "roleplay_visual_draft",
         "scene_image_draft",
+        "character_image_prompt",
+        "roleplay_character_image_prompt",
+        "character_image_analysis",
+        "visual_reformat",
+        "roleplay_visual_reformat",
+        "scene_prompt_reformat",
     }:
         roleplay_session = params.get("roleplay_session")
         roleplay_update = _run_roleplay_director(

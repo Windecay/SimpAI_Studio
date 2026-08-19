@@ -100,7 +100,7 @@
     "default_aspect_ratio": "1024*1024",
     "default_image_number": 1,
     "default_overwrite_step": 4,
-    "default_prompt": "",
+    "default_prompt": "Remove blur & noise",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},
     "embeddings_downloads": {},

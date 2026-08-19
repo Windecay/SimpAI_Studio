@@ -550,7 +550,10 @@ def switch_scene_theme_select_with_standard_generation_defaults(state, theme=Non
 def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, theme=None, video=None, audio=None):
     scenes = state.get("scene_frontend",{})
     requested_theme = _resolve_scene_theme_name(scenes, theme)
-    theme = requested_theme or _resolve_active_scene_theme(state, theme)
+    # A theme event carries the newly selected component value. State remains
+    # the fallback for upload/clear callbacks that do not carry a valid theme.
+    active_theme = _resolve_active_scene_theme(state)
+    theme = requested_theme or active_theme
     visible = scene_disvisible_with_optional_inputs(scenes)
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number

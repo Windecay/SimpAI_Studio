@@ -1361,6 +1361,45 @@ def _canvas_scene_themes(scene_frontend):
     return themes
 
 
+def get_scene_theme_choices():
+    """Return every built-in scene theme accepted by the legacy Gradio Radio."""
+    choices = []
+    seen = set()
+
+    def _append(values):
+        if isinstance(values, str):
+            values = [values]
+        if not isinstance(values, (list, tuple, set)):
+            return
+        for value in values:
+            text = str(value or "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                choices.append(text)
+
+    _append(getattr(modules.flags, "scene_themes", []))
+    preset_root = os.path.abspath("./presets")
+    try:
+        preset_files = [
+            path for path in util.get_files_from_folder(preset_root, [".json"], None)
+            if is_preset_file_allowed(path)
+        ]
+    except Exception:
+        preset_files = []
+
+    for relative_path in preset_files:
+        try:
+            with open(os.path.join(preset_root, relative_path), "r", encoding="utf-8") as preset_file:
+                preset_content = json.load(preset_file)
+            default_engine = preset_content.get("default_engine", {})
+            scene_frontend = default_engine.get("scene_frontend", {}) if isinstance(default_engine, dict) else {}
+            _append(_canvas_scene_themes(scene_frontend))
+        except Exception:
+            continue
+
+    return choices or ["Scene Theme / 场景主题"]
+
+
 def _scene_disvisible_with_optional_inputs(scene_frontend):
     if not isinstance(scene_frontend, dict):
         return []
@@ -2006,7 +2045,59 @@ def wait_for_vlm_completion(check_interval=0.5):
     except Exception as e:
         logger.error(f"VLM Error: {str(e)}")
         return None
+
+
+def _format_scene_prompt_template(value, additional_prompt):
+    text = str(value or "")
+    if not text:
+        return ""
+    try:
+        return text.format(additional_prompt=additional_prompt)
+    except Exception:
+        return text
+
+
+def _refresh_scene_prompt_for_current_theme(prompt, state, scene_theme, additional_prompt, additional_prompt_2):
+    if not isinstance(state, dict) or not isinstance(state.get("scene_frontend"), dict):
+        return None
+
+    scene_frontend = state["scene_frontend"]
+    resolved_theme = _resolve_scene_generation_theme(state, scene_frontend, scene_theme)
+    current_template = _scene_value_by_theme(scene_frontend, resolved_theme, "prompt", "")
+    combined_additional_prompt = f"{additional_prompt or ''}{additional_prompt_2 or ''}"
+    current_prompt = _format_scene_prompt_template(current_template, combined_additional_prompt).strip()
+    existing_prompt = str(prompt or "").strip()
+    if not current_prompt or not existing_prompt:
+        return None
+
+    raw_prompts = scene_frontend.get("prompt", {})
+    if isinstance(raw_prompts, dict):
+        prompt_values = raw_prompts.values()
+    elif isinstance(raw_prompts, str):
+        prompt_values = [raw_prompts]
+    else:
+        prompt_values = []
+    known_prompts = {
+        _format_scene_prompt_template(value, combined_additional_prompt).strip()
+        for value in prompt_values
+        if str(value or "").strip()
+    }
+    if existing_prompt not in known_prompts:
+        return None
+    return current_prompt
+
+
 def avoid_empty_prompt_for_scene(prompt, state, canvas_image, input_image1, scene_theme, additional_prompt, additional_prompt_2):
+    refreshed_prompt = _refresh_scene_prompt_for_current_theme(
+        prompt,
+        state,
+        scene_theme,
+        additional_prompt,
+        additional_prompt_2,
+    )
+    if refreshed_prompt is not None:
+        return refreshed_prompt
+
     describe_prompt = None
     if not prompt and 'scene_frontend' in state:
         visible = _scene_disvisible_with_optional_inputs(state["scene_frontend"])
@@ -2222,8 +2313,26 @@ def _scene_director_audio_status_for_generation(scene_director_enabled=False, sc
 
 
 def _clean_scene_reference_video_path(value):
+    try:
+        from extras.media_normalize import normalize_gradio_file_value
+
+        normalized = normalize_gradio_file_value(value)
+        if normalized is not None:
+            value = normalized
+    except Exception:
+        pass
     if isinstance(value, dict):
         value = value.get("path") or value.get("video") or value.get("name")
+    if hasattr(value, "path"):
+        try:
+            value = value.path
+        except Exception:
+            pass
+    if hasattr(value, "name") and not isinstance(value, str):
+        try:
+            value = value.name
+        except Exception:
+            pass
     text = str(value or "").strip().strip('"')
     if not text or text.lower() in ("none", "null"):
         return None
@@ -2267,9 +2376,12 @@ def _apply_scene_reference_video_backend_param(backend_params, reference_video):
 
 
 def _apply_scene_video_backend_params(backend_params, video, mask_video, reference_video):
-    backend_params["video"] = video
-    backend_params["mask_video"] = mask_video
-    _apply_scene_reference_video_backend_param(backend_params, reference_video)
+    backend_params["video"] = _clean_scene_reference_video_path(video)
+    backend_params["mask_video"] = _clean_scene_reference_video_path(mask_video)
+    _apply_scene_reference_video_backend_param(
+        backend_params,
+        _clean_scene_reference_video_path(reference_video),
+    )
 
 
 def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None):
@@ -2307,8 +2419,15 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
     
     if 'scene_frontend' in state_params:
         scene_frontend = state_params['scene_frontend']
+        scene_theme = _resolve_scene_generation_theme(state_params, scene_frontend, scene_theme)
         disvisible = _scene_disvisible_with_optional_inputs(scene_frontend)
         disvisible = set(disvisible)
+
+        scene_switch_option3 = _resolve_scene_generation_switch_option3(
+            scene_frontend,
+            scene_theme,
+            scene_switch_option3,
+        )
 
         if 'scene_canvas_image' in disvisible:
             scene_canvas_image = None
@@ -2503,6 +2622,18 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video_trim_payload,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
+        if scene_task_method_value == "wan_scail2_sam3_cn":
+            mask_path = _clean_scene_reference_video_path(sam3_mask_video)
+            if not mask_path or not os.path.isfile(mask_path):
+                lang = normalize_ui_lang(state_params.get("__lang"))
+                if lang == "zh":
+                    raise gr.Error("SAM3 蒙版视频无效，请重新上传后再生成。")
+                raise gr.Error("The SAM3 mask video is missing or invalid. Please upload it again.")
+            logger.info(
+                "[Generate][SCAIL2Mask] web_mask_ready path=%s size=%s",
+                mask_path,
+                os.path.getsize(mask_path),
+            )
         try:
             import modules.scene_director_webui as scene_director_webui
             scene_director_capability = scene_director_webui._scene_director_capability_from_state(state_params, scene_theme)
@@ -3912,6 +4043,29 @@ def _resolve_scene_theme(scene_frontend, current_theme=None):
     if isinstance(current_theme, str) and current_theme and (not theme_list or current_theme in theme_list):
         return current_theme
     return theme_list[0] if theme_list else ""
+
+
+def _resolve_scene_generation_theme(state_params, scene_frontend, component_theme=None):
+    """Resolve the generation theme from the current preset-owned state."""
+    if not isinstance(scene_frontend, dict):
+        return component_theme
+    if isinstance(state_params, dict):
+        preset = str(state_params.get("__preset") or "").strip()
+        theme_owner = str(state_params.get("__scene_theme_preset") or "").strip()
+        state_theme = state_params.get("scene_theme") or state_params.get("__scene_theme")
+        if isinstance(state_theme, str) and state_theme.strip() and (not theme_owner or not preset or theme_owner == preset):
+            resolved = _resolve_scene_theme(scene_frontend, state_theme)
+            if resolved:
+                return resolved
+    return _resolve_scene_theme(scene_frontend, component_theme)
+
+
+def _resolve_scene_generation_switch_option3(scene_frontend, scene_theme, component_value):
+    if not isinstance(scene_frontend, dict):
+        return component_value
+    if 'scene_switch_option3' not in scene_frontend.get('disinteractive', []):
+        return component_value
+    return bool(_scene_value_by_theme(scene_frontend, scene_theme, 'switch_option3', False))
 
 
 def _scene_number_default_specs():

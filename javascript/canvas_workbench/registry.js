@@ -30,7 +30,6 @@
     };
     const BUILTIN_VLM_VERSION_CHOICES = Object.freeze([
         'Qwen3.5-9B-abliterated-Q4_K_M',
-        'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
@@ -40,7 +39,6 @@
     const VLM_VERSION_CHOICES = BUILTIN_VLM_VERSION_CHOICES.slice();
     const BUILTIN_VLM_CONTEXT_WINDOWS = Object.freeze({
         'Qwen3.5-9B-abliterated-Q4_K_M': 8192,
-        'Qwen3.5-9B-abliterated-Q2_K': 8192,
         'Qwen3.5-9B-abliterated-Q6_K': 8192,
         'Qwen3.5-9B-abliterated-Q8_0': 8192,
         'Gemma4-12B-it-heretic-Q4_K_XL': 8192,

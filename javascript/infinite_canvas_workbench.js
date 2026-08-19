@@ -55,7 +55,6 @@
     };
     const VLM_VERSION_CHOICES = WORKBENCH_VLM.VLM_VERSION_CHOICES || WORKBENCH_REGISTRY.VLM_VERSION_CHOICES || [
         'Qwen3.5-9B-abliterated-Q4_K_M',
-        'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',

@@ -28,6 +28,7 @@ MAX_MEMORY_ITEMS = 120
 MAX_EVENT_BYTES = 512 * 1024
 MAX_AUTOPLAY_TURNS = 1000
 MAX_CURRENT_APPEARANCE_IMAGES = 3
+MAX_CHARACTER_STATE_IMAGE_HISTORY = 30
 MAX_ROLEPLAY_CHARACTERS = 20
 MAX_CHARACTER_STATE_FIELDS = 40
 PLAYER_STATE_STATUSES = {"present", "absent"}
@@ -180,6 +181,28 @@ def _clean_asset_ids(value: Any, limit: int = 5) -> list[str]:
     return [_id(item, "asset") for item in _clean_string_list(value, limit)]
 
 
+def _normalize_character_state_image_history(value: Any) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    for item in _list(value, MAX_CHARACTER_STATE_IMAGE_HISTORY):
+        if not isinstance(item, dict):
+            continue
+        asset_ids = _clean_asset_ids(item.get("asset_ids") or item.get("asset_id"), MAX_CURRENT_APPEARANCE_IMAGES)
+        if not asset_ids:
+            continue
+        history.append({
+            "id": _id(item.get("id"), "state_image"),
+            "asset_ids": asset_ids,
+            "label": _text(item.get("label"), 200),
+            "appearance": _text(item.get("appearance"), 1200),
+            "state_text": _text(item.get("state_text"), 4000),
+            "state_fields": _clean_state_fields(item.get("state_fields")),
+            "source": _text(item.get("source"), 80) or "roleplay",
+            "turn_id": _text(item.get("turn_id"), 200),
+            "created_at": _text(item.get("created_at"), 80) or _now(),
+        })
+    return history
+
+
 def _normalize_character_runtime(value: Any) -> dict[str, Any]:
     source = _dict(value)
     return {
@@ -241,6 +264,9 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "background": _text(source.get("background")),
         "personality": _text(source.get("personality")),
         "speech_style": _text(source.get("speech_style")),
+        "image_prompt": _text(source.get("image_prompt") or source.get("visual_prompt"), 12000),
+        "negative_prompt": _text(source.get("negative_prompt"), 4000),
+        "state_image_history": _normalize_character_state_image_history(source.get("state_image_history")),
         "behavior_rules": _clean_string_list(source.get("behavior_rules")),
         "first_message": _text(source.get("first_message")),
         "example_dialogues": _list(source.get("example_dialogues"), 20),
@@ -437,6 +463,8 @@ def build_roleplay_form_draft_prompt(
                 "behavior_rules": [],
                 "first_message": "",
                 "example_dialogues": [],
+                "image_prompt": "",
+                "negative_prompt": "",
             }
         }
         current = normalized.get("character", {})
@@ -482,17 +510,35 @@ def build_visual_draft_prompt(
     state = visible_state_for_visual(normalized)
     scene = state.get("scene", {}) if isinstance(state, dict) else {}
     player_state = state.get("player_state", {}) if isinstance(state, dict) else {}
-    character_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
+    subject_options = _visual_character_options(normalized)
+    character_ids = [item["id"] for item in subject_options]
     if not character_ids:
         character_ids = [_id(normalized.get("active_character_id") or normalized["character"].get("id"), "character")]
     characters = normalized.get("characters") if isinstance(normalized.get("characters"), dict) else {}
     runtimes = normalized.get("story_state", {}).get("characters", {})
     character_catalog = []
-    for character_id in character_ids:
+    for subject in subject_options:
+        subject_id = subject["id"]
+        owner_type = subject.get("owner_type") or "character"
+        if owner_type == "player":
+            persona = normalized.get("persona") if isinstance(normalized.get("persona"), dict) else {}
+            player_state = normalized.get("story_state", {}).get("player_state", {})
+            character_catalog.append({
+                "id": subject_id,
+                "owner_type": "player",
+                "name": _text(persona.get("name") or subject.get("label") or "玩家", 200),
+                "identity": _text(persona.get("identity"), 800),
+                "appearance": _text(persona.get("appearance"), 800),
+                "current_state": _text(player_state.get("state_text"), 800),
+                "state_fields": _clean_state_fields(player_state.get("state_fields"), 20),
+            })
+            continue
+        character_id = subject_id
         card = characters.get(character_id) if isinstance(characters.get(character_id), dict) else {}
         runtime = runtimes.get(character_id) if isinstance(runtimes.get(character_id), dict) else {}
         character_catalog.append({
             "id": character_id,
+            "owner_type": "character",
             "name": _text(card.get("name") or character_id, 200),
             "identity": _text(card.get("identity"), 800),
             "appearance": _text(card.get("appearance"), 800),
@@ -526,7 +572,7 @@ def build_visual_draft_prompt(
             "Return JSON only. Do not include markdown, explanations, dialogue, or fields outside the requested shape.",
             "This is a draft only. Do not start generation, do not update story state, and do not claim that an image was created.",
             "Use only facts visible in the current scene. Do not add off-stage, unconscious, or absent characters.",
-            "visible_character_ids must contain only IDs from the provided character catalog. Keep the catalog order when possible.",
+            "visible_character_ids must contain only IDs from the provided subject catalog. The catalog may include the player with owner_type=player. Keep the catalog order when possible.",
              "The prompt must be an editable, complete image prompt for one coherent cinematic moment, with no captions or interface text.",
              "Reference images are optional. If a character has no reference image, use that character's textual identity, appearance, and current state from the catalog instead of removing the character.",
              "Choose a Preset only when the player's request clearly names one; otherwise leave preset empty so the UI can choose a compatible default.",
@@ -537,12 +583,81 @@ def build_visual_draft_prompt(
             json.dumps(scene, ensure_ascii=False, indent=2),
             "Player runtime state:",
             json.dumps(player_state, ensure_ascii=False, indent=2),
-            "Characters available for this story image:",
+            "Subjects available for this story image:",
             json.dumps(character_catalog, ensure_ascii=False, indent=2),
             "Recent conversation:",
             _history_text(history, limit=18),
             "Player's image direction:",
             _text(request_text, 5000),
+        ]
+    ).strip()
+
+
+def build_visual_reformat_prompt(
+    session: Any,
+    snapshot: Any = None,
+    current_prompt: Any = "",
+    target_preset: Any = "",
+    target_capability: Any = None,
+    lang: str = "cn",
+) -> str:
+    """Build a read-only prompt that converts a scene prompt to one Preset's format."""
+    normalized = normalize_roleplay_session(session)
+    visual = _dict(snapshot)
+    if not visual:
+        visual = build_visual_snapshot(normalized)
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    preset = _text(target_preset, 200) or "the selected image Preset"
+    capability = _dict(target_capability)
+    descriptor = " ".join(
+        _text(capability.get(key), 200)
+        for key in ("name", "backend_engine", "task_method", "text_encoder", "prompt_format", "purpose")
+        if _text(capability.get(key), 200)
+    )
+    preset_lower = f"{preset} {descriptor}".lower()
+    if "h3" in preset_lower or "minimax" in preset_lower:
+        format_rule = (
+            "Use the MiniMax H3 scene-prompt contract with these sections in order: "
+            "subject_definitions, summary, retention_analysis, detailed_description, "
+            "overall_soundscape, non_diegetic_music."
+        )
+    elif "anima" in preset_lower:
+        format_rule = (
+            "Return a concise English comma-separated positive tag prompt for Anima. "
+            "Do not use H3 section labels, markdown, explanations, or generation parameters."
+        )
+    elif any(marker in preset_lower for marker in ("danbooru", "tag prompt", "tags")):
+        format_rule = (
+            "Return a concise English comma-separated tag prompt. "
+            "Do not use H3 section labels, markdown, explanations, or generation parameters."
+        )
+    else:
+        format_rule = (
+            f"Return a self-contained natural-language image prompt in {reply_language}. "
+            "Do not use H3 section labels, markdown, explanations, JSON, or generation parameters."
+        )
+    state = visible_state_for_visual(normalized)
+    shape = {"visual_candidate": {"prompt": ""}}
+    return "\n\n".join(
+        [
+            "You are the visual prompt adapter for SimpAI Studio Roleplay mode.",
+            "Rewrite only the image prompt. This is a read-only conversion: do not update the roleplay session, scene, characters, assets, or player state.",
+            "Preserve every visible subject, identity, current appearance, clothing, action, relationship, location, time, weather, camera, lighting, important prop, and explicit constraint from the current scene and source prompt.",
+            "The source prompt may use another model's format, including MiniMax H3 sections. Extract its visual facts first, then express those same facts using the target Preset format.",
+            "Do not add characters who are absent, off-stage, unconscious, or not selected for the scene image. Do not invent story facts.",
+            f"Target Preset: {preset}",
+            "Target Preset metadata:",
+            json.dumps(capability, ensure_ascii=False, indent=2),
+            "Target formatting rule:",
+            format_rule,
+            "Return JSON only with this shape:",
+            json.dumps(shape, ensure_ascii=False, indent=2),
+            "Current visible visual snapshot:",
+            json.dumps(visual, ensure_ascii=False, indent=2),
+            "Current roleplay state visible to the visual director:",
+            json.dumps(state, ensure_ascii=False, indent=2),
+            "Source prompt to convert:",
+            _text(current_prompt, 16000),
         ]
     ).strip()
 
@@ -628,6 +743,8 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         "behavior_rules": raw.get("behavior_rules"),
         "first_message": raw.get("first_message"),
         "example_dialogues": raw.get("example_dialogues"),
+        "image_prompt": raw.get("image_prompt") or raw.get("visual_prompt"),
+        "negative_prompt": raw.get("negative_prompt"),
     })
     warnings = [
         f"missing_{field}"
@@ -639,6 +756,84 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         "target": target_key,
         "source_preserved": True,
         "character": character,
+        "warnings": warnings,
+    }
+
+
+def build_character_image_analysis_prompt(
+    session: Any,
+    request_text: Any = "",
+    lang: str = "cn",
+) -> str:
+    """Build a strict image-analysis request for a reusable character card."""
+    normalized = normalize_roleplay_session(session)
+    character = normalized.get("character") if isinstance(normalized.get("character"), dict) else {}
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    shape = {
+        "character": {
+            "name": "",
+            "identity": "",
+            "background": "",
+            "personality": "",
+            "speech_style": "",
+            "behavior_rules": [],
+            "first_message": "",
+            "example_dialogues": [],
+            "image_prompt": "",
+            "negative_prompt": "",
+        }
+    }
+    return "\n\n".join(
+        [
+            "You are the character-library image analyst for SimpAI Studio.",
+            f"Reply language: {reply_language}.",
+            "Inspect the attached character reference image and create one editable roleplay character-card draft.",
+            "Return JSON only. Do not include markdown, explanations, dialogue, or fields outside the requested shape.",
+            "The image is the primary source for visible appearance. Do not claim that a character, prompt, or image was saved.",
+            "Describe only visible or conservative inferences. If identity, background, personality, speech style, or first message cannot be known from the image, leave that field empty.",
+            "image_prompt must be a complete, editable prompt for generating a clean fixed character reference image. Preserve face, hairstyle, body proportions, age impression, clothing, colors, accessories, pose, framing, and background cues visible in the image.",
+            "negative_prompt should contain only useful exclusions for identity/reference-image generation, not a long generic quality list.",
+            "JSON shape:",
+            json.dumps(shape, ensure_ascii=False, indent=2),
+            "Current character-card values, which may be empty:",
+            json.dumps(character, ensure_ascii=False, indent=2),
+            "Additional user request:",
+            _text(request_text, 3000),
+        ]
+    ).strip()
+
+
+def parse_character_image_analysis_response(text: Any) -> dict[str, Any]:
+    """Parse the image analyst response into editable character-card fields."""
+    data = _extract_json_object(text)
+    if not isinstance(data, dict):
+        return {
+            "ok": False,
+            "character": default_character_card(),
+            "warnings": ["character_image_analysis_response_not_json"],
+        }
+    raw = data.get("character") if isinstance(data.get("character"), dict) else data
+    character = default_character_card({
+        "id": raw.get("id"),
+        "name": raw.get("name"),
+        "identity": raw.get("identity"),
+        "background": raw.get("background"),
+        "personality": raw.get("personality"),
+        "speech_style": raw.get("speech_style"),
+        "behavior_rules": raw.get("behavior_rules"),
+        "first_message": raw.get("first_message"),
+        "example_dialogues": raw.get("example_dialogues"),
+        "image_prompt": raw.get("image_prompt") or raw.get("visual_prompt") or data.get("image_prompt"),
+        "negative_prompt": raw.get("negative_prompt") or data.get("negative_prompt"),
+    })
+    warnings = []
+    if not character.get("image_prompt"):
+        warnings.append("character_image_prompt_empty")
+    return {
+        "ok": bool(character.get("image_prompt")),
+        "character": character,
+        "image_prompt": character.get("image_prompt", ""),
+        "negative_prompt": character.get("negative_prompt", ""),
         "warnings": warnings,
     }
 
@@ -694,13 +889,31 @@ def parse_visual_draft_response(text: Any) -> dict[str, Any]:
     return {"ok": True, "candidate": candidate, "warnings": warnings}
 
 
+def parse_visual_prompt_reformat_response(text: Any) -> dict[str, Any]:
+    """Parse a prompt-only visual adapter response."""
+    parsed = parse_visual_draft_response(text)
+    if not parsed.get("ok"):
+        return {
+            "ok": False,
+            "prompt": "",
+            "candidate": parsed.get("candidate") or {},
+            "warnings": parsed.get("warnings") or ["visual_prompt_reformat_response_not_json"],
+        }
+    candidate = parsed.get("candidate") if isinstance(parsed.get("candidate"), dict) else {}
+    prompt = _text(candidate.get("prompt"), 16000)
+    warnings = list(parsed.get("warnings") or [])
+    if not prompt:
+        warnings.append("visual_prompt_reformat_prompt_empty")
+    return {"ok": bool(prompt), "prompt": prompt, "candidate": candidate, "warnings": warnings}
+
+
 def default_persona(value: Any = None) -> dict[str, Any]:
     source = _dict(value)
     policy = _dict(source.get("proxy_policy"))
     return {
         "schema": PERSONA_SCHEMA,
         "version": 1,
-        "id": _id(source.get("id"), "persona"),
+        "id": _id(source.get("id") or "player", "player"),
         "name": _text(source.get("name"), 200),
         "appearance": _text(source.get("appearance")),
         "identity": _text(source.get("identity")),
@@ -1661,12 +1874,25 @@ def _visual_character_options(session: Any) -> list[dict[str, Any]]:
     cards = normalized.get("characters") if isinstance(normalized.get("characters"), dict) else {}
     runtimes = normalized.get("story_state", {}).get("characters", {})
     options = []
+    player_state = normalized.get("story_state", {}).get("player_state", {})
+    persona = normalized.get("persona") if isinstance(normalized.get("persona"), dict) else {}
+    if player_state.get("status") == "present":
+        player_id = _text(persona.get("id"), 160) or "player"
+        options.append({
+            "id": player_id,
+            "label": _text(persona.get("name") or "玩家", 200),
+            "owner_type": "player",
+            "description": _visual_owner_description(normalized, player_id, "player", {}),
+            "reference_asset_ids": _clean_asset_ids(persona.get("reference_asset_ids"), 5),
+        })
     for character_id in present_ids:
         card = cards.get(character_id) if isinstance(cards.get(character_id), dict) else {}
         runtime = runtimes.get(character_id) if isinstance(runtimes.get(character_id), dict) else {}
         options.append({
             "id": character_id,
             "label": _text(card.get("name") or character_id, 200),
+            "owner_type": "character",
+            "description": _visual_owner_description(normalized, character_id, "character", {}),
             "reference_asset_ids": _clean_asset_ids(
                 [
                     *(_clean_asset_ids(runtime.get("current_appearance_asset_ids"), MAX_CURRENT_APPEARANCE_IMAGES)),
@@ -1959,16 +2185,19 @@ def evaluate_autoplay_step(
 def _reference_asset_bindings(
     session: dict[str, Any],
     snapshot: Any = None,
+    *,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     bindings: list[dict[str, Any]] = []
     seen: set[str] = set()
+    binding_limit = max(1, min(20, int(limit or 5)))
     state = session.get("story_state") if isinstance(session.get("story_state"), dict) else {}
     runtime_characters = state.get("characters") if isinstance(state.get("characters"), dict) else {}
     visual = _dict(snapshot)
     visible_ids = _clean_string_list(visual.get("visible_characters"), 10)
 
     def add(owner_id: Any, owner_type: str, asset_id: Any) -> None:
-        if len(bindings) >= 5:
+        if len(bindings) >= binding_limit:
             return
         clean = _id(asset_id, "asset")
         identity = re.sub(r"^(?:asset|file):", "", clean, flags=re.IGNORECASE)
@@ -1988,14 +2217,28 @@ def _reference_asset_bindings(
     if not character_cards:
         character_cards = {character_id: character}
     character_ids = visible_ids or [character_id]
+    subject_options = {
+        str(item.get("id")): item
+        for item in _visual_character_options(session)
+        if isinstance(item, dict) and _text(item.get("id"), 160)
+    }
     if snapshot is not None:
         # The accepted current appearance is the first visual identity for a
         # scene. Fixed character references remain available as identity anchors.
         for current_id in character_ids:
+            subject = subject_options.get(str(current_id), {})
+            if subject.get("owner_type") == "player":
+                persona = session.get("persona", {}) if isinstance(session.get("persona"), dict) else {}
+                for asset_id in _clean_asset_ids(persona.get("reference_asset_ids"), 5):
+                    add(persona.get("id") or current_id, "player", asset_id)
+                continue
             runtime = runtime_characters.get(_id(current_id, "character"), {})
             for asset_id in _clean_asset_ids(runtime.get("current_appearance_asset_ids"), MAX_CURRENT_APPEARANCE_IMAGES):
                 add(current_id, "character_current", asset_id)
         for current_id in character_ids:
+            subject = subject_options.get(str(current_id), {})
+            if subject.get("owner_type") == "player":
+                continue
             normalized_id = _id(current_id, "character")
             card = character_cards.get(normalized_id, {})
             if card.get("avatar_asset_id"):
@@ -2009,9 +2252,10 @@ def _reference_asset_bindings(
         for asset_id in active_card.get("reference_asset_ids", []):
             add(character_id, "character", asset_id)
 
-    persona = session.get("persona", {}) if isinstance(session.get("persona"), dict) else {}
-    for asset_id in persona.get("reference_asset_ids", []):
-        add(persona.get("id"), "player", asset_id)
+    if snapshot is None:
+        persona = session.get("persona", {}) if isinstance(session.get("persona"), dict) else {}
+        for asset_id in persona.get("reference_asset_ids", []):
+            add(persona.get("id"), "player", asset_id)
     visual_config = session.get("visual_config", {}) if isinstance(session.get("visual_config"), dict) else {}
     for asset_id in visual_config.get("reference_asset_ids", []):
         add(visual_config.get("id"), "scene", asset_id)
@@ -2042,11 +2286,17 @@ def _visual_owner_description(session: dict[str, Any], owner_id: Any, owner_type
         return "; ".join(item for item in parts if item).strip()
     if owner_type == "player":
         persona = normalized.get("persona") if isinstance(normalized.get("persona"), dict) else {}
+        player_state = normalized.get("story_state", {}).get("player_state", {})
         return "; ".join(
             item for item in (
                 _text(persona.get("name") or owner_key, 200),
                 _text(persona.get("identity"), 800),
                 _text(persona.get("appearance"), 1200),
+                _text(player_state.get("state_text"), 1800),
+                "; ".join(
+                    f"{item['label']}: {item['value']}"
+                    for item in _clean_state_fields(player_state.get("state_fields"), 20)
+                ),
             ) if item
         ).strip()
     scene = snapshot if isinstance(snapshot, dict) else {}
@@ -2062,17 +2312,20 @@ def _visual_owner_description(session: dict[str, Any], owner_id: Any, owner_type
 
 def _visual_character_descriptions(session: dict[str, Any], snapshot: dict[str, Any]) -> list[str]:
     normalized = normalize_roleplay_session(session)
-    cards = normalized.get("characters") if isinstance(normalized.get("characters"), dict) else {}
-    runtimes = normalized.get("story_state", {}).get("characters", {})
+    options = {
+        str(item.get("id")): item
+        for item in _visual_character_options(normalized)
+        if isinstance(item, dict) and _text(item.get("id"), 160)
+    }
     descriptions = []
-    for character_id in _clean_string_list(snapshot.get("visible_characters"), MAX_ROLEPLAY_CHARACTERS):
-        card = cards.get(character_id) if isinstance(cards.get(character_id), dict) else {}
-        runtime = runtimes.get(character_id) if isinstance(runtimes.get(character_id), dict) else {}
-        description = _visual_owner_description(normalized, character_id, "character", snapshot)
+    for subject_id in _clean_string_list(snapshot.get("visible_characters"), MAX_ROLEPLAY_CHARACTERS):
+        subject = options.get(str(subject_id), {})
+        owner_type = _text(subject.get("owner_type"), 40) or "character"
+        description = _visual_owner_description(normalized, subject_id, owner_type, snapshot)
         if description:
             descriptions.append(description)
-        elif card.get("name"):
-            descriptions.append(_text(card.get("name"), 200))
+        elif subject.get("label"):
+            descriptions.append(_text(subject.get("label"), 200))
     return descriptions
 
 
@@ -2111,6 +2364,11 @@ def compile_visual_prompt(
     )
     grouped = _visual_reference_groups(references)
     visible_character_ids = _clean_string_list(visual.get("visible_characters"), MAX_ROLEPLAY_CHARACTERS)
+    subject_options = {
+        str(item.get("id")): item
+        for item in _visual_character_options(normalized)
+        if isinstance(item, dict) and _text(item.get("id"), 160)
+    }
     subject_lines = []
     retention_lines = []
     subject_index = 1
@@ -2119,8 +2377,11 @@ def compile_visual_prompt(
     # image changes the input mode for that subject, not whether the subject
     # is rendered at all.
     for character_id in visible_character_ids:
-        items = grouped.get(_id(character_id, "character"), [])
-        description = _visual_owner_description(normalized, character_id, "character", visual)
+        subject = subject_options.get(str(character_id), {})
+        owner_type = _text(subject.get("owner_type"), 40) or "character"
+        owner_key = _id(character_id, owner_type)
+        items = grouped.get(owner_key, [])
+        description = _visual_owner_description(normalized, character_id, owner_type, visual)
         if items:
             picture_tokens = ", ".join(f"<Picture {item['order']}>" for item in items)
             subject_lines.append(
@@ -2132,9 +2393,8 @@ def compile_visual_prompt(
                 f"<Subject {subject_index}> (text-only; no character reference image): "
                 f"{description or no_character_fallback}"
             )
-            retention_lines.append(
-                f"Character {character_id}: text_identity_and_current_state_fully_preserved"
-            )
+            retention_label = "Player" if owner_type == "player" else f"Character {character_id}"
+            retention_lines.append(f"{retention_label}: text_identity_and_current_state_fully_preserved")
         subject_index += 1
 
     scene_reference_items = [
@@ -2171,7 +2431,11 @@ def compile_visual_prompt(
     # Preserve any explicitly attached non-character reference, such as a
     # player identity image, without letting it replace visible text-only roles.
     handled_owner_keys = {
-        _id(character_id, "character") for character_id in visible_character_ids
+        _id(
+            character_id,
+            _text(subject_options.get(str(character_id), {}).get("owner_type"), 40) or "character",
+        )
+        for character_id in visible_character_ids
     }
     handled_owner_keys.update(
         _id(item.get("owner_id"), item.get("owner_type") or "owner")
@@ -2213,7 +2477,7 @@ def compile_visual_prompt(
     )
     detail_parts = [
         prompt_direction,
-        f"Visible characters: {', '.join(_clean_string_list(visual.get('visible_characters'), 10))}",
+        f"Visible characters: {', '.join(_text(subject_options.get(str(item), {}).get('label') or item, 200) for item in _clean_string_list(visual.get('visible_characters'), 10))}",
         f"Character descriptions: {' | '.join(character_descriptions)}",
         f"Location: {_text(visual.get('location'), 500)}",
         f"Time: {_text(visual.get('time'), 200)}",
@@ -2264,7 +2528,11 @@ def build_visual_generation_action(
     if not manual_request and frequency in {"off", "never", "disabled"}:
         return None
     snapshot = build_visual_snapshot(normalized, visual_candidate)
+    character_options = _visual_character_options(normalized)
     bindings = _reference_asset_bindings(normalized, snapshot)
+    all_snapshot = dict(snapshot)
+    all_snapshot["visible_characters"] = [item["id"] for item in character_options]
+    all_bindings = _reference_asset_bindings(normalized, all_snapshot)
     refs = [item["asset_id"] for item in bindings]
     task = "multi_image_edit" if len(refs) > 1 else "image_edit" if refs else "text_to_image"
     preferred = _text(normalized["visual_config"].get("preferred_preset"), 200)
@@ -2280,7 +2548,6 @@ def build_visual_generation_action(
         image_number = max(1, min(4, int(visual_candidate.get("image_number") or 1)))
     except (TypeError, ValueError):
         image_number = 1
-    character_options = _visual_character_options(normalized)
     visible_ids = snapshot.get("visible_characters", [])
     offer_text = (
         "A story scene image is ready to review."
@@ -2315,6 +2582,9 @@ def build_visual_generation_action(
         "prompt": prompt,
         "preset": preset,
         "preset_source": "session_preference" if preferred else "roleplay_visual",
+        "prompt_target_preset": preset,
+        "prompt_user_edited": False,
+        "prompt_reformat": {"state": "idle", "target_preset": preset, "request_id": "", "error": ""},
         "aspect_ratio": aspect_ratio,
         "image_number": image_number,
         "offer_text": offer_text,
@@ -2327,10 +2597,14 @@ def build_visual_generation_action(
             {
                 "id": item["id"],
                 "label": item["label"],
+                "owner_type": item.get("owner_type") or "character",
+                "description": item.get("description") or "",
+                "reference_asset_ids": item.get("reference_asset_ids") or [],
                 "selected": item["id"] in visible_ids,
             }
             for item in character_options
         ],
+        "roleplay_all_reference_bindings": all_bindings,
         "scene_id": snapshot.get("scene_id", ""),
         "session_id": normalized["id"],
         "branch_id": normalized["active_branch_id"],
@@ -2469,6 +2743,8 @@ def build_character_reference_generation_action(
         _text(character.get("background"), 1200),
         _text(character.get("personality"), 1200),
         _text(character.get("speech_style"), 1000),
+        _text(character.get("image_prompt"), 12000),
+        _text(character.get("negative_prompt"), 4000),
         request,
     ]
     if not any(values):
@@ -2485,6 +2761,8 @@ def build_character_reference_generation_action(
             f"Background: {_text(character.get('background'), 1200)}",
             f"Personality: {_text(character.get('personality'), 1200)}",
             f"Speech style: {_text(character.get('speech_style'), 1000)}",
+            f"Existing editable image prompt: {_text(character.get('image_prompt'), 12000)}",
+            f"Negative prompt: {_text(character.get('negative_prompt'), 4000)}",
             f"Player-requested image direction: {request}",
             "Do not add captions, interface text, logos, unrelated characters, or extra limbs.",
         ]
@@ -2981,9 +3259,13 @@ __all__ = [
     "default_character_card",
     "build_character_draft_from_system_prompt",
     "build_roleplay_form_draft_prompt",
+    "build_character_image_analysis_prompt",
     "build_visual_draft_prompt",
+    "build_visual_reformat_prompt",
     "parse_roleplay_form_draft",
+    "parse_character_image_analysis_response",
     "parse_visual_draft_response",
+    "parse_visual_prompt_reformat_response",
     "default_persona",
     "default_story_state",
     "default_roleplay_session",

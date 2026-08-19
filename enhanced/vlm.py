@@ -467,7 +467,6 @@ class VLM:
     # Version configuration.
     VERSIONS = {
         "Qwen3.5-9B-abliterated-Q4_K_M": _huihui_qwen35_vlm_config("Q4_K_M"),
-        "Qwen3.5-9B-abliterated-Q2_K": _huihui_qwen35_vlm_config("Q2_K"),
         "Qwen3.5-9B-abliterated-Q6_K": _huihui_qwen35_vlm_config("Q6_K"),
         "Qwen3.5-9B-abliterated-Q8_0": _huihui_qwen35_vlm_config("Q8_0"),
         "Gemma4-12B-it-heretic-Q4_K_XL": _gemma4_heretic_vlm_config(),

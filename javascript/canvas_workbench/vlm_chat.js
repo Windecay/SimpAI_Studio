@@ -7,7 +7,6 @@
 
     const VLM_VERSION_CHOICES = REGISTRY.VLM_VERSION_CHOICES || [
         'Qwen3.5-9B-abliterated-Q4_K_M',
-        'Qwen3.5-9B-abliterated-Q2_K',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
@@ -55,7 +54,6 @@
         VLM_CHAT_CONTEXT_CHARS_HARD_MAX: 18000,
         VLM_CONTEXT_WINDOWS: REGISTRY.VLM_CONTEXT_WINDOWS || {
             'Qwen3.5-9B-abliterated-Q4_K_M': 8192,
-            'Qwen3.5-9B-abliterated-Q2_K': 8192,
             'Qwen3.5-9B-abliterated-Q6_K': 8192,
             'Qwen3.5-9B-abliterated-Q8_0': 8192,
             'Gemma4-12B-it-heretic-Q4_K_XL': 8192,

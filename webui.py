@@ -4204,9 +4204,7 @@ with shared.gradio_root:
                         with gr.Column(elem_id="scene_primary_row"):
                             with gr.Row(elem_id="scene_prompt_row"):
                                 scene_additional_prompt = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, elem_id='scene_additional_prompt', elem_classes=['scene_input', 'simpai-mounted-hidden'])
-                            scene_theme_initial_choices = [choice for choice in modules.flags.scene_themes if str(choice).strip()]
-                            if not scene_theme_initial_choices:
-                                scene_theme_initial_choices = ["Scene Theme / 场景主题"]
+                            scene_theme_initial_choices = topbar.get_scene_theme_choices()
                             with gr.Row(elem_id="scene_theme_row"):
                                 scene_theme = gr.Radio(choices=scene_theme_initial_choices, label="Themes", value=scene_theme_initial_choices[0], visible=False, elem_id='scene_theme')
                         with gr.Row(elem_id="scene_duration_row"):
@@ -11249,19 +11247,99 @@ with shared.gradio_root:
                     or event_context.get("__preset")
                     or ""
                 ).strip()
+            state_rehydrated = False
+            if not (isinstance(state, dict) and isinstance(state.get("scene_frontend"), dict)) and source_preset:
+                context = dict(event_context) if isinstance(event_context, dict) else {}
+                user_did = str(
+                    context.get("user_did")
+                    or context.get("__did")
+                    or context.get("did")
+                    or ""
+                ).strip() or None
+                try:
+                    storage_preset = topbar._resolve_preset_storage_name(source_preset, user_did) or source_preset
+                    preset_content = modules.config.try_get_preset_content(storage_preset, user_did)
+                    preset_prepared = modules.meta_parser.parse_meta_from_preset(preset_content)
+                    engine_meta = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
+                    scene_frontend = engine_meta.get("scene_frontend") if isinstance(engine_meta, dict) else None
+                except Exception as error:
+                    logger.warning(
+                        "[UI-TRACE] scene_theme_state_rehydrate_failed | preset=%r, user_did=%r, error=%s",
+                        source_preset,
+                        user_did,
+                        error,
+                    )
+                    scene_frontend = None
+                if isinstance(scene_frontend, dict):
+                    restored_state = dict(context)
+                    if isinstance(state, dict):
+                        restored_state.update(state)
+                    restored_state["__preset"] = source_preset
+                    restored_state["scene_frontend"] = scene_frontend
+                    restored_state["__preset_prepared"] = preset_prepared
+                    backend_engine = str(
+                        engine_meta.get("backend_engine")
+                        or engine_meta.get("engine")
+                        or restored_state.get("engine")
+                        or "Z-image"
+                    )
+                    restored_state["engine"] = backend_engine
+                    restored_state["backend_engine"] = backend_engine
+                    restored_state["engine_type"] = engine_meta.get(
+                        "engine_type",
+                        restored_state.get("engine_type", "image"),
+                    )
+                    restored_state["__gallery_engine_type"] = restored_state["engine_type"]
+                    restored_state.setdefault("sstoken", context.get("sstoken", ""))
+                    restored_state.setdefault("__session", context.get("__session") or context.get("sstoken", ""))
+                    restored_state.setdefault("ua_hash", context.get("ua_hash", ""))
+                    restored_state.setdefault("__lang", context.get("__lang", args_manager.args.language))
+                    restored_state.setdefault("__theme", context.get("__theme", args_manager.args.theme))
+                    restored_state.setdefault(
+                        "__webpath",
+                        context.get("__webpath") or f'{args_manager.args.webroot}/file={os.getcwd()}',
+                    )
+                    restored_state.setdefault("__finished_nums_pages", context.get("__finished_nums_pages", "0,0"))
+                    restored_state.setdefault("preset_store", bool(context.get("preset_store", False)))
+                    restored_state.setdefault("__identity_session_seq", int(context.get("__identity_session_seq", 0) or 0))
+                    if user_did and not restored_state.get("user"):
+                        try:
+                            restored_state["user"] = shared.token.get_user_context(user_did)
+                        except Exception:
+                            pass
+                    restored_state["__scene_theme_preset"] = source_preset
+                    state = restored_state
+                    state_rehydrated = True
+                    logger.info(
+                        "[UI-TRACE] scene_theme_state_rehydrated | preset=%r, user_did=%r, theme=%r",
+                        source_preset,
+                        user_did,
+                        selected_theme,
+                    )
             if not modules.meta_parser.scene_theme_event_matches_preset(state, source_preset):
                 topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
                 topbar_params["__scene_theme_event_rejected"] = True
                 return state, gr_update(), topbar_params
             state, overwrite_step_update = modules.meta_parser.switch_scene_theme_select_with_standard_generation_defaults(state, selected_theme)
-            topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
+            if state_rehydrated:
+                topbar_params = dict(event_context) if isinstance(event_context, dict) else {}
+                topbar_params.update(
+                    {
+                        "__preset": state.get("__preset"),
+                        "__is_scene_frontend": True,
+                        "__scene_theme": state.get("scene_theme"),
+                        "__scene_theme_preset": state.get("__scene_theme_preset"),
+                        "__scene_theme_revision": int(state.get("__scene_theme_revision", 0) or 0),
+                    }
+                )
+            else:
+                topbar_params = topbar.update_topbar_js_params(state, include_canvas_catalogs=False)[0]
             topbar_params["__scene_theme_event_rejected"] = False
             return state, overwrite_step_update, topbar_params
 
         scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
-                   .then(fn=None, inputs=[scene_theme, system_params], js='(theme,params)=>{try{if(params&&params.__scene_theme_event_rejected){if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);return;} const resolvedTheme=String((params&&params.__scene_theme)||theme||"").trim(); if(window.markSimpleAISceneThemeChanged) window.markSimpleAISceneThemeChanged(resolvedTheme,params); if(typeof refresh_topbar_status_js==="function") refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] scene_theme_user_change_guard_failed",e);}}', queue=False, show_progress=False) \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); const resolvedTheme=String((state&&state.scene_theme)||theme||'').trim(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(fn=lambda state: None, inputs=[state_topbar], js="(state)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); const resolvedTheme=String((state&&state.scene_theme)||'').trim(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda state: None, inputs=[state_topbar], js='(state)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", state); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \

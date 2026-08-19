@@ -4802,6 +4802,22 @@ function scenePresetDefaultInputSelector(controlId) {
     return 'input[type="number"], input[type="range"]';
 }
 
+function getScenePresetDefaultInputs(root, selector) {
+    if (!root) return [];
+    const inputs = [];
+    try {
+        if (typeof root.matches === "function" && root.matches(selector)) {
+            inputs.push(root);
+        }
+    } catch (e) {}
+    try {
+        for (const input of Array.from(root.querySelectorAll(selector))) {
+            if (!inputs.includes(input)) inputs.push(input);
+        }
+    } catch (e) {}
+    return inputs;
+}
+
 function orderScenePresetValueInputs(inputs) {
     return Array.from(inputs || []).sort((a, b) => {
         const aRange = String(a && a.type || "").toLowerCase() === "range";
@@ -4821,7 +4837,7 @@ function rememberScenePresetResetDefault(root, controlId, value) {
     root.dataset.simpleaiScenePresetDefaultValue = serialized;
 
     let changed = 0;
-    for (const input of Array.from(root.querySelectorAll(scenePresetDefaultInputSelector(controlId)))) {
+    for (const input of getScenePresetDefaultInputs(root, scenePresetDefaultInputSelector(controlId))) {
         if (input.dataset.simpleaiScenePresetDefaultValue !== serialized) {
             input.dataset.simpleaiScenePresetDefaultValue = serialized;
             changed += 1;
@@ -4846,7 +4862,7 @@ function syncScenePresetResetDefaultFromCurrentParams(root, controlId) {
     rememberScenePresetResetDefault(root, controlId, defaults[controlId]);
     const props = propsByControl[controlId];
     if (props && typeof props === "object") {
-        for (const input of Array.from(root.querySelectorAll(scenePresetDefaultInputSelector(controlId)))) {
+        for (const input of getScenePresetDefaultInputs(root, scenePresetDefaultInputSelector(controlId))) {
             applyScenePresetControlProps(input, props);
         }
     }
@@ -4858,7 +4874,7 @@ function applyScenePresetDefaultValue(controlId, value, props) {
     if (!root) return 0;
     const isCheckbox = controlId.indexOf("scene_switch_option") === 0;
     const selector = scenePresetDefaultInputSelector(controlId);
-    const inputs = Array.from(root.querySelectorAll(selector));
+    const inputs = getScenePresetDefaultInputs(root, selector);
     let changed = rememberScenePresetResetDefault(root, controlId, value);
     for (const input of orderScenePresetValueInputs(inputs)) {
         changed += applyScenePresetControlProps(input, props);
@@ -4878,6 +4894,9 @@ function applyScenePresetDefaults(system_params, traceLabel) {
     const expectedPreset = normalizePresetName(system_params.__preset);
     const livePreset = normalizePresetName(liveParams && liveParams.__preset);
     if (expectedPreset && livePreset && expectedPreset !== livePreset) return false;
+    const pendingPreset = normalizePresetName(topbarPendingPreset);
+    const presetSwitching = !!system_params.__preset_switched
+        || !!(expectedPreset && pendingPreset && expectedPreset === pendingPreset && Date.now() < topbarPendingPresetUntil);
     const expectedThemeRevision = sceneThemeRevision(system_params);
     const liveThemeRevision = sceneThemeRevision(liveParams);
     if (liveThemeRevision > expectedThemeRevision) {
@@ -4887,7 +4906,7 @@ function applyScenePresetDefaults(system_params, traceLabel) {
     const expectedTheme = String(system_params.__scene_theme || system_params.scene_theme || "").trim();
     const liveTheme = String(liveParams && (liveParams.__scene_theme || liveParams.scene_theme) || "").trim();
     const selectedTheme = typeof sceneSelectedThemeValue === "function" ? sceneSelectedThemeValue() : "";
-    if (expectedTheme && ((liveTheme && expectedTheme !== liveTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
+    if (!presetSwitching && expectedTheme && ((liveTheme && expectedTheme !== liveTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
         try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.skip_theme_mismatch", { trace: traceLabel || "", expectedTheme, liveTheme }); } catch (e) {}
         return false;
     }
@@ -4943,7 +4962,7 @@ function resetScenePresetControlToStoredDefault(root, controlId) {
     const kind = root.dataset.simpleaiScenePresetDefaultKind || (controlId.indexOf("scene_switch_option") === 0 ? "checkbox" : "value");
     const isCheckbox = kind === "checkbox";
     const value = isCheckbox ? root.dataset.simpleaiScenePresetDefaultValue === "true" : (root.dataset.simpleaiScenePresetDefaultValue || "");
-    const inputs = Array.from(root.querySelectorAll(scenePresetDefaultInputSelector(controlId)));
+    const inputs = getScenePresetDefaultInputs(root, scenePresetDefaultInputSelector(controlId));
     if (!inputs.length) return false;
 
     scenePresetDefaultSyncApplying = true;
@@ -4984,6 +5003,10 @@ function scheduleScenePresetDefaultSync(system_params, traceLabel) {
             || null;
         const expectedTheme = String(system_params.__scene_theme || system_params.scene_theme || "").trim();
         const currentTheme = String(current && (current.__scene_theme || current.scene_theme) || "").trim();
+        const expectedPreset = normalizePresetName(system_params.__preset);
+        const pendingPreset = normalizePresetName(topbarPendingPreset);
+        const presetSwitching = !!system_params.__preset_switched
+            || !!(expectedPreset && pendingPreset && expectedPreset === pendingPreset && Date.now() < topbarPendingPresetUntil);
         const expectedThemeRevision = sceneThemeRevision(system_params);
         const currentThemeRevision = sceneThemeRevision(current);
         if (currentThemeRevision > expectedThemeRevision) {
@@ -4991,7 +5014,7 @@ function scheduleScenePresetDefaultSync(system_params, traceLabel) {
             return;
         }
         const selectedTheme = typeof sceneSelectedThemeValue === "function" ? sceneSelectedThemeValue() : "";
-        if (expectedTheme && ((currentTheme && expectedTheme !== currentTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
+        if (!presetSwitching && expectedTheme && ((currentTheme && expectedTheme !== currentTheme) || (selectedTheme && expectedTheme !== selectedTheme))) {
             try { simpaiUiTrace("log", "[UI-TRACE] scene_preset_defaults.cancel_theme_changed", { trace: traceLabel || "", delay, expectedTheme, currentTheme, selectedTheme }); } catch (e) {}
             return;
         }
@@ -12549,8 +12572,14 @@ function getCheckboxCheckedByWrapperId(wrapperId) {
             wrapper = null;
         }
     }
-    if (!wrapper || !wrapper.querySelector) return null;
-    const input = wrapper.querySelector('input[type="checkbox"]');
+    if (!wrapper) return null;
+    let input = null;
+    try {
+        if (typeof wrapper.matches === "function" && wrapper.matches('input[type="checkbox"]')) {
+            input = wrapper;
+        }
+    } catch (e) {}
+    if (!input && wrapper.querySelector) input = wrapper.querySelector('input[type="checkbox"]');
     if (!input) return null;
     return !!input.checked;
 }

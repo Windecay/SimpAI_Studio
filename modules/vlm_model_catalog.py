@@ -430,7 +430,10 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             projectors_by_root.setdefault(root_key, []).append(absolute_path)
     for directory, entries in grouped.items():
         for root, relative_path, absolute_path in entries:
-            if is_visual_component_filename(absolute_path) or os.path.normcase(absolute_path) in claimed_paths:
+            if (
+                is_visual_component_filename(absolute_path)
+                or os.path.normcase(absolute_path) in claimed_paths
+            ):
                 continue
             metadata = _cached_gguf_metadata(absolute_path)
             detected = infer_gguf_handler(metadata, os.path.basename(absolute_path))

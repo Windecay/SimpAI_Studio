@@ -65,8 +65,54 @@
                 "Character Replacement": "wan_scail2_cn"
             },
             "prompt": {
-                "Character Motion Transfer": "Use the driving video to guide the reference character's motion. Preserve the reference character's facial identity, clothing, body shape, and distinctive visual features. Keep the motion, lighting, camera movement, and temporal consistency natural.",
-                "Character Replacement": "Replace the tracked person in the driving video with the reference character. Keep the body motion, camera movement, lighting, and scene context natural and temporally consistent."
+                "Character Motion Transfer": "Use the driving video to guide the reference character's motion. Preserve the reference character's facial identity, clothing, body shape, and distinctive visual features. Keep the motion, lighting, camera movement, and temporal consistency natural. 只参考视频的动作，严格保留首帧图片中的人的形象，只改变人的动作，保留首帧图片中人的身体各个部位的比例",
+                "Character Replacement": "严格保留参考图片中的人的形象，保留参考图片中人的身体各个部位的比例，严格保持角色画风不变。"
+            },
+            "loras": {
+                "Character Motion Transfer": [
+                    [
+                        "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+                        0.8
+                    ],
+                    [
+                        "wan2.1_SCAIL_2_DPO_lora_bf16.safetensors",
+                        1.0
+                    ],
+                    [
+                        "wan2.1_SCAIL_2_relight_lora_bf16.safetensors",
+                        0.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ],
+                "Character Replacement": [
+                    [
+                        "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+                        0.8
+                    ],
+                    [
+                        "wan2.1_SCAIL_2_DPO_lora_bf16.safetensors",
+                        1.0
+                    ],
+                    [
+                        "wan2.1_SCAIL_2_relight_lora_bf16.safetensors",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ],
+                    [
+                        "None",
+                        1.0
+                    ]
+                ]
             },
             "var_number_min": 0,
             "var_number_max": 60,
@@ -161,7 +207,7 @@
             1.0
         ],
         [
-            "None",
+            "wan2.1_SCAIL_2_relight_lora_bf16.safetensors",
             1.0
         ],
         [
@@ -183,7 +229,7 @@
     "default_clip_model": "nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
     "default_image_number": 1,
     "default_overwrite_step": 6,
-    "default_prompt": "",
+    "default_prompt": "Use the driving video to guide the reference character's motion. Preserve the reference character's facial identity, clothing, body shape, and distinctive visual features. Keep the motion, lighting, camera movement, and temporal consistency natural. 只参考视频的动作，严格保留首帧图片中的人的形象，只改变人的动作，保留首帧图片中人的身体各个部位的比例",
     "default_prompt_negative": "low quality, blurry, distorted body, extra limbs, identity drift, inconsistent clothing, broken hands, bad anatomy",
     "checkpoint_downloads": {},
     "embeddings_downloads": {},
@@ -196,6 +242,7 @@
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors,https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
         "loras,lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors,738005744,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
         "loras,wan2.1_SCAIL_2_DPO_lora_bf16.safetensors,1226936552,0,https://modelscope.cn/models/Comfy-Org/SCAIL-2/resolve/master/loras/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors,https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/loras/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors",
+        "loras,wan2.1_SCAIL_2_relight_lora_bf16.safetensors,1226936552,0,https://modelscope.cn/models/Comfy-Org/SCAIL-2/resolve/master/loras/wan2.1_SCAIL_2_relight_lora_bf16.safetensors,https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/loras/wan2.1_SCAIL_2_relight_lora_bf16.safetensors",
         "checkpoints,sam3.1_multiplex_fp16.safetensors,1745546848,0,https://www.modelscope.cn/models/Comfy-Org/sam3.1/resolve/master/checkpoints/sam3.1_multiplex_fp16.safetensors,https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
         "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl"
     ]
