@@ -26,6 +26,8 @@
     const MAX_ROLEPLAY_STATE_FIELDS = 40;
     const MAX_ROLEPLAY_STATE_FIELD_LABEL = 120;
     const MAX_ROLEPLAY_STATE_FIELD_VALUE = 500;
+    const MAX_ROLEPLAY_STATE_CHANGE_PREVIEW = 260;
+    const MAX_ROLEPLAY_STATE_CHANGE_ROWS = 8;
     const MAX_ROLEPLAY_REFERENCE_BYTES = 80 * 1024 * 1024;
     const IMAGE_COMPRESSION_CANDIDATES = [
         { maxSide: IMAGE_PRIMARY_MAX_SIDE, quality: 0.85 },
@@ -69,6 +71,7 @@
     const CONVERSATIONS_VERSION = 2;
     const MAX_SAVED_CONVERSATIONS = 24;
     const MAX_CONVERSATIONS_STORAGE_LENGTH = 3500000;
+    const MAX_CONVERSATION_RECORD_LENGTH = 3000000;
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
     const USER_SYSTEM_PROMPT_TEMPLATE_SAVE_ENDPOINT = '/vlm-user-system-prompt-templates/save';
     const USER_SYSTEM_PROMPT_TEMPLATE_DELETE_ENDPOINT = '/vlm-user-system-prompt-templates/delete';
@@ -80,6 +83,7 @@
     const MAX_PERSISTED_THUMB_TOTAL = 480000;
     const MAX_ROLEPLAY_BRANCHES = 16;
     const MAX_ROLEPLAY_BRANCH_MESSAGES = 80;
+    const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 12;
     const CREATIVE_DEFAULT_PRESET = 'Z-imageT';
     const CREATIVE_POLL_INTERVAL_MS = 900;
     const CREATIVE_TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped', 'skipped_queue_limit', 'stale_branch']);
@@ -414,8 +418,40 @@
         }[field] || field;
     }
 
-    function roleplayStateChangeDisplayValue(value) {
+    function roleplayStateTextKey(value) {
+        return String(value ?? '')
+            .toLocaleLowerCase()
+            .replace(/[\s。！？!?；;，,、：:,.]+/g, '');
+    }
+
+    function roleplayStateTextSimilar(left, right) {
+        const leftKey = roleplayStateTextKey(left);
+        const rightKey = roleplayStateTextKey(right);
+        if (!leftKey || !rightKey) return false;
+        if (leftKey === rightKey) return true;
+        const shorter = leftKey.length <= rightKey.length ? leftKey : rightKey;
+        const longer = leftKey.length <= rightKey.length ? rightKey : leftKey;
+        return shorter.length >= 16 && longer.includes(shorter) && shorter.length / longer.length >= 0.55;
+    }
+
+    function compactRoleplayStateText(value, maxLength = MAX_ROLEPLAY_STATE_CHANGE_PREVIEW) {
+        const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+        if (!raw) return localText('Empty', '已清空');
+        const segments = raw.split(/\n+|(?<=[。！？!?；;.])\s*/).map((item) => item.trim()).filter(Boolean);
+        const unique = [];
+        segments.forEach((segment) => {
+            const matchIndex = unique.findIndex((existing) => roleplayStateTextSimilar(existing, segment));
+            if (matchIndex >= 0) unique[matchIndex] = segment;
+            else unique.push(segment);
+        });
+        const visible = (unique.length > 3 ? unique.slice(-3) : unique).join(' · ');
+        if (visible.length <= maxLength) return visible;
+        return `${visible.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+    }
+
+    function roleplayStateChangeDisplayValue(value, options = {}) {
         if (value === null || value === undefined || value === '') return localText('Empty', '已清空');
+        let text = '';
         if (Array.isArray(value)) {
             const entries = value.map((item) => {
                 if (item && typeof item === 'object' && item.label !== undefined) {
@@ -423,10 +459,13 @@
                 }
                 return String(item ?? '').trim();
             }).filter(Boolean);
-            return entries.join(' / ') || localText('Empty', '已清空');
+            text = entries.join(' / ') || localText('Empty', '已清空');
+        } else if (value && typeof value === 'object') {
+            text = JSON.stringify(value);
+        } else {
+            text = String(value).trim();
         }
-        if (value && typeof value === 'object') return JSON.stringify(value);
-        return String(value).trim();
+        return options.compact ? compactRoleplayStateText(text, options.maxLength) : text;
     }
 
     function roleplayStateChangesFromPatches(before, after, applied) {
@@ -469,18 +508,41 @@
         return normalizeRoleplayStateChanges(changes);
     }
 
+    function renderRoleplayStateChangeRow(change) {
+        const beforeFull = roleplayStateChangeDisplayValue(change.before);
+        const afterFull = roleplayStateChangeDisplayValue(change.after);
+        const compactAfter = roleplayStateChangeDisplayValue(change.after, {
+            compact: true,
+            maxLength: MAX_ROLEPLAY_STATE_CHANGE_PREVIEW
+        });
+        const compactField = change.field === 'state_text' || change.field === 'state_fields';
+        const shortTransition = beforeFull === afterFull || beforeFull === localText('Empty', '已清空')
+            ? compactAfter
+            : `${roleplayStateChangeDisplayValue(change.before, { compact: true, maxLength: 120 })} → ${compactAfter}`;
+        const fullTransition = compactField
+            ? `${localText('After', '之后')}: ${afterFull}`
+            : (beforeFull === afterFull || beforeFull === localText('Empty', '已清空')
+                ? afterFull
+                : `${beforeFull} → ${afterFull}`);
+        const hasDetails = compactField
+            ? afterFull.length > compactAfter.length + 20
+            : fullTransition.length > shortTransition.length + 20;
+        const detailHtml = hasDetails
+            ? `<details class="describe-vlm-chat-roleplay-state-change-details" data-describe-vlm-chat-roleplay-state-change-details><summary>${escapeHtml(localText('Details', '详情'))}</summary><div>${escapeHtml(fullTransition)}</div></details>`
+            : '';
+        return `<li data-describe-vlm-chat-roleplay-state-change-field="${escapeHtml(change.field)}"><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}</b><span title="${escapeHtml(fullTransition)}">${escapeHtml(shortTransition)}</span>${detailHtml}</li>`;
+    }
+
     function renderRoleplayStateChanges(value) {
         const changes = normalizeRoleplayStateChanges(value);
         if (!changes.length) return '';
-        const rows = changes.map((change) => {
-            const before = roleplayStateChangeDisplayValue(change.before);
-            const after = roleplayStateChangeDisplayValue(change.after);
-            const transition = change.before === null || change.before === undefined || before === after
-                ? after
-                : `${before} -> ${after}`;
-            return `<li><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}</b><span>${escapeHtml(transition)}</span></li>`;
-        }).join('');
-        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div><ul>${rows}</ul></div>`;
+        const visibleChanges = changes.slice(0, MAX_ROLEPLAY_STATE_CHANGE_ROWS);
+        const rows = visibleChanges.map(renderRoleplayStateChangeRow).join('');
+        const hiddenChanges = changes.slice(MAX_ROLEPLAY_STATE_CHANGE_ROWS);
+        const moreHtml = hiddenChanges.length
+            ? `<details class="describe-vlm-chat-roleplay-state-changes-more"><summary>${escapeHtml(localText(`${hiddenChanges.length} more changes`, `还有 ${hiddenChanges.length} 项变化`))}</summary><ul>${hiddenChanges.map(renderRoleplayStateChangeRow).join('')}</ul></details>`
+            : '';
+        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div><ul>${rows}</ul>${moreHtml}</div>`;
     }
 
     function normalizeRoleplaySession(value, conversationId = '') {
@@ -1135,6 +1197,38 @@
         return parts.join(' · ') || localText('Roleplay setup', '角色扮演设置');
     }
 
+    function normalizeRoleplayTurnIntentSetting(value) {
+        const intent = String(value || '').trim().toLowerCase().replace(/-/g, '_').replace(/\s+/g, '_');
+        if (intent === 'story_control' || intent === 'storycontrol' || intent === 'control' || intent === 'director') {
+            return 'story_control';
+        }
+        if (intent === 'character' || intent === 'player' || intent === 'player_action' || intent === 'dialogue') {
+            return 'character';
+        }
+        return 'auto';
+    }
+
+    function effectiveRoleplayTurnIntent(setting, session) {
+        const normalized = normalizeRoleplaySession(session);
+        const playerStatus = normalizeRoleplayPlayerState(normalized.story_state?.player_state).status;
+        if (playerStatus === 'absent') return 'story_control';
+        return normalizeRoleplayTurnIntentSetting(setting) === 'story_control'
+            ? 'story_control'
+            : 'character';
+    }
+
+    function renderRoleplayTurnIntentOptions(selected = 'auto') {
+        const value = normalizeRoleplayTurnIntentSetting(selected);
+        const options = [
+            ['auto', 'Auto · player state', '自动 · 玩家状态'],
+            ['character', 'Player voice/action', '玩家台词/行动'],
+            ['story_control', 'Story control', '剧情控制']
+        ];
+        return options.map(([key, en, cn]) => (
+            `<option value="${key}" ${value === key ? 'selected' : ''}>${escapeHtml(localText(en, cn))}</option>`
+        )).join('');
+    }
+
     function normalizeRoleplayAutoplayState(value) {
         const source = value && typeof value === 'object' ? value : {};
         const phase = ['idle', 'running', 'paused', 'stopped', 'completed', 'error'].includes(String(source.phase || '').trim().toLowerCase())
@@ -1433,6 +1527,7 @@
         roleplaySession: normalizeRoleplaySession({}),
         roleplayBranches: [],
         roleplayPanelOpen: false,
+        roleplayTurnIntent: 'auto',
         roleplayAutoplayState: normalizeRoleplayAutoplayState(null),
         customSystemPrompt: savedChatSettings.customSystemPrompt,
         maxTokens: savedChatSettings.maxTokens,
@@ -1525,6 +1620,7 @@
             roleplaySession: normalizeRoleplaySession(source.roleplaySession || source.roleplay_session, conversationId),
             roleplayBranches: normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
             roleplayPanelOpen: !!source.roleplayPanelOpen,
+            roleplayTurnIntent: normalizeRoleplayTurnIntentSetting(source.roleplayTurnIntent || source.roleplay_turn_intent),
             roleplayAutoplayState: normalizeRoleplayAutoplayState(source.roleplayAutoplayState),
             customSystemPrompt: storedText(source, [
                 'customSystemPrompt', 'custom_system_prompt', 'userSystemPrompt', 'user_system_prompt',
@@ -1615,6 +1711,7 @@
             roleplaySession: state.roleplaySession,
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
+            roleplayTurnIntent: state.roleplayTurnIntent,
             roleplayAutoplayState: state.roleplayAutoplayState,
             customSystemPrompt: state.customSystemPrompt,
             systemPromptTemplateId: state.systemPromptTemplateId,
@@ -1647,6 +1744,7 @@
             chatMode: source.chatMode,
             roleplaySession: source.copyRoleplayState ? source.roleplaySession : null,
             roleplayBranches: source.copyRoleplayState ? source.roleplayBranches : [],
+            roleplayTurnIntent: 'auto',
             customSystemPrompt: source.customSystemPrompt,
             systemPromptTemplateId: source.systemPromptTemplateId,
             systemPromptPickerValue: source.systemPromptPickerValue,
@@ -1691,6 +1789,7 @@
             roleplaySession: state.roleplaySession,
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
+            roleplayTurnIntent: state.roleplayTurnIntent,
             roleplayAutoplayState: state.roleplayAutoplayState,
             customSystemPrompt: state.customSystemPrompt,
             systemPromptTemplateId: state.systemPromptTemplateId,
@@ -1729,6 +1828,7 @@
         state.roleplaySession = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         state.roleplayBranches = normalizeRoleplayBranches(runtime.roleplayBranches, runtime.conversationId);
         state.roleplayPanelOpen = !!runtime.roleplayPanelOpen;
+        state.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
         state.roleplayAutoplayState = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState);
         state.customSystemPrompt = runtime.customSystemPrompt;
         state.systemPromptTemplateId = runtime.systemPromptTemplateId;
@@ -2145,6 +2245,8 @@
         const unload = modal.querySelector('[data-describe-vlm-chat-unload-after]');
         const autoImage = modal.querySelector('[data-describe-vlm-chat-auto-previous-image]');
         const roleplayVisualDraft = modal.querySelector('[data-describe-vlm-chat-roleplay-visual-draft]');
+        const roleplayTurnIntentWrap = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent-wrap]');
+        const roleplayTurnIntent = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent]');
         const modeHint = modal.querySelector('[data-describe-vlm-chat-mode-hint]');
         const settings = modal.querySelector('.describe-vlm-chat-controls');
         const settingsToggle = modal.querySelector('[data-describe-vlm-chat-settings-toggle]');
@@ -2187,6 +2289,11 @@
         if (unload) unload.checked = !!state.unloadAfterChat;
         if (autoImage) autoImage.checked = !!state.autoAttachPreviousImage;
         if (roleplayVisualDraft) roleplayVisualDraft.hidden = state.chatMode !== 'roleplay';
+        if (roleplayTurnIntentWrap) roleplayTurnIntentWrap.hidden = state.chatMode !== 'roleplay';
+        if (roleplayTurnIntent) {
+            roleplayTurnIntent.innerHTML = renderRoleplayTurnIntentOptions(state.roleplayTurnIntent);
+            roleplayTurnIntent.value = normalizeRoleplayTurnIntentSetting(state.roleplayTurnIntent);
+        }
         if (modeHint) {
             const hint = chatModeHint(state.chatMode);
             modeHint.textContent = hint;
@@ -2643,11 +2750,16 @@
         if (!found) {
             mount.hidden = true;
             mount.innerHTML = '';
+            delete mount.dataset.generationRef;
+            delete mount.dataset.generationRenderKey;
             return;
         }
+        const generationRef = String(workspace.generationRef || '');
         const generation = creativeGenerationForAction(found.action);
         const currentState = String(generation.state || 'awaiting_confirmation').toLowerCase();
         const assets = (Array.isArray(generation.assets) ? generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
+        const generationRenderKey = `${generationRef}:${currentState}:${assets.length}`;
+        const shouldReveal = mount.hidden || mount.dataset.generationRenderKey !== generationRenderKey;
         const progress = Math.max(0, Math.min(100, Math.round((Number(generation.percent) || 0) * 100)));
         const detail = String(generation.error || generation.message || '').trim();
         const rows = assets.map((asset, index) => {
@@ -2658,11 +2770,37 @@
   <div class="describe-vlm-chat-character-library-generated-actions"><button type="button" data-roleplay-character-library-adopt="${escapeHtml(assetId)}" ${assetId ? '' : 'disabled'}><i class="fa-solid fa-check"></i><span>${escapeHtml(localText('Adopt as main reference', '采用为主参考图'))}</span></button><button type="button" data-roleplay-character-library-history-add="${escapeHtml(assetId)}" ${assetId ? '' : 'disabled'}><i class="fa-solid fa-clock-rotate-left"></i><span>${escapeHtml(localText('Add to state history', '加入状态历史'))}</span></button></div>
 </div>`;
         }).join('');
+        mount.dataset.generationRef = generationRef;
+        mount.dataset.generationRenderKey = generationRenderKey;
         mount.hidden = false;
         mount.innerHTML = `<div class="describe-vlm-chat-character-library-generated-head"><span>${escapeHtml(localText('Generated image', '生成图片'))}</span><b>${escapeHtml(creativeStateLabel(generation))}</b></div>
   ${progress && CREATIVE_ACTIVE_STATES.has(currentState) ? `<progress max="100" value="${progress}"></progress>` : ''}
   ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
   ${rows ? `<div class="describe-vlm-chat-character-library-generated-grid">${rows}</div>` : ''}`;
+        if (shouldReveal) {
+            window.requestAnimationFrame(() => {
+                if (!mount.isConnected || mount.hidden || mount.dataset.generationRenderKey !== generationRenderKey) return;
+                const main = mount.closest('.describe-vlm-chat-character-library-main');
+                if (!main) {
+                    mount.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+                    return;
+                }
+                const mainRect = main.getBoundingClientRect();
+                const mountRect = mount.getBoundingClientRect();
+                const edge = 16;
+                const tallCard = mountRect.height >= main.clientHeight - edge * 2;
+                let delta = 0;
+                if (tallCard || mountRect.top < mainRect.top + edge) {
+                    delta = mountRect.top - (mainRect.top + edge);
+                } else if (mountRect.bottom > mainRect.bottom - edge) {
+                    delta = mountRect.bottom - (mainRect.bottom - edge);
+                }
+                if (delta) {
+                    const maxScrollTop = Math.max(0, main.scrollHeight - main.clientHeight);
+                    main.scrollTop = Math.max(0, Math.min(maxScrollTop, main.scrollTop + delta));
+                }
+            });
+        }
     }
 
     function renderRoleplayCharacterLibraryEditor(modal) {
@@ -3190,6 +3328,38 @@
         workspace.generationTimer = null;
     }
 
+    function updateRoleplayCharacterLibraryGeneration(modal, runtime) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!modal || workspace.generationRuntime !== runtime) return false;
+        const found = creativeActionFromRef(workspace.generationRef, runtime?.messages);
+        const generation = found ? creativeGenerationForAction(found.action) : null;
+        renderRoleplayCharacterLibraryGeneration(modal);
+        if (!generation) return false;
+        const current = String(generation.state || '').toLowerCase();
+        if (generation.run_id && CREATIVE_ACTIVE_STATES.has(current)) {
+            resumeCreativeGenerationPolls(runtime);
+        }
+        if (!CREATIVE_TERMINAL_STATES.has(current)) return true;
+        stopRoleplayCharacterLibraryRenderTimer();
+        setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
+        if (current === 'finished' && Array.isArray(generation.assets) && generation.assets.length) {
+            generation.assets.forEach((asset) => registerRoleplayGeneratedAsset(asset));
+            roleplayCharacterLibraryFeedback(modal, localText(
+                'Image generated. Choose Adopt to use it as the main reference.',
+                '图片已生成，点击“采用”即可设为主参考图。'
+            ));
+        } else if (current !== 'finished') {
+            roleplayCharacterLibraryFeedback(modal, String(
+                generation.error || generation.message || localText(
+                    'Image generation failed.',
+                    '图片生成失败。'
+                )
+            ), true);
+        }
+        renderRoleplayCharacterLibraryWorkspace(modal);
+        return true;
+    }
+
     async function generateRoleplayCharacterLibraryImage(modal) {
         const workspace = roleplayCharacterLibraryWorkspaceState();
         if (!workspace.draft || workspace.busy) return false;
@@ -3200,6 +3370,7 @@
             return false;
         }
         workspace.busy = true;
+        setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', true);
         roleplayCharacterLibraryFeedback(modal, localText('Preparing the character image...', '正在准备角色图片……'));
         try {
             const session = roleplayCharacterLibrarySession(card);
@@ -3227,27 +3398,39 @@
             workspace.generationRuntime = runtime;
             workspace.generationRef = '0:0';
             renderRoleplayCharacterLibraryWorkspace(modal);
+            workspace.generationTimer = window.setInterval(
+                () => updateRoleplayCharacterLibraryGeneration(modal, runtime),
+                500
+            );
+            updateRoleplayCharacterLibraryGeneration(modal, runtime);
             await startCreativeGeneration(workspace.generationRef, runtime);
-            workspace.generationTimer = window.setInterval(() => {
-                renderRoleplayCharacterLibraryGeneration(modal);
-                const found = creativeActionFromRef(workspace.generationRef, runtime.messages);
-                const current = String(found?.action?.generation?.state || '').toLowerCase();
-                if (CREATIVE_TERMINAL_STATES.has(current)) {
-                    stopRoleplayCharacterLibraryRenderTimer();
-                    if (current === 'finished') {
-                        (found?.action?.generation?.assets || []).forEach((asset) => registerRoleplayGeneratedAsset(asset));
-                        roleplayCharacterLibraryFeedback(modal, localText('Image generated. Choose Adopt to use it as the main reference.', '图片已生成，点击“采用”即可设为主参考图。'));
-                        renderRoleplayCharacterLibraryWorkspace(modal);
-                    }
-                }
-            }, 500);
+            resumeCreativeGenerationPolls(runtime);
+            updateRoleplayCharacterLibraryGeneration(modal, runtime);
+            const found = creativeActionFromRef(workspace.generationRef, runtime.messages);
+            const generation = found ? creativeGenerationForAction(found.action) : null;
+            const current = String(generation?.state || '').toLowerCase();
+            if (CREATIVE_TERMINAL_STATES.has(current)) return true;
+            if (['models_missing', 'preset_missing', 'needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(current)) {
+                stopRoleplayCharacterLibraryRenderTimer();
+                setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
+                roleplayCharacterLibraryFeedback(modal, String(generation?.error || generation?.message || localText(
+                    'The image generation route is not ready.',
+                    '图片生成路线尚未准备好。'
+                )), true);
+                return false;
+            }
             roleplayCharacterLibraryFeedback(modal, localText('Image generation has started.', '图片生成已开始。'));
             return true;
         } catch (error) {
+            stopRoleplayCharacterLibraryRenderTimer();
+            setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
             roleplayCharacterLibraryFeedback(modal, String(error?.message || localText('Image generation failed to start.', '图片生成没有启动。')), true);
             return false;
         } finally {
             workspace.busy = false;
+            if (!workspace.generationTimer) {
+                setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
+            }
         }
     }
 
@@ -3630,8 +3813,10 @@
                 : session.autoplay_config.target_turns
         }));
         runtime.roleplaySession = session;
+        runtime.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
         runtime.roleplayAutoplayState = autoplayState;
         state.roleplaySession = session;
+        state.roleplayTurnIntent = runtime.roleplayTurnIntent;
         state.roleplayAutoplayState = autoplayState;
         const strip = modal.querySelector('[data-describe-vlm-chat-roleplay-strip]');
         const panel = modal.querySelector('[data-describe-vlm-chat-roleplay-panel]');
@@ -3639,6 +3824,19 @@
         if (panel) panel.hidden = !active || !state.roleplayPanelOpen;
         const summary = modal.querySelector('[data-describe-vlm-chat-roleplay-summary-text]');
         const status = modal.querySelector('[data-describe-vlm-chat-roleplay-state]');
+        const turnIntentWrap = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent-wrap]');
+        const turnIntent = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent]');
+        if (turnIntentWrap) turnIntentWrap.hidden = !active;
+        if (turnIntent && document.activeElement !== turnIntent) {
+            turnIntent.innerHTML = renderRoleplayTurnIntentOptions(runtime.roleplayTurnIntent);
+            turnIntent.value = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
+        }
+        if (turnIntent) {
+            const effectiveIntent = effectiveRoleplayTurnIntent(runtime.roleplayTurnIntent, session);
+            turnIntent.title = effectiveIntent === 'story_control'
+                ? localText('This message will direct the story while the player remains present unless the story explicitly changes that state.', '本条消息将以剧情控制角度推进；除非剧情明确改变状态，玩家仍保持在场。')
+                : localText('This message will be treated as the player voice or action.', '本条消息将被视为玩家台词或行动。');
+        }
         if (summary) summary.textContent = session.character.name
             ? `${session.character.name}${Object.keys(session.characters || {}).length > 1 ? ` · ${Object.keys(session.characters).length} ${localText('characters', '个角色')}` : ''}`
             : localText('Roleplay setup', '角色扮演设置');
@@ -7191,6 +7389,7 @@
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
+      <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(localText('Choose how this one message should drive the story. This does not change whether the player is present.', '选择本条消息如何推动剧情，不会改变玩家是否在场。'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(localText('Perspective', '本轮视角'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(localText('Roleplay turn perspective', '角色扮演本轮视角'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
       <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
       <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
       <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}" aria-label="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}"><i class="fa-solid fa-photo-film"></i></button>
@@ -7739,6 +7938,7 @@
             )).filter(Boolean)
             : [];
         if (!content && !images.length && !actions.length && !mediaAssets.length) return null;
+        const legacyRoleplayControl = !!message.roleplay_control_only;
         const normalized = {
             id,
             role,
@@ -7749,7 +7949,10 @@
             roleplay_speaker_id: String(message.roleplay_speaker_id || '').slice(0, 160),
             roleplay_speaker_name: String(message.roleplay_speaker_name || '').slice(0, 200),
             roleplay_internal_turn: !!message.roleplay_internal_turn,
-            roleplay_control_only: !!message.roleplay_control_only,
+            roleplay_turn_intent: normalizeRoleplayTurnIntentSetting(
+                message.roleplay_turn_intent || (legacyRoleplayControl ? 'story_control' : 'auto')
+            ),
+            roleplay_control_only: legacyRoleplayControl,
             images,
             media_assets: mediaAssets,
             image_count: Math.max(0, Number(message.image_count) || images.length || mediaAssets.length),
@@ -7886,6 +8089,47 @@
         return { session, branches, messages };
     }
 
+    function stripPersistedRoleplaySnapshots(message) {
+        if (!message || typeof message !== 'object') return message;
+        const next = Object.assign({}, message);
+        delete next.roleplay_session_before;
+        delete next.roleplay_session_after;
+        if (Array.isArray(next.variants)) {
+            next.variants = next.variants.map((variant) => {
+                if (!variant || typeof variant !== 'object') return variant;
+                const compact = Object.assign({}, variant);
+                delete compact.roleplay_session_before;
+                delete compact.roleplay_session_after;
+                return compact;
+            });
+        }
+        return next;
+    }
+
+    function compactPersistedRoleplayMessages(messages, keepSnapshots = MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES) {
+        const rows = Array.isArray(messages) ? messages : [];
+        const cutoff = Math.max(0, rows.length - Math.max(0, Number(keepSnapshots) || 0));
+        return rows.map((message, index) => index >= cutoff ? message : stripPersistedRoleplaySnapshots(message));
+    }
+
+    function compactConversationRoleplayStorage(roleplayData, level = 0) {
+        if (!roleplayData || typeof roleplayData !== 'object' || level <= 0) return roleplayData;
+        const keepSnapshots = level >= 2 ? 0 : MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES;
+        roleplayData.messages = compactPersistedRoleplayMessages(roleplayData.messages, keepSnapshots);
+        roleplayData.branches = (Array.isArray(roleplayData.branches) ? roleplayData.branches : [])
+            .map((branch) => {
+                const compact = Object.assign({}, branch);
+                compact.messages = compactPersistedRoleplayMessages(
+                    branch?.messages,
+                    level >= 2 ? 0 : Math.min(24, MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES)
+                );
+                if (level >= 2) compact.messages = compact.messages.slice(-24);
+                return compact;
+            });
+        if (level >= 3) roleplayData.branches = [];
+        return roleplayData;
+    }
+
     function conversationHasRoleplayData(source, conversationId = '') {
         const target = source && typeof source === 'object' ? source : {};
         const mode = normalizeChatMode(target.chatMode ?? target.chat_mode);
@@ -7912,6 +8156,7 @@
                 sessionId: options.roleplaySessionId || '',
                 localOnlyBranches: !!options.localOnlyBranches
             });
+            compactConversationRoleplayStorage(roleplayData, Number(options.storageCompactLevel) || 0);
             messages = roleplayData.messages;
         }
         const selection = normalizeStoredSystemPromptSelection(target);
@@ -7986,13 +8231,14 @@
         return upsertRoleplayBranchSnapshot(runtime, options);
     }
 
-    function conversationPayload(runtime = null) {
+    function conversationPayload(runtime = null, options = {}) {
         const source = runtime || currentConversationRuntime();
         upsertRoleplayBranchSnapshot(source);
         const conversationId = String(source.conversationId || ensureConversationId()).trim();
         return conversationRecordFromSource(source, {
             conversationId,
-            roleplayHasData: conversationHasRoleplayData(source, conversationId)
+            roleplayHasData: conversationHasRoleplayData(source, conversationId),
+            storageCompactLevel: Number(options.storageCompactLevel) || 0
         });
     }
 
@@ -8140,7 +8386,11 @@
             (item) => String(item?.conversation_id || '').trim() === id
         );
         if (existingIndex >= 0) {
-            state.conversationCatalog[existingIndex] = record;
+            state.conversationCatalog = [
+                ...state.conversationCatalog.slice(0, existingIndex),
+                ...state.conversationCatalog.slice(existingIndex + 1),
+                record
+            ];
         } else {
             state.conversationCatalog = [...state.conversationCatalog, record];
         }
@@ -8152,9 +8402,21 @@
         try {
             const target = runtime || syncCurrentRuntimeFromState();
             if (target?.deleted) return;
-            const snapshot = conversationPayload(target);
-            const serialized = JSON.stringify(snapshot);
-            if (serialized.length > 900000) return;
+            let snapshot = conversationPayload(target);
+            let serialized = JSON.stringify(snapshot);
+            if (serialized.length > 900000) {
+                snapshot = conversationPayload(target, { storageCompactLevel: 1 });
+                serialized = JSON.stringify(snapshot);
+            }
+            if (serialized.length > 1500000) {
+                snapshot = conversationPayload(target, { storageCompactLevel: 2 });
+                serialized = JSON.stringify(snapshot);
+            }
+            if (serialized.length > MAX_CONVERSATION_RECORD_LENGTH) {
+                snapshot = conversationPayload(target, { storageCompactLevel: 3 });
+                serialized = JSON.stringify(snapshot);
+            }
+            if (serialized.length > MAX_CONVERSATION_RECORD_LENGTH) return false;
             if (!conversationRecordHasHistory(snapshot)) {
                 const removed = removeConversationRecord(snapshot.conversation_id, false);
                 target.persistenceDirty = false;
@@ -8163,7 +8425,7 @@
                 if (isCurrentConversationRuntime(target)) {
                     syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
                 }
-                return;
+                return true;
             }
             if (upsertConversationRecord(snapshot)) {
                 target.persistenceDirty = false;
@@ -8171,7 +8433,21 @@
                     state.persistenceDirty = false;
                     if (state.messages.length <= 2) syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
                 }
+                return true;
             }
+        } catch (err) {
+            return false;
+        }
+        return false;
+    }
+
+    function persistConversationBeforePageHide() {
+        try {
+            const runtime = currentConversationRuntime();
+            if (!runtime?.messages?.length && !runtime?.persistenceDirty) return;
+            runtime.persistenceDirty = true;
+            if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+            saveConversationSnapshot(runtime);
         } catch (err) {}
     }
 
@@ -8635,6 +8911,9 @@
             replacePendingAssistant(t('Stopped.', '已停止。'), runtime.messages);
             setStatus(t('Reply stopped.', '已停止当前回复。'));
         }
+        runtime.persistenceDirty = true;
+        if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+        saveConversationSnapshot(runtime);
         syncBusyControls(document.getElementById('describe_vlm_chat_modal'));
         renderMessages();
         notifyBackendChatCancel(conversationId, requestId).catch(() => {});
@@ -9233,6 +9512,7 @@
             messageOverride: String(userMessage.content || ''),
             replayExistingUserMessage: true,
             roleplayRequestKind: 'character',
+            roleplayTurnIntent: normalizeRoleplayTurnIntentSetting(userMessage.roleplay_turn_intent),
             roleplayAutoplay: false,
             runtime,
             variantHistory: variants
@@ -12164,6 +12444,10 @@
         return !!panel && !!element && panel.contains(element);
     }
 
+    function roleplayCharacterLibraryModal() {
+        return document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
+    }
+
     function targetIsChatBackdrop(target, modal = document.getElementById('describe_vlm_chat_modal')) {
         return !!modal && target === modal;
     }
@@ -12219,6 +12503,14 @@
     function containModalWheel(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         if (!modal || modal.hidden) return;
+        const characterLibraryModal = roleplayCharacterLibraryModal();
+        if (characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target)) {
+            const panel = characterLibraryModal.querySelector('.describe-vlm-chat-character-library-panel');
+            const scroller = closestScrollableForWheel(evt.target, characterLibraryModal, evt, panel);
+            if (!scroller) evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
         const dialog = userSystemPromptTemplateDialog(modal);
         if (dialog?.contains(evt.target)) {
             const scroller = closestScrollableForWheel(evt.target, modal, evt, dialog);
@@ -12238,7 +12530,9 @@
     function containModalTouchStart(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         const dialog = userSystemPromptTemplateDialog(modal);
-        if (!modal || modal.hidden || (!modal.contains(evt.target) && !dialog?.contains(evt.target))) return;
+        const characterLibraryModal = roleplayCharacterLibraryModal();
+        const insideCharacterLibrary = characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target);
+        if (!modal || modal.hidden || (!insideCharacterLibrary && !modal.contains(evt.target) && !dialog?.contains(evt.target))) return;
         const touch = evt.touches?.[0] || null;
         modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
         evt.stopPropagation();
@@ -12247,11 +12541,20 @@
     function containModalTouchMove(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         const dialog = userSystemPromptTemplateDialog(modal);
-        if (!modal || modal.hidden || (!modal.contains(evt.target) && !dialog?.contains(evt.target))) return;
+        const characterLibraryModal = roleplayCharacterLibraryModal();
+        const insideCharacterLibrary = characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target);
+        if (!modal || modal.hidden || (!insideCharacterLibrary && !modal.contains(evt.target) && !dialog?.contains(evt.target))) return;
         const touch = evt.touches?.[0] || null;
         const deltaX = modalTouchPoint && touch ? modalTouchPoint.x - touch.clientX : 0;
         const deltaY = modalTouchPoint && touch ? modalTouchPoint.y - touch.clientY : 0;
         modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : modalTouchPoint;
+        if (insideCharacterLibrary) {
+            const panel = characterLibraryModal.querySelector('.describe-vlm-chat-character-library-panel');
+            const scroller = closestScrollableForWheel(evt.target, characterLibraryModal, { deltaX, deltaY }, panel);
+            if (!scroller) evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
         if (dialog?.contains(evt.target)) {
             const scroller = closestScrollableForWheel(evt.target, modal, { deltaX, deltaY }, dialog);
             if (!scroller) evt.preventDefault();
@@ -12269,7 +12572,8 @@
     function resetModalTouchPoint(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         const dialog = userSystemPromptTemplateDialog(modal);
-        if (modal && !modal.hidden && (modal.contains(evt.target) || dialog?.contains(evt.target))) evt.stopPropagation();
+        const characterLibraryModal = roleplayCharacterLibraryModal();
+        if (modal && !modal.hidden && (modal.contains(evt.target) || dialog?.contains(evt.target) || characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target))) evt.stopPropagation();
         modalTouchPoint = null;
     }
 
@@ -12602,6 +12906,16 @@
         const roleplaySessionBefore = selectedMode === 'roleplay'
             ? normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId)
             : null;
+        const roleplayTurnIntentSetting = selectedMode === 'roleplay'
+            ? normalizeRoleplayTurnIntentSetting(
+                options.roleplayTurnIntent
+                || modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent]')?.value
+                || runtime.roleplayTurnIntent
+            )
+            : 'auto';
+        const roleplayTurnIntent = roleplaySessionBefore
+            ? effectiveRoleplayTurnIntent(roleplayTurnIntentSetting, roleplaySessionBefore)
+            : '';
         let userMessage = {
             id: uid('describe_vlm_chat_user'),
             role: 'user',
@@ -12609,8 +12923,9 @@
             image_count: images.length,
             images: images.map(imageSummary),
             _image_payloads: images.filter((image) => mediaKind(image) === 'image'),
+            roleplay_turn_intent: roleplayTurnIntent,
             roleplay_control_only: selectedMode === 'roleplay'
-                && roleplaySessionBefore?.story_state?.player_state?.status === 'absent'
+                && roleplayTurnIntent === 'story_control'
         };
         const pendingAssistantId = uid('describe_vlm_chat_assistant');
         if (replayExistingUserMessage && replaySourceMessage?.role === 'user') {
@@ -12619,8 +12934,9 @@
             userMessage.image_count = images.length;
             userMessage.images = images.map(imageSummary);
             userMessage._image_payloads = images.filter((image) => mediaKind(image) === 'image');
+            userMessage.roleplay_turn_intent = roleplayTurnIntent;
             userMessage.roleplay_control_only = selectedMode === 'roleplay'
-                && roleplaySessionBefore?.story_state?.player_state?.status === 'absent';
+                && roleplayTurnIntent === 'story_control';
         } else if (!suppressUserMessage) {
             messages.push(userMessage);
         }
@@ -12632,6 +12948,9 @@
         };
         if (roleplaySessionBefore) pendingAssistant.roleplay_session_before = roleplaySessionBefore;
         messages.push(pendingAssistant);
+        runtime.persistenceDirty = true;
+        if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+        saveConversationSnapshot(runtime);
         if (isCurrentConversationRuntime(runtime)) renderMessages();
 
         const requestId = uid('describe_vlm_chat_req');
@@ -12667,6 +12986,7 @@
             roleplay_request_kind: selectedMode === 'roleplay'
                 ? String(options.roleplayRequestKind || 'character')
                 : '',
+            roleplay_turn_intent: selectedMode === 'roleplay' ? roleplayTurnIntent : '',
             roleplay_speaker_mode: selectedMode === 'roleplay'
                 ? normalizeRoleplaySpeakerMode(options.roleplaySpeakerMode || runtime.roleplaySession?.autoplay_config?.speaker_mode)
                 : '',
@@ -12720,6 +13040,13 @@
             parameter_profiles: selectedMode === 'creative' ? creativeParameterProfilesPayload() : [],
             lang: state.__lang
         };
+        if (selectedMode === 'roleplay' && roleplayTurnIntentSetting !== 'auto') {
+            runtime.roleplayTurnIntent = 'auto';
+            if (isCurrentConversationRuntime(runtime)) {
+                state.roleplayTurnIntent = 'auto';
+                syncRoleplayControls(modal, runtime);
+            }
+        }
         const response = await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
         if (runtime.activeRequestId === requestId) {
             runtime.activeRequestId = '';
@@ -12733,6 +13060,8 @@
         if (response?.aborted) {
             runtime.busy = false;
             replacePendingAssistant(t('Stopped.', '已停止。'), messages);
+            runtime.persistenceDirty = true;
+            saveConversationSnapshot(runtime);
             if (isCurrentConversationRuntime(runtime)) {
                 state.busy = false;
                 renderMessages();
@@ -14241,6 +14570,13 @@
             syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
             renderMessages();
         }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-roleplay-turn-intent]')) {
+            const runtime = syncCurrentRuntimeFromState();
+            runtime.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(evt.target.value);
+            state.roleplayTurnIntent = runtime.roleplayTurnIntent;
+            syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'), runtime);
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-roleplay-character-select]')) {
             switchRoleplayCharacter(
                 syncCurrentRuntimeFromState(),
@@ -14402,6 +14738,10 @@
         applyDescribeVlmModelCatalog(evt?.detail);
         updateAnswerModelIndicator();
         syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'));
+    });
+    window.addEventListener('pagehide', persistConversationBeforePageHide);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') persistConversationBeforePageHide();
     });
     setTimeout(() => refreshDescribeVlmModelCatalog(false).catch(() => {}), 0);
 

@@ -55,8 +55,17 @@ def _clip_text(value, limit=4000):
 def _decode_text(value):
     if value is None:
         return ""
+    if isinstance(value, tuple) and all(isinstance(item, int) for item in value):
+        value = bytes(value)
     if isinstance(value, bytes):
-        for encoding in ("utf-8", "utf-16", "latin-1"):
+        for prefix, encoding in (
+            (b"ASCII\x00\x00\x00", "utf-8"),
+            (b"UNICODE\x00", "utf-16-be"),
+            (b"JIS\x00\x00\x00\x00\x00", "shift_jis"),
+        ):
+            if value.startswith(prefix):
+                return value[len(prefix):].decode(encoding, errors="replace").strip("\x00")
+        for encoding in ("utf-8", "utf-16", "utf-16-be", "latin-1"):
             try:
                 return value.decode(encoding).strip("\x00")
             except Exception:
@@ -271,8 +280,14 @@ def extract_image_metadata(path, max_raw_chars=4000):
             except Exception:
                 exif = None
             if exif:
-                exif_parameters = exif.get(0x9286)
-                exif_scheme = _decode_text(exif.get(0x927C)).strip()
+                try:
+                    exif_ifd = exif.get_ifd(0x8769) if hasattr(exif, "get_ifd") else {}
+                except Exception:
+                    exif_ifd = {}
+                if not isinstance(exif_ifd, dict):
+                    exif_ifd = {}
+                exif_parameters = exif_ifd.get(0x9286, exif.get(0x9286))
+                exif_scheme = _decode_text(exif_ifd.get(0x927C, exif.get(0x927C))).strip()
                 if exif_parameters is not None:
                     result = _merge_metadata(result, _extract_from_parameters(exif_parameters, scheme=exif_scheme or scheme))
 

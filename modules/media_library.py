@@ -8,6 +8,7 @@ SQLite, and never exposes absolute filesystem paths to callers.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import datetime as _datetime
 import hashlib
 import html
@@ -22,7 +23,7 @@ import threading
 import time
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 from urllib.parse import unquote, urlparse
 
 import shared
@@ -40,6 +41,8 @@ _CURSOR_VERSION = 1
 _SEARCH_MAX_CHARS = 4000
 _MAX_PAGE_SIZE = 120
 _LEGACY_READ_CHUNK = 64 * 1024
+_SQLITE_TIMEOUT_SECONDS = 30
+_INITIALIZE_FILE_LOCK_TIMEOUT_SECONDS = 60
 _SUMMARY_CACHE_LOCK = threading.RLock()
 _SUMMARY_CACHE: dict[tuple[str, bool, bool], tuple[int, list[dict[str, Any]]]] = {}
 _INITIALIZE_LOCKS_LOCK = threading.RLock()
@@ -54,6 +57,54 @@ def _initialize_lock_for(db_path: str) -> threading.RLock:
             lock = threading.RLock()
             _INITIALIZE_LOCKS[db_path] = lock
         return lock
+
+
+@contextmanager
+def _database_process_lock(db_path: str) -> Iterator[None]:
+    """Serialize first-time schema setup across separate Studio processes."""
+
+    lock_path = f"{db_path}.init.lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    handle = open(lock_path, "a+b")
+    try:
+        if os.path.getsize(lock_path) == 0:
+            handle.write(b"0")
+            handle.flush()
+        deadline = time.monotonic() + _INITIALIZE_FILE_LOCK_TIMEOUT_SECONDS
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for media library lock: {lock_path}")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for media library lock: {lock_path}")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
 
 
 class _ClosableConnection(sqlite3.Connection):
@@ -240,6 +291,28 @@ def _image_dimensions(path: str) -> tuple[int | None, int | None]:
         return None, None
 
 
+def _video_dimensions(path: str, mime: str) -> tuple[int | None, int | None]:
+    try:
+        from modules import canvas_workbench_assets
+
+        metadata = canvas_workbench_assets._probe_media_metadata(path, mime or "video/mp4")
+        width = int(metadata.get("width") or 0)
+        height = int(metadata.get("height") or 0)
+        if width > 0 and height > 0:
+            return width, height
+    except Exception:
+        pass
+    return None, None
+
+
+def _media_dimensions(path: str, media_type: str, mime: str) -> tuple[int | None, int | None]:
+    if media_type == "image":
+        return _image_dimensions(path)
+    if media_type == "video":
+        return _video_dimensions(path, mime)
+    return None, None
+
+
 def _extract_embedded_metadata(path: str, mime: str) -> dict[str, Any]:
     try:
         from modules.canvas_media_metadata import extract_media_metadata
@@ -262,6 +335,15 @@ def _metadata_search_text(metadata: dict[str, Any]) -> str:
     if isinstance(parameters, dict):
         values.extend(_safe_text(f"{key} {value}") for key, value in parameters.items())
     return " ".join(values)[:_SEARCH_MAX_CHARS]
+
+
+def _metadata_needs_refresh(metadata: Any) -> bool:
+    if not isinstance(metadata, dict) or not metadata.get("raw_keys"):
+        return False
+    return not any(
+        metadata.get(key) not in (None, "", {}, [])
+        for key in ("source", "scheme", "prompt", "negative_prompt", "parameters", "raw_text", "workflow")
+    )
 
 
 class _LegacyLogParser(HTMLParser):
@@ -399,12 +481,35 @@ class MediaLibrary:
         self._initialize_lock = _initialize_lock_for(self.db_path)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path, timeout=15, factory=_ClosableConnection)
+        connection = sqlite3.connect(
+            self.db_path,
+            timeout=_SQLITE_TIMEOUT_SECONDS,
+            factory=_ClosableConnection,
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA synchronous = NORMAL")
-        connection.execute("PRAGMA busy_timeout = 15000")
+        connection.execute(f"PRAGMA busy_timeout = {_SQLITE_TIMEOUT_SECONDS * 1000}")
         return connection
+
+    @staticmethod
+    def _schema_ready(connection: sqlite3.Connection) -> bool:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('library_meta', 'media')"
+            ).fetchall()
+        }
+        if tables != {"library_meta", "media"}:
+            return False
+        rows = connection.execute(
+            "SELECT key, value FROM library_meta WHERE key IN ('schema_version', 'index_revision')"
+        ).fetchall()
+        values = {str(row[0]): str(row[1]) for row in rows}
+        try:
+            return int(values.get("schema_version", "0")) >= SCHEMA_VERSION and "index_revision" in values
+        except (TypeError, ValueError):
+            return False
 
     def initialize(self) -> None:
         if self._initialized and os.path.exists(self.db_path):
@@ -412,63 +517,67 @@ class MediaLibrary:
         with self._initialize_lock:
             if self._initialized and os.path.exists(self.db_path):
                 return
-            with self._connect() as connection:
-                connection.execute("PRAGMA journal_mode = WAL")
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS library_meta (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS media (
-                        media_id TEXT PRIMARY KEY,
-                        user_did TEXT NOT NULL,
-                        relative_path TEXT NOT NULL UNIQUE,
-                        date_key TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        media_type TEXT NOT NULL,
-                        mime TEXT NOT NULL,
-                        size INTEGER NOT NULL DEFAULT 0,
-                        mtime_ns INTEGER NOT NULL DEFAULT 0,
-                        created_at REAL NOT NULL DEFAULT 0,
-                        width INTEGER,
-                        height INTEGER,
-                        duration_ms INTEGER,
-                        generation_metadata_json TEXT NOT NULL DEFAULT '{}',
-                        generation_text TEXT NOT NULL DEFAULT '',
-                        title TEXT NOT NULL DEFAULT '',
-                        tags_json TEXT NOT NULL DEFAULT '[]',
-                        rating INTEGER NOT NULL DEFAULT 0,
-                        favorite INTEGER NOT NULL DEFAULT 0,
-                        notes TEXT NOT NULL DEFAULT '',
-                        missing_at REAL,
-                        trashed_at REAL,
-                        trash_path TEXT,
-                        original_relative_path TEXT,
-                        indexed_at REAL NOT NULL DEFAULT 0
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_media_active_date
-                        ON media(trashed_at, missing_at, date_key, created_at DESC, media_id DESC);
-                    CREATE INDEX IF NOT EXISTS idx_media_active_type
-                        ON media(trashed_at, missing_at, media_type, created_at DESC, media_id DESC);
-                    CREATE INDEX IF NOT EXISTS idx_media_active_created
-                        ON media(trashed_at, missing_at, created_at DESC, media_id DESC);
-                    CREATE INDEX IF NOT EXISTS idx_media_generation_text
-                        ON media(generation_text);
-                    """
-                )
-                connection.execute(
-                    "INSERT OR IGNORE INTO library_meta(key, value) VALUES('schema_version', ?)",
-                    (str(SCHEMA_VERSION),),
-                )
-                connection.execute(
-                    "UPDATE library_meta SET value = ? WHERE key = 'schema_version' AND CAST(value AS INTEGER) < ?",
-                    (str(SCHEMA_VERSION), SCHEMA_VERSION),
-                )
-                connection.execute(
-                    "INSERT OR IGNORE INTO library_meta(key, value) VALUES('index_revision', '0')"
-                )
-            self._initialized = True
+            with _database_process_lock(self.db_path):
+                with self._connect() as connection:
+                    journal_mode = connection.execute("PRAGMA journal_mode").fetchone()
+                    if str(journal_mode[0] if journal_mode else "").lower() != "wal":
+                        connection.execute("PRAGMA journal_mode = WAL")
+                    if not self._schema_ready(connection):
+                        connection.executescript(
+                            """
+                            CREATE TABLE IF NOT EXISTS library_meta (
+                                key TEXT PRIMARY KEY,
+                                value TEXT NOT NULL
+                            );
+                            CREATE TABLE IF NOT EXISTS media (
+                                media_id TEXT PRIMARY KEY,
+                                user_did TEXT NOT NULL,
+                                relative_path TEXT NOT NULL UNIQUE,
+                                date_key TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                media_type TEXT NOT NULL,
+                                mime TEXT NOT NULL,
+                                size INTEGER NOT NULL DEFAULT 0,
+                                mtime_ns INTEGER NOT NULL DEFAULT 0,
+                                created_at REAL NOT NULL DEFAULT 0,
+                                width INTEGER,
+                                height INTEGER,
+                                duration_ms INTEGER,
+                                generation_metadata_json TEXT NOT NULL DEFAULT '{}',
+                                generation_text TEXT NOT NULL DEFAULT '',
+                                title TEXT NOT NULL DEFAULT '',
+                                tags_json TEXT NOT NULL DEFAULT '[]',
+                                rating INTEGER NOT NULL DEFAULT 0,
+                                favorite INTEGER NOT NULL DEFAULT 0,
+                                notes TEXT NOT NULL DEFAULT '',
+                                missing_at REAL,
+                                trashed_at REAL,
+                                trash_path TEXT,
+                                original_relative_path TEXT,
+                                indexed_at REAL NOT NULL DEFAULT 0
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_media_active_date
+                                ON media(trashed_at, missing_at, date_key, created_at DESC, media_id DESC);
+                            CREATE INDEX IF NOT EXISTS idx_media_active_type
+                                ON media(trashed_at, missing_at, media_type, created_at DESC, media_id DESC);
+                            CREATE INDEX IF NOT EXISTS idx_media_active_created
+                                ON media(trashed_at, missing_at, created_at DESC, media_id DESC);
+                            CREATE INDEX IF NOT EXISTS idx_media_generation_text
+                                ON media(generation_text);
+                            """
+                        )
+                        connection.execute(
+                            "INSERT OR IGNORE INTO library_meta(key, value) VALUES('schema_version', ?)",
+                            (str(SCHEMA_VERSION),),
+                        )
+                        connection.execute(
+                            "UPDATE library_meta SET value = ? WHERE key = 'schema_version' AND CAST(value AS INTEGER) < ?",
+                            (str(SCHEMA_VERSION), SCHEMA_VERSION),
+                        )
+                        connection.execute(
+                            "INSERT OR IGNORE INTO library_meta(key, value) VALUES('index_revision', '0')"
+                        )
+                self._initialized = True
 
     @staticmethod
     def _revision(connection: sqlite3.Connection) -> int:
@@ -504,6 +613,27 @@ class MediaLibrary:
         item["updated_at_iso"] = _datetime.datetime.fromtimestamp(float(item.get("created_at") or 0)).isoformat(timespec="seconds") if item.get("created_at") else ""
         item.pop("user_did", None)
         item.pop("generation_text", None)
+        return item
+
+    def _refresh_stale_embedded_metadata(self, row: sqlite3.Row, item: dict[str, Any]) -> dict[str, Any]:
+        if not _metadata_needs_refresh(item.get("generation_metadata")):
+            return item
+        relative_path = str(row["relative_path"] or "")
+        absolute_path = _path_under(self.outputs_root, relative_path)
+        if not os.path.isfile(absolute_path):
+            return item
+        metadata = _extract_embedded_metadata(absolute_path, str(row["mime"] or ""))
+        if not metadata or _metadata_needs_refresh(metadata):
+            return item
+        generation_text = _metadata_search_text(metadata)
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=? WHERE media_id=?",
+                (_json_dumps(metadata), generation_text, time.time(), str(row["media_id"])),
+            )
+            self._bump_revision(connection)
+        self._clear_summary_cache()
+        item["generation_metadata"] = metadata
         return item
 
     def _legacy_for_date(self, date_key: str, cache: dict[str, dict[str, dict[str, str]]]) -> dict[str, dict[str, str]]:
@@ -561,14 +691,17 @@ class MediaLibrary:
                         mime = _mime_for_path(absolute_path, media_type)
                         media_id = _media_id(relative_path)
                         row = connection.execute(
-                            "SELECT media_id, size, mtime_ns, missing_at, trashed_at FROM media WHERE relative_path = ?",
+                            "SELECT media_id, size, mtime_ns, missing_at, trashed_at, media_type, width, height FROM media WHERE relative_path = ?",
                             (relative_path,),
                         ).fetchone()
                         signature_same = bool(row and int(row["size"] or 0) == int(stat.st_size) and int(row["mtime_ns"] or 0) == int(stat.st_mtime_ns))
                         if signature_same:
+                            dimensions = (row["width"], row["height"])
+                            if media_type in {"image", "video"} and (int(row["width"] or 0) <= 0 or int(row["height"] or 0) <= 0):
+                                dimensions = _media_dimensions(absolute_path, media_type, mime)
                             connection.execute(
-                                "UPDATE media SET missing_at = NULL, trashed_at = NULL, trash_path = NULL, original_relative_path = COALESCE(original_relative_path, relative_path) WHERE relative_path = ?",
-                                (relative_path,),
+                                "UPDATE media SET missing_at = NULL, trashed_at = NULL, trash_path = NULL, original_relative_path = COALESCE(original_relative_path, relative_path), width = ?, height = ? WHERE relative_path = ?",
+                                (dimensions[0], dimensions[1], relative_path),
                             )
                             if row and (row["missing_at"] is not None or row["trashed_at"] is not None):
                                 summary_changed = True
@@ -589,9 +722,7 @@ class MediaLibrary:
                                         metadata["negative_prompt"] = value
                                     elif lower in {"model", "base model"}:
                                         metadata.setdefault("parameters", {})["model"] = value
-                        width = height = None
-                        if media_type == "image":
-                            width, height = _image_dimensions(absolute_path)
+                        width, height = _media_dimensions(absolute_path, media_type, mime)
                         generation_text = _metadata_search_text(metadata)
                         now = time.time()
                         if row:
@@ -814,7 +945,12 @@ class MediaLibrary:
             clauses.extend(["trashed_at IS NULL", "missing_at IS NULL"])
         with self._connect() as connection:
             row = connection.execute(f"SELECT * FROM media WHERE {' AND '.join(clauses)}", params).fetchone()
-        return self._row_to_item(row, include_generation_metadata=include_generation_metadata) if row else None
+        if not row:
+            return None
+        item = self._row_to_item(row, include_generation_metadata=include_generation_metadata)
+        if include_generation_metadata:
+            item = self._refresh_stale_embedded_metadata(row, item)
+        return item
 
     def update_user_metadata(
         self,

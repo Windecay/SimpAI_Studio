@@ -9,6 +9,7 @@ import time
 
 CATALOG_SCHEMA = "simpai.vlm-model-catalog.v1"
 GGUF_RUNTIME_CONTEXT_MAX = 16384
+CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES = frozenset({"qwen3vl_4b", "qwen3vl_8b"})
 _CACHE_LOCK = threading.RLock()
 _CACHE = {"key": None, "expires_at": 0.0, "payload": None}
 _FILE_CACHE = {"gguf": {}, "safetensors": {}}
@@ -79,8 +80,14 @@ def _gguf_value(field):
     try:
         if hasattr(value, "tolist"):
             value = value.tolist()
-        if isinstance(value, list) and len(value) == 1:
-            value = value[0]
+        if isinstance(value, (list, tuple)):
+            if len(value) == 1:
+                value = value[0]
+            elif value and all(isinstance(item, int) and 0 <= item <= 255 for item in value):
+                try:
+                    value = bytes(value).decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
         if hasattr(value, "item"):
             value = value.item()
         if isinstance(value, bytes):
@@ -213,6 +220,15 @@ def is_visual_component_filename(filename):
     return bool(re.search(r"(?<![a-z0-9])vision(?![a-z0-9])", name))
 
 
+def _mmproj_precision_rank(path):
+    name = os.path.basename(str(path or "")).lower()
+    if re.search(r"(?<![a-z0-9])q8(?:[_-]?[a-z0-9]+)?(?=[._-]|$)", name):
+        return 2
+    if re.search(r"(?<![a-z0-9])(?:f16|fp16|bf16)(?=[._-]|$)", name):
+        return 1
+    return 0
+
+
 def select_mmproj_for_model(model_path, candidates):
     candidates = sorted({os.path.abspath(path) for path in candidates}, key=str.lower)
     if len(candidates) == 1:
@@ -226,9 +242,18 @@ def select_mmproj_for_model(model_path, candidates):
     scored.sort(key=lambda item: (-item[0], item[1].lower()))
     if not scored or scored[0][0] <= 0:
         return None
-    if len(scored) > 1 and scored[0][0] == scored[1][0]:
-        return None
-    return scored[0][1]
+    best_score = scored[0][0]
+    best_candidates = [path for score, path in scored if score == best_score]
+    if len(best_candidates) == 1:
+        return best_candidates[0]
+    ranked = sorted(
+        best_candidates,
+        key=lambda path: (-_mmproj_precision_rank(path), path.lower()),
+    )
+    best_rank = _mmproj_precision_rank(ranked[0])
+    if best_rank > _mmproj_precision_rank(ranked[1]):
+        return ranked[0]
+    return None
 
 
 def read_safetensors_header(path, max_header_bytes=64 * 1024 * 1024):
@@ -504,6 +529,8 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
             continue
         recipe = _cached_text_encoder_recipe(absolute_path)
         if not recipe:
+            continue
+        if recipe.get("architecture") not in CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES:
             continue
         version_id = f"comfy:text_encoders:{relative_path}"
         capabilities = list(recipe["capabilities"])

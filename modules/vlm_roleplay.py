@@ -32,6 +32,8 @@ MAX_CHARACTER_STATE_IMAGE_HISTORY = 30
 MAX_ROLEPLAY_CHARACTERS = 20
 MAX_CHARACTER_STATE_FIELDS = 40
 MAX_RUNTIME_STATE_TEXT = 4000
+MAX_STATE_TEXT_SEGMENTS = 8
+MAX_STATE_TEXT_SEGMENT_LENGTH = 520
 PLAYER_STATE_STATUSES = {"present", "absent"}
 ROLEPLAY_SPEAKER_MODES = {"auto", "current", "multi"}
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.:@-]+")
@@ -173,15 +175,22 @@ def _merge_state_fields(existing: Any, incoming: Any) -> list[dict[str, str]]:
     return merged[:MAX_CHARACTER_STATE_FIELDS]
 
 
-_STATE_TEXT_SEGMENT_RE = re.compile(r"\n+|(?<=[。！？!?；;])\s*")
-_STATE_TEXT_KEY_RE = re.compile(r"[\s。！？!?；;，,、]+$")
+_STATE_TEXT_SEGMENT_RE = re.compile(r"\n+|(?<=[。！？!?；;.])\s*")
+_STATE_TEXT_KEY_RE = re.compile(r"[\s。！？!?；;，,、：:,.。]+")
 
 
 def _state_text_segments(value: Any) -> list[str]:
     text = _text(value, MAX_RUNTIME_STATE_TEXT)
     if not text:
         return []
-    return [segment for segment in (_text(item, MAX_RUNTIME_STATE_TEXT) for item in _STATE_TEXT_SEGMENT_RE.split(text)) if segment]
+    return [
+        segment
+        for segment in (
+            _text(item, MAX_STATE_TEXT_SEGMENT_LENGTH)
+            for item in _STATE_TEXT_SEGMENT_RE.split(text)
+        )
+        if segment
+    ]
 
 
 def _state_text_key(value: Any) -> str:
@@ -189,22 +198,72 @@ def _state_text_key(value: Any) -> str:
     return _STATE_TEXT_KEY_RE.sub("", text)
 
 
+def _state_text_similar(left: Any, right: Any) -> bool:
+    left_key = _state_text_key(left)
+    right_key = _state_text_key(right)
+    if not left_key or not right_key:
+        return False
+    if left_key == right_key:
+        return True
+    shorter, longer = sorted((left_key, right_key), key=len)
+    return len(shorter) >= 16 and shorter in longer and len(shorter) / len(longer) >= 0.55
+
+
+def _unique_state_text_segments(value: Any) -> list[str]:
+    result: list[str] = []
+    for segment in _state_text_segments(value):
+        match_index = next(
+            (index for index, existing in enumerate(result) if _state_text_similar(existing, segment)),
+            None,
+        )
+        if match_index is None:
+            result.append(segment)
+        else:
+            # Keep the latest wording when the director restates the same fact.
+            result[match_index] = segment
+    return result
+
+
+def _compact_state_text(value: Any) -> str:
+    return _text(
+        "\n".join(_unique_state_text_segments(value)[-MAX_STATE_TEXT_SEGMENTS:]),
+        MAX_RUNTIME_STATE_TEXT,
+    )
+
+
 def _merge_state_text(existing: Any, incoming: Any) -> str:
-    existing_segments = _state_text_segments(existing)
-    incoming_segments = _state_text_segments(incoming)
+    existing_segments = _unique_state_text_segments(existing)
+    incoming_segments = _unique_state_text_segments(incoming)
     if not incoming_segments:
         return "\n".join(existing_segments)
     if not existing_segments:
-        return _text(incoming, MAX_RUNTIME_STATE_TEXT)
+        return _text("\n".join(incoming_segments[-MAX_STATE_TEXT_SEGMENTS:]), MAX_RUNTIME_STATE_TEXT)
+
+    existing_length = sum(len(item) for item in existing_segments)
+    incoming_length = sum(len(item) for item in incoming_segments)
+    coverage = sum(
+        1 for existing_segment in existing_segments
+        if any(_state_text_similar(existing_segment, incoming_segment) for incoming_segment in incoming_segments)
+    )
+    # A multi-sentence restatement is a fresh snapshot, not several new events.
+    if (
+        len(incoming_segments) >= 2
+        and coverage >= max(1, (len(existing_segments) + 1) // 2)
+        and incoming_length >= int(existing_length * 0.6)
+    ):
+        return _text("\n".join(incoming_segments[-MAX_STATE_TEXT_SEGMENTS:]), MAX_RUNTIME_STATE_TEXT)
 
     merged = list(existing_segments)
-    known = {_state_text_key(item) for item in merged}
     for segment in incoming_segments:
-        key = _state_text_key(segment)
-        if key and key not in known:
+        match_index = next(
+            (index for index, existing_segment in enumerate(merged) if _state_text_similar(existing_segment, segment)),
+            None,
+        )
+        if match_index is None:
             merged.append(segment)
-            known.add(key)
-    return _text("\n".join(merged), MAX_RUNTIME_STATE_TEXT)
+        else:
+            merged[match_index] = segment
+    return _text("\n".join(merged[-MAX_STATE_TEXT_SEGMENTS:]), MAX_RUNTIME_STATE_TEXT)
 
 
 def _merge_string_list(existing: Any, incoming: Any) -> list[str]:
@@ -268,7 +327,7 @@ def _normalize_character_runtime(value: Any) -> dict[str, Any]:
         "location": _text(source.get("location"), 500),
         "condition": _clean_string_list(source.get("condition"), 20),
         "appearance": _text(source.get("appearance"), 1200),
-        "state_text": _text(source.get("state_text"), 4000),
+        "state_text": _compact_state_text(source.get("state_text")),
         "state_fields": _clean_state_fields(source.get("state_fields")),
         "current_appearance_asset_ids": _clean_asset_ids(
             source.get("current_appearance_asset_ids") or source.get("current_appearance_asset_id"),
@@ -297,7 +356,7 @@ def _normalize_player_state(value: Any = None) -> dict[str, Any]:
         "version": 1,
         "status": status,
         "is_present": status == "present",
-        "state_text": _text(source.get("state_text"), 4000),
+        "state_text": _compact_state_text(source.get("state_text")),
         "state_fields": _clean_state_fields(source.get("state_fields")),
     }
 
@@ -1189,15 +1248,39 @@ def visible_state_for_visual(session: Any) -> dict[str, Any]:
     return _visible_state(session, visual=True)
 
 
-def _player_state_prompt(player_state: Any) -> str:
+def normalize_roleplay_turn_intent(value: Any = "", player_state: Any = None) -> str:
+    """Resolve the current message's narrative perspective without changing player presence."""
+    requested = _text(value, 80).strip().lower().replace("-", "_").replace(" ", "_")
+    if requested in {"story_control", "storycontrol", "control", "director", "plot", "剧情控制"}:
+        requested = "story_control"
+    elif requested in {"character", "player", "player_action", "dialogue", "玩家", "玩家行动"}:
+        requested = "character"
+    else:
+        requested = ""
+    status = _normalize_player_state(player_state).get("status")
+    if status == "absent":
+        return "story_control"
+    return requested or "character"
+
+
+def _player_state_prompt(player_state: Any, turn_intent: Any = "") -> str:
     state = _normalize_player_state(player_state)
     status = state["status"]
+    effective_intent = normalize_roleplay_turn_intent(turn_intent, state)
     if status == "absent":
         return (
             "Player runtime status: absent from the current scene. Do not make the player speak, think, act, "
             "or participate in the current scene. Do not call out to the player. The latest user message is a "
             "story-control instruction from the operator, not dialogue spoken by the player; apply its intended "
             "plot direction through the visible NPC and scene consequences only."
+        )
+    if effective_intent == "story_control":
+        return (
+            "Player runtime status: present in the current scene. For this turn, the operator selected story-control "
+            "intent. Treat the latest user message as a story-control instruction, not as dialogue or an action spoken "
+            "by the player. Advance NPCs, the environment, or visible consequences as directed, while keeping the "
+            "player present unless the exchange explicitly changes player_state.status. Do not decide the player's "
+            "private thoughts, emotions, or irreversible actions."
         )
     return (
         "Player runtime status: present. Use the player's natural-language current state and state fields as "
@@ -1206,10 +1289,16 @@ def _player_state_prompt(player_state: Any) -> str:
     )
 
 
-def build_roleplay_system_prompt(session: Any, lang: str = "cn", speaker_id: Any = "") -> str:
+def build_roleplay_system_prompt(
+    session: Any,
+    lang: str = "cn",
+    speaker_id: Any = "",
+    turn_intent: Any = "",
+) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
+    effective_turn_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
     active_id = _id(normalized.get("active_character_id"), "character")
     requested_id = _id(speaker_id, "character") if _text(speaker_id, 160) else ""
     resolved_speaker_id = requested_id if requested_id in normalized.get("characters", {}) else active_id
@@ -1233,7 +1322,8 @@ def build_roleplay_system_prompt(session: Any, lang: str = "cn", speaker_id: Any
         "Do not decide the player's private thoughts, emotions, or irreversible actions.",
         "Treat the current story state as canonical when older dialogue conflicts with it.",
         "Player participation rules:",
-        _player_state_prompt(player_state),
+        _player_state_prompt(player_state, effective_turn_intent),
+        f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
         "Character card:",
         json.dumps(speaker_card, ensure_ascii=False, indent=2),
         "Other configured characters visible in the current scene:",
@@ -1438,9 +1528,12 @@ def build_director_prompt(
     assistant_reply: str,
     lang: str = "cn",
     speaker_id: Any = "",
+    turn_intent: Any = "",
 ) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    player_state = normalized["story_state"].get("player_state", _normalize_player_state())
+    effective_turn_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
     resolved_speaker_id = _id(speaker_id, "character") if _text(speaker_id, 160) else _id(
         normalized.get("active_character_id"), "character"
     )
@@ -1469,11 +1562,12 @@ def build_director_prompt(
             f"Return JSON only. Summaries use {reply_language}.",
             "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
             "Do not rewrite the full state. Return incremental patches.",
-            "When the latest exchange clearly changes a character's current condition, update characters.<character_id>.state_text.",
+            "When the latest exchange clearly changes a character's current condition, update characters.<character_id>.state_text with a compact current snapshot of at most two short sentences.",
             "When numeric or named status values clearly change, update characters.<character_id>.state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
-            "When the current player status is absent, treat the latest user message as a story-control instruction rather than player dialogue.",
-            "Preserve every ongoing state_text sentence, condition entry, and user-defined state field unless the latest exchange explicitly ends or replaces it. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label.",
+            f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
+            "When the current player status is absent, or when the effective narrative intent is story_control, treat the latest user message as a story-control instruction rather than player dialogue. Story-control intent does not by itself remove the player from the scene; change player_state.status only when the latest exchange explicitly establishes that presence change.",
+            "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
             "To explicitly end or replace an ongoing state, use patch op 'replace' with the complete replacement value, or op 'remove' when the field should become empty. Do not use an ordinary set patch to clear a buff, injury, equipment effect, or action restriction.",
             "Do not rewrite or reset state when the latest exchange provides no new evidence.",
             "Do not decide private thoughts or invent injury, death, resources, or numerical changes that did not happen in the exchange.",

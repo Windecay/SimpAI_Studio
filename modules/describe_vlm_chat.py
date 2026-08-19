@@ -1221,6 +1221,12 @@ def _prompt_options_from_payload(payload, lang):
         "agent_routing": agent_routing,
         "roleplay_user_did": _clean_text(payload.get("user_did") or payload.get("__user_did")),
         "roleplay_request_kind": _clean_text(payload.get("roleplay_request_kind")) or "character",
+        "roleplay_turn_intent": vlm_roleplay.normalize_roleplay_turn_intent(
+            payload.get("roleplay_turn_intent"),
+            roleplay_session.get("story_state", {}).get("player_state", {})
+            if isinstance(roleplay_session, dict)
+            else {},
+        ),
         "roleplay_speaker_mode": vlm_roleplay.normalize_speaker_mode(
             payload.get("roleplay_speaker_mode")
             or roleplay_session.get("autoplay_config", {}).get("speaker_mode")
@@ -1573,6 +1579,7 @@ def _describe_chat_system_prompt(options, lang):
                     roleplay_session,
                     lang,
                     options.get("roleplay_speaker_id") or "",
+                    options.get("roleplay_turn_intent") or "",
                 )
             )
             sections.append(
@@ -1787,6 +1794,7 @@ def build_runtime_payload(payload):
         "describe_actions_enabled": prompt_actions_enabled or generation_actions_enabled,
         "describe_roleplay_enabled": roleplay_active,
         "roleplay_request_kind": prompt_options["roleplay_request_kind"],
+        "roleplay_turn_intent": prompt_options["roleplay_turn_intent"],
         "roleplay_autoplay": prompt_options["roleplay_autoplay"],
         "roleplay_session": prompt_options["roleplay_session"],
         "roleplay_agent_role": (
@@ -1910,8 +1918,16 @@ def build_runtime_payload(payload):
     }
 
 
-def _build_roleplay_director_runtime_payload(payload, session, user_message, assistant_reply, speaker_id=""):
+def _build_roleplay_director_runtime_payload(
+    payload,
+    session,
+    user_message,
+    assistant_reply,
+    speaker_id="",
+    turn_intent="",
+):
     payload = payload if isinstance(payload, dict) else {}
+    normalized_session = vlm_roleplay.normalize_roleplay_session(session)
     conversation_id = _clean_text(payload.get("conversation_id")) or session.get("conversation_id")
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
     lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
@@ -1921,6 +1937,7 @@ def _build_roleplay_director_runtime_payload(payload, session, user_message, ass
         assistant_reply,
         lang,
         speaker_id=speaker_id,
+        turn_intent=turn_intent,
     )
     params = {
         "mode": "chat",
@@ -1939,6 +1956,10 @@ def _build_roleplay_director_runtime_payload(payload, session, user_message, ass
         "describe_roleplay_director": True,
         "roleplay_agent_role": vlm_agent_router.ROLE_DIRECTOR_STATE,
         "roleplay_agent_routing": session.get("agent_routing") if isinstance(session, dict) else {},
+        "roleplay_turn_intent": vlm_roleplay.normalize_roleplay_turn_intent(
+            turn_intent,
+            normalized_session.get("story_state", {}).get("player_state", {}),
+        ),
         "roleplay_local_version": payload.get("agent_routing_local_version") or payload.get("local_version") or "",
         "describe_actions_enabled": False,
         "free_after": _truthy(payload.get("unload_after_chat", payload.get("free_after")), False),
@@ -1976,7 +1997,14 @@ def _build_roleplay_director_runtime_payload(payload, session, user_message, ass
     }
 
 
-def _run_roleplay_director(payload, session, user_message, assistant_reply, speaker_id=""):
+def _run_roleplay_director(
+    payload,
+    session,
+    user_message,
+    assistant_reply,
+    speaker_id="",
+    turn_intent="",
+):
     payload = payload if isinstance(payload, dict) else {}
     normalized_session = vlm_roleplay.normalize_roleplay_session(session)
     before_session = vlm_roleplay.normalize_roleplay_session(normalized_session)
@@ -1998,6 +2026,7 @@ def _run_roleplay_director(payload, session, user_message, assistant_reply, spea
             user_message,
             assistant_reply,
             speaker_id=speaker_id,
+            turn_intent=turn_intent or payload.get("roleplay_turn_intent") or "",
         )
         result = _run_vlm_with_agent_router(
             runtime_payload,
@@ -4645,6 +4674,7 @@ def run_describe_vlm_chat(payload):
             payload.get("message") or "",
             parsed.get("reply") or original_text,
             speaker_id=params.get("roleplay_speaker_id") or "",
+            turn_intent=params.get("roleplay_turn_intent") or payload.get("roleplay_turn_intent") or "",
         )
     result["text"] = parsed.get("reply") or original_text
     if result["text"] != original_text and not result.get("raw_text"):

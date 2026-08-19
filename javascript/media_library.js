@@ -8,8 +8,7 @@
         cnUrl: '/language/cn.json'
     }, window.simpleaiGalleryConfig || {});
     const MAX_RENDERED = 180;
-    const WINDOW_BUFFER = 24;
-    const CARD_STEP = 268;
+    const WINDOW_BUFFER_PX = 2400;
     const PAGE_SIZE = 48;
 
     const state = {
@@ -31,7 +30,10 @@
         viewerId: '',
         viewerZoom: 1,
         renderedStart: -1,
+        renderedEnd: -1,
         renderedColumnCount: 0,
+        renderedKey: '',
+        layout: null,
         request: null,
         requestSerial: 0,
         dateRefreshTimer: 0,
@@ -181,6 +183,10 @@
                 state.items.push(item);
             }
         });
+        state.layout = null;
+        state.renderedStart = -1;
+        state.renderedEnd = -1;
+        state.renderedKey = '';
     }
 
     function queryParams() {
@@ -202,7 +208,6 @@
         if (reset) {
             state.cursor = null;
             state.hasMore = true;
-            state.renderedStart = -1;
             if (state.request) state.request.abort();
             state.request = new AbortController();
         }
@@ -250,15 +255,16 @@
         const width = Number(item && item.width);
         const height = Number(item && item.height);
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return 4 / 3;
-        return Math.max(0.55, Math.min(2.1, width / height));
+        return Math.max(0.35, Math.min(3.5, width / height));
     }
 
     function renderCard(item) {
         const favorite = !!item.favorite;
-        const selected = state.selectedId === item.media_id || state.selectedIds.has(item.media_id);
+        const selected = state.selectedIds.has(item.media_id);
+        const active = state.selectedId === item.media_id;
         const kind = item.media_type === 'video' ? t('Videos') : item.media_type === 'audio' ? t('Audio') : t('Images');
         const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
-        return `<article class="media-card${selected ? ' selected' : ''}" style="--media-ratio:${mediaRatio(item).toFixed(4)}" data-id="${escapeHtml(item.media_id)}" data-date="${escapeHtml(item.date_key || '')}">
+        return `<article class="media-card${selected ? ' selected' : ''}${active ? ' active' : ''}" style="--media-ratio:${mediaRatio(item).toFixed(4)}" data-id="${escapeHtml(item.media_id)}" data-date="${escapeHtml(item.date_key || '')}">
             <div class="media-card-preview">${cardPreview(item)}<span class="media-kind">${escapeHtml(kind)}</span>
                 <div class="media-card-overlay">
                     <button type="button" class="card-select" title="Select" aria-label="Select" aria-pressed="${state.selectedIds.has(item.media_id) ? 'true' : 'false'}"><i class="fa fa-check"></i></button>
@@ -283,61 +289,256 @@
     }
 
     function estimatedCardHeight(item, columnWidth) {
-        const previewHeight = Math.max(146, Math.min(330, columnWidth / mediaRatio(item)));
+        const previewHeight = Math.max(1, columnWidth / mediaRatio(item));
         return previewHeight + 62;
     }
 
-    function renderMasonry(items, count) {
-        const columns = Array.from({ length: count }, () => ({ items: [], height: 0 }));
+    function feedMetrics(count) {
         const mobile = window.innerWidth <= 700;
-        const edgePadding = mobile ? 20 : 32;
+        const paddingLeft = mobile ? 10 : 16;
+        const paddingRight = mobile ? 10 : 16;
+        const paddingTop = mobile ? 10 : 14;
+        const paddingBottom = 4;
         const gap = mobile ? 9 : 12;
-        const innerWidth = Math.max(120, (refs.feed.clientWidth - edgePadding - ((count - 1) * gap)) / count);
-        (Array.isArray(items) ? items : []).forEach((item) => {
+        const innerWidth = Math.max(120, (refs.feed.clientWidth - paddingLeft - paddingRight - ((count - 1) * gap)) / count);
+        return { paddingLeft, paddingRight, paddingTop, paddingBottom, gap, innerWidth };
+    }
+
+    function buildLayout(count) {
+        const metrics = feedMetrics(count);
+        const columns = Array.from({ length: count }, () => ({ height: 0 }));
+        const positions = [];
+        const byId = new Map();
+        state.items.forEach((item, index) => {
             let target = columns[0];
             for (let index = 1; index < columns.length; index += 1) {
                 if (columns[index].height < target.height) target = columns[index];
             }
-            target.items.push(item);
-            target.height += estimatedCardHeight(item, innerWidth);
+            const columnIndex = columns.indexOf(target);
+            const height = estimatedCardHeight(item, metrics.innerWidth);
+            const position = {
+                item,
+                index,
+                column: columnIndex,
+                top: target.height,
+                height
+            };
+            positions.push(position);
+            byId.set(item.media_id, position);
+            target.height += height + metrics.gap;
         });
-        const fragment = document.createDocumentFragment();
-        columns.forEach((column, index) => {
+        const columnHeights = columns.map((column) => Math.max(0, column.height - (state.items.length ? metrics.gap : 0)));
+        const contentHeight = columnHeights.reduce((height, columnHeight) => Math.max(height, columnHeight), 0);
+        const totalHeight = metrics.paddingTop + contentHeight + metrics.paddingBottom;
+        const layout = {
+            itemsRef: state.items,
+            width: refs.feed.clientWidth,
+            count,
+            metrics,
+            positions,
+            byId,
+            columnHeights,
+            totalHeight
+        };
+        state.layout = layout;
+        state.renderedStart = -1;
+        state.renderedEnd = -1;
+        state.renderedKey = '';
+        refs.feed.style.setProperty('--ml-column-count', String(count));
+        refs.feed.style.removeProperty('height');
+        return layout;
+    }
+
+    function ensureLayout(count) {
+        const layout = state.layout;
+        if (!layout || layout.itemsRef !== state.items || layout.count !== count || layout.width !== refs.feed.clientWidth) {
+            return buildLayout(count);
+        }
+        return layout;
+    }
+
+    function visiblePositions(layout) {
+        if (state.items.length <= MAX_RENDERED || !refs.feedScroll) return layout.positions;
+        const scrollTop = refs.feedScroll.scrollTop || 0;
+        const viewportBottom = scrollTop + refs.feedScroll.clientHeight;
+        const buffer = Math.max(WINDOW_BUFFER_PX, Math.floor(refs.feedScroll.clientHeight * 1.5));
+        const contentTop = layout.metrics.paddingTop;
+        const windowTop = Math.max(contentTop, scrollTop - buffer);
+        const windowBottom = viewportBottom + buffer;
+        const positions = layout.positions.filter((position) => (
+            position.top + contentTop + position.height >= windowTop && position.top + contentTop <= windowBottom
+        ));
+        if (positions.length <= MAX_RENDERED) return positions;
+        const core = layout.positions.filter((position) => (
+            position.top + contentTop + position.height >= scrollTop && position.top + contentTop <= viewportBottom
+        ));
+        if (core.length >= MAX_RENDERED) return core.slice(0, MAX_RENDERED);
+        const selected = new Map(core.map((position) => [position.item.media_id, position]));
+        positions.forEach((position) => {
+            if (selected.size < MAX_RENDERED) selected.set(position.item.media_id, position);
+        });
+        return layout.positions.filter((position) => selected.has(position.item.media_id));
+    }
+
+    function cardRenderKey(item) {
+        const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
+        const selected = state.selectedIds.has(item.media_id);
+        const active = state.selectedId === item.media_id;
+        return [
+            item.media_id,
+            item.name || '',
+            item.title || '',
+            item.date_key || '',
+            item.media_type || '',
+            item.thumbnail_url || '',
+            item.favorite ? '1' : '0',
+            Number(item.rating || 0),
+            tags,
+            selected ? '1' : '0',
+            active ? '1' : '0'
+        ].join('\u001f');
+    }
+
+    function createCard(item) {
+        const holder = document.createElement('div');
+        holder.innerHTML = renderCard(item).trim();
+        return holder.firstElementChild;
+    }
+
+    function syncCardContent(card, item) {
+        const favorite = !!item.favorite;
+        const selected = state.selectedIds.has(item.media_id);
+        const kind = item.media_type === 'video' ? t('Videos') : item.media_type === 'audio' ? t('Audio') : t('Images');
+        const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3).join(', ') : '';
+        const name = item.title || item.name || '';
+        const preview = card.querySelector('.media-card-preview');
+        const imageExpected = (item.media_type === 'image' || item.media_type === 'video') && item.thumbnail_url;
+
+        card.classList.toggle('selected', selected);
+        card.classList.toggle('active', state.selectedId === item.media_id);
+        card.dataset.id = item.media_id;
+        card.dataset.date = item.date_key || '';
+        card.style.setProperty('--media-ratio', mediaRatio(item).toFixed(4));
+        card.querySelector('.card-name').textContent = name;
+        card.querySelector('.card-name').title = name;
+        card.querySelector('.card-date').textContent = formatDate(item.date_key);
+        card.querySelector('.card-tags').textContent = tags || formatBytes(item.size);
+        card.querySelector('.card-rating').textContent = starRating(item.rating);
+        card.querySelector('.media-kind').textContent = kind;
+
+        const selectButton = card.querySelector('.card-select');
+        selectButton.setAttribute('aria-pressed', state.selectedIds.has(item.media_id) ? 'true' : 'false');
+        const favoriteButton = card.querySelector('.card-favorite');
+        favoriteButton.classList.toggle('is-favorite', favorite);
+        favoriteButton.setAttribute('aria-pressed', favorite ? 'true' : 'false');
+
+        const currentImage = preview.querySelector('img');
+        const placeholder = preview.querySelector('.media-placeholder');
+        if (imageExpected) {
+            if (placeholder) placeholder.remove();
+            if (currentImage) {
+                if (currentImage.getAttribute('src') !== item.thumbnail_url) currentImage.setAttribute('src', item.thumbnail_url);
+            } else {
+                const image = document.createElement('img');
+                image.src = item.thumbnail_url;
+                image.alt = '';
+                image.loading = 'lazy';
+                image.decoding = 'async';
+                preview.insertBefore(image, preview.querySelector('.media-kind'));
+            }
+        } else {
+            if (currentImage) currentImage.remove();
+            if (!placeholder) {
+                const node = document.createElement('span');
+                const icon = item.media_type === 'video' ? 'fa-film' : item.media_type === 'audio' ? 'fa-music' : 'fa-image';
+                node.className = 'media-placeholder';
+                node.innerHTML = `<i class="fa ${icon}"></i>`;
+                preview.insertBefore(node, preview.querySelector('.media-kind'));
+            }
+        }
+        card.dataset.renderKey = cardRenderKey(item);
+    }
+
+    function ensureMasonryColumns(count) {
+        const wrappers = Array.from(refs.feed.children).filter((node) => node.classList.contains('masonry-column'));
+        while (wrappers.length < count) {
             const wrapper = document.createElement('div');
             wrapper.className = 'masonry-column';
-            wrapper.dataset.column = String(index);
-            const holder = document.createElement('div');
-            holder.innerHTML = column.items.map(renderCard).join('');
-            while (holder.firstElementChild) wrapper.appendChild(holder.firstElementChild);
-            fragment.appendChild(wrapper);
+            wrappers.push(wrapper);
+            refs.feed.appendChild(wrapper);
+        }
+        while (wrappers.length > count) wrappers.pop().remove();
+        wrappers.forEach((wrapper, index) => { wrapper.dataset.column = String(index); });
+        return wrappers;
+    }
+
+    function renderMasonry(positions, layout) {
+        const wanted = new Set(positions.map((position) => position.item.media_id));
+        const existing = new Map(Array.from(refs.feed.querySelectorAll('.media-card')).map((card) => [card.dataset.id, card]));
+        refs.feed.querySelectorAll('.media-card').forEach((card) => {
+            if (!wanted.has(card.dataset.id)) card.remove();
         });
-        refs.feed.style.setProperty('--ml-column-count', String(count));
-        refs.feed.replaceChildren(fragment);
+        const wrappers = ensureMasonryColumns(layout.count);
+        const activeColumns = Array.from({ length: layout.count }, () => []);
+        positions.forEach((position) => activeColumns[position.column].push(position));
+        wrappers.forEach((wrapper, columnIndex) => {
+            const active = activeColumns[columnIndex].sort((left, right) => left.top - right.top || left.index - right.index);
+            const topSpacer = wrapper.querySelector('[data-spacer="top"]') || document.createElement('div');
+            topSpacer.className = 'masonry-spacer';
+            topSpacer.dataset.spacer = 'top';
+            topSpacer.style.height = `${active.length ? active[0].top : 0}px`;
+            const sequence = [topSpacer];
+            let previousBottom = active.length ? active[0].top : 0;
+            active.forEach((position, activeIndex) => {
+                const gapSpacer = wrapper.querySelector(`[data-spacer="gap-${activeIndex}"]`) || document.createElement('div');
+                gapSpacer.className = 'masonry-spacer';
+                gapSpacer.dataset.spacer = `gap-${activeIndex}`;
+                gapSpacer.style.height = `${Math.max(0, position.top - previousBottom)}px`;
+                sequence.push(gapSpacer);
+                const item = position.item;
+                let card = existing.get(item.media_id);
+                if (!card) card = createCard(item);
+                if (card.dataset.renderKey !== cardRenderKey(item)) syncCardContent(card, item);
+                card.style.position = '';
+                card.style.left = '';
+                card.style.top = '';
+                card.style.width = '';
+                sequence.push(card);
+                previousBottom = position.top + position.height;
+            });
+            const bottomSpacer = wrapper.querySelector('[data-spacer="bottom"]') || document.createElement('div');
+            bottomSpacer.className = 'masonry-spacer';
+            bottomSpacer.dataset.spacer = 'bottom';
+            bottomSpacer.style.height = `${Math.max(0, layout.columnHeights[columnIndex] - previousBottom)}px`;
+            sequence.push(bottomSpacer);
+            const allowed = new Set(sequence);
+            Array.from(wrapper.children).forEach((child) => {
+                if (!allowed.has(child)) child.remove();
+            });
+            sequence.forEach((child) => wrapper.appendChild(child));
+        });
+        refs.feed.style.removeProperty('height');
+        refs.topSpacer.style.height = '0px';
+        refs.bottomSpacer.style.height = '0px';
     }
 
     function renderWindow(force) {
         if (!refs.feed) return;
-        const total = state.items.length;
         const columns = columnCount();
-        if (!force && total <= MAX_RENDERED && state.renderedStart === 0 && state.renderedColumnCount === columns) return;
-        let start = 0;
-        let end = total;
-        if (total > MAX_RENDERED) {
-            const scrollTop = refs.feedScroll.scrollTop || 0;
-            const row = Math.floor(scrollTop / CARD_STEP);
-            const rowBuffer = Math.ceil(WINDOW_BUFFER / columns);
-            start = Math.max(0, Math.min(total - MAX_RENDERED, (row - rowBuffer) * columns));
-            end = Math.min(total, start + MAX_RENDERED);
-            refs.topSpacer.style.height = `${Math.max(0, Math.floor(start / columns) * CARD_STEP)}px`;
-            refs.bottomSpacer.style.height = `${Math.max(0, Math.ceil((total - end) / columns) * CARD_STEP)}px`;
-        } else {
-            refs.topSpacer.style.height = '0px';
-            refs.bottomSpacer.style.height = '0px';
+        const layout = ensureLayout(columns);
+        const positions = visiblePositions(layout);
+        const start = positions.length ? Math.min(...positions.map((position) => position.index)) : -1;
+        const end = positions.length ? Math.max(...positions.map((position) => position.index)) + 1 : -1;
+        const renderedKey = positions.map((position) => position.item.media_id).join('\u001f');
+        if (!force && state.renderedStart === start && state.renderedEnd === end && state.renderedColumnCount === columns && state.renderedKey === renderedKey) {
+            updateActiveDateFromViewport();
+            return;
         }
-        if (!force && state.renderedStart === start && state.renderedColumnCount === columns) return;
         state.renderedStart = start;
+        state.renderedEnd = end;
         state.renderedColumnCount = columns;
-        renderMasonry(state.items.slice(start, end), columns);
+        state.renderedKey = renderedKey;
+        renderMasonry(positions, layout);
         updateActiveDateFromViewport();
     }
 
@@ -476,9 +677,7 @@
 
     function syncDetailLayout() {
         const open = !!refs.drawer && refs.drawer.getAttribute('aria-hidden') === 'false';
-        if (refs.layout) {
-            refs.layout.classList.toggle('has-detail', open);
-        }
+        if (refs.layout) refs.layout.classList.remove('has-detail');
         if (refs.detailBackdrop) {
             refs.detailBackdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
         }
@@ -486,9 +685,13 @@
 
     function updateActiveDateFromViewport() {
         if (!refs.feedScroll || !refs.dateList) return;
-        const first = refs.feed.querySelector('.media-card');
-        if (!first) return;
-        const date = first.dataset.date || '';
+        const layout = state.layout;
+        if (!layout || !layout.positions.length) return;
+        const viewportTop = refs.feedScroll.scrollTop || 0;
+        const first = layout.positions
+            .filter((position) => position.top + layout.metrics.paddingTop + position.height >= viewportTop)
+            .sort((left, right) => left.top - right.top || left.column - right.column || left.index - right.index)[0];
+        const date = first?.item?.date_key || '';
         if (!date || state.date) return;
         refs.dateList.querySelectorAll('.date-item').forEach((node) => {
             node.setAttribute('aria-current', node.dataset.date === date ? 'true' : 'false');
@@ -496,10 +699,12 @@
     }
 
     async function openDetail(mediaId) {
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectedId = String(mediaId || '');
-        renderWindow(true);
         refs.drawer.setAttribute('aria-hidden', 'false');
         syncDetailLayout();
+        renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
         refs.detail.innerHTML = `<div class="empty-state"><div class="empty-icon"><i class="fa fa-spinner fa-spin"></i></div><p>${escapeHtml(t('Loading...'))}</p></div>`;
         try {
             const trashQuery = state.trashMode ? '?trash=1' : '';
@@ -584,6 +789,10 @@
         state.itemById.delete(mediaId);
         state.selectedIds.delete(mediaId);
         state.selectedId = '';
+        state.layout = null;
+        state.renderedStart = -1;
+        state.renderedEnd = -1;
+        state.renderedKey = '';
         refs.drawer.setAttribute('aria-hidden', 'true');
         syncDetailLayout();
     }
@@ -690,6 +899,10 @@
             state.selectedIds.clear();
             state.cursor = null;
             state.hasMore = false;
+            state.layout = null;
+            state.renderedStart = -1;
+            state.renderedEnd = -1;
+            state.renderedKey = '';
             renderWindow(true);
             updateSelectionControls();
             refs.empty.hidden = false;
@@ -713,10 +926,12 @@
     }
 
     function closeDetail() {
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectedId = '';
         refs.drawer.setAttribute('aria-hidden', 'true');
         syncDetailLayout();
         renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
     }
 
     async function toggleFavorite(item) {
