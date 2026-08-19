@@ -203,8 +203,6 @@
             state.cursor = null;
             state.hasMore = true;
             state.renderedStart = -1;
-            posterRefreshAttempts = 0;
-            window.clearTimeout(posterRefreshTimer);
             if (state.request) state.request.abort();
             state.request = new AbortController();
         }
@@ -218,7 +216,6 @@
             state.cursor = payload.next_cursor || null;
             state.hasMore = !!payload.has_more;
             renderWindow(true);
-            scheduleVideoPosterRefresh();
             refs.empty.hidden = state.items.length > 0;
             setStatus(state.items.length ? `${state.items.length}${state.hasMore ? '+' : ''} ${t('items')}` : '');
         } catch (err) {
@@ -243,30 +240,10 @@
 
     function cardPreview(item) {
         if ((item.media_type === 'image' || item.media_type === 'video') && item.thumbnail_url) {
-            const retry = item.media_type === 'video' && item.poster_ready === false ? ' data-video-poster="pending"' : '';
-            return `<img src="${escapeHtml(item.thumbnail_url)}" alt="" loading="lazy" decoding="async"${retry}>`;
+            return `<img src="${escapeHtml(item.thumbnail_url)}" alt="" loading="lazy" decoding="async">`;
         }
         const icon = item.media_type === 'video' ? 'fa-film' : item.media_type === 'audio' ? 'fa-music' : 'fa-image';
         return `<span class="media-placeholder"><i class="fa ${icon}"></i></span>`;
-    }
-
-    let posterRefreshTimer = 0;
-    let posterRefreshAttempts = 0;
-
-    function scheduleVideoPosterRefresh() {
-        if (!refs.feed || !refs.feed.querySelector('img[data-video-poster="pending"]')) return;
-        window.clearTimeout(posterRefreshTimer);
-        if (posterRefreshAttempts >= 3) return;
-        posterRefreshTimer = window.setTimeout(() => {
-            posterRefreshAttempts += 1;
-            refs.feed.querySelectorAll('img[data-video-poster="pending"]').forEach((image) => {
-                const source = image.getAttribute('src') || '';
-                const cleanSource = source.replace(/[&?]poster_retry=[^&]*/, '');
-                const separator = cleanSource.includes('?') ? '&' : '?';
-                image.setAttribute('src', `${cleanSource}${separator}poster_retry=${Date.now()}`);
-            });
-            scheduleVideoPosterRefresh();
-        }, 1800);
     }
 
     function mediaRatio(item) {

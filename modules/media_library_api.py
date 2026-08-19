@@ -22,8 +22,6 @@ from modules.media_library_page import render_media_library_html
 router = APIRouter()
 _scan_tasks: dict[str, asyncio.Task[Any]] = {}
 _scan_tasks_lock = threading.RLock()
-_POSTER_TASKS: dict[str, asyncio.Task[Any]] = {}
-_POSTER_TASKS_LOCK = threading.RLock()
 _IDENTITY_CACHE: dict[tuple[str, str], tuple[float, str, bool]] = {}
 _IDENTITY_CACHE_LOCK = threading.RLock()
 _IDENTITY_CACHE_TTL = 30.0
@@ -159,44 +157,22 @@ def _item_urls(
         if item.get("is_trashed"):
             version_param = f"trash=1&{version_param}"
         item["thumbnail_url"] = f"{base}/thumbnail/{media_id}?{version_param}"
-        if item.get("media_type") == "video" and library is not None:
-            legacy_url = _legacy_gallery_preview_url(request, item, library)
+        if item.get("media_type") == "video":
+            legacy_url = _legacy_gallery_preview_url(request, item, library) if library is not None else ""
             if legacy_url:
                 item["thumbnail_url"] = legacy_url
                 item["poster_ready"] = True
             else:
-                item["poster_ready"] = library.has_cached_thumbnail_for_item(item)
+                # The standalone page does not create a second video poster cache.
+                # The frontend renders its normal video placeholder when Gradio
+                # has no usable preview route (for example, for trashed media).
+                item["thumbnail_url"] = ""
+                item["poster_ready"] = False
     return item
 
 
 async def _run_scan(library: media_library.MediaLibrary, *, max_seconds: float | None = 120.0) -> dict[str, Any]:
     return await run_in_threadpool(lambda: library.scan(max_seconds=max_seconds))
-
-
-async def _run_video_posters(library: media_library.MediaLibrary) -> dict[str, Any]:
-    return await run_in_threadpool(lambda: library.generate_video_posters(max_items=256, max_seconds=120.0))
-
-
-def _schedule_video_posters(library: media_library.MediaLibrary) -> bool:
-    key = library.db_path
-    with _POSTER_TASKS_LOCK:
-        current = _POSTER_TASKS.get(key)
-        if current and not current.done():
-            return False
-
-        async def runner() -> None:
-            try:
-                await _run_video_posters(library)
-            finally:
-                with _POSTER_TASKS_LOCK:
-                    _POSTER_TASKS.pop(key, None)
-
-        try:
-            task = asyncio.create_task(runner())
-        except RuntimeError:
-            return False
-        _POSTER_TASKS[key] = task
-        return True
 
 
 def _schedule_scan(library: media_library.MediaLibrary, *, force: bool = False) -> bool:

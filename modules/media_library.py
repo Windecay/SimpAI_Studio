@@ -11,7 +11,6 @@ import base64
 import datetime as _datetime
 import hashlib
 import html
-import io
 import json
 import logging
 import mimetypes
@@ -19,7 +18,6 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import threading
 import time
 from html.parser import HTMLParser
@@ -170,59 +168,6 @@ def invalidate_legacy_gallery_cache(user_did: Any = None) -> None:
             invalidate(_normalise_did(user_did), clear_directory_cache=True)
     except (Exception, SystemExit) as exc:
         _LOGGER.debug("Legacy gallery cache invalidation skipped: %s", exc)
-
-
-def _video_ffmpeg_executable() -> str:
-    try:
-        import imageio_ffmpeg
-
-        executable = imageio_ffmpeg.get_ffmpeg_exe()
-        if executable:
-            return str(executable)
-    except Exception:
-        pass
-    return shutil.which("ffmpeg") or ""
-
-
-def _create_video_poster_bytes(media_path: str) -> bytes:
-    executable = _video_ffmpeg_executable()
-    if not executable:
-        return b""
-    run_kwargs: dict[str, Any] = {}
-    if os.name == "nt":
-        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    try:
-        completed = subprocess.run(
-            [
-                executable,
-                "-hide_banner", "-loglevel", "error", "-nostdin",
-                "-i", media_path, "-an", "-sn", "-dn", "-frames:v", "1",
-                "-vf", "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease",
-                "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=20,
-            check=False,
-            **run_kwargs,
-        )
-    except Exception:
-        return b""
-    return bytes(completed.stdout or b"") if completed.returncode == 0 else b""
-
-
-def _create_video_poster_fallback_bytes() -> bytes:
-    try:
-        from PIL import Image, ImageDraw
-
-        image = Image.new("RGB", (480, 270), (20, 22, 26))
-        draw = ImageDraw.Draw(image)
-        draw.polygon([(207, 88), (207, 182), (289, 135)], fill=(232, 234, 238))
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=82, optimize=True)
-        return buffer.getvalue()
-    except Exception:
-        return b""
 
 
 def _media_type_for_path(path: str) -> str:
@@ -1035,114 +980,6 @@ class MediaLibrary:
     def _thumbnail_target(gallery_root: str, media_id: str, max_size: int) -> str:
         return os.path.join(gallery_root, "thumbnails", f"{media_id}_{int(max_size)}.jpg")
 
-    @staticmethod
-    def _thumbnail_fallback_target(gallery_root: str, media_id: str, max_size: int) -> str:
-        return os.path.join(gallery_root, "thumbnails", f"{media_id}_{int(max_size)}_fallback.jpg")
-
-    def has_cached_thumbnail(self, media_id: str, max_size: int = 640, include_trashed: bool = False) -> bool:
-        """Return whether a real cached image/video thumbnail is ready."""
-
-        item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
-        return self.has_cached_thumbnail_for_item(item, max_size=max_size)
-
-    def has_cached_thumbnail_for_item(self, item: dict[str, Any] | None, max_size: int = 640) -> bool:
-        """Check thumbnail readiness from an already-loaded list item."""
-
-        if not item or item.get("media_type") not in {"image", "video"}:
-            return False
-        target = self._thumbnail_target(self.gallery_root, str(item.get("media_id") or ""), max_size)
-        if not os.path.isfile(target):
-            return False
-        source_root = self.gallery_root if item.get("is_trashed") else self.outputs_root
-        source_relative = item.get("trash_path") if item.get("is_trashed") else item.get("relative_path")
-        source = _path_under(source_root, source_relative or "")
-        try:
-            return bool(source and os.path.isfile(source) and os.stat(target).st_mtime_ns >= os.stat(source).st_mtime_ns)
-        except OSError:
-            return False
-
-    def generate_video_posters(
-        self,
-        *,
-        max_items: int = 256,
-        max_seconds: float | None = 120.0,
-        include_trashed: bool = True,
-    ) -> dict[str, Any]:
-        """Generate cached video posters in a background-friendly, bounded pass."""
-
-        self.initialize()
-        started = time.perf_counter()
-        deadline = started + float(max_seconds) if max_seconds else None
-        limit = max(1, min(int(max_items or 256), 2000))
-        clauses = ["media_type = ?", "missing_at IS NULL"]
-        params: list[Any] = ["video"]
-        if not include_trashed:
-            clauses.append("trashed_at IS NULL")
-        with self._connect() as connection:
-            rows = connection.execute(
-                f"SELECT media_id, relative_path, trash_path, trashed_at, mtime_ns FROM media WHERE {' AND '.join(clauses)} ORDER BY created_at DESC LIMIT ?",
-                [*params, limit],
-            ).fetchall()
-
-        generated = 0
-        skipped = 0
-        failed = 0
-        truncated = False
-        thumbnail_root = os.path.join(self.gallery_root, "thumbnails")
-        os.makedirs(thumbnail_root, exist_ok=True)
-        for row in rows:
-            if deadline and time.perf_counter() >= deadline:
-                truncated = True
-                break
-            media_id = str(row["media_id"])
-            source_root = self.gallery_root if row["trashed_at"] is not None else self.outputs_root
-            source_relative = row["trash_path"] if row["trashed_at"] is not None else row["relative_path"]
-            source = _path_under(source_root, source_relative or "")
-            target = self._thumbnail_target(self.gallery_root, media_id, 640)
-            try:
-                source_stat = os.stat(source) if source and os.path.isfile(source) else None
-                if not source_stat:
-                    failed += 1
-                    continue
-                if os.path.isfile(target) and os.stat(target).st_mtime_ns >= source_stat.st_mtime_ns:
-                    skipped += 1
-                    continue
-            except OSError:
-                failed += 1
-                continue
-            temporary = ""
-            try:
-                preview_bytes = _create_video_poster_bytes(source)
-                if not preview_bytes:
-                    failed += 1
-                    continue
-                temporary = f"{target}.{os.getpid()}.{threading.get_ident()}.tmp"
-                with open(temporary, "wb") as handle:
-                    handle.write(preview_bytes)
-                os.replace(temporary, target)
-                fallback = self._thumbnail_fallback_target(self.gallery_root, media_id, 640)
-                try:
-                    if os.path.exists(fallback):
-                        os.remove(fallback)
-                except OSError:
-                    pass
-                generated += 1
-            except Exception:
-                failed += 1
-                try:
-                    if "temporary" in locals() and os.path.exists(temporary):
-                        os.remove(temporary)
-                except OSError:
-                    pass
-        return {
-            "ok": True,
-            "generated": generated,
-            "skipped": skipped,
-            "failed": failed,
-            "truncated": truncated,
-            "elapsed_ms": int((time.perf_counter() - started) * 1000),
-        }
-
     def media_path(self, media_id: str, include_trashed: bool = False) -> str:
         item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
         if not item:
@@ -1153,10 +990,10 @@ class MediaLibrary:
         return path if path and os.path.isfile(path) else ""
 
     def thumbnail_path(self, media_id: str, max_size: int = 640, include_trashed: bool = False) -> str:
-        """Return a cached image/video thumbnail without touching audio bytes."""
+        """Return a cached image thumbnail; video cards use the Gradio poster route."""
 
         item = self.get_item(media_id, include_trashed=include_trashed, include_generation_metadata=False)
-        if not item or item.get("media_type") not in {"image", "video"}:
+        if not item or item.get("media_type") != "image":
             return ""
         if item.get("is_trashed") and not include_trashed:
             return ""
@@ -1181,27 +1018,12 @@ class MediaLibrary:
             pass
         try:
             temporary = f"{target}.{os.getpid()}.{threading.get_ident()}.tmp"
-            if item.get("media_type") == "video":
-                # Keep the request cheap while the background poster worker runs.
-                preview_bytes = _create_video_poster_fallback_bytes()
-                if not preview_bytes:
-                    return ""
-                target = self._thumbnail_fallback_target(self.gallery_root, str(media_id), max_size)
-                temporary = f"{target}.{os.getpid()}.{threading.get_ident()}.tmp"
-                try:
-                    if os.path.isfile(target) and os.stat(target).st_mtime_ns >= source_stat.st_mtime_ns:
-                        return target
-                except OSError:
-                    pass
-                with open(temporary, "wb") as handle:
-                    handle.write(preview_bytes)
-            else:
-                from PIL import Image
+            from PIL import Image
 
-                with Image.open(source) as image:
-                    image = image.convert("RGB")
-                    image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                    image.save(temporary, format="JPEG", quality=84, optimize=True)
+            with Image.open(source) as image:
+                image = image.convert("RGB")
+                image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                image.save(temporary, format="JPEG", quality=84, optimize=True)
             os.replace(temporary, target)
             return target
         except Exception:
