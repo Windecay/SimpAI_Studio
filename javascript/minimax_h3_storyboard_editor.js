@@ -1281,15 +1281,19 @@
         return kind === 'audio' ? 'fully_copy' : 'fully_preserved';
     }
 
-    function defaultRetentionContent(kind) {
-        if (kind === 'video') return 'motion_timing';
+    function defaultRetentionContent(kind, item) {
+        if (kind === 'video') {
+            const slot = cleanText(item?.slot);
+            if (slot === 'scene_video') return 'scene_composition';
+            return 'motion_timing';
+        }
         if (kind === 'audio') return 'rhythm_timing';
         return 'identity_appearance';
     }
 
-    function retentionContentFromDetail(kind, detail) {
+    function retentionContentFromDetail(kind, detail, item) {
         const text = cleanText(detail).toLowerCase();
-        if (!text) return defaultRetentionContent(kind);
+        if (!text) return defaultRetentionContent(kind, item);
         const rules = kind === 'image'
             ? [
                 ['identity_appearance', /identity|appearance|\u8eab\u4efd|\u5916\u89c2/i],
@@ -1324,14 +1328,14 @@
         const level = cleanText(entry?.level) || defaultRetentionLevel(item.kind);
         const content = entry?.content === 'custom'
             ? cleanText(entry.custom)
-            : retentionContentOutput(item.kind, entry?.content || defaultRetentionContent(item.kind), lang);
+            : retentionContentOutput(item.kind, entry?.content || defaultRetentionContent(item.kind, item), lang);
         return `${item.token}: ${level}${content ? '; ' + content : ''}`;
     }
 
     function referenceRetention(inventory, lang) {
         const lines = retentionReferenceItems(inventory).map((item) => retentionAnalysisLine(item, {
             level: defaultRetentionLevel(item.kind),
-            content: defaultRetentionContent(item.kind),
+            content: defaultRetentionContent(item.kind, item),
             custom: ''
         }, lang));
         return lines.join('\n') || 'No numbered reference media is declared.';
@@ -1339,7 +1343,7 @@
 
     function retentionAnalysisEntries(value, inventory) {
         const parsed = new Map();
-        const pattern = /<(Picture|Video|Audio)\s+(\d+)>\s*:\s*([^\r\n]+)/gi;
+        const pattern = /<(Picture|Video|Audio)\s+(\d+)>\s*:\s*([\s\S]*?)(?=\s*<(?:Picture|Video|Audio)\s+\d+>\s*:|\r?\n|$)/gi;
         for (const match of cleanText(value).matchAll(pattern)) {
             const kindName = String(match[1] || '').toLowerCase();
             const kind = kindName === 'picture' ? 'image' : kindName;
@@ -1349,7 +1353,7 @@
             const body = cleanText(match[3]);
             const level = retentionLevelsForKind(kind).find((option) => body.toLowerCase().startsWith(option.value.toLowerCase()));
             const detail = level ? cleanText(body.slice(level.value.length).replace(/^[;,:\-\s]+/, '')) : body;
-            const content = retentionContentFromDetail(kind, detail);
+            const content = retentionContentFromDetail(kind, detail, item);
             parsed.set(`${kind}:${index}`, {
                 item,
                 level: level?.value || defaultRetentionLevel(kind),
@@ -1360,16 +1364,28 @@
         return retentionReferenceItems(inventory).map((item) => parsed.get(`${item.kind}:${item.index}`) || ({
             item,
             level: defaultRetentionLevel(item.kind),
-            content: defaultRetentionContent(item.kind),
+            content: defaultRetentionContent(item.kind, item),
             custom: ''
         }));
+    }
+
+    function preferredStoryboardVideoSlot(state, inventory) {
+        const videoEntries = retentionAnalysisEntries(state?.retention_analysis, inventory)
+            .filter((entry) => entry?.item?.kind === 'video' && cleanText(entry.item.slot));
+        if (!videoEntries.length) return '';
+        const motionEntries = videoEntries.filter((entry) => entry.content === 'motion_timing');
+        const candidates = motionEntries.length ? motionEntries : videoEntries;
+        return cleanText(
+            candidates.find((entry) => entry.item.slot === 'scene_reference_video')?.item?.slot
+            || candidates[0]?.item?.slot
+        );
     }
 
     function retentionAnalysisIsBare(value, inventory) {
         const items = retentionReferenceItems(inventory);
         if (!items.length) return false;
         const found = new Map();
-        const pattern = /<(Picture|Video|Audio)\s+(\d+)>\s*:\s*([^\r\n]+)/gi;
+        const pattern = /<(Picture|Video|Audio)\s+(\d+)>\s*:\s*([\s\S]*?)(?=\s*<(?:Picture|Video|Audio)\s+\d+>\s*:|\r?\n|$)/gi;
         for (const match of cleanText(value).matchAll(pattern)) {
             const kindName = String(match[1] || '').toLowerCase();
             const kind = kindName === 'picture' ? 'image' : kindName;
@@ -1392,7 +1408,7 @@
             const index = Number(row.getAttribute('data-h3sb-retention-index'));
             const item = retentionReferenceItems(inventory).find((candidate) => candidate.kind === kind && candidate.index === index);
             if (!item) return '';
-            const content = row.querySelector('[data-h3sb-retention-content]')?.value || defaultRetentionContent(kind);
+            const content = row.querySelector('[data-h3sb-retention-content]')?.value || defaultRetentionContent(kind, item);
             return retentionAnalysisLine(item, {
                 level: row.querySelector('[data-h3sb-retention-level]')?.value || defaultRetentionLevel(kind),
                 content,
@@ -3200,13 +3216,14 @@
                     state = mergeOptimizedStoryboard(previousState, optimizedState, editorOptions, lang);
                     recordStateChange(before);
                     const optimizedCheck = validate(state, editorOptions);
+                    const agentWarning = cleanText(result?.warning);
                     setBusy(false);
                     renderState();
                     setMessage(
-                        optimizedCheck.ok
-                            ? t('LLM optimization complete; not yet applied to Prompt', 'LLM \u4f18\u5316\u5df2\u5b8c\u6210\uff0c\u5c1a\u672a\u5199\u5165 Prompt', lang)
-                            : t('LLM optimization complete. Some fields may need review; Prompt can still be applied.', 'LLM \u4f18\u5316\u5df2\u5b8c\u6210\u3002\u90e8\u5206\u683c\u5b50\u53ef\u80fd\u9700\u8981\u8c03\u6574\uff0c\u4ecd\u53ef\u5199\u5165 Prompt\u3002', lang),
-                        optimizedCheck.ok ? 'success' : 'warning'
+                        agentWarning || !optimizedCheck.ok
+                            ? t('LLM optimization complete. Reference roles or some fields may need review; Prompt can still be applied.', 'LLM \u4f18\u5316\u5df2\u5b8c\u6210\u3002\u53c2\u8003\u5a92\u4f53\u4f5c\u7528\u6216\u90e8\u5206\u683c\u5b50\u53ef\u80fd\u9700\u8981\u8c03\u6574\uff0c\u4ecd\u53ef\u5199\u5165 Prompt\u3002', lang)
+                            : t('LLM optimization complete; not yet applied to Prompt', 'LLM \u4f18\u5316\u5df2\u5b8c\u6210\uff0c\u5c1a\u672a\u5199\u5165 Prompt', lang),
+                        agentWarning || !optimizedCheck.ok ? 'warning' : 'success'
                     );
                 } catch (error) {
                     setBusy(false);
@@ -3295,12 +3312,15 @@
                 const expectedGenerationImageSlots = Array.isArray(options.inventory?.image_refs)
                     ? options.inventory.image_refs.map((item) => cleanText(item?.slot)).filter(Boolean)
                     : [];
+                const preferredVideoSlot = preferredStoryboardVideoSlot(response?.state, options.inventory);
                 if (response?.kind === 'cell') {
                     return root.runSimpleAIPromptActionDirect('smart_expand', response.input, {
                         language,
                         target_kind: 'natural',
                         instruction: response.instruction,
                         use_scene_agent_prompt: false,
+                        use_video: !!preferredVideoSlot,
+                        preferred_video_slot: preferredVideoSlot,
                         skip_prompt_compiler_validation: true,
                         expected_generation_image_slots: expectedGenerationImageSlots
                     });
@@ -3308,6 +3328,8 @@
                 return root.runSimpleAIPromptActionDirect('smart_expand', response.prompt, {
                     language,
                     h3_storyboard_form: true,
+                    use_video: !!preferredVideoSlot,
+                    preferred_video_slot: preferredVideoSlot,
                     expected_generation_image_slots: expectedGenerationImageSlots
                 });
             },
@@ -3345,6 +3367,7 @@
         inventoryFromOptions,
         referenceRetention,
         retentionAnalysisEntries,
+        preferredStoryboardVideoSlot,
         normalizeMode,
         sceneModeFromSource,
         currentSceneInventory,

@@ -312,12 +312,30 @@ def _fit_audio_latent(audio_latent, target_t):
     return torch.cat([audio_latent, padding], dim=-1)
 
 
+def _get_source_audio_waveform(source_audio):
+    if source_audio is None:
+        return None
+    getter = getattr(source_audio, "get", None)
+    if getter is None:
+        return None
+    waveform = getter("waveform")
+    if waveform is None:
+        return None
+    if not isinstance(waveform, torch.Tensor):
+        raise ValueError("Source audio waveform must be a tensor")
+    if waveform.numel() == 0:
+        return None
+    return waveform
+
+
 def _encode_source_audio(audio_vae, source_audio, target_t):
     import torchaudio
 
-    waveform = source_audio.get("waveform")
+    waveform = _get_source_audio_waveform(source_audio)
     if waveform is None:
-        raise ValueError("Source audio has no waveform")
+        return None
+    if audio_vae is None:
+        raise ValueError("audio_vae is required when source audio contains a waveform")
     sample_rate = int(source_audio.get("sample_rate", 32000))
     vae_sample_rate = int(getattr(audio_vae, "audio_sample_rate", 32000))
     if sample_rate != vae_sample_rate:
@@ -526,10 +544,8 @@ class SimpAIMiniMaxH3VideoUpscaleLatent(io.ComfyNode):
                 f"expected {expected_shape}, got {actual_shape}"
             )
 
-        if source_audio is not None:
-            if audio_vae is None:
-                raise ValueError("audio_vae is required when source_audio is provided")
-            audio_latent = _encode_source_audio(audio_vae, source_audio, audio_latent_t)
+        audio_latent = _encode_source_audio(audio_vae, source_audio, audio_latent_t)
+        if audio_latent is not None:
             audio_latent = audio_latent.to(device=video_latent.device, dtype=video_latent.dtype)
         else:
             audio_latent = video_latent.new_zeros(

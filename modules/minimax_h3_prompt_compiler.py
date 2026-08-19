@@ -134,6 +134,7 @@ def target_compiler(target):
 def normalize_context(context=None):
     data = context if isinstance(context, dict) else {}
     descriptors = data.get("image_descriptors") if isinstance(data.get("image_descriptors"), list) else []
+    video_descriptors = data.get("video_descriptors") if isinstance(data.get("video_descriptors"), list) else []
     director = data.get("director") if isinstance(data.get("director"), dict) else {}
     explicit_inventory = any(
         key in data for key in (
@@ -142,6 +143,8 @@ def normalize_context(context=None):
             "video_count",
             "audio_count",
             "image_descriptors",
+            "video_descriptors",
+            "reference_video_present",
         )
     )
     if "generation_image_count" in data:
@@ -150,6 +153,8 @@ def normalize_context(context=None):
         image_count = _safe_count(data.get("image_count"), len(descriptors))
     if "video_count" in data:
         video_count = _safe_count(data.get("video_count"))
+    elif video_descriptors:
+        video_count = len(video_descriptors)
     else:
         video_count = int(bool(data.get("video_path") or data.get("video_used") or data.get("video_source")))
         video_count += int(bool(data.get("reference_video_present")))
@@ -174,6 +179,15 @@ def normalize_context(context=None):
         "video_count": video_count,
         "audio_count": audio_count,
         "image_descriptors": descriptors,
+        "video_descriptors": video_descriptors,
+        "video_reference_index": _safe_count(data.get("video_reference_index")),
+        "motion_picture_index": _safe_count(data.get("motion_picture_index")),
+        "video_requested": bool(data.get("video_requested")),
+        "video_used": bool(data.get("video_used")),
+        "video_source": _clean_text(data.get("video_source")),
+        "video_visual_count": _safe_count(data.get("video_visual_count")),
+        "reference_video_present": bool(data.get("reference_video_present")),
+        "reference_video_content_available": bool(data.get("reference_video_content_available")),
         "analysis_only_image_count": _safe_count(data.get("analysis_only_image_count")),
         "visual_analysis_intent": _clean_text(data.get("visual_analysis_intent")),
         "inventory_known": bool(data.get("inventory_known", explicit_inventory)),
@@ -206,8 +220,18 @@ def _reference_inventory_lines(context):
         descriptor = descriptors[index] if index < len(descriptors) and isinstance(descriptors[index], dict) else {}
         role = _clean_text(descriptor.get("role")) or "reference image"
         lines.append(f"- <Picture {index + 1}>: {role}")
+    video_descriptors = media.get("video_descriptors") or []
     for index in range(media["video_count"]):
-        lines.append(f"- <Video {index + 1}>: video reference; its embedded soundtrack stays paired with this video")
+        descriptor = video_descriptors[index] if index < len(video_descriptors) and isinstance(video_descriptors[index], dict) else {}
+        role = _clean_text(descriptor.get("role"))
+        details = "video reference; its embedded soundtrack stays paired with this video"
+        if role and role != "video reference":
+            details += f"; runtime role: {role}"
+        if media.get("video_used") and media.get("video_reference_index") == index + 1:
+            details += "; chronological visual samples from this exact video token are attached to the request"
+        elif media.get("video_reference_index") == index + 1 and media.get("video_requested") and not media.get("reference_video_content_available"):
+            details += "; no decoded visual samples from the selected motion video reached the request"
+        lines.append(f"- <Video {index + 1}>: {details}")
     for index in range(media["audio_count"]):
         lines.append(f"- <Audio {index + 1}>: independent audio reference")
     return lines
@@ -229,6 +253,23 @@ def context_note(context=None):
             "Read them for shot planning, but never name them as <Picture N> or treat them as H3 generation media."
         )
     lines.extend(_reference_inventory_lines(media))
+    if (
+        media.get("video_requested")
+        and media.get("video_reference_index")
+        and not media.get("video_used")
+    ):
+        lines.append(
+            f"- The selected video reference <Video {media['video_reference_index']}> produced no decoded visual samples; do not claim that its motion, pose, or camera trajectory was analyzed."
+        )
+    if (
+        media.get("video_requested")
+        and media.get("video_source") == "reference_video"
+        and media.get("reference_video_present")
+        and not media.get("reference_video_content_available")
+    ):
+        lines.append(
+            "- The selected reference video was requested for motion/timing transfer, but no decoded visual frames reached the agent; do not claim that its motion was analyzed."
+        )
     if media["inventory_known"] and not any(
         media[key] for key in ("image_count", "video_count", "audio_count")
     ):
@@ -297,6 +338,46 @@ def _ref2va_subject_binding_rules(context=None):
     )
 
 
+def _ref2va_motion_transfer_rules(context=None):
+    media = normalize_context(context)
+    if media["image_count"] < 1 or media["video_count"] < 1:
+        return ""
+    selected_video = media.get("video_reference_index") or 1
+    selected_video = min(max(1, selected_video), media["video_count"])
+    selected_picture = media.get("motion_picture_index") or (1 if media["image_count"] == 1 else 0)
+    if selected_picture:
+        selected_picture = min(max(1, selected_picture), media["image_count"])
+        picture_binding = (
+            f"For this runtime binding, pair the selected motion video with <Picture {selected_picture}> "
+            "unless the user's shot explicitly assigns it to another picture."
+        )
+    else:
+        picture_binding = (
+            "When more than one picture is available and the runtime has not supplied an explicit target, infer the "
+            "motion target from the <Picture N> token in the same shot as the selected video; do not silently default "
+            "to <Picture 1>. If that shot has no Picture token, flag the missing pairing instead of inventing one."
+        )
+    example = (
+        f"For example, if <Picture {selected_picture}> shows an ancient-style woman and <Video {selected_video}> shows a man sleeping, "
+        f"describe <Picture {selected_picture}> sleeping with <Video {selected_video}>'s pose and timing."
+        if selected_picture
+        else (
+            f"For example, if a shot names a picture-defined subject and <Video {selected_video}> shows a man sleeping, "
+            "describe that named picture subject sleeping with the video's pose and timing."
+        )
+    )
+    return (
+        "When retention_analysis assigns motion, timing, temporal continuity, pose, action, or camera trajectory to a "
+        "video reference, treat that video as driving evidence rather than the target identity. The <Picture N> token in "
+        "a shot defines who or what appears; apply the cited video's visible pose sequence, body motion, action state, "
+        "timing, and compatible camera trajectory to that picture-defined subject. Do not preserve the video's actor "
+        "identity or appearance unless the user explicitly requests it. Do not leave the picture subject in its static "
+        f"input pose when the video shows a different action. {example} The selected motion video must be declared in retention_analysis as attribute_transfer with motion "
+        f"or timing content, not as a fully preserved video actor identity. {picture_binding} do not describe the picture-defined subject standing or the picture "
+        "subject standing when the video shows sleeping, and do not replace the picture subject with the video actor. "
+    )
+
+
 def build_system_instructions(target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -360,6 +441,7 @@ def build_system_instructions(target_or_compiler, context=None):
             "detailed_description, then write an explicit chronological plan with enough detail for the existing shots. "
             "Do not add filler, new shots, or unrelated events. "
             f"{_ref2va_subject_binding_rules(target_context)}"
+            f"{_ref2va_motion_transfer_rules(target_context)}"
         )
     else:
         alignment = {
@@ -385,6 +467,37 @@ def _shot_marker_text(match):
     return marker
 
 
+def _infer_motion_picture_index(text, video_reference_index, fallback=0):
+    source = _clean_text(text)
+    video_number = _safe_count(video_reference_index)
+    if not source or video_number < 1:
+        if _safe_count(fallback) == 0 and fallback == 0:
+            return 0
+        return max(1, _safe_count(fallback) or 1)
+    video_token = f"<Video {video_number}>"
+    for _number, body in _shot_bodies(source):
+        if video_token.lower() not in body.lower():
+            continue
+        picture_numbers = [
+            int(number)
+            for number in re.findall(r"<Picture\s+(\d+)>", body, re.IGNORECASE)
+        ]
+        picture_numbers = list(dict.fromkeys(number for number in picture_numbers if number > 0))
+        if len(picture_numbers) == 1:
+            return picture_numbers[0]
+        if len(picture_numbers) > 1:
+            return 0
+    if _safe_count(fallback) == 0 and fallback == 0:
+        return 0
+    return max(1, _safe_count(fallback) or 1)
+
+
+def _motion_picture_fallback(context):
+    """Only infer Picture 1 when the runtime has exactly one picture."""
+    media = normalize_context(context)
+    return 1 if media["image_count"] == 1 else 0
+
+
 def build_rewrite_request(prompt, target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -395,6 +508,14 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
     if not mode:
         return _clean_text(prompt)
     source_prompt = _clean_text(prompt)
+    if mode == MODE_REF2VA and isinstance(target_context, dict):
+        target_context = dict(target_context)
+        if not _safe_count(target_context.get("motion_picture_index")):
+            target_context["motion_picture_index"] = _infer_motion_picture_index(
+                source_prompt,
+                target_context.get("video_reference_index"),
+                fallback=_motion_picture_fallback(target_context),
+            )
     source_shots = list(_SHOT_RE.finditer(source_prompt))
     storyboard_lock = ""
     if source_shots:
@@ -416,15 +537,19 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             + ". Never delete, translate, renumber, retype, or replace them with synonyms."
         )
     subject_binding_lock = ""
+    motion_transfer_lock = ""
     if mode == MODE_REF2VA:
         subject_binding_lock = (
             "\n\nRef2VA subject definitions and picture references:\n"
             + _ref2va_subject_binding_rules(target_context)
         )
+        motion_rules = _ref2va_motion_transfer_rules(target_context)
+        if motion_rules:
+            motion_transfer_lock = "\n\nRef2VA picture identity and video motion binding:\n" + motion_rules
     return (
         f"Compile this rough request into the required MiniMax H3 {mode} structure.\n\n"
         f"Runtime context:\n{context_note(target_context)}\n\n"
-        f"User intent:\n{source_prompt}{storyboard_lock}{reference_lock}{subject_binding_lock}"
+        f"User intent:\n{source_prompt}{storyboard_lock}{reference_lock}{subject_binding_lock}{motion_transfer_lock}"
     )
 
 
@@ -492,6 +617,15 @@ def _shot_errors(text, duration):
         elif duration is not None and abs(end - duration) > 0.001:
             errors.append(f"The final shot must end at the {duration:.3f}-second target duration.")
     return errors
+
+
+def _shot_bodies(text):
+    source = _clean_text(text)
+    matches = list(_SHOT_RE.finditer(source))
+    return [
+        (int(match.group(1)), source[match.end():matches[index + 1].start() if index + 1 < len(matches) else len(source)].strip())
+        for index, match in enumerate(matches)
+    ]
 
 
 def _preamble_mentions_time(preamble, seconds):
@@ -686,6 +820,12 @@ def validate_prompt(prompt, target_or_compiler, context=None):
     warnings = []
     if not text:
         return {"ok": False, "mode": mode, "errors": ["Prompt is empty."], "warnings": [], "references": {}}
+    if mode == MODE_REF2VA and not media.get("motion_picture_index"):
+        media["motion_picture_index"] = _infer_motion_picture_index(
+            text,
+            media.get("video_reference_index"),
+            fallback=_motion_picture_fallback(media),
+        )
     if media["duration_seconds"] is not None and not (
         H3_MIN_OUTPUT_DURATION <= media["duration_seconds"] <= H3_MAX_OUTPUT_DURATION
     ):
@@ -757,6 +897,78 @@ def validate_prompt(prompt, target_or_compiler, context=None):
         detail_words = re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", timeline)
         if len(detail_words) < 180:
             warnings.append("Ref2VA detailed_description is shorter than the recommended production detail level.")
+        if (
+            media.get("video_requested")
+            and media.get("video_source") == "reference_video"
+            and media.get("reference_video_present")
+            and not media.get("reference_video_content_available")
+        ):
+            warnings.append(
+                "Selected reference video was requested for motion/timing transfer, but no decoded visual frames reached the agent."
+            )
+        selected_video = media.get("video_reference_index") or 0
+        if (media.get("video_requested") or media.get("video_used")) and selected_video and media.get("image_count"):
+            video_token = f"<Video {selected_video}>"
+            if not media.get("video_used"):
+                warnings.append(
+                    f"Selected motion/timing reference {video_token} produced no decoded visual frames; its motion must not be described as observed."
+                )
+            else:
+                retention = values.get("retention_analysis", [""])[0] if values.get("retention_analysis") else ""
+                retention_match = re.search(
+                    rf"{re.escape(video_token)}\s*:\s*([^\r\n]+)",
+                    retention,
+                    re.IGNORECASE,
+                )
+                if media.get("video_source") == "reference_video":
+                    retention_line = retention_match.group(1) if retention_match else ""
+                    if not retention_match:
+                        warnings.append(
+                            f"Selected motion/timing reference {video_token} is missing from retention_analysis."
+                        )
+                    elif not re.search(
+                        r"attribute_transfer|motion|timing|temporal|pose|action|\u8fd0\u52a8|\u65f6\u5e8f|\u59ff\u6001|\u52a8\u4f5c",
+                        retention_line,
+                        re.IGNORECASE,
+                    ):
+                        warnings.append(
+                            f"Selected motion/timing reference {video_token} is not declared as a motion/timing transfer in retention_analysis."
+                        )
+                if video_token not in timeline:
+                    warnings.append(
+                        f"Selected motion/timing reference {video_token} is not used in detailed_description; "
+                        "the picture-defined subject may remain in its static pose."
+                    )
+                else:
+                    selected_picture = media.get("motion_picture_index")
+                    if not selected_picture:
+                        selected_picture = _infer_motion_picture_index(
+                            timeline,
+                            selected_video,
+                            fallback=0,
+                        )
+                    if selected_picture:
+                        selected_picture = min(max(1, selected_picture), media["image_count"])
+                        picture_token = f"<Picture {selected_picture}>"
+                        paired_shots = [
+                            body for _number, body in _shot_bodies(timeline)
+                            if video_token in body and picture_token in body
+                        ]
+                        if not paired_shots:
+                            warnings.append(
+                                f"Selected motion/timing reference {video_token} is not paired with a <Picture N> "
+                                f"(expected {picture_token}) inside the same shot."
+                            )
+                    else:
+                        paired_shots = [
+                            body for _number, body in _shot_bodies(timeline)
+                            if video_token in body and re.search(r"<Picture\s+\d+>", body, re.IGNORECASE)
+                        ]
+                        if not paired_shots:
+                            warnings.append(
+                                f"Selected motion/timing reference {video_token} is not paired with a <Picture N> "
+                                "inside the same shot."
+                            )
     for kind, count_key in (("picture", "image_count"), ("video", "video_count"), ("audio", "audio_count")):
         available = media[count_key]
         if media["inventory_known"] and available:
@@ -803,10 +1015,33 @@ def context_from_task(task):
             "scene_input_image4",
         )
     ]
+    main_video = params.get("video")
+    reference_video = params.get("reference_video")
+    video_descriptors = []
+    if main_video:
+        video_descriptors.append({
+            "slot": "scene_video",
+            "index": len(video_descriptors) + 1,
+            "role": "scene/composition video reference" if reference_video else "motion/timing reference video",
+        })
+    if reference_video:
+        video_descriptors.append({
+            "slot": "scene_reference_video",
+            "index": len(video_descriptors) + 1,
+            "role": "motion/timing reference video",
+        })
+    selected_video_index = len(video_descriptors) if reference_video else (1 if main_video else 0)
     return {
         "duration_seconds": getattr(task, "scene_video_duration", None) or params.get("video_duration"),
         "image_count": sum(value is not None for value in images),
-        "video_count": int(bool(params.get("video"))) + int(bool(params.get("reference_video"))),
+        "video_count": len(video_descriptors),
+        "video_descriptors": video_descriptors,
+        "video_reference_index": selected_video_index,
+        "video_requested": bool(video_descriptors),
+        "video_used": bool(video_descriptors),
+        "video_source": "reference_video" if reference_video else ("main_video" if main_video else ""),
+        "reference_video_present": bool(reference_video),
+        "reference_video_content_available": bool(reference_video),
         "audio_count": int(bool(params.get("audio"))),
         "inventory_known": True,
     }

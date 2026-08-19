@@ -22,6 +22,11 @@ non_diegetic_music:
 
 不要翻译、改编号、删除或凭空增加这些 token。`subject_definitions` 在 `summary` 前定义可复用主体；每个主体写真实可见的外观或特征，不要用空泛的“完整保留”说明替代描述。
 
+## 图片角色与视频动作
+
+- 当 `retention_analysis` 指定 `<Video N>` 提供运动、时序、姿态、动作或镜头轨迹时，图片定义最终出现的角色身份与外观，视频定义这个角色如何运动。按时间顺序读取视频画面，把可见姿态变化、身体动作、动作状态、节奏和适用的摄影机轨迹应用到镜头中的 `<Picture N>` 角色。
+- 除非用户明确要求保留视频人物，不要沿用视频演员的身份、脸、服装或体型，也不要因为图片是静态姿态而忽略视频动作。若 `<Picture 1>` 是古风美女，`<Video 1>` 是一个大汉正在睡觉，应描述 `<Picture 1>` 按 `<Video 1>` 的姿态和时序睡觉，不能写成古风美女站立，也不能把大汉作为目标角色。
+
 ## 六个字段
 
 - `summary` 使用适用的任务类型前缀：`keyframe completion`、`reference generation`、`video editing`、`video continuation`、`audio reuse`、`audio reference`。前缀后写简短任务概述，不要把主体时间线缩写成一句剧情梗概。

@@ -138,11 +138,66 @@
         return visible("skip_button") || visible("stop_button");
     }
 
+    function videoSlotAvailable(slot) {
+        const key = String(slot || "").trim();
+        if (!key) return false;
+        if (key === "scene_video" && readField("scene_video_first_frame_path").trim()) return true;
+        const root = rootById(key);
+        if (!root) return false;
+        const video = root.querySelector?.("video");
+        const sources = [
+            video?.currentSrc,
+            video?.src,
+            video?.getAttribute?.("src"),
+            ...Array.from(root.querySelectorAll?.("video source") || []).map((source) => source?.src || source?.getAttribute?.("src")),
+        ].map((value) => String(value || "").trim()).filter(Boolean);
+        if (sources.some((value) => !/^(about:blank|data:,)$/.test(value))) return true;
+
+        // Gradio may expose the selected file before the compressed preview has
+        // been written back to the component. Treat that state as available so
+        // the prompt action does not silently fall back to an older media value.
+        const fileInput = root.querySelector?.('input[type="file"]');
+        if (fileInput?.files?.length) return true;
+        return !!root.querySelector?.(".file-preview-holder, [data-testid^='file-preview']");
+    }
+
+    function videoSlotEnabled(slot) {
+        const key = String(slot || "").trim();
+        if (!key) return false;
+        if (!isSceneMode()) return key === "scene_video";
+        const params = paramsSource();
+        const sceneFrontend = currentSceneFrontend(params);
+        const hasResolvedHidden = Object.prototype.hasOwnProperty.call(params, "__scene_disvisible");
+        const hidden = sceneList(hasResolvedHidden ? params.__scene_disvisible : sceneFrontend.disvisible);
+        return !hidden.has(key);
+    }
+
+    function preferredVideoSlot() {
+        const referenceAvailable = videoSlotEnabled("scene_reference_video") && videoSlotAvailable("scene_reference_video");
+        const mainAvailable = videoSlotEnabled("scene_video") && videoSlotAvailable("scene_video");
+        const compiler = currentPromptCompiler();
+        if (referenceAvailable && /minimax[_\s-]*h3/i.test(compiler) && /ref2va|r2v|reference/i.test(compiler)) {
+            return "scene_reference_video";
+        }
+        if (mainAvailable) return "scene_video";
+        if (referenceAvailable) return "scene_reference_video";
+        return "";
+    }
+
     function mainVideoAvailable() {
-        if (readField("scene_video_first_frame_path").trim()) return true;
-        const root = rootById("scene_video");
-        const video = root?.querySelector?.("video");
-        return !!(video && String(video.currentSrc || video.src || "").trim());
+        return !!preferredVideoSlot();
+    }
+
+    function videoContextLabel(slot) {
+        return slot === "scene_reference_video"
+            ? text(
+                "Use the reference video for visual expansion (up to 8 frames)",
+                "扩写时读取参考视频（最多 8 帧）",
+            )
+            : text(
+                "Use the main video for visual expansion (up to 8 frames)",
+                "扩写时读取主要传入视频（最多 8 帧）",
+            );
     }
 
     function currentSceneFrontend(params = paramsSource()) {
@@ -185,7 +240,7 @@
         const sceneFrontend = currentSceneFrontend(params);
         const hasResolvedHidden = Object.prototype.hasOwnProperty.call(params, "__scene_disvisible");
         const hidden = sceneList(hasResolvedHidden ? params.__scene_disvisible : sceneFrontend.disvisible);
-        if (hidden.has("scene_video")) return false;
+        if (hidden.has("scene_video") && hidden.has("scene_reference_video")) return false;
 
         const theme = String(params.__scene_theme || params.scene_theme || "").trim();
         const rawCapability = sceneFrontend.director_capability;
@@ -401,14 +456,12 @@
         const node = ensureModal();
         node.querySelector('[data-role="title"]').textContent = text("Prompt Tools", "提示工具");
         node.querySelector('[data-role="context"]').textContent = currentContextText();
+        const videoSlot = preferredVideoSlot();
         const hasVideo = mainVideoContextAvailable();
         const videoOption = node.querySelector('[data-role="video-option"]');
         videoOption.hidden = !hasVideo;
         node.querySelector('[data-role="use-video"]').disabled = !hasVideo;
-        node.querySelector('[data-role="video-label"]').textContent = text(
-            "Use the main video for visual expansion (up to 8 frames)",
-            "扩写时读取主要传入视频（最多 8 帧）",
-        );
+        node.querySelector('[data-role="video-label"]').textContent = videoContextLabel(videoSlot);
 
         const mode = isSceneMode() ? "scene" : "classic";
         const h3Compiler = mode === "scene" && usesMiniMaxH3PromptCompiler();
@@ -515,6 +568,9 @@
             use_video: item.media_policy === "main_video_auto" && mainVideoContextAvailable()
                 ? !!useVideoInput?.checked
                 : false,
+            preferred_video_slot: item.media_policy === "main_video_auto" && mainVideoContextAvailable()
+                ? preferredVideoSlot()
+                : "",
             language: currentLang(),
             direction: "auto",
         };
@@ -704,6 +760,11 @@
                 : {};
             if (!Object.prototype.hasOwnProperty.call(directOptions, "use_video")) {
                 directOptions.use_video = item.media_policy === "main_video_auto" && mainVideoContextAvailable();
+            }
+            if (!Object.prototype.hasOwnProperty.call(directOptions, "preferred_video_slot")
+                    && item.media_policy === "main_video_auto"
+                    && mainVideoContextAvailable()) {
+                directOptions.preferred_video_slot = preferredVideoSlot();
             }
             if (!Object.prototype.hasOwnProperty.call(directOptions, "language")) directOptions.language = currentLang();
             if (!Object.prototype.hasOwnProperty.call(directOptions, "direction")) directOptions.direction = "auto";

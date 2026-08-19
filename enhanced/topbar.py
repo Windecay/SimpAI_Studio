@@ -41,7 +41,6 @@ logger = logging.getLogger(format_name(__name__))
 from datetime import datetime
 from modules.model_loader import is_models_file_absent, refresh_model_list, download_model_files
 import modules.model_loader as model_loader
-from modules.private_logger import get_current_html_path
 from modules.meta_parser import get_welcome_image, describe_prompt_for_scene
 from enhanced.simpleai import comfyd, get_identity_access_status, get_path_in_user_dir, toggle_identity_dialog, sync_intput_reserved, get_identity_mode_text, normalize_ui_lang, update_comfyd_io_paths
 from enhanced.vlm import VLM, vlm
@@ -4021,6 +4020,17 @@ def _scene_value_by_theme(scene_frontend, theme, key, default):
         return value
 
 
+def get_scene_lora_defaults(state_params, scene_theme=None):
+    if not isinstance(state_params, dict):
+        return None
+    scene_frontend = state_params.get("scene_frontend")
+    if not isinstance(scene_frontend, dict):
+        return None
+    theme = scene_theme or state_params.get("scene_theme") or state_params.get("__scene_theme")
+    loras = _scene_value_by_theme(scene_frontend, theme, "loras", None)
+    return loras if isinstance(loras, (list, tuple)) else None
+
+
 def _preferred_scene_theme_for_preset(state_params, preset):
     if not isinstance(state_params, dict):
         return None
@@ -4420,8 +4430,12 @@ def export_identity(state):
 
 
 def update_history_link(user_did, local_access):
-    log_link = '' if args_manager.args.disable_image_log else f'<a href="file={get_current_html_path(None, user_did)}" target="_blank">\U0001F4DA History Log</a>'
-    return gr.update(value=log_link) 
+    lang = normalize_ui_lang(getattr(args_manager.args, "language", "en"))
+    theme = "dark" if str(getattr(args_manager.args, "theme", "light") or "light").lower().startswith("dark") else "light"
+    webroot = str(getattr(args_manager.args, "webroot", "") or "").rstrip("/")
+    return gr.update(
+        value=f'<a href="{webroot}/simpleai/gallery/app?__theme={theme}&__lang={lang}" target="_blank"><i class="fa fa-images"></i> Media Library</a>'
+    )
 
 def update_comfyd_url(state):
     listen_host = str(getattr(args_manager.args, "listen", "") or "127.0.0.1")

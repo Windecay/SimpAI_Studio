@@ -241,8 +241,9 @@ def _prompt_action_reconcile_h3_reference_capability(state, capability, declared
 
 
 def _prompt_action_hidden_scene_slots(state):
+    data = state if isinstance(state, dict) else {}
     scene = _prompt_action_scene_frontend(state)
-    raw_hidden = scene.get("disvisible", [])
+    raw_hidden = data.get("__scene_disvisible") if "__scene_disvisible" in data else scene.get("disvisible", [])
     if isinstance(raw_hidden, str):
         hidden = [item.strip() for item in raw_hidden.split(",") if item.strip()]
     elif isinstance(raw_hidden, (list, tuple, set)):
@@ -463,9 +464,10 @@ def _prompt_action_visual_analysis_intent(input_text):
     return ""
 
 
-def prepare_prompt_action_resources(state, input_images, scene_resources=None, input_text=""):
+def prepare_prompt_action_resources(state, input_images, scene_resources=None, input_text="", options=None):
     data = state if isinstance(state, dict) else {}
     resources = dict(scene_resources or {})
+    opts = normalize_prompt_action_options(options)
     scene_mode = prompt_action_mode(data) == "scene"
     declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
     capability = copy.deepcopy(declared_capability)
@@ -554,10 +556,49 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     images = [image for _slot, image in entries]
 
     video_component = _prompt_action_existing_path(resources.get("scene_video"))
+    reference_video_component = _prompt_action_existing_path(resources.get("scene_reference_video"))
+    reference_original_video = _prompt_action_existing_path(
+        resources.get("scene_reference_video_original_path")
+        or resources.get("reference_video_original_path")
+    )
     original_video = _prompt_action_existing_path(resources.get("scene_original_video_path") or resources.get("video_path"))
     first_frame = _prompt_action_existing_path(resources.get("video_first_frame_path"))
     video_path = ""
     video_source = ""
+    video_reference_index = 0
+    video_descriptors = []
+    video_policy = str(capability.get("video_policy") or "").lower()
+    main_video_allowed = (
+        video_policy != "forbidden"
+        and (not scene_mode or "scene_video" not in hidden)
+    )
+    reference_video_allowed = (
+        video_policy != "forbidden"
+        and (not scene_mode or "scene_reference_video" not in hidden)
+    )
+    main_video_path = (original_video or video_component) if main_video_allowed and video_component else ""
+    reference_video_path = (
+        reference_original_video or reference_video_component
+        if reference_video_allowed and reference_video_component
+        else ""
+    )
+    if main_video_path:
+        video_descriptors.append({
+            "slot": "scene_video",
+            "index": len(video_descriptors) + 1,
+            "role": "video reference",
+        })
+    if reference_video_path:
+        video_descriptors.append({
+            "slot": "scene_reference_video",
+            "index": len(video_descriptors) + 1,
+            "role": "motion/timing reference video",
+        })
+
+    descriptor_by_slot = {
+        item["slot"]: item
+        for item in video_descriptors
+    }
     if director_segment is not None:
         video_ref = director_context.get("video_ref") or ""
         if video_ref == "previous_segment":
@@ -572,23 +613,68 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
                 video_path = original_video if video_component else ""
             video_source = "director_explicit_video" if video_path else "director_video_unavailable"
         first_frame = ""
+        video_reference_index = 1 if video_path else 0
+        video_descriptors = ([{
+            "slot": "director_segment_video",
+            "index": 1,
+            "role": "director segment video reference",
+        }] if video_path else [])
     elif scene_mode:
-        video_allowed = "scene_video" not in hidden and str(capability.get("video_policy") or "").lower() != "forbidden"
-        if video_allowed and video_component:
-            video_path = original_video or video_component
+        preferred_video_slot = str(opts.get("preferred_video_slot") or "").strip()
+        if preferred_video_slot not in descriptor_by_slot:
+            if _prompt_action_h3_reference_mode(data) and reference_video_path:
+                preferred_video_slot = "scene_reference_video"
+            elif main_video_path:
+                preferred_video_slot = "scene_video"
+            elif reference_video_path:
+                preferred_video_slot = "scene_reference_video"
+        if preferred_video_slot == "scene_reference_video" and reference_video_path:
+            video_path = reference_video_path
+            video_source = "reference_video"
+            video_reference_index = int(descriptor_by_slot[preferred_video_slot]["index"])
+            first_frame = ""
+        elif preferred_video_slot == "scene_video" and main_video_path:
+            video_path = main_video_path
             video_source = "main_video"
+            video_reference_index = int(descriptor_by_slot[preferred_video_slot]["index"])
         else:
             first_frame = ""
     else:
-        if video_component:
-            video_path = original_video or video_component
+        if main_video_path:
+            video_path = main_video_path
             video_source = "main_video"
+            video_reference_index = 1
         else:
             first_frame = ""
 
     if resources.get("legacy_video_direct") and original_video:
         video_path = original_video
         video_source = "main_video"
+        video_reference_index = 1
+        if not video_descriptors:
+            video_descriptors = [{
+                "slot": "scene_video",
+                "index": 1,
+                "role": "video reference",
+            }]
+
+    selected_video_descriptor = next(
+        (
+            item for item in video_descriptors
+            if int(item.get("index") or 0) == int(video_reference_index or 0)
+        ),
+        None,
+    )
+    if selected_video_descriptor and not director_context.get("enabled"):
+        selected_slot = str(selected_video_descriptor.get("slot") or "").strip()
+        for descriptor in video_descriptors:
+            slot = str(descriptor.get("slot") or "").strip()
+            if slot == selected_slot:
+                descriptor["role"] = "motion/timing reference video"
+            elif slot == "scene_reference_video":
+                descriptor["role"] = "scene/composition video reference"
+            elif slot == "scene_video":
+                descriptor["role"] = "scene/composition video reference"
 
     duration_visible = not scene_mode or "scene_video_duration" not in hidden
     target_duration = _prompt_action_duration(resources.get("scene_video_duration")) if duration_visible else None
@@ -603,11 +689,17 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     audio_present = audio_allowed and (not scene_mode or "scene_audio" not in hidden) and bool(resources.get("scene_audio"))
     if audio_allowed and director_context.get("audio_ref"):
         audio_present = bool(_prompt_action_director_media_value(director_runtime, director_context["audio_ref"]))
-    reference_video_present = (
-        str(capability.get("video_policy") or "").lower() != "forbidden"
-        and (not scene_mode or "scene_reference_video" not in hidden)
-        and bool(resources.get("scene_reference_video"))
-    )
+    reference_video_present = bool(reference_video_path)
+
+    requested_motion_picture_index = 0
+    try:
+        requested_motion_picture_index = max(0, int(opts.get("motion_picture_index") or 0))
+    except (TypeError, ValueError):
+        requested_motion_picture_index = 0
+    if requested_motion_picture_index > len(image_descriptors):
+        requested_motion_picture_index = 0
+    if selected_video_descriptor and len(image_descriptors) == 1 and not requested_motion_picture_index:
+        requested_motion_picture_index = 1
 
     context = {
         "scene_mode": scene_mode,
@@ -621,6 +713,14 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "video_path": video_path,
         "video_first_frame_path": first_frame,
         "video_source": video_source,
+        "video_count": len(video_descriptors),
+        "video_descriptors": video_descriptors,
+        "video_reference_index": video_reference_index,
+        # With multiple pictures, leave the target unknown until the existing
+        # storyboard shot explicitly pairs the motion video with a Picture token.
+        # A guessed Picture 1 here would override that later inference.
+        "motion_picture_index": requested_motion_picture_index if selected_video_descriptor else 0,
+        "motion_video_slot": selected_video_descriptor.get("slot") if selected_video_descriptor else "",
         "target_duration_seconds": target_duration,
         "audio_present": audio_present,
         "audio_content_available": False,
@@ -932,6 +1032,9 @@ def prepare_prompt_action_media(
         video_visuals = [sheet] if sheet is not None else []
     media_meta.update(video_meta or {})
     media_meta["video_used"] = bool(video_visuals)
+    media_meta["reference_video_content_available"] = bool(
+        video_visuals and media_meta.get("video_source") == "reference_video"
+    )
     if video_visuals:
         images[0:0] = video_visuals
     return images, media_meta
@@ -963,6 +1066,9 @@ def prompt_action_media_note(media_meta):
             source_label = "current Director segment video"
         elif video_source == "describe_upload":
             source_label = "uploaded video"
+        elif video_source == "reference_video":
+            reference_index = int(meta.get("video_reference_index") or 0)
+            source_label = f"reference video <Video {reference_index}>" if reference_index > 0 else "reference video"
         else:
             source_label = "main input video"
         if meta.get("used_first_frame_only") or frame_count <= 1:
@@ -1061,7 +1167,10 @@ def prompt_action_resource_contract_note(media_meta):
     lines.append(f"- audio_uploaded_or_referenced: {bool(meta.get('audio_present'))}")
     lines.append("- audio_content_available_to_agent: false")
     lines.append(f"- reference_video_uploaded: {bool(meta.get('reference_video_present'))}")
-    lines.append("- reference_video_content_available_to_agent: false")
+    lines.append(
+        "- reference_video_content_available_to_agent: "
+        f"{str(bool(meta.get('reference_video_content_available'))).lower()}"
+    )
     if director:
         lines.extend([
             f"- director_current_segment: {int(director.get('segment_index') or 0) + 1}",

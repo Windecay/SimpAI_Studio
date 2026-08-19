@@ -1660,8 +1660,6 @@ def generate_clicked(task: worker.AsyncTask, state):
                         and preview_batch_key is not None
                         and incoming_batch_key != preview_batch_key
                     )
-                    if pending_batch_without_frame or (image is None and preview_batch_key is None):
-                        continue
 
                     new_step_frame_arrived = image is not None and (
                         preview_batch_key is None or incoming_batch_key != preview_batch_key
@@ -1680,10 +1678,18 @@ def generate_clicked(task: worker.AsyncTask, state):
                             overflow = len(preview_cache) - max_video_preview_cache
                             del preview_cache[:overflow]
                             preview_cache_index = max(0, preview_cache_index - overflow)
+                    elif pending_batch_without_frame or preview_batch_key is None:
+                        # Keep the last frame, but let the text progress advance when
+                        # a sampler reports a step before its preview frame arrives.
+                        last_preview_title = title
 
                     last_preview_percentage = display_percentage
                     last_preview_eta_text = eta_text
-                    step_changed = new_step_frame_arrived
+                    step_changed = new_step_frame_arrived or (
+                        image is None
+                        and incoming_batch_key
+                        and incoming_batch_key != preview_batch_key
+                    )
                     image_to_show = image
                     if image_to_show is None:
                         if last_preview_image is not None:
@@ -2603,7 +2609,8 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
         or fallback.get("upscale_model")
     )
 
-    raw_loras = (
+    scene_loras = topbar.get_scene_lora_defaults(state_params)
+    raw_loras = scene_loras if scene_loras is not None else (
         preset_prepared.get("default_loras")
         or preset_prepared.get("loras")
         or preset_backend_params.get("default_loras")
@@ -8161,6 +8168,34 @@ with shared.gradio_root:
                         model_state = _model_params_state_from_state_params(state_params, current_model_params_state)
                         return _model_bridge_updates_from_model_state(model_state, include_refiner_switch=False)
 
+                    def _sync_scene_model_params_for_theme(state_params, current_model_params_state):
+                        model_state = _model_params_state_from_state_params(state_params, current_model_params_state)
+                        lora_summary = []
+                        for enabled, model_name, weight in _normalize_lora_triplets(model_state.get("loras")):
+                            try:
+                                weight = float(weight)
+                            except Exception:
+                                weight = 1.0
+                            if str(model_name or "None") != "None" or weight != 1.0:
+                                lora_summary.append([bool(enabled), str(model_name or "None"), weight])
+                        util.log_ui_trace(
+                            logger,
+                            "[UI-TRACE] scene_theme_model_sync | preset=%r, theme=%r, loras=%s",
+                            state_params.get("__preset") if isinstance(state_params, dict) else None,
+                            state_params.get("scene_theme") if isinstance(state_params, dict) else None,
+                            lora_summary,
+                        )
+                        return (
+                            [model_state]
+                            + _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
+                            + [gr_update(value=_render_models_js_panel(model_state))]
+                        )
+
+                    def _sync_scene_model_params_for_generation(current_model_params_state, state_params):
+                        if not isinstance(state_params, dict) or not isinstance(state_params.get("scene_frontend"), dict):
+                            return current_model_params_state
+                        return _model_params_state_from_state_params(state_params, current_model_params_state)
+
                     def _refresh_files_clicked_with_info(state_params, use_model_filter):
                         return refresh_files_clicked(state_params, use_model_filter, True)
 
@@ -9338,6 +9373,7 @@ with shared.gradio_root:
                 additional_prompt_2,
                 scene_audio_value,
                 reference_video_value,
+                reference_video_original_path,
                 director_enabled,
                 director_state,
                 state,
@@ -9375,6 +9411,7 @@ with shared.gradio_root:
                             "scene_additional_prompt_2": additional_prompt_2,
                             "scene_audio": scene_audio_value,
                             "scene_reference_video": reference_video_value,
+                            "scene_reference_video_original_path": reference_video_original_path,
                             "director_enabled": director_enabled,
                             "director_state": director_state,
                         },
@@ -9415,6 +9452,7 @@ with shared.gradio_root:
                     scene_additional_prompt_2,
                     scene_audio,
                     scene_reference_video,
+                    scene_reference_video_original_path,
                     scene_director_enabled,
                     scene_director_state,
                     state_topbar,
@@ -9921,6 +9959,13 @@ with shared.gradio_root:
             } catch (e) {
                 sketchFlushOk = false;
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
+            }
+            try {
+                if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
+                    window.syncSimpleAISceneModeCheckbox(generationState);
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] scene_mode_checkbox_sync_failed", e);
             }
             try {
                 if (typeof window.simpleaiSyncModelsJsPanelBridge === "function") window.simpleaiSyncModelsJsPanelBridge();
@@ -10893,6 +10938,35 @@ with shared.gradio_root:
             enhance_checkbox_input_index,
         )
 
+        scene_generation_inputs = [
+            state_topbar, seed_random, image_seed, params_backend, scene_theme,
+            scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4,
+            scene_additional_prompt, scene_additional_prompt_2,
+            scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4,
+            scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8,
+            scene_var_number9, scene_var_number10, scene_steps,
+            scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
+            scene_aspect_ratio, image_number,
+            scene_video_backup, scene_audio_backup, scene_original_video_backup, active_video_source,
+            sam3_input_video, sam3_original_video_path, sam3_mask_video,
+            overwrite_width, overwrite_height, resolution_multiplier, resolution_quantize_step,
+            resolution_edit_mode, resolution_original_input_checkbox, sam3_trim_payload, overwrite_step,
+            scene_director_enabled, scene_director_state, scene_video_duration, scene_reference_video, scene_reference_video_original_path,
+            scene_video_trim_payload, scene_reference_video_trim_payload,
+        ]
+        scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
+        scene_generation_sync_js = """(...args) => {
+            try {
+                if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
+                    const value = window.syncSimpleAISceneModeCheckbox(args[0]);
+                    if (value !== null && value !== undefined) args[%d] = value;
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] scene_mode_checkbox_submit_sync_failed", e);
+            }
+            return args;
+        }""" % scene_switch_option3_input_index
+
         uov_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
             .then(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_batch"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_batch");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: !(state && state.__skip_gallery_browser_refresh_once), syncSwitch:false});}')
         enhance_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
@@ -10911,26 +10985,13 @@ with shared.gradio_root:
         generate_event = bind_generation_failure_cleanup(generate_event.success(cache_input_image_func, inputs=[state_topbar, enhance_checkbox, current_tab, uov_input_image, inpaint_input_image, enhance_input_image, scene_input_image1, scene_canvas_image], outputs=[cached_input_image], show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(
             topbar.process_before_generation,
-            inputs=[
-                state_topbar, seed_random, image_seed, params_backend, scene_theme,
-                scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4,
-                scene_additional_prompt, scene_additional_prompt_2,
-                scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4,
-                scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8,
-                scene_var_number9, scene_var_number10, scene_steps,
-                scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
-                scene_aspect_ratio, image_number,
-                scene_video_backup, scene_audio_backup, scene_original_video_backup, active_video_source,
-                sam3_input_video, sam3_original_video_path, sam3_mask_video,
-                overwrite_width, overwrite_height, resolution_multiplier, resolution_quantize_step,
-                resolution_edit_mode, resolution_original_input_checkbox, sam3_trim_payload, overwrite_step,
-                scene_director_enabled, scene_director_state, scene_video_duration, scene_reference_video, scene_reference_video_original_path,
-                scene_video_trim_payload, scene_reference_video_trim_payload,
-            ],
+            inputs=scene_generation_inputs,
             outputs=[stop_button, skip_button, generate_button, gallery, state_is_generating, index_radio, image_toolbox, prompt_info_box, image_seed, params_backend] + protections + [preset_store, identity_dialog],
             show_progress=False,
+            js=scene_generation_sync_js,
         ))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(_sync_scene_model_params_for_generation, inputs=[model_params_state, state_topbar], outputs=[model_params_state], show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
@@ -10953,26 +11014,13 @@ with shared.gradio_root:
         preview_event = bind_generation_failure_cleanup(preview_event.success(lambda: (False, gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), gr_update(value=None, visible=True), compare_button_gr_update(ready=False)), outputs=[comparison_state, comparison_box, progress_window, gallery, progress_gallery, compare_btn], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(
             topbar.process_before_generation,
-            inputs=[
-                state_topbar, seed_random, image_seed, params_backend, scene_theme,
-                scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4,
-                scene_additional_prompt, scene_additional_prompt_2,
-                scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4,
-                scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8,
-                scene_var_number9, scene_var_number10, scene_steps,
-                scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4,
-                scene_aspect_ratio, image_number,
-                scene_video_backup, scene_audio_backup, scene_original_video_backup, active_video_source,
-                sam3_input_video, sam3_original_video_path, sam3_mask_video,
-                overwrite_width, overwrite_height, resolution_multiplier, resolution_quantize_step,
-                resolution_edit_mode, resolution_original_input_checkbox, sam3_trim_payload, overwrite_step,
-                scene_director_enabled, scene_director_state, scene_video_duration, scene_reference_video, scene_reference_video_original_path,
-                scene_video_trim_payload, scene_reference_video_trim_payload,
-            ],
+            inputs=scene_generation_inputs,
             outputs=[stop_button, skip_button, generate_button, gallery, state_is_generating, index_radio, image_toolbox, prompt_info_box, image_seed, params_backend] + protections + [preset_store, identity_dialog],
             show_progress=False,
+            js=scene_generation_sync_js,
         ))
         preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=model_state_ui_inputs, outputs=model_params_state, show_progress=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_scene_model_params_for_generation, inputs=[model_params_state, state_topbar], outputs=[model_params_state], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False))
@@ -11339,7 +11387,8 @@ with shared.gradio_root:
 
         scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
-                   .then(fn=lambda state: None, inputs=[state_topbar], js="(state)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); const resolvedTheme=String((state&&state.scene_theme)||'').trim(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(_sync_scene_model_params_for_theme, inputs=[state_topbar, model_params_state], outputs=[model_params_state] + model_bridge_rehydrate_targets + [models_js_panel], queue=False, show_progress=False) \
+                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state,theme)=>{try{const resolvedTheme=String(theme||(state&&state.scene_theme)||'').trim(); if(typeof markSimpleAISceneThemeChanged==='function') markSimpleAISceneThemeChanged(resolvedTheme,state); if(typeof window.syncSimpleAISceneModeCheckbox==='function') window.syncSimpleAISceneModeCheckbox(state,resolvedTheme); if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda state: None, inputs=[state_topbar], js='(state)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", state); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
@@ -11807,6 +11856,10 @@ with shared.gradio_root:
             if model_present and not enabled_present:
                 enabled = True
             loras.append([enabled, model_name, weight])
+
+        scene_loras = topbar.get_scene_lora_defaults(state_params) if isinstance(state_params, dict) else None
+        if scene_loras is not None and bool(state_params.get("__preset_switched", False)):
+            loras = _normalize_lora_triplets(scene_loras)
 
         return _model_params_state_payload(
             pick("base_model", "base_model"),
@@ -12454,6 +12507,7 @@ import modules.canvas_workbench_assets as canvas_workbench_assets
 import modules.canvas_workbench_qwen_tts as canvas_workbench_qwen_tts
 import modules.canvas_workbench_timeline as canvas_workbench_timeline
 import modules.model_browser_service as model_browser_service
+import modules.media_library_api as media_library_api
 import ui.services.pose_studio as pose_studio_service
 import ui.services.gaussian_studio as gaussian_studio_service
 import ui.services.liveportrait_expression as liveportrait_expression_service
@@ -12461,6 +12515,8 @@ from modules.ui_gradio_extensions import ensure_tag_cart_custom_tags_path, webpa
 from ui.studio_performance import install_studio_performance_logging
 
 install_studio_performance_logging(app)
+
+app.include_router(media_library_api.router)
 
 _matting_lock = threading.Lock()
 _openpose_lock = threading.Lock()

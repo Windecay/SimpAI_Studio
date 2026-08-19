@@ -6050,11 +6050,11 @@ function _rc_readSourceMeta() {
 
 function _rc_readImageSource(sourceIds) {
     const candidates = [];
-    const pushCandidate = (node, width, height, kind) => {
+    const pushCandidate = (node, width, height, kind, isOriginalMeta = false) => {
         width = Math.round(width || 0);
         height = Math.round(height || 0);
         if (!(width >= 64 && height >= 64)) return;
-        candidates.push({ node, width, height, kind, area: width * height });
+        candidates.push({ node, width, height, kind, isOriginalMeta, area: width * height });
     };
     const readSketchApi = (root) => {
         if (!root) return null;
@@ -6089,7 +6089,7 @@ function _rc_readImageSource(sourceIds) {
         }
         if (sourceMeta && sourceMeta.width > 0 && sourceMeta.height > 0) {
             const mediaNode = root.querySelector('video, img, canvas');
-            if (mediaNode) pushCandidate(mediaNode, sourceMeta.width, sourceMeta.height, sourceMeta.kind || 'meta');
+            if (mediaNode) pushCandidate(mediaNode, sourceMeta.width, sourceMeta.height, sourceMeta.kind || 'meta', true);
         }
         const images = Array.from(root.querySelectorAll('img'));
         for (const img of images) {
@@ -6112,7 +6112,10 @@ function _rc_readImageSource(sourceIds) {
             pushCandidate(video, width, height, 'video');
         }
     }
-    candidates.sort((a, b) => b.area - a.area);
+    candidates.sort((a, b) => {
+        if (a.isOriginalMeta !== b.isOriginalMeta) return a.isOriginalMeta ? -1 : 1;
+        return b.area - a.area;
+    });
     return candidates[0] || null;
 }
 

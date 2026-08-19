@@ -22,6 +22,11 @@ Number pictures, videos, and audio independently. Use only tokens that actually 
 
 Never translate, renumber, delete, or invent these tokens. Define reusable subjects in `subject_definitions` before `summary`. Describe visible traits for each subject; do not replace the description with generic preservation language.
 
+## Picture Identity And Video Motion
+
+- When `retention_analysis` assigns motion, timing, pose, action, temporal continuity, or camera trajectory to `<Video N>`, the picture defines the identity and appearance that must appear in the result, while the video defines how that picture subject moves. Read the video frames chronologically and apply the visible pose changes, body motion, action state, timing, and compatible camera trajectory to the shot's `<Picture N>` subject.
+- Do not keep the video actor's identity, face, clothing, or body type unless the user explicitly requests it, and do not ignore the video action because the picture is static. If `<Picture 1>` shows an ancient-style woman and `<Video 1>` shows a man sleeping, describe `<Picture 1>` sleeping with `<Video 1>`'s pose and timing; do not leave the woman standing and do not replace her with the man.
+
 ## Six Sections
 
 - In `summary`, use applicable task-type prefixes from: `keyframe completion`, `reference generation`, `video editing`, `video continuation`, `audio reuse`, and `audio reference`. Follow the prefix with a short task summary, but do not reduce the production timeline to a plot sentence.

@@ -41,6 +41,22 @@ _CANVAS_VLM_CANCELLED_REQUESTS = {}
 _CANVAS_VLM_CANCELLED_REQUESTS_LOCK = threading.Lock()
 
 
+def _clamp_number(value, default, min_value=None, max_value=None):
+    try:
+        number = float(value)
+    except Exception:
+        number = float(default)
+    if min_value is not None:
+        number = max(float(min_value), number)
+    if max_value is not None:
+        number = min(float(max_value), number)
+    return number
+
+
+def _clamp_int(value, default, min_value=None, max_value=None):
+    return int(round(_clamp_number(value, default, min_value, max_value)))
+
+
 def _canvas_vlm_cancel_key(project_id="", node_id="", conversation_id="", request_id=""):
     return (
         str(project_id or "").strip(),
@@ -453,6 +469,147 @@ def canvas_file_to_data_url(path, mime="", max_side=0, jpeg_quality=85):
         encoded = base64.b64encode(handle.read()).decode("ascii")
     return f"data:{mime};base64,{encoded}"
 
+
+def _canvas_vlm_source_kind_hint(source):
+    if not isinstance(source, dict):
+        return ""
+    asset = source.get("asset") if isinstance(source.get("asset"), dict) else source
+    mime = str(asset.get("mime") or "").lower()
+    if mime.startswith("video/"):
+        return "video"
+    if mime.startswith("audio/"):
+        return "audio"
+    path = str(asset.get("path") or asset.get("output_path") or asset.get("name") or "")
+    extension = os.path.splitext(path)[1].lower()
+    if extension in {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}:
+        return "video"
+    if extension in {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}:
+        return "audio"
+    return "image"
+
+
+def _canvas_vlm_source_is_video_hint(source):
+    return _canvas_vlm_source_kind_hint(source) == "video"
+
+
+def _canvas_vlm_update_prompt_compiler_context(payload, visual_reference_manifest):
+    """Reflect the assets that actually reached the VLM in the H3 runtime context."""
+    if not isinstance(payload, dict) or not isinstance(visual_reference_manifest, list):
+        return
+    agent_context = payload.get("agent_context")
+    if not isinstance(agent_context, dict):
+        return
+    targets = agent_context.get("prompt_generation_targets")
+    if not isinstance(targets, dict):
+        return
+    for target in targets.values():
+        if not isinstance(target, dict):
+            continue
+        context = target.get("prompt_compiler_context")
+        if not isinstance(context, dict):
+            continue
+        descriptors = context.get("video_descriptors")
+        selected_index = 0
+        try:
+            selected_index = max(0, int(context.get("video_reference_index") or 0))
+        except (TypeError, ValueError):
+            selected_index = 0
+        selected_token = f"<Video {selected_index}>" if selected_index else ""
+        selected = next(
+            (
+                item for item in visual_reference_manifest
+                if isinstance(item, dict)
+                and selected_token
+                and str(item.get("token") or "").strip().lower() == selected_token.lower()
+            ),
+            None,
+        )
+        if selected is None and isinstance(descriptors, list) and selected_index:
+            descriptor = next(
+                (
+                    item for item in descriptors
+                    if isinstance(item, dict) and int(item.get("index") or 0) == selected_index
+                ),
+                None,
+            )
+            selected_slot = str(descriptor.get("slot") or "").strip() if descriptor else ""
+            selected = next(
+                (
+                    item for item in visual_reference_manifest
+                    if isinstance(item, dict) and str(item.get("slot") or "").strip() == selected_slot
+                ),
+                None,
+            )
+        if selected is not None:
+            frames = max(0, int(selected.get("frames") or 0))
+            context["video_used"] = bool(frames)
+            context["video_visual_count"] = frames
+        reference_items = [
+            item for item in visual_reference_manifest
+            if isinstance(item, dict)
+            and (
+                str(item.get("slot") or "").strip() == "scene_reference_video"
+                or "motion/timing" in str(item.get("role") or "").lower()
+            )
+        ]
+        if reference_items:
+            context["reference_video_present"] = True
+            context["reference_video_content_available"] = any(
+                int(item.get("frames") or 0) > 0 for item in reference_items
+            )
+
+
+def _canvas_vlm_llama_visual_budget(version_name, params, text_reserve=4096):
+    config = VLM.get_version_config(version_name) or {}
+    if not config.get("is_llamacpp"):
+        return 0
+    n_ctx = normalize_llama_cpp_n_ctx(
+        (params or {}).get("n_ctx") if isinstance(params, dict) else None,
+        default=config.get("n_ctx", 8192),
+        maximum=VLM.n_ctx_limit_for_version(version_name),
+    )
+    image_tokens = int(config.get("image_min_tokens", 0) or config.get("image_max_tokens", 0) or 0)
+    if image_tokens <= 0:
+        return 0
+    return max(1, (n_ctx - max(0, int(text_reserve or 0))) // image_tokens)
+
+
+def _canvas_vlm_allocate_llama_video_frames(version_name, params, video_sources, image_count, requested_frames):
+    sources = [item for item in (video_sources or []) if isinstance(item, dict)]
+    requested = max(1, min(int(requested_frames or 8), 32))
+    if not sources:
+        return []
+    total_budget = _canvas_vlm_llama_visual_budget(version_name, params)
+    if total_budget <= 0:
+        return [requested] * len(sources)
+
+    # Keep at least one frame for every video, then spend the remaining budget
+    # on the motion source before scene/composition videos.
+    available = max(len(sources), total_budget - max(0, int(image_count or 0)))
+    total_frames = min(len(sources) * requested, available)
+    budgets = [1] * len(sources)
+    priority = sorted(
+        range(len(sources)),
+        key=lambda index: (
+            0 if "motion" in str(sources[index].get("role") or "").lower() else 1,
+            index,
+        ),
+    )
+    remaining = max(0, total_frames - len(sources))
+    while remaining:
+        progressed = False
+        for index in priority:
+            if budgets[index] >= requested:
+                continue
+            budgets[index] += 1
+            remaining -= 1
+            progressed = True
+            if not remaining:
+                break
+        if not progressed:
+            break
+    return budgets
+
 def canvas_extract_openai_text(response):
     return extract_response_text(response)
 
@@ -560,6 +717,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
 
     image_parts = []
     if supports_images:
+        requested_video_frames = _clamp_int(params.get("video_frames", 8), 8, 1, 32)
         for ref in asset_refs or []:
             if not isinstance(ref, dict):
                 continue
@@ -569,7 +727,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 continue
             try:
                 if mime.startswith("video/") or describe_media.media_type(path) == "video":
-                    contact_sheet, _ = describe_media.prepare_visual_input(path, use_multi_frame=False)
+                    contact_sheet, _ = describe_media.prepare_visual_input(
+                        path,
+                        use_multi_frame=False,
+                        max_frames=requested_video_frames,
+                    )
+                    if contact_sheet is None:
+                        continue
                     image_parts.append({
                         "type": "image_url",
                         "image_url": {"url": canvas_image_to_data_url(
@@ -815,14 +979,28 @@ def canvas_vlm_run(payload):
             "details": "The selected VLM API profile no longer exists.",
         }
     is_custom_api = version_name == "Custom" or bool(profile)
+    version_config = VLM.get_version_config(version_name) or {}
     model_status = canvas_vlm_model_status(payload)
     _canvas_vlm_add_timing(params, "model_status_gate", time.monotonic() - stage_started)
+    runtime_model_name = str(
+        model_status.get("model")
+        or version_config.get("model")
+        or version_name
+    ).strip()
+    runtime_provider_name = str(
+        version_config.get("backend")
+        or getattr(VLM, "backend", "")
+        or "local"
+    ).strip()
     if not model_status.get("ready"):
         return {
             "ok": False,
             "error": "VLM model files are missing",
             "details": model_status.get("message") or "Download the VLM model before running.",
             "model_status": model_status,
+            "version": version_name,
+            "provider": runtime_provider_name,
+            "model": runtime_model_name,
         }
 
     stage_started = time.monotonic()
@@ -931,51 +1109,233 @@ def canvas_vlm_run(payload):
     asset_refs = []
     video_frames = 0
     video_assets = 0
+    visual_reference_manifest = []
+    video_decode_warnings = []
+    reference_input_warnings = []
+    custom_supports_images = bool(params.get("custom_supports_images", True))
+    requested_video_frames = clamp_int(params.get("video_frames", 8), 8, 1, 32)
+    hinted_video_sources = [
+        {
+            "role": str(source.get("reference_role") or ""),
+            "token": str(source.get("reference_token") or ""),
+        }
+        for source in sources
+        if _canvas_vlm_source_is_video_hint(source)
+    ]
+    hinted_image_count = sum(
+        _canvas_vlm_source_kind_hint(source) == "image"
+        for source in sources
+    )
+    video_frame_budgets = _canvas_vlm_allocate_llama_video_frames(
+        version_name,
+        params,
+        hinted_video_sources,
+        image_count=hinted_image_count,
+        requested_frames=requested_video_frames,
+    )
+    video_source_ordinal = 0
+    if video_frame_budgets and any(value < requested_video_frames for value in video_frame_budgets):
+        params["video_frame_budget"] = {
+            "requested_per_video": requested_video_frames,
+            "allocated_per_video": video_frame_budgets,
+            "total_allocated": sum(video_frame_budgets),
+        }
+    if is_custom_api and not custom_supports_images and sources:
+        video_decode_warnings.append(
+            "Custom API image input is disabled; visual references were not sent to the agent."
+        )
     for source in sources:
         if not isinstance(source, dict):
             continue
+        source_kind_hint = _canvas_vlm_source_kind_hint(source)
+        budget_index = None
+        if is_llama_cpp_vlm_version() and source_kind_hint == "video":
+            budget_index = video_source_ordinal
+            video_source_ordinal += 1
         resolved = canvas_workbench_assets.materialize_node_asset(payload.get("project_id") or "default", {}, source)
         asset_ref = resolved.get("asset_ref") if isinstance(resolved, dict) else None
         image_path = asset_ref.get("path") if isinstance(asset_ref, dict) else ""
+        source_token = str(source.get("reference_token") or "").strip()
+        source_slot = str(source.get("reference_slot") or "").strip()
+        source_role = str(source.get("reference_role") or "").strip()
+        source_label = source_token or source_slot or str(source.get("title") or "").strip()
         if not image_path or not os.path.exists(image_path):
+            if source_label:
+                warning = f"Reference {source_label} could not be materialized for VLM input."
+                if source_kind_hint == "video":
+                    video_decode_warnings.append(warning)
+                else:
+                    reference_input_warnings.append(warning)
+            visual_reference_manifest.append({
+                "token": source_token,
+                "slot": source_slot,
+                "role": source_role,
+                "kind": source_kind_hint or "image",
+                "frames": 0,
+                "available": False,
+            })
             continue
-        asset_refs.append(asset_ref)
-        source_is_video = is_video_path(image_path, asset_ref.get("mime") if isinstance(asset_ref, dict) else "")
+        public_asset_ref = dict(asset_ref)
+        if source_token:
+            public_asset_ref["reference_token"] = source_token
+        if source_slot:
+            public_asset_ref["reference_slot"] = source_slot
+        if source_role:
+            public_asset_ref["reference_role"] = source_role
+        asset_refs.append(public_asset_ref)
+        source_mime = asset_ref.get("mime") if isinstance(asset_ref, dict) else ""
+        source_kind = _canvas_vlm_source_kind_hint({"asset": {"path": image_path, "mime": source_mime}})
+        source_is_video = source_kind == "video" or is_video_path(image_path, source_mime)
+        manifest_item = {
+            "token": source_token,
+            "slot": source_slot,
+            "role": source_role,
+            "kind": "video" if source_is_video else source_kind,
+            "frames": 0,
+            "available": True,
+        }
+        if is_custom_api and not custom_supports_images:
+            manifest_item["available"] = False
         if source_is_video:
             video_assets += 1
+        requested_frames = requested_video_frames
         if is_custom_api:
+            if source_kind == "audio":
+                reference_input_warnings.append(
+                    f"Reference {source_label or 'audio'} is audio-only metadata; audio content was not decoded for VLM vision input."
+                )
+                visual_reference_manifest.append(manifest_item)
+                continue
+            if source_is_video and custom_supports_images:
+                try:
+                    contact_sheet, video_meta = describe_media.prepare_visual_input(
+                        image_path,
+                        use_multi_frame=False,
+                        max_frames=requested_frames,
+                    )
+                    if contact_sheet is not None:
+                        manifest_item["frames"] = max(1, int((video_meta or {}).get("sampled_frames") or 1))
+                    else:
+                        video_decode_warnings.append(
+                            f"Reference {source_label or 'video'} produced no visual frames for VLM input."
+                        )
+                except Exception as exc:
+                    video_decode_warnings.append(
+                        f"Reference {source_label or 'video'} could not be decoded for VLM input: {exc}"
+                    )
+            elif not source_is_video and custom_supports_images:
+                manifest_item["frames"] = 1
+            visual_reference_manifest.append(manifest_item)
             continue
         if source_is_video:
-            requested_frames = clamp_int(params.get("video_frames", 8), 8, 1, 32)
+            if is_llama_cpp_vlm_version() and budget_index is not None:
+                if budget_index < len(video_frame_budgets):
+                    requested_frames = video_frame_budgets[budget_index]
             if is_llama_cpp_vlm_version():
                 frames = extract_video_frames(image_path, llama_cpp_video_frame_budget(requested_frames))
                 images.extend(frames)
                 video_frames += len(frames)
+                manifest_item["frames"] = len(frames)
+                if not frames:
+                    video_decode_warnings.append(
+                        f"Reference {source_label or 'video'} produced no visual frames for VLM input."
+                    )
             else:
-                contact_sheet, video_meta = describe_media.prepare_visual_input(
-                    image_path,
-                    use_multi_frame=False,
-                    max_frames=requested_frames,
-                )
-                images.append(prepare_vlm_image_array(np.asarray(contact_sheet)))
-                video_frames += max(1, int(video_meta.get("sampled_frames") or 1))
+                try:
+                    contact_sheet, video_meta = describe_media.prepare_visual_input(
+                        image_path,
+                        use_multi_frame=False,
+                        max_frames=requested_frames,
+                    )
+                except Exception as exc:
+                    contact_sheet, video_meta = None, {}
+                    video_decode_warnings.append(
+                        f"Reference {source_label or 'video'} could not be decoded for VLM input: {exc}"
+                    )
+                if contact_sheet is not None:
+                    images.append(prepare_vlm_image_array(np.asarray(contact_sheet)))
+                    manifest_item["frames"] = max(1, int(video_meta.get("sampled_frames") or 1))
+                    video_frames += manifest_item["frames"]
+                else:
+                    video_decode_warnings.append(f"Reference {source_label or 'video'} produced no visual frames for VLM input.")
+        elif source_kind == "audio":
+            reference_input_warnings.append(
+                f"Reference {source_label or 'audio'} is audio-only metadata; audio content was not decoded for VLM vision input."
+            )
         else:
-            with Image.open(image_path) as image:
-                images.append(prepare_vlm_image_array(np.array(image.convert("RGB"))))
+            try:
+                with Image.open(image_path) as image:
+                    images.append(prepare_vlm_image_array(np.array(image.convert("RGB"))))
+                manifest_item["frames"] = 1
+            except Exception as exc:
+                manifest_item["available"] = False
+                reference_input_warnings.append(
+                    f"Reference {source_label or 'image'} could not be decoded for VLM input: {exc}"
+                )
+        visual_reference_manifest.append(manifest_item)
     _canvas_vlm_add_timing(params, "asset_materialize_decode", time.monotonic() - stage_started)
 
-    if video_assets:
+    if visual_reference_manifest:
+        params["visual_reference_manifest"] = visual_reference_manifest
+        _canvas_vlm_update_prompt_compiler_context(payload, visual_reference_manifest)
+    if video_decode_warnings:
+        params["video_decode_warnings"] = video_decode_warnings
+    if reference_input_warnings:
+        params["reference_input_warnings"] = reference_input_warnings
+    if video_assets or (is_custom_api and not custom_supports_images and visual_reference_manifest):
+        manifest_lines = []
+        for item in visual_reference_manifest:
+            label = item.get("token") or item.get("slot") or item.get("kind") or "reference"
+            role = f"; role={item['role']}" if item.get("role") else ""
+            frames = f"; decoded_frames={item['frames']}" if item.get("kind") == "video" else ""
+            manifest_lines.append(f"- {label}{role}{frames}")
+        manifest_text = "\n".join(manifest_lines)
+        if is_custom_api and not custom_supports_images:
+            visual_note = (
+                "视觉参考文件已识别，但当前 Custom API 未启用图片输入，因此这些画面没有送达智能体；"
+                "不要声称已经分析了参考视频或图片。"
+                if bool(params.get("output_chinese"))
+                else "Visual reference files were detected, but this Custom API has image input disabled, so no visual frames were sent to the agent; do not claim that the reference video or images were analyzed."
+            )
+            manifest_note = f"视觉参考清单（未送达智能体）：\n{manifest_text}" if bool(params.get("output_chinese")) else f"Visual reference manifest (not delivered to the agent):\n{manifest_text}"
+        elif bool(params.get("output_chinese")):
+            visual_note = "附加视频画面是参考视频按时间顺序抽取的视觉样本。按帧序理解运动和连续性，不要推断音频。"
+            manifest_note = f"视觉参考清单（顺序与输入一致）：\n{manifest_text}" if manifest_text else ""
+        else:
+            visual_note = "The attached video visuals are chronological samples from the referenced video. Treat them as ordered frames, describe visible motion and continuity, and do not infer audio."
+            manifest_note = f"Visual reference manifest (same order as the attached inputs):\n{manifest_text}" if manifest_text else ""
         prompt = (
             f"{prompt}\n\n"
-            "The attached video visuals are chronological samples from the referenced video. "
-            "Treat them as ordered frames, describe visible motion and continuity, and do not infer audio."
+            f"{visual_note}\n{manifest_note}"
         ).strip()
         params["prompt"] = prompt
+    if video_decode_warnings or reference_input_warnings:
+        warning_note = (
+            "视觉输入告警：部分参考素材没有成功送达可用的视觉内容，不能根据未送达的参考视频描述动作、姿态或镜头轨迹，也不能把音频元数据当作画面证据。"
+            if bool(params.get("output_chinese"))
+            else "VLM input warning: some reference videos did not produce decoded visual frames or other reference assets did not provide usable visual content; do not describe motion, pose, or camera trajectory from an undelivered reference video, and do not treat audio metadata as visual evidence."
+        )
+        prompt = f"{prompt}\n\n{warning_note}".strip()
+        params["prompt"] = prompt
+    if (video_decode_warnings or reference_input_warnings) and not two_stage_requested:
+        params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
+        agent_system_prompt_built = True
 
     if is_custom_api:
         if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
             return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
         result = canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, mode)
+        if isinstance(result, dict):
+            result_params = result.setdefault("params", {})
+            if visual_reference_manifest:
+                result_params["visual_reference_manifest"] = visual_reference_manifest
+            if video_decode_warnings:
+                result_params["video_decode_warnings"] = video_decode_warnings
+            if reference_input_warnings:
+                result_params["reference_input_warnings"] = reference_input_warnings
+            warnings = video_decode_warnings + reference_input_warnings
+            if warnings:
+                result["warning"] = " ".join(warnings)
         if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
             return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
         return result
@@ -1194,6 +1554,8 @@ def canvas_vlm_run(payload):
             "error": "VLM inference failed",
             "details": text,
             "version": VLM.current_version,
+            "provider": runtime_provider_name,
+            "model": runtime_model_name,
             "asset_refs": asset_refs,
         }
 
@@ -1347,6 +1709,14 @@ def canvas_vlm_run(payload):
         ),
         "rolling_context": rolling_context_stats,
     }
+    if visual_reference_manifest:
+        response_params["visual_reference_manifest"] = visual_reference_manifest
+    if params.get("video_frame_budget"):
+        response_params["video_frame_budget"] = copy.deepcopy(params["video_frame_budget"])
+    if video_decode_warnings:
+        response_params["video_decode_warnings"] = video_decode_warnings
+    if reference_input_warnings:
+        response_params["reference_input_warnings"] = reference_input_warnings
     if isinstance(two_stage_intent_meta, dict):
         response_params["two_stage_intent"] = {
             "valid": bool(two_stage_intent_meta.get("valid")),
@@ -1383,6 +1753,8 @@ def canvas_vlm_run(payload):
         "raw_text": text if display_text != text else "",
         "agent_actions": agent_actions,
         "version": VLM.current_version,
+        "provider": runtime_provider_name,
+        "model": runtime_model_name,
         "asset_refs": asset_refs,
         "used_images": len(images),
         "video_frames": video_frames,
@@ -1390,6 +1762,9 @@ def canvas_vlm_run(payload):
         "conversation_id": conversation_id if mode == "chat" else None,
         "params": response_params,
     }
+    warnings = video_decode_warnings + reference_input_warnings
+    if warnings:
+        result["warning"] = " ".join(warnings)
     if completion_stats:
         result["completion"] = completion_stats
     logger.info(

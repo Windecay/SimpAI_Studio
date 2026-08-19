@@ -4750,6 +4750,46 @@ function setNativeInputValue(input, value, kind) {
     return true;
 }
 
+function syncSimpleAISceneModeCheckbox(state, themeOverride) {
+    const params = state && typeof state === "object"
+        ? state
+        : ((window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === "object")
+            ? window.simpleaiTopbarSystemParams
+            : (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null));
+    const sceneFrontend = params && params.scene_frontend && typeof params.scene_frontend === "object"
+        ? params.scene_frontend
+        : null;
+    if (!sceneFrontend) return null;
+    const rawInteractive = sceneFrontend.disinteractive;
+    const disabledControls = Array.isArray(rawInteractive)
+        ? rawInteractive.map((item) => String(item))
+        : String(rawInteractive || "").split(",").map((item) => item.trim()).filter(Boolean);
+    if (!disabledControls.includes("scene_switch_option3")) return null;
+
+    const theme = String(
+        themeOverride
+        || params.__scene_theme
+        || params.scene_theme
+        || (typeof sceneSelectedThemeValue === "function" ? sceneSelectedThemeValue() : "")
+        || ""
+    ).trim();
+    if (!theme) return null;
+    const value = sceneBoolValueForTheme(sceneFrontend, "switch_option3", theme, false);
+    const root = getSimpleAIElementById("scene_switch_option3");
+    const input = root && root.querySelector ? root.querySelector('input[type="checkbox"]') : null;
+    if (!input) return !!value;
+
+    const wasDefaultSync = scenePresetDefaultSyncApplying;
+    scenePresetDefaultSyncApplying = true;
+    try {
+        setNativeInputValue(input, !!value, "checkbox");
+    } finally {
+        scenePresetDefaultSyncApplying = wasDefaultSync;
+    }
+    return !!value;
+}
+window.syncSimpleAISceneModeCheckbox = syncSimpleAISceneModeCheckbox;
+
 function applyScenePresetControlProps(input, props) {
     if (!input || !props || typeof props !== "object") return 0;
     const attrMap = {

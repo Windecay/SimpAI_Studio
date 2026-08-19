@@ -189,6 +189,13 @@
         return 'chat';
     }
 
+    function normalizeRoleplaySpeakerMode(value) {
+        const mode = String(value || '').trim().toLowerCase().replace(/[- ]/g, '_');
+        if (['current', 'current_character', 'single'].includes(mode)) return 'current';
+        if (['multi', 'multiple', 'sequence', 'sequential'].includes(mode)) return 'multi';
+        return 'auto';
+    }
+
     const ROLEPLAY_AGENT_ROLES = ['character_reply', 'player_proxy', 'director_state'];
 
     function normalizeRoleplayAgentRouting(value) {
@@ -655,6 +662,7 @@
             }, source.director_config && typeof source.director_config === 'object' ? source.director_config : {}),
             autoplay_config: Object.assign({
                 mode: 'manual',
+                speaker_mode: 'auto',
                 target_turns: 5,
                 continuous: false,
                 initiative: 'balanced',
@@ -662,7 +670,9 @@
                 image_frequency: 'key_moments',
                 queue_mode: 'background',
                 chapter_goal: ''
-            }, source.autoplay_config && typeof source.autoplay_config === 'object' ? source.autoplay_config : {}),
+            }, source.autoplay_config && typeof source.autoplay_config === 'object' ? source.autoplay_config : {}, {
+                speaker_mode: normalizeRoleplaySpeakerMode(source.autoplay_config?.speaker_mode)
+            }),
             visual_config: Object.assign({
                 enabled: false,
                 frequency: 'key_moments',
@@ -1787,6 +1797,16 @@
         }
     }
 
+    function setRoleplayFormDraftBusy(modal, kind, busy) {
+        const selectors = kind === 'character'
+            ? [
+                '[data-describe-vlm-chat-roleplay-character-generate]',
+                '[data-describe-vlm-chat-roleplay-import-draft]'
+            ]
+            : [`[data-describe-vlm-chat-roleplay-draft="${kind}"]`];
+        selectors.forEach((selector) => setRoleplayActionBusy(modal, selector, busy));
+    }
+
     function setConversationStatus(runtime, message, isError = false) {
         if (!isCurrentConversationRuntime(runtime)) return;
         const panel = visibleRoleplayPanel();
@@ -2061,6 +2081,57 @@
         }
     }
 
+    function chatModeLabel(mode = state.chatMode) {
+        const labels = {
+            chat: ['Free Chat', '自由对话'],
+            roleplay: ['Roleplay', '角色扮演'],
+            creative: ['Creative', '创作模式'],
+            guide: ['Guide Mode', '向导模式'],
+            prompt: ['Prompt Assistant', '提示词助手'],
+            raw: ['Raw Model', '原始模型']
+        };
+        const pair = labels[normalizeChatMode(mode)] || labels.chat;
+        return localText(pair[0], pair[1]);
+    }
+
+    function syncChatSettingsSummary(modal) {
+        const summary = modal?.querySelector?.('[data-describe-vlm-chat-settings-summary]');
+        if (!summary) return;
+        const settingsValue = summary.querySelector('[data-describe-vlm-chat-settings-summary-value]');
+        const runtimeValue = summary.querySelector('[data-describe-vlm-chat-runtime-summary-value]');
+        const selectedVersion = resolveVlmVersion(readSelectedVlmVersion());
+        const configuredMaxTokens = normalizeChatMaxTokens(state.maxTokens, 0);
+        const outputValue = configuredMaxTokens > 0
+            ? localText(`${configuredMaxTokens} tokens`, `${configuredMaxTokens} Token`)
+            : localText(`Auto (${effectiveChatMaxTokens(state.chatMode)} tokens)`, `自动（${effectiveChatMaxTokens(state.chatMode)} Token）`);
+        const configuredNctx = currentVlmNctx(selectedVersion);
+        const contextValue = configuredNctx > 0
+            ? String(configuredNctx)
+            : localText('Auto', '自动');
+        const settingsText = [
+            `${localText('Model', '模型')} ${currentAnswerModelLabel()}`,
+            `${localText('Mode', '模式')} ${chatModeLabel(state.chatMode)}`,
+            `${localText('Output', '输出')} ${outputValue}`,
+            `${localText('VRAM', '显存')} ${vlmVramPolicyLabel(state.vramPolicy)}`,
+            `${localText('KV', 'KV')} ${vlmKvCacheTypeLabel(state.kvCacheType)}`,
+            `${localText('Context', '上下文')} ${contextValue}`,
+            state.unloadAfterChat
+                ? localText('Unload after reply', '回复后卸载')
+                : localText('Keep model loaded', '保持模型加载'),
+            state.autoAttachPreviousImage
+                ? localText('Previous image on', '附带上一张图')
+                : localText('Previous image off', '不附带上一张图')
+        ].join(' · ');
+        if (settingsValue) settingsValue.textContent = settingsText;
+        const runtimeText = formatVlmRuntimeStatus();
+        if (runtimeValue) runtimeValue.textContent = runtimeText;
+        summary.hidden = !!state.settingsPanelOpen;
+        summary.setAttribute('aria-hidden', state.settingsPanelOpen ? 'true' : 'false');
+        summary.classList.toggle('is-ready', !!state.vlmRuntimeStatus?.loaded && state.vlmRuntimeStatus.state === 'ready');
+        summary.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
+        summary.setAttribute('title', `${settingsText} · ${localText('Runtime', '运行状态')}: ${runtimeText}`);
+    }
+
     function syncChatSettingsControls(modal) {
         if (!modal) return;
         syncConversationControls(modal);
@@ -2125,6 +2196,7 @@
         updateAnswerModelIndicator(modal);
         updateVlmRuntimeStatus(modal);
         syncRoleplayControls(modal);
+        syncChatSettingsSummary(modal);
     }
 
     function roleplayCharacterEntries(session) {
@@ -2178,10 +2250,10 @@
         return options.join('');
     }
 
-    function syncRoleplayCharacterLibraryControls(modal) {
+    function syncRoleplayCharacterLibraryControls(modal, preferredId = '') {
         const select = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-library-select]');
         if (!select) return;
-        const selected = String(select.value || '').trim();
+        const selected = String(preferredId || select.value || '').trim();
         select.innerHTML = renderRoleplayCharacterLibraryOptions();
         if (selected && Array.from(select.options || []).some((option) => option.value === selected)) {
             select.value = selected;
@@ -2498,6 +2570,23 @@
         feedback.dataset.state = isError ? 'error' : message ? 'info' : '';
     }
 
+    function roleplayCharacterLibraryAgentFeedback(modal, message, isError = false) {
+        const feedback = modal?.querySelector('[data-roleplay-character-library-agent-feedback]');
+        if (!feedback) return;
+        const text = String(message || '').trim();
+        feedback.textContent = text;
+        feedback.hidden = !text;
+        feedback.dataset.state = isError ? 'error' : text ? 'info' : '';
+    }
+
+    function setRoleplayCharacterLibraryAgentBusy(modal, busy) {
+        [
+            '[data-roleplay-character-library-agent-generate]',
+            '[data-roleplay-character-library-agent-optimize]',
+            '[data-roleplay-character-library-agent-optimize-visual]'
+        ].forEach((selector) => setRoleplayActionBusy(modal, selector, busy));
+    }
+
     function roleplayCharacterLibraryFormValue(modal, name) {
         return String(modal?.querySelector(`[data-roleplay-character-library-${name}]`)?.value || '').trim();
     }
@@ -2681,28 +2770,40 @@
           <div class="describe-vlm-chat-character-library-section-head"><div><strong>${escapeHtml(localText('Character agent', '角色智能体'))}</strong><small>${escapeHtml(localText('Create a new card or improve the current card with the roleplay agent.', '让角色智能体生成新角色，或优化当前角色卡。'))}</small></div><i class="fa-solid fa-wand-magic-sparkles"></i></div>
           <textarea data-roleplay-character-library-agent-request rows="3" placeholder="${escapeHtml(localText('Describe the character you want, or tell the agent what to improve...', '描述你想要的角色，或告诉智能体需要优化什么……'))}"></textarea>
           <div class="describe-vlm-chat-character-library-agent-actions"><button type="button" data-roleplay-character-library-agent-generate><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('AI create character', '智能生成角色'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize card', '智能优化角色卡'))}</span></button></div>
+          <div class="describe-vlm-chat-character-library-agent-feedback" data-roleplay-character-library-agent-feedback hidden role="status" aria-live="polite"></div>
         </section>
-        <div class="describe-vlm-chat-character-library-fields">
-          <label><span>${escapeHtml(localText('Name', '名称'))}</span><input data-roleplay-character-library-name maxlength="200"></label>
-          <label><span>${escapeHtml(localText('Identity', '身份'))}</span><textarea data-roleplay-character-library-identity rows="3"></textarea></label>
-          <label><span>${escapeHtml(localText('Background', '背景'))}</span><textarea data-roleplay-character-library-background rows="3"></textarea></label>
-          <label><span>${escapeHtml(localText('Personality', '性格'))}</span><textarea data-roleplay-character-library-personality rows="3"></textarea></label>
-          <label><span>${escapeHtml(localText('Speech style', '说话方式'))}</span><textarea data-roleplay-character-library-speech-style rows="3"></textarea></label>
-          <label><span>${escapeHtml(localText('Behavior rules, one per line', '行为规则，每行一条'))}</span><textarea data-roleplay-character-library-behavior rows="3"></textarea></label>
-          <label><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label>
-        </div>
+        <section class="describe-vlm-chat-character-library-identity-section">
+          <div class="describe-vlm-chat-character-library-section-head"><div><strong>${escapeHtml(localText('Basic identity', '基础设定'))}</strong><small>${escapeHtml(localText('Keep the reusable character facts here.', '把可复用的角色事实集中在这里。'))}</small></div></div>
+          <div class="describe-vlm-chat-character-library-fields">
+            <label><span>${escapeHtml(localText('Name', '名称'))}</span><input data-roleplay-character-library-name maxlength="200"></label>
+            <label><span>${escapeHtml(localText('Identity', '身份'))}</span><textarea data-roleplay-character-library-identity rows="3"></textarea></label>
+            <label><span>${escapeHtml(localText('Background', '背景'))}</span><textarea data-roleplay-character-library-background rows="3"></textarea></label>
+            <label><span>${escapeHtml(localText('Personality', '性格'))}</span><textarea data-roleplay-character-library-personality rows="3"></textarea></label>
+            <label><span>${escapeHtml(localText('Speech style', '说话方式'))}</span><textarea data-roleplay-character-library-speech-style rows="3"></textarea></label>
+            <label><span>${escapeHtml(localText('Behavior rules, one per line', '行为规则，每行一条'))}</span><textarea data-roleplay-character-library-behavior rows="3"></textarea></label>
+            <label><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label>
+          </div>
+        </section>
         <section class="describe-vlm-chat-character-library-visual-section">
           <div class="describe-vlm-chat-character-library-section-head"><div><strong>${escapeHtml(localText('Character images', '角色图片'))}</strong><small>${escapeHtml(localText('Keep the fixed reference separate from historical appearance images.', '主参考图和历史状态图分开保存。'))}</small></div><div class="describe-vlm-chat-character-library-section-actions"><button type="button" data-roleplay-character-library-upload title="${escapeHtml(localText('Upload reference image', '上传参考图'))}" aria-label="${escapeHtml(localText('Upload reference image', '上传参考图'))}"><i class="fa-solid fa-upload"></i></button><input type="file" accept="image/*" data-roleplay-character-library-file hidden></div></div>
-          <div class="describe-vlm-chat-character-library-main-preview" data-roleplay-character-library-main-preview></div>
-          <div class="describe-vlm-chat-character-library-assets" data-roleplay-character-library-assets></div>
-          <div class="describe-vlm-chat-character-library-history-head"><div><strong>${escapeHtml(localText('State image history', '历史状态图'))}</strong><small>${escapeHtml(localText('Attach images from roleplay state changes or upload them here.', '可以挂入角色扮演中的状态图，也可以在这里上传。'))}</small></div><div class="describe-vlm-chat-character-library-section-actions"><button type="button" data-roleplay-character-library-state-upload title="${escapeHtml(localText('Upload state image', '上传状态图'))}" aria-label="${escapeHtml(localText('Upload state image', '上传状态图'))}"><i class="fa-solid fa-clock-rotate-left"></i></button><button type="button" data-roleplay-character-library-import-current-state title="${escapeHtml(localText('Import current roleplay state image', '导入当前角色扮演状态图'))}" aria-label="${escapeHtml(localText('Import current roleplay state image', '导入当前角色扮演状态图'))}"><i class="fa-solid fa-cloud-arrow-down"></i></button><input type="file" accept="image/*" data-roleplay-character-library-state-file hidden></div></div>
-          <label><span>${escapeHtml(localText('State image note', '状态图说明'))}</span><textarea data-roleplay-character-library-state-note rows="2" placeholder="${escapeHtml(localText('For example: injured after the night battle, wearing a torn coat.', '例如：夜战受伤后，穿着破损外套。'))}"></textarea></label>
-          <div class="describe-vlm-chat-character-library-history" data-roleplay-character-library-history></div>
-          <label><span>${escapeHtml(localText('Image analysis request', '图片分析要求'))}</span><textarea data-roleplay-character-library-image-request rows="2" placeholder="${escapeHtml(localText('Optional: keep the outfit, change the pose, use a clean studio background...', '可选：保留服装、改变姿势、使用干净的棚拍背景……'))}"></textarea></label>
-          <div class="describe-vlm-chat-character-library-prompt-actions"><button type="button" data-roleplay-character-library-describe-image><i class="fa-solid fa-eye"></i><span>${escapeHtml(localText('Image to prompt', '从图片生成提示词'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize-visual><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize prompt', '智能优化提示词'))}</span></button><button type="button" data-roleplay-character-library-generate-image><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Prompt to image', '根据提示词生成图片'))}</span></button></div>
-          <label><span>${escapeHtml(localText('Image prompt', '生图提示词'))}</span><textarea data-roleplay-character-library-image-prompt rows="8" placeholder="${escapeHtml(localText('Describe the fixed identity image...', '描述角色固定身份图……'))}"></textarea></label>
-          <label><span>${escapeHtml(localText('Negative prompt', '反向提示词'))}</span><textarea data-roleplay-character-library-negative-prompt rows="3"></textarea></label>
+          <div class="describe-vlm-chat-character-library-visual-top">
+            <div class="describe-vlm-chat-character-library-main-preview" data-roleplay-character-library-main-preview></div>
+            <div class="describe-vlm-chat-character-library-visual-top-tools">
+              <div class="describe-vlm-chat-character-library-assets" data-roleplay-character-library-assets></div>
+              <label><span>${escapeHtml(localText('Image analysis request', '图片分析要求'))}</span><textarea data-roleplay-character-library-image-request rows="2" placeholder="${escapeHtml(localText('Optional: keep the outfit, change the pose, use a clean studio background...', '可选：保留服装、改变姿势、使用干净的棚拍背景……'))}"></textarea></label>
+              <div class="describe-vlm-chat-character-library-prompt-actions"><button type="button" data-roleplay-character-library-describe-image><i class="fa-solid fa-eye"></i><span>${escapeHtml(localText('Image to prompt', '从图片生成提示词'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize-visual><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize prompt', '智能优化提示词'))}</span></button><button type="button" data-roleplay-character-library-generate-image><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Prompt to image', '根据提示词生成图片'))}</span></button></div>
+            </div>
+          </div>
+          <div class="describe-vlm-chat-character-library-visual-prompt-grid">
+            <label><span>${escapeHtml(localText('Image prompt', '生图提示词'))}</span><textarea data-roleplay-character-library-image-prompt rows="8" placeholder="${escapeHtml(localText('Describe the fixed identity image...', '描述角色固定身份图……'))}"></textarea></label>
+            <label><span>${escapeHtml(localText('Negative prompt', '反向提示词'))}</span><textarea data-roleplay-character-library-negative-prompt rows="3"></textarea></label>
+          </div>
           <div class="describe-vlm-chat-character-library-generated" data-roleplay-character-library-generated hidden></div>
+          <section class="describe-vlm-chat-character-library-history-section">
+            <div class="describe-vlm-chat-character-library-history-head"><div><strong>${escapeHtml(localText('State image history', '历史状态图'))}</strong><small>${escapeHtml(localText('Attach images from roleplay state changes or upload them here.', '可以挂入角色扮演中的状态图，也可以在这里上传。'))}</small></div><div class="describe-vlm-chat-character-library-section-actions"><button type="button" data-roleplay-character-library-state-upload title="${escapeHtml(localText('Upload state image', '上传状态图'))}" aria-label="${escapeHtml(localText('Upload state image', '上传状态图'))}"><i class="fa-solid fa-upload"></i></button><button type="button" data-roleplay-character-library-import-current-state title="${escapeHtml(localText('Import current roleplay state image', '导入当前角色扮演状态图'))}" aria-label="${escapeHtml(localText('Import current roleplay state image', '导入当前角色扮演状态图'))}"><i class="fa-solid fa-cloud-arrow-down"></i></button><input type="file" accept="image/*" data-roleplay-character-library-state-file hidden></div></div>
+            <label><span>${escapeHtml(localText('State image note', '状态图说明'))}</span><textarea data-roleplay-character-library-state-note rows="2" placeholder="${escapeHtml(localText('For example: injured after the night battle, wearing a torn coat.', '例如：夜战受伤后，穿着破损外套。'))}"></textarea></label>
+            <div class="describe-vlm-chat-character-library-history" data-roleplay-character-library-history></div>
+          </section>
         </section>
         <div class="describe-vlm-chat-character-library-editor-actions"><span data-roleplay-character-library-feedback aria-live="polite"></span><button type="button" data-roleplay-character-library-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save character', '保存角色'))}</span></button></div>
       </div>
@@ -2821,7 +2922,14 @@
 
     async function requestRoleplayCharacterLibraryAgent(modal, mode = 'generate') {
         const workspace = roleplayCharacterLibraryWorkspaceState();
-        if (!workspace.draft || workspace.busy) return false;
+        if (!workspace.draft) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText('Select or create a character first.', '请先选择或新建一个角色。'), true);
+            return false;
+        }
+        if (workspace.busy) {
+            roleplayCharacterLibraryAgentFeedback(modal, localText('A character-agent request is already running.', '角色智能体请求正在进行中。'));
+            return false;
+        }
         readRoleplayCharacterLibraryForm(modal);
         const card = normalizeRoleplayCharacterLibraryCard(workspace.draft);
         const requestText = roleplayCharacterLibraryFormValue(modal, 'agent-request');
@@ -2840,14 +2948,18 @@
                     '生成一个可以直接开始角色扮演的鲜明角色，包含明确身份、背景、性格、说话方式、行为规则、开场白和一致的视觉身份。'
                 ));
         workspace.busy = true;
-        roleplayCharacterLibraryFeedback(modal, mode === 'visual'
+        setRoleplayCharacterLibraryAgentBusy(modal, true);
+        const progressMessage = mode === 'visual'
             ? localText('The visual agent is improving the prompt...', '视觉智能体正在优化提示词……')
             : mode === 'optimize'
                 ? localText('The character agent is improving the card...', '角色智能体正在优化角色卡……')
-                : localText('The character agent is creating a draft...', '角色智能体正在生成角色草稿……'));
+                : localText('The character agent is creating a draft...', '角色智能体正在生成角色草稿……');
+        roleplayCharacterLibraryAgentFeedback(modal, progressMessage);
+        roleplayCharacterLibraryFeedback(modal, progressMessage);
         try {
             const session = roleplayCharacterLibrarySession(card);
             const version = readSelectedVlmVersion();
+            const agentRouting = roleplayAgentRequestRouting(session);
             const response = await postJson('/describe-image/vlm-chat-run', {
                 request_kind: 'roleplay_form_draft',
                 request_id: uid(`roleplay_character_agent_${mode}`),
@@ -2859,7 +2971,7 @@
                 roleplay_form_target: 'character',
                 roleplay_form_request: request,
                 roleplay_session: session,
-                agent_routing: session.agent_routing,
+                ...agentRouting,
                 history: [],
                 history_full: [],
                 version,
@@ -2874,26 +2986,35 @@
             });
             const candidate = response?.form_draft?.character;
             if (!response?.ok || !response.form_draft?.ok || !candidate) {
-                roleplayCharacterLibraryFeedback(modal, String(response?.details || localText(
+                const failureMessage = response?.ok === false
+                    ? describeVlmChatFailure(response)
+                    : String(response?.details || localText(
                     'The character agent did not return a usable draft.',
                     '角色智能体没有返回可用的草稿。'
-                )), true);
+                ));
+                roleplayCharacterLibraryAgentFeedback(modal, failureMessage, true);
+                roleplayCharacterLibraryFeedback(modal, failureMessage, true);
                 return false;
             }
             workspace.draft = mergeRoleplayCharacterLibraryAgentDraft(card, candidate, mode === 'visual' ? 'visual' : 'character');
             renderRoleplayCharacterLibraryWorkspace(modal);
-            roleplayCharacterLibraryFeedback(modal, mode === 'visual'
+            const successMessage = mode === 'visual'
                 ? localText('The visual prompt was improved. Review it before generating.', '视觉提示词已优化，请确认后再生图。')
-                : localText('The character draft was updated. Review it before saving.', '角色草稿已更新，请检查后保存。'));
+                : localText('The character draft was updated. Review it before saving.', '角色草稿已更新，请检查后保存。');
+            roleplayCharacterLibraryAgentFeedback(modal, successMessage);
+            roleplayCharacterLibraryFeedback(modal, successMessage);
             return true;
         } catch (error) {
-            roleplayCharacterLibraryFeedback(modal, String(error?.message || localText(
+            const failureMessage = String(error?.message || localText(
                 'The character agent request failed.',
                 '角色智能体请求失败。'
-            )), true);
+            ));
+            roleplayCharacterLibraryAgentFeedback(modal, failureMessage, true);
+            roleplayCharacterLibraryFeedback(modal, failureMessage, true);
             return false;
         } finally {
             workspace.busy = false;
+            setRoleplayCharacterLibraryAgentBusy(modal, false);
         }
     }
 
@@ -3156,6 +3277,7 @@
             workspace.selectedId = saved.id;
             workspace.draft = saved;
             renderRoleplayCharacterLibraryWorkspace(modal);
+            syncRoleplayCharacterLibraryControls(document.getElementById('describe_vlm_chat_modal'), saved.id);
             roleplayCharacterLibraryFeedback(modal, localText('Character saved.', '角色已保存。'));
             return true;
         } catch (error) {
@@ -3214,6 +3336,7 @@
             workspace.imagePayload = null;
             workspace.imageAssetId = '';
             renderRoleplayCharacterLibraryWorkspace(modal);
+            syncRoleplayCharacterLibraryControls(document.getElementById('describe_vlm_chat_modal'));
             roleplayCharacterLibraryFeedback(modal, localText('Character deleted.', '角色已删除。'));
             return true;
         } catch (error) {
@@ -3569,6 +3692,8 @@
         if (targetTurns) targetTurns.value = String(session.autoplay_config.target_turns || 5);
         const continuous = modal.querySelector('[data-describe-vlm-chat-roleplay-continuous]');
         if (continuous) continuous.checked = !!session.autoplay_config.continuous;
+        const speakerMode = modal.querySelector('[data-describe-vlm-chat-roleplay-speaker-mode]');
+        if (speakerMode) speakerMode.value = normalizeRoleplaySpeakerMode(session.autoplay_config.speaker_mode);
         const visual = modal.querySelector('[data-describe-vlm-chat-roleplay-visual-enabled]');
         if (visual) visual.checked = !!session.visual_config.enabled;
         const agentRouting = normalizeRoleplayAgentRouting(session.agent_routing);
@@ -3658,6 +3783,9 @@
         session.autoplay_config.mode = String(modal.querySelector('[data-describe-vlm-chat-roleplay-autoplay-mode]')?.value || 'manual');
         session.autoplay_config.target_turns = Math.max(1, Math.min(100, Math.round(Number(modal.querySelector('[data-describe-vlm-chat-roleplay-target-turns]')?.value) || 5)));
         session.autoplay_config.continuous = !!modal.querySelector('[data-describe-vlm-chat-roleplay-continuous]')?.checked;
+        session.autoplay_config.speaker_mode = normalizeRoleplaySpeakerMode(
+            modal.querySelector('[data-describe-vlm-chat-roleplay-speaker-mode]')?.value
+        );
         session.visual_config.enabled = !!modal.querySelector('[data-describe-vlm-chat-roleplay-visual-enabled]')?.checked;
         const agentRouting = normalizeRoleplayAgentRouting(session.agent_routing);
         const fallbackEnabled = !!modal.querySelector('[data-describe-vlm-chat-roleplay-agent-fallback]')?.checked;
@@ -4103,43 +4231,52 @@
             session = applyVisibleRoleplayCharacterState(session, modal);
         }
         const version = readSelectedVlmVersion();
+        const agentRouting = roleplayAgentRequestRouting(session);
+        setRoleplayFormDraftBusy(modal, kind, true);
         setConversationStatus(target, localText(
             'The assistant is preparing a form draft...',
             '助手正在生成表单草稿……'
         ));
-        const response = await postJson('/describe-image/vlm-chat-run', {
-            request_kind: 'roleplay_form_draft',
-            request_id: uid('roleplay_form_draft'),
-            message: requestText || localText(
-                'Create a complete draft from the current system prompt.',
-                '根据当前 system prompt 生成完整草稿。'
-            ),
-            system_prompt: sourcePrompt,
-            user_system_prompt: sourcePrompt,
-            custom_system_prompt: sourcePrompt,
-            conversation_id: target.conversationId,
-            chat_mode: 'roleplay',
-            describe_chat_mode: 'roleplay',
-            roleplay_request_kind: 'form_draft',
-            roleplay_form_target: kind,
-            roleplay_form_request: requestText,
-            roleplay_session: session,
-            agent_routing: session.agent_routing,
-            version,
-            custom_api: readDescribeCustomApi(version),
-            vram_policy: state.vramPolicy,
-            kv_cache_type: state.kvCacheType,
-            n_ctx: currentVlmNctx(version),
-            unload_after_chat: !!target.unloadAfterChat,
-            max_tokens: 1800,
-            __lang: state.__lang,
-            lang: state.__lang
-        });
+        let response;
+        try {
+            response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'roleplay_form_draft',
+                request_id: uid('roleplay_form_draft'),
+                message: requestText || localText(
+                    'Create a complete draft from the current system prompt.',
+                    '根据当前 system prompt 生成完整草稿。'
+                ),
+                system_prompt: sourcePrompt,
+                user_system_prompt: sourcePrompt,
+                custom_system_prompt: sourcePrompt,
+                conversation_id: target.conversationId,
+                chat_mode: 'roleplay',
+                describe_chat_mode: 'roleplay',
+                roleplay_request_kind: 'form_draft',
+                roleplay_form_target: kind,
+                roleplay_form_request: requestText,
+                roleplay_session: session,
+                ...agentRouting,
+                version,
+                custom_api: readDescribeCustomApi(version),
+                vram_policy: state.vramPolicy,
+                kv_cache_type: state.kvCacheType,
+                n_ctx: currentVlmNctx(version),
+                unload_after_chat: !!target.unloadAfterChat,
+                max_tokens: 1800,
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+        } finally {
+            setRoleplayFormDraftBusy(modal, kind, false);
+        }
         if (!response?.ok || !response.form_draft?.ok) {
-            setConversationStatus(target, localText(
-                'The assistant could not create this form draft.',
-                '助手没有生成有效的表单草稿。'
-            ), true);
+            setConversationStatus(target, response?.ok === false
+                ? describeVlmChatFailure(response)
+                : localText(
+                    'The assistant could not create this form draft.',
+                    '助手没有生成有效的表单草稿。'
+                ), true);
             return false;
         }
         const draft = response.form_draft;
@@ -5989,6 +6126,16 @@
         };
     }
 
+    function roleplayAgentRequestRouting(session) {
+        const routing = normalizeRoleplayAgentRouting(session?.agent_routing || session || {});
+        return {
+            agent_routing: routing,
+            agent_routing_local_version: String(routing.profiles?.local_main?.version || '').trim(),
+            agent_routing_api_profile: readDescribeCustomApi('Custom'),
+            agent_routing_api_profile_version: String(routing.profiles?.api_main?.version || '').trim()
+        };
+    }
+
     function buildVlmModelStatusPayload(version) {
         const cleanVersion = resolveVlmVersion(version);
         const customApi = readDescribeCustomApi(cleanVersion);
@@ -6199,6 +6346,7 @@
         else status.removeAttribute('title');
         status.classList.toggle('is-ready', !!runtime?.loaded && runtime.state === 'ready');
         status.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
+        syncChatSettingsSummary(modal);
     }
 
     async function refreshVlmRuntimeStatus() {
@@ -6843,6 +6991,10 @@
       <button type="button" data-describe-vlm-chat-maximize title="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-label="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-pressed="false"><i class="fa-solid fa-maximize"></i></button>
       <button type="button" data-describe-vlm-chat-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
     </span>
+    <div class="describe-vlm-chat-settings-summary" data-describe-vlm-chat-settings-summary hidden aria-live="polite" aria-hidden="true">
+      <span class="describe-vlm-chat-settings-summary-value" data-describe-vlm-chat-settings-summary-value></span>
+      <span class="describe-vlm-chat-settings-summary-runtime"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span data-describe-vlm-chat-runtime-summary-value>${escapeHtml(localText('Waiting for model status', '等待模型状态'))}</span></span>
+    </div>
   </div>
   <div class="describe-vlm-chat-conversation-bar">
     <div class="describe-vlm-chat-conversation-head">
@@ -6991,6 +7143,7 @@
         <strong>${escapeHtml(localText('Director and autoplay', '导演与托管'))}</strong>
         <div class="describe-vlm-chat-roleplay-scene-character-picker"><span class="describe-vlm-chat-roleplay-field-label">${escapeHtml(localText('Characters in story images', '场照中的角色'))}</span><div class="describe-vlm-chat-roleplay-scene-character-options" data-describe-vlm-chat-roleplay-scene-characters role="group" aria-label="${escapeHtml(localText('Characters in story images', '场照中的角色'))}"></div></div>
         <label><span>${escapeHtml(localText('Control mode', '控制方式'))}</span><select data-describe-vlm-chat-roleplay-autoplay-mode><option value="manual">${escapeHtml(localText('Manual', '手动'))}</option><option value="suggest">${escapeHtml(localText('Suggest', '建议'))}</option><option value="autoplay">${escapeHtml(localText('Autoplay', '托管'))}</option><option value="spectator">${escapeHtml(localText('Spectator', '观演'))}</option></select></label>
+        <label><span>${escapeHtml(localText('Speaking strategy', '发言策略'))}</span><select data-describe-vlm-chat-roleplay-speaker-mode><option value="auto">${escapeHtml(localText('Automatic', '自动'))}</option><option value="current">${escapeHtml(localText('Current character only', '仅当前角色'))}</option><option value="multi">${escapeHtml(localText('Multiple characters in order', '多人顺序'))}</option></select></label>
         <label><span>${escapeHtml(localText('Target turns', '目标轮数'))}</span><input data-describe-vlm-chat-roleplay-target-turns type="number" min="1" max="100" step="1"></label>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-continuous type="checkbox"><span>${escapeHtml(localText('Continue until stopped', '持续播放，直到手动停止'))}</span></label>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-visual-enabled type="checkbox"><span>${escapeHtml(localText('Offer story images at key moments', '在关键时刻生成故事场照'))}</span></label>
@@ -7317,7 +7470,12 @@
             id: String(value.id || uid(`roleplay_variant_${index}`)).slice(0, 240),
             content,
             actions,
+            completion: normalizeChatCompletion(value.completion),
+            response_source: normalizeResponseSource(value.response_source || value),
             roleplay_state_changes: normalizeRoleplayStateChanges(value.roleplay_state_changes),
+            roleplay_speaker_id: String(value.roleplay_speaker_id || '').slice(0, 160),
+            roleplay_speaker_name: String(value.roleplay_speaker_name || '').slice(0, 200),
+            roleplay_internal_turn: !!value.roleplay_internal_turn,
             roleplay_session_before: before && typeof before === 'object'
                 ? normalizeRoleplaySession(before, conversationId)
                 : null,
@@ -7387,6 +7545,130 @@
             elapsed_seconds: elapsedSeconds,
             tokens_per_second: tokensPerSecond
         };
+    }
+
+    function normalizeResponseSource(value, fallback = {}) {
+        const container = value && typeof value === 'object' ? value : {};
+        const source = container.response_source && typeof container.response_source === 'object'
+            ? container.response_source
+            : container;
+        const fallbackSource = fallback && typeof fallback === 'object' ? fallback : {};
+        const params = source.params && typeof source.params === 'object'
+            ? source.params
+            : container.params && typeof container.params === 'object'
+                ? container.params
+                : {};
+        const route = source.agent_route && typeof source.agent_route === 'object'
+            ? source.agent_route
+            : source.roleplay_agent_route && typeof source.roleplay_agent_route === 'object'
+                ? source.roleplay_agent_route
+                : container.agent_route && typeof container.agent_route === 'object'
+                    ? container.agent_route
+                    : fallbackSource.agent_route && typeof fallbackSource.agent_route === 'object'
+                        ? fallbackSource.agent_route
+                        : {};
+        const customApi = fallbackSource.custom_api && typeof fallbackSource.custom_api === 'object'
+            ? fallbackSource.custom_api
+            : {};
+        const text = (raw, limit) => String(raw || '').trim().slice(0, limit);
+        const version = text(
+            source.version || container.version || params.version || fallbackSource.version,
+            240
+        );
+        const provider = text(
+            source.provider || container.provider || params.provider || params.custom_provider || customApi.provider,
+            100
+        );
+        const model = text(
+            source.model || container.model || params.model || params.custom_model || customApi.model,
+            320
+        );
+        const profileId = text(
+            source.profile_id
+                || route.profile_id
+                || params.profile_id
+                || params.custom_profile_id
+                || customApi.profile_id,
+            160
+        );
+        const profileName = text(
+            source.profile_name
+                || route.profile_name
+                || params.profile_name
+                || params.custom_api_name
+                || customApi.api_name
+                || customApi.name,
+            200
+        );
+        let profileType = text(
+            source.profile_type || source.kind || route.profile_type || container.profile_type,
+            40
+        ).toLowerCase();
+        if (!['api', 'local'].includes(profileType)) {
+            const customSignal = version.toLowerCase() === 'custom'
+                || version.toLowerCase().startsWith('custom_api:')
+                || !!profileName
+                || !!profileId
+                || ['custom', 'openai', 'anthropic', 'google'].includes(provider.toLowerCase());
+            profileType = customSignal ? 'api' : (version || model ? 'local' : '');
+        }
+        const kind = ['api', 'local'].includes(profileType) ? profileType : 'unknown';
+        const fallbackUsed = source.fallback_used !== undefined
+            ? !!source.fallback_used
+            : !!route.fallback_used;
+        const agentRole = text(source.agent_role || route.role, 100);
+        if (!version && !provider && !model && !profileId && !profileName && !agentRole) return null;
+        return {
+            kind,
+            profile_type: profileType,
+            provider: provider || (kind === 'api' ? 'custom' : kind === 'local' ? 'local' : ''),
+            model,
+            version,
+            profile_id: profileId,
+            profile_name: profileName,
+            agent_role: agentRole,
+            fallback_used: fallbackUsed
+        };
+    }
+
+    function responseSourceLabel(source) {
+        const item = normalizeResponseSource(source);
+        if (!item) return '';
+        const prefix = item.kind === 'api'
+            ? t('API', 'API')
+            : item.kind === 'local'
+                ? t('Local', '本地')
+                : t('Source', '来源');
+        const identity = item.kind === 'api'
+            ? (item.profile_name || item.provider || item.model || item.version)
+            : (item.model || item.version || item.provider);
+        const parts = [prefix];
+        if (identity) parts.push(identity);
+        if (item.kind === 'api' && item.model && identity !== item.model) parts.push(item.model);
+        if (item.fallback_used) parts.push(t('fallback', '备用'));
+        return parts.join(' · ');
+    }
+
+    function responseSourceTitle(source) {
+        const item = normalizeResponseSource(source);
+        if (!item) return '';
+        const rows = [
+            item.kind === 'api' ? t('Source: API', '来源：API') : item.kind === 'local' ? t('Source: local', '来源：本地') : t('Source: unknown', '来源：未知'),
+            item.profile_name ? `${t('Profile', '配置')}：${item.profile_name}` : '',
+            item.provider ? `${t('Provider', '提供方')}：${item.provider}` : '',
+            item.model ? `${t('Model', '模型')}：${item.model}` : '',
+            item.version ? `${t('Version', '版本')}：${item.version}` : '',
+            item.fallback_used ? t('Fallback profile was used', '使用了备用配置') : ''
+        ].filter(Boolean);
+        return rows.join(' · ');
+    }
+
+    function responseSourceHtml(source) {
+        const item = normalizeResponseSource(source);
+        const label = responseSourceLabel(item);
+        if (!item || !label) return '';
+        const title = responseSourceTitle(item);
+        return `<small class="describe-vlm-chat-response-source" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(label)}</small>`;
     }
 
     function formatCompletionSpeed(value) {
@@ -7462,7 +7744,12 @@
             role,
             content,
             actions,
+            response_source: normalizeResponseSource(message.response_source || message),
             roleplay_state_changes: normalizeRoleplayStateChanges(message.roleplay_state_changes),
+            roleplay_speaker_id: String(message.roleplay_speaker_id || '').slice(0, 160),
+            roleplay_speaker_name: String(message.roleplay_speaker_name || '').slice(0, 200),
+            roleplay_internal_turn: !!message.roleplay_internal_turn,
+            roleplay_control_only: !!message.roleplay_control_only,
             images,
             media_assets: mediaAssets,
             image_count: Math.max(0, Number(message.image_count) || images.length || mediaAssets.length),
@@ -8986,6 +9273,8 @@
         const liveMessage = runtime.messages[index];
         liveMessage.content = variant.content;
         liveMessage.actions = variant.actions;
+        liveMessage.completion = variant.completion || null;
+        liveMessage.response_source = variant.response_source || null;
         liveMessage.roleplay_state_changes = normalizeRoleplayStateChanges(variant.roleplay_state_changes);
         liveMessage.active_variant_index = nextIndex;
         liveMessage.roleplay_session_after = variant.roleplay_session_after;
@@ -11555,6 +11844,16 @@
         return Array.from(new Set(ids));
     }
 
+    function roleplaySpeakerLabel(message) {
+        const explicitName = String(message?.roleplay_speaker_name || '').trim();
+        if (explicitName) return explicitName;
+        const speakerId = String(message?.roleplay_speaker_id || '').trim();
+        if (!speakerId) return '';
+        const runtime = currentConversationRuntime();
+        const session = normalizeRoleplaySession(runtime?.roleplaySession, runtime?.conversationId);
+        return String(session.characters?.[speakerId]?.name || '').trim();
+    }
+
     function renderMessages(options = {}) {
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
@@ -11606,11 +11905,21 @@
   </div>
 </div>`;
             }).join('')}</div>` : '';
-            const label = role === 'assistant' ? t('Assistant', '助手') : t('You', '你');
-            const completion = normalizeChatCompletion(message.completion);
-            const completionSpeed = role === 'assistant' && !pending ? completionSpeedHtml(completion) : '';
+            const roleplayLabel = role === 'assistant' && normalizeChatMode(state.chatMode) === 'roleplay'
+                ? roleplaySpeakerLabel(message)
+                : '';
+            const controlLabel = role === 'user' && message.roleplay_control_only
+                ? t('Story control', '剧情控制')
+                : '';
+            const label = roleplayLabel || controlLabel || (role === 'assistant' ? t('Assistant', '助手') : t('You', '你'));
             const variants = role === 'assistant' ? roleplayMessageVariants(message) : [];
             const activeVariantIndex = Math.max(0, Math.min(variants.length - 1, Number(message.active_variant_index) || 0));
+            const activeVariant = variants[activeVariantIndex] || null;
+            const completion = normalizeChatCompletion(activeVariant?.completion || message.completion);
+            const responseSource = role === 'assistant' && !pending
+                ? responseSourceHtml(activeVariant?.response_source || message.response_source)
+                : '';
+            const completionSpeed = role === 'assistant' && !pending ? completionSpeedHtml(completion) : '';
             const variantControls = !pending && role === 'assistant' && normalizeChatMode(state.chatMode) === 'roleplay' && variants.length
                 ? `<span class="describe-vlm-chat-variant-controls" role="group" aria-label="${escapeHtml(t('Reply versions', '回复版本'))}">
     ${variants.length > 1 ? `<button type="button" data-describe-vlm-chat-variant-prev="${messageIndex}" title="${escapeHtml(t('Previous reply version', '上一个回复版本'))}" aria-label="${escapeHtml(t('Previous reply version', '上一个回复版本'))}"><i class="fa-solid fa-chevron-left"></i></button><small>${activeVariantIndex + 1}/${variants.length}</small><button type="button" data-describe-vlm-chat-variant-next="${messageIndex}" title="${escapeHtml(t('Next reply version', '下一个回复版本'))}" aria-label="${escapeHtml(t('Next reply version', '下一个回复版本'))}"><i class="fa-solid fa-chevron-right"></i></button>` : ''}
@@ -11625,6 +11934,7 @@
                 : '';
             return `<div class="describe-vlm-chat-msg is-${role} ${pending ? 'is-pending' : ''}" data-describe-vlm-chat-message="${messageIndex}">
   <div class="describe-vlm-chat-msg-head"><b>${escapeHtml(label)}</b><span>
+    ${responseSource}
     ${completionSpeed}
     ${variantControls}
     <button type="button" data-describe-vlm-chat-copy-message="${messageIndex}" title="${escapeHtml(t('Copy message', '复制消息'))}" aria-label="${escapeHtml(t('Copy message', '复制消息'))}"><i class="fa-solid fa-copy"></i></button>
@@ -12114,7 +12424,7 @@
 
     async function sendMessage() {
         const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
-        const runtime = syncCurrentRuntimeFromState();
+        const runtime = options.runtime || syncCurrentRuntimeFromState();
         if (runtime.busy) return;
         abortCreativeDirectorRequest(true, runtime);
         const requestToken = runtime.requestToken + 1;
@@ -12170,6 +12480,8 @@
         saveChatSettings();
         const hasMessageOverride = typeof options.messageOverride === 'string';
         const replayExistingUserMessage = hasMessageOverride && options.replayExistingUserMessage === true;
+        const internalRoleplayTurn = selectedMode === 'roleplay' && options.roleplayInternalTurn === true;
+        const suppressUserMessage = internalRoleplayTurn || options.suppressUserMessage === true;
         const inputSnapshot = hasMessageOverride ? '' : String(input?.value || '');
         const typed = hasMessageOverride ? String(options.messageOverride || '').trim() : inputSnapshot.trim();
         if (runtime.describeMediaReferencePromise?.promise) {
@@ -12296,7 +12608,9 @@
             content: isDirectRun ? inputSnapshot : message,
             image_count: images.length,
             images: images.map(imageSummary),
-            _image_payloads: images.filter((image) => mediaKind(image) === 'image')
+            _image_payloads: images.filter((image) => mediaKind(image) === 'image'),
+            roleplay_control_only: selectedMode === 'roleplay'
+                && roleplaySessionBefore?.story_state?.player_state?.status === 'absent'
         };
         const pendingAssistantId = uid('describe_vlm_chat_assistant');
         if (replayExistingUserMessage && replaySourceMessage?.role === 'user') {
@@ -12305,7 +12619,9 @@
             userMessage.image_count = images.length;
             userMessage.images = images.map(imageSummary);
             userMessage._image_payloads = images.filter((image) => mediaKind(image) === 'image');
-        } else {
+            userMessage.roleplay_control_only = selectedMode === 'roleplay'
+                && roleplaySessionBefore?.story_state?.player_state?.status === 'absent';
+        } else if (!suppressUserMessage) {
             messages.push(userMessage);
         }
         const pendingAssistant = {
@@ -12351,6 +12667,16 @@
             roleplay_request_kind: selectedMode === 'roleplay'
                 ? String(options.roleplayRequestKind || 'character')
                 : '',
+            roleplay_speaker_mode: selectedMode === 'roleplay'
+                ? normalizeRoleplaySpeakerMode(options.roleplaySpeakerMode || runtime.roleplaySession?.autoplay_config?.speaker_mode)
+                : '',
+            roleplay_speaker_id: selectedMode === 'roleplay'
+                ? String(options.roleplaySpeakerId || runtime.roleplaySession?.active_character_id || '').trim()
+                : '',
+            roleplay_last_speaker_id: selectedMode === 'roleplay'
+                ? String(options.roleplayLastSpeakerId || '').trim()
+                : '',
+            roleplay_internal_turn: selectedMode === 'roleplay' ? internalRoleplayTurn : false,
             roleplay_autoplay: selectedMode === 'roleplay' ? !!options.roleplayAutoplay : false,
             roleplay_autoplay_state: selectedMode === 'roleplay'
                 ? normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState)
@@ -12428,13 +12754,23 @@
             role: 'assistant',
             content: reply,
             completion,
+            response_source: normalizeResponseSource(response?.response_source || response, {
+                version,
+                custom_api: customApi,
+                agent_route: response?.agent_route
+            }),
             roleplay_state_changes: [],
             actions: response?.ok && Array.isArray(response.limited_actions)
                 ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets, runtime)
                 : [],
             agent_route: response?.agent_route && typeof response.agent_route === 'object'
                 ? response.agent_route
-                : null
+                : null,
+            roleplay_speaker_id: selectedMode === 'roleplay'
+                ? String(options.roleplaySpeakerId || runtime.roleplaySession?.active_character_id || '').trim()
+                : '',
+            roleplay_speaker_name: '',
+            roleplay_internal_turn: selectedMode === 'roleplay' ? internalRoleplayTurn : false
         };
         const roleplaySessionPayload = response?.roleplay_session || response?.roleplay?.session;
         if (response?.ok && selectedMode === 'roleplay' && roleplaySessionPayload) {
@@ -12454,6 +12790,14 @@
                 state.roleplaySession = runtime.roleplaySession;
                 syncRoleplayControls(modal);
             }
+        }
+        if (selectedMode === 'roleplay') {
+            const speakerId = String(assistant.roleplay_speaker_id || '').trim();
+            assistant.roleplay_speaker_name = String(
+                runtime.roleplaySession?.characters?.[speakerId]?.name
+                || (speakerId === runtime.roleplaySession?.active_character_id ? runtime.roleplaySession?.character?.name : '')
+                || ''
+            ).trim();
         }
         if (response?.ok && selectedMode === 'roleplay' && response?.roleplay_visual_action?.prompt) {
             const visualAction = Object.assign({}, response.roleplay_visual_action);
@@ -12492,6 +12836,8 @@
                 id: uid('roleplay_variant'),
                 content: assistant.content,
                 actions: assistant.actions,
+                completion: assistant.completion,
+                response_source: assistant.response_source,
                 roleplay_state_changes: assistant.roleplay_state_changes,
                 roleplay_session_before: pendingIndex >= 0
                     ? messages[pendingIndex]?.roleplay_session_before || roleplaySessionBefore
@@ -12499,7 +12845,10 @@
                 roleplay_session_after: runtime.roleplaySession,
                 branch_id: runtime.roleplaySession?.active_branch_id,
                 state_version: runtime.roleplaySession?.state_version,
-                turn_id: runtime.roleplaySession?.active_turn_id
+                turn_id: runtime.roleplaySession?.active_turn_id,
+                roleplay_speaker_id: assistant.roleplay_speaker_id,
+                roleplay_speaker_name: assistant.roleplay_speaker_name,
+                roleplay_internal_turn: assistant.roleplay_internal_turn
             }, 0, runtime.conversationId);
             const carriedVariants = Array.isArray(options.variantHistory) ? options.variantHistory : [];
             assistant.variants = [...carriedVariants, variant].filter(Boolean).slice(-8);
@@ -12680,6 +13029,110 @@
         return text.trim();
     }
 
+    async function requestRoleplaySpeakerPlan(runtime, options = {}) {
+        const target = runtime || currentConversationRuntime();
+        const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        const mode = normalizeRoleplaySpeakerMode(
+            options.speakerMode || session.autoplay_config?.speaker_mode
+        );
+        const currentId = String(
+            options.currentSpeakerId || session.active_character_id || ''
+        ).trim();
+        const presentIds = Array.isArray(session.story_state?.scene?.present_character_ids)
+            ? session.story_state.scene.present_character_ids
+                .map((id) => String(id || '').trim())
+                .filter((id) => id && session.characters?.[id])
+            : [];
+        if (mode === 'current' || !presentIds.length) return currentId ? [currentId] : [];
+        if (mode === 'multi') {
+            return presentIds.slice(0, 3);
+        }
+        if (presentIds.length <= 1) return presentIds.length ? presentIds : (currentId ? [currentId] : []);
+
+        const history = buildRollingHistory(18, 10000, target.messages);
+        const fullHistory = buildRollingHistory(36, 14000, target.messages);
+        const version = readSelectedVlmVersion();
+        const customApi = readDescribeCustomApi(version);
+        const requestId = uid('describe_vlm_chat_speaker_plan');
+        const controller = new AbortController();
+        updateRoleplayAutoplayState(target, {
+            phase: 'running',
+            request_id: requestId,
+            abort_controller: controller,
+            error: ''
+        }, localText('Choosing the next speakers...', '正在选择下一位发言角色……'));
+        const response = await postJson('/describe-image/vlm-chat-run', {
+            request_kind: 'roleplay_speaker_plan',
+            roleplay_request_kind: 'speaker_plan',
+            roleplay_autoplay: true,
+            roleplay_speaker_mode: mode,
+            roleplay_speaker_id: currentId,
+            roleplay_last_speaker_id: String(options.lastSpeakerId || '').trim(),
+            roleplay_autoplay_state: normalizeRoleplayAutoplayState(target.roleplayAutoplayState),
+            message: localText(
+                'Choose the characters who should continue the current scene.',
+                '选择应该继续当前场景的角色。'
+            ),
+            conversation_id: target.conversationId,
+            request_id: requestId,
+            history: history.messages,
+            history_full: fullHistory.messages,
+            context: {
+                omitted: history.omitted,
+                chars: history.chars,
+                budget: history.budget
+            },
+            images: [],
+            version,
+            vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
+            kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
+            n_ctx: currentVlmNctx(version),
+            custom_api: customApi,
+            chat_mode: 'roleplay',
+            roleplay_session: session,
+            agent_routing: normalizeRoleplayAgentRouting(session.agent_routing),
+            agent_routing_local_version: String(session.agent_routing?.profiles?.local_main?.version || '').trim(),
+            agent_routing_api_profile: readDescribeCustomApi('Custom'),
+            agent_routing_api_profile_version: String(session.agent_routing?.profiles?.api_main?.version || '').trim(),
+            user_did: creativeUserContext().user_did,
+            unload_after_chat: !!target.unloadAfterChat,
+            user_system_prompt: target.customSystemPrompt || '',
+            lang: state.__lang,
+            max_tokens: Math.min(800, Math.max(256, effectiveChatMaxTokens('roleplay')))
+        }, { signal: controller.signal });
+        const live = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+        if (live.request_id === requestId) {
+            target.roleplayAutoplayState = normalizeRoleplayAutoplayState(Object.assign({}, live, {
+                request_id: '',
+                abort_controller: null
+            }));
+        }
+        if (response?.aborted) return [];
+        if (!response?.ok) {
+            setConversationStatus(target, localText(
+                'Speaker planning failed; continuing with the current character.',
+                '发言角色规划失败，将继续由当前角色回复。'
+            ), true);
+            return currentId ? [currentId] : [];
+        }
+        const plan = response.roleplay_speaker_plan && typeof response.roleplay_speaker_plan === 'object'
+            ? response.roleplay_speaker_plan
+            : {};
+        if (plan.stop_for_player) {
+            updateRoleplayAutoplayState(target, {
+                phase: 'paused',
+                request_id: '',
+                abort_controller: null,
+                reason: 'speaker_plan_stop_for_player'
+            }, localText('Autoplay is waiting for player input.', '托管正在等待玩家输入。'));
+            return [];
+        }
+        const speakers = Array.isArray(plan.speakers)
+            ? plan.speakers.map((id) => String(id || '').trim()).filter((id) => session.characters?.[id]).slice(0, 3)
+            : [];
+        return speakers.length ? speakers : (currentId ? [currentId] : []);
+    }
+
     async function runRoleplayAutoplay(runtime = currentConversationRuntime(), options = {}) {
         const target = runtime || currentConversationRuntime();
         const stepOnly = !!options.stepOnly;
@@ -12689,6 +13142,11 @@
         if (current.phase === 'running') return false;
         const configuredTarget = Math.max(1, Math.min(100, Math.round(Number(session.autoplay_config.target_turns) || 5)));
         const continuous = !stepOnly && !!session.autoplay_config.continuous;
+        const shouldResetCompletedTurns = !stepOnly && (
+            ['idle', 'completed', 'stopped', 'error'].includes(current.phase)
+            || (!continuous && current.completed_turns >= configuredTarget && current.phase !== 'running')
+        );
+        const startingCompletedTurns = shouldResetCompletedTurns ? 0 : current.completed_turns;
         const targetTurns = stepOnly
             ? Math.max(current.completed_turns + 1, 1)
             : configuredTarget;
@@ -12696,9 +13154,13 @@
         if (!(await ensureSelectedVlmModelReady(version))) return false;
         updateRoleplayAutoplayState(target, {
             phase: 'running',
+            completed_turns: startingCompletedTurns,
             target_turns: targetTurns,
             continuous,
-            error: ''
+            reason: '',
+            error: '',
+            request_id: '',
+            abort_controller: null
         }, localText('Autoplay is running.', '托管剧情正在运行。'));
         while (true) {
             const live = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
@@ -12706,27 +13168,61 @@
             const proxyText = await requestRoleplayPlayerProxy(target);
             const afterProxy = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (!proxyText || afterProxy.phase !== 'running') break;
-            const response = await sendMessage({
-                messageOverride: proxyText,
-                roleplayRequestKind: 'character',
-                roleplayAutoplay: true,
-                runtime: target
+            const speakerMode = normalizeRoleplaySpeakerMode(session.autoplay_config?.speaker_mode);
+            const speakerIds = await requestRoleplaySpeakerPlan(target, {
+                speakerMode,
+                currentSpeakerId: session.active_character_id
             });
-            if (!response?.ok) {
+            const afterPlan = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+            if (!speakerIds.length || afterPlan.phase !== 'running') break;
+            let response = null;
+            let lastSpeakerId = '';
+            let responseFailure = false;
+            for (let speakerIndex = 0; speakerIndex < speakerIds.length; speakerIndex += 1) {
+                const speakerId = String(speakerIds[speakerIndex] || '').trim();
+                const liveSession = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+                const livePresentIds = liveSession.story_state?.scene?.present_character_ids || [];
+                if (livePresentIds.length && !livePresentIds.includes(speakerId)) break;
+                response = await sendMessage({
+                    messageOverride: proxyText,
+                    roleplayRequestKind: 'character',
+                    roleplayAutoplay: true,
+                    roleplaySpeakerMode: speakerMode,
+                    roleplaySpeakerId: speakerId,
+                    roleplayLastSpeakerId: lastSpeakerId,
+                    roleplayInternalTurn: speakerIndex > 0,
+                    suppressUserMessage: speakerIndex > 0,
+                    runtime: target
+                });
+                if (!response?.ok) {
+                    responseFailure = true;
+                    break;
+                }
+                lastSpeakerId = speakerId;
+                const speakerDecision = response?.roleplay_autoplay_decision;
+                if (speakerDecision && ['paused', 'completed', 'error'].includes(String(speakerDecision.phase || ''))) {
+                    break;
+                }
+            }
+            if (responseFailure || !response?.ok) {
                 updateRoleplayAutoplayState(target, {
                     phase: 'error',
-                    error: describeVlmChatFailure(response)
+                    error: describeVlmChatFailure(response || {})
                 }, describeVlmChatFailure(response));
                 break;
             }
             const decision = response?.roleplay_autoplay_decision && typeof response.roleplay_autoplay_decision === 'object'
                 ? response.roleplay_autoplay_decision
                 : null;
-            const directorFailed = String(decision?.reason || '') === 'director_failure';
-            const completed = normalizeRoleplayAutoplayState(target.roleplayAutoplayState).completed_turns + (directorFailed ? 0 : 1);
+            const decisionReason = String(decision?.reason || '');
+            const turnAccepted = !['director_failure', 'duplicate_turn'].includes(decisionReason)
+                && String(decision?.phase || '') !== 'paused';
+            const completed = normalizeRoleplayAutoplayState(target.roleplayAutoplayState).completed_turns + (turnAccepted ? 1 : 0);
             const pausedAfterReply = normalizeRoleplayAutoplayState(target.roleplayAutoplayState).phase === 'paused';
             updateRoleplayAutoplayState(target, {
-                phase: pausedAfterReply ? 'paused' : ((!continuous && completed >= targetTurns) || stepOnly ? 'completed' : 'running'),
+                phase: pausedAfterReply || String(decision?.phase || '') === 'paused'
+                    ? 'paused'
+                    : ((!continuous && completed >= targetTurns) || stepOnly || String(decision?.phase || '') === 'completed' ? 'completed' : 'running'),
                 completed_turns: completed,
                 target_turns: targetTurns,
                 continuous,
@@ -13498,6 +13994,7 @@
         if (evt.target?.matches?.('[data-describe-vlm-chat-max-tokens]')) {
             state.maxTokens = normalizeChatMaxTokens(evt.target.value, 0);
             saveChatSettings();
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-vram-policy]')) {
@@ -13764,10 +14261,12 @@
         if (evt.target?.matches?.('[data-describe-vlm-chat-auto-previous-image]')) {
             state.autoAttachPreviousImage = !!evt.target.checked;
             saveConversationSnapshot();
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-unload-after]')) {
             state.unloadAfterChat = !!evt.target.checked;
             saveChatSettings();
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-file]')) {
             addPendingImageFiles(evt.target.files || []);
@@ -13792,6 +14291,7 @@
         }
         if (evt.target?.closest?.('#describe_vlm_model_dropdown, #describe_vlm_model, #describe_vlm_custom_panel')) {
             updateAnswerModelIndicator();
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
         }
     });
 

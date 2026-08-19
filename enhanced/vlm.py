@@ -1749,6 +1749,7 @@ class VLM:
                 input_images,
                 resource_values,
                 input_text=original,
+                options=action_options,
             )
         expected_slots_value = action_options.get("expected_generation_image_slots")
         if isinstance(expected_slots_value, (list, tuple)):
@@ -1862,8 +1863,14 @@ class VLM:
                 "video_source",
                 "video_visual_mode",
                 "video_visual_count",
+                "video_count",
+                "video_descriptors",
+                "video_reference_index",
+                "motion_picture_index",
                 "target_duration_seconds",
                 "audio_present",
+                "reference_video_present",
+                "reference_video_content_available",
                 "director",
             )
             if key in media_meta
@@ -1962,7 +1969,10 @@ class VLM:
             "media": public_media,
             **({
                 "warning": "MiniMax H3 prompt structure needs review."
-            } if compiler_validation and not compiler_validation.get("ok") else {}),
+            } if compiler_validation and (
+                not compiler_validation.get("ok")
+                or compiler_validation.get("warnings")
+            ) else {}),
             **({"prompt_compiler": compiler_validation} if compiler_validation else {}),
         }
 

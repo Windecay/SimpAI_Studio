@@ -4853,24 +4853,71 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const refs = normalizeCanvasAgentReferences();
         const nodes = [];
         const seen = new Set();
-        const addNode = (node) => {
+        const descriptorByNode = new Map(
+            (Array.isArray(opts.referenceDescriptors) ? opts.referenceDescriptors : [])
+                .filter((item) => item && item.node?.id)
+                .map((item) => [item.node.id, item])
+        );
+        const addNode = (node, descriptor) => {
             const kind = getCanvasAgentReferenceKind(node);
             if (!node || !['image', 'video'].includes(kind)) return;
             if (opts.imagesOnly && kind !== 'image') return;
             const key = canvasAgentReferenceKey(node, kind);
-            if (seen.has(key)) return;
-            seen.add(key);
-            nodes.push(node);
+            if (seen.has(key) && !opts.preserveReferenceDuplicates) return;
+            if (!opts.preserveReferenceDuplicates) seen.add(key);
+            nodes.push({ node, descriptor: descriptor || null });
         };
-        if (Array.isArray(opts.referenceNodes)) opts.referenceNodes.forEach(addNode);
+        if (Array.isArray(opts.referenceEntries)) {
+            opts.referenceEntries.forEach((entry) => addNode(entry?.node, entry));
+        } else if (Array.isArray(opts.referenceNodes)) {
+            opts.referenceNodes.forEach((node) => addNode(node));
+        }
         if (opts.includeCanvasAgentReferences !== false) {
-            refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref)));
+            refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref), ref));
         }
         if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) addNode(opts.fallbackTarget);
         const defaultLimit = opts.imagesOnly ? CANVAS_AGENT_MAX_IMAGE_REFERENCES : 4;
         const requestedLimit = Math.round(Number(opts.maxSources || defaultLimit));
         const maxSources = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
-        return nodes.map(node => serializeAssetSourceForRun(node)).filter(Boolean).slice(0, maxSources);
+        const selected = nodes.slice(0, maxSources);
+        const selectedKeys = new Set(selected.map((entry) => canvasAgentReferenceKey(
+            entry?.node,
+            getCanvasAgentReferenceKind(entry?.node),
+        )));
+        const required = [];
+        if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) {
+            required.push(opts.fallbackTarget);
+        }
+        nodes.forEach((entry) => {
+            if (getCanvasAgentReferenceKind(entry?.node) === 'video') required.push(entry?.node);
+        });
+        required.forEach((node) => {
+            const kind = getCanvasAgentReferenceKind(node);
+            const key = canvasAgentReferenceKey(node, kind);
+            if (!node || selectedKeys.has(key)) return;
+            const replaceIndex = [...selected].map((entry, index) => ({ entry, index }))
+                .reverse()
+                .find(({ entry }) => getCanvasAgentReferenceKind(entry?.node) !== 'video')?.index;
+            if (!Number.isFinite(replaceIndex)) return;
+            const replaced = selected[replaceIndex];
+            selected[replaceIndex] = { node, descriptor: descriptorByNode.get(node.id) || null };
+            selectedKeys.delete(canvasAgentReferenceKey(
+                replaced?.node,
+                getCanvasAgentReferenceKind(replaced?.node),
+            ));
+            selectedKeys.add(key);
+        });
+        return selected.map((entry) => {
+            const node = entry?.node;
+            const serialized = serializeAssetSourceForRun(node);
+            const descriptor = entry?.descriptor || descriptorByNode.get(node?.id);
+            if (!serialized || !descriptor) return serialized;
+            return Object.assign(serialized, {
+                reference_token: descriptor.token || '',
+                reference_slot: descriptor.slot || '',
+                reference_role: descriptor.role || '',
+            });
+        }).filter(Boolean).slice(0, maxSources);
     }
 
     function canvasAgentReferenceSummaryText() {
@@ -6437,9 +6484,30 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const imageIds = new Set();
         const videoIds = new Set();
         const audioIds = new Set();
+        const imageDescriptors = [];
+        const videoDescriptors = [];
+        const audioDescriptors = [];
+        const uploadEdges = node
+            ? getPresetUploadRunEdges(node)
+                .slice()
+                .sort((left, right) => SLOT_ORDER.indexOf(left?.slot || '') - SLOT_ORDER.indexOf(right?.slot || ''))
+            : [];
         if (node) {
-            getPresetUploadRunEdges(node).forEach((edge) => {
+            uploadEdges.forEach((edge) => {
                 const kind = getUploadSlotMediaKind(edge?.slot || '');
+                const sourceNode = getNode(edge?.from);
+                const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
+                const available = !!asset && !!(
+                    asset.data_url
+                    || asset.path
+                    || asset.output_path
+                    || asset.original_output_path
+                    || asset.preview_url
+                    || asset.thumb
+                    || asset.asset_relative_path
+                    || asset.relative_path
+                );
+                if (!available) return;
                 if (kind === 'image') imageIds.add(edge.from);
                 else if (kind === 'video') videoIds.add(edge.from);
                 else if (kind === 'audio') audioIds.add(edge.from);
@@ -6462,6 +6530,59 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const schema = (node?.schema && typeof node.schema === 'object')
             ? node.schema
             : (entry?.schema && typeof entry.schema === 'object' ? entry.schema : {});
+        const compilerText = [
+            node?.runtime?.prompt_compiler,
+            node?.preset?.prompt_compiler,
+            node?.schema?.prompt_compiler,
+            entry?.prompt_compiler,
+            schema.prompt_compiler
+        ].filter(Boolean).join(' ').toLowerCase();
+        const isH3ReferenceMode = /minimax[_\s-]*h3/.test(compilerText) && /ref2va|r2v|reference/.test(compilerText);
+        const referenceRoleForSlot = (kind, slot) => {
+            if (kind === 'video') {
+                if (slot === 'scene_reference_video') return 'motion/timing reference video';
+                if (slot === 'scene_video' && isH3ReferenceMode) return 'scene/composition video reference';
+                return 'video reference';
+            }
+            if (kind === 'image') return 'identity/appearance reference image';
+            if (kind === 'audio') return 'independent audio reference';
+            return `${kind} reference`;
+        };
+        const addDescriptor = (kind, slot, sourceNode) => {
+            const list = kind === 'image' ? imageDescriptors : (kind === 'video' ? videoDescriptors : audioDescriptors);
+            if (!list) return;
+            const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
+            const available = !!asset && !!(
+                asset.data_url
+                || asset.path
+                || asset.output_path
+                || asset.original_output_path
+                || asset.preview_url
+                || asset.thumb
+                || asset.asset_relative_path
+                || asset.relative_path
+            );
+            if (!available) return;
+            list.push({
+                slot: String(slot || '').trim(),
+                index: list.length + 1,
+                role: referenceRoleForSlot(kind, String(slot || '').trim()),
+                available,
+                node_id: sourceNode?.id || ''
+            });
+        };
+        if (node) {
+            uploadEdges.forEach((edge) => {
+                const kind = getUploadSlotMediaKind(edge?.slot || '');
+                if (!['image', 'video', 'audio'].includes(kind)) return;
+                addDescriptor(kind, edge?.slot || '', getNode(edge?.from));
+            });
+        } else {
+            normalizeCanvasAgentReferences().forEach((ref) => {
+                if (!['image', 'video', 'audio'].includes(ref.kind)) return;
+                addDescriptor(ref.kind, ref.slot || '', canvasAgentReferenceNode(ref));
+            });
+        }
         const theme = node?.runtime?.scene_theme || schema.default_theme || (Array.isArray(schema.themes) ? schema.themes[0] : '') || '';
         const themeInfo = schema.per_theme?.[theme] && typeof schema.per_theme[theme] === 'object' ? schema.per_theme[theme] : {};
         const themeDefaults = themeInfo.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
@@ -6470,10 +6591,27 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             ?? themeDefaults.scene_video_duration
             ?? null;
         const duration = Number(rawDuration);
+        const selectedVideo = videoDescriptors.find((item) => item.slot === 'scene_reference_video') || videoDescriptors[0] || null;
+        const referenceVideo = videoDescriptors.find((item) => item.slot === 'scene_reference_video') || null;
+        if (isH3ReferenceMode && selectedVideo?.slot === 'scene_video' && !referenceVideo) {
+            selectedVideo.role = 'motion/timing reference video';
+        }
         return {
-            image_count: imageIds.size,
-            video_count: videoIds.size,
-            audio_count: audioIds.size,
+            image_count: node ? imageDescriptors.length : imageIds.size,
+            video_count: node ? videoDescriptors.length : videoIds.size,
+            audio_count: node ? audioDescriptors.length : audioIds.size,
+            image_descriptors: imageDescriptors,
+            video_descriptors: videoDescriptors,
+            audio_descriptors: audioDescriptors,
+            video_reference_index: selectedVideo?.index || 0,
+            // Leave the target unresolved when several pictures are present;
+            // the storyboard shot supplies the actual Picture token later.
+            motion_picture_index: selectedVideo && (node ? imageDescriptors.length : imageIds.size) === 1 ? 1 : 0,
+            video_requested: !!selectedVideo,
+            video_used: !!selectedVideo?.available,
+            video_source: selectedVideo?.slot === 'scene_reference_video' ? 'reference_video' : (selectedVideo ? 'main_video' : ''),
+            reference_video_present: !!referenceVideo,
+            reference_video_content_available: !!referenceVideo?.available,
             duration_seconds: Number.isFinite(duration) && duration > 0 ? duration : null,
             inventory_known: true,
             language: runtimeUiLang()
@@ -8525,11 +8663,18 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             fallbackTarget: visualFallbackTarget,
             imagesOnly: referenceImagesOnly,
             referenceNodes: opts.referenceNodes,
+            referenceDescriptors: opts.referenceDescriptors,
             includeCanvasAgentReferences: opts.includeCanvasAgentReferences,
             maxSources: opts.maxReferenceSources
         });
         const explicitReferenceSummary = String(opts.referenceSummary || '').trim();
         const referenceSummary = explicitReferenceSummary || (assetSources.length ? canvasAgentReferenceSummaryText() : '');
+        const motionReferenceToken = String(opts.motionReferenceToken || '').trim();
+        const motionTransferInstruction = motionReferenceToken && /<Picture\s+\d+>/i.test(referenceSummary)
+            ? (runtimeUiLang() === 'en'
+                ? `Motion transfer binding: ${motionReferenceToken} is the motion/timing source. The Picture token in each shot defines the visible identity; apply this video's pose, action, timing, and compatible camera movement to that picture-defined subject. Never replace the picture subject with the video's actor and never leave the picture subject in its static pose when the video shows a different action.`
+                : `动作迁移绑定：${motionReferenceToken} 是运动与时序来源。每个 Shot 中的 Picture token 决定画面角色身份；把该视频的姿态、动作、节奏和兼容的镜头运动应用到图片角色。不得用视频人物替换图片角色；视频显示了不同动作时，不得让图片角色继续保持静止输入姿态。`)
+            : '';
         const isImageEdit = purposeText.includes('edit') && !isVideoPurpose && !isAudioPurpose;
         const isRefine = purposeText.includes('refine');
         const presetHint = normalizePresetName(opts.presetName || opts.plan?.preset || '');
@@ -8620,6 +8765,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 : '',
             danbooruLookupText,
             referenceSummary ? `Reference mapping:\n${referenceSummary}` : '',
+            motionTransferInstruction,
             `Purpose: ${purpose || 'text-to-image'}`,
             opts.userPrompt && String(opts.userPrompt || '').trim() && String(opts.userPrompt || '').trim() !== String(prompt || '').trim()
                 ? `Original user request: ${String(opts.userPrompt || '').trim()}`
@@ -8682,7 +8828,12 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         if (!isH3StoryboardCell && canvasAgentPromptRewriteTooWeak(prompt, candidate)) {
             candidate = canvasAgentLocalPromptRewriteFallback(prompt, promptTarget) || candidate;
         }
-        return { ok: true, prompt: candidate };
+        return {
+            ok: true,
+            prompt: candidate,
+            warning: String(response?.warning || '').trim(),
+            runtimeParams: response?.params || null
+        };
     }
 
     function canvasAgentPromptDecisionField(label, rows = 5) {
@@ -19504,7 +19655,9 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             .filter(Boolean);
     }
 
-    function h3StoryboardVlmReferenceSummary(references) {
+    function h3StoryboardVlmReferenceSummary(references, language, motionReferenceSlot) {
+        const isEnglish = String(language || runtimeUiLang() || '').toLowerCase() === 'en';
+        const motionSlot = String(motionReferenceSlot || 'scene_reference_video').trim();
         return (Array.isArray(references) ? references : []).map((reference) => {
             const asset = reference.asset || {};
             const details = [
@@ -19514,11 +19667,52 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                 asset.duration ? `${Math.round(Number(asset.duration) * 1000) / 1000}s` : '',
                 asset.fps ? `${Math.round(Number(asset.fps) * 1000) / 1000}fps` : ''
             ].filter(Boolean).join(' / ');
-            const availability = reference.kind === 'audio'
-                ? 'connected audio metadata only; audio content is not decoded during prompt optimization'
-                : `attached ${reference.kind} reference`;
+            if (reference.kind === 'audio') {
+                const availability = isEnglish
+                    ? 'connected audio metadata only; audio content is not decoded during prompt optimization'
+                    : '仅连接音频元数据；提示词优化不会解码音频内容';
+                return `${reference.token}: ${availability}${details ? ` / ${details}` : ''}`;
+            }
+            if (reference.kind === 'video' && reference.slot === motionSlot) {
+                const role = isEnglish
+                    ? 'motion/timing reference; apply its visible pose, action, timing, and compatible camera trajectory to the Picture subject, without copying the video actor identity'
+                    : '运动与时序参考；把视频中的姿态、动作、节奏和兼容的镜头轨迹应用到图片角色，不复制视频人物身份';
+                return `${reference.token}: ${role}${details ? ` / ${details}` : ''}`;
+            }
+            if (reference.kind === 'video') {
+                const role = isEnglish
+                    ? 'scene/composition video reference; use its setting and framing unless another video is explicitly assigned motion'
+                    : '场景与构图视频参考；使用其场景和取景，除非另一个视频被明确指定为动作来源';
+                return `${reference.token}: ${role}${details ? ` / ${details}` : ''}`;
+            }
+            const availability = isEnglish ? `attached ${reference.kind} reference` : `已连接${reference.kind === 'image' ? '图片' : '视频'}参考`;
             return `${reference.token}: ${availability}${details ? ` / ${details}` : ''}`;
         }).join('\n');
+    }
+
+    function h3StoryboardMotionPictureIndex(prompt, motionReferenceToken, pictureCount) {
+        const text = String(prompt || '');
+        const token = String(motionReferenceToken || '').trim();
+        const explicitPictureNumbers = [...text.matchAll(/<Picture\s+(\d+)>/gi)]
+            .map((match) => Number(match[1] || 0))
+            .filter((number) => number > 0);
+        const uniquePictureNumbers = [...new Set(explicitPictureNumbers)];
+        const availablePictureCount = Number.isFinite(Number(pictureCount)) && Number(pictureCount) > 0
+            ? Number(pictureCount)
+            : uniquePictureNumbers.length;
+        if (!text || !token) return availablePictureCount === 1 ? (uniquePictureNumbers[0] || 1) : 0;
+        const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const shotBodies = text.match(/\[Shot\s+\d+\][\s\S]*?(?=\[Shot\s+\d+\]|$)/gi) || [];
+        for (const body of shotBodies) {
+            if (!new RegExp(escapedToken, 'i').test(body)) continue;
+            const shotPictures = [...body.matchAll(/<Picture\s+(\d+)>/gi)]
+                .map((match) => Number(match[1] || 0))
+                .filter((number) => number > 0);
+            const uniqueShotPictures = [...new Set(shotPictures)];
+            if (uniqueShotPictures.length === 1) return uniqueShotPictures[0];
+            if (uniqueShotPictures.length > 1) return 0;
+        }
+        return availablePictureCount === 1 ? (uniquePictureNumbers[0] || 1) : 0;
     }
 
     function h3StoryboardInventoryForPreset(node) {
@@ -40341,14 +40535,27 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             onOptimize: async (response) => {
                 const current = getNode(node.id) || node;
                 const h3References = h3StoryboardVlmReferencesForPreset(current);
+                const requestedMotionSlot = window.SimpAIH3StoryboardEditor?.preferredStoryboardVideoSlot
+                    ? window.SimpAIH3StoryboardEditor.preferredStoryboardVideoSlot(response?.state, options.inventory)
+                    : '';
+                const motionReference = h3References.find((reference) => reference.kind === 'video' && reference.slot === requestedMotionSlot)
+                    || h3References.find((reference) => reference.kind === 'video' && reference.slot === 'scene_reference_video')
+                    || h3References.find((reference) => reference.kind === 'video')
+                    || null;
                 const h3ReferenceOptions = {
                     referenceNodes: h3References
                         .filter(reference => ['image', 'video'].includes(reference.kind))
                         .map(reference => reference.node),
+                    referenceEntries: h3References
+                        .filter(reference => ['image', 'video'].includes(reference.kind)),
+                    referenceDescriptors: h3References,
+                    preserveReferenceDuplicates: true,
                     includeCanvasAgentReferences: false,
                     referenceImagesOnly: false,
                     maxReferenceSources: 7,
-                    referenceSummary: h3StoryboardVlmReferenceSummary(h3References)
+                    referenceSummary: h3StoryboardVlmReferenceSummary(h3References, runtimeUiLang(), motionReference?.slot || ''),
+                    motionReferenceToken: motionReference?.token || '',
+                    motionReferenceSlot: motionReference?.slot || ''
                 };
                 if (response?.kind === 'cell') {
                     const input = String(response?.input || '').trim();
@@ -40366,7 +40573,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                         showToast(t('H3 field edit failed: {error}', 'H3 \u683c\u5b50\u4fee\u6539\u5931\u8d25\uff1a{error}').replace('{error}', error));
                         return { ok: false, error };
                     }
-                    return { ok: true, cell };
+                    return { ok: true, cell, warning: rewritten?.warning || '' };
                 }
                 const prompt = String(response?.prompt || '').trim();
                 if (!prompt) {
@@ -40377,6 +40584,30 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 }
                 showToast(t('Optimizing H3 storyboard with LLM...', '正在通过 LLM 优化 H3 分镜表...'));
                 const promptTarget = canvasAgentPromptTargetFromNode(current, 'video');
+                const motionReferenceIndex = Number((String(motionReference?.token || '').match(/\d+/) || [])[0] || 0);
+                if (promptTarget?.prompt_compiler_context && motionReference) {
+                    const compilerContext = Object.assign({}, promptTarget.prompt_compiler_context, {
+                        video_reference_index: motionReferenceIndex,
+                        motion_picture_index: h3StoryboardMotionPictureIndex(
+                            prompt,
+                            motionReference?.token || '',
+                            h3References.filter((reference) => reference.kind === 'image').length,
+                        ),
+                        video_requested: true,
+                        video_used: true,
+                        video_source: motionReference.slot === 'scene_reference_video' ? 'reference_video' : 'main_video',
+                        reference_video_content_available: motionReference.slot === 'scene_reference_video'
+                    });
+                    if (Array.isArray(compilerContext.video_descriptors)) {
+                        compilerContext.video_descriptors = compilerContext.video_descriptors.map((descriptor) => ({
+                            ...descriptor,
+                            role: descriptor.slot === motionReference.slot
+                                ? 'motion/timing reference video'
+                                : 'scene/composition video reference'
+                        }));
+                    }
+                    promptTarget.prompt_compiler_context = compilerContext;
+                }
                 const rewritten = await rewriteCanvasAgentPromptWithLlm(prompt, 'video refine', Object.assign({}, h3ReferenceOptions, {
                     promptTarget,
                     presetName: current.preset?.name || current.title || '',
@@ -40390,7 +40621,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                         .replace('{error}', error));
                     return { ok: false, error };
                 }
-                return { ok: true, prompt: optimizedPrompt };
+                return { ok: true, prompt: optimizedPrompt, warning: rewritten?.warning || '' };
             },
             onConfirm: (response) => {
                 const current = getNode(node.id) || node;
