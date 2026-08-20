@@ -2259,6 +2259,10 @@
         });
     }
 
+    function createDefaultConversationRuntime(conversationId = '') {
+        return createEmptyConversationRuntime({ chatMode: 'chat' }, conversationId);
+    }
+
     function isCurrentConversationRuntime(runtime) {
         return !!runtime && String(runtime.conversationId || '') === String(state.conversationId || '');
     }
@@ -8335,6 +8339,7 @@
         const modal = ensureModal();
         const systemParams = window.simpleaiTopbarSystemParams || {};
         state.__lang = String(systemParams.__lang || systemParams.language || getUiLang(systemParams) || state.__lang || 'en');
+        labelOpenButton();
         restoreConversationSnapshot();
         ensureCreativePreferencePrompt();
         syncChatSettingsControls(modal);
@@ -9517,23 +9522,20 @@
 
     function startNewConversation() {
         ensureConversationCatalogLoaded();
-        const autoplayActive = ['running', 'paused'].includes(normalizeRoleplayAutoplayState(state.roleplayAutoplayState).phase);
-        if (!state.messages.length && !state.pendingImages.length && !state.busy && !autoplayActive) {
-            setStatus(t('This conversation is already empty.', '当前对话已经是空的。'));
-            return;
-        }
         syncCurrentRuntimeFromState();
-        stopRoleplayAutoplayRuntime(currentConversationRuntime());
+        stopActiveConversationWork();
         saveConversationSnapshot();
-        const current = currentConversationRuntime();
-        const runtime = createEmptyConversationRuntime(current);
+        const runtime = createDefaultConversationRuntime();
         state.conversationRuntimes.set(runtime.conversationId, runtime);
         applyConversationRuntime(runtime);
         state.creativePreference = normalizeCreativePreference(null);
         state.persistenceRestored = true;
         state.persistenceDirty = false;
+        saveChatSettings();
         saveConversationSnapshot();
         const modal = document.getElementById('describe_vlm_chat_modal');
+        const input = modal?.querySelector('[data-describe-vlm-chat-input]');
+        if (input) input.value = '';
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         renderPendingImages();
@@ -9948,9 +9950,26 @@
         );
     }
 
+    function isEdgeOpenButton(host) {
+        return !!(
+            host?.classList?.contains('describe-vlm-chat-edge-host') ||
+            host?.querySelector?.('.describe-vlm-chat-edge-entry')
+        );
+    }
+
     function anchorOpenButton() {
-        const host = root().querySelector('#describe_vlm_chat_button');
+        const host = componentHost('describe_vlm_chat_button');
         if (!host) return false;
+        if (isEdgeOpenButton(host)) {
+            host.classList.add('is-describe-chat-edge');
+            host.classList.remove('is-describe-prompt-anchored', 'is-describe-chat-card');
+            host.style.removeProperty('--describe-vlm-chat-button-base-right');
+            host.style.removeProperty('--describe-vlm-chat-button-base-y');
+            root().querySelectorAll('#describe_prompt .describe-vlm-chat-anchor-host').forEach((node) => {
+                node.classList.remove('describe-vlm-chat-anchor-host');
+            });
+            return true;
+        }
         if (isCardOpenButton(host)) {
             host.classList.add('is-describe-chat-card');
             host.classList.remove('is-describe-prompt-anchored');
@@ -16000,10 +16019,10 @@
 
     function labelOpenButton() {
         anchorOpenButton();
-        const host = root().querySelector('#describe_vlm_chat_button');
+        const host = componentHost('describe_vlm_chat_button');
         const button = host?.querySelector?.('button') || host;
         if (!button) return;
-        const label = t('VLM/LLM AI chat', 'VLM/LLM AI对话');
+        const label = localText('VLM/LLM AI chat', 'VLM/LLM AI对话');
         button.setAttribute('title', label);
         button.setAttribute('aria-label', label);
     }

@@ -7548,6 +7548,7 @@ function portalFloatingShells(options = {}) {
     }
 
     const targets = [
+        { id: 'describe_vlm_chat_button', selectors: ['.gradio-container #describe_vlm_chat_button', '#describe_vlm_chat_button'] },
         { id: 'identity_dialog', selectors: ['#identity_dialog', '#identity_dialog_content', '.identity_note'] },
         { id: 'missing_model_modal', selectors: ['#missing_model_modal', '#missing_model_modal_content'] },
         { id: 'model_browser_modal', selectors: ['#model_browser_modal', '#model_browser_modal_content'] },

@@ -1442,6 +1442,137 @@ html.simpai-scene-director-mode-enabled #positive_prompt.scene-director-prompt-r
   }
 }
 
+#describe_vlm_chat_button.describe-vlm-chat-edge-host,
+#describe_vlm_chat_button.is-describe-chat-edge {
+  position: fixed !important;
+  inset: 50% max(0px, env(safe-area-inset-right)) auto auto !important;
+  transform: translateY(-50%) !important;
+  display: block !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 76px !important;
+  min-height: 76px !important;
+  max-height: 76px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  z-index: 1410 !important;
+  pointer-events: auto !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  filter: drop-shadow(-8px 0 16px rgba(255, 132, 45, 0.22)) !important;
+  isolation: isolate !important;
+  transition: filter 180ms ease, opacity 140ms ease !important;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host .html-container,
+#describe_vlm_chat_button.describe-vlm-chat-edge-host .prose,
+#describe_vlm_chat_button.is-describe-chat-edge .html-container,
+#describe_vlm_chat_button.is-describe-chat-edge .prose {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 0 !important;
+  overflow: visible !important;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry {
+  appearance: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 8px 0 0 !important;
+  border: 1px solid rgba(255, 244, 230, 0.48) !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 22%, rgba(255, 164, 83, 0.56) 48%, rgba(208, 78, 22, 0.68) 100%),
+    rgba(249, 115, 22, 0.42) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.55) brightness(1.08) !important;
+  backdrop-filter: blur(14px) saturate(1.55) brightness(1.08) !important;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.26) !important;
+  color: #fff7ed !important;
+  cursor: pointer !important;
+  clip-path: polygon(0 50%, 100% 0, 100% 100%) !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  position: relative !important;
+  transition: background 180ms ease, box-shadow 180ms ease, color 180ms ease, transform 180ms ease !important;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry::before,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(152deg, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0.14) 18%, transparent 37%);
+  opacity: 0.64;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry > i,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry > i {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 1px 2px rgba(79, 25, 7, 0.72));
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry:hover,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry:hover {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.14) 18%, rgba(255, 184, 112, 0.68) 42%, rgba(223, 91, 29, 0.8) 76%, rgba(255, 255, 255, 0.22) 100%),
+    rgba(251, 146, 60, 0.48) !important;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.5), inset -5px 0 12px rgba(117, 38, 9, 0.26) !important;
+  color: #ffffff !important;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry:active,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry:active {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(255, 153, 76, 0.52) 42%, rgba(194, 62, 12, 0.78)),
+    rgba(234, 88, 12, 0.46) !important;
+}
+
+#describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry:focus-visible,
+#describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry:focus-visible {
+  outline: 2px solid #fff !important;
+  outline-offset: -4px !important;
+}
+
+html.describe-vlm-chat-open #describe_vlm_chat_button.describe-vlm-chat-edge-host,
+html.describe-vlm-chat-open #describe_vlm_chat_button.is-describe-chat-edge {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 640px) {
+  #describe_vlm_chat_button.describe-vlm-chat-edge-host,
+  #describe_vlm_chat_button.is-describe-chat-edge {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    height: 68px !important;
+    min-height: 68px !important;
+    max-height: 68px !important;
+  }
+
+  #describe_vlm_chat_button.describe-vlm-chat-edge-host button.describe-vlm-chat-edge-entry,
+  #describe_vlm_chat_button.is-describe-chat-edge button.describe-vlm-chat-edge-entry {
+    padding-right: 6px !important;
+    font-size: 14px !important;
+  }
+}
+
 .sai-webui-danbooru-autocomplete {
   position: fixed;
   z-index: 2147483647;
@@ -6388,6 +6519,25 @@ html.describe-vlm-chat-resizing * {
   color: var(--describe-chat-text) !important;
   border-color: #686b75 !important;
   outline: none !important;
+}
+
+.describe-vlm-chat-roleplay-turn-intent select {
+  background: var(--describe-chat-panel-deep) !important;
+  color: var(--describe-chat-text) !important;
+  border: 1px solid #686b75 !important;
+  border-radius: 5px;
+  color-scheme: dark;
+  outline: none !important;
+}
+
+.describe-vlm-chat-roleplay-turn-intent select option {
+  background: var(--describe-chat-panel-deep);
+  color: var(--describe-chat-text);
+}
+
+.describe-vlm-chat-roleplay-turn-intent select:focus {
+  border-color: #d7dbe5 !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset !important;
 }
 
 .describe-vlm-chat-conversation-bar select:focus,

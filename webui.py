@@ -7310,9 +7310,9 @@ with shared.gradio_root:
                                     with gr.Group(elem_id='describe_prompt_box'):
                                         describe_prompt = gr.Textbox(value='', show_label=False, container=False, lines=1, max_lines=1, visible='hidden', elem_id='describe_prompt', elem_classes=['sai-gradio-hidden-bridge', 'describe-prompt-hidden-bridge'])
                                         describe_vlm_chat_button = gr.HTML(
-                                            value='<button type="button" class="describe-vlm-chat-entry describe-vlm-chat-entry-wide" aria-label="VLM/LLM AI chat"><span class="describe-vlm-chat-entry-icon"><i class="fa-solid fa-message"></i></span><span class="describe-vlm-chat-entry-copy"><strong>VLM/LLM AI chat</strong><span>VLM/LLM mode enabled. Start chatting with the model.</span></span><i class="fa-solid fa-arrow-right describe-vlm-chat-entry-arrow"></i></button>',
+                                            value='<button type="button" class="describe-vlm-chat-entry describe-vlm-chat-edge-entry" title="VLM/LLM AI chat" aria-label="VLM/LLM AI chat"><i class="fa-solid fa-comments" aria-hidden="true"></i></button>',
                                             elem_id='describe_vlm_chat_button',
-                                            elem_classes=['describe-vlm-chat-entry-card'],
+                                            elem_classes=['describe-vlm-chat-edge-host'],
                                         )
                                     with gr.Row(elem_id='describe_output_options_row'):
                                         describe_output_tags = gr.Checkbox(label='Output with tags', value=False, visible=True, min_width=50, elem_id='describe_output_tags')
