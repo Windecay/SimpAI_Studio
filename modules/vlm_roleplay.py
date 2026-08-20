@@ -21,6 +21,9 @@ PERSONA_SCHEMA = "simpai.vlm_roleplay.persona"
 STATE_SCHEMA = "simpai.vlm_roleplay.story_state"
 EVENT_SCHEMA = "simpai.vlm_roleplay.turn_event"
 PLAYER_STATE_SCHEMA = "simpai.vlm_roleplay.player_state"
+WORLD_BOOK_SCHEMA = "simpai.vlm_roleplay.world_book"
+MEMORY_SCHEMA = "simpai.vlm_roleplay.memory"
+CHAPTER_SCHEMA = "simpai.vlm_roleplay.chapter"
 
 MAX_TEXT = 12000
 MAX_LIST_ITEMS = 80
@@ -34,6 +37,9 @@ MAX_CHARACTER_STATE_FIELDS = 40
 MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
 MAX_STATE_TEXT_SEGMENT_LENGTH = 520
+MAX_WORLD_BOOK_ENTRIES = 120
+MAX_WORLD_BOOK_KEYS = 24
+MAX_CHAPTERS = 80
 PLAYER_STATE_STATUSES = {"present", "absent"}
 ROLEPLAY_SPEAKER_MODES = {"auto", "current", "multi"}
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.:@-]+")
@@ -60,7 +66,15 @@ ROLEPLAY_SKILLS = {
     "record_knowledge",
     "record_memory",
     "retrieve_memory",
+    "delete_memory",
+    "add_world_book",
+    "update_world_book",
+    "remove_world_book",
+    "query_context",
     "refresh_summary",
+    "start_chapter",
+    "update_chapter",
+    "complete_chapter",
     "check_continuity",
     "propose_correction",
     "compose_player_turn",
@@ -531,7 +545,9 @@ def build_roleplay_form_draft_prompt(
         target_key = "persona"
     if target_key in {"state", "character_state", "runtime_state"}:
         target_key = "character_state"
-    if target_key not in {"character", "scene", "persona", "character_state"}:
+    if target_key in {"world", "worldbook", "world_book", "lore", "world_entry"}:
+        target_key = "world_book"
+    if target_key not in {"character", "scene", "persona", "character_state", "world_book"}:
         target_key = "character"
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     if target_key == "scene":
@@ -547,6 +563,35 @@ def build_roleplay_form_draft_prompt(
         }
         current = normalized["story_state"].get("scene", {})
         subject = "scene"
+    elif target_key == "world_book":
+        shape = {
+            "world_book": {
+                "title": "",
+                "content": "",
+                "keys": [],
+                "secondary_keys": [],
+                "mode": "keyword",
+                "enabled": True,
+                "priority": 0,
+                "visibility": "public",
+                "visible_to": [],
+                "chapter_ids": [],
+                "locked": False,
+            }
+        }
+        current = {
+            "entries": normalized.get("world_book", {}).get("entries", [])[-40:],
+            "active_chapter": next(
+                (
+                    item
+                    for item in normalized.get("chapters", {}).get("items", [])
+                    if item.get("id") == normalized.get("active_chapter_id")
+                ),
+                {},
+            ),
+            "scene": normalized.get("story_state", {}).get("scene", {}),
+        }
+        subject = "one new world book entry"
     elif target_key == "persona":
         shape = {
             "persona": {
@@ -597,6 +642,15 @@ def build_roleplay_form_draft_prompt(
             "Treat the current state as a factual status record. Preserve every existing state_text sentence and every existing field value. "
             "Only add missing details or fields supported by the user's request, the current scene, or explicit story facts. "
             "Do not invent injury, death, numerical changes, emotions, or actions. Keep user-defined field labels unchanged."
+        )
+    elif target_key == "world_book":
+        target_rule = (
+            "Create exactly one new durable world-book entry. Capture a reusable setting fact, rule, location, faction, item,"
+            " relationship, or other lore established or requested by the user. Do not copy a temporary moment, dialogue,"
+            " character state, or scene description unless it is explicitly a lasting world rule. Do not modify or repeat an"
+            " existing entry. Use short trigger keys taken from the entry. Use keyword mode by default; use always only when"
+            " the user explicitly asks for a permanently active rule. Use public visibility and no chapter restriction unless"
+            " the request clearly requires another choice. Keep locked false for a newly generated entry."
         )
     return "\n\n".join(
         [
@@ -781,13 +835,15 @@ def build_visual_reformat_prompt(
 
 
 def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str, Any]:
-    """Parse and normalize an assistant-produced character or scene draft."""
+    """Parse and normalize an assistant-produced roleplay form draft."""
     target_key = _text(target, 40).lower()
     if target_key == "player":
         target_key = "persona"
     if target_key in {"state", "character_state", "runtime_state"}:
         target_key = "character_state"
-    if target_key not in {"character", "scene", "persona", "character_state"}:
+    if target_key in {"world", "worldbook", "world_book", "lore", "world_entry"}:
+        target_key = "world_book"
+    if target_key not in {"character", "scene", "persona", "character_state", "world_book"}:
         target_key = "character"
     data = _extract_json_object(text)
     if not isinstance(data, dict):
@@ -801,6 +857,11 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         raw = data.get("state")
     if target_key == "persona" and raw is None and isinstance(data.get("player"), dict):
         raw = data.get("player")
+    if target_key == "world_book" and raw is None:
+        for alias in ("world", "entry", "lore"):
+            if isinstance(data.get(alias), dict):
+                raw = data.get(alias)
+                break
     if raw is None:
         raw = data.get("draft")
     raw = raw if isinstance(raw, dict) else data
@@ -851,6 +912,27 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
             "source_preserved": True,
             "character_state": character_state,
             "warnings": [],
+        }
+    if target_key == "world_book":
+        entry = normalize_world_book_entry(raw, 0)
+        if not entry or not entry.get("content"):
+            return {
+                "ok": False,
+                "target": target_key,
+                "world_book": entry or {},
+                "warnings": ["world_book_content_empty"],
+            }
+        warnings = []
+        if not entry.get("title"):
+            warnings.append("missing_title")
+        if not entry.get("keys") and entry.get("mode") != "always":
+            warnings.append("missing_keys")
+        return {
+            "ok": True,
+            "target": target_key,
+            "source_preserved": True,
+            "world_book": entry,
+            "warnings": warnings,
         }
     character = default_character_card({
         "name": raw.get("name"),
@@ -1048,6 +1130,226 @@ def default_persona(value: Any = None) -> dict[str, Any]:
     }
 
 
+def _bounded_float(value: Any, default: float = 0.5) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(0.0, min(1.0, number))
+
+
+def normalize_world_book_entry(value: Any = None, index: int = 0) -> dict[str, Any] | None:
+    source = _dict(value)
+    content = _text(source.get("content") or source.get("text") or source.get("body"), 8000)
+    title = _text(source.get("title") or source.get("name"), 240)
+    keys = _clean_string_list(source.get("keys") or source.get("primary_keys"), MAX_WORLD_BOOK_KEYS)
+    secondary_keys = _clean_string_list(
+        source.get("secondary_keys") or source.get("secondaryKeys"),
+        MAX_WORLD_BOOK_KEYS,
+    )
+    if not content and not title and not keys and not secondary_keys:
+        return None
+    mode = _text(source.get("mode") or source.get("activation"), 40).lower()
+    if mode in {"always", "constant", "constant_active", "常驻", "始终"}:
+        mode = "always"
+    else:
+        mode = "keyword"
+    visibility = _text(source.get("visibility"), 40).lower() or "public"
+    if visibility not in {"public", "restricted", "private"}:
+        visibility = "public"
+    try:
+        priority = int(source.get("priority") or 0)
+    except (TypeError, ValueError):
+        priority = 0
+    return {
+        "schema": WORLD_BOOK_SCHEMA,
+        "version": 1,
+        "id": _id(source.get("id"), f"world_{index + 1}"),
+        "title": title or f"World entry {index + 1}",
+        "content": content,
+        "keys": keys,
+        "secondary_keys": secondary_keys,
+        "mode": mode,
+        "enabled": bool(source.get("enabled", True)),
+        "priority": max(-100, min(100, priority)),
+        "visibility": visibility,
+        "visible_to": _clean_string_list(source.get("visible_to") or source.get("known_by"), 20),
+        "chapter_ids": _clean_string_list(source.get("chapter_ids"), MAX_CHAPTERS),
+        "locked": bool(source.get("locked", False)),
+        "source": _text(source.get("source"), 80) or "manual",
+        "created_at": _text(source.get("created_at"), 80) or _now(),
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def normalize_world_book(value: Any = None, legacy_facts: Any = None) -> dict[str, Any]:
+    source = _dict(value)
+    raw_entries = source.get("entries")
+    if not isinstance(raw_entries, list):
+        raw_entries = value if isinstance(value, list) else []
+    if not raw_entries:
+        legacy_entries = _clean_string_list(legacy_facts, 80)
+        raw_entries = [
+            {
+                "id": f"world_fact_{index + 1}",
+                "title": f"World fact {index + 1}",
+                "content": fact,
+                "mode": "always",
+                "source": "story_state",
+            }
+            for index, fact in enumerate(legacy_entries)
+        ]
+    entries = []
+    seen = set()
+    for index, item in enumerate(raw_entries[:MAX_WORLD_BOOK_ENTRIES]):
+        entry = normalize_world_book_entry(item, index)
+        if not entry or entry["id"] in seen:
+            continue
+        seen.add(entry["id"])
+        entries.append(entry)
+    return {
+        "schema": WORLD_BOOK_SCHEMA,
+        "version": 1,
+        "enabled": bool(source.get("enabled", True)),
+        "entries": entries,
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def normalize_memory_item(value: Any = None, index: int = 0) -> dict[str, Any] | None:
+    source = _dict(value)
+    text = _text(source.get("text") or source.get("content") or source.get("summary"), 1600)
+    if not text:
+        return None
+    memory_type = _text(source.get("type") or source.get("kind"), 40).lower() or "event"
+    if memory_type not in {"fact", "event", "relationship", "secret", "promise", "goal", "note"}:
+        memory_type = "event"
+    visibility = _text(source.get("visibility"), 40).lower() or "public"
+    if visibility not in {"public", "restricted", "private"}:
+        visibility = "public"
+    return {
+        "schema": MEMORY_SCHEMA,
+        "version": 1,
+        "id": _id(source.get("id"), f"memory_{index + 1}"),
+        "text": text,
+        "type": memory_type,
+        "importance": _bounded_float(source.get("importance"), 0.5),
+        "keywords": _clean_string_list(source.get("keywords") or source.get("tags"), 24),
+        "known_by": _clean_string_list(source.get("known_by") or source.get("visible_to"), 20),
+        "visibility": visibility,
+        "enabled": bool(source.get("enabled", True)),
+        "pinned": bool(source.get("pinned", False)),
+        "locked": bool(source.get("locked", False)),
+        "chapter_id": _text(source.get("chapter_id"), 160),
+        "branch_id": _branch_id(source.get("branch_id")) if _text(source.get("branch_id"), 160) else "",
+        "source": _text(source.get("source"), 80) or "director",
+        "turn_id": _text(source.get("turn_id") or source.get("source_turn_id"), 200),
+        "created_at": _text(source.get("created_at"), 80) or _now(),
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def normalize_memory_store(value: Any = None, legacy_memories: Any = None) -> dict[str, Any]:
+    source = _dict(value)
+    raw_items = source.get("items")
+    if not isinstance(raw_items, list):
+        raw_items = source.get("memories") if isinstance(source.get("memories"), list) else []
+    if not raw_items and isinstance(legacy_memories, list):
+        raw_items = legacy_memories
+    items = []
+    seen = set()
+    for index, item in enumerate(raw_items[-MAX_MEMORY_ITEMS:]):
+        normalized = normalize_memory_item(item, index)
+        if not normalized or normalized["id"] in seen:
+            continue
+        seen.add(normalized["id"])
+        items.append(normalized)
+    return {
+        "schema": "simpai.vlm_roleplay.memory_store",
+        "version": 1,
+        "items": items[-MAX_MEMORY_ITEMS:],
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def normalize_chapter(value: Any = None, index: int = 0, branch_id: str = "main") -> dict[str, Any]:
+    source = _dict(value)
+    status = _text(source.get("status"), 30).lower() or "active"
+    if status not in {"active", "completed", "archived"}:
+        status = "active"
+    try:
+        turn_count = int(source.get("turn_count") or 0)
+    except (TypeError, ValueError):
+        turn_count = 0
+    try:
+        last_summary_turn_count = int(source.get("last_summary_turn_count") or 0)
+    except (TypeError, ValueError):
+        last_summary_turn_count = 0
+    return {
+        "schema": CHAPTER_SCHEMA,
+        "version": 1,
+        "id": _id(source.get("id"), f"chapter_{index + 1}"),
+        "title": _text(source.get("title") or source.get("name"), 240) or f"Chapter {index + 1}",
+        "summary": _text(source.get("summary") or source.get("chapter_summary"), 6000),
+        "goal": _text(source.get("goal") or source.get("chapter_goal"), 1200),
+        "status": status,
+        "branch_id": _branch_id(source.get("branch_id") or branch_id),
+        "start_turn_id": _text(source.get("start_turn_id"), 200),
+        "end_turn_id": _text(source.get("end_turn_id"), 200),
+        "turn_count": max(0, min(MAX_AUTOPLAY_TURNS, turn_count)),
+        "last_summary_turn_count": max(0, min(MAX_AUTOPLAY_TURNS, last_summary_turn_count)),
+        "memory_ids": _clean_string_list(source.get("memory_ids"), MAX_MEMORY_ITEMS),
+        "open_threads": _clean_string_list(source.get("open_threads"), 40),
+        "locked": bool(source.get("locked", False)),
+        "created_at": _text(source.get("created_at"), 80) or _now(),
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def normalize_chapter_store(
+    value: Any = None,
+    legacy_summary: Any = None,
+    branch_id: str = "main",
+) -> dict[str, Any]:
+    source = _dict(value)
+    raw_items = source.get("items")
+    if not isinstance(raw_items, list):
+        raw_items = value if isinstance(value, list) else []
+    if not raw_items:
+        raw_items = [{
+            "id": "chapter_1",
+            "title": "Chapter 1",
+            "summary": _text(legacy_summary, 6000),
+            "branch_id": branch_id,
+            "status": "active",
+        }]
+    items = []
+    seen = set()
+    for index, item in enumerate(raw_items[:MAX_CHAPTERS]):
+        chapter = normalize_chapter(item, index, branch_id)
+        if chapter["id"] in seen:
+            continue
+        seen.add(chapter["id"])
+        items.append(chapter)
+    active_id = _id(source.get("active_id") or source.get("active_chapter_id"), "chapter") if (
+        _text(source.get("active_id") or source.get("active_chapter_id"), 160)
+    ) else ""
+    if active_id not in {item["id"] for item in items}:
+        active_id = next((item["id"] for item in items if item["status"] == "active"), items[0]["id"])
+    for item in items:
+        if item["id"] == active_id:
+            item["status"] = "active"
+        elif item["status"] == "active":
+            item["status"] = "completed"
+    return {
+        "schema": "simpai.vlm_roleplay.chapter_store",
+        "version": 1,
+        "active_id": active_id,
+        "items": items,
+        "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
 def default_story_state(value: Any = None) -> dict[str, Any]:
     source = _dict(value)
     scene = _dict(source.get("scene"))
@@ -1158,7 +1460,8 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         state["characters"].setdefault(character_id, _normalize_character_runtime(
             source.get("character_runtime") if character_id == primary_character["id"] else None
         ))
-    return {
+    branch_id = _branch_id(source.get("active_branch_id"))
+    session = {
         "schema": SESSION_SCHEMA,
         "version": SESSION_VERSION,
         "id": _id(source.get("id") or source.get("session_id"), "roleplay_session"),
@@ -1169,9 +1472,12 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "active_character_id": active_character_id,
         "persona": persona,
         "story_state": state,
-        "active_branch_id": _branch_id(source.get("active_branch_id")),
+        "active_branch_id": branch_id,
         "active_turn_id": _text(source.get("active_turn_id"), 200),
         "state_version": max(0, int(source.get("state_version") or state.get("state_version") or 0)),
+        "world_book": normalize_world_book(source.get("world_book"), state.get("world_facts")),
+        "memory_store": normalize_memory_store(source.get("memory_store"), state.get("memories")),
+        "chapters": normalize_chapter_store(source.get("chapters"), state.get("chapter_summary"), branch_id),
         "director_config": _normalize_director_config(source.get("director_config")),
         "autoplay_config": _normalize_autoplay_config(source.get("autoplay_config")),
         "visual_config": _normalize_visual_config(source.get("visual_config")),
@@ -1183,17 +1489,234 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "created_at": _text(source.get("created_at"), 80) or _now(),
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
+    session["active_chapter_id"] = session["chapters"]["active_id"]
+    return session
 
 
 def normalize_roleplay_session(value: Any = None) -> dict[str, Any]:
     session = default_roleplay_session(value)
     session["story_state"] = normalize_story_state(session.get("story_state"))
+    session["world_book"] = normalize_world_book(session.get("world_book"), session["story_state"].get("world_facts"))
+    session["memory_store"] = normalize_memory_store(session.get("memory_store"), session["story_state"].get("memories"))
+    session["chapters"] = normalize_chapter_store(
+        session.get("chapters"),
+        session["story_state"].get("chapter_summary"),
+        session.get("active_branch_id") or "main",
+    )
+    session["active_chapter_id"] = session["chapters"]["active_id"]
+    session["story_state"]["memories"] = copy.deepcopy(session["memory_store"]["items"][-MAX_MEMORY_ITEMS:])
+    active_chapter = next(
+        (item for item in session["chapters"]["items"] if item["id"] == session["active_chapter_id"]),
+        None,
+    )
+    if active_chapter and active_chapter.get("summary"):
+        session["story_state"]["chapter_summary"] = active_chapter["summary"]
     session["state_version"] = max(
         int(session.get("state_version") or 0),
         int(session["story_state"].get("state_version") or 0),
     )
     session["story_state"]["state_version"] = session["state_version"]
     return session
+
+
+def _resource_key_hits(query: Any, keys: Any) -> int:
+    query_text = _text(query, 12000).casefold()
+    query_tokens = _turn_tokens(query_text)
+    hits = 0
+    for key in _clean_string_list(keys, MAX_WORLD_BOOK_KEYS):
+        normalized = key.casefold()
+        if len(normalized) >= 2 and normalized in query_text:
+            hits += 1
+            continue
+        key_tokens = _turn_tokens(normalized)
+        if key_tokens and key_tokens.issubset(query_tokens):
+            hits += 1
+    return hits
+
+
+def _resource_visible_to_actor(resource: dict[str, Any], actor_id: str, include_hidden: bool = False) -> bool:
+    if include_hidden:
+        return True
+    visibility = _text(resource.get("visibility"), 40).lower() or "public"
+    visible_to = _clean_string_list(resource.get("visible_to") or resource.get("known_by"), 20)
+    if visibility == "private":
+        return bool(actor_id and actor_id in visible_to)
+    if visible_to and actor_id and actor_id not in visible_to:
+        return False
+    return True
+
+
+def _roleplay_context_query(normalized: dict[str, Any], query: Any = "") -> str:
+    state = normalized.get("story_state", {})
+    scene = state.get("scene", {}) if isinstance(state.get("scene"), dict) else {}
+    character_text = []
+    for character_id in _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS):
+        card = normalized.get("characters", {}).get(character_id, {})
+        runtime = state.get("characters", {}).get(character_id, {})
+        character_text.extend([
+            _text(card.get("name"), 200),
+            _text(card.get("identity"), 500),
+            _text(runtime.get("state_text"), 1200),
+            _text(runtime.get("current_action"), 800),
+        ])
+    chapter = next(
+        (item for item in normalized.get("chapters", {}).get("items", [])
+         if item.get("id") == normalized.get("active_chapter_id")),
+        {},
+    )
+    return "\n".join([
+        _text(query, 5000),
+        _text(scene.get("location"), 500),
+        _text(scene.get("time"), 200),
+        _text(scene.get("weather"), 200),
+        _text(scene.get("current_event"), 1200),
+        _text(scene.get("scene_goal"), 1000),
+        _text(state.get("chapter_summary"), 4000),
+        _text(chapter.get("title"), 240),
+        _text(chapter.get("summary"), 4000),
+        _text(chapter.get("goal"), 1200),
+        *character_text,
+    ]).strip()
+
+
+def match_world_book_entries(
+    session: Any,
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    limit: int = 20,
+    include_hidden: bool = False,
+) -> list[dict[str, Any]]:
+    normalized = normalize_roleplay_session(session)
+    actor_id = _text(speaker_id, 160)
+    active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
+    search_text = _roleplay_context_query(normalized, query)
+    rows: list[tuple[int, dict[str, Any]]] = []
+    for entry in normalized.get("world_book", {}).get("entries", []):
+        if not entry.get("enabled") or not entry.get("content"):
+            continue
+        if not _resource_visible_to_actor(entry, actor_id, include_hidden):
+            continue
+        chapter_ids = _clean_string_list(entry.get("chapter_ids"), MAX_CHAPTERS)
+        if chapter_ids and active_chapter_id not in chapter_ids and not include_hidden:
+            continue
+        primary_hits = _resource_key_hits(search_text, entry.get("keys"))
+        secondary_hits = _resource_key_hits(search_text, entry.get("secondary_keys"))
+        mode = _text(entry.get("mode"), 40).lower() or "keyword"
+        if mode != "always" and primary_hits <= 0:
+            continue
+        score = 100 if mode == "always" else 20 * primary_hits + 5 * secondary_hits
+        score += int(entry.get("priority") or 0)
+        if chapter_ids and active_chapter_id in chapter_ids:
+            score += 12
+        rows.append((score, copy.deepcopy(entry)))
+    rows.sort(key=lambda item: (-item[0], str(item[1].get("updated_at") or "")))
+    return [item for _, item in rows[: max(1, min(50, int(limit or 20)))]]
+
+
+def query_roleplay_memories(
+    session: Any,
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    limit: int = 20,
+    include_hidden: bool = False,
+) -> list[dict[str, Any]]:
+    normalized = normalize_roleplay_session(session)
+    actor_id = _text(speaker_id, 160)
+    active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
+    search_text = _roleplay_context_query(normalized, query)
+    rows: list[tuple[float, dict[str, Any]]] = []
+    for memory in normalized.get("memory_store", {}).get("items", []):
+        if not memory.get("enabled") or not memory.get("text"):
+            continue
+        if not _resource_visible_to_actor(memory, actor_id, include_hidden):
+            continue
+        chapter_id = _text(memory.get("chapter_id"), 160)
+        if chapter_id and chapter_id != active_chapter_id and not include_hidden:
+            continue
+        text_hits = _resource_key_hits(search_text, [memory.get("text")])
+        keyword_hits = _resource_key_hits(search_text, memory.get("keywords"))
+        importance = _bounded_float(memory.get("importance"), 0.5)
+        if not text_hits and not keyword_hits and not memory.get("pinned") and importance < 0.8:
+            continue
+        score = importance * 10 + text_hits * 2 + keyword_hits * 5
+        if memory.get("pinned"):
+            score += 20
+        if chapter_id and chapter_id == active_chapter_id:
+            score += 6
+        rows.append((score, copy.deepcopy(memory)))
+    rows.sort(key=lambda item: (-item[0], str(item[1].get("updated_at") or "")))
+    return [item for _, item in rows[: max(1, min(50, int(limit or 20)))]]
+
+
+def roleplay_context_resources(
+    session: Any,
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    include_hidden: bool = False,
+    world_limit: int = 20,
+    memory_limit: int = 20,
+) -> dict[str, Any]:
+    normalized = normalize_roleplay_session(session)
+    active_chapter = next(
+        (copy.deepcopy(item) for item in normalized.get("chapters", {}).get("items", [])
+         if item.get("id") == normalized.get("active_chapter_id")),
+        {},
+    )
+    return {
+        "chapter": active_chapter,
+        "world_book": match_world_book_entries(
+            normalized,
+            query,
+            speaker_id,
+            limit=world_limit,
+            include_hidden=include_hidden,
+        ),
+        "memories": query_roleplay_memories(
+            normalized,
+            query,
+            speaker_id,
+            limit=memory_limit,
+            include_hidden=include_hidden,
+        ),
+    }
+
+
+def roleplay_summary_schedule(session: Any) -> dict[str, Any]:
+    """Describe when the active chapter should receive a cumulative summary refresh."""
+    normalized = normalize_roleplay_session(session)
+    chapter = next(
+        (item for item in normalized.get("chapters", {}).get("items", [])
+         if item.get("id") == normalized.get("active_chapter_id")),
+        {},
+    )
+    config = normalized.get("director_config", {})
+    try:
+        interval = max(1, min(20, int(config.get("summary_every_turns") or 8)))
+    except (TypeError, ValueError):
+        interval = 8
+    try:
+        turn_count = max(0, int(chapter.get("turn_count") or 0))
+    except (TypeError, ValueError):
+        turn_count = 0
+    try:
+        last_summary_turn_count = max(0, int(chapter.get("last_summary_turn_count") or 0))
+    except (TypeError, ValueError):
+        last_summary_turn_count = 0
+    next_turn = min(MAX_AUTOPLAY_TURNS, turn_count + 1)
+    summary = _text(chapter.get("summary"), 6000)
+    due = not summary or next_turn - last_summary_turn_count >= interval
+    return {
+        "chapter_id": _text(chapter.get("id"), 160),
+        "chapter_turn_count": turn_count,
+        "next_turn_count": next_turn,
+        "last_summary_turn_count": last_summary_turn_count,
+        "interval": interval,
+        "due": bool(due),
+        "reason": "missing_summary" if not summary else ("interval" if due else "not_due"),
+    }
 
 
 def state_summary(session: Any) -> dict[str, Any]:
@@ -1224,6 +1747,9 @@ def _visible_state(session: Any, knowledge_id: str = "", visual: bool = False) -
     normalized = normalize_roleplay_session(session)
     state = copy.deepcopy(normalized["story_state"])
     state["knowledge"] = {} if visual else {knowledge_id: state.get("knowledge", {}).get(knowledge_id, [])}
+    # Filter persistent resource stores independently from the raw state snapshot.
+    state["world_facts"] = []
+    state["memories"] = []
     state["long_summary"] = ""
     if visual:
         state["open_threads"] = []
@@ -1294,6 +1820,7 @@ def build_roleplay_system_prompt(
     lang: str = "cn",
     speaker_id: Any = "",
     turn_intent: Any = "",
+    context_query: Any = "",
 ) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
@@ -1313,6 +1840,7 @@ def build_roleplay_system_prompt(
         if character_id != resolved_speaker_id
         and (not present_ids or character_id in present_ids)
     ]
+    resources = roleplay_context_resources(normalized, context_query, resolved_speaker_id)
     sections = [
         "You are the in-character actor in SimpAI Studio Roleplay mode.",
         f"Reply language: {reply_language}.",
@@ -1340,6 +1868,12 @@ def build_roleplay_system_prompt(
         json.dumps(player_state, ensure_ascii=False, indent=2),
         "Current visible story state:",
         json.dumps(visible_state_for_actor(normalized, resolved_speaker_id), ensure_ascii=False, indent=2),
+        "Active chapter:",
+        json.dumps(resources.get("chapter", {}), ensure_ascii=False, indent=2),
+        "Triggered world book entries:",
+        json.dumps(resources.get("world_book", []), ensure_ascii=False, indent=2),
+        "Relevant long-term memories:",
+        json.dumps(resources.get("memories", []), ensure_ascii=False, indent=2),
     ]
     return "\n\n".join(part for part in sections if _text(part)).strip()
 
@@ -1356,7 +1890,7 @@ def _history_text(history: Any, limit: int = 14) -> str:
     return "\n".join(rows) or "(no previous messages)"
 
 
-def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn") -> str:
+def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn", context_query: Any = "") -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
@@ -1370,6 +1904,7 @@ def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn") -> s
             "The player is present. Write one plausible player message for the next turn, following the player's "
             "natural-language current state and state fields."
         )
+    resources = roleplay_context_resources(normalized, context_query, normalized["persona"]["id"])
     return "\n\n".join(
         [
             "You are the player proxy for SimpAI Studio Autoplay Story mode.",
@@ -1385,6 +1920,12 @@ def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn") -> s
             json.dumps(player_state, ensure_ascii=False, indent=2),
             "Visible story state:",
             json.dumps(visible_state_for_player_proxy(normalized), ensure_ascii=False, indent=2),
+            "Active chapter:",
+            json.dumps(resources.get("chapter", {}), ensure_ascii=False, indent=2),
+            "Triggered world book entries:",
+            json.dumps(resources.get("world_book", []), ensure_ascii=False, indent=2),
+            "Relevant long-term memories:",
+            json.dumps(resources.get("memories", []), ensure_ascii=False, indent=2),
             "Recent conversation:",
             _history_text(history),
         ]
@@ -1537,12 +2078,22 @@ def build_director_prompt(
     resolved_speaker_id = _id(speaker_id, "character") if _text(speaker_id, 160) else _id(
         normalized.get("active_character_id"), "character"
     )
+    summary_schedule = roleplay_summary_schedule(normalized)
     shape = {
         "patches": [
             {"op": "set", "path": "scene.location", "value": "", "evidence": ""},
             {"op": "set", "path": "player_state.status", "value": "present", "evidence": ""},
         ],
         "memories": [{"text": "", "importance": 0.0, "known_by": []}],
+        "world_book_updates": [{"op": "add", "title": "", "content": "", "keys": []}],
+        "memory_deletions": [],
+        "chapter_update": {
+            "new_chapter": False,
+            "title": "",
+            "summary": "",
+            "goal": "",
+            "status": "",
+        },
         "visual_candidate": {
             "should_generate": False,
             "reason": "",
@@ -1565,6 +2116,15 @@ def build_director_prompt(
             "When the latest exchange clearly changes a character's current condition, update characters.<character_id>.state_text with a compact current snapshot of at most two short sentences.",
             "When numeric or named status values clearly change, update characters.<character_id>.state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
+            "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
+            "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
+            (
+                "The chapter summary refresh is due on this turn. Set chapter_update.summary to a concise cumulative "
+                "summary of the current chapter, including only established events, and replace the old summary rather "
+                "than appending a duplicate fragment."
+                if summary_schedule.get("due")
+                else "The chapter summary refresh is not due on this turn. Do not rewrite it unless the exchange changes the chapter summary or goal."
+            ),
             f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
             "When the current player status is absent, or when the effective narrative intent is story_control, treat the latest user message as a story-control instruction rather than player dialogue. Story-control intent does not by itself remove the player from the scene; change player_state.status only when the latest exchange explicitly establishes that presence change.",
             "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
@@ -1578,6 +2138,14 @@ def build_director_prompt(
             json.dumps(shape, ensure_ascii=False),
             "Current normalized state:",
             json.dumps(normalized["story_state"], ensure_ascii=False, indent=2),
+            "Current active chapter:",
+            json.dumps(next((item for item in normalized["chapters"]["items"] if item["id"] == normalized["active_chapter_id"]), {}), ensure_ascii=False, indent=2),
+            "Chapter summary schedule:",
+            json.dumps(summary_schedule, ensure_ascii=False, indent=2),
+            "Current world book:",
+            json.dumps(normalized["world_book"]["entries"], ensure_ascii=False, indent=2),
+            "Current long-term memory store:",
+            json.dumps(normalized["memory_store"]["items"], ensure_ascii=False, indent=2),
             "Configured character cards:",
             json.dumps(normalized.get("characters", {}), ensure_ascii=False, indent=2),
             "Locked character fields by character:",
@@ -1617,6 +2185,9 @@ def parse_director_response(text: Any) -> dict[str, Any]:
             "ok": False,
             "patches": [],
             "memories": [],
+            "world_book_updates": [],
+            "memory_deletions": [],
+            "chapter_update": {},
             "visual_candidate": {},
             "chapter_summary": "",
             "warnings": ["director_response_not_json"],
@@ -1625,6 +2196,9 @@ def parse_director_response(text: Any) -> dict[str, Any]:
         "ok": True,
         "patches": _list(data.get("patches"), 80),
         "memories": _list(data.get("memories"), 20),
+        "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
+        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
+        "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
         "visual_candidate": _dict(data.get("visual_candidate")),
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
         "warnings": _clean_string_list(data.get("warnings"), 30),
@@ -1685,6 +2259,125 @@ def _remove_path(state: dict[str, Any], path: list[str]) -> bool:
     return isinstance(target, dict) and target.pop(path[-1], None) is not None
 
 
+def _apply_world_book_updates(
+    normalized: dict[str, Any],
+    updates: Any,
+) -> list[dict[str, Any]]:
+    store = normalize_world_book(normalized.get("world_book"))
+    entries = store["entries"]
+    changes: list[dict[str, Any]] = []
+    for raw in _list(updates, 20):
+        if not isinstance(raw, dict):
+            continue
+        operation = _text(raw.get("op") or raw.get("action"), 20).lower() or "add"
+        entry_id = _text(raw.get("id"), 160)
+        existing_index = next(
+            (index for index, entry in enumerate(entries) if entry.get("id") == entry_id),
+            -1,
+        ) if entry_id else -1
+        if operation in {"remove", "delete"}:
+            if existing_index >= 0 and not entries[existing_index].get("locked"):
+                removed = entries.pop(existing_index)
+                changes.append({"op": "remove", "kind": "world", "id": removed.get("id"), "title": removed.get("title", "")})
+            continue
+        candidate = normalize_world_book_entry(raw, len(entries))
+        if not candidate or not candidate.get("content"):
+            continue
+        candidate["source"] = "director"
+        candidate["updated_at"] = _now()
+        if existing_index >= 0:
+            if entries[existing_index].get("locked"):
+                continue
+            candidate["id"] = entries[existing_index]["id"]
+            candidate["created_at"] = entries[existing_index].get("created_at") or candidate["created_at"]
+            entries[existing_index] = candidate
+            changes.append({"op": "update", "kind": "world", "id": candidate["id"], "title": candidate["title"]})
+        else:
+            entries.append(candidate)
+            changes.append({"op": "add", "kind": "world", "id": candidate["id"], "title": candidate["title"]})
+    store["entries"] = entries[-MAX_WORLD_BOOK_ENTRIES:]
+    store["updated_at"] = _now()
+    normalized["world_book"] = store
+    return changes
+
+
+def _apply_chapter_update(
+    normalized: dict[str, Any],
+    update: Any,
+    *,
+    turn_id: str = "",
+) -> list[dict[str, Any]]:
+    payload = _dict(update)
+    store = normalize_chapter_store(
+        normalized.get("chapters"),
+        normalized.get("story_state", {}).get("chapter_summary"),
+        normalized.get("active_branch_id") or "main",
+    )
+    items = store["items"]
+    active_id = store["active_id"]
+    active = next((item for item in items if item["id"] == active_id), None)
+    if active is None:
+        active = normalize_chapter({}, len(items), normalized.get("active_branch_id") or "main")
+        items.append(active)
+        active_id = active["id"]
+        store["active_id"] = active_id
+    changes: list[dict[str, Any]] = []
+    summary_changed = False
+    if bool(payload.get("new_chapter")):
+        active["status"] = "completed"
+        active["end_turn_id"] = _text(turn_id, 200)
+        active["updated_at"] = _now()
+        next_index = len(items) + 1
+        next_chapter = normalize_chapter(
+            {
+                "id": payload.get("id") or f"chapter_{next_index}",
+                "title": payload.get("title") or f"Chapter {next_index}",
+                "summary": payload.get("summary"),
+                "goal": payload.get("goal"),
+                "status": "active",
+                "branch_id": normalized.get("active_branch_id") or "main",
+                "start_turn_id": turn_id,
+            },
+            next_index - 1,
+            normalized.get("active_branch_id") or "main",
+        )
+        items.append(next_chapter)
+        store["active_id"] = next_chapter["id"]
+        active = next_chapter
+        changes.append({"op": "new", "kind": "chapter", "id": next_chapter["id"], "title": next_chapter["title"]})
+        summary_changed = bool(next_chapter.get("summary"))
+    else:
+        fields = {
+            "title": ("title", 240),
+            "summary": ("summary", 6000),
+            "goal": ("goal", 1200),
+            "status": ("status", 30),
+        }
+        for key, (target_key, limit) in fields.items():
+            if key not in payload or payload.get(key) in (None, ""):
+                continue
+            value = _text(payload.get(key), limit)
+            if target_key == "status" and value not in {"active", "completed", "archived"}:
+                continue
+            if value and value != active.get(target_key):
+                active[target_key] = value
+                changes.append({"op": "set", "kind": "chapter", "id": active["id"], "field": target_key, "value": value})
+                if target_key == "summary":
+                    summary_changed = True
+    try:
+        active["turn_count"] = min(MAX_AUTOPLAY_TURNS, int(active.get("turn_count") or 0) + 1)
+    except (TypeError, ValueError):
+        active["turn_count"] = 1
+    if summary_changed:
+        active["last_summary_turn_count"] = active["turn_count"]
+    active["updated_at"] = _now()
+    store["items"] = items[-MAX_CHAPTERS:]
+    store["updated_at"] = _now()
+    normalized["chapters"] = store
+    normalized["active_chapter_id"] = store["active_id"]
+    return changes
+
+
 def apply_director_result(
     session: Any,
     director_result: Any,
@@ -1698,6 +2391,7 @@ def apply_director_result(
     state = normalized["story_state"]
     locked_fields = _clean_string_list(normalized["character"].get("locked_fields"), 40)
     applied: list[dict[str, Any]] = []
+    resource_changes: list[dict[str, Any]] = []
     warnings = _clean_string_list(result.get("warnings"), 30)
     for patch in _list(result.get("patches"), 80):
         if not isinstance(patch, dict):
@@ -1744,25 +2438,63 @@ def apply_director_result(
                 "value": copy.deepcopy(patch.get("value")),
                 "evidence": _text(patch.get("evidence"), 500),
             })
-    memories = state.setdefault("memories", [])
+    resource_changes.extend(_apply_world_book_updates(normalized, result.get("world_book_updates")))
+    memory_store = normalize_memory_store(normalized.get("memory_store"), state.get("memories"))
+    memories = memory_store["items"]
+    for memory_id in _clean_string_list(result.get("memory_deletions"), MAX_MEMORY_ITEMS):
+        existing_index = next(
+            (index for index, item in enumerate(memories) if item.get("id") == memory_id),
+            -1,
+        )
+        if existing_index < 0 or memories[existing_index].get("locked"):
+            continue
+        removed = memories.pop(existing_index)
+        resource_changes.append({"op": "remove", "kind": "memory", "id": removed.get("id")})
     for memory in _list(result.get("memories"), 20):
         if not isinstance(memory, dict):
             continue
-        memory_text = _text(memory.get("text"), 1200)
-        if not memory_text:
+        payload = dict(memory)
+        payload.setdefault("chapter_id", normalized.get("active_chapter_id"))
+        payload.setdefault("branch_id", normalized.get("active_branch_id"))
+        payload.setdefault("turn_id", turn_id)
+        normalized_memory = normalize_memory_item(payload, len(memories))
+        if not normalized_memory:
             continue
-        memories.append({
-            "id": _id(memory.get("id"), "memory"),
-            "text": memory_text,
-            "importance": max(0.0, min(1.0, float(memory.get("importance") or 0.5))),
-            "known_by": _clean_string_list(memory.get("known_by"), 20),
-            "created_at": _now(),
-            "turn_id": _text(turn_id, 200),
-        })
-    del memories[:-MAX_MEMORY_ITEMS]
+        existing_index = next(
+            (index for index, item in enumerate(memories)
+             if item.get("id") == normalized_memory["id"]
+             or _canonical_turn_text(item.get("text")) == _canonical_turn_text(normalized_memory.get("text"))),
+            -1,
+        )
+        if existing_index >= 0:
+            if memories[existing_index].get("locked"):
+                continue
+            normalized_memory["id"] = memories[existing_index]["id"]
+            normalized_memory["created_at"] = memories[existing_index].get("created_at") or normalized_memory["created_at"]
+            memories[existing_index] = normalized_memory
+            resource_changes.append({"op": "update", "kind": "memory", "id": normalized_memory["id"]})
+        else:
+            memories.append(normalized_memory)
+            resource_changes.append({"op": "add", "kind": "memory", "id": normalized_memory["id"]})
+    memory_store["items"] = memories[-MAX_MEMORY_ITEMS:]
+    memory_store["updated_at"] = _now()
+    normalized["memory_store"] = memory_store
+    state["memories"] = copy.deepcopy(memory_store["items"])
     summary = _text(result.get("chapter_summary"), 4000)
-    if summary:
-        state["chapter_summary"] = summary
+    chapter_update = _dict(result.get("chapter_update"))
+    if summary and not chapter_update.get("summary"):
+        chapter_update["summary"] = summary
+    resource_changes.extend(_apply_chapter_update(normalized, chapter_update, turn_id=turn_id))
+    active_chapter = next(
+        (item for item in normalized["chapters"]["items"] if item["id"] == normalized["active_chapter_id"]),
+        {},
+    )
+    state["chapter_summary"] = _text(active_chapter.get("summary"), 6000)
+    state["world_facts"] = [
+        _text(entry.get("content"), 1200)
+        for entry in normalized["world_book"]["entries"]
+        if entry.get("enabled") and entry.get("mode") == "always" and entry.get("content")
+    ][:80]
     normalized["story_state"] = normalize_story_state(state)
     state = normalized["story_state"]
     before = normalized["state_version"]
@@ -1774,6 +2506,7 @@ def apply_director_result(
     return {
         "session": normalized,
         "applied": applied,
+        "resource_changes": resource_changes,
         "warnings": warnings,
         "visual_candidate": _dict(result.get("visual_candidate")),
         "state_version": state["state_version"],
@@ -1785,6 +2518,7 @@ def apply_director_result(
             "state_version_before": before,
             "state_version_after": state["state_version"],
             "patches": applied,
+            "resource_changes": resource_changes,
             "evidence_message_ids": _clean_string_list(evidence_message_ids, 20),
             "created_at": _now(),
         },
@@ -1866,7 +2600,14 @@ _STATE_MUTATING_SKILLS = {
     "update_inventory",
     "record_knowledge",
     "record_memory",
+    "delete_memory",
+    "add_world_book",
+    "update_world_book",
+    "remove_world_book",
     "refresh_summary",
+    "start_chapter",
+    "update_chapter",
+    "complete_chapter",
     "plan_story_beats",
     "rollback_turn",
     "create_branch",
@@ -2030,13 +2771,27 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
 
     if action == "retrieve_memory":
         query = _text(payload.get("query"), 800)
-        tokens = _turn_tokens(query)
-        memories = [
-            copy.deepcopy(item)
-            for item in normalized["story_state"].get("memories", [])
-            if isinstance(item, dict) and _skill_memory_matches(item, tokens)
-        ]
+        memories = query_roleplay_memories(
+            normalized,
+            query,
+            payload.get("speaker_id") or normalized.get("active_character_id"),
+            limit=20,
+            include_hidden=bool(payload.get("include_hidden")),
+        )
         return {"ok": True, "action": action, "memories": memories[:20], "session": normalized}
+
+    if action == "query_context":
+        return {
+            "ok": True,
+            "action": action,
+            "context": roleplay_context_resources(
+                normalized,
+                payload.get("query") or "",
+                payload.get("speaker_id") or normalized.get("active_character_id"),
+                include_hidden=bool(payload.get("include_hidden")),
+            ),
+            "session": normalized,
+        }
 
     if action == "check_continuity":
         return {"ok": True, "action": action, "report": _skill_continuity_report(normalized), "session": normalized}
@@ -2125,7 +2880,10 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
 
     patches: list[dict[str, Any]] = []
     memories: list[dict[str, Any]] = []
+    world_book_updates: list[dict[str, Any]] = []
+    memory_deletions: list[str] = []
     chapter_summary = ""
+    chapter_update: dict[str, Any] = {}
     if action == "create_scene":
         patches = _skill_scene_patches(payload, replace_id=True)
     elif action in {"transition_scene", "update_scene"}:
@@ -2134,6 +2892,9 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         else:
             patches = _skill_scene_patches(payload, replace_id=action == "transition_scene")
         memories = [item for item in payload.get("memories", []) if isinstance(item, dict)][:20]
+        world_book_updates = [item for item in payload.get("world_book_updates", []) if isinstance(item, dict)][:20]
+        memory_deletions = _clean_string_list(payload.get("memory_deletions"), MAX_MEMORY_ITEMS)
+        chapter_update = _dict(payload.get("chapter_update"))
         chapter_summary = _text(payload.get("chapter_summary"), 4000)
     elif action == "advance_time":
         if "time" in payload or "to" in payload:
@@ -2165,10 +2926,26 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
     elif action == "record_memory":
         memory = payload.get("memory") if isinstance(payload.get("memory"), dict) else payload
         memories = [memory]
+    elif action == "delete_memory":
+        memory_id = _text(payload.get("memory_id") or payload.get("id"), 160)
+        if memory_id:
+            memory_deletions = [memory_id]
+    elif action in {"add_world_book", "update_world_book", "remove_world_book"}:
+        world_book_updates = [dict(payload, op={
+            "add_world_book": "add",
+            "update_world_book": "update",
+            "remove_world_book": "remove",
+        }[action])]
     elif action == "refresh_summary":
         chapter_summary = _text(payload.get("chapter_summary"), 4000)
         if "long_summary" in payload:
             patches.append({"op": "set", "path": "long_summary", "value": payload.get("long_summary")})
+    elif action == "start_chapter":
+        chapter_update = dict(payload, new_chapter=True)
+    elif action == "update_chapter":
+        chapter_update = dict(payload)
+    elif action == "complete_chapter":
+        chapter_update = {"status": "completed"}
     elif action == "plan_story_beats":
         patches = [{"op": "set", "path": "open_threads", "value": _skill_text_list(payload.get("beats") or payload.get("open_threads"), 40)}]
     else:
@@ -2179,6 +2956,9 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         {
             "patches": patches,
             "memories": memories,
+            "world_book_updates": world_book_updates,
+            "memory_deletions": memory_deletions,
+            "chapter_update": chapter_update,
             "chapter_summary": chapter_summary,
             "warnings": [],
         },
@@ -3612,6 +4392,11 @@ __all__ = [
     "default_story_state",
     "default_roleplay_session",
     "normalize_roleplay_session",
+    "normalize_world_book",
+    "normalize_memory_store",
+    "normalize_chapter_store",
+    "query_roleplay_memories",
+    "roleplay_context_resources",
     "normalize_speaker_mode",
     "state_summary",
     "visible_state_for_actor",

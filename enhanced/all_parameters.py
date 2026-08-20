@@ -300,6 +300,8 @@ default = {
     'upscale_model': 'default',
     'developer_debug_mode_checkbox': True,
     'fast_comfyd_checkbox': False,
+    'dynamic_vram_checkbox': True,
+    'disable_smart_memory_checkbox': True,
     'reserved_vram': 0,
     'vlm_checkbox': True,
     'vlm_version': 'Qwen3.5-9B-abliterated-Q4_K_M',

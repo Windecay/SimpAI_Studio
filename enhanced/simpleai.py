@@ -651,6 +651,7 @@ def _build_comfyd_launch_args(argv=None):
         ("--gpu-device-id", "gpu_device_id", "--cuda-device"),
         ("--preview-option", "preview_option", "--preview-method"),
         ("--reserve-vram", "reserve_vram", "--reserve-vram"),
+        ("--vram-headroom", "vram_headroom", "--vram-headroom"),
     )
     for launch_flag, attr_name, comfy_flag in value_mappings:
         if _launch_arg_was_set(launch_flag, argv):
@@ -776,8 +777,17 @@ def reset_simpleai_args():
 
     shared.sysinfo["loopback_port"] = available_port
     comfyclient_pipeline.COMFYUI_ENDPOINT_PORT = shared.sysinfo["loopback_port"]
-    reserve_vram_value = 0 if _launch_arg_was_set("--reserve-vram") else ads.get_admin_default('reserved_vram')
-    reserve_vram = [['--reserve-vram', f'{reserve_vram_value}']] if reserve_vram_value and reserve_vram_value>0 else []
+    reserved_vram = ads.get_admin_default('reserved_vram')
+    reserve_vram = (
+        [['--reserve-vram', f'{reserved_vram}']]
+        if not _launch_arg_was_set("--reserve-vram") and reserved_vram and reserved_vram > 0
+        else []
+    )
+    vram_headroom = (
+        [['--vram-headroom', f'{reserved_vram}']]
+        if not _launch_arg_was_set("--vram-headroom") and reserved_vram and reserved_vram > 0
+        else []
+    )
     cache_ram_enable = ads.get_admin_default('cache_ram_enable')
     cache_ram_value = ads.get_admin_default('cache_ram')
     cache_ram = _build_comfyd_cache_args(cache_ram_enable, cache_ram_value)
@@ -791,10 +801,17 @@ def reset_simpleai_args():
         "--always-no-vram",
         "--always-cpu",
     ))
-    smart_memory = [] if has_launch_memory_mode or shared.sysinfo['gpu_memory']<8180 else [['--disable-smart-memory']]
+    dynamic_vram_enabled = bool(ads.get_admin_default('dynamic_vram_checkbox'))
+    dynamic_vram = [] if dynamic_vram_enabled else [['--disable-dynamic-vram']]
+    disable_smart_memory = bool(ads.get_admin_default('disable_smart_memory_checkbox'))
+    smart_memory = (
+        [['--disable-smart-memory']]
+        if disable_smart_memory and not has_launch_memory_mode and shared.sysinfo['gpu_memory'] >= 8180
+        else []
+    )
     windows_standalone = [["--windows-standalone-build"]] if is_win32_standalone_build else []
     fast_mode = [['--fast', 'fp16_accumulation']] if ads.get_admin_default('fast_comfyd_checkbox') else []
-    args_comfyd = _build_comfyd_launch_args() + [["--listen"], ["--port", f'{shared.sysinfo["loopback_port"]}']] + smart_memory + windows_standalone + reserve_vram + fast_mode + cache_ram + cache_clear_on_finish
+    args_comfyd = dynamic_vram + _build_comfyd_launch_args() + [["--listen"], ["--port", f'{shared.sysinfo["loopback_port"]}']] + smart_memory + windows_standalone + reserve_vram + vram_headroom + fast_mode + cache_ram + cache_clear_on_finish
     default_cuda_malloc_arg = _default_comfyd_cuda_malloc_arg()
     args_comfyd += [[default_cuda_malloc_arg]] if default_cuda_malloc_arg else []
     _, comfyd_intput, comfyd_output = update_comfyd_io_paths(update_runtime=False, update_startup=False)
@@ -803,6 +820,11 @@ def reset_simpleai_args():
     if cors_origin:
         args_comfyd += [["--enable-cors-header", cors_origin]]
     comfyd.comfyd_args = args_comfyd
+    logger.info(
+        "Comfyd memory options: dynamic_vram=%s, disable_smart_memory=%s",
+        dynamic_vram_enabled,
+        bool(smart_memory),
+    )
     return
 
 def sync_intput_reserved(user_did=None):
@@ -890,17 +912,21 @@ def get_path_in_user_dir(filename, user_did=None, catalog=None):
         return path_file
     return None
 
+def _restart_comfyd_after_setting_change():
+    if comfyd.is_running():
+        comfyd.stop(force=True)
+    reset_simpleai_args()
+    if getattr(comfyd, "comfyd_active", False):
+        comfyd.start()
+
+
 def start_fast_comfyd(fast, state):
     if args_manager.args.disable_backend or args_manager.args.disable_comfyd:
         return
     if fast == ads.get_admin_default('fast_comfyd_checkbox'):
         return
     ads.set_admin_default_value('fast_comfyd_checkbox', fast, state)
-    if comfyd.is_running():
-        comfyd.stop(force=True)
-    reset_simpleai_args()
-    if getattr(comfyd, "comfyd_active", False):
-        comfyd.start()
+    _restart_comfyd_after_setting_change()
     return
 
 def set_cache_clear_on_finish(enabled, state):
@@ -909,12 +935,28 @@ def set_cache_clear_on_finish(enabled, state):
     if enabled == ads.get_admin_default('cache_clear_on_finish_checkbox'):
         return
     ads.set_admin_default_value('cache_clear_on_finish_checkbox', enabled, state)
-    if comfyd.is_running():
-        comfyd.stop(force=True)
-    reset_simpleai_args()
-    if getattr(comfyd, "comfyd_active", False):
-        comfyd.start()
+    _restart_comfyd_after_setting_change()
     return
+
+
+def set_dynamic_vram(enabled, state):
+    if args_manager.args.disable_backend or args_manager.args.disable_comfyd:
+        return
+    enabled = bool(enabled)
+    if enabled == bool(ads.get_admin_default('dynamic_vram_checkbox')):
+        return
+    ads.set_admin_default_value('dynamic_vram_checkbox', enabled, state)
+    _restart_comfyd_after_setting_change()
+
+
+def set_disable_smart_memory(enabled, state):
+    if args_manager.args.disable_backend or args_manager.args.disable_comfyd:
+        return
+    enabled = bool(enabled)
+    if enabled == bool(ads.get_admin_default('disable_smart_memory_checkbox')):
+        return
+    ads.set_admin_default_value('disable_smart_memory_checkbox', enabled, state)
+    _restart_comfyd_after_setting_change()
 
 def change_advanced_logs(_advanced_logs=None, state=None):
     utils.echo_off = not is_advanced_logs_enabled()

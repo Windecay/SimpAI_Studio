@@ -7,6 +7,7 @@ while the public helper keeps H3's AV latent and patch-size rules in Studio.
 import gc
 import glob
 import logging
+import math
 import os
 import re
 
@@ -27,6 +28,8 @@ H3_LEARNED_VARIANTS = ("2d", "3d")
 H3_LEARNED_PRECISIONS = ("bf16", "fp16", "fp32")
 H3_UPSCALER_MEMORY_SAFETY_BYTES = 512 * 1024 * 1024
 H3_UPSCALER_FEATURE_MULTIPLIER = 6
+H3_UPSCALER_DEFAULT_SPATIAL_OVERLAP = {"2d": 8, "3d": 12}
+H3_UPSCALER_DEFAULT_TEMPORAL_OVERLAP = {"2d": 4, "3d": 8}
 
 LATENTS_MEAN = [
     0.858090341091156, -0.9606591463088989, 1.0661640167236328, -0.5090325474739075,
@@ -445,9 +448,9 @@ def _model_hidden_channels(model):
     return int(getattr(conv_in, "out_channels", 512))
 
 
-def _estimate_upscaler_memory(video_latent, target_hw, model, precision, variant):
-    """Estimate a conservative inference peak for device selection."""
-    batch, channels, frames, source_h, source_w = map(int, video_latent.shape)
+def _estimate_upscaler_memory_for_shape(shape, target_hw, model, precision, variant):
+    """Estimate a conservative inference peak for one complete model call."""
+    batch, channels, frames, source_h, source_w = map(int, shape)
     target_h, target_w = map(int, target_hw)
     dtype_bytes = torch.tensor([], dtype=_model_dtype(precision)).element_size()
     model_bytes = _model_parameter_bytes(model)
@@ -471,6 +474,326 @@ def _estimate_upscaler_memory(video_latent, target_hw, model, precision, variant
         + feature_bytes * feature_multiplier
         + H3_UPSCALER_MEMORY_SAFETY_BYTES
     )
+
+
+def _estimate_upscaler_memory(video_latent, target_hw, model, precision, variant):
+    return _estimate_upscaler_memory_for_shape(
+        video_latent.shape,
+        target_hw,
+        model,
+        precision,
+        variant,
+    )
+
+
+def _align_tile_size(value, full_size, minimum):
+    full_size = int(full_size)
+    if full_size <= minimum:
+        return full_size
+    value = min(full_size, max(minimum, int(value)))
+    if minimum > 1:
+        value -= value % H3_DIT_SPATIAL_MULTIPLE
+        value = max(minimum, value)
+    return min(full_size, value)
+
+
+def _candidate_tile_sizes(full_size, requested, minimum):
+    full_size = int(full_size)
+    requested = int(requested or 0)
+    if requested > 0:
+        start = _align_tile_size(requested, full_size, minimum)
+    else:
+        start = full_size
+
+    values = [start]
+    while values[-1] > minimum:
+        next_size = max(minimum, int(math.ceil(values[-1] * 0.75)))
+        next_size = _align_tile_size(next_size, full_size, minimum)
+        if next_size >= values[-1]:
+            next_size = values[-1] - (H3_DIT_SPATIAL_MULTIPLE if minimum > 1 else 1)
+            next_size = max(minimum, next_size)
+        if next_size == values[-1]:
+            break
+        values.append(next_size)
+    return values
+
+
+def _tile_ranges(length, core_size):
+    length = int(length)
+    core_size = max(1, int(core_size))
+    return [
+        (start, min(start + core_size, length))
+        for start in range(0, length, core_size)
+    ]
+
+
+def _effective_overlap(overlap, core_size, length):
+    if length <= core_size:
+        return 0
+    overlap = max(0, int(overlap))
+    return min(overlap, max(0, (int(core_size) - 1) // 2))
+
+
+def _map_tile_boundary(index, source_size, target_size):
+    if int(index) >= int(source_size):
+        return int(target_size)
+    return (int(index) * int(target_size)) // int(source_size)
+
+
+def _mapped_tile_extent(start, end, source_size, target_size):
+    mapped_start = _map_tile_boundary(start, source_size, target_size)
+    mapped_end = _map_tile_boundary(end, source_size, target_size)
+    mapped_start = max(0, mapped_start - (mapped_start % H3_DIT_SPATIAL_MULTIPLE))
+    mapped_end = min(
+        int(target_size),
+        mapped_end + (-mapped_end) % H3_DIT_SPATIAL_MULTIPLE,
+    )
+    if mapped_end <= mapped_start:
+        mapped_end = min(
+            int(target_size), mapped_start + H3_DIT_SPATIAL_MULTIPLE
+        )
+    return mapped_start, mapped_end
+
+
+def _tile_extent(start, end, length, overlap):
+    return max(0, int(start) - int(overlap)), min(int(length), int(end) + int(overlap))
+
+
+def _build_tile_plan(
+    source_shape,
+    target_hw,
+    core_t,
+    core_h,
+    core_w,
+    spatial_overlap,
+    temporal_overlap,
+    model,
+    precision,
+    variant,
+):
+    batch, channels, frames, source_h, source_w = map(int, source_shape)
+    target_h, target_w = map(int, target_hw)
+    core_t = min(frames, max(1, int(core_t)))
+    core_h = min(source_h, max(1, int(core_h)))
+    core_w = min(source_w, max(1, int(core_w)))
+    overlap_h = _effective_overlap(spatial_overlap, core_h, source_h)
+    overlap_w = _effective_overlap(spatial_overlap, core_w, source_w)
+    overlap_t = _effective_overlap(temporal_overlap, core_t, frames)
+
+    t_ranges = _tile_ranges(frames, core_t)
+    h_ranges = _tile_ranges(source_h, core_h)
+    w_ranges = _tile_ranges(source_w, core_w)
+    max_ext_t = max(
+        _tile_extent(start, end, frames, overlap_t)[1]
+        - _tile_extent(start, end, frames, overlap_t)[0]
+        for start, end in t_ranges
+    )
+    max_ext_h = max(
+        _tile_extent(start, end, source_h, overlap_h)[1]
+        - _tile_extent(start, end, source_h, overlap_h)[0]
+        for start, end in h_ranges
+    )
+    max_ext_w = max(
+        _tile_extent(start, end, source_w, overlap_w)[1]
+        - _tile_extent(start, end, source_w, overlap_w)[0]
+        for start, end in w_ranges
+    )
+    max_target_h = max(
+        _mapped_tile_extent(
+            *_tile_extent(start, end, source_h, overlap_h), source_h, target_h
+        )[1]
+        - _mapped_tile_extent(
+            *_tile_extent(start, end, source_h, overlap_h), source_h, target_h
+        )[0]
+        for start, end in h_ranges
+    )
+    max_target_w = max(
+        _mapped_tile_extent(
+            *_tile_extent(start, end, source_w, overlap_w), source_w, target_w
+        )[1]
+        - _mapped_tile_extent(
+            *_tile_extent(start, end, source_w, overlap_w), source_w, target_w
+        )[0]
+        for start, end in w_ranges
+    )
+    estimate = _estimate_upscaler_memory_for_shape(
+        (batch, channels, max_ext_t, max_ext_h, max_ext_w),
+        (max_target_h, max_target_w),
+        model,
+        precision,
+        variant,
+    )
+    return {
+        "core_t": core_t,
+        "core_h": core_h,
+        "core_w": core_w,
+        "overlap_t": overlap_t,
+        "overlap_h": overlap_h,
+        "overlap_w": overlap_w,
+        "estimated_peak": estimate,
+        "tile_count": len(t_ranges) * len(h_ranges) * len(w_ranges),
+        "max_input_shape": (batch, channels, max_ext_t, max_ext_h, max_ext_w),
+        "max_target_hw": (max_target_h, max_target_w),
+    }
+
+
+def _plan_upscaler_tiles(
+    video_latent,
+    target_hw,
+    model,
+    precision,
+    variant,
+    available_memory=None,
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
+):
+    source_shape = tuple(video_latent.shape)
+    _, _, frames, source_h, source_w = map(int, source_shape)
+    default_spatial_overlap = H3_UPSCALER_DEFAULT_SPATIAL_OVERLAP[variant]
+    default_temporal_overlap = H3_UPSCALER_DEFAULT_TEMPORAL_OVERLAP[variant]
+    spatial_overlap = (
+        default_spatial_overlap if not tile_overlap else int(tile_overlap)
+    )
+    temporal_overlap = (
+        default_temporal_overlap
+        if not tile_temporal_overlap
+        else int(tile_temporal_overlap)
+    )
+    requested_spatial = bool(tile_width or tile_height)
+    requested_temporal = bool(tile_frames)
+    force_tiling = requested_spatial or requested_temporal
+    full_plan = _build_tile_plan(
+        source_shape,
+        target_hw,
+        frames,
+        source_h,
+        source_w,
+        spatial_overlap,
+        temporal_overlap,
+        model,
+        precision,
+        variant,
+    )
+    full_plan["tiled"] = False
+    if not force_tiling and (
+        available_memory is None
+        or full_plan["estimated_peak"] <= int(available_memory)
+    ):
+        return full_plan
+
+    h_values = _candidate_tile_sizes(source_h, tile_height, 2)
+    w_values = _candidate_tile_sizes(source_w, tile_width, 2)
+    t_values = _candidate_tile_sizes(frames, tile_frames, 1)
+    spatial_plans = []
+    for core_h in h_values:
+        for core_w in w_values:
+            spatial_plans.append(
+                _build_tile_plan(
+                    source_shape,
+                    target_hw,
+                    frames,
+                    core_h,
+                    core_w,
+                    spatial_overlap,
+                    temporal_overlap,
+                    model,
+                    precision,
+                    variant,
+                )
+            )
+    spatial_plans.sort(
+        key=lambda plan: (
+            plan["core_h"] * plan["core_w"],
+            plan["core_h"] + plan["core_w"],
+        ),
+        reverse=True,
+    )
+
+    if available_memory is None:
+        selected = spatial_plans[0]
+        selected["core_t"] = min(frames, t_values[0])
+        selected = _build_tile_plan(
+            source_shape,
+            target_hw,
+            selected["core_t"],
+            selected["core_h"],
+            selected["core_w"],
+            spatial_overlap,
+            temporal_overlap,
+            model,
+            precision,
+            variant,
+        )
+        selected["tiled"] = selected["tile_count"] > 1 or force_tiling
+        return selected
+
+    available_memory = int(available_memory)
+    spatial_fit = [
+        plan
+        for plan in spatial_plans
+        if plan["estimated_peak"] <= available_memory
+    ]
+    if spatial_fit and not requested_temporal:
+        selected = spatial_fit[0]
+        selected["tiled"] = selected["tile_count"] > 1 or force_tiling
+        return selected
+
+    for spatial_plan in spatial_plans:
+        for core_t in t_values:
+            candidate = _build_tile_plan(
+                source_shape,
+                target_hw,
+                core_t,
+                spatial_plan["core_h"],
+                spatial_plan["core_w"],
+                spatial_overlap,
+                temporal_overlap,
+                model,
+                precision,
+                variant,
+            )
+            if candidate["estimated_peak"] <= available_memory:
+                candidate["tiled"] = candidate["tile_count"] > 1 or force_tiling
+                return candidate
+    return None
+
+
+def _shrink_tile_plan(plan, source_shape, target_hw, model, precision, variant):
+    next_h = max(2, int(plan["core_h"]) // 2)
+    next_w = max(2, int(plan["core_w"]) // 2)
+    next_t = max(1, int(plan["core_t"]) // 2)
+    if (
+        next_h == int(plan["core_h"])
+        and next_w == int(plan["core_w"])
+        and next_t == int(plan["core_t"])
+    ):
+        return None
+    if int(plan.get("tile_count", 1)) <= 1:
+        spatial_overlap = H3_UPSCALER_DEFAULT_SPATIAL_OVERLAP[variant]
+        temporal_overlap = H3_UPSCALER_DEFAULT_TEMPORAL_OVERLAP[variant]
+    else:
+        spatial_overlap = max(
+            int(plan["overlap_h"]),
+            int(plan["overlap_w"]),
+        )
+        temporal_overlap = int(plan["overlap_t"])
+    next_plan = _build_tile_plan(
+        source_shape,
+        target_hw,
+        next_t,
+        next_h,
+        next_w,
+        spatial_overlap,
+        temporal_overlap,
+        model,
+        precision,
+        variant,
+    )
+    next_plan["tiled"] = True
+    return next_plan
 
 
 def _free_memory_for_upscaler(device, required_bytes):
@@ -535,6 +858,159 @@ def _run_upscaler_once(model, video_latent, compute_device, compute_dtype, varia
     return output
 
 
+def _iter_tile_specs(video_shape, target_hw, plan):
+    _, _, frames, source_h, source_w = map(int, video_shape)
+    target_h, target_w = map(int, target_hw)
+    for core_t_start, core_t_end in _tile_ranges(frames, plan["core_t"]):
+        ext_t_start, ext_t_end = _tile_extent(
+            core_t_start, core_t_end, frames, plan["overlap_t"]
+        )
+        for core_h_start, core_h_end in _tile_ranges(source_h, plan["core_h"]):
+            ext_h_start, ext_h_end = _tile_extent(
+                core_h_start, core_h_end, source_h, plan["overlap_h"]
+            )
+            for core_w_start, core_w_end in _tile_ranges(source_w, plan["core_w"]):
+                ext_w_start, ext_w_end = _tile_extent(
+                    core_w_start, core_w_end, source_w, plan["overlap_w"]
+                )
+                target_ext_h_start, target_ext_h_end = _mapped_tile_extent(
+                    ext_h_start, ext_h_end, source_h, target_h
+                )
+                target_ext_w_start, target_ext_w_end = _mapped_tile_extent(
+                    ext_w_start, ext_w_end, source_w, target_w
+                )
+                target_core_h_start = _map_tile_boundary(
+                    core_h_start, source_h, target_h
+                )
+                target_core_h_end = _map_tile_boundary(core_h_end, source_h, target_h)
+                target_core_w_start = _map_tile_boundary(
+                    core_w_start, source_w, target_w
+                )
+                target_core_w_end = _map_tile_boundary(core_w_end, source_w, target_w)
+                yield {
+                    "source": (
+                        ext_t_start,
+                        ext_t_end,
+                        ext_h_start,
+                        ext_h_end,
+                        ext_w_start,
+                        ext_w_end,
+                    ),
+                    "target_size": (
+                        ext_t_end - ext_t_start,
+                        target_ext_h_end - target_ext_h_start,
+                        target_ext_w_end - target_ext_w_start,
+                    ),
+                    "output": (
+                        core_t_start,
+                        core_t_end,
+                        target_core_h_start,
+                        target_core_h_end,
+                        target_core_w_start,
+                        target_core_w_end,
+                    ),
+                    "crop": (
+                        core_t_start - ext_t_start,
+                        core_t_end - ext_t_start,
+                        target_core_h_start - target_ext_h_start,
+                        target_core_h_end - target_ext_h_start,
+                        target_core_w_start - target_ext_w_start,
+                        target_core_w_end - target_ext_w_start,
+                    ),
+                }
+
+
+def _run_upscaler_tiled(
+    model,
+    video_latent,
+    compute_device,
+    compute_dtype,
+    variant,
+    scale_hint,
+    target_hw,
+    plan,
+):
+    source_cpu = video_latent.detach().to(device="cpu")
+    output_cpu = torch.empty(
+        (
+            int(video_latent.shape[0]),
+            int(video_latent.shape[1]),
+            int(video_latent.shape[2]),
+            int(target_hw[0]),
+            int(target_hw[1]),
+        ),
+        device="cpu",
+        dtype=video_latent.dtype,
+    )
+    for tile_index, spec in enumerate(
+        _iter_tile_specs(video_latent.shape, target_hw, plan),
+        start=1,
+    ):
+        (
+            source_t_start,
+            source_t_end,
+            source_h_start,
+            source_h_end,
+            source_w_start,
+            source_w_end,
+        ) = spec["source"]
+        tile_input = source_cpu[
+            :, :, source_t_start:source_t_end, source_h_start:source_h_end, source_w_start:source_w_end
+        ]
+        tile_output = _run_upscaler_once(
+            model,
+            tile_input,
+            compute_device,
+            compute_dtype,
+            variant,
+            scale_hint,
+            spec["target_size"][1:],
+        )
+        expected_shape = (
+            int(video_latent.shape[0]),
+            int(video_latent.shape[1]),
+            spec["target_size"][0],
+            spec["target_size"][1],
+            spec["target_size"][2],
+        )
+        if tuple(tile_output.shape) != expected_shape:
+            raise RuntimeError(
+                "H3 learned latent upscaler returned an unexpected tile shape: "
+                f"expected {expected_shape}, got {tuple(tile_output.shape)}"
+            )
+        tile_output = tile_output.to(device="cpu", dtype=output_cpu.dtype)
+        (
+            crop_t_start,
+            crop_t_end,
+            crop_h_start,
+            crop_h_end,
+            crop_w_start,
+            crop_w_end,
+        ) = spec["crop"]
+        (
+            output_t_start,
+            output_t_end,
+            output_h_start,
+            output_h_end,
+            output_w_start,
+            output_w_end,
+        ) = spec["output"]
+        output_cpu[
+            :, :, output_t_start:output_t_end, output_h_start:output_h_end, output_w_start:output_w_end
+        ] = tile_output[
+            :, :, crop_t_start:crop_t_end, crop_h_start:crop_h_end, crop_w_start:crop_w_end
+        ]
+        del tile_input, tile_output
+        if compute_device.type == "cuda":
+            _empty_upscaler_cache(compute_device)
+        LOG.debug(
+            "H3 learned latent upscaler tile %d/%d complete",
+            tile_index,
+            int(plan["tile_count"]),
+        )
+    return output_cpu
+
+
 def _device_for_request(device):
     if device in (None, "auto"):
         try:
@@ -558,6 +1034,11 @@ def upscale_h3_video_latent(
     variant,
     precision="bf16",
     device="auto",
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     """Apply learned H3 spatial upscaling to the visual latent only."""
     if variant not in H3_LEARNED_VARIANTS:
@@ -570,6 +1051,15 @@ def upscale_h3_video_latent(
         raise ValueError("H3 learned upscale scale_by must be a number") from err
     if not 1.0 <= scale_value <= 4.0:
         raise ValueError("H3 learned upscale scale_by must be between 1.0 and 4.0")
+    for name, value in (
+        ("tile_width", tile_width),
+        ("tile_height", tile_height),
+        ("tile_frames", tile_frames),
+        ("tile_overlap", tile_overlap),
+        ("tile_temporal_overlap", tile_temporal_overlap),
+    ):
+        if value is not None and int(value) < 0:
+            raise ValueError(f"H3 learned upscale {name} must not be negative")
     if video_latent.ndim == 4:
         video_latent = video_latent.unsqueeze(2)
         squeeze_time = True
@@ -608,6 +1098,7 @@ def upscale_h3_video_latent(
     model = None
     required_memory = None
     compute_device = requested_device
+    tile_plan = None
 
     if requested_device.type == "cuda":
         # Load once on CPU so device selection can use the actual checkpoint size.
@@ -620,7 +1111,20 @@ def upscale_h3_video_latent(
             variant,
         )
         free_memory = _free_memory_for_upscaler(requested_device, required_memory)
-        if free_memory is not None and free_memory < required_memory:
+        tile_plan = _plan_upscaler_tiles(
+            video_latent,
+            target_hw,
+            model,
+            precision,
+            variant,
+            available_memory=free_memory,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
+        )
+        if tile_plan is None:
             message = (
                 "H3 learned latent upscaler needs about "
                 f"{required_memory / 1024**3:.2f} GiB, but only "
@@ -633,11 +1137,37 @@ def upscale_h3_video_latent(
                 raise RuntimeError(message + "; choose upscaler_device=auto or cpu")
         else:
             LOG.info(
-                "H3 learned latent upscaler using %s: estimated_peak=%.2f GiB free=%.2f GiB",
+                "H3 learned latent upscaler using %s: estimated_peak=%.2f GiB free=%.2f GiB tiled=%s tiles=%d core=%dx%dx%d overlap=%dx%dxt%d",
                 requested_device,
-                required_memory / 1024**3,
+                tile_plan["estimated_peak"] / 1024**3,
                 free_memory / 1024**3 if free_memory is not None else -1.0,
+                tile_plan["tiled"],
+                tile_plan["tile_count"],
+                tile_plan["core_w"],
+                tile_plan["core_h"],
+                tile_plan["core_t"],
+                tile_plan["overlap_w"],
+                tile_plan["overlap_h"],
+                tile_plan["overlap_t"],
             )
+
+    if model is None:
+        model = _load_model(model_name, variant, torch.device("cpu"), precision)
+
+    if tile_plan is None:
+        tile_plan = _plan_upscaler_tiles(
+            video_latent,
+            target_hw,
+            model,
+            precision,
+            variant,
+            available_memory=None,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
+        )
 
     if model is None or _model_device(model) != compute_device:
         try:
@@ -651,32 +1181,91 @@ def upscale_h3_video_latent(
             model = _load_model(model_name, variant, compute_device, precision)
 
     try:
-        try:
-            output = _run_upscaler_once(
-                model,
-                video_latent,
-                compute_device,
-                compute_dtype,
-                variant,
-                scale_hint,
-                target_hw,
-            )
-        except RuntimeError as err:
-            if not (auto_device and compute_device.type == "cuda" and _is_cuda_oom(err)):
-                raise
-            LOG.warning("H3 learned latent upscaler ran out of memory on %s; retrying on CPU", compute_device)
-            _offload_upscaler_model(model)
-            compute_device = torch.device("cpu")
-            model = _load_model(model_name, variant, compute_device, precision)
-            output = _run_upscaler_once(
-                model,
-                video_latent,
-                compute_device,
-                compute_dtype,
-                variant,
-                scale_hint,
-                target_hw,
-            )
+        active_plan = tile_plan
+        output = None
+        for attempt in range(4):
+            try:
+                if active_plan["tiled"]:
+                    output = _run_upscaler_tiled(
+                        model,
+                        video_latent,
+                        compute_device,
+                        compute_dtype,
+                        variant,
+                        scale_hint,
+                        target_hw,
+                        active_plan,
+                    )
+                else:
+                    output = _run_upscaler_once(
+                        model,
+                        video_latent,
+                        compute_device,
+                        compute_dtype,
+                        variant,
+                        scale_hint,
+                        target_hw,
+                    )
+                break
+            except RuntimeError as err:
+                if not (
+                    auto_device
+                    and compute_device.type == "cuda"
+                    and _is_cuda_oom(err)
+                ):
+                    raise
+                _empty_upscaler_cache(compute_device)
+                next_plan = _shrink_tile_plan(
+                    active_plan,
+                    video_latent.shape,
+                    target_hw,
+                    model,
+                    precision,
+                    variant,
+                )
+                if next_plan is not None and attempt < 3:
+                    LOG.warning(
+                        "H3 learned latent upscaler exceeded the GPU memory estimate; retrying with smaller tiles core=%dx%dx%d overlap=%dx%dxt%d",
+                        next_plan["core_w"],
+                        next_plan["core_h"],
+                        next_plan["core_t"],
+                        next_plan["overlap_w"],
+                        next_plan["overlap_h"],
+                        next_plan["overlap_t"],
+                    )
+                    active_plan = next_plan
+                    continue
+                LOG.warning(
+                    "H3 learned latent upscaler could not complete on %s; retrying on CPU",
+                    compute_device,
+                )
+                _offload_upscaler_model(model)
+                compute_device = torch.device("cpu")
+                model = _load_model(model_name, variant, compute_device, precision)
+                if active_plan["tiled"]:
+                    output = _run_upscaler_tiled(
+                        model,
+                        video_latent,
+                        compute_device,
+                        compute_dtype,
+                        variant,
+                        scale_hint,
+                        target_hw,
+                        active_plan,
+                    )
+                else:
+                    output = _run_upscaler_once(
+                        model,
+                        video_latent,
+                        compute_device,
+                        compute_dtype,
+                        variant,
+                        scale_hint,
+                        target_hw,
+                    )
+                break
+        if output is None:
+            raise RuntimeError("H3 learned latent upscaler produced no output")
     finally:
         _offload_upscaler_model(model)
 

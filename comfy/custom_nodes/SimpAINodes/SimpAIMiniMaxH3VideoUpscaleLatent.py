@@ -141,6 +141,11 @@ def _upscale_video_latent(
     upscaler_model=None,
     upscaler_precision="bf16",
     upscaler_device="auto",
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     if scale_by <= 0:
         raise ValueError("MiniMax H3 latent upscale scale_by must be greater than zero")
@@ -152,6 +157,11 @@ def _upscale_video_latent(
             variant=method.removeprefix("learned_"),
             precision=upscaler_precision,
             device=upscaler_device,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
         )
     target_h = _snap_h3_spatial_size(round(video_latent.shape[-2] * scale_by))
     target_w = _snap_h3_spatial_size(round(video_latent.shape[-1] * scale_by))
@@ -167,6 +177,11 @@ def _resize_video_like_latent(
     upscaler_precision="bf16",
     upscaler_device="auto",
     scale_hint=None,
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     target_h = int(height) // H3_SPATIAL_DOWNSCALE
     target_w = int(width) // H3_SPATIAL_DOWNSCALE
@@ -185,6 +200,11 @@ def _resize_video_like_latent(
             variant=method.removeprefix("learned_"),
             precision=upscaler_precision,
             device=upscaler_device,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
         )
     if latent.ndim == 4:
         latent = _resize_latent_spatial(latent, target_h, target_w, method)
@@ -234,6 +254,11 @@ def _upscale_video_like_latent(
     upscaler_model=None,
     upscaler_precision="bf16",
     upscaler_device="auto",
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     if latent.ndim == 4:
         latent = _upscale_video_latent(
@@ -243,6 +268,11 @@ def _upscale_video_like_latent(
             upscaler_model,
             upscaler_precision,
             upscaler_device,
+            tile_width,
+            tile_height,
+            tile_frames,
+            tile_overlap,
+            tile_temporal_overlap,
         )
         if method in ("learned_2d", "learned_3d"):
             return latent.squeeze(2)
@@ -258,6 +288,11 @@ def _upscale_video_like_latent(
             upscaler_model,
             upscaler_precision,
             upscaler_device,
+            tile_width,
+            tile_height,
+            tile_frames,
+            tile_overlap,
+            tile_temporal_overlap,
         )
         if method in ("learned_2d", "learned_3d"):
             return latent
@@ -363,6 +398,11 @@ def _upscale_latent_dict(
     upscaler_model=None,
     upscaler_precision="bf16",
     upscaler_device="auto",
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     if not isinstance(latent, dict) or "samples" not in latent:
         raise ValueError("MiniMax H3 latent upscale needs a LATENT dict with samples")
@@ -379,6 +419,11 @@ def _upscale_latent_dict(
             upscaler_precision,
             upscaler_device,
             scale_hint=scale_by,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
         )
     else:
         video_up = _upscale_video_like_latent(
@@ -388,6 +433,11 @@ def _upscale_latent_dict(
             upscaler_model,
             upscaler_precision,
             upscaler_device,
+            tile_width,
+            tile_height,
+            tile_frames,
+            tile_overlap,
+            tile_temporal_overlap,
         )
 
     if was_nested:
@@ -435,6 +485,11 @@ def _upscale_and_prepare_clean_latent(
     upscaler_model=None,
     upscaler_precision="bf16",
     upscaler_device="auto",
+    tile_width=None,
+    tile_height=None,
+    tile_frames=None,
+    tile_overlap=None,
+    tile_temporal_overlap=None,
 ):
     """Upscale only the visual member and keep the AV latent clean.
 
@@ -451,6 +506,11 @@ def _upscale_and_prepare_clean_latent(
         upscaler_model=upscaler_model,
         upscaler_precision=upscaler_precision,
         upscaler_device=upscaler_device,
+        tile_width=tile_width,
+        tile_height=tile_height,
+        tile_frames=tile_frames,
+        tile_overlap=tile_overlap,
+        tile_temporal_overlap=tile_temporal_overlap,
     )
 
 
@@ -600,6 +660,56 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
                     default="auto",
                     advanced=True,
                 ),
+                io.Int.Input(
+                    "tile_width",
+                    default=0,
+                    min=0,
+                    max=4096,
+                    step=2,
+                    optional=True,
+                    advanced=True,
+                    tooltip="空间块宽度，单位为 latent token；0 表示自动。",
+                ),
+                io.Int.Input(
+                    "tile_height",
+                    default=0,
+                    min=0,
+                    max=4096,
+                    step=2,
+                    optional=True,
+                    advanced=True,
+                    tooltip="空间块高度，单位为 latent token；0 表示自动。",
+                ),
+                io.Int.Input(
+                    "tile_frames",
+                    default=0,
+                    min=0,
+                    max=4096,
+                    step=1,
+                    optional=True,
+                    advanced=True,
+                    tooltip="时间块长度，单位为 video latent 帧；0 表示自动。",
+                ),
+                io.Int.Input(
+                    "tile_overlap",
+                    default=0,
+                    min=0,
+                    max=1024,
+                    step=2,
+                    optional=True,
+                    advanced=True,
+                    tooltip="空间重叠，单位为 latent token；0 使用模型对应的默认值。",
+                ),
+                io.Int.Input(
+                    "tile_temporal_overlap",
+                    default=0,
+                    min=0,
+                    max=1024,
+                    step=1,
+                    optional=True,
+                    advanced=True,
+                    tooltip="时间重叠，单位为 video latent 帧；0 使用模型对应的默认值。",
+                ),
                 io.Model.Input("model", optional=True, advanced=True),
                 io.Noise.Input("noise", optional=True, advanced=True),
                 io.Sigmas.Input("sigmas", optional=True, advanced=True),
@@ -661,6 +771,11 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
         upscaler_model=None,
         upscaler_precision="bf16",
         upscaler_device="auto",
+        tile_width=0,
+        tile_height=0,
+        tile_frames=0,
+        tile_overlap=0,
+        tile_temporal_overlap=0,
     ) -> io.NodeOutput:
         target_width = int(target_width) if target_width else None
         target_height = int(target_height) if target_height else None
@@ -681,6 +796,11 @@ class SimpAIMiniMaxH3LatentUpscaleCombined(io.ComfyNode):
             upscaler_model=upscaler_model,
             upscaler_precision=upscaler_precision,
             upscaler_device=upscaler_device,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            tile_frames=tile_frames,
+            tile_overlap=tile_overlap,
+            tile_temporal_overlap=tile_temporal_overlap,
         )
         return io.NodeOutput(latent, positive, negative)
 

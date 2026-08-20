@@ -969,10 +969,10 @@ function(system_params) {
 }
 '''
 
-def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, ram_pressure, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox, request: gr.Request):
+def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, dynamic_vram_checkbox, disable_smart_memory_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, ram_pressure, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox, request: gr.Request):
     #logger.info(f'request.headers:{request.headers}')
     #logger.info(f'request.client:{request.client}')
-    admin_currunt_value = [comfyd_active_checkbox, fast_comfyd_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, ram_pressure, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox]
+    admin_currunt_value = [comfyd_active_checkbox, fast_comfyd_checkbox, dynamic_vram_checkbox, disable_smart_memory_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, ram_pressure, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox]
     #logger.info(f'admin_currunt_value: {admin_currunt_value}')
 
     headers = getattr(request, "headers", {}) or {}
@@ -4844,7 +4844,7 @@ def apply_preferred_output_format(state_params):
 
 def restore_all_defaults(state_params):
     user_keys = ["__lang", "__theme", "backfill_prompt", "image_tools_checkbox", "disable_preview", "disable_intermediate_results", "disable_seed_increment", "save_final_enhanced_image_only", "style_preview_checkbox", "generate_image_grid", "black_out_nsfw", "save_metadata_to_images", "metadata_scheme", "gallery_frost_enabled", "no_model_modal_checkbox", "lora_auto_send_trigger_words", "use_model_filter_checkbox", "output_format"]
-    admin_keys = ["comfyd_active_checkbox", "fast_comfyd_checkbox", "cache_clear_on_finish_checkbox", "reserved_vram", "cache_ram_enable", "cache_ram", "vlm_checkbox", "vlm_version", "advanced_logs", "wavespeed_strength", "translation_methods", "no_welcome_checkbox", "missing_model_filter_checkbox"]
+    admin_keys = ["comfyd_active_checkbox", "fast_comfyd_checkbox", "dynamic_vram_checkbox", "disable_smart_memory_checkbox", "cache_clear_on_finish_checkbox", "reserved_vram", "cache_ram_enable", "cache_ram", "vlm_checkbox", "vlm_version", "advanced_logs", "wavespeed_strength", "translation_methods", "no_welcome_checkbox", "missing_model_filter_checkbox"]
 
     try:
         user = state_params.get("user", None) if isinstance(state_params, dict) else None
@@ -4947,7 +4947,7 @@ def restore_all_defaults(state_params):
     return head_updates + user_defaults + admin_updates + [gr.update(value=fmt)]
 
 def get_all_admin_default(currunt_value):
-    admin_keys = ['comfyd_active_checkbox', 'fast_comfyd_checkbox', 'cache_clear_on_finish_checkbox', 'reserved_vram', 'cache_ram_enable', 'cache_ram', 'vlm_checkbox', 'vlm_version', 'advanced_logs', 'wavespeed_strength', 'translation_methods', "no_welcome_checkbox", "missing_model_filter_checkbox"]
+    admin_keys = ['comfyd_active_checkbox', 'fast_comfyd_checkbox', 'dynamic_vram_checkbox', 'disable_smart_memory_checkbox', 'cache_clear_on_finish_checkbox', 'reserved_vram', 'cache_ram_enable', 'cache_ram', 'vlm_checkbox', 'vlm_version', 'advanced_logs', 'wavespeed_strength', 'translation_methods', "no_welcome_checkbox", "missing_model_filter_checkbox"]
     result = []
     for i, admin_key in enumerate(admin_keys):
         admin_value = ads.get_admin_default(admin_key)

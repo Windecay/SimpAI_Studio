@@ -994,11 +994,14 @@ def offloaded_memory(loaded_models, device):
 
 WINDOWS = any(platform.win32_ver())
 
-EXTRA_RESERVED_VRAM = 400 * 1024 * 1024
-if WINDOWS:
-    EXTRA_RESERVED_VRAM = 600 * 1024 * 1024 #Windows is higher because of the shared vram issue
-    if total_vram > (15 * 1024):  # more extra reserved vram on 16GB+ cards
-        EXTRA_RESERVED_VRAM += 100 * 1024 * 1024
+def _default_extra_reserved_vram():
+    reserved_mb = 1024 if WINDOWS else 400
+    if WINDOWS and total_vram > (15 * 1024):  # more extra reserved vram on 16GB+ cards
+        reserved_mb += 100
+    return reserved_mb * 1024 * 1024
+
+
+EXTRA_RESERVED_VRAM = _default_extra_reserved_vram()
 
 if args.reserve_vram is not None:
     EXTRA_RESERVED_VRAM = args.reserve_vram * 1024 * 1024 * 1024
@@ -2341,7 +2344,7 @@ def set_extra_reserved_vram(reserved):
 
     reserved_gb = max(0.0, reserved_gb)
     reserved_vram = int(reserved_gb * 1024 * 1024 * 1024)
-    default_reserved = (600 if WINDOWS else 400) * 1024 * 1024
+    default_reserved = _default_extra_reserved_vram()
 
     if reserved_vram <= default_reserved:
         if EXTRA_RESERVED_VRAM != default_reserved:

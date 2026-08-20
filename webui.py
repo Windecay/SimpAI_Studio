@@ -8461,6 +8461,9 @@ with shared.gradio_root:
                                                 comfyd_active_checkbox = gr.Checkbox(label='Enable Comfyd always active', value=ads.get_admin_default('comfyd_active_checkbox') and not args_manager.args.disable_comfyd and not args_manager.args.disable_backend, info='Enabling will improve execution speed.')
                                                 fast_comfyd_checkbox = gr.Checkbox(label='Enable optimizations for Comfyd', value=ads.get_admin_default('fast_comfyd_checkbox'), info='Effective for some Nvidia cards.')
                                                 cache_clear_on_finish_checkbox = gr.Checkbox(label='Clear caches on finish', value=ads.get_admin_default('cache_clear_on_finish_checkbox'), info='Restart Comfyd. Clear execution caches and unload models after each task.')
+                                            with gr.Row(visible=True if not args_manager.args.disable_backend else False):
+                                                dynamic_vram_checkbox = gr.Checkbox(label='Enable DynamicVRAM', value=ads.get_admin_default('dynamic_vram_checkbox'), info='Restart Comfyd to apply.')
+                                                disable_smart_memory_checkbox = gr.Checkbox(label='Disable smart memory', value=ads.get_admin_default('disable_smart_memory_checkbox'), info='Restart Comfyd to apply.')
                                             with gr.Row():
                                                 vlm_checkbox = gr.Checkbox(label='Enable VLM', value=True, info='Enable it for describe, translate and expand.', elem_id='vlm_checkbox', visible=False)
                                                 advanced_logs = gr.Checkbox(label='Enable advanced logs', value=ads.get_admin_default('advanced_logs'), info='Enabling with more infomation in logs.', visible=False)
@@ -8970,6 +8973,8 @@ with shared.gradio_root:
                 metadata_scheme.change(lambda x,y: ads.set_user_default_value("metadata_scheme", x, y), inputs=[metadata_scheme, state_topbar])
 
                 fast_comfyd_checkbox.change(simpleai.start_fast_comfyd, inputs=[fast_comfyd_checkbox, state_topbar])
+                dynamic_vram_checkbox.change(simpleai.set_dynamic_vram, inputs=[dynamic_vram_checkbox, state_topbar])
+                disable_smart_memory_checkbox.change(simpleai.set_disable_smart_memory, inputs=[disable_smart_memory_checkbox, state_topbar])
                 cache_clear_on_finish_checkbox.change(simpleai.set_cache_clear_on_finish, inputs=[cache_clear_on_finish_checkbox, state_topbar])
                 main_vlm_custom_inputs = [
                     describe_vlm_custom_api_name,
@@ -9217,7 +9222,7 @@ with shared.gradio_root:
                     show_progress=False,
                 )
 
-                admin_ctrls = [comfyd_active_checkbox, fast_comfyd_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, cache_ram, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox]
+                admin_ctrls = [comfyd_active_checkbox, fast_comfyd_checkbox, dynamic_vram_checkbox, disable_smart_memory_checkbox, cache_clear_on_finish_checkbox, reserved_vram, cache_ram_enable, cache_ram, vlm_checkbox, vlm_version, advanced_logs, wavespeed_strength, translation_methods, no_welcome_checkbox, missing_model_filter_checkbox]
                 user_app_ctrls = [backfill_prompt, image_tools_checkbox, disable_preview, disable_intermediate_results, disable_seed_increment, save_final_enhanced_image_only, style_preview_checkbox, generate_image_grid, black_out_nsfw, save_metadata_to_images, metadata_scheme, gallery_frost_enabled, no_model_modal_checkbox, lora_auto_send_trigger_words, use_model_filter_checkbox, model_filter_state]
 
                 restore_all_defaults_btn.click(lambda: gr_update(visible=True), inputs=None, outputs=restore_defaults_panel, queue=False, show_progress=False)
@@ -15648,6 +15653,48 @@ async def describe_image_vlm_roleplay_scene_reference_apply_endpoint(payload: di
     return JSONResponse(result, status_code=200 if result.get("ok") else 409 if result.get("error") == "state_version_conflict" else 400)
 
 
+@app.post("/describe-image/vlm-roleplay/context/query")
+@app.post("/describe-image/vlm-roleplay/memory/query")
+async def describe_image_vlm_roleplay_context_query_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    context = await run_in_threadpool(
+        lambda: vlm_roleplay.roleplay_context_resources(
+            session,
+            payload.get("query") or payload.get("text") or "",
+            payload.get("speaker_id") or session.get("active_character_id") or "",
+            include_hidden=bool(payload.get("include_hidden")),
+            world_limit=payload.get("world_limit") or 20,
+            memory_limit=payload.get("memory_limit") or 20,
+        )
+    )
+    return JSONResponse({"ok": True, "context": context, "session": session}, status_code=200)
+
+
+@app.post("/describe-image/vlm-roleplay/resources/save")
+async def describe_image_vlm_roleplay_resources_save_endpoint(request: Request, payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_session = payload.get("session") if isinstance(payload.get("session"), dict) else payload
+    session = vlm_roleplay.normalize_roleplay_session(raw_session)
+    session_id = str(payload.get("session_id") or session.get("id") or session.get("conversation_id") or "").strip()
+    if not session_id:
+        return JSONResponse({"ok": False, "error": "session_id_required"}, status_code=400)
+    session["id"] = session_id
+    branch_id = str(payload.get("branch_id") or session.get("active_branch_id") or "main").strip() or "main"
+    user_did = _roleplay_endpoint_user_did(payload, request)
+
+    def save_resources():
+        saved = vlm_roleplay.save_roleplay_session(session, user_did=user_did)
+        return vlm_roleplay.save_roleplay_branch(saved, branch_id=branch_id, user_did=user_did)
+
+    saved = await run_in_threadpool(save_resources)
+    return JSONResponse(
+        {"ok": True, "session_id": session_id, "branch_id": saved.get("active_branch_id", branch_id), "session": saved},
+        status_code=200,
+    )
+
+
 @app.post("/describe-image/vlm-roleplay/branches/list")
 async def describe_image_vlm_roleplay_branches_list_endpoint(request: Request, payload: dict = Body(default={})):
     payload = payload if isinstance(payload, dict) else {}
@@ -15726,6 +15773,13 @@ async def describe_image_vlm_chat_cancel_endpoint(payload: dict = Body(default={
             request_id,
         )
         result = describe_vlm_chat.request_describe_vlm_chat_cancel(conversation_id, request_id)
+        canvas_result = canvas_vlm_runtime.request_canvas_vlm_cancel(
+            "",
+            "",
+            conversation_id,
+            request_id,
+        )
+        result["canvas_cancelled"] = bool(canvas_result.get("cancelled"))
         return JSONResponse(result, status_code=200)
     except Exception as e:
         import traceback

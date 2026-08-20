@@ -1557,6 +1557,7 @@ def _describe_chat_system_prompt(options, lang):
                     roleplay_session,
                     options.get("history") or [],
                     lang,
+                    options.get("message") or "",
                 )
             )
             sections.append(
@@ -1580,6 +1581,7 @@ def _describe_chat_system_prompt(options, lang):
                     lang,
                     options.get("roleplay_speaker_id") or "",
                     options.get("roleplay_turn_intent") or "",
+                    options.get("message") or "",
                 )
             )
             sections.append(
@@ -2070,6 +2072,9 @@ def _run_roleplay_director(
                 "payload": {
                     "patches": parsed.get("patches") or [],
                     "memories": parsed.get("memories") or [],
+                    "world_book_updates": parsed.get("world_book_updates") or [],
+                    "memory_deletions": parsed.get("memory_deletions") or [],
+                    "chapter_update": parsed.get("chapter_update") or {},
                     "chapter_summary": parsed.get("chapter_summary") or "",
                     "visual_candidate": parsed.get("visual_candidate") or {},
                     "_incremental_runtime_state": True,
@@ -2139,6 +2144,7 @@ def _run_roleplay_director(
         applied["visual_snapshot"] = snapshot
         applied["visual_action"] = visual_action
         applied["state_changes"] = state_changes
+        applied["summary_schedule"] = vlm_roleplay.roleplay_summary_schedule(applied["session"])
         if autoplay_enabled:
             applied["autoplay_decision"] = vlm_roleplay.evaluate_autoplay_step(
                 applied["session"],

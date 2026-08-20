@@ -46,6 +46,7 @@ args_parser.parser.add_argument("--disable-comfyd", action='store_true',
                                 help="disable auto start comfyd server at launch", default=False)
 
 args_parser.parser.add_argument("--reserve-vram", type=float, default=None, help="Set the amount of vram in GB you want to reserve for use by your OS/other software. By default some amount is reverved depending on your OS.")
+args_parser.parser.add_argument("--vram-headroom", type=float, default=None, help="Set the amount of vram in GB for DynamicVRAM to maintain as extra headroom.")
 
 args_parser.parser.add_argument("--disable-backend", action='store_true',
                                 help="disable generate backend and ready to remote process", default=False)

@@ -98,9 +98,19 @@ def clear_canvas_vlm_cancel(project_id="", node_id="", conversation_id="", reque
     key = _canvas_vlm_cancel_key(project_id, node_id, conversation_id, request_id)
     node_key = (key[0], key[1], "", "")
     conversation_key = (key[0], key[1], key[2], "")
+    global_key = ("", "", key[2], key[3])
+    global_conversation_key = ("", "", key[2], "")
     with _CANVAS_VLM_CANCELLED_REQUESTS_LOCK:
-        for candidate in {key, node_key, conversation_key}:
+        for candidate in {key, node_key, conversation_key, global_key, global_conversation_key}:
             _CANVAS_VLM_CANCELLED_REQUESTS.pop(candidate, None)
+        if key[2]:
+            for candidate in list(_CANVAS_VLM_CANCELLED_REQUESTS):
+                if candidate[:2] != ("", "") or not candidate[2]:
+                    continue
+                same_request = not candidate[3] or not key[3] or candidate[3] == key[3]
+                related_conversation = key[2] == candidate[2] or key[2].startswith(candidate[2] + ":")
+                if same_request and related_conversation:
+                    _CANVAS_VLM_CANCELLED_REQUESTS.pop(candidate, None)
 
 
 def is_canvas_vlm_cancelled(project_id="", node_id="", conversation_id="", request_id=""):
@@ -109,11 +119,22 @@ def is_canvas_vlm_cancelled(project_id="", node_id="", conversation_id="", reque
     conversation_key = (key[0], key[1], key[2], "")
     with _CANVAS_VLM_CANCELLED_REQUESTS_LOCK:
         _canvas_vlm_prune_cancelled_requests()
-        return (
+        if (
             key in _CANVAS_VLM_CANCELLED_REQUESTS
             or (bool(key[1]) and node_key in _CANVAS_VLM_CANCELLED_REQUESTS)
             or (bool(key[2]) and conversation_key in _CANVAS_VLM_CANCELLED_REQUESTS)
-        )
+        ):
+            return True
+        if not key[2]:
+            return False
+        for candidate in _CANVAS_VLM_CANCELLED_REQUESTS:
+            if candidate[:2] != ("", "") or not candidate[2]:
+                continue
+            same_request = not candidate[3] or not key[3] or candidate[3] == key[3]
+            related_conversation = key[2] == candidate[2] or key[2].startswith(candidate[2] + ":")
+            if same_request and related_conversation:
+                return True
+        return False
 
 
 def _canvas_vlm_cancelled_response(project_id="", node_id="", conversation_id="", request_id="", mode="chat"):
