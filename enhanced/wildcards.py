@@ -316,7 +316,7 @@ def get_words_with_wildcard(wildcard, rng, method='R', number=1, start_at=1, use
     return words_result
 
 
-def compile_arrays(text, rng, user_did=None):
+def compile_arrays(text, rng, user_did=None, allow_plain_bracket_arrays=True):
     global wildcards, wildcards_max_bfs_depth, array_regex, array_regex1, tag_regex1, tag_regex2, tag_regex3, tag_regex4, tag_regex5, tag_regex6
 
     _ = ensure_wildcards_loaded(user_did)
@@ -396,7 +396,7 @@ def compile_arrays(text, rng, user_did=None):
                     if delimiter == ';':
                         seed_fixed = False
             else:
-                if ',' in tag or ';' in tag:
+                if allow_plain_bracket_arrays and (',' in tag or ';' in tag):
                     has_active_arrays = True
                     delimiter = ';' if ';' in tag else ','
                     words = [x.strip() for x in tag.split(delimiter) if x.strip() != '']

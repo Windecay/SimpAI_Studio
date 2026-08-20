@@ -21406,6 +21406,14 @@ button[aria-label="Edit"][title="Edit"] {
   text-align: right;
 }
 
+.describe-vlm-chat-settings-summary-runtime > [data-describe-vlm-chat-runtime-summary-value] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .describe-vlm-chat-settings-summary-runtime > i {
   flex: 0 0 auto;
   color: #f5b82e;
@@ -21422,6 +21430,17 @@ button[aria-label="Edit"][title="Edit"] {
 @container (max-width: 780px) {
   .describe-vlm-chat-settings-summary {
     grid-row: 3;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+
+  .describe-vlm-chat-settings-summary-value,
+  .describe-vlm-chat-settings-summary-runtime {
+    flex: 1 1 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+    text-align: left;
   }
 }
 

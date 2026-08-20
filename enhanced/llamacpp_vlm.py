@@ -1,5 +1,6 @@
 import os
 import gc
+import math
 import torch
 import numpy as np
 import logging
@@ -134,6 +135,11 @@ PaddleOCRChatHandler = None
 Step3VLChatHandler = None
 
 LLAMA_CPP_AVAILABLE = False
+# Avoid paying the reload cost for small, noisy GPU-layer estimates.
+LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_DELTA = 5
+LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_RATIO = 0.10
+LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB = 2.0
+LLAMA_CPP_AUTO_RELOAD_EXTERNAL_PRESSURE_GB = 1.0
 try:
     from llama_cpp import Llama
     LLAMA_CPP_AVAILABLE = True
@@ -248,6 +254,11 @@ class LlamaCppVLM:
         self.current_kv_cache_gb = None
         self.current_mmproj_size_gb = None
         self.current_offload_kqv = None
+        self.current_post_load_free_vram_gb = None
+        self.current_post_load_external_vram_gb = None
+        self.current_post_load_external_process_count = None
+        self.current_external_vram_gb = None
+        self.current_external_process_count = None
         self.current_vram_estimate = {}
         self.last_completion_stats = {}
         self.conversation_messages = {}
@@ -563,6 +574,55 @@ class LlamaCppVLM:
         except Exception:
             return 0
 
+    @staticmethod
+    def _auto_gpu_layer_reload_threshold(total_layers):
+        try:
+            total = max(0, int(total_layers or 0))
+        except (TypeError, ValueError):
+            total = 0
+        ratio_threshold = int(math.ceil(total * LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_RATIO))
+        return max(LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_DELTA, ratio_threshold)
+
+    @staticmethod
+    def _current_free_vram_gb():
+        try:
+            return max(
+                0.0,
+                float(ldm_patched.modules.model_management.get_free_memory()) / (1024 ** 3),
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _current_vram_snapshot():
+        memory_management = ldm_patched.modules.model_management
+        snapshot = {
+            "free_vram_gb": None,
+            "external_vram_gb": None,
+            "external_process_count": None,
+        }
+        try:
+            snapshot["free_vram_gb"] = max(
+                0.0,
+                float(memory_management.get_free_memory()) / (1024 ** 3),
+            )
+        except Exception:
+            pass
+        try:
+            if (
+                getattr(memory_management, "is_nvidia", lambda: False)()
+                and hasattr(memory_management, "get_vram_process_snapshot_by_nvml_for_nvidia")
+            ):
+                process_snapshot = memory_management.get_vram_process_snapshot_by_nvml_for_nvidia()
+                if process_snapshot:
+                    external_bytes = process_snapshot.get("external_used_bytes")
+                    if external_bytes is not None:
+                        snapshot["external_vram_gb"] = max(0.0, float(external_bytes) / (1024 ** 3))
+                    snapshot["external_process_count"] = process_snapshot.get("external_process_count")
+        except Exception as e:
+            logger.debug("Unable to inspect external GPU memory pressure: %s", e)
+        return snapshot
+
     def _estimate_current_gpu_layer_credit_gb(self, model_path):
         if self.llm is None or self.current_model_path != model_path:
             return 0.0
@@ -637,7 +697,7 @@ class LlamaCppVLM:
         if kv_cache_reserved_gb:
             available_vram_gb = max(0.0, available_vram_gb - kv_cache_reserved_gb)
 
-        weight_overhead = 1.15
+        weight_overhead = 1.05 if vram_policy == "extreme" else 1.15
         mmproj_size_gb = 0.0
         if mmproj_path:
             mmproj_size_gb = os.path.getsize(mmproj_path) * weight_overhead / (1024 ** 3)
@@ -659,10 +719,11 @@ class LlamaCppVLM:
             "layer_budget_gb": available_vram_gb,
             "total_layers": total_layers,
             "layer_size_gb": None,
+            "weight_overhead": weight_overhead,
         }
         logger.info(
             "llama.cpp VRAM budget: free=%.2fGB, total=%.2fGB, reserve=%.2fGB, "
-            "budget=%.2fGB, policy=%s, kv_cache=%.2fGB (%s, type=%s), offload_kqv=%s, layer_budget=%.2fGB",
+            "budget=%.2fGB, policy=%s, kv_cache=%.2fGB (%s, type=%s), offload_kqv=%s, weight_factor=%.2f, layer_budget=%.2fGB",
             budget["free_vram_gb"],
             budget["total_vram_gb"],
             budget["reserve_gb"],
@@ -672,6 +733,7 @@ class LlamaCppVLM:
             "metadata" if kv_cache_from_metadata else "fallback",
             kv_cache_type,
             offload_kqv,
+            weight_overhead,
             available_vram_gb,
         )
         logger.debug(
@@ -752,6 +814,58 @@ class LlamaCppVLM:
                         return
                     reload_reason = "manual GPU layer count changed"
                 else:
+                    current_vram_snapshot = self._current_vram_snapshot()
+                    current_free_vram_gb = current_vram_snapshot.get("free_vram_gb")
+                    current_external_vram_gb = current_vram_snapshot.get("external_vram_gb")
+                    self.current_external_vram_gb = current_external_vram_gb
+                    self.current_external_process_count = current_vram_snapshot.get("external_process_count")
+                    external_vram_delta_gb = None
+                    external_process_delta = None
+                    external_pressure = False
+                    if (
+                        current_external_vram_gb is not None
+                        and self.current_post_load_external_vram_gb is not None
+                    ):
+                        external_vram_delta_gb = current_external_vram_gb - self.current_post_load_external_vram_gb
+                        external_pressure = (
+                            external_vram_delta_gb >= LLAMA_CPP_AUTO_RELOAD_EXTERNAL_PRESSURE_GB
+                        )
+                    if (
+                        current_vram_snapshot.get("external_process_count") is not None
+                        and self.current_post_load_external_process_count is not None
+                    ):
+                        external_process_delta = (
+                            int(current_vram_snapshot["external_process_count"])
+                            - int(self.current_post_load_external_process_count)
+                        )
+                        external_pressure = external_pressure or external_process_delta > 0
+                    if external_pressure:
+                        logger.warning(
+                            "Detected external GPU memory pressure: external_used=%.2fGB, "
+                            "baseline=%.2fGB, delta=%.2fGB, process_delta=%s, processes=%s",
+                            current_external_vram_gb if current_external_vram_gb is not None else -1.0,
+                            self.current_post_load_external_vram_gb
+                            if self.current_post_load_external_vram_gb is not None else -1.0,
+                            external_vram_delta_gb if external_vram_delta_gb is not None else -1.0,
+                            external_process_delta,
+                            current_vram_snapshot.get("external_process_count"),
+                        )
+                    if (
+                        not external_pressure
+                        and current_free_vram_gb is not None
+                        and self.current_post_load_free_vram_gb is not None
+                        and current_free_vram_gb
+                        < self.current_post_load_free_vram_gb + LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB
+                    ):
+                        logger.debug(
+                            "Skipping llama.cpp VLM auto reload: free VRAM gain=%.2fGB, "
+                            "threshold=%.2fGB, post_load=%.2fGB, current=%.2fGB",
+                            current_free_vram_gb - self.current_post_load_free_vram_gb,
+                            LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB,
+                            self.current_post_load_free_vram_gb,
+                            current_free_vram_gb,
+                        )
+                        return
                     try:
                         current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path)
                         estimated_layers, auto_estimate = self._calculate_auto_n_gpu_layers(
@@ -773,13 +887,37 @@ class LlamaCppVLM:
                         estimated_layers,
                         auto_estimate.get("total_layers") or self.current_total_layers,
                     )
-                    if target_score > current_score:
+                    if target_score > current_score and not external_pressure:
+                        layer_delta = target_score - current_score
+                        reload_threshold = self._auto_gpu_layer_reload_threshold(
+                            auto_estimate.get("total_layers") or self.current_total_layers
+                        )
+                        if layer_delta < reload_threshold:
+                            logger.debug(
+                                "Skipping llama.cpp VLM auto reload: GPU layer improvement=%s, "
+                                "threshold=%s, current=%s, target=%s",
+                                layer_delta,
+                                reload_threshold,
+                                self.current_n_gpu_layers,
+                                estimated_layers,
+                            )
+                            return
                         n_gpu_layers = estimated_layers
                         reload_reason = "automatic GPU layer budget improved"
                         logger.info(
                             "Reloading llama.cpp VLM with higher GPU offload: current_n_gpu_layers=%s, target_n_gpu_layers=%s",
                             self.current_n_gpu_layers,
                             n_gpu_layers,
+                        )
+                    elif external_pressure and target_score < current_score:
+                        n_gpu_layers = estimated_layers
+                        reload_reason = "external GPU memory pressure increased"
+                        logger.warning(
+                            "Reloading llama.cpp VLM with lower GPU offload: "
+                            "current_n_gpu_layers=%s, target_n_gpu_layers=%s, external_delta=%.2fGB",
+                            self.current_n_gpu_layers,
+                            n_gpu_layers,
+                            external_vram_delta_gb,
                         )
                     else:
                         return
@@ -829,7 +967,11 @@ class LlamaCppVLM:
             offload_kqv = bool(auto_estimate.get("offload_kqv", True))
             load_attempts = [
                 (layer_count, offload_kqv)
-                for layer_count in llama_cpp_gpu_layer_attempts(n_gpu_layers, total_layers)
+                for layer_count in llama_cpp_gpu_layer_attempts(
+                    n_gpu_layers,
+                    total_layers,
+                    include_nearby=True,
+                )
             ]
             if offload_kqv and (0, False) not in load_attempts:
                 load_attempts.append((0, False))
@@ -958,6 +1100,12 @@ class LlamaCppVLM:
             self.current_kv_cache_gb = auto_estimate.get("kv_cache_gb")
             self.current_mmproj_size_gb = auto_estimate.get("mmproj_size_gb")
             self.current_offload_kqv = loaded_offload_kqv
+            post_load_vram_snapshot = self._current_vram_snapshot()
+            self.current_post_load_free_vram_gb = post_load_vram_snapshot.get("free_vram_gb")
+            self.current_post_load_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
+            self.current_post_load_external_process_count = post_load_vram_snapshot.get("external_process_count")
+            self.current_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
+            self.current_external_process_count = post_load_vram_snapshot.get("external_process_count")
             self.current_vram_estimate = dict(auto_estimate)
             self.current_vram_estimate["target_n_gpu_layers"] = target_n_gpu_layers
             self.current_vram_estimate["loaded_n_gpu_layers"] = loaded_layers
@@ -995,6 +1143,11 @@ class LlamaCppVLM:
             self.current_kv_cache_gb = None
             self.current_mmproj_size_gb = None
             self.current_offload_kqv = None
+            self.current_post_load_free_vram_gb = None
+            self.current_post_load_external_vram_gb = None
+            self.current_post_load_external_process_count = None
+            self.current_external_vram_gb = None
+            self.current_external_process_count = None
             self.current_vram_estimate = {}
             self.last_completion_stats = {}
             if clear_conversations:
@@ -1039,6 +1192,21 @@ class LlamaCppVLM:
         loaded = self.llm is not None
         loaded_policy = normalize_llama_cpp_vram_policy(self.current_vram_policy)
         estimate = dict(self.current_vram_estimate or {})
+        external_vram_delta_gb = None
+        external_process_delta = None
+        if (
+            self.current_external_vram_gb is not None
+            and self.current_post_load_external_vram_gb is not None
+        ):
+            external_vram_delta_gb = self.current_external_vram_gb - self.current_post_load_external_vram_gb
+        if (
+            self.current_external_process_count is not None
+            and self.current_post_load_external_process_count is not None
+        ):
+            external_process_delta = (
+                int(self.current_external_process_count)
+                - int(self.current_post_load_external_process_count)
+            )
         return {
             "loaded": loaded,
             "state": "ready" if loaded else "not_loaded",
@@ -1072,6 +1240,11 @@ class LlamaCppVLM:
             "layer_budget_gb": estimate.get("layer_budget_gb"),
             "kv_cache_gb": estimate.get("kv_cache_gb"),
             "kv_cache_savings_ratio": estimate.get("kv_cache_type_savings_ratio"),
+            "external_gpu_used_gb": self.current_external_vram_gb if loaded else None,
+            "external_gpu_baseline_gb": self.current_post_load_external_vram_gb if loaded else None,
+            "external_gpu_delta_gb": external_vram_delta_gb if loaded else None,
+            "external_gpu_process_count": self.current_external_process_count if loaded else None,
+            "external_gpu_process_delta": external_process_delta if loaded else None,
         }
 
     def clear_conversation(self, conversation_id=None):

@@ -30,6 +30,7 @@ EXPLICIT_TEXT_CACHE_NODE_TYPES = frozenset({
     "MiniMaxH3ImageToVideo",
     "MiniMaxH3ReferenceToVideo",
     "MiniMaxH3ReferenceToImage",
+    "SimpAIMiniMaxH3AdaptiveReference",
     "PainterFluxImageEdit",
     "PainterQwenImageEditPlus",
     "TextImageEncodeQwenVL",

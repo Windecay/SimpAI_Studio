@@ -566,7 +566,7 @@
       "purge_cache": true,
       "purge_models": true,
       "anything": [
-        "591",
+        "647",
         0
       ]
     },
@@ -912,7 +912,7 @@
   "627": {
     "inputs": {
       "lora_name": "ltx\\ltx2.3-ic-subtitles-remove-general.safetensors",
-      "strength_model": 1,
+      "strength_model": 1.5,
       "model": [
         "613",
         0
@@ -1155,6 +1155,29 @@
     "class_type": "SimpAILTXVFrameTrim",
     "_meta": {
       "title": "SimpAI LTX Frame Trim / LTX 视频帧裁剪"
+    }
+  },
+  "647": {
+    "inputs": {
+      "reference_image": [
+        "619",
+        0
+      ],
+      "edited_image": [
+        "591",
+        0
+      ],
+      "strength": 1.0,
+      "sample_fraction": 0.35,
+      "analysis_size": 512,
+      "mask_sensitivity": 3.0,
+      "mask_expand": 8,
+      "confidence_threshold": 0.55,
+      "lock_batch_parameters": true
+    },
+    "class_type": "SimpAIAutoProtectedColorMatch",
+    "_meta": {
+      "title": "SimpAI Auto-Protected Color Match"
     }
   }
 }

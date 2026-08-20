@@ -271,6 +271,88 @@ def get_vram_info_by_nvml_for_nvidia(dev=None):
         logger.error(f"Error: {e}")
         return None, None
 
+def get_vram_process_snapshot_by_nvml_for_nvidia(dev=None):
+    """Return total VRAM and the portion not attributed to this process.
+
+    NVML exposes compute and graphics processes through separate APIs on
+    Windows. Use the newest API available for each category so WDDM graphics
+    allocations are included when the driver reports them.
+    """
+    global nvml_initialized
+
+    try:
+        import pynvml
+        if not nvml_initialized:
+            pynvml.nvmlInit()
+            nvml_initialized = True
+        if not torch.cuda.is_available():
+            raise RuntimeError("The current system has not detected any available GPU devices.")
+
+        handle = _get_nvml_handle_for_device(dev)
+        memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        process_getters = (
+            (
+                "compute",
+                getattr(pynvml, "nvmlDeviceGetComputeRunningProcesses_v3", None)
+                or getattr(pynvml, "nvmlDeviceGetComputeRunningProcesses_v2", None)
+                or getattr(pynvml, "nvmlDeviceGetComputeRunningProcesses", None),
+            ),
+            (
+                "graphics",
+                getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses_v3", None)
+                or getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses_v2", None)
+                or getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses", None),
+            ),
+        )
+        own_pid = os.getpid()
+        own_used = 0
+        own_seen = False
+        process_pids = set()
+        process_used = 0
+        for kind, getter in process_getters:
+            if getter is None:
+                continue
+            try:
+                processes = getter(handle)
+            except Exception:
+                continue
+            for proc in processes or ():
+                try:
+                    pid = int(getattr(proc, "pid"))
+                    used = int(getattr(proc, "usedGpuMemory"))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if used < 0:
+                    continue
+                process_pids.add(pid)
+                process_used += used
+                if pid == own_pid:
+                    own_used += used
+                    own_seen = True
+
+        if not own_seen:
+            return {
+                "total_bytes": int(memory_info.total),
+                "used_bytes": int(memory_info.used),
+                "free_bytes": int(memory_info.free),
+                "pid_used_bytes": None,
+                "external_used_bytes": None,
+                "external_process_count": max(0, len(process_pids)),
+            }
+
+        return {
+            "total_bytes": int(memory_info.total),
+            "used_bytes": int(memory_info.used),
+            "free_bytes": int(memory_info.free),
+            "pid_used_bytes": own_used,
+            "external_used_bytes": max(0, int(memory_info.used) - own_used),
+            "external_process_count": sum(1 for pid in process_pids if pid != own_pid),
+            "reported_process_used_bytes": process_used,
+        }
+    except Exception as e:
+        logger.debug(f"Unable to inspect NVML GPU process memory: {e}")
+        return None
+
 def print_vram_info_by_nvml(pos=None):
     position = f'({pos})' if pos else ''
     if is_nvidia():

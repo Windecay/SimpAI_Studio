@@ -18,7 +18,7 @@ _VIDEO_PREPROCESS_CACHE = {}
 _VIDEO_PREPROCESS_CACHE_ORDER = []
 _VIDEO_PREPROCESS_CACHE_LOCK = threading.Lock()
 _VIDEO_PREPROCESS_CACHE_MAX = 32
-_VIDEO_PREPROCESS_CACHE_VERSION = 1
+_VIDEO_PREPROCESS_CACHE_VERSION = 2
 
 
 def bool_value(value, default=False):
@@ -519,10 +519,33 @@ def _get_ffprobe_exe(ffmpeg_exe=None):
     return None
 
 
+def _probe_video_cv2(path):
+    try:
+        import cv2
+
+        capture = cv2.VideoCapture(path)
+        if not capture.isOpened():
+            return None
+        try:
+            width = int(round(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0))
+            height = int(round(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0))
+            fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+            frame_count = int(round(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+        finally:
+            capture.release()
+        if width <= 0 or height <= 0:
+            return None
+        duration = frame_count / fps if fps > 0.0 and frame_count > 0 else None
+        return {"size": (width, height), "duration": duration}
+    except Exception:
+        return None
+
+
 def _probe_video_size(path, ffmpeg_exe=None):
     ffprobe_exe = _get_ffprobe_exe(ffmpeg_exe)
     if not ffprobe_exe:
-        return None
+        fallback = _probe_video_cv2(path)
+        return fallback.get("size") if fallback else None
     cmd = [
         ffprobe_exe,
         "-v",
@@ -536,9 +559,17 @@ def _probe_video_size(path, ffmpeg_exe=None):
         os.path.abspath(path),
     ]
     try:
-        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, text=True)
+        completed = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            text=True,
+            timeout=8,
+        )
         if completed.returncode != 0:
-            return None
+            fallback = _probe_video_cv2(path)
+            return fallback.get("size") if fallback else None
         payload = json.loads(completed.stdout or "{}")
         streams = payload.get("streams") or []
         if not streams:
@@ -548,14 +579,17 @@ def _probe_video_size(path, ffmpeg_exe=None):
         if width > 0 and height > 0:
             return width, height
     except Exception:
-        return None
-    return None
+        fallback = _probe_video_cv2(path)
+        return fallback.get("size") if fallback else None
+    fallback = _probe_video_cv2(path)
+    return fallback.get("size") if fallback else None
 
 
 def _probe_video_duration(path, ffmpeg_exe=None):
     ffprobe_exe = _get_ffprobe_exe(ffmpeg_exe)
     if not ffprobe_exe:
-        return None
+        fallback = _probe_video_cv2(path)
+        return fallback.get("duration") if fallback else None
     cmd = [
         ffprobe_exe,
         "-v",
@@ -567,15 +601,25 @@ def _probe_video_duration(path, ffmpeg_exe=None):
         os.path.abspath(path),
     ]
     try:
-        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, text=True)
+        completed = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            text=True,
+            timeout=8,
+        )
         if completed.returncode != 0:
-            return None
+            fallback = _probe_video_cv2(path)
+            return fallback.get("duration") if fallback else None
         value = float(str(completed.stdout or "").strip())
         if math.isfinite(value) and value > 0:
             return value
     except Exception:
-        return None
-    return None
+        fallback = _probe_video_cv2(path)
+        return fallback.get("duration") if fallback else None
+    fallback = _probe_video_cv2(path)
+    return fallback.get("duration") if fallback else None
 
 
 def _duration_limit_with_padding(duration_limit, reserve_seconds=0.5):
@@ -627,6 +671,7 @@ def _video_preprocess_cache_key(
     duration_padding,
     clip_duration,
     should_clip_duration,
+    downscale_only,
 ):
     source_signature = _video_preprocess_source_signature(path)
     if not source_signature:
@@ -648,6 +693,7 @@ def _video_preprocess_cache_key(
         _round_optional_number(duration_padding),
         _round_optional_number(clip_duration),
         bool(should_clip_duration),
+        bool(downscale_only),
     )
 
 
@@ -701,7 +747,16 @@ def _video_preprocess_cache_put(cache_key, out_path):
             _VIDEO_PREPROCESS_CACHE.pop(old_key, None)
 
 
-def preprocess_video_file(path, target_size, mode, preserve_audio=True, is_mask=False, duration_limit=None, duration_padding=0.5):
+def preprocess_video_file(
+    path,
+    target_size,
+    mode,
+    preserve_audio=True,
+    is_mask=False,
+    duration_limit=None,
+    duration_padding=0.5,
+    downscale_only=False,
+):
     if not isinstance(path, str) or not path.strip() or not os.path.exists(path):
         return path, False
     ffmpeg_exe = _get_ffmpeg_exe()
@@ -715,6 +770,11 @@ def preprocess_video_file(path, target_size, mode, preserve_audio=True, is_mask=
     source_duration = _probe_video_duration(path, ffmpeg_exe) if clip_duration else None
     should_clip_duration = bool(clip_duration and (source_duration is None or source_duration > clip_duration + 0.01))
     should_resize = not (source_size and source_size[0] == target_w and source_size[1] == target_h)
+    if downscale_only:
+        should_resize = bool(
+            source_size
+            and int(source_size[0]) * int(source_size[1]) > int(target_w) * int(target_h)
+        )
     if not should_resize and not should_clip_duration:
         return path, False
 
@@ -731,6 +791,7 @@ def preprocess_video_file(path, target_size, mode, preserve_audio=True, is_mask=
         duration_padding,
         clip_duration,
         should_clip_duration,
+        downscale_only,
     )
     cached_out = _video_preprocess_cache_get(cache_key)
     if cached_out:
@@ -767,9 +828,9 @@ def preprocess_video_file(path, target_size, mode, preserve_audio=True, is_mask=
     ]
     if should_clip_duration:
         cmd += ["-t", f"{clip_duration:.3f}"]
+    if should_resize:
+        cmd += ["-vf", vf]
     cmd += [
-        "-vf",
-        vf,
         "-c:v",
         "libx264",
         "-preset",
@@ -786,10 +847,32 @@ def preprocess_video_file(path, target_size, mode, preserve_audio=True, is_mask=
     cmd.append(out_path)
 
     try:
-        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, text=True)
+        duration_for_timeout = clip_duration or source_duration or 30.0
+        timeout_seconds = max(120, min(1800, int(math.ceil(float(duration_for_timeout) * 12.0 + 60.0))))
+        completed = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            text=True,
+            timeout=timeout_seconds,
+        )
         if completed.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
             duration_label = f"{clip_duration:.3f}s" if should_clip_duration else "full"
-            logger.info("Resolution video preprocess: %s -> %s (%sx%s, %s, duration=%s)", path, out_path, target_w, target_h, mode, duration_label)
+            output_width, output_height = (
+                (target_w, target_h)
+                if should_resize or not source_size
+                else (source_size[0], source_size[1])
+            )
+            logger.info(
+                "Resolution video preprocess: %s -> %s (%sx%s, %s, duration=%s)",
+                path,
+                out_path,
+                output_width,
+                output_height,
+                mode,
+                duration_label,
+            )
             _video_preprocess_cache_put(cache_key, out_path)
             return out_path, True
         logger.warning("Resolution video preprocess failed: %s", (completed.stderr or "").strip())

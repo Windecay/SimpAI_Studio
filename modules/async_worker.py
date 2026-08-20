@@ -58,6 +58,20 @@ def _normalize_prompt_text(text):
     return str(text).replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _is_minimax_h3_task(async_task):
+    manifest = getattr(async_task, "simpleai_regen_manifest", None)
+    manifest_preset = manifest.get("preset_name") if isinstance(manifest, dict) else None
+    identifiers = (
+        getattr(async_task, "task_method", None),
+        getattr(async_task, "task_name", None),
+        manifest_preset,
+    )
+    return any(
+        "minimax_h3" in str(identifier or "").strip().lower().replace("-", "_")
+        for identifier in identifiers
+    )
+
+
 def _resolve_inpaint_cfg_scale(task_class, task_method, cfg_scale):
     if task_class == 'Flux' and not str(task_method).startswith('flux2_'):
         return 30
@@ -903,6 +917,29 @@ def worker():
             if cache_ram is not None:
                 params_backend.update({"cache_ram": cache_ram})
             logger.info(f'reserved_vram={reserved_vram}, wavespeed_strength={wavespeed_strength}, cache_ram={cache_ram}, cache_ram_enable={cache_ram_enable}')
+            try:
+                from enhanced import minimax_h3_reference_preprocess
+
+                params_backend = minimax_h3_reference_preprocess.prepare_h3_reference_videos(
+                    task_method=async_task.task_method,
+                    params_backend=params_backend,
+                    width=width,
+                    height=height,
+                    duration=(
+                        getattr(async_task, "scene_video_duration", None)
+                        or params_backend.get("video_duration")
+                        or 5.0
+                    ),
+                    reference_images=[
+                        getattr(async_task, "scene_canvas_image", None),
+                        getattr(async_task, "scene_input_image1", None),
+                        getattr(async_task, "scene_input_image2", None),
+                        getattr(async_task, "scene_input_image3", None),
+                        getattr(async_task, "scene_input_image4", None),
+                    ],
+                )
+            except Exception as err:
+                logger.warning("H3 reference frontend preprocess skipped: %s", err)
             default_params.update(params_backend)
             try:
                 user_cert = shared.token.get_register_cert(async_task.user_did)
@@ -1595,7 +1632,18 @@ def worker():
         progressbar(async_task, current_progress, '准备提示词 ...')
         tasks = []
         task_rng = random.Random(async_task.seed % (constants.MAX_SEED + 1))
-        prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(prompt, task_rng, user_did=async_task.user_did)
+        allow_plain_bracket_arrays = not _is_minimax_h3_task(async_task)
+        if not allow_plain_bracket_arrays:
+            logger.info(
+                '[Wildcards] Preserving plain bracket groups for MiniMax H3 prompt: task_method=%s',
+                async_task.task_method,
+            )
+        prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(
+            prompt,
+            task_rng,
+            user_did=async_task.user_did,
+            allow_plain_bracket_arrays=allow_plain_bracket_arrays,
+        )
         needs_vlm_translation = (
             not async_task.task_method.lower().endswith('_cn')
             and async_task.task_class not in ['HyDiT', 'Wan', 'Qwen', 'Z-image']

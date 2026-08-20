@@ -197,7 +197,7 @@ def estimate_llama_cpp_kv_cache_gb(
         return max(0.5, fallback_gb), False
 
 
-def llama_cpp_gpu_layer_attempts(target_layers, total_layers=None):
+def llama_cpp_gpu_layer_attempts(target_layers, total_layers=None, include_nearby=False):
     target_layers = int(target_layers)
     if target_layers == -1:
         base_layers = max(0, int(total_layers or 0))
@@ -205,6 +205,12 @@ def llama_cpp_gpu_layer_attempts(target_layers, total_layers=None):
     else:
         base_layers = max(0, target_layers)
         attempts = [base_layers]
+
+    if include_nearby and target_layers != -1:
+        for delta in range(1, min(5, base_layers) + 1):
+            candidate = base_layers - delta
+            if candidate not in attempts:
+                attempts.append(candidate)
 
     for ratio in (0.75, 0.5, 0.25):
         candidate = max(0, int(base_layers * ratio))

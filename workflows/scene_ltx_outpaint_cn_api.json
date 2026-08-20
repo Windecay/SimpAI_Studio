@@ -838,7 +838,7 @@
   "618": {
     "inputs": {
       "lora_name": "ltx\\ltx-2.3-22b-ic-lora-outpaint.safetensors",
-      "strength_model": 1,
+      "strength_model": 2,
       "model": [
         "617",
         0
@@ -866,7 +866,7 @@
       "value": "a*b/100",
       "a": [
         "619",
-        1
+        0
       ],
       "b": [
         "578",
@@ -883,7 +883,7 @@
       "value": "a*b/100",
       "a": [
         "619",
-        1
+        0
       ],
       "b": [
         "578",
@@ -900,7 +900,7 @@
       "value": "a*b/100",
       "a": [
         "619",
-        0
+        1
       ],
       "b": [
         "578",
@@ -917,7 +917,7 @@
       "value": "a*b/100",
       "a": [
         "619",
-        0
+        1
       ],
       "b": [
         "578",
@@ -963,15 +963,15 @@
   "626": {
     "inputs": {
       "width": [
-        "651",
-        0
+        "723",
+        1
       ],
       "height": [
-        "652",
-        0
+        "724",
+        1
       ],
       "upscale_method": "lanczos",
-      "keep_proportion": "total_pixels",
+      "keep_proportion": "stretch",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
       "divisible_by": 64,
@@ -1693,12 +1693,12 @@
   "721": {
     "inputs": {
       "width": [
-        "651",
-        0
+        "723",
+        1
       ],
       "height": [
-        "652",
-        0
+        "724",
+        1
       ],
       "upscale_method": "lanczos",
       "keep_proportion": "stretch",
@@ -1714,6 +1714,68 @@
     "class_type": "ImageResizeKJv2",
     "_meta": {
       "title": "Restore LTX output resolution"
+    }
+  },
+  "722": {
+    "inputs": {
+      "image": [
+        "606",
+        0
+      ]
+    },
+    "class_type": "GetImageSize+",
+    "_meta": {
+      "title": "Get padded outpaint size"
+    }
+  },
+  "723": {
+    "inputs": {
+      "expression": "max(64, round(sqrt(a*b*c/d)/64)*64)",
+      "values.a": [
+        "651",
+        0
+      ],
+      "values.b": [
+        "652",
+        0
+      ],
+      "values.c": [
+        "722",
+        0
+      ],
+      "values.d": [
+        "722",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Aligned outpaint width"
+    }
+  },
+  "724": {
+    "inputs": {
+      "expression": "max(64, round(sqrt(a*b*d/c)/64)*64)",
+      "values.a": [
+        "651",
+        0
+      ],
+      "values.b": [
+        "652",
+        0
+      ],
+      "values.c": [
+        "722",
+        0
+      ],
+      "values.d": [
+        "722",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Aligned outpaint height"
     }
   }
 }
