@@ -53,7 +53,11 @@ import ldm_patched.modules.model_management as model_management
 from ui.components.sketch_image import create_sketch_image
 from ui.components import sketch_cache as sketch_payload_cache
 from ui.generation_performance import force_generation_preview, generation_preview_interval
-from ui.generation_sync import synchronize_generation_inputs
+from ui.generation_sync import (
+    mark_model_params_ui_authoritative,
+    model_params_ui_is_authoritative,
+    synchronize_generation_inputs,
+)
 from ui.layout.floating import floating_card, floating_panel, floating_shell
 from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app, wait_for_frontend_port_release
 from ui.workspace_recovery import install_workspace_recovery
@@ -8041,7 +8045,8 @@ with shared.gradio_root:
                             default_section_label = "HighNoise" if i < lora_section_split else "LowNoise"
                             with gr.Row():
                                 lora_enabled = gr.Checkbox(label='Enable', value=enabled,
-                                                           elem_classes=['lora_enable', 'min_check'], scale=1, min_width=40, visible=False)
+                                                           elem_classes=['lora_enable', 'min_check'], scale=1, min_width=40,
+                                                           visible=False, elem_id=f"lora_enabled_bridge_{i}")
                                 lora_enableds.append(lora_enabled)
                                 lora_preview_btn = gr.Button(f"🖼️", variant="secondary",
                                                              elem_id=f"lora_preview_btn_{i}", elem_classes=["browser-trigger-proxy"])
@@ -8051,7 +8056,8 @@ with shared.gradio_root:
                                                         elem_classes='lora_model', scale=5, elem_id=f"lora_bridge_{i}")
                                 lora_weight = gr.Slider(label='Weight', minimum=modules.config.default_loras_min_weight,
                                                         maximum=modules.config.default_loras_max_weight, step=0.05, value=weight,
-                                                        elem_classes='lora_weight', scale=5, interactive=enabled, visible=False)
+                                                        elem_classes='lora_weight', scale=5, interactive=enabled, visible=False,
+                                                        elem_id=f"lora_weight_bridge_{i}")
                                 lora_ctrls += [lora_enabled, lora_model, lora_weight]
                                 lora_models.append(lora_model)
                                 lora_weights.append(lora_weight)
@@ -8099,7 +8105,7 @@ with shared.gradio_root:
                                 model_name = lora_values[offset + 1] if offset + 1 < len(lora_values) else fallback_lora[1]
                                 weight = lora_values[offset + 2] if offset + 2 < len(lora_values) else fallback_lora[2]
                                 loras.append([enabled, model_name, weight])
-                            return _model_params_state_payload(
+                            model_state = _model_params_state_payload(
                                 current_base_model or fallback.get("base_model"),
                                 current_refiner_model or fallback.get("refiner_model"),
                                 current_refiner_switch if current_refiner_switch is not None else fallback.get("refiner_switch"),
@@ -8108,6 +8114,7 @@ with shared.gradio_root:
                                 current_upscale_model or fallback.get("upscale_model"),
                                 loras,
                             )
+                            return mark_model_params_ui_authoritative(model_state)
 
                         def _models_panel_update_from_state(current_model_params_state):
                             return gr_update(value=_render_models_js_panel(current_model_params_state))
@@ -8192,6 +8199,8 @@ with shared.gradio_root:
                         )
 
                     def _sync_scene_model_params_for_generation(current_model_params_state, state_params):
+                        if model_params_ui_is_authoritative(current_model_params_state):
+                            return current_model_params_state
                         if not isinstance(state_params, dict) or not isinstance(state_params.get("scene_frontend"), dict):
                             return current_model_params_state
                         return _model_params_state_from_state_params(state_params, current_model_params_state)
@@ -8297,6 +8306,7 @@ with shared.gradio_root:
                             pick("upscale_model"),
                             loras,
                         )
+                        model_state = mark_model_params_ui_authoritative(model_state)
 
                         backend_params = dict(backend_params or {})
                         clip_value = model_state.get("clip_model")
@@ -9872,6 +9882,14 @@ with shared.gradio_root:
                 || Object.prototype.hasOwnProperty.call(value, "__main_gallery_browser_folder")
                 || Object.prototype.hasOwnProperty.call(value, "__preset")
             ));
+            try {
+                window.simpleaiPendingGenerationModelsState = typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
+                    ? window.simpleaiReadVisibleModelsJsPanelState()
+                    : null;
+            } catch (e) {
+                window.simpleaiPendingGenerationModelsState = null;
+                console.warn("[UI-TRACE] generation_models_snapshot_failed", e);
+            }
             const rootById = (id) => {
                 try {
                     return (typeof getGradioRootById === "function" ? getGradioRootById(id) : null)
@@ -9986,6 +10004,14 @@ with shared.gradio_root:
             return args;
         }"""
         preview_start_js = """async () => {
+            try {
+                window.simpleaiPendingGenerationModelsState = typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
+                    ? window.simpleaiReadVisibleModelsJsPanelState()
+                    : null;
+            } catch (e) {
+                window.simpleaiPendingGenerationModelsState = null;
+                console.warn("[UI-TRACE] preview_models_snapshot_failed", e);
+            }
             try {
                 if (typeof prepareSimpleAIGenerationStartSurface === "function") {
                     prepareSimpleAIGenerationStartSurface("preview_start");
@@ -10923,7 +10949,65 @@ with shared.gradio_root:
             for name in ("model", "prompt", "backend", "director", "random")
         )
         enhance_checkbox_input_index = quick_enhance_input_index + 2
+        def _models_submit_state_sync_js(inputs):
+            submit_indices = {
+                "active": inputs.index(models_tab_active_state),
+                "base_model": inputs.index(base_model),
+                "refiner_model": inputs.index(refiner_model),
+                "refiner_switch": inputs.index(refiner_switch),
+                "clip_model": inputs.index(clip_model),
+                "vae_name": inputs.index(vae_name),
+                "upscale_model": inputs.index(upscale_model),
+                "loras": [
+                    [
+                        inputs.index(lora_enableds[index]),
+                        inputs.index(lora_models[index]),
+                        inputs.index(lora_weights[index]),
+                    ]
+                    for index in range(len(lora_models))
+                ],
+            }
+            return """
+            try {
+                const modelSubmitIndices = %s;
+                const pendingModelState = window.simpleaiPendingGenerationModelsState;
+                const liveModelState = pendingModelState && typeof pendingModelState === "object"
+                    ? pendingModelState
+                    : (typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
+                        ? window.simpleaiReadVisibleModelsJsPanelState()
+                        : null);
+                window.simpleaiPendingGenerationModelsState = null;
+                if (liveModelState && typeof liveModelState === "object") {
+                    args[modelSubmitIndices.active] = true;
+                    for (const key of ["base_model", "refiner_model", "clip_model", "vae_name", "upscale_model"]) {
+                        if (Object.prototype.hasOwnProperty.call(liveModelState, key)) {
+                            args[modelSubmitIndices[key]] = String(liveModelState[key] ?? "");
+                        }
+                    }
+                    if (Object.prototype.hasOwnProperty.call(liveModelState, "refiner_switch")) {
+                        const refinerSwitch = Number(liveModelState.refiner_switch);
+                        if (Number.isFinite(refinerSwitch)) args[modelSubmitIndices.refiner_switch] = refinerSwitch;
+                    }
+                    if (Array.isArray(liveModelState.loras)) {
+                        modelSubmitIndices.loras.forEach((indices, index) => {
+                            const item = liveModelState.loras[index];
+                            if (!item || typeof item !== "object") return;
+                            if (Object.prototype.hasOwnProperty.call(item, "enabled")) args[indices[0]] = !!item.enabled;
+                            if (Object.prototype.hasOwnProperty.call(item, "model")) args[indices[1]] = String(item.model || "None");
+                            if (Object.prototype.hasOwnProperty.call(item, "weight")) {
+                                const weight = Number(item.weight);
+                                if (Number.isFinite(weight)) args[indices[2]] = weight;
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] generation_models_submit_state_failed", e);
+            }
+            """ % json.dumps(submit_indices, ensure_ascii=True)
+
         generation_sync_submit_state_js = """(...args) => {
+            %s
             try {
                 const readCheckbox = (id, fallback) => {
                     const root = document.getElementById(id);
@@ -10937,11 +11021,16 @@ with shared.gradio_root:
             }
             return args;
         }""" % (
+            _models_submit_state_sync_js(generation_sync_inputs),
             quick_enhance_input_index,
             quick_enhance_input_index,
             enhance_checkbox_input_index,
             enhance_checkbox_input_index,
         )
+        preview_model_submit_state_js = """(...args) => {
+            %s
+            return args;
+        }""" % _models_submit_state_sync_js(model_state_ui_inputs)
 
         scene_generation_inputs = [
             state_topbar, seed_random, image_seed, params_backend, scene_theme,
@@ -11024,7 +11113,7 @@ with shared.gradio_root:
             show_progress=False,
             js=scene_generation_sync_js,
         ))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=model_state_ui_inputs, outputs=model_params_state, show_progress=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=model_state_ui_inputs, outputs=model_params_state, show_progress=False, js=preview_model_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_scene_model_params_for_generation, inputs=[model_params_state, state_topbar], outputs=[model_params_state], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))

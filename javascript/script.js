@@ -1790,6 +1790,17 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         return payload;
     }
 
+    function collectVisibleModelsPanelPayload() {
+        for (const panel of document.querySelectorAll('[data-simpai-models-js-root]')) {
+            const rect = panel.getBoundingClientRect?.();
+            const style = window.getComputedStyle?.(panel);
+            if (!rect || rect.width <= 8 || rect.height <= 8) continue;
+            if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
+            return collectModelsPanelPayload(panel);
+        }
+        return null;
+    }
+
     const modelsPanelBridgeIds = {
         base_model: 'model_bridge_base',
         refiner_model: 'model_bridge_refiner',
@@ -1808,8 +1819,16 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         });
         if (!Array.isArray(data.loras)) return;
         data.loras.forEach((item, index) => {
-            if (!item || !Object.prototype.hasOwnProperty.call(item, 'model')) return;
-            setGradioValueIfDifferent(`lora_bridge_${index}`, item.model || 'None');
+            if (!item) return;
+            if (Object.prototype.hasOwnProperty.call(item, 'enabled')) {
+                setGradioCheckboxValue(`lora_enabled_bridge_${index}`, !!item.enabled);
+            }
+            if (Object.prototype.hasOwnProperty.call(item, 'model')) {
+                setGradioValueIfDifferent(`lora_bridge_${index}`, item.model || 'None');
+            }
+            if (Object.prototype.hasOwnProperty.call(item, 'weight')) {
+                setGradioValueIfDifferent(`lora_weight_bridge_${index}`, numericValue(item.weight, 1.0));
+            }
         });
     }
 
@@ -1835,6 +1854,19 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             const index = Number(field.dataset.simpaiLoraModel);
             if (!Number.isInteger(index)) return;
             setGradioValueIfDifferent(`lora_bridge_${index}`, String(field.value || 'None'));
+            return;
+        }
+        if (field.matches('[data-simpai-lora-enabled]')) {
+            const index = Number(field.dataset.simpaiLoraEnabled);
+            if (!Number.isInteger(index)) return;
+            setGradioCheckboxValue(`lora_enabled_bridge_${index}`, !!field.checked);
+            return;
+        }
+        if (field.matches('[data-simpai-lora-weight], [data-simpai-lora-weight-range]')) {
+            const index = Number(field.dataset.simpaiLoraWeight ?? field.dataset.simpaiLoraWeightRange);
+            if (!Number.isInteger(index)) return;
+            const source = panel.querySelector(`[data-simpai-lora-weight="${index}"]`) || field;
+            setGradioValueIfDifferent(`lora_weight_bridge_${index}`, boundedModelsPanelNumericValue(source, 1.0));
         }
     }
 
@@ -2129,6 +2161,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     window.simpleaiApplyModelsJsPanel = applyModelsPanel;
     window.simpleaiApplyPresetModelsPanelState = applyPresetModelsPanelState;
     window.simpleaiSyncModelsJsPanelBridge = syncActiveModelsPanelBridgeControls;
+    window.simpleaiReadVisibleModelsJsPanelState = collectVisibleModelsPanelPayload;
     window.simpleaiRefreshModelsJsPanelCatalog = refreshModelsPanelCatalog;
     window.simpleaiInvalidateModelsPanelCatalog = markModelsPanelCatalogDirty;
     window.simpleaiPopulateModelsJsSelect = populateLiteModelSelect;

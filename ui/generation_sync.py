@@ -4,6 +4,25 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 
+MODEL_PARAMS_UI_AUTHORITATIVE_KEY = "__models_ui_authoritative"
+
+
+def mark_model_params_ui_authoritative(model_state: Any) -> Any:
+    if not isinstance(model_state, dict) or not model_state.get("__model_params_state"):
+        return model_state
+    marked_state = dict(model_state)
+    marked_state[MODEL_PARAMS_UI_AUTHORITATIVE_KEY] = True
+    return marked_state
+
+
+def model_params_ui_is_authoritative(model_state: Any) -> bool:
+    return bool(
+        isinstance(model_state, dict)
+        and model_state.get("__model_params_state")
+        and model_state.get(MODEL_PARAMS_UI_AUTHORITATIVE_KEY)
+    )
+
+
 def _component_value(current_value: Any, update: Any) -> Any:
     if isinstance(update, dict) and update.get("__type__") == "update":
         return update.get("value", current_value)
