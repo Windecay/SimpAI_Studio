@@ -49,6 +49,8 @@
     const VLM_MODEL_LABELS = {};
     const VLM_MODEL_CATALOG = [];
     let vlmAllowCustom = true;
+    let vlmDynamicCatalogLoaded = false;
+    let vlmDynamicCatalogPromise = null;
 
     function vlmModelLabel(version) {
         return VLM_MODEL_LABELS[String(version || '')] || String(version || '');
@@ -93,28 +95,59 @@
         });
     }
 
-    async function refreshVlmModelCatalog(refresh = false) {
-        try {
-            const response = await fetch(`/vlm-model-catalog${refresh ? '?refresh=true' : ''}`, { cache: 'no-store' });
-            const data = await response.json();
-            if (!response.ok || !data?.ok || !Array.isArray(data.items)) throw new Error(data?.details || data?.error || `HTTP ${response.status}`);
-            const choices = Array.isArray(data.choices) ? data.choices.filter(Boolean) : data.items.map((item) => item?.id).filter(Boolean);
-            vlmAllowCustom = data.allow_custom === true;
-            const mergedChoices = mergeVlmModelChoices(choices);
-            if (mergedChoices.length) VLM_VERSION_CHOICES.splice(0, VLM_VERSION_CHOICES.length, ...mergedChoices);
-            Object.keys(VLM_CONTEXT_WINDOWS).forEach((key) => delete VLM_CONTEXT_WINDOWS[key]);
-            Object.assign(VLM_CONTEXT_WINDOWS, BUILTIN_VLM_CONTEXT_WINDOWS, data.context_windows || {});
-            Object.keys(VLM_MODEL_LABELS).forEach((key) => delete VLM_MODEL_LABELS[key]);
-            Object.assign(VLM_MODEL_LABELS, data.labels || {});
-            VLM_MODEL_CATALOG.splice(0, VLM_MODEL_CATALOG.length, ...data.items);
-            if (window.SimpAICanvasWorkbenchRegistry) window.SimpAICanvasWorkbenchRegistry.VLM_ALLOW_CUSTOM = vlmAllowCustom;
-            syncVlmModelSelects();
-            window.dispatchEvent(new CustomEvent('simpai:vlm-model-catalog', { detail: data }));
-            return data;
-        } catch (error) {
-            console.warn('[SimpAI VLM] Model catalog unavailable:', error);
-            return null;
-        }
+    async function refreshVlmModelCatalog(refresh = false, forceRefresh = refresh) {
+        const includeDynamic = refresh === true;
+        if (includeDynamic && !forceRefresh && vlmDynamicCatalogLoaded) return true;
+        if (includeDynamic && vlmDynamicCatalogPromise) return vlmDynamicCatalogPromise;
+
+        const query = new URLSearchParams();
+        query.set('include_dynamic', includeDynamic ? 'true' : 'false');
+        if (includeDynamic && forceRefresh) query.set('refresh', 'true');
+        const request = (async () => {
+            try {
+                const response = await fetch(`/vlm-model-catalog?${query.toString()}`, { cache: 'no-store' });
+                const data = await response.json();
+                if (!response.ok || !data?.ok || !Array.isArray(data.items)) throw new Error(data?.details || data?.error || `HTTP ${response.status}`);
+                const choices = Array.isArray(data.choices) ? data.choices.filter(Boolean) : data.items.map((item) => item?.id).filter(Boolean);
+                vlmAllowCustom = data.allow_custom === true;
+                const mergedChoices = mergeVlmModelChoices(choices);
+                if (mergedChoices.length) VLM_VERSION_CHOICES.splice(0, VLM_VERSION_CHOICES.length, ...mergedChoices);
+                Object.keys(VLM_CONTEXT_WINDOWS).forEach((key) => delete VLM_CONTEXT_WINDOWS[key]);
+                Object.assign(VLM_CONTEXT_WINDOWS, BUILTIN_VLM_CONTEXT_WINDOWS, data.context_windows || {});
+                Object.keys(VLM_MODEL_LABELS).forEach((key) => delete VLM_MODEL_LABELS[key]);
+                Object.assign(VLM_MODEL_LABELS, data.labels || {});
+                VLM_MODEL_CATALOG.splice(0, VLM_MODEL_CATALOG.length, ...data.items);
+                if (window.SimpAICanvasWorkbenchRegistry) window.SimpAICanvasWorkbenchRegistry.VLM_ALLOW_CUSTOM = vlmAllowCustom;
+                syncVlmModelSelects();
+                window.dispatchEvent(new CustomEvent('simpai:vlm-model-catalog', { detail: data }));
+                if (includeDynamic) vlmDynamicCatalogLoaded = true;
+                return data;
+            } catch (error) {
+                console.warn('[SimpAI VLM] Model catalog unavailable:', error);
+                return null;
+            }
+        })();
+        if (!includeDynamic) return request;
+        vlmDynamicCatalogPromise = request.finally(() => {
+            vlmDynamicCatalogPromise = null;
+        });
+        return vlmDynamicCatalogPromise;
+    }
+
+    function ensureVlmModelCatalogLoaded() {
+        return refreshVlmModelCatalog(true, false);
+    }
+
+    function requestVlmModelCatalogForPicker(event) {
+        const target = event?.target;
+        if (!target?.closest?.([
+            'select[data-vlm-param="version"]',
+            'select[data-canvas-agent-setting="rewriteModel"]',
+            '#describe_vlm_model_dropdown',
+            '#describe_vlm_model',
+            '#vlm_version'
+        ].join(', '))) return;
+        ensureVlmModelCatalogLoaded().catch(() => {});
     }
     const VLM_IMAGE_SLOTS = [
         { key: 'image_1', label: t('Image 1', '图像 1') },
@@ -284,6 +317,7 @@
         VLM_ALLOW_CUSTOM: vlmAllowCustom,
         vlmModelLabel,
         refreshVlmModelCatalog,
+        ensureVlmModelCatalogLoaded,
         VLM_IMAGE_SLOTS,
         DEFAULT_NODE_SIZES,
         /* Classic constants */
@@ -309,5 +343,7 @@
         getNodeType,
         listNodeTypes: () => Array.from(nodeTypes.values())
     };
+    document.addEventListener('pointerdown', requestVlmModelCatalogForPicker, true);
+    document.addEventListener('focusin', requestVlmModelCatalogForPicker, true);
     setTimeout(() => refreshVlmModelCatalog(false), 0);
 })();

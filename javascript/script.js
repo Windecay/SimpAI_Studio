@@ -8213,6 +8213,7 @@ function applyIdentityStage(reason = 'manual') {
         setImportantStyle(el, 'display', 'none');
     };
 
+    const isActivation = stage === 'activation';
     const isInput = stage === 'input' || stage === 'closed' || stage === 'uploading';
     const isVcode = stage === 'vcode';
     const isPhraseSet = stage === 'phrase_set' || stage === 'phrase';
@@ -8221,8 +8222,13 @@ function applyIdentityStage(reason = 'manual') {
     const isUnbind = stage === 'unbind' || stage === 'summary';
     const showPhraseRow = isPhraseSet || isPhraseConfirm || isConfirm || isUnbind;
 
-    if (isInput) show('identity_input_row', 'grid'); else hide('identity_input_row');
-    if (isInput) hide('identity_id_display_row'); else show('identity_id_display_row', 'grid');
+    if (isActivation) {
+        hide('identity_input_row');
+        hide('identity_id_display_row');
+    } else {
+        if (isInput) show('identity_input_row', 'grid'); else hide('identity_input_row');
+        if (isInput) hide('identity_id_display_row'); else show('identity_id_display_row', 'grid');
+    }
 
     if (isVcode) {
         show('identity_vcode_row', 'grid');
@@ -8262,7 +8268,7 @@ function startIdentityStagePoll(reason = 'manual') {
         const shouldStop = !didApply
             ? elapsed > 3000
             : stage === 'closed'
-                || (elapsed > 10000 && (stage === 'input' || stage === 'summary' || stage === 'unbind'));
+                || (elapsed > 10000 && (stage === 'activation' || stage === 'input' || stage === 'summary' || stage === 'unbind'));
         if (shouldStop) {
             window.clearInterval(identityStagePollTimer);
             identityStagePollTimer = null;
@@ -8290,6 +8296,7 @@ function initIdentityStageSync() {
 function initIdentityStageActionSync() {
     const ids = [
         'identity_center',
+        'identity_activation_apply_button',
         'identity_change_button',
         'identity_qr',
         'identity_bind_button',

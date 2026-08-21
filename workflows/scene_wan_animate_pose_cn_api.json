@@ -318,7 +318,7 @@
       ],
       "crf": 19,
       "images": [
-        "412",
+        "919",
         0
       ],
       "audio": [
@@ -496,10 +496,10 @@
       "trim_to_audio": false,
       "pingpong": false,
       "save_output": true,
-      "images": [
-        "777",
-        0
-      ],
+        "images": [
+          "921",
+          0
+        ],
       "audio": [
         "400",
         2
@@ -858,6 +858,7 @@
       "enable_character_low_frequency_residual": false,
       "enable_manual_segment_color": false,
       "enable_overlap_color_calibration": false,
+      "preserve_input_frame_count": true,
       "calibration_debug": false,
       "clip_vision_output": [
         "913",
@@ -1055,6 +1056,93 @@
     "class_type": "easy int",
     "_meta": {
       "title": "int"
+    }
+  },
+  "918": {
+    "inputs": {
+      "value": "max(1, round(a*b/c))",
+      "a": [
+        "400",
+        1
+      ],
+      "b": [
+        "715",
+        0
+      ],
+      "c": [
+        "748",
+        12
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "919": {
+    "inputs": {
+      "images": [
+        "412",
+        0
+      ],
+      "target_frame_count": [
+        "918",
+        0
+      ],
+      "source_fps": [
+        "748",
+        12
+      ],
+      "target_fps": [
+        "715",
+        1
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
+    }
+  },
+  "920": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "751",
+        7
+      ],
+      "b": [
+        "751",
+        5
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Comparison Video Frame Count"
+    }
+  },
+  "921": {
+    "inputs": {
+      "images": [
+        "777",
+        0
+      ],
+      "target_frame_count": [
+        "920",
+        0
+      ],
+      "source_fps": [
+        "751",
+        5
+      ],
+      "target_fps": [
+        "751",
+        5
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Comparison Video Frame Align"
     }
   }
 }

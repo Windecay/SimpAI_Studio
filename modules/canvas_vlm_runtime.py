@@ -160,6 +160,8 @@ def _canvas_vlm_resolve_version(value):
         return "Custom"
     if text in VLM.VERSIONS:
         return text
+    if text.startswith(("llamacpp:", "comfy:")):
+        return text
     item = VLM.get_version_catalog_item(text) if text else None
     if item:
         return str(item.get("id") or text)
@@ -303,7 +305,7 @@ def canvas_vlm_model_status(payload):
                 else f"Custom API settings incomplete: {', '.join(missing)}."
             ),
         }
-    config_data = VLM.get_version_config(version_name)
+    config_data = VLM.get_version_config(version_name, scan_catalog=False)
     if not config_data:
         return {
             "ok": False,
@@ -1000,7 +1002,7 @@ def canvas_vlm_run(payload):
             "details": "The selected VLM API profile no longer exists.",
         }
     is_custom_api = version_name == "Custom" or bool(profile)
-    version_config = VLM.get_version_config(version_name) or {}
+    version_config = VLM.get_version_config(version_name, scan_catalog=False) or {}
     model_status = canvas_vlm_model_status(payload)
     _canvas_vlm_add_timing(params, "model_status_gate", time.monotonic() - stage_started)
     runtime_model_name = str(

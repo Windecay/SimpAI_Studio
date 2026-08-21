@@ -59,6 +59,10 @@ _RUNTIME_RANGE_COMPONENT_IDS = {
     "scene_steps",
 }
 
+_BOOTSTRAP_CONTEXT_COMPONENT_IDS = {
+    "scene_theme",
+}
+
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _WINDOWS_FILE_URL_PATH = re.compile(r"^/[A-Za-z]:[\\/]")
 
@@ -359,6 +363,13 @@ def _restore_media_value(spec: WorkspaceComponentSpec, value: Any) -> Any:
 def _restore_component_value(spec: WorkspaceComponentSpec, entry: Any) -> Any:
     if not isinstance(entry, dict) or entry.get("signature") != spec.signature or "value" not in entry:
         return gr.skip()
+
+    elem_id = _component_text(getattr(spec.component, "elem_id", None))
+    if elem_id in _BOOTSTRAP_CONTEXT_COMPONENT_IDS:
+        # prepareInitialSystemParams applies these before preset callbacks run.
+        # Updating them again here would reset the dependent parameter panel.
+        return gr.skip()
+
     value = entry.get("value")
 
     if spec.kind == "textbox":

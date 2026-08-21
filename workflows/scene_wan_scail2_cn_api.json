@@ -23,7 +23,7 @@
       ],
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "format": "Wan"
+      "format": "AnimateDiff"
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
@@ -130,8 +130,8 @@
   "672": {
     "inputs": {
       "num_frames": [
-        "400",
-        1
+        "918",
+        0
       ],
       "images": [
         "906",
@@ -162,7 +162,7 @@
       ],
       "crf": 19,
       "images": [
-        "488",
+        "915",
         0
       ],
       "audio": [
@@ -717,8 +717,8 @@
     "inputs": {
       "segment_count": 1,
       "segment_1_frames": [
-        "400",
-        1
+        "918",
+        0
       ],
       "segment_1_reference": 1,
       "segment_1_prompt": [
@@ -791,8 +791,8 @@
         0
       ],
       "max_frames": [
-        "400",
-        1
+        "918",
+        0
       ],
       "max_chunk_frames": [
         "907",
@@ -834,7 +834,7 @@
         0
       ],
       "pose_video": [
-        "670",
+        "919",
         0
       ],
       "sam_model": [
@@ -858,8 +858,8 @@
   "907": {
     "inputs": {
       "total_frames": [
-        "400",
-        1
+        "918",
+        0
       ],
       "target_frames": [
         "724",
@@ -947,6 +947,102 @@
     "class_type": "CLIPLoaderGGUF",
     "_meta": {
       "title": "clip_model"
+    }
+  },
+  "914": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "916",
+        1
+      ],
+      "b": [
+        "917",
+        1
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "915": {
+    "inputs": {
+      "images": [
+        "488",
+        0
+      ],
+      "target_frame_count": [
+        "914",
+        0
+      ],
+      "source_fps": [
+        "724",
+        12
+      ],
+      "target_fps": [
+        "688",
+        1
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
+    }
+  },
+  "916": {
+    "inputs": {
+      "video_info": [
+        "400",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoLoaded",
+    "_meta": {
+      "title": "Video Info Loaded"
+    }
+  },
+  "917": {
+    "inputs": {
+      "value": "a/b",
+      "a": [
+        "688",
+        0
+      ],
+      "b": [
+        "724",
+        12
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Output FPS Ratio"
+    }
+  },
+  "918": {
+    "inputs": {
+      "value": "((a+2)//4)*4+1",
+      "a": [
+        "914",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "SCAIL2 Sampling Frame Count"
+    }
+  },
+  "919": {
+    "inputs": {
+      "images": [
+        "670",
+        0
+      ],
+      "time_scale_factor": 4
+    },
+    "class_type": "SimpAILTXVFramePad",
+    "_meta": {
+      "title": "SCAIL2 Input Frame Grid Pad"
     }
   }
 }

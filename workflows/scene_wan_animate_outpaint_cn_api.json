@@ -45,6 +45,7 @@
       "enable_character_low_frequency_residual": false,
       "enable_manual_segment_color": false,
       "enable_overlap_color_calibration": false,
+      "preserve_input_frame_count": true,
       "model": [
         "830",
         0
@@ -127,7 +128,7 @@
       ],
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "format": "Wan"
+      "format": "AnimateDiff"
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
@@ -808,7 +809,7 @@
       ],
       "crf": 19,
       "images": [
-        "412",
+        "915",
         0
       ],
       "audio": [
@@ -1309,6 +1310,51 @@
     "class_type": "CLIPVisionEncode",
     "_meta": {
       "title": "Encode Animate Reference"
+    }
+  },
+  "914": {
+    "inputs": {
+      "value": "max(1, round(a*b/c))",
+      "a": [
+        "400",
+        1
+      ],
+      "b": [
+        "715",
+        0
+      ],
+      "c": [
+        "748",
+        12
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "915": {
+    "inputs": {
+      "images": [
+        "412",
+        0
+      ],
+      "target_frame_count": [
+        "914",
+        0
+      ],
+      "source_fps": [
+        "748",
+        12
+      ],
+      "target_fps": [
+        "715",
+        1
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }

@@ -64,14 +64,17 @@ def _latent_shapes(model):
 
 
 def _model_sampling(model):
-    """Find the model_sampling instance exposed to a KSAMPLER callback."""
+    """The model's model_sampling instance, reached from the object a KSAMPLER
+    hands the sampler function: KSamplerX0Inpaint -> CFGGuider -> predictor, where
+    the predictor carries .model_sampling (comfy/samplers.py accesses exactly
+    model_wrap.inner_model.model_sampling)."""
     for chain in (("inner_model", "inner_model", "model_sampling"),
                   ("inner_model", "model_sampling"),
                   ("model_sampling",)):
         o = model
         try:
-            for attr in chain:
-                o = getattr(o, attr)
+            for a in chain:
+                o = getattr(o, a)
         except AttributeError:
             continue
         if o is not None:
@@ -80,7 +83,16 @@ def _model_sampling(model):
 
 
 def _native_av_schedule(model):
-    """Whether ComfyUI already applies the audio flow schedule natively."""
+    """True when this ComfyUI resolves the MiniMax-H3 audio/video dual flow
+    schedule natively via ModelSamplingAV.
+
+    Recent ComfyUI carries the audio latent scaled onto the video schedule
+    (ModelSamplingAV), so the packed latent is an ordinary single-schedule flow
+    latent and a plain flow step is correct. Re-applying the audio shift here, as
+    older ComfyUI required, would double-shift and corrupt the audio (node issues
+    #6 / #18 / #19, HF discussions #17 / #19). Older ComfyUI has no ModelSamplingAV
+    and still needs the manual dual-schedule step, so this sampler adapts to
+    whichever ComfyUI it runs under."""
     ms = _model_sampling(model)
     if ms is None:
         return False
@@ -98,7 +110,11 @@ def _turbo_sampler(model, x, sigmas, extra_args=None, callback=None, disable=Non
     _rms = lambda t: float(t.float().pow(2).mean().sqrt())
 
     if _native_av_schedule(model):
-        # ModelSamplingAV already carries the audio latent on the video schedule.
+        # Recent ComfyUI: ModelSamplingAV already carries the audio stream scaled
+        # onto the video schedule, so the pack is an ordinary single-schedule flow
+        # latent. Step the whole pack with a plain flow (Euler) update — the model
+        # and ModelSamplingAV handle the audio clock. Manually re-shifting the audio
+        # here (the legacy path below) would double-apply and corrupt the audio.
         print(f"[H3TURBO sampler] native ModelSamplingAV -> single-schedule Euler  "
               f"sigmas={[round(float(s),4) for s in sigmas]}  x.shape={tuple(x.shape)} "
               f"dtype={x.dtype}", flush=True)
@@ -115,7 +131,10 @@ def _turbo_sampler(model, x, sigmas, extra_args=None, callback=None, disable=Non
                           "sigma": sigmas[i], "sigma_hat": sigmas[i]})
         return x
 
-    # Older ComfyUI needs separate video and audio flow clocks.
+    # Legacy ComfyUI without ModelSamplingAV: video and audio ride separate flow
+    # schedules (video shift 12, audio shift 3); step each on its own clock. A stock
+    # single-schedule sampler over-steps the audio at 4 steps and breaks it — that
+    # is the reason this node's sampler exists on older ComfyUI.
     shapes = _latent_shapes(model)
     if not shapes or len(shapes) < 2:
         raise RuntimeError(
@@ -164,16 +183,22 @@ def _egrid():
     return _EGRID
 
 
-def _unique_t(timestep, shift_v, shift_a, has_vis_cond, has_aud_cond=False,
-              visual_cond_t=0.999, audio_cond_t=1.0):
-    sv = float((timestep.flatten()[0] / 1000.0).clamp(min=1e-6))
-    t_v = 1.0 - sv
-    t_a = 1.0 - _time_shift_sigma(sv, shift_v, shift_a)
+def _unique_t(timestep, shift_v, shift_a, payload):
+    """Mirror of the model's unique-timestep row computation (model.py forward):
+    the injected adaln delta carries one row per unique t, so the set built here
+    must dedup and sort to exactly the rows the model builds — same float32
+    tensor arithmetic (a float64 recompute can disagree on t_v == t_a collapse),
+    same conditioning rows: visual cond (keyframes / image refs) pins near 1,
+    and an audio ref adds its own max(t_a, aug) row."""
+    sigma_v = (timestep.flatten()[0] / 1000.0).float().clamp(min=1e-6)
+    t_v = float(1.0 - sigma_v)
+    t_a = float(1.0 - _time_shift_sigma(sigma_v, shift_v, shift_a))
     s = {t_v, t_a}
-    if has_vis_cond:
-        s.add(max(t_v, visual_cond_t))
-    if has_aud_cond:
-        s.add(max(t_a, audio_cond_t))
+    refs = payload.get("refs") or ()
+    if payload.get("keyframes") or any(r.get("kind") == "image" for r in refs):
+        s.add(max(t_v, float(payload.get("visual_cond_noise_aug", 0.999))))
+    if any(r.get("kind") == "audio" and r.get("ref_audio_t", 0) > 0 for r in refs):
+        s.add(max(t_a, float(payload.get("audio_cond_noise_aug", 1.0))))
     return sorted(s)
 
 
@@ -188,7 +213,7 @@ def _interp_egrid(unique_t, E, device, dtype):
     return torch.stack(rows).to(dtype)                               # [M, 2688]
 
 
-def _make_adaln_forward(base, a, b, shared):
+def _make_adaln_forward(base, a, b, shared, table=None, egrid=None):
     """Curve-mode adaln injection as a *forward-attribute* patch: returns a
     replacement AdalnProj.forward that adds B @ A @ silu(t_emb) to the projection
     before the reference view/chunk. Installed via add_object_patch on the
@@ -211,8 +236,19 @@ def _make_adaln_forward(base, a, b, shared):
 
     def forward(t_emb):
         x = base.linear(F.silu(t_emb) if base.apply_silu else t_emb)
-        st = shared.get("silu_temb")
-        if st is not None:
+
+        st = None
+        if table is not None and egrid is not None and not base.apply_silu:
+            try:
+                tb = table.to(t_emb.device, torch.float32)
+                idx = torch.cdist(t_emb.detach().float(), tb).argmin(dim=1)
+                st = egrid.to(t_emb.device)[idx]          # [M, 2688], M from the model
+            except Exception:
+                st = None
+        if st is None:
+            st = shared.get("silu_temb")                  # legacy _unique_t path
+
+        if st is not None and st.shape[0] == x.shape[0]:
             av = a.to(x.device, x.dtype)
             bv = b.to(x.device, x.dtype)
             sv = st.to(x.device, x.dtype)
@@ -312,18 +348,30 @@ def _apply_merge_lora(new_model, lora, modules, strength):
 
 
 def _int8_fused_fc2(dm, modules):
-    """Find H3 fc2 modules whose int8 fused path bypasses module.forward."""
+    """MLP fc2 modules whose base weight rides ComfyUI's fused int8 matmul.
+
+    comfy.ops.linear_input_act (minimax MLP.forward) folds the swiglu activation
+    into an INT8 activation quantizer and calls the fused int8 kernel on
+    linear.weight DIRECTLY — it never calls the module's forward, so a
+    BypassForwardHook installed on fc2.forward never fires and that fc2's LoRA is
+    silently dropped (measured: on int8_convrot the 50 DiT-block fc2 hooks fire 0
+    times). Those fc2 must instead go through the merge/weight-function path, where
+    ComfyUI dequantizes the int8 weight and applies the LoRA during the weight cast
+    (delta preserved in fp32; ~one fc2 weight dequantized transiently per call, no
+    resident cost). fc2 on bf16 / fp8 bases is left on bypass — there the fused int8
+    path isn't taken (the eager `linear(swiglu(x))` fallback runs) so the hook fires
+    normally."""
     fused = []
-    for module in modules:
-        if not module.endswith(".mlp.fc2"):
+    for m in modules:
+        if not m.endswith(".mlp.fc2"):
             continue
         try:
-            weight = comfy.utils.get_attr(dm, module + ".weight")
+            w = comfy.utils.get_attr(dm, m + ".weight")
         except Exception:
             continue
-        if (getattr(weight, "_layout_cls", None) == "TensorWiseINT8Layout"
-                and not getattr(getattr(weight, "_params", None), "transposed", False)):
-            fused.append(module)
+        if (getattr(w, "_layout_cls", None) == "TensorWiseINT8Layout"
+                and not getattr(getattr(w, "_params", None), "transposed", False)):
+            fused.append(m)
     return fused
 
 
@@ -340,31 +388,19 @@ def _inject_adaln_egrid(new_model, dm, lora, adaln, strength):
     shift_v = float(getattr(dm, "sigma_shift_video", SHIFT_V))
     shift_a = float(getattr(dm, "sigma_shift_audio", SHIFT_A))
 
+    tt = None
+    for _n, _t in list(dm.named_buffers()) + list(dm.named_parameters()):
+        if _n.endswith("adaln_t_table"):
+            tt = _t
+            break
+    if tt is not None and tt.shape[0] != E.shape[0]:
+        tt = None
+
     def wrap(executor, *args, **kwargs):
         ts = args[1] if len(args) > 1 else kwargs.get("timestep")
         ctx = args[2] if len(args) > 2 else kwargs.get("context")
         payload = kwargs.get("minimax_payload") or {}
-        layout = payload.get("layout")
-        segments = getattr(layout, "segments", None)
-        if segments is not None:
-            # Mirror MiniMaxH3Model._forward so the curve rows match t_emb exactly.
-            has_vc = any(k in ("cond", "ref_img") for _, _, k in segments)
-            has_ac = any(k == "ref_audio" for _, _, k in segments)
-        else:
-            refs = payload.get("refs") or []
-            has_vc = bool(payload.get("keyframes")) or any(
-                isinstance(r, dict) and r.get("kind") in ("image", "video", "video_audio")
-                for r in refs
-            )
-            has_ac = bool(payload.get("cond_audio_latents")) or any(
-                isinstance(r, dict)
-                and r.get("kind") in ("audio", "video_audio")
-                and r.get("ref_audio_t", 0) > 0
-                for r in refs
-            )
-        vis_aug = float(payload.get("visual_cond_noise_aug", 0.999))
-        aud_aug = float(payload.get("audio_cond_noise_aug", 1.0))
-        us = _unique_t(ts, shift_v, shift_a, has_vc, has_ac, vis_aug, aud_aug)
+        us = _unique_t(ts, shift_v, shift_a, payload)
         shared["silu_temb"] = _interp_egrid(us, E, ctx.device, ctx.dtype)
         return executor(*args, **kwargs)
 
@@ -376,7 +412,7 @@ def _inject_adaln_egrid(new_model, dm, lora, adaln, strength):
         key = "diffusion_model." + name.rsplit(".linear", 1)[0]
         new_model.add_object_patch(
             key + ".forward",
-            _make_adaln_forward(new_model.get_model_object(key), a, b, shared))
+            _make_adaln_forward(new_model.get_model_object(key), a, b, shared, tt, E))
 
 
 def _add_dbg_wrapper(new_model, dm, tag, mode):
@@ -475,7 +511,8 @@ class MiniMaxH3TurboLoRA:
         if low_vram:
             n = _apply_merge_lora(new_model, lora, backbone, strength)
         else:
-            # The fused int8 fc2 path reads weight directly and skips bypass hooks.
+            # int8-fused fc2 is invisible to the bypass hook — apply those via merge,
+            # the rest via bypass (see _int8_fused_fc2).
             fc2_fused = set(_int8_fused_fc2(dm, backbone))
             bypass_mods = [m for m in backbone if m not in fc2_fused]
             n = _apply_bypass_lora(new_model, lora, bypass_mods, strength)

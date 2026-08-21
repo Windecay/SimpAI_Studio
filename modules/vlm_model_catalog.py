@@ -10,7 +10,32 @@ import time
 CATALOG_SCHEMA = "simpai.vlm-model-catalog.v1"
 GGUF_RUNTIME_CONTEXT_MAX = 16384
 CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES = frozenset({"qwen3vl_4b", "qwen3vl_8b"})
+GGUF_SUPPORTED_VERSIONS = frozenset({2, 3})
+GGUF_METADATA_KEYS = frozenset({
+    "general.architecture",
+    "general.name",
+    "general.basename",
+})
+GGUF_SCALAR_FORMATS = {
+    0: ("B", 1),   # UINT8
+    1: ("b", 1),   # INT8
+    2: ("H", 2),   # UINT16
+    3: ("h", 2),   # INT16
+    4: ("I", 4),   # UINT32
+    5: ("i", 4),   # INT32
+    6: ("f", 4),   # FLOAT32
+    7: ("?", 1),   # BOOL
+    10: ("Q", 8),  # UINT64
+    11: ("q", 8),  # INT64
+    12: ("d", 8),  # FLOAT64
+}
+GGUF_STRING_TYPE = 8
+GGUF_ARRAY_TYPE = 9
+GGUF_MAX_KEY_BYTES = 1024 * 1024
+GGUF_MAX_CAPTURED_STRING_BYTES = 8 * 1024 * 1024
+GGUF_MAX_METADATA_ENTRIES = 1_000_000
 _CACHE_LOCK = threading.RLock()
+_BUILD_LOCK = threading.Lock()
 _CACHE = {"key": None, "expires_at": 0.0, "payload": None}
 _FILE_CACHE = {"gguf": {}, "safetensors": {}}
 
@@ -116,23 +141,127 @@ def gguf_int_values(field):
     return values
 
 
+def _gguf_read_exact(handle, size):
+    size = int(size)
+    if size < 0:
+        raise ValueError("negative GGUF read size")
+    data = handle.read(size)
+    if len(data) != size:
+        raise EOFError("truncated GGUF header")
+    return data
+
+
+def _gguf_read_uint(handle, endian, fmt):
+    size = struct.calcsize(fmt)
+    return struct.unpack(f"{endian}{fmt}", _gguf_read_exact(handle, size))[0]
+
+
+def _gguf_skip_bytes(handle, size, file_size):
+    size = int(size)
+    if size < 0 or handle.tell() + size > file_size:
+        raise ValueError("invalid GGUF metadata length")
+    handle.seek(size, os.SEEK_CUR)
+
+
+def _gguf_read_string(handle, endian, file_size, capture=False, max_bytes=GGUF_MAX_CAPTURED_STRING_BYTES):
+    length = int(_gguf_read_uint(handle, endian, "Q"))
+    if length > file_size - handle.tell():
+        raise ValueError("invalid GGUF string length")
+    if not capture or length > int(max_bytes):
+        _gguf_skip_bytes(handle, length, file_size)
+        return ""
+    return _gguf_read_exact(handle, length).decode("utf-8", errors="replace")
+
+
+def _gguf_skip_value(handle, endian, file_size, value_type, depth=0):
+    if depth > 8:
+        raise ValueError("GGUF metadata nesting is too deep")
+    scalar = GGUF_SCALAR_FORMATS.get(int(value_type))
+    if scalar:
+        _gguf_skip_bytes(handle, scalar[1], file_size)
+        return
+    if int(value_type) == GGUF_STRING_TYPE:
+        _gguf_read_string(handle, endian, file_size, capture=False)
+        return
+    if int(value_type) != GGUF_ARRAY_TYPE:
+        raise ValueError(f"unknown GGUF metadata type: {value_type}")
+
+    element_type = int(_gguf_read_uint(handle, endian, "I"))
+    count = int(_gguf_read_uint(handle, endian, "Q"))
+    element_scalar = GGUF_SCALAR_FORMATS.get(element_type)
+    if element_scalar:
+        _gguf_skip_bytes(handle, element_scalar[1] * count, file_size)
+        return
+    for _ in range(count):
+        _gguf_skip_value(handle, endian, file_size, element_type, depth + 1)
+
+
+def _gguf_read_value(handle, endian, file_size, value_type):
+    scalar = GGUF_SCALAR_FORMATS.get(int(value_type))
+    if scalar:
+        return _gguf_read_uint(handle, endian, scalar[0]) if scalar[0] != "f" and scalar[0] != "d" else struct.unpack(
+            f"{endian}{scalar[0]}", _gguf_read_exact(handle, scalar[1])
+        )[0]
+    if int(value_type) == GGUF_STRING_TYPE:
+        return _gguf_read_string(handle, endian, file_size, capture=True)
+    _gguf_skip_value(handle, endian, file_size, value_type)
+    return None
+
+
+def _gguf_metadata_key_needed(key):
+    lowered = str(key or "").lower()
+    return lowered in GGUF_METADATA_KEYS or lowered.endswith((".context_length", ".block_count"))
+
+
+def _gguf_detection_metadata_ready(metadata):
+    keys = {str(key).lower() for key in (metadata or {})}
+    has_architecture = "general.architecture" in keys
+    has_identity = bool(keys & {"general.name", "general.basename"})
+    has_context = any(key.endswith(".context_length") for key in keys)
+    return has_architecture and has_identity and has_context
+
+
 def read_gguf_metadata(path):
+    """Read only GGUF header metadata; do not build tensor indexes or map weights."""
     result = {}
     try:
-        from gguf import GGUFReader
+        with open(path, "rb") as handle:
+            file_size = os.fstat(handle.fileno()).st_size
+            if _gguf_read_exact(handle, 4) != b"GGUF":
+                return {}
+            version_bytes = _gguf_read_exact(handle, 4)
+            version = struct.unpack("<I", version_bytes)[0]
+            endian = "<"
+            if version not in GGUF_SUPPORTED_VERSIONS:
+                version = struct.unpack(">I", version_bytes)[0]
+                endian = ">"
+            if version not in GGUF_SUPPORTED_VERSIONS:
+                return {}
 
-        reader = GGUFReader(path)
-        for key, field in reader.fields.items():
-            lowered = str(key).lower()
-            if lowered in {
-                "general.architecture",
-                "general.name",
-                "general.basename",
-                "tokenizer.chat_template",
-            } or lowered.endswith((".context_length", ".block_count")):
-                result[str(key)] = _gguf_value(field)
-        del reader
-    except Exception:
+            _gguf_read_uint(handle, endian, "Q")  # tensor_count; tensor info is intentionally not read
+            kv_count = int(_gguf_read_uint(handle, endian, "Q"))
+            if kv_count < 0 or kv_count > GGUF_MAX_METADATA_ENTRIES:
+                return {}
+            for _ in range(kv_count):
+                key = _gguf_read_string(
+                    handle,
+                    endian,
+                    file_size,
+                    capture=True,
+                    max_bytes=GGUF_MAX_KEY_BYTES,
+                )
+                value_type = int(_gguf_read_uint(handle, endian, "I"))
+                needed = _gguf_metadata_key_needed(key)
+                value = _gguf_read_value(handle, endian, file_size, value_type) if needed else None
+                if value is None and not needed:
+                    if _gguf_detection_metadata_ready(result) and str(key).lower().startswith("tokenizer."):
+                        break
+                    _gguf_skip_value(handle, endian, file_size, value_type)
+                elif value is not None:
+                    result[key] = value
+                if _gguf_detection_metadata_ready(result):
+                    break
+    except (OSError, EOFError, ValueError, struct.error, UnicodeError):
         return {}
     return result
 
@@ -460,10 +589,16 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 or os.path.normcase(absolute_path) in claimed_paths
             ):
                 continue
-            metadata = _cached_gguf_metadata(absolute_path)
-            detected = infer_gguf_handler(metadata, os.path.basename(absolute_path))
+            filename = os.path.basename(absolute_path)
+            metadata = {}
+            detected = infer_gguf_handler(metadata, filename)
+            if not detected:
+                metadata = _cached_gguf_metadata(absolute_path)
+                detected = infer_gguf_handler(metadata, filename)
             if not detected:
                 continue
+            if not metadata:
+                metadata = _cached_gguf_metadata(absolute_path)
             projectors = [
                 absolute
                 for _, _, absolute in entries
@@ -576,6 +711,7 @@ def build_model_catalog(
     llm_roots,
     text_encoder_roots,
     refresh=False,
+    include_dynamic=True,
 ):
     llm_roots = _paths(llm_roots)
     text_encoder_roots = _paths(text_encoder_roots)
@@ -586,78 +722,86 @@ def build_model_catalog(
         tuple(os.path.normcase(path) for path in text_encoder_roots),
         str(default_version),
         str(custom_version),
+        bool(include_dynamic),
     )
     now = time.monotonic()
     with _CACHE_LOCK:
         if not refresh and _CACHE["key"] == cache_key and now < _CACHE["expires_at"] and _CACHE["payload"]:
             return copy.deepcopy(_CACHE["payload"])
 
-    items = [
-        _curated_item(version, config, llm_roots, text_encoder_roots)
-        for version, config in curated_configs.items()
-    ]
-    claimed_paths = {
-        path
-        for item in items
-        for path in item.get("resolved_files") or []
-    }
-    items.extend(_scan_gguf_items(llm_roots, claimed_paths))
-    claimed_paths.update(
-        path
-        for item in items
-        for path in item.get("resolved_files") or []
-    )
-    items.extend(_scan_text_encoder_items(text_encoder_roots, claimed_paths))
-    deduplicated = []
-    seen_ids = set()
-    for item in items:
-        item_id = str(item.get("id") or "")
-        if not item_id or item_id in seen_ids:
-            continue
-        seen_ids.add(item_id)
-        deduplicated.append(item)
-    items = deduplicated
-    items.append({
-        "id": custom_version,
-        "label": custom_version,
-        "display_label": _display_label("API", custom_version),
-        "group": "API",
-        "backend": "custom_api",
-        "source_catalog": "custom",
-        "architecture": "",
-        "capabilities": ["text", "image"],
-        "context_window": 32768,
-        "installed": True,
-        "downloadable": False,
-        "recommended": False,
-        "expected_files": [],
-        "runtime_config": {},
-        "aliases": [],
-        "resolved_files": [],
-    })
-    static_count = len(curated_configs)
-    head = items[:static_count]
-    dynamic = sorted(items[static_count:-1], key=lambda item: (item["group"], item["label"].lower(), item["id"]))
-    items = head + dynamic + [items[-1]]
-    public_items = []
-    for item in items:
-        public_item = copy.deepcopy(item)
-        public_item.pop("resolved_files", None)
-        public_items.append(public_item)
-    payload = {
-        "ok": True,
-        "schema": CATALOG_SCHEMA,
-        "default": default_version,
-        "custom": custom_version,
-        "items": public_items,
-        "choices": [item["id"] for item in public_items],
-        "labels": {item["id"]: item["display_label"] for item in public_items},
-        "context_windows": {item["id"]: int(item["context_window"]) for item in public_items},
-        "generated_at": time.time(),
-    }
-    with _CACHE_LOCK:
-        _CACHE.update({"key": cache_key, "expires_at": now + 5.0, "payload": copy.deepcopy(payload)})
-    return payload
+    with _BUILD_LOCK:
+        with _CACHE_LOCK:
+            now = time.monotonic()
+            if not refresh and _CACHE["key"] == cache_key and now < _CACHE["expires_at"] and _CACHE["payload"]:
+                return copy.deepcopy(_CACHE["payload"])
+
+        items = [
+            _curated_item(version, config, llm_roots, text_encoder_roots)
+            for version, config in curated_configs.items()
+        ]
+        if include_dynamic:
+            claimed_paths = {
+                path
+                for item in items
+                for path in item.get("resolved_files") or []
+            }
+            items.extend(_scan_gguf_items(llm_roots, claimed_paths))
+            claimed_paths.update(
+                path
+                for item in items
+                for path in item.get("resolved_files") or []
+            )
+            items.extend(_scan_text_encoder_items(text_encoder_roots, claimed_paths))
+        deduplicated = []
+        seen_ids = set()
+        for item in items:
+            item_id = str(item.get("id") or "")
+            if not item_id or item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            deduplicated.append(item)
+        items = deduplicated
+        items.append({
+            "id": custom_version,
+            "label": custom_version,
+            "display_label": _display_label("API", custom_version),
+            "group": "API",
+            "backend": "custom_api",
+            "source_catalog": "custom",
+            "architecture": "",
+            "capabilities": ["text", "image"],
+            "context_window": 32768,
+            "installed": True,
+            "downloadable": False,
+            "recommended": False,
+            "expected_files": [],
+            "runtime_config": {},
+            "aliases": [],
+            "resolved_files": [],
+        })
+        static_count = len(curated_configs)
+        head = items[:static_count]
+        dynamic = sorted(items[static_count:-1], key=lambda item: (item["group"], item["label"].lower(), item["id"]))
+        items = head + dynamic + [items[-1]]
+        public_items = []
+        for item in items:
+            public_item = copy.deepcopy(item)
+            public_item.pop("resolved_files", None)
+            public_items.append(public_item)
+        payload = {
+            "ok": True,
+            "schema": CATALOG_SCHEMA,
+            "default": default_version,
+            "custom": custom_version,
+            "items": public_items,
+            "choices": [item["id"] for item in public_items],
+            "labels": {item["id"]: item["display_label"] for item in public_items},
+            "context_windows": {item["id"]: int(item["context_window"]) for item in public_items},
+            "generated_at": time.time(),
+        }
+        with _CACHE_LOCK:
+            _CACHE.update({"key": cache_key, "expires_at": now + 5.0, "payload": copy.deepcopy(payload)})
+        return payload
 
 
 def catalog_item(payload, version):

@@ -1707,7 +1707,7 @@
       "divisible_by": 1,
       "device": "cpu",
       "image": [
-        "600",
+        "725",
         0
       ]
     },
@@ -1776,6 +1776,22 @@
     "class_type": "ComfyMathExpression",
     "_meta": {
       "title": "Aligned outpaint height"
+    }
+  },
+  "725": {
+    "inputs": {
+      "images": [
+        "600",
+        0
+      ],
+      "target_frame_count": [
+        "720",
+        1
+      ]
+    },
+    "class_type": "SimpAILTXVFrameTrim",
+    "_meta": {
+      "title": "SimpAI LTX Frame Trim / LTX 视频帧裁剪"
     }
   }
 }

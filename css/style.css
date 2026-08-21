@@ -14603,8 +14603,9 @@ button.simpleai-auto-random-preparing {
 .simpleai-prompt-action-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(8, 13, 22, 0.62);
-  backdrop-filter: blur(2px);
+  background: rgba(8, 13, 22, 0.78);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .simpleai-prompt-action-panel {
@@ -16775,6 +16776,68 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   margin: 0 !important;
   padding: 0 !important;
   line-height: 1.45 !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard {
+  gap: 12px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 14px 0 !important;
+  border-top: 1px solid color-mix(in srgb, #f59e0b 58%, var(--border-color-primary)) !important;
+  border-bottom: 1px solid color-mix(in srgb, #f59e0b 42%, var(--border-color-primary)) !important;
+  background: color-mix(in srgb, var(--background-fill-secondary) 86%, #f59e0b 14%) !important;
+}
+
+#identity_dialog_content .identity-activation-note,
+#identity_dialog_content .identity-activation-note .wrap,
+#identity_dialog_content .identity-activation-note [data-testid="markdown"],
+#identity_dialog_content .identity-activation-note .prose {
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+}
+
+#identity_dialog_content .identity-activation-note h3 {
+  margin: 0 0 8px !important;
+  font-size: 1rem !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0 !important;
+}
+
+#identity_dialog_content #identity_activation_mode,
+#identity_dialog_content #identity_activation_scope_confirm,
+#identity_dialog_content #identity_activation_permission_confirm,
+#identity_dialog_content #identity_activation_phrase_confirm {
+  margin: 0 14px !important;
+}
+
+#identity_dialog_content #identity_activation_apply_button {
+  width: calc(100% - 28px) !important;
+  margin: 0 14px !important;
+}
+
+#identity_dialog_content .identity-recovery-guide,
+#identity_introduce .identity-recovery-guide {
+  margin-top: 10px !important;
+  padding-top: 8px !important;
+  border-top: 1px solid color-mix(in srgb, var(--border-color-primary) 76%, transparent) !important;
+}
+
+#identity_dialog_content .identity-recovery-guide summary,
+#identity_introduce .identity-recovery-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#identity_dialog_content .identity-recovery-guide ol,
+#identity_introduce .identity-recovery-guide ol {
+  margin: 8px 0 !important;
+  padding-left: 22px !important;
+}
+
+#identity_dialog_content .identity-recovery-guide code,
+#identity_introduce .identity-recovery-guide code {
+  overflow-wrap: anywhere;
 }
 
 #identity_dialog_content #identity_input_row.identity-bind-grid {

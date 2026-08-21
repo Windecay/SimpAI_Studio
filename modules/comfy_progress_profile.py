@@ -192,26 +192,26 @@ def _build_wan_animate_profile(method, params, steps, probe):
     if duration is None:
         return None
 
-    total_frames = max(1, int(duration * frame_rate))
+    output_frames = max(1, int(duration * frame_rate))
     duration_limit = _positive_float(params.get("video_duration"))
     if duration_limit is not None:
-        total_frames = min(total_frames, _strict_4n_plus_1_cap(duration_limit * 16.0))
-    if "animate_face" in method or "animate_outpaint" in method:
-        total_frames = _floor_4n_plus_1(total_frames)
+        output_frames = min(output_frames, _strict_4n_plus_1_cap(duration_limit * frame_rate))
 
-    chunk_frames = _best_wan_animate_window(total_frames)
+    sampling_frames = _align_4n_plus_1(output_frames)
+
+    chunk_frames = _best_wan_animate_window(sampling_frames)
     if chunk_frames <= 8:
         return None
     overlap = min(_align_4n_plus_1(5), 33, chunk_frames - 8)
     first_keep = chunk_frames - 4
     repeat_keep = chunk_frames - overlap - 4
-    pass_count = _pass_count(total_frames, first_keep, repeat_keep)
+    pass_count = _pass_count(sampling_frames, first_keep, repeat_keep)
     return ProgressProfile(
         name="wan_animate_chunks",
         pass_steps=steps,
         pass_count=pass_count,
         total_steps=steps * pass_count,
-        source_duration=total_frames / frame_rate,
+        source_duration=output_frames / frame_rate,
     )
 
 

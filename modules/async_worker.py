@@ -3089,12 +3089,36 @@ def restart(task):
     finally:
         restart_lock.release()
 
+def start_worker():
+    global thread
+
+    if not restart_lock.acquire(blocking=False):
+        return False
+    try:
+        if thread.is_alive():
+            return False
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        return True
+    finally:
+        restart_lock.release()
+
 def initialize_worker_resources():
     global async_tasks, worker_processing, processing_lock, pending_tasks
     async_tasks = queue.Queue()  
     worker_processing = None  
     processing_lock = threading.Lock()
     pending_tasks = 0
+
+def _worker_not_ready_stop_processing(async_task, *_args, **_kwargs):
+    if async_task is not None:
+        async_task.processing = False
+
+def _worker_not_ready_interrupt_processing(*_args, **_kwargs):
+    return None
+
+def _worker_not_ready_start_cloud_task(async_task):
+    add_task(async_task)
 
 async_tasks = queue.Queue()
 worker_processing = None
@@ -3104,5 +3128,7 @@ restart_lock = threading.Lock()
 stop_event = threading.Event()
 
 thread = threading.Thread(target=worker, daemon=True)
-thread.start()
+worker.stop_processing = _worker_not_ready_stop_processing
+worker.interrupt_processing = _worker_not_ready_interrupt_processing
+start_cloud_task = _worker_not_ready_start_cloud_task
 

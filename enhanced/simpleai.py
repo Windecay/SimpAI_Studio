@@ -1063,6 +1063,72 @@ identity_mode_texts = {
         "cn": '当前已进入多用户模式，但本浏览器仍是游客身份。游客会受到预置、模型下载和个人空间权限限制。',
         "en": "This node is already in multi-user mode, but the current browser is still a guest. Guest access is limited for presets, model downloads, and personal workspace features.",
     },
+    "activation_intro": {
+        "cn": (
+            '### 是否真的需要多用户模式？\n'
+            '只有这台电脑会被多人或多个设备访问，并且确实需要管理员 / 用户 / 游客权限隔离时才建议开启。'
+            '单人使用请保持本机模式，完整功能可以直接使用，也不需要管理身份。\n\n'
+            '管理员身份和口令确认完成后，本机会立即进入多用户模式；未绑定管理员身份的浏览器将按游客权限运行。'
+        ),
+        "en": (
+            '### Do you really need Multi-user Mode?\n'
+            'Enable it only when this machine will be accessed by multiple people or devices and separate admin / user / guest permissions are required. '
+            'For one-person use, keep Local Mode: all features remain available without identity administration.\n\n'
+            'As soon as the admin identity and passphrase are confirmed, this machine enters Multi-user Mode. Browsers without the admin identity will run with guest permissions.'
+        ),
+    },
+    "activation_mode_label": {
+        "cn": "这台机器如何使用",
+        "en": "How this machine will be used",
+    },
+    "activation_keep_local": {
+        "cn": "保持本机模式（单人使用推荐）",
+        "en": "Keep Local Mode (recommended for one person)",
+    },
+    "activation_enable_multi": {
+        "cn": "启用多用户模式",
+        "en": "Enable Multi-user Mode",
+    },
+    "activation_scope_confirm": {
+        "cn": "我确认这台机器确实需要多人或多设备访问，并需要身份与权限隔离。",
+        "en": "I confirm that this machine needs multi-person or multi-device access with separate identities and permissions.",
+    },
+    "activation_permission_confirm": {
+        "cn": "我理解管理员身份创建完成后会立即改变权限模式，未绑定管理员身份的浏览器会成为游客。",
+        "en": "I understand that creating the admin identity immediately changes the permission mode, and browsers without the admin identity become guests.",
+    },
+    "activation_phrase_confirm": {
+        "cn": "我理解管理员口令无法修改、无法找回，并会离线记录口令及导出管理员身份二维码。",
+        "en": "I understand that the admin passphrase cannot be changed or recovered, and I will keep an offline record and export the admin identity QR code.",
+    },
+    "activation_apply": {
+        "cn": "确认选择",
+        "en": "Apply selection",
+    },
+    "activation_incomplete": {
+        "cn": "启用多用户模式前，请选择“启用多用户模式”并确认下面三项。单人使用可以直接保持本机模式。",
+        "en": "Before enabling Multi-user Mode, select it and confirm all three items below. For one-person use, you can keep Local Mode.",
+    },
+    "activation_ready": {
+        "cn": "已确认启用多用户模式。请继续创建或绑定管理员身份；管理员口令确认完成后，权限模式会立即改变。",
+        "en": "Multi-user Mode has been explicitly selected. Continue by creating or binding the admin identity; the permission mode changes immediately after the admin passphrase is confirmed.",
+    },
+    "activation_keep_local_done": {
+        "cn": "已保持本机模式。当前仍可直接使用完整功能，不需要创建管理员身份。",
+        "en": "Local Mode has been kept. All features remain available without creating an admin identity.",
+    },
+    "activation_required": {
+        "cn": "管理员身份尚未经过多用户模式启用确认。请返回上一步，确认使用场景、权限变化和口令风险。",
+        "en": "The admin identity has not passed the Multi-user Mode activation confirmation. Go back and confirm the usage scenario, permission change, and passphrase risk.",
+    },
+    "identity_phrase_failed": {
+        "cn": "身份绑定未成功，请重新输入身份口令。若这是您自己的主机且管理员口令已经遗忘，可查看下方恢复说明。",
+        "en": "Identity binding failed. Enter the identity passphrase again. If this is your own host and the admin passphrase has been forgotten, see the recovery guide below.",
+    },
+    "identity_phrase_format_invalid": {
+        "cn": "身份口令格式不正确。口令至少 8 位，必须包含大写字母、小写字母和数字，且不能包含特殊字符。",
+        "en": "The identity passphrase format is invalid. Use at least 8 characters with uppercase letters, lowercase letters, and numbers, without special characters.",
+    },
     "status_admin_multi": {
         "cn": '当前为管理员身份（多用户模式）',
         "en": "Current identity: Admin (Multi-user Mode)",
@@ -1117,6 +1183,64 @@ def get_identity_mode_text(key, lang=None):
     lang = normalize_ui_lang(lang)
     entry = identity_mode_texts.get(key, {})
     return entry.get(lang) or entry.get("cn") or key
+
+
+IDENTITY_TOKEN_RESET_PATH = r"%USERPROFILE%\.simpleai.vip\token"
+
+
+def get_multi_user_activation_copy(state=None):
+    lang = state.get("__lang") if isinstance(state, dict) else state
+    return {
+        "notice": get_identity_mode_text("activation_intro", lang),
+        "mode_label": get_identity_mode_text("activation_mode_label", lang),
+        "mode_choices": [
+            (get_identity_mode_text("activation_keep_local", lang), "local"),
+            (get_identity_mode_text("activation_enable_multi", lang), "multi-user"),
+        ],
+        "scope_confirm": get_identity_mode_text("activation_scope_confirm", lang),
+        "permission_confirm": get_identity_mode_text("activation_permission_confirm", lang),
+        "phrase_confirm": get_identity_mode_text("activation_phrase_confirm", lang),
+        "apply": get_identity_mode_text("activation_apply", lang),
+        "incomplete": get_identity_mode_text("activation_incomplete", lang),
+        "ready": get_identity_mode_text("activation_ready", lang),
+        "keep_local": get_identity_mode_text("activation_keep_local_done", lang),
+        "required": get_identity_mode_text("activation_required", lang),
+    }
+
+
+def requires_multi_user_activation(activation_confirmed=False):
+    return is_local_mode() and not bool(activation_confirmed)
+
+
+def get_admin_recovery_guide(lang=None):
+    lang = normalize_ui_lang(lang)
+    if lang == "en":
+        return f'''<details class="identity-recovery-guide">
+<summary>Admin passphrase forgotten or the host is stuck as Guest</summary>
+<div>
+<p><b>This is not a passphrase reset.</b> It creates a new local identity environment. It does not unlock the previous admin identity or its encrypted settings.</p>
+<ol>
+<li>Use the computer that runs SimpAI Studio. Exit Studio completely and make sure its process has stopped.</li>
+<li>Back up and rename <code>{IDENTITY_TOKEN_RESET_PATH}</code> to a name such as <code>token.backup-YYYYMMDD-HHMM</code>. Delete it only after the backup has been verified.</li>
+<li>Restart Studio. If the browser still shows the old guest session, clear the current site's <code>aitoken</code> cookie/localStorage entry and refresh.</li>
+<li>If an older installation still opens the previous node identity, rename or move the entire program directory and start it from the new path. Keep the original directory and token backup until the new local environment is confirmed.</li>
+</ol>
+<p>After recovery, set up Multi-user Mode again only when it is actually needed, and keep the new admin passphrase and exported identity QR code offline.</p>
+</div>
+</details>'''
+    return f'''<details class="identity-recovery-guide">
+<summary>管理员忘记口令，或主机被困在游客身份时</summary>
+<div>
+<p><b>这不是口令重置。</b>以下操作会创建新的本机身份环境，不能解锁原管理员身份及其加密配置。</p>
+<ol>
+<li>必须在运行 SimpAI Studio 的电脑上操作。完全退出 Studio，并确认相关进程已经停止。</li>
+<li>备份并重命名 <code>{IDENTITY_TOKEN_RESET_PATH}</code>，例如改为 <code>token.backup-YYYYMMDD-HHMM</code>。确认备份有效后再考虑删除。</li>
+<li>重新启动 Studio。若浏览器仍显示旧游客会话，清除当前站点的 <code>aitoken</code> Cookie / localStorage 项后刷新。</li>
+<li>旧版安装若仍关联原节点身份，可把整个程序目录改名或移动到新路径后启动。确认新的本机环境可用前，请保留原程序目录和 token 备份。</li>
+</ol>
+<p>恢复后，只有确实需要多人使用时才重新启用多用户模式，并离线保存新的管理员口令和导出的身份二维码。</p>
+</div>
+</details>'''
 
 
 def get_identity_access_status(user_did):
@@ -1195,7 +1319,7 @@ def get_identity_dialog_note(user_did, lang=None):
         if status == "pending":
             return get_identity_mode_text("identity_note_pending_bound", lang)
         return get_identity_mode_text("identity_note_bound", lang)
-    return get_identity_mode_text("identity_note_guest_multi", lang)
+    return f'{get_identity_mode_text("identity_note_guest_multi", lang)}\n\n{get_admin_recovery_guide(lang)}'
 
 
 def get_identity_status_title(user_did, lang=None):
@@ -1224,6 +1348,25 @@ def build_current_id_info(nickname, user_did, sys_did, theme, lang=None):
         f'{get_identity_mode_text("label_user_did", lang)}: <span {id_info_css(theme)}>{user_did}</span><br>'
         f'{get_identity_mode_text("label_sys_did", lang)}: <span {id_info_css(theme)}>{sys_did}</span>'
     )
+
+
+def _identity_activation_required_result(state):
+    state["user_phrase"] = ""
+    result = [get_identity_mode_text("activation_required", state.get("__lang"))]
+    result += [gr_update(visible=True)] + [gr_update(visible=False)] * 8
+    id_info = build_current_id_info(
+        state["user"].get_nickname(),
+        state["user"].get_did(),
+        state["sys_did"],
+        state["__theme"],
+        state.get("__lang"),
+    )
+    upstream_status = gr_update(
+        visible=not is_export_qr(state["user"].get_did()),
+        value=upstream_status_text,
+    )
+    export_qr = gr_update(visible=is_export_qr(state["user"].get_did()))
+    return result + [id_info, upstream_status, export_qr]
 
 # [identity_note_info, input_identity, input_id_display, identity_vcode_input, identity_verify_button, identity_phrase_input, identity_phrases_set_button, identity_phrases_confirm_button, identity_confirm_button, identity_unbind_button]
 # [identity_nick_input, identity_tele_input, identity_qr]
@@ -1350,7 +1493,7 @@ def verify_identity(input_id_info, state, vcode):
         result = [note2_3] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=True, value='')] + [gr_update(visible=True)] + [gr_update(visible=False)]*5
     return result
 
-def set_phrases(input_id_info, state, phrase, steps):
+def set_phrases(input_id_info, state, phrase, steps, activation_confirmed=False):
     state = ensure_identity_state_defaults(state)
     if steps == 'set':
         if check_phrase(phrase):  # 第一次设置, 要求二次确认
@@ -1359,16 +1502,31 @@ def set_phrases(input_id_info, state, phrase, steps):
         else: # 口令格式不对, 重新设置
             result = [note2_5] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=True)] + [gr_update(visible=False)]*3
     else:
+        if requires_multi_user_activation(activation_confirmed):
+            return _identity_activation_required_result(state)
         if state["user_phrase"] == phrase:
             inputs = input_id_info.split(',')
             nick, tele = inputs[0].strip(), inputs[1].strip()
+            was_local_activation = is_local_mode()
             context = shared.token.set_phrase_and_get_context(nick, tele, phrase)
             if not shared.token.is_guest(context.get_did()):
                 _apply_identity_context(state, context)
                 note = get_bound_identity_note(context, state.get("__lang"))
-                phrase_note = f'请牢记身份口令: `{phrase}` ，解除绑定或再次绑定都需要，建议抄写到私人笔记，仅限自己可见。及时导出身份二维码，方便再次绑定，导出后妥善保存。'
+                if normalize_ui_lang(state.get("__lang")) == "en":
+                    phrase_note = (
+                        "The identity passphrase has been set. It cannot be changed or recovered. "
+                        "Keep the offline record private and export the identity QR code now for future rebinding."
+                    )
+                    if was_local_activation:
+                        phrase_note = f"Multi-user Mode is now enabled. {phrase_note}"
+                else:
+                    phrase_note = (
+                        "身份口令设置成功。口令无法修改或找回，请妥善保存离线记录，并立即导出身份二维码，便于以后重新绑定。"
+                    )
+                    if was_local_activation:
+                        phrase_note = f"多用户模式现已启用。{phrase_note}"
                 if note == note3:
-                    note = f'身份口令设置成功，完成身份绑定。{phrase_note}'
+                    note = phrase_note
                 else:
                     note = f'{note}<br>{phrase_note}'
                 result = [note] + [gr_update(visible=False)]*4 + [gr_update(visible=True, value="")] + [gr_update(visible=False)]*3 + [gr_update(visible=True)]
@@ -1382,19 +1540,24 @@ def set_phrases(input_id_info, state, phrase, steps):
     export_qr = gr_update(visible=is_export_qr(state["user"].get_did()))
     return result + [id_info, upstream_status, export_qr]
 
-def confirm_identity(input_id_info, state, phrase):
+def confirm_identity(input_id_info, state, phrase, activation_confirmed=False):
     state = ensure_identity_state_defaults(state)
+    if requires_multi_user_activation(activation_confirmed):
+        return _identity_activation_required_result(state)
     if check_phrase(phrase):
         inputs = input_id_info.split(',')
         nick, tele, user_did = inputs[0].strip(), inputs[1].strip(), inputs[2].strip()
         context = shared.token.get_user_context_with_phrase(nick, tele, user_did, phrase)
         if shared.token.is_guest(context.get_did()): # 口令不对, 绑定失败, 重新输入口令, 再次绑定
-            result = [note3_1] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
+            failure_note = get_identity_mode_text("identity_phrase_failed", state.get("__lang"))
+            failure_note = f'{failure_note}\n\n{get_admin_recovery_guide(state.get("__lang"))}'
+            result = [failure_note] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
         else: # 绑定成功, 转解绑输入
             _apply_identity_context(state, context)
             result = [get_bound_identity_note(context, state.get("__lang"))] + [gr_update(visible=False)]*4 + [gr_update(visible=True, value="")] + [gr_update(visible=False)]*3 + [gr_update(visible=True)]
     else: # 口令格式不对, 重新输入口令, 再次绑定
-        result = [note3_2] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
+        format_note = get_identity_mode_text("identity_phrase_format_invalid", state.get("__lang"))
+        result = [format_note] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
     id_info = build_current_id_info(state["user"].get_nickname(), state["user"].get_did(), state["sys_did"], state["__theme"], state.get("__lang"))
     upstream_status = gr_update(visible=not is_export_qr(state["user"].get_did()), value=upstream_status_text)
     export_qr = gr_update(visible=is_export_qr(state["user"].get_did()))

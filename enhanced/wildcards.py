@@ -115,7 +115,7 @@ def _to_wildcard_key(rel_path):
         rel_path = rel_path[:-4]
     return rel_path.replace("\\", "/")
 
-def _build_wildcards_context(user_did=None):
+def _scan_wildcards_sources(user_did=None):
     dirs = _get_wildcards_dirs(user_did)
     wildcard_sources = {}
     signature_items = []
@@ -134,48 +134,42 @@ def _build_wildcards_context(user_did=None):
                 continue
             wildcard_sources[key] = full_path
             try:
-                signature_items.append((root_dir, rel.replace("\\", "/"), int(os.path.getmtime(full_path))))
+                stat = os.stat(full_path)
+                signature_items.append((root_dir, rel.replace("\\", "/"), int(stat.st_mtime_ns), int(stat.st_size)))
             except Exception:
-                signature_items.append((root_dir, rel.replace("\\", "/"), 0))
+                signature_items.append((root_dir, rel.replace("\\", "/"), 0, 0))
 
-    signature = tuple(sorted(signature_items))
+    return dirs, wildcard_sources, tuple(sorted(signature_items))
 
-    ctx = {
-        "user_did": user_did,
-        "dirs": dirs,
-        "signature": signature,
-        "wildcards": {},
-        "wildcards_list": {},
-        "wildcards_template": {},
-        "wildcards_weight_range": {},
-    }
 
-    for wildcard, file_path in sorted(wildcard_sources.items(), key=lambda x: x[0].casefold()):
-        try:
-            words = open(file_path, encoding='utf-8').read().splitlines()
-        except Exception:
-            words = []
-        words = [x.split('?')[0] for x in words if x != '' and not wildcard_regex.findall(x)]
+def _read_wildcard_file(file_path):
+    try:
+        with open(file_path, encoding='utf-8') as file:
+            raw_lines = file.read().splitlines()
+    except Exception as error:
+        logger.warning(f'Failed to read wildcard file {file_path}: {error}')
+        return [], {}, {}
 
-        templates = [x for x in words if '|' in x]
-        for line in templates:
-            parts = line.split("|")
-            word = parts[0]
-            template = parts[1] if len(parts) > 1 else ''
-            weight_range = parts[2] if len(parts) > 2 else ''
-            if word is None or word == '':
-                ctx["wildcards_template"][wildcard] = template
-                if len(weight_range.strip()) > 0:
-                    ctx["wildcards_weight_range"][wildcard] = weight_range
-            else:
-                ctx["wildcards_template"][f'{wildcard}/{word}'] = template
-                if len(weight_range.strip()) > 0:
-                    ctx["wildcards_weight_range"][f'{wildcard}/{word}'] = weight_range
+    words = [x.split('?')[0] for x in raw_lines if x != '' and not wildcard_regex.findall(x)]
+    templates = {}
+    weight_ranges = {}
+    for line in words:
+        if '|' not in line:
+            continue
+        parts = line.split("|")
+        word = parts[0]
+        template = parts[1] if len(parts) > 1 else ''
+        weight_range = parts[2] if len(parts) > 2 else ''
+        templates[word if word else None] = template
+        if len(weight_range.strip()) > 0:
+            weight_ranges[word if word else None] = weight_range
 
-        words = [x.split("|")[0] for x in words]
-        ctx["wildcards"][wildcard] = words
+    return [x.split("|")[0] for x in words], templates, weight_ranges
 
+
+def _build_wildcards_list(wildcard_sources):
     wildcards_list_local = {}
+
     def set_list(name, list_value):
         if name in wildcards_list_local:
             if list_value not in wildcards_list_local[name]:
@@ -183,7 +177,7 @@ def _build_wildcards_context(user_did=None):
         else:
             wildcards_list_local[name] = [list_value]
 
-    for wildcard in ctx["wildcards"].keys():
+    for wildcard in wildcard_sources.keys():
         wildcard_path = wildcard.split("/")
         if len(wildcard_path) == 1:
             set_list("root", wildcard_path[0])
@@ -195,25 +189,79 @@ def _build_wildcards_context(user_did=None):
         else:
             logger.info(f'The level of wildcards is too depth: {wildcard}.')
 
-    for k in list(wildcards_list_local.keys()):
-        wildcards_list_local[k] = sorted(wildcards_list_local[k], key=lambda s: s.casefold())
+    for key in list(wildcards_list_local.keys()):
+        wildcards_list_local[key] = sorted(wildcards_list_local[key], key=lambda s: s.casefold())
+    return wildcards_list_local
 
-    ctx["wildcards_list"] = wildcards_list_local
+
+def _build_wildcards_context_from_scan(user_did, scan):
+    dirs, wildcard_sources, signature = scan
+
+    ctx = {
+        "user_did": user_did,
+        "dirs": dirs,
+        "signature": signature,
+        "wildcard_sources": wildcard_sources,
+        "wildcards": {},
+        "wildcards_list": {},
+        "wildcards_template": {},
+        "wildcards_weight_range": {},
+        "loaded_wildcards": set(),
+    }
+
+    ctx["wildcards_list"] = _build_wildcards_list(wildcard_sources)
     return ctx
+
+
+def _build_wildcards_context(user_did=None):
+    return _build_wildcards_context_from_scan(user_did, _scan_wildcards_sources(user_did))
+
+
+def _load_wildcard_content(ctx, wildcard):
+    loaded_wildcards = ctx.setdefault("loaded_wildcards", set())
+    if wildcard in loaded_wildcards:
+        return ctx.get("wildcards", {}).get(wildcard, [])
+
+    file_path = ctx.get("wildcard_sources", {}).get(wildcard)
+    if not file_path:
+        return []
+
+    words, templates, weight_ranges = _read_wildcard_file(file_path)
+    ctx.setdefault("wildcards", {})[wildcard] = words
+    for key, template in templates.items():
+        template_key = wildcard if key is None else f'{wildcard}/{key}'
+        ctx.setdefault("wildcards_template", {})[template_key] = template
+    for key, weight_range in weight_ranges.items():
+        weight_key = wildcard if key is None else f'{wildcard}/{key}'
+        ctx.setdefault("wildcards_weight_range", {})[weight_key] = weight_range
+    loaded_wildcards.add(wildcard)
+    return words
+
+
+def _load_all_wildcard_content(ctx):
+    for wildcard in ctx.get("wildcard_sources", {}).keys():
+        _load_wildcard_content(ctx, wildcard)
+    return ctx
+
+
+def _wildcard_exists(ctx, wildcard):
+    return wildcard in ctx.get("wildcard_sources", {})
+
+
+def _get_wildcard_words(ctx, wildcard):
+    if not _wildcard_exists(ctx, wildcard):
+        return []
+    return _load_wildcard_content(ctx, wildcard)
+
 
 def ensure_wildcards_loaded(user_did=None, reload_flag=False):
     global wildcards_cache, wildcards, wildcards_list, wildcards_template, wildcards_weight_range
     cache_key = _get_cache_key(user_did)
     ctx = wildcards_cache.get(cache_key, None)
-    if ctx is None or reload_flag:
-        new_ctx = _build_wildcards_context(user_did)
-        wildcards_cache[cache_key] = new_ctx
-        ctx = new_ctx
-    else:
-        new_ctx = _build_wildcards_context(user_did)
-        if new_ctx["signature"] != ctx.get("signature"):
-            wildcards_cache[cache_key] = new_ctx
-            ctx = new_ctx
+    scan = _scan_wildcards_sources(user_did)
+    if ctx is None or reload_flag or scan[2] != ctx.get("signature"):
+        ctx = _build_wildcards_context_from_scan(user_did, scan)
+        wildcards_cache[cache_key] = ctx
 
     if user_did is None:
         wildcards = ctx["wildcards"]
@@ -273,7 +321,7 @@ def get_words_of_wildcard_samples(wildcard="root", user_did=None, lang=None):
             return []
         wildcard = root_list[0]
 
-    words_source = ctx["wildcards"].get(wildcard, [])
+    words_source = _get_wildcard_words(ctx, wildcard)
     if _normalize_wildcards_lang(lang) == 'cn':
         if len(wildcards_words_translation.keys()) == 0:
             load_words_translation()
@@ -286,7 +334,7 @@ def get_words_with_wildcard(wildcard, rng, method='R', number=1, start_at=1, use
     if wildcard is None or wildcard=='':
         words = []
     else:
-        words = ctx["wildcards"].get(wildcard, [])
+        words = _get_wildcard_words(ctx, wildcard)
     words_result = []
     number0 = number
     if method=='L' or method=='l':
@@ -464,8 +512,9 @@ def replace_wildcard(text, rng, user_did=None):
     i = 1
     while parts:
         for wildcard in parts:
-            if wildcard in ctx["wildcards"]:
-                text = text.replace(f'__{wildcard}__', rng.choice(ctx["wildcards"][wildcard]), 1)
+            words = _get_wildcard_words(ctx, wildcard)
+            if words:
+                text = text.replace(f'__{wildcard}__', rng.choice(words), 1)
         parts = tag_regex2.findall(text)
         i += 1
         if i > wildcards_max_bfs_depth:
@@ -523,7 +572,7 @@ def apply_wildcards(wildcard_text, rng, user_did=None):
         logger.info(f'[Wildcards] processing: {wildcard_text}')
         for placeholder in placeholders:
             try:
-                words = ctx["wildcards"][placeholder]
+                words = _get_wildcard_words(ctx, placeholder)
                 assert len(words) > 0
                 wildcard_text = wildcard_text.replace(f'__{placeholder}__', rng.choice(words), 1)
             except:
@@ -593,7 +642,7 @@ def add_word_to_prompt(wildcard, index, prompt, state_params):
         return gr_update(value=prompt)
 
     wildcard = root_list[wildcard]
-    words = ctx["wildcards"].get(wildcard, [])
+    words = _get_wildcard_words(ctx, wildcard)
     if index < 0 or index >= len(words):
         return gr_update(value=prompt)
     word = words[index]
@@ -721,6 +770,7 @@ def wildcard_catalog_payload(path="root", trans=False, user_did=None, lang=None)
     ctx = ensure_wildcards_loaded(user_did)
     flat_names = [x[0] for x in get_wildcards_samples(path=path or "root", trans=False, user_did=user_did)]
     selected = flat_names[0] if flat_names else ""
+    _load_all_wildcard_content(ctx)
     return {
         "names": get_wildcards_samples(path=path or "root", trans=trans, user_did=user_did, lang=lang),
         "flat_names": flat_names,
@@ -757,8 +807,8 @@ def preview_wildcards(prompt, negative_prompt="", seed=-1, image_number=1, user_
     total = image_number if arrays_mult == 0 else arrays_mult
     ctx = ensure_wildcards_loaded(user_did)
     tokens = _wildcard_tokens(prompt + "\n" + negative_prompt)
-    matched = [token for token in tokens if token in ctx.get("wildcards", {})]
-    unmatched = [token for token in tokens if token not in ctx.get("wildcards", {})]
+    matched = [token for token in tokens if _wildcard_exists(ctx, token)]
+    unmatched = [token for token in tokens if not _wildcard_exists(ctx, token)]
     samples = []
     for i in range(min(max_samples, max(1, total))):
         task_seed = (seed + i) % 1125899906842624

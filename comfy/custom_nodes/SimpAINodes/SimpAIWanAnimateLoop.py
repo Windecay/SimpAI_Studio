@@ -102,6 +102,20 @@ def _align_4n1(value):
     return value + ((1 - value) % 4)
 
 
+def _pad_to_temporal_grid(images, frame_count):
+    frame_count = max(1, int(frame_count))
+    images = images[:frame_count].contiguous()
+    aligned_frame_count = _align_4n1(frame_count)
+    padding_count = aligned_frame_count - frame_count
+    if padding_count:
+        padding = images[-1:].expand(
+            padding_count,
+            *images.shape[1:],
+        )
+        images = torch.cat((images, padding), dim=0)
+    return images.contiguous(), frame_count, aligned_frame_count
+
+
 def _plan_chunk_keep_targets(total_frames, chunk_limit, overlap):
     total_frames = max(1, int(total_frames))
     chunk_limit = max(1, int(chunk_limit))
@@ -2807,6 +2821,7 @@ class SimpAIWanAnimateLoop:
                 "enable_manual_segment_color": ("BOOLEAN", {"default": False}),
                 "enable_overlap_color_calibration": ("BOOLEAN", {"default": False}),
                 "calibration_debug": ("BOOLEAN", {"default": False}),
+                "preserve_input_frame_count": ("BOOLEAN", {"default": False}),
             },
         }
 
@@ -2847,6 +2862,7 @@ class SimpAIWanAnimateLoop:
         enable_manual_segment_color=False,
         enable_overlap_color_calibration=False,
         calibration_debug=False,
+        preserve_input_frame_count=False,
     ):
         if not isinstance(driving_video, torch.Tensor) or driving_video.ndim != 4:
             raise ValueError("driving_video must be a ComfyUI IMAGE tensor.")
@@ -2855,16 +2871,23 @@ class SimpAIWanAnimateLoop:
 
         from comfy_extras.nodes_wan import WanAnimateToVideo
 
-        total_frames = int(driving_video.shape[0])
+        source_frame_count = int(driving_video.shape[0])
         if int(max_frames) > 0:
-            total_frames = min(total_frames, int(max_frames))
-        if total_frames <= 0:
+            source_frame_count = min(source_frame_count, int(max_frames))
+        if source_frame_count <= 0:
             raise ValueError("driving_video has no frames to generate.")
+
+        total_frames = source_frame_count
+        if preserve_input_frame_count:
+            driving_video, source_frame_count, total_frames = _pad_to_temporal_grid(
+                driving_video,
+                source_frame_count,
+            )
 
         calibration_debug_state = _start_calibration_debug(
             calibration_debug,
             seed,
-            total_frames,
+            source_frame_count,
             width,
             height,
         )
@@ -3471,10 +3494,11 @@ class SimpAIWanAnimateLoop:
             )
             chunk_index += 1
 
-        frames = torch.cat(output, dim=0)[:total_frames].contiguous()
+        output_frame_count = source_frame_count if preserve_input_frame_count else total_frames
+        frames = torch.cat(output, dim=0)[:output_frame_count].contiguous()
         final_start = 0
         for chunk in chunks:
-            final_end = min(total_frames, int(chunk["produced"]))
+            final_end = min(output_frame_count, int(chunk["produced"]))
             if final_end <= final_start:
                 continue
             final_chunk = frames[final_start:final_end].contiguous()
@@ -3495,7 +3519,9 @@ class SimpAIWanAnimateLoop:
             final_start = final_end
 
         summary_payload = {
-                "total_frames": total_frames,
+                "total_frames": output_frame_count,
+                "sampling_frame_count": total_frames,
+                "preserve_input_frame_count": bool(preserve_input_frame_count),
                 "width": int(width),
                 "height": int(height),
                 "max_chunk_frames": chunk_limit,

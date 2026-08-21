@@ -49,7 +49,7 @@
         11
       ],
       "images": [
-        "30",
+        "40",
         0
       ],
       "audio": [
@@ -397,6 +397,48 @@
     "class_type": "easy ifElse",
     "_meta": {
       "title": "If else"
+    }
+  },
+  "39": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "15",
+        2
+      ],
+      "b": [
+        "24",
+        0
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "40": {
+    "inputs": {
+      "images": [
+        "30",
+        0
+      ],
+      "target_frame_count": [
+        "39",
+        0
+      ],
+      "source_fps": [
+        "15",
+        0
+      ],
+      "target_fps": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }

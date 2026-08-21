@@ -42,7 +42,7 @@ from datetime import datetime
 from modules.model_loader import is_models_file_absent, refresh_model_list, download_model_files
 import modules.model_loader as model_loader
 from modules.meta_parser import get_welcome_image, describe_prompt_for_scene
-from enhanced.simpleai import comfyd, get_identity_access_status, get_path_in_user_dir, toggle_identity_dialog, sync_intput_reserved, get_identity_mode_text, normalize_ui_lang, update_comfyd_io_paths
+from enhanced.simpleai import comfyd, get_admin_recovery_guide, get_identity_access_status, get_path_in_user_dir, toggle_identity_dialog, sync_intput_reserved, get_identity_mode_text, normalize_ui_lang, update_comfyd_io_paths
 from enhanced.vlm import VLM, vlm
 from simpleai_base.simpleai_base import export_identity_qrcode_svg, import_identity_qrcode, gen_ua_session
 
@@ -477,6 +477,15 @@ def _canonicalize_preset_samples(samples):
                 normalized.append(display_name)
     return normalized
 
+def _unmark_preset_samples(samples):
+    unmarked = []
+    for item in samples:
+        if isinstance(item, list) and len(item) > 0:
+            unmarked.append([_canonicalize_preset_name(item[0])] + item[1:])
+        else:
+            unmarked.append(_canonicalize_preset_name(item))
+    return unmarked
+
 def _canonicalize_nav_preset_names(preset_names):
     normalized = []
     seen = set()
@@ -750,6 +759,8 @@ preset_store_meta_cache = {}
 preset_store_meta_user_mtime = {}
 preset_store_meta_base_mtime = {}
 preset_store_meta_samples_sig = {}
+preset_status_refresh_lock = threading.Lock()
+preset_status_refresh_thread = None
 
 def _invalidate_preset_store_cache(user_did=None):
     cache_key = user_did if user_did else 'guest'
@@ -762,7 +773,7 @@ def _invalidate_preset_store_cache(user_did=None):
     preset_store_meta_base_mtime.pop(cache_key, None)
     preset_store_meta_samples_sig.pop(cache_key, None)
 
-def get_preset_samples(user_did=None):
+def get_preset_samples(user_did=None, include_status_markers=True):
     global preset_samples, preset_samples_user_mtime, preset_samples_base_mtime, preset_samples_complete_ts
     cache_key = user_did if user_did else 'guest'
     path_preset = os.path.abspath(f'./presets/')
@@ -797,6 +808,8 @@ def get_preset_samples(user_did=None):
         and preset_samples_base_mtime.get(cache_key, -1) == base_mtime
     ):
         cached = preset_samples[cache_key]
+        if not include_status_markers:
+            return _unmark_preset_samples(cached)
         now = time.time()
         last_ts = preset_samples_complete_ts.get(cache_key, 0)
         if now - last_ts < PRESET_COMPLETE_REFRESH_SECONDS:
@@ -824,8 +837,11 @@ def get_preset_samples(user_did=None):
             ordered_presets.append(preset)
             existing.add(canonical)
 
-    refresh_model_list(ordered_presets, user_did)
     ordered_list = preset_filter([[p] for p in ordered_presets], apply_missing_model_filter=False)
+    if not include_status_markers:
+        return _canonicalize_preset_samples(ordered_list)
+
+    refresh_model_list(ordered_presets, user_did)
     marked_list = _canonicalize_preset_samples(_apply_complete_markers(ordered_list, user_did))
     if util.simpai_ui_trace_enabled():
         try:
@@ -848,6 +864,27 @@ def get_preset_samples(user_did=None):
     preset_samples_base_mtime[cache_key] = base_mtime
     preset_samples_complete_ts[cache_key] = time.time()
     return marked_list
+
+def start_preset_status_refresh(user_did=None):
+    global preset_status_refresh_thread
+
+    with preset_status_refresh_lock:
+        if preset_status_refresh_thread is not None and preset_status_refresh_thread.is_alive():
+            return False
+
+        def _refresh():
+            try:
+                get_preset_samples(user_did, include_status_markers=True)
+            except Exception:
+                logger.exception("Preset model status refresh failed")
+
+        preset_status_refresh_thread = threading.Thread(
+            target=_refresh,
+            name="simpai-preset-status-refresh",
+            daemon=True,
+        )
+        preset_status_refresh_thread.start()
+        return True
 
 
 def refresh_preset_store_list(state):
@@ -4614,6 +4651,7 @@ def build_identity_introduce_html(state):
                 '2. 如需更换身份，请先解绑；导出的身份二维码可用于后续再次绑定。'
             )
 
+    recovery_html = get_admin_recovery_guide(lang) if access_mode == "multi-user" and is_guest else ""
     return f"""
 <div style="line-height:1.55">
   <div style="font-weight:600;margin-bottom:6px;">{title}</div>
@@ -4626,6 +4664,7 @@ def build_identity_introduce_html(state):
     <summary style="cursor:pointer;">{extra_title}</summary>
     <div style="margin-top:6px;">{extra_body}</div>
   </details>
+  {recovery_html}
 </div>
 """
 def update_after_identity(state):

@@ -7,6 +7,7 @@ import io
 import torch
 import shared
 import threading
+import time
 import numpy as np
 import modules.config as config
 import modules.flags as flags
@@ -29,6 +30,11 @@ from enhanced.llamacpp_vlm import llamacpp_vlm
 from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
+
+_DYNAMIC_LLAMACPP_VERSION_PREFIX = "llamacpp:LLM:"
+_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX = "comfy:text_encoders:"
+_catalog_refresh_lock = threading.Lock()
+_catalog_refresh_thread = None
 
 from PIL import Image, ImageOps
 from transformers import AutoTokenizer, AutoModel
@@ -536,6 +542,8 @@ class VLM:
             base_version = version[:-len("-Thinking")]
             if base_version in cls.VERSIONS:
                 return base_version
+        if version.startswith((_DYNAMIC_LLAMACPP_VERSION_PREFIX, _DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX)):
+            return version
         try:
             item = cls.get_version_catalog_item(version)
             if item:
@@ -557,7 +565,69 @@ class VLM:
         return roots
 
     @classmethod
-    def get_model_catalog(cls, refresh=False):
+    def _fallback_dynamic_version_config(cls, version):
+        version = str(version or "").strip()
+        if version.startswith(_DYNAMIC_LLAMACPP_VERSION_PREFIX):
+            relative_path = version[len(_DYNAMIC_LLAMACPP_VERSION_PREFIX):].replace("\\", "/").lstrip("/")
+            if not relative_path:
+                return None
+            model_dir, separator, file_name = relative_path.rpartition("/")
+            if not separator:
+                file_name = model_dir
+                model_dir = ""
+            lower_name = file_name.lower()
+            handler = ""
+            for needles, candidate in (
+                (("qwen3.8", "qwen38", "qwen-3.8"), "Qwen3.8"),
+                (("qwen3.6", "qwen36", "qwen-3.6"), "Qwen3.6"),
+                (("qwen3.5", "qwen35", "qwen-3.5"), "Qwen3.5"),
+                (("qwen3-vl", "qwen3vl", "qwen-3-vl"), "Qwen3-VL"),
+                (("gemma-4", "gemma4"), "Gemma4"),
+                (("gemma-3", "gemma3"), "Gemma3"),
+                (("minicpm-v-4.6", "minicpmv4.6"), "MiniCPM-v4.6"),
+                (("minicpm-v-4.5", "minicpmv4.5"), "MiniCPM-v4.5"),
+                (("glm-4.6v", "glm46v"), "GLM-4.6V"),
+                (("glm-4.1v", "glm41v"), "GLM-4.1V-Thinking"),
+                (("lfm2.5-vl", "lfm2.5vl"), "LFM2.5-VL"),
+                (("lfm2-vl", "lfm2vl"), "LFM2-VL"),
+            ):
+                if any(needle in lower_name for needle in needles):
+                    handler = candidate
+                    break
+            return {
+                "model": model_dir,
+                "backend": "llamacpp",
+                "is_llamacpp": True,
+                "chat_handler": handler,
+                "gguf_file": file_name,
+                "model_file": relative_path,
+                "mmproj_file": "",
+                "n_ctx": 8192,
+                "source_catalog": "LLM",
+                "capabilities": ["text"],
+                "recommended": False,
+            }
+        if version.startswith(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):
+            relative_path = version[len(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):].replace("\\", "/").lstrip("/")
+            if not relative_path:
+                return None
+            return {
+                "model": relative_path,
+                "model_file": relative_path,
+                "clip_name": relative_path,
+                "clip_type": "",
+                "backend": "comfy_textgen",
+                "is_llamacpp": False,
+                "source_catalog": "text_encoders",
+                "architecture": "",
+                "capabilities": ["text", "image"],
+                "n_ctx": 32768,
+                "recommended": False,
+            }
+        return None
+
+    @classmethod
+    def get_model_catalog(cls, refresh=False, include_dynamic=True):
         from modules.vlm_model_catalog import build_model_catalog
 
         return build_model_catalog(
@@ -567,25 +637,51 @@ class VLM:
             llm_roots=config.paths_LLM,
             text_encoder_roots=cls._text_encoder_roots(),
             refresh=refresh,
+            include_dynamic=include_dynamic,
         )
 
     @classmethod
-    def get_version_catalog_item(cls, version, refresh=False):
+    def get_version_catalog_item(cls, version, refresh=False, include_dynamic=True):
         from modules.vlm_model_catalog import catalog_item
 
-        return catalog_item(cls.get_model_catalog(refresh=refresh), version)
+        return catalog_item(cls.get_model_catalog(refresh=refresh, include_dynamic=include_dynamic), version)
 
     @classmethod
-    def get_version_config(cls, version):
+    def get_version_config(cls, version, scan_catalog=True):
         if version in cls.VERSIONS:
             return cls.VERSIONS[version]
         if isinstance(version, str) and version.endswith("-Thinking"):
             base_version = version[:-len("-Thinking")]
             if base_version in cls.VERSIONS:
                 return cls.VERSIONS[base_version]
-        item = cls.get_version_catalog_item(version)
+        item = cls.get_version_catalog_item(version, include_dynamic=scan_catalog) if scan_catalog else None
         runtime_config = item.get("runtime_config") if isinstance(item, dict) else None
-        return runtime_config if isinstance(runtime_config, dict) and runtime_config else None
+        if isinstance(runtime_config, dict) and runtime_config:
+            return runtime_config
+        return cls._fallback_dynamic_version_config(version)
+
+    @classmethod
+    def start_model_catalog_refresh(cls, refresh=False):
+        global _catalog_refresh_thread
+        with _catalog_refresh_lock:
+            if _catalog_refresh_thread is not None and _catalog_refresh_thread.is_alive():
+                return False
+
+            def _refresh():
+                started = time.monotonic()
+                try:
+                    cls.get_model_catalog(refresh=refresh, include_dynamic=True)
+                    logger.info("VLM model catalog refreshed after startup in %.1fs", time.monotonic() - started)
+                except Exception:
+                    logger.exception("VLM model catalog refresh failed")
+
+            _catalog_refresh_thread = threading.Thread(
+                target=_refresh,
+                name="simpai-vlm-model-catalog-refresh",
+                daemon=True,
+            )
+            _catalog_refresh_thread.start()
+            return True
 
     @classmethod
     def is_custom_version(cls, version=None):
@@ -755,7 +851,7 @@ class VLM:
             logger.debug("设置 VLM 模型: 版本=Custom, backend=%s", cls.custom_api_format)
             return
 
-        config_data = cls.get_version_config(version)
+        config_data = cls.get_version_config(version, scan_catalog=False)
         if not config_data:
             if str(version).startswith(("llamacpp:", "comfy:")):
                 with cls.lock:
@@ -822,14 +918,14 @@ class VLM:
         return True
 
     @classmethod
-    def get_version_missing_files(cls, version):
+    def get_version_missing_files(cls, version, scan_catalog=True):
         original_version = str(version or "").strip()
-        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version, scan_catalog=scan_catalog):
             return ["Unknown or removed VLM model"]
         version = cls.resolve_version(version)
         if cls.is_custom_version(version):
             return cls.get_custom_missing_settings()
-        config_data = cls.get_version_config(version)
+        config_data = cls.get_version_config(version, scan_catalog=scan_catalog)
         if not config_data:
             return []
 
@@ -863,19 +959,19 @@ class VLM:
         return missing
 
     @classmethod
-    def model_exists_for_version(cls, version):
+    def model_exists_for_version(cls, version, scan_catalog=True):
         original_version = str(version or "").strip()
-        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version, scan_catalog=scan_catalog):
             return False
         version = cls.resolve_version(version)
         if cls.is_custom_version(version):
             return cls.custom_config_ready()
-        return len(cls.get_version_missing_files(version)) == 0
+        return len(cls.get_version_missing_files(version, scan_catalog=scan_catalog)) == 0
 
     @classmethod
-    def get_version_status(cls, version):
+    def get_version_status(cls, version, scan_catalog=True):
         original_version = str(version or "").strip()
-        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version):
+        if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version, scan_catalog=scan_catalog):
             return {
                 "version": original_version,
                 "exists": False,
@@ -894,7 +990,7 @@ class VLM:
                 "label": "Ready" if exists else "Missing",
                 "missing_files": missing,
             }
-        config_data = cls.get_version_config(version)
+        config_data = cls.get_version_config(version, scan_catalog=scan_catalog)
         if not config_data:
             return {
                 "version": str(version or ""),
@@ -903,7 +999,7 @@ class VLM:
                 "label": "Unavailable",
                 "missing_files": ["Unknown or removed VLM model"],
             }
-        missing_files = cls.get_version_missing_files(version)
+        missing_files = cls.get_version_missing_files(version, scan_catalog=scan_catalog)
         exists = len(missing_files) == 0
         return {
             "version": version,
@@ -1832,7 +1928,16 @@ class VLM:
                 "media": {"video_requested": True, "video_used": False, "sampled_frames": 0},
             }
         media_options = dict(action_options)
-        media_options["video_frame_mode"] = "multi_frame" if VLM.is_llamacpp and not VLM.is_custom_version() else "contact_sheet"
+        configured_video_frame_mode = str(
+            action_options.get("video_frame_mode")
+            or resource_context.get("video_frame_mode")
+            or ""
+        ).strip().lower()
+        media_options["video_frame_mode"] = (
+            configured_video_frame_mode
+            if configured_video_frame_mode in {"contact_sheet", "multi_frame"}
+            else ("multi_frame" if VLM.is_llamacpp and not VLM.is_custom_version() else "contact_sheet")
+        )
         prepared_images, media_meta = prompt_actions.prepare_prompt_action_media(
             action["id"],
             resource_images,
@@ -1863,6 +1968,10 @@ class VLM:
                 "video_source",
                 "video_visual_mode",
                 "video_visual_count",
+                "video_visual_position",
+                "video_visual_start_index",
+                "video_frame_mode",
+                "video_role",
                 "video_count",
                 "video_descriptors",
                 "video_reference_index",

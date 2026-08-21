@@ -130,7 +130,7 @@
       ],
       "crf": 19,
       "images": [
-        "74",
+        "89",
         0
       ]
     },
@@ -150,6 +150,30 @@
     "class_type": "CodeableString",
     "_meta": {
       "title": "Codeable String"
+    }
+  },
+  "89": {
+    "inputs": {
+      "images": [
+        "74",
+        0
+      ],
+      "target_frame_count": [
+        "82",
+        1
+      ],
+      "source_fps": [
+        "82",
+        0
+      ],
+      "target_fps": [
+        "82",
+        0
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }

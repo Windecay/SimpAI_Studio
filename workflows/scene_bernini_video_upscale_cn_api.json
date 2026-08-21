@@ -90,7 +90,7 @@
       ],
       "crf": 18,
       "images": [
-        "18",
+        "310",
         0
       ],
       "audio": [
@@ -250,7 +250,7 @@
   "264": {
     "inputs": {
       "images": [
-        "293",
+        "310",
         0
       ]
     },
@@ -762,6 +762,48 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "lora_10"
+    }
+  },
+  "309": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "155",
+        7
+      ],
+      "b": [
+        "155",
+        5
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "310": {
+    "inputs": {
+      "images": [
+        "18",
+        0
+      ],
+      "target_frame_count": [
+        "309",
+        0
+      ],
+      "source_fps": [
+        "155",
+        5
+      ],
+      "target_fps": [
+        "155",
+        5
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }

@@ -532,9 +532,9 @@
     async function clickPromptActionTrigger(trigger) {
         try {
             if (window.SimpAISketch?.flushAll) {
+                // Dirty canvases are serialized by flushAll itself. Avoid forcing
+                // unchanged high-resolution canvases through another input cycle.
                 await window.SimpAISketch.flushAll({
-                    force: true,
-                    change: true,
                     cache: true,
                     cacheWaitMs: 1500,
                     refreshCache: true

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import os
 import re
+import struct
 import time
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +40,12 @@ MAX_CHARACTER_STATE_FIELDS = 40
 MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
 MAX_STATE_TEXT_SEGMENT_LENGTH = 520
-MAX_WORLD_BOOK_ENTRIES = 120
+MAX_WORLD_BOOK_ENTRIES = 400
 MAX_WORLD_BOOK_KEYS = 24
 MAX_CHAPTERS = 80
+MAX_IMPORT_WARNINGS = 40
+MAX_IMPORT_RAW_ITEMS = 512
+MAX_IMPORT_RAW_TEXT = 240000
 PLAYER_STATE_STATUSES = {"present", "absent"}
 ROLEPLAY_SPEAKER_MODES = {"auto", "current", "multi"}
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.:@-]+")
@@ -128,6 +134,51 @@ def _clean_string_list(value: Any, limit: int = MAX_LIST_ITEMS) -> list[str]:
         if text and text not in result:
             result.append(text)
     return result
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if value is None:
+        return default
+    text = _text(value, 40).casefold()
+    if text in {"1", "true", "yes", "on", "enabled", "enable", "是", "启用"}:
+        return True
+    if text in {"0", "false", "no", "off", "disabled", "disable", "否", "禁用"}:
+        return False
+    return default
+
+
+def _bounded_json_value(value: Any, depth: int = 0) -> Any:
+    """Keep imported extension data inspectable without allowing unbounded blobs."""
+    if depth > 6:
+        return _text(value, 1000)
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key, item in list(value.items())[:MAX_IMPORT_RAW_ITEMS]:
+            clean_key = _text(key, 160)
+            if clean_key:
+                result[clean_key] = _bounded_json_value(item, depth + 1)
+        return result
+    if isinstance(value, list):
+        return [_bounded_json_value(item, depth + 1) for item in value[:MAX_IMPORT_RAW_ITEMS]]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return _text(value, MAX_IMPORT_RAW_TEXT) if isinstance(value, str) else value
+    return _text(value, 1000)
+
+
+def _normalize_import_metadata(value: Any = None) -> dict[str, Any]:
+    source = _dict(value)
+    return {
+        "source_format": _text(source.get("source_format"), 80),
+        "source_name": _text(source.get("source_name"), 240),
+        "warnings": _clean_string_list(source.get("warnings"), MAX_IMPORT_WARNINGS),
+        "unsupported_fields": _clean_string_list(source.get("unsupported_fields"), MAX_IMPORT_WARNINGS),
+        "tavern": _bounded_json_value(source.get("tavern")) if source.get("tavern") is not None else {},
+        "raw": _bounded_json_value(source.get("raw")) if source.get("raw") is not None else {},
+    }
 
 
 def normalize_speaker_mode(value: Any) -> str:
@@ -398,6 +449,14 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "speech_style": _text(source.get("speech_style")),
         "image_prompt": _text(source.get("image_prompt") or source.get("visual_prompt"), 12000),
         "negative_prompt": _text(source.get("negative_prompt"), 4000),
+        "world_book": normalize_world_book(source.get("world_book")) if source.get("world_book") else {
+            "schema": WORLD_BOOK_SCHEMA,
+            "version": 1,
+            "enabled": True,
+            "entries": [],
+            "updated_at": "",
+        },
+        "import_metadata": _normalize_import_metadata(source.get("import_metadata")),
         "state_image_history": _normalize_character_state_image_history(source.get("state_image_history")),
         "behavior_rules": _clean_string_list(source.get("behavior_rules")),
         "first_message": _text(source.get("first_message")),
@@ -1142,7 +1201,12 @@ def normalize_world_book_entry(value: Any = None, index: int = 0) -> dict[str, A
     source = _dict(value)
     content = _text(source.get("content") or source.get("text") or source.get("body"), 8000)
     title = _text(source.get("title") or source.get("name"), 240)
-    keys = _clean_string_list(source.get("keys") or source.get("primary_keys"), MAX_WORLD_BOOK_KEYS)
+    raw_keys = source.get("keys") or source.get("primary_keys")
+    if isinstance(raw_keys, str):
+        raw_keys = re.split(r"[,\n|]", raw_keys)
+    keys = _clean_string_list(raw_keys, MAX_WORLD_BOOK_KEYS)
+    if not keys and source.get("key"):
+        keys = _clean_string_list(re.split(r"[,\n|]", str(source.get("key"))), MAX_WORLD_BOOK_KEYS)
     secondary_keys = _clean_string_list(
         source.get("secondary_keys") or source.get("secondaryKeys"),
         MAX_WORLD_BOOK_KEYS,
@@ -1170,13 +1234,14 @@ def normalize_world_book_entry(value: Any = None, index: int = 0) -> dict[str, A
         "keys": keys,
         "secondary_keys": secondary_keys,
         "mode": mode,
-        "enabled": bool(source.get("enabled", True)),
+        "enabled": _as_bool(source.get("enabled"), True),
         "priority": max(-100, min(100, priority)),
         "visibility": visibility,
         "visible_to": _clean_string_list(source.get("visible_to") or source.get("known_by"), 20),
         "chapter_ids": _clean_string_list(source.get("chapter_ids"), MAX_CHAPTERS),
-        "locked": bool(source.get("locked", False)),
+        "locked": _as_bool(source.get("locked"), False),
         "source": _text(source.get("source"), 80) or "manual",
+        "extensions": _bounded_json_value(source.get("extensions")) if source.get("extensions") is not None else {},
         "created_at": _text(source.get("created_at"), 80) or _now(),
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
@@ -1212,7 +1277,610 @@ def normalize_world_book(value: Any = None, legacy_facts: Any = None) -> dict[st
         "version": 1,
         "enabled": bool(source.get("enabled", True)),
         "entries": entries,
+        "metadata": _bounded_json_value(source.get("metadata")) if isinstance(source.get("metadata"), dict) else {},
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
+    }
+
+
+def _import_text_list(value: Any, limit: int = MAX_WORLD_BOOK_KEYS) -> list[str]:
+    if isinstance(value, str):
+        value = re.split(r"[,\n|]", value)
+    return _clean_string_list(value, limit)
+
+
+def _import_world_book_entries(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        pairs = list(value.items())
+
+        def sort_key(pair: tuple[Any, Any]) -> tuple[int, str]:
+            key = str(pair[0])
+            try:
+                return (0, f"{int(key):08d}")
+            except (TypeError, ValueError):
+                return (1, key)
+
+        pairs.sort(key=sort_key)
+        return [item for _, item in pairs[:MAX_WORLD_BOOK_ENTRIES]]
+    if isinstance(value, list):
+        return [item for item in value[:MAX_WORLD_BOOK_ENTRIES] if isinstance(item, dict)]
+    return []
+
+
+_TAVERN_CHARACTER_MARKER_FIELDS = (
+    "personality",
+    "scenario",
+    "first_mes",
+    "first_message",
+    "mes_example",
+    "example_dialogues",
+    "alternate_greetings",
+    "character_book",
+    "characterBook",
+    "char_name",
+    "speech_style",
+    "talk_style",
+)
+_TAVERN_PRESET_MARKER_FIELDS = {
+    "chat_completion_source",
+    "openai_model",
+    "claude_model",
+    "custom_model",
+    "api_url_scale",
+    "assistant_prefill",
+    "custom_prompt_post_processing",
+    "instruct_template",
+    "context_template",
+    "prompt_order",
+    "prompts",
+    "world_info_depth",
+    "max_context",
+    "max_tokens",
+}
+
+
+def _has_import_value(value: Any) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _looks_like_tavern_world_book(source: Any, envelope: Any = None) -> bool:
+    payload = _dict(source)
+    wrapper = _dict(envelope)
+    if not isinstance(payload.get("entries"), (list, dict)):
+        return False
+    if _has_import_value(wrapper.get("spec")) or _has_import_value(wrapper.get("spec_version")):
+        return False
+    return not any(_has_import_value(payload.get(field)) for field in _TAVERN_CHARACTER_MARKER_FIELDS)
+
+
+def _looks_like_tavern_preset(source: Any, envelope: Any = None) -> bool:
+    payload = _dict(source)
+    wrapper = _dict(envelope)
+    if _looks_like_tavern_world_book(payload, wrapper):
+        return False
+    if any(_has_import_value(payload.get(field)) for field in _TAVERN_CHARACTER_MARKER_FIELDS):
+        return False
+    if _has_import_value(payload.get("name")) or _has_import_value(payload.get("char_name")):
+        return False
+    keys = set(payload) | set(wrapper)
+    return len(keys & _TAVERN_PRESET_MARKER_FIELDS) >= 2
+
+
+def _tavern_world_book_metadata(source: Any) -> dict[str, Any]:
+    payload = _dict(source)
+    metadata: dict[str, Any] = {}
+    for output_key, input_keys, kind in (
+        ("name", ("name", "title"), "text"),
+        ("description", ("description", "comment"), "text"),
+        ("recursive_scanning", ("recursive_scanning", "recursiveScanning"), "bool"),
+        ("scan_depth", ("scan_depth", "scanDepth"), "int"),
+        ("token_budget", ("token_budget", "tokenBudget"), "int"),
+        ("is_creation", ("is_creation",), "bool"),
+    ):
+        value = next((payload.get(key) for key in input_keys if key in payload), None)
+        if value is None:
+            continue
+        if kind == "text":
+            value = _text(value, 12000)
+            if not value:
+                continue
+        elif kind == "bool":
+            value = _as_bool(value, False)
+        else:
+            try:
+                value = max(0, int(value))
+            except (TypeError, ValueError):
+                continue
+        metadata[output_key] = value
+    extensions = payload.get("extensions")
+    if isinstance(extensions, dict) and extensions:
+        metadata["extensions"] = _bounded_json_value(extensions)
+    return metadata
+
+
+def _parse_tavern_json_bytes(data: bytes) -> Any:
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            return json.loads(data.decode(encoding))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return None
+
+
+def _import_world_book_entry(value: Any, index: int = 0) -> tuple[dict[str, Any] | None, list[str]]:
+    source = _dict(value)
+    warnings: list[str] = []
+    advanced_fields = (
+        "scan_depth",
+        "position",
+        "depth",
+        "probability",
+        "group",
+        "group_weight",
+        "prevent_recursion",
+        "delay_until_recursion",
+        "exclude_recursion",
+        "sticky",
+        "cooldown",
+        "delay",
+    )
+    unsupported = [field for field in advanced_fields if field in source]
+    if unsupported:
+        warnings.append(f"Advanced world-book options preserved but not fully executed: {', '.join(unsupported)}")
+    raw_keys = source.get("keys") or source.get("primary_keys") or source.get("key")
+    keys = _import_text_list(raw_keys)
+    secondary_keys = _import_text_list(
+        source.get("secondary_keys") or source.get("secondaryKeys") or source.get("keysecondary")
+    )
+    constant = _as_bool(source.get("constant"), False)
+    mode = "always" if constant else source.get("mode") or source.get("activation") or "keyword"
+    enabled = _as_bool(source.get("enabled"), not _as_bool(source.get("disable"), False))
+    try:
+        priority_value = source.get("priority")
+        if priority_value is None:
+            priority_value = source.get("order")
+        if priority_value is None:
+            priority_value = source.get("insertion_order")
+        priority = int(priority_value or 0)
+    except (TypeError, ValueError):
+        priority = 0
+    extensions = _dict(source.get("extensions"))
+    tavern_fields = (
+        "constant",
+        "selective",
+        "selectiveLogic",
+        "case_sensitive",
+        "match_whole_words",
+        "use_regex",
+        "scan_depth",
+        "position",
+        "depth",
+        "probability",
+        "group",
+        "group_weight",
+        "prevent_recursion",
+        "delay_until_recursion",
+        "exclude_recursion",
+        "sticky",
+        "cooldown",
+        "delay",
+        "insertion_order",
+        "disable",
+    )
+    for field in tavern_fields:
+        if field in source and field not in extensions:
+            extensions[field] = _bounded_json_value(source.get(field))
+    for field in unsupported:
+        extensions[field] = _bounded_json_value(source.get(field))
+    entry = normalize_world_book_entry(
+        {
+            "id": source.get("id") or source.get("uid") or f"world_{index + 1}",
+            "title": source.get("title") or source.get("name") or source.get("comment") or f"World entry {index + 1}",
+            "content": source.get("content") or source.get("text") or source.get("body"),
+            "keys": keys,
+            "secondary_keys": secondary_keys,
+            "mode": mode,
+            "enabled": enabled,
+            "priority": priority,
+            "visibility": source.get("visibility") or "public",
+            "visible_to": source.get("visible_to") or source.get("known_by"),
+            "chapter_ids": source.get("chapter_ids"),
+            "locked": _as_bool(source.get("locked"), False),
+            "source": "tavern_import",
+            "extensions": extensions,
+        },
+        index,
+    )
+    if not entry:
+        warnings.append(f"World-book entry {index + 1} has no usable content.")
+    return entry, warnings
+
+
+def import_tavern_world_book(value: Any = None, filename: Any = "") -> dict[str, Any]:
+    """Convert a Tavern/SillyTavern world-info JSON object to the roleplay schema."""
+    raw = value
+    if isinstance(value, (bytes, bytearray)):
+        raw = _parse_tavern_json_bytes(bytes(value))
+        if raw is None:
+            return {"ok": False, "error": "world_book_json_invalid", "warnings": []}
+    elif isinstance(value, str):
+        try:
+            raw = json.loads(value)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "world_book_json_invalid", "warnings": []}
+    source = _dict(raw)
+    if isinstance(source.get("data"), dict) and not source.get("entries"):
+        source = _dict(source.get("data"))
+    entries_source = source.get("entries")
+    if entries_source is None:
+        entries_source = (
+            source.get("world_book")
+            or source.get("worldbook")
+            or source.get("lorebook")
+            or source.get("world_info")
+            or source.get("character_book")
+        )
+    if isinstance(entries_source, dict) and "entries" in entries_source:
+        source = dict(entries_source)
+        entries_source = source.get("entries")
+    if _looks_like_tavern_preset(source, raw):
+        return {
+            "ok": False,
+            "error": "tavern_preset_file_detected",
+            "warnings": ["This file contains a Tavern preset, not a world book."],
+            "world_book": normalize_world_book(),
+        }
+    metadata = _tavern_world_book_metadata(source)
+    warnings: list[str] = []
+    entries: list[dict[str, Any]] = []
+    imported_entries = _import_world_book_entries(entries_source)
+    for index, item in enumerate(imported_entries):
+        entry, entry_warnings = _import_world_book_entry(item, index)
+        warnings.extend(entry_warnings)
+        if entry:
+            entries.append(entry)
+    if not entries:
+        return {
+            "ok": False,
+            "error": "world_book_entries_empty",
+            "warnings": list(dict.fromkeys(warnings))[:MAX_IMPORT_WARNINGS],
+            "world_book": normalize_world_book({"metadata": metadata}),
+        }
+    source_count = len(entries_source) if isinstance(entries_source, (list, dict)) else len(imported_entries)
+    if source_count > MAX_WORLD_BOOK_ENTRIES:
+        warnings.append(f"World book was limited to {MAX_WORLD_BOOK_ENTRIES} entries.")
+    warnings = list(dict.fromkeys(warnings))
+    world_book = normalize_world_book({
+        "enabled": _as_bool(source.get("enabled"), True),
+        "entries": entries,
+        "metadata": metadata,
+    })
+    return {
+        "ok": True,
+        "source_format": "tavern_world_book",
+        "source_name": _text(filename, 240),
+        "world_book": world_book,
+        "metadata": metadata,
+        "warnings": warnings[:MAX_IMPORT_WARNINGS],
+        "raw": _bounded_json_value(raw),
+    }
+
+
+def _parse_tavern_png_metadata(data: bytes) -> dict[str, Any] | None:
+    """Read Tavern card metadata from tEXt, zTXt, or iTXt PNG chunks."""
+    if not isinstance(data, (bytes, bytearray)) or bytes(data[:8]) != b"\x89PNG\r\n\x1a\n":
+        return None
+    payloads: list[bytes] = []
+    offset = 8
+    raw = bytes(data)
+    while offset + 12 <= len(raw):
+        try:
+            length = struct.unpack(">I", raw[offset:offset + 4])[0]
+        except struct.error:
+            break
+        chunk_start = offset + 8
+        chunk_end = chunk_start + length
+        if chunk_end + 4 > len(raw):
+            break
+        chunk_type = raw[offset + 4:offset + 8]
+        chunk = raw[chunk_start:chunk_end]
+        if chunk_type == b"tEXt":
+            key, separator, text = chunk.partition(b"\x00")
+            if separator and key.decode("latin-1", "ignore").strip().lower() in {"chara", "ccv3", "character_card"}:
+                payloads.append(text)
+        elif chunk_type == b"zTXt":
+            key, separator, compressed = chunk.partition(b"\x00")
+            if (
+                separator
+                and key.decode("latin-1", "ignore").strip().lower() in {"chara", "ccv3", "character_card"}
+                and len(compressed) > 1
+                and compressed[:1] == b"\x00"
+            ):
+                try:
+                    payloads.append(zlib.decompress(compressed[1:]))
+                except zlib.error:
+                    pass
+        elif chunk_type == b"iTXt":
+            key, separator, remainder = chunk.partition(b"\x00")
+            if separator and key.decode("utf-8", "ignore").strip().lower() in {"chara", "ccv3", "character_card"}:
+                # compression flag, compression method, language, translated keyword, text
+                compression_flag = remainder[:1]
+                remainder = remainder[2:]
+                _, language_separator, remainder = remainder.partition(b"\x00")
+                if language_separator:
+                    _, translated_separator, text = remainder.partition(b"\x00")
+                    if translated_separator:
+                        if compression_flag == b"\x01":
+                            try:
+                                text = zlib.decompress(text)
+                            except zlib.error:
+                                text = None
+                        if text is not None:
+                            payloads.append(text)
+        offset = chunk_end + 4
+        if chunk_type == b"IEND":
+            break
+    for payload in reversed(payloads):
+        parsed = _decode_tavern_metadata_payload(payload)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _decode_tavern_metadata_payload(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, (bytes, bytearray)):
+        return None
+    candidate = bytes(payload).decode("utf-8-sig", "ignore").strip()
+    candidates = [candidate]
+    compact = re.sub(r"\s+", "", candidate)
+    if compact and compact != candidate:
+        candidates.append(compact)
+    for item in tuple(candidates):
+        try:
+            parsed = json.loads(item)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    if not compact:
+        return None
+    try:
+        decoded = base64.b64decode(
+            compact.replace("-", "+").replace("_", "/") + "=" * (-len(compact) % 4),
+            validate=False,
+        )
+    except (ValueError, TypeError):
+        return None
+    try:
+        parsed = json.loads(decoded.decode("utf-8-sig", "ignore"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _tavern_card_payload(value: Any) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    envelope = _dict(value)
+    source = _dict(envelope)
+    for wrapper_key in ("character_card", "characterCard", "card", "character"):
+        nested = source.get(wrapper_key)
+        if isinstance(nested, dict) and not source.get("name"):
+            source = _dict(nested)
+            break
+    data = source.get("data")
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            data = None
+    if isinstance(data, dict) and (
+        source.get("spec")
+        or source.get("spec_version")
+        or data.get("name")
+        or data.get("char_name")
+    ):
+        detected = _text(source.get("spec") or source.get("spec_version"), 80) or "tavern_json"
+        return _dict(data), detected, envelope
+    return source, "tavern_json", envelope
+
+
+def _import_example_dialogues(value: Any) -> list[str]:
+    if isinstance(value, list):
+        result: list[str] = []
+        for item in value[:20]:
+            if isinstance(item, dict):
+                result.append(_text(json.dumps(item, ensure_ascii=False), 4000))
+            else:
+                text = _text(item, 4000)
+                if text:
+                    result.append(text)
+        return result
+    text = _text(value, 12000)
+    if not text:
+        return []
+    parts = re.split(r"(?:^|\n)\s*<START>\s*(?:\n|$)", text, flags=re.IGNORECASE)
+    return [item.strip() for item in parts if item.strip()][:20]
+
+
+def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[str, Any]:
+    """Convert TavernAI/SillyTavern JSON or PNG card metadata to a roleplay card."""
+    raw = value
+    source_format = "tavern_json"
+    if isinstance(value, (bytes, bytearray)):
+        data = bytes(value)
+        png_card = _parse_tavern_png_metadata(data)
+        if png_card is not None:
+            raw = png_card
+            source_format = "tavern_png"
+        else:
+            raw = _parse_tavern_json_bytes(data)
+            if raw is None:
+                return {"ok": False, "error": "character_card_invalid", "warnings": []}
+    elif isinstance(value, str):
+        try:
+            raw = json.loads(value)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "character_card_invalid", "warnings": []}
+    source, detected_format, envelope = _tavern_card_payload(raw)
+    if source_format == "tavern_json":
+        source_format = detected_format or source_format
+    def first_value(*keys: str) -> Any:
+        for container in (source, envelope):
+            for key in keys:
+                if key in container and container.get(key) not in (None, "", [], {}):
+                    return container.get(key)
+        return None
+
+    extensions = _dict(source.get("extensions") or envelope.get("extensions"))
+    depth_prompt = _dict(extensions.get("depth_prompt"))
+    system_prompt = _text(first_value("system_prompt"), 16000)
+    post_history_instructions = _text(first_value("post_history_instructions"), 16000)
+    if not system_prompt:
+        system_prompt = _text(depth_prompt.get("prompt"), 16000)
+    alternate_greetings = _import_example_dialogues(first_value("alternate_greetings"))
+    group_only_greetings = _import_example_dialogues(first_value("group_only_greetings"))
+    description = first_value("identity", "description", "persona")
+    scenario = first_value("background", "scenario")
+    speech_style = first_value("speech_style", "talk_style", "speaking_style")
+    if not speech_style:
+        speech_style = next(
+            (
+                extensions.get(key)
+                for key in ("speech_style", "talk_style", "speaking_style", "style")
+                if extensions.get(key) not in (None, "", [], {})
+            ),
+            "",
+        )
+    image_prompt = first_value("image_prompt", "visual_prompt")
+    if not image_prompt:
+        image_prompt = next(
+            (
+                extensions.get(key)
+                for key in ("image_prompt", "visual_prompt", "character_prompt")
+                if extensions.get(key) not in (None, "", [], {})
+            ),
+            "",
+        )
+    negative_prompt = first_value("negative_prompt")
+    if not negative_prompt:
+        negative_prompt = extensions.get("negative_prompt")
+    character_book_source = first_value(
+        "character_book",
+        "characterBook",
+        "world_book",
+        "worldbook",
+        "lorebook",
+    )
+    if character_book_source is None and source.get("entries") is not None:
+        character_book_source = source
+    name = _text(first_value("name", "char_name"), 200)
+    warnings: list[str] = []
+    if _looks_like_tavern_world_book(source, envelope):
+        world_book_result = import_tavern_world_book(source, filename)
+        return {
+            "ok": False,
+            "error": "world_book_file_detected",
+            "character": default_character_card({"import_metadata": {"source_name": filename}}),
+            "world_book": world_book_result.get("world_book"),
+            "source_format": source_format,
+            "source_name": _text(filename, 240),
+            "warnings": [
+                "This file contains a Tavern world book, not a character card. Import it from the world-book panel."
+            ],
+        }
+    if _looks_like_tavern_preset(source, envelope):
+        return {
+            "ok": False,
+            "error": "tavern_preset_file_detected",
+            "warnings": ["This file contains a Tavern preset, not a character card."],
+        }
+    if not name:
+        if character_book_source is not None:
+            world_book_result = import_tavern_world_book(character_book_source, filename)
+            return {
+                "ok": False,
+                "error": "world_book_file_detected",
+                "character": default_character_card({"import_metadata": {"source_name": filename}}),
+                "world_book": world_book_result.get("world_book"),
+                "source_format": source_format,
+                "source_name": _text(filename, 240),
+                "warnings": [
+                    "This file contains a Tavern world book, not a character card. Import it from the world-book panel."
+                ],
+            }
+        warnings.append("Character card has no name.")
+    unsupported_fields = [
+        field for field in (
+            "alternate_greetings",
+            "tags",
+            "creator_notes",
+            "group_only_greetings",
+        ) if first_value(field)
+    ]
+    extension_unsupported = [
+        field for field in ("TavernHelper_scripts", "regex_scripts")
+        if extensions.get(field)
+    ]
+    unsupported_fields.extend(extension_unsupported)
+    unsupported_fields = list(dict.fromkeys(unsupported_fields))
+    if unsupported_fields:
+        warnings.append("Some Tavern card metadata was preserved for review: " + ", ".join(unsupported_fields))
+    character_book_result = None
+    if character_book_source is not None:
+        character_book_result = import_tavern_world_book(character_book_source, filename)
+        warnings.extend(character_book_result.get("warnings") or [])
+    if character_book_result and character_book_result.get("world_book", {}).get("entries"):
+        if not any(_text(value) for value in (description, scenario, first_value("personality"), speech_style)):
+            warnings.append(
+                "This card keeps most of its setting in the embedded world book; basic identity fields are empty."
+            )
+    tavern_metadata = {
+        "spec": _text(envelope.get("spec") or source.get("spec"), 80),
+        "spec_version": _text(envelope.get("spec_version") or source.get("spec_version"), 40),
+        "creator": _text(first_value("creator"), 240),
+        "character_version": _text(first_value("character_version"), 120),
+        "tags": _clean_string_list(first_value("tags"), 40),
+        "creator_notes": _text(first_value("creator_notes", "creatorcomment"), 12000),
+        "system_prompt": system_prompt,
+        "post_history_instructions": post_history_instructions,
+        "alternate_greetings": alternate_greetings,
+        "group_only_greetings": group_only_greetings,
+        "extensions": {
+            "keys": _clean_string_list(list(extensions.keys()), 80),
+            "world": _text(extensions.get("world"), 240),
+            "depth_prompt": _bounded_json_value(depth_prompt) if depth_prompt else {},
+        },
+    }
+    warnings = list(dict.fromkeys(warnings))
+    metadata = {
+        "source_format": source_format,
+        "source_name": _text(filename, 240),
+        "warnings": warnings[:MAX_IMPORT_WARNINGS],
+        "unsupported_fields": unsupported_fields[:MAX_IMPORT_WARNINGS],
+        "tavern": tavern_metadata,
+        "raw": _bounded_json_value(raw),
+    }
+    first_message = first_value("first_message", "first_mes") or (alternate_greetings[0] if alternate_greetings else "")
+    card = default_character_card({
+        "id": _id(first_value("id") or name, "character"),
+        "name": name,
+        "identity": description,
+        "background": scenario,
+        "personality": first_value("personality"),
+        "speech_style": speech_style,
+        "image_prompt": image_prompt,
+        "negative_prompt": negative_prompt,
+        "first_message": first_message,
+        "example_dialogues": _import_example_dialogues(first_value("example_dialogues", "mes_example")),
+        "behavior_rules": _import_text_list(first_value("behavior_rules"), 40),
+        "world_book": character_book_result.get("world_book") if character_book_result and character_book_result.get("ok") else None,
+        "import_metadata": metadata,
+    })
+    return {
+        "ok": bool(card.get("name")),
+        "character": card,
+        "world_book": card.get("world_book"),
+        "source_format": source_format,
+        "source_name": _text(filename, 240),
+        "warnings": warnings[:MAX_IMPORT_WARNINGS],
     }
 
 
@@ -1519,15 +2187,40 @@ def normalize_roleplay_session(value: Any = None) -> dict[str, Any]:
     return session
 
 
-def _resource_key_hits(query: Any, keys: Any) -> int:
+def _resource_key_hits(
+    query: Any,
+    keys: Any,
+    *,
+    use_regex: bool = False,
+    case_sensitive: bool = False,
+    match_whole_words: bool = False,
+) -> int:
     query_text = _text(query, 12000).casefold()
+    raw_query_text = _text(query, 12000)
     query_tokens = _turn_tokens(query_text)
     hits = 0
     for key in _clean_string_list(keys, MAX_WORLD_BOOK_KEYS):
-        normalized = key.casefold()
-        if len(normalized) >= 2 and normalized in query_text:
-            hits += 1
-            continue
+        if use_regex:
+            try:
+                flags = 0 if case_sensitive else re.IGNORECASE
+                if re.search(key, raw_query_text, flags):
+                    hits += 1
+                    continue
+            except re.error:
+                pass
+        normalized = key if case_sensitive else key.casefold()
+        haystack = raw_query_text if case_sensitive else query_text
+        if len(normalized) >= 2:
+            if match_whole_words:
+                try:
+                    if re.search(rf"(?<!\w){re.escape(normalized)}(?!\w)", haystack):
+                        hits += 1
+                        continue
+                except re.error:
+                    pass
+            elif normalized in haystack:
+                hits += 1
+                continue
         key_tokens = _turn_tokens(normalized)
         if key_tokens and key_tokens.issubset(query_tokens):
             hits += 1
@@ -1600,11 +2293,36 @@ def match_world_book_entries(
         chapter_ids = _clean_string_list(entry.get("chapter_ids"), MAX_CHAPTERS)
         if chapter_ids and active_chapter_id not in chapter_ids and not include_hidden:
             continue
-        primary_hits = _resource_key_hits(search_text, entry.get("keys"))
-        secondary_hits = _resource_key_hits(search_text, entry.get("secondary_keys"))
+        extensions = _dict(entry.get("extensions"))
+        use_regex = _as_bool(extensions.get("use_regex"), False)
+        case_sensitive = _as_bool(extensions.get("case_sensitive"), False)
+        match_whole_words = _as_bool(extensions.get("match_whole_words"), False)
+        primary_hits = _resource_key_hits(
+            search_text,
+            entry.get("keys"),
+            use_regex=use_regex,
+            case_sensitive=case_sensitive,
+            match_whole_words=match_whole_words,
+        )
+        secondary_hits = _resource_key_hits(
+            search_text,
+            entry.get("secondary_keys"),
+            use_regex=use_regex,
+            case_sensitive=case_sensitive,
+            match_whole_words=match_whole_words,
+        )
         mode = _text(entry.get("mode"), 40).lower() or "keyword"
         if mode != "always" and primary_hits <= 0:
             continue
+        selective = _as_bool(extensions.get("selective"), False)
+        if selective and entry.get("secondary_keys"):
+            selective_logic = _text(extensions.get("selectiveLogic"), 40).lower()
+            if selective_logic in {"1", "all", "and_all", "and all"}:
+                secondary_keys = _clean_string_list(entry.get("secondary_keys"), MAX_WORLD_BOOK_KEYS)
+                if secondary_hits < len(secondary_keys):
+                    continue
+            elif secondary_hits <= 0:
+                continue
         score = 100 if mode == "always" else 20 * primary_hits + 5 * secondary_hits
         score += int(entry.get("priority") or 0)
         if chapter_ids and active_chapter_id in chapter_ids:
@@ -1815,6 +2533,38 @@ def _player_state_prompt(player_state: Any, turn_intent: Any = "") -> str:
     )
 
 
+def _prompt_safe_character_card(value: Any) -> dict[str, Any]:
+    """Keep imported review data and the full world-book store out of the actor prompt."""
+    card = _dict(value)
+    card.pop("world_book", None)
+    import_metadata = card.pop("import_metadata", None)
+    if import_metadata:
+        card["import_source"] = {
+            "source_format": _text(_dict(import_metadata).get("source_format"), 80),
+            "source_name": _text(_dict(import_metadata).get("source_name"), 240),
+        }
+    return card
+
+
+def _tavern_prompt_sections(value: Any) -> list[str]:
+    metadata = _dict(_dict(_dict(value).get("import_metadata")).get("tavern"))
+    sections: list[str] = []
+    for label, key in (
+        ("Tavern system prompt", "system_prompt"),
+        ("Tavern post-history instructions", "post_history_instructions"),
+    ):
+        text = _text(metadata.get(key), 16000)
+        if text:
+            sections.append(f"{label}:\n{text}")
+    alternate = _import_example_dialogues(metadata.get("alternate_greetings"))
+    if alternate:
+        sections.append("Tavern alternate opening messages:\n" + json.dumps(alternate, ensure_ascii=False, indent=2))
+    group_only = _import_example_dialogues(metadata.get("group_only_greetings"))
+    if group_only:
+        sections.append("Tavern group-only opening messages:\n" + json.dumps(group_only, ensure_ascii=False, indent=2))
+    return sections
+
+
 def build_roleplay_system_prompt(
     session: Any,
     lang: str = "cn",
@@ -1835,12 +2585,13 @@ def build_roleplay_system_prompt(
         MAX_ROLEPLAY_CHARACTERS,
     )
     other_characters = [
-        card
+        _prompt_safe_character_card(card)
         for character_id, card in normalized.get("characters", {}).items()
         if character_id != resolved_speaker_id
         and (not present_ids or character_id in present_ids)
     ]
     resources = roleplay_context_resources(normalized, context_query, resolved_speaker_id)
+    tavern_sections = _tavern_prompt_sections(speaker_card)
     sections = [
         "You are the in-character actor in SimpAI Studio Roleplay mode.",
         f"Reply language: {reply_language}.",
@@ -1853,7 +2604,9 @@ def build_roleplay_system_prompt(
         _player_state_prompt(player_state, effective_turn_intent),
         f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
         "Character card:",
-        json.dumps(speaker_card, ensure_ascii=False, indent=2),
+        json.dumps(_prompt_safe_character_card(speaker_card), ensure_ascii=False, indent=2),
+        "Imported Tavern card instructions:",
+        "\n\n".join(tavern_sections),
         "Other configured characters visible in the current scene:",
         json.dumps(other_characters, ensure_ascii=False, indent=2),
         (
@@ -4393,6 +5146,8 @@ __all__ = [
     "default_roleplay_session",
     "normalize_roleplay_session",
     "normalize_world_book",
+    "import_tavern_character_card",
+    "import_tavern_world_book",
     "normalize_memory_store",
     "normalize_chapter_store",
     "query_roleplay_memories",

@@ -1,67 +1,110 @@
 # ComfyUI-MiniMax-H3-Turbo
 
 Run [MiniMax-H3](https://docs.comfy.org/tutorials/video/minimax/minimax-h3) —
-joint **video + synchronized audio** — in **4 sampling steps** instead of ~20,
-with the [MiniMax-H3 Turbo LoRA](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora).
+joint **video + synchronized audio** — in as few as **4 sampling steps** instead
+of ~20, with the
+[MiniMax-H3 Turbo LoRA](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora).
 
-Two nodes that drop straight into the official H3 workflow (text-to-video and
+Two nodes drop straight into the official H3 workflow (text-to-video and
 image-to-video):
 
 | node | what it does |
 |---|---|
 | **MiniMax-H3 Turbo LoRA** | `MODEL → MODEL`, applies the turbo LoRA |
-| **MiniMax-H3 Turbo Sampler (4-step)** | `→ SAMPLER`, feeds `SamplerCustomAdvanced` |
+| **MiniMax-H3 Turbo Sampler** | `→ SAMPLER`, feeds `SamplerCustomAdvanced` |
 
-> ⚠️ **Preview.** The current LoRA (`ckpt850`) is the final checkpoint of this
-> training round — sharp at 4 steps, but with known artifacts emerging
-> (plastic-looking skin, over-sharp grain); training is paused while we fix them.
-> See the [LoRA repo](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora) for
-> details.
+## Which checkpoint — `v4` (600) or `v1` (850)?
+
+For **most** work, use **`minimax_h3_turbo_v4_step600_ema.safetensors`** (from the
+[LoRA repo](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)). It's the
+strongest checkpoint so far: much better static / small-motion shots, markedly
+better micro-detail (faces, fingers, texture), and the over-sharpening / plastic
+look of the earlier `v1` (~850) line is fully resolved.
+
+v4 introduced a **static-frame enhancement**. The one trade-off shows up **only at
+4 steps with large, fast motion**, where v4 can produce **motion-smear / trailing
+ghosting** (actively being fixed). **Using 6–8 steps largely removes it** — and v4
+tolerates higher step counts better than v1 (which over-sharpens at high steps +
+strength 1.0). For the narrow case of **4 steps *and* heavy motion**, the older
+**`v1` ~850** checkpoint can still be friendlier.
+
+```
+Using 6–8 steps?        ── yes ──►  v4-600  (recommended)
+   │ no (4 steps)
+   ▼
+Heavy / fast motion?    ── no  ──►  v4-600  (recommended)
+   │ yes
+   ▼
+                                    v1-850  (friendlier at 4-step heavy motion)
+```
+
+Still a preview — the two areas still being improved are **audio** and **fast,
+intense motion**.
 
 ## Install
 
-> 🔄 **Keep the node updated.** It's actively evolving and features arrive in new
-> versions (e.g. pruned-base support was added after the first release). Update
-> via ComfyUI-Manager, or `git pull` if you installed manually.
+**Via ComfyUI-Manager** — search "MiniMax-H3 Turbo" and install. **Or manually:**
 
-**Via ComfyUI-Manager** — search "MiniMax-H3 Turbo" and install.
-
-**Or manually:**
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/larryvrh/ComfyUI-MiniMax-H3-Turbo
 ```
-Then restart ComfyUI.
 
-**Download the LoRA** from
-[larryvrh/MiniMax-H3-Turbo-Lora](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)
-and put the `.safetensors` into `ComfyUI/models/loras/`.
+Then restart ComfyUI. Keep the node updated (Manager, or `git pull`) — it evolves
+alongside the weights.
 
-You also need the base MiniMax-H3 model, VAEs and text encoder from the official
-release — see the [MiniMax-H3 tutorial](https://docs.comfy.org/tutorials/video/minimax/minimax-h3).
+Put the LoRA `.safetensors` into `ComfyUI/models/loras/`. You also need the base
+MiniMax-H3 model, VAEs and text encoder from the official release — see the
+[MiniMax-H3 tutorial](https://docs.comfy.org/tutorials/video/minimax/minimax-h3).
 
 ## Use
 
 Start from the **official MiniMax-H3 workflow** (t2v or i2v) and make two changes:
 
 1. Insert **MiniMax-H3 Turbo LoRA** between the model loader and the sampler
-   (`... → Load Diffusion Model → MiniMax-H3 Turbo LoRA → SamplerCustomAdvanced`),
+   (`… → Load Diffusion Model → MiniMax-H3 Turbo LoRA → SamplerCustomAdvanced`),
    and pick the turbo `.safetensors`.
-2. Replace the sampler feeding `SamplerCustomAdvanced` with **MiniMax-H3 Turbo
-   Sampler (4-step)**, and set the scheduler node to **4 steps**
-   (`BasicScheduler`, scheduler `simple`).
+2. Feed `SamplerCustomAdvanced` from **MiniMax-H3 Turbo Sampler**, and set the
+   scheduler node (`BasicScheduler`) to `simple` at **≥ 4 steps**.
 
-Everything else — the conditioning nodes, VAE decode, audio output — stays as in
-the official workflow, so **both text-to-video and image-to-video** work
-unchanged. A ready-made t2v workflow is in
-[`example_workflows/`](example_workflows/minimax_h3_t2v_turbo.json) — drag it
+Everything else — conditioning, VAE decode, audio output — stays as in the
+official graph, so **both t2v and i2v** work unchanged. A ready-made t2v workflow
+is in [`example_workflows/`](example_workflows/minimax_h3_t2v_turbo.json) — drag it
 into ComfyUI to see the wiring.
 
-**Base model**: works with any MiniMax-H3 base — full (`bf16`, `int8_convrot`)
-**and the pruned/curve variants** (`pruned_int8`, `pruned_fp8`). The node detects
-a pruned base automatically and re-injects the LoRA's time-conditioning at run
-time (a small `silu(t_emb)` grid ships with the node for this), so one LoRA file
-covers every base.
+## Steps and strength
+
+- **4 steps is the recommended *minimum*; 4–8 is the useful range.** 6–8 steps
+  look noticeably better than 4, so add steps if you can afford them. Past **8
+  steps** it stops helping and can start to introduce **over-sharp artifacts** —
+  no benefit to going higher, so stay in **4–8**.
+- **Keep `strength` at `1.0`.** It's tuned for 1.0 and holds up across the 4–8 step
+  range. Only reach for the dial if a *specific* clip misbehaves: **blurry ghosting
+  / smear → nudge up** (`~1.05–1.2`), **over-sharp grain → nudge down**
+  (`~0.8–0.95`).
+- Keep the scheduler on `simple`.
+
+## Base model & `low_vram`
+
+**Base model** — works with any MiniMax-H3 base: full (`bf16`, `int8_convrot`)
+**and the pruned/curve variants** (`pruned_int8`, `pruned_fp8`). The node detects a
+pruned base automatically and re-injects the LoRA's time-conditioning at run time
+(a small `silu(t_emb)` grid ships with the node for this), so **one LoRA file
+covers every base**.
+
+**`low_vram`** (node switch) trades sharpness for peak VRAM:
+
+- **off (default)** — applies the LoRA at run time (bypass): sharpest, recommended,
+  a little extra peak VRAM.
+- **on** — merges the LoRA into the weights: lowest peak VRAM, so smaller GPUs run
+  and longer / higher-res clips fit, but the result is **softer on quantized
+  (`int8` / `fp8` / pruned) bases** (the tiny update is partly rounded away when
+  folded into the quantized weights).
+
+The node streams the base model, so it runs on much smaller GPUs than the ~33 B
+size suggests — an 80 GB GPU is only needed for the largest resolutions in `bypass`
+mode. If you hit out-of-memory, turn `low_vram` **on** and/or lower the resolution
+or frame count.
 
 ## Why a custom sampler (and how it adapts)
 
@@ -70,41 +113,20 @@ MiniMax-H3 denoises the video and audio streams on two different flow schedules
 `ModelSamplingAV` carries the audio latent on the video schedule — so a stock
 sampler already produces correct audio there. On **older ComfyUI without that
 support**, a stock sampler steps both streams on one schedule and badly over-steps
-the audio at 4 steps, so the audio comes out distorted or blown out.
+the audio at 4 steps, so the audio comes out distorted.
 
-This node's sampler **auto-detects which ComfyUI it's running on**: on recent
-builds it steps as a plain single-schedule sampler (bit-for-bit the stock result);
-on older builds it steps each stream on its own clock so audio stays clean at 4
-steps. Keep it in the workflow and it does the right thing across ComfyUI versions
-— you don't need to change anything when you update ComfyUI. (On recent ComfyUI a
-stock `euler` sampler works too; the Turbo Sampler just keeps existing graphs
-working unchanged.)
+This node's sampler **auto-detects which ComfyUI it's on**: on recent builds it
+steps as a plain single-schedule sampler (bit-for-bit the stock result); on older
+builds it steps each stream on its own clock so audio stays clean at 4 steps. Keep
+it in the workflow and it does the right thing across ComfyUI versions — nothing to
+change when you update. (On recent ComfyUI a stock `euler` also works; the Turbo
+Sampler just keeps existing graphs running unchanged.)
 
 ## Notes
 
-- **Steps**: with `ckpt850`, **4 steps is already sharp** (earlier checkpoints
-  needed 6–8). Any count **≥ 4** is valid; more steps still help a little.
-  Scheduler stays `simple`.
-- **LoRA strength** (node input, default `1.0`) is the dial for the
-  sharpness/artifact trade-off: if the result shows **blurry ghosting / smear**,
-  nudge strength **up** (e.g. `1.05–1.2`); if it shows **over-sharp grain /
-  artifacts**, nudge it **down** (e.g. `0.8–0.95`).
 - **Resolution / length**: width and height are multiples of 32 (short edge
   typically 768); frame count is at 24 fps and snaps to the model's 17·k+5 grid
   (124 ≈ 5 s). Validated range ~124–362 frames.
-- **VRAM / `low_vram`**: MiniMax-H3 is large (~33 B). The LoRA node has a
-  **`low_vram`** switch that trades sharpness for peak VRAM:
-  - **off (default)** — applies the LoRA at run time (bypass): sharpest, and the
-    recommended path, but costs some extra peak VRAM.
-  - **on** — merges the LoRA into the weights: lowest peak VRAM, so smaller GPUs
-    can run and longer / higher-res clips fit, but the result is **softer on
-    quantized (`int8` / `fp8` / pruned) bases**, because the tiny update is
-    partly rounded away when it is folded back into the quantized weights.
-
-  If you hit an out-of-memory error, turn `low_vram` **on** (and/or lower the
-  resolution or frame count). The node streams the base model, so it also runs
-  on much smaller GPUs than the ~33 B size suggests — an 80 GB GPU is only
-  needed for the largest resolutions in `bypass` mode.
 
 ## License
 

@@ -1357,6 +1357,7 @@ def bind_topbar_identity_events(
     qwen_custom_style_preset_choices,
     binding_id_button,
     identity_dialog,
+    identity_activation=None,
     admin_access_refresh_fn=None,
     admin_access_user_select=None,
     admin_access_outputs=None,
@@ -1370,6 +1371,31 @@ def bind_topbar_identity_events(
     identity_admin_surface_outputs = list(identity_admin_surface_outputs or [])
     welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
     welcome_media_outputs = list(welcome_media_load_outputs or [])
+    activation = dict(identity_activation or {})
+    activation_state = activation.get("state")
+    activation_toggle_outputs = [
+        activation.get("guard"),
+        activation.get("note"),
+        activation.get("mode"),
+        activation.get("scope_confirm"),
+        activation.get("permission_confirm"),
+        activation.get("phrase_confirm"),
+        activation.get("apply_button"),
+        activation_state,
+    ]
+    activation_toggle_outputs = [item for item in activation_toggle_outputs if item is not None]
+
+    def _activation_is_required():
+        required_fn = getattr(simpleai_module, "requires_multi_user_activation", None)
+        if not activation_toggle_outputs or not callable(required_fn):
+            return False
+        return bool(required_fn(False))
+
+    def _activation_refresh_updates(state, opened):
+        refresh_fn = activation.get("refresh_fn")
+        if not activation_toggle_outputs or not callable(refresh_fn):
+            return []
+        return list(refresh_fn(state, opened))
 
     def _identity_stage_from_base(base):
         def is_visible(index):
@@ -1486,17 +1512,22 @@ def bind_topbar_identity_events(
         vcode_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[3:5])
         phrase_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[5:10])
         new_flag = bool(state.get("identity_dialog", False)) if isinstance(state, dict) else not old_flag
+        activation_required = bool(new_flag and _activation_is_required())
+        if activation_required and len(ctrls) > 1:
+            ctrls[1] = gr_update(visible=False)
         _log_ui_trace(
             logger,
             "[UI-TRACE] identity.toggle_reset | old_flag=%s, new_flag=%s, clear_input_id_info=True, "
-            "vcode_visible=%s, phrase_visible=%s",
+            "vcode_visible=%s, phrase_visible=%s, activation_required=%s",
             old_flag,
             new_flag,
             vcode_visible,
             phrase_visible,
+            activation_required,
         )
-        stage = _identity_stage_from_base(ctrls) if new_flag else "closed"
-        return head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
+        stage = "activation" if activation_required else (_identity_stage_from_base(ctrls) if new_flag else "closed")
+        result = head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
+        return result + _activation_refresh_updates(state, new_flag)
 
     def _close_identity_dialog_reset(state):
         if isinstance(state, dict):
@@ -1514,18 +1545,36 @@ def bind_topbar_identity_events(
         js="(x)=>{refresh_topbar_status_js(x);}",
     )
 
+    if activation_state is not None:
+        phrases_fn = lambda a, b, c, confirmed: _identity_flow_row_updates_with_state(
+            simpleai_module.set_phrases(a, b, c, "confirm", confirmed),
+            b,
+        )
+        phrases_inputs = identity_input_info + [identity_phrase_input, activation_state]
+    else:
+        phrases_fn = lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.set_phrases(a, b, c, "confirm"), b)
+        phrases_inputs = identity_input_info + [identity_phrase_input]
     phrases_chain = identity_phrases_confirm_button.click(
-        lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.set_phrases(a, b, c, "confirm"), b),
-        inputs=identity_input_info + [identity_phrase_input],
+        phrases_fn,
+        inputs=phrases_inputs,
         outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [current_id_info, current_upstream_status, identity_export_btn, state_topbar],
         show_progress=False,
         queue=False,
     )
     _after_identity_event_chain(phrases_chain)
 
+    if activation_state is not None:
+        confirm_fn = lambda a, b, c, confirmed: _identity_flow_row_updates_with_state(
+            simpleai_module.confirm_identity(a, b, c, confirmed),
+            b,
+        )
+        confirm_inputs = identity_input_info + [identity_phrase_input, activation_state]
+    else:
+        confirm_fn = lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.confirm_identity(a, b, c), b)
+        confirm_inputs = identity_input_info + [identity_phrase_input]
     confirm_chain = identity_confirm_button.click(
-        lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.confirm_identity(a, b, c), b),
-        inputs=identity_input_info + [identity_phrase_input],
+        confirm_fn,
+        inputs=confirm_inputs,
         outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [current_id_info, current_upstream_status, identity_export_btn, state_topbar],
         show_progress=False,
         queue=False,
@@ -1547,7 +1596,33 @@ def bind_topbar_identity_events(
         current_upstream_status,
         identity_export_btn,
         identity_stage_state,
-    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]]
+    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]] + activation_toggle_outputs
+
+    activation_continue_fn = activation.get("continue_fn")
+    activation_apply_button = activation.get("apply_button")
+    if callable(activation_continue_fn) and activation_apply_button is not None and activation_state is not None:
+        activation_apply_button.click(
+            activation_continue_fn,
+            inputs=[
+                activation.get("mode"),
+                activation.get("scope_confirm"),
+                activation.get("permission_confirm"),
+                activation.get("phrase_confirm"),
+                state_topbar,
+            ],
+            outputs=[
+                identity_dialog,
+                activation.get("guard"),
+                activation.get("note"),
+                identity_ctrls[1],
+                identity_ctrls[0],
+                identity_stage_state,
+                activation_state,
+                state_topbar,
+            ],
+            show_progress=False,
+            queue=False,
+        )
 
     binding_id_button.click(
         _toggle_identity_dialog_reset,

@@ -29,7 +29,7 @@
     const MAX_ROLEPLAY_STATE_CHANGE_PREVIEW = 260;
     const MAX_ROLEPLAY_STATE_CHANGE_ROWS = 8;
     const MAX_ROLEPLAY_REFERENCE_BYTES = 80 * 1024 * 1024;
-    const MAX_ROLEPLAY_WORLD_BOOK_ENTRIES = 120;
+    const MAX_ROLEPLAY_WORLD_BOOK_ENTRIES = 400;
     const MAX_ROLEPLAY_WORLD_BOOK_KEYS = 24;
     const MAX_ROLEPLAY_MEMORIES = 120;
     const MAX_ROLEPLAY_CHAPTERS = 80;
@@ -478,18 +478,41 @@
     }
 
     function roleplayResourceList(value, limit = 80) {
-        return (Array.isArray(value) ? value : [])
+        const items = Array.isArray(value)
+            ? value
+            : typeof value === 'string'
+                ? value.split(/[,\n|]/)
+                : [];
+        return items
             .map((item) => roleplayResourceText(item, 500))
             .filter(Boolean)
             .slice(0, limit);
+    }
+
+    function roleplayBoolean(value, fallback = false) {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (value === null || value === undefined) return fallback;
+        const text = String(value).trim().toLowerCase();
+        if (['1', 'true', 'yes', 'on', 'enabled', 'enable', '是', '启用'].includes(text)) return true;
+        if (['0', 'false', 'no', 'off', 'disabled', 'disable', '否', '禁用'].includes(text)) return false;
+        return fallback;
     }
 
     function normalizeRoleplayWorldBookEntry(value, index = 0) {
         const source = value && typeof value === 'object' ? value : {};
         const content = roleplayResourceText(source.content || source.text || source.body, 8000);
         const title = roleplayResourceText(source.title || source.name, 240);
-        const keys = roleplayResourceList(source.keys || source.primary_keys, MAX_ROLEPLAY_WORLD_BOOK_KEYS);
-        const secondaryKeys = roleplayResourceList(source.secondary_keys || source.secondaryKeys, MAX_ROLEPLAY_WORLD_BOOK_KEYS);
+        const keys = roleplayResourceList(
+            Array.isArray(source.keys || source.primary_keys)
+                ? (source.keys || source.primary_keys)
+                : String(source.keys || source.primary_keys || source.key || '').split(/[,\n|]/),
+            MAX_ROLEPLAY_WORLD_BOOK_KEYS
+        );
+        const secondaryKeys = roleplayResourceList(
+            source.secondary_keys || source.secondaryKeys || source.keysecondary,
+            MAX_ROLEPLAY_WORLD_BOOK_KEYS
+        );
         if (!content && !title && !keys.length && !secondaryKeys.length) return null;
         const mode = ['always', 'constant', '常驻', '始终'].includes(String(source.mode || source.activation || '').trim().toLowerCase())
             ? 'always'
@@ -506,13 +529,16 @@
             keys,
             secondary_keys: secondaryKeys,
             mode,
-            enabled: source.enabled !== false,
-            priority: Math.max(-100, Math.min(100, Math.round(Number(source.priority) || 0))),
+            enabled: roleplayBoolean(source.enabled, !roleplayBoolean(source.disable, false)),
+            priority: Math.max(-100, Math.min(100, Math.round(Number(
+                source.priority ?? source.order ?? source.insertion_order ?? 0
+            ) || 0))),
             visibility,
             visible_to: roleplayResourceList(source.visible_to || source.known_by, 20),
             chapter_ids: roleplayResourceList(source.chapter_ids, MAX_ROLEPLAY_CHAPTERS),
-            locked: !!source.locked,
+            locked: roleplayBoolean(source.locked, false),
             source: roleplayResourceText(source.source, 80) || 'manual',
+            extensions: source.extensions && typeof source.extensions === 'object' ? source.extensions : {},
             created_at: roleplayResourceText(source.created_at, 80) || new Date().toISOString(),
             updated_at: roleplayResourceText(source.updated_at, 80) || new Date().toISOString()
         };
@@ -625,7 +651,7 @@
             else if (item.status === 'active') item.status = 'completed';
         });
         return {
-            world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: worldSource.enabled !== false, entries: worldEntries, updated_at: roleplayResourceText(worldSource.updated_at, 80) || new Date().toISOString() },
+            world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: worldSource.enabled !== false, entries: worldEntries, metadata: worldSource.metadata && typeof worldSource.metadata === 'object' ? worldSource.metadata : {}, updated_at: roleplayResourceText(worldSource.updated_at, 80) || new Date().toISOString() },
             memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories, updated_at: roleplayResourceText(memorySource.updated_at, 80) || new Date().toISOString() },
             chapters: { schema: 'simpai.vlm_roleplay.chapter_store', version: 1, active_id: activeId, items: chapters, updated_at: roleplayResourceText(chapterSource.updated_at, 80) || new Date().toISOString() },
             active_chapter_id: activeId
@@ -654,7 +680,7 @@
     function renderRoleplayResourceWorldEntry(entry, index) {
         const item = normalizeRoleplayWorldBookEntry(entry, index);
         if (!item) return '';
-        return `<article class="describe-vlm-chat-roleplay-resource-row" data-roleplay-resource-row="world" data-resource-id="${escapeHtml(item.id)}" data-resource-source="${escapeHtml(item.source)}">
+        return `<article class="describe-vlm-chat-roleplay-resource-row" data-roleplay-resource-row="world" data-resource-id="${escapeHtml(item.id)}" data-resource-source="${escapeHtml(item.source)}" data-resource-extensions="${escapeHtml(encodeURIComponent(JSON.stringify(item.extensions || {})))}">
           <div class="describe-vlm-chat-roleplay-resource-row-head"><input data-resource-field="title" type="text" maxlength="240" value="${escapeHtml(item.title)}" aria-label="${escapeHtml(localText('World book title', '世界书标题'))}"><button type="button" data-roleplay-resource-remove title="${escapeHtml(localText('Delete entry', '删除条目'))}" aria-label="${escapeHtml(localText('Delete entry', '删除条目'))}"><i class="fa-solid fa-trash"></i></button></div>
           <textarea data-resource-field="content" rows="2" maxlength="8000" placeholder="${escapeHtml(localText('Reusable setting, rule, location, or lore', '可复用的设定、规则、地点或背景知识'))}">${escapeHtml(item.content)}</textarea>
           <div class="describe-vlm-chat-roleplay-resource-grid">
@@ -713,6 +739,9 @@
         const root = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
         if (!root) return;
         const activeTab = String(root.getAttribute('data-resource-tab') || 'world');
+        if (stores.world_book.metadata && typeof stores.world_book.metadata === 'object') {
+            root.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(stores.world_book.metadata)));
+        }
         const setList = (kind, html) => {
             const list = root.querySelector(`[data-resource-list="${kind}"]`);
             if (list) list.innerHTML = html || `<div class="describe-vlm-chat-roleplay-resource-empty">${escapeHtml(localText('No entries yet', '还没有条目'))}</div>`;
@@ -776,6 +805,17 @@
         return element?.type === 'checkbox' || element?.type === 'radio' ? !!element.checked : String(element?.value || '').trim();
     }
 
+    function readRoleplayResourceExtensions(row) {
+        const encoded = String(row?.getAttribute('data-resource-extensions') || '').trim();
+        if (!encoded) return {};
+        try {
+            const parsed = JSON.parse(decodeURIComponent(encoded));
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
     function applyVisibleRoleplayResourceStores(session, modal) {
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
         const branchId = String(target.active_branch_id || 'main');
@@ -792,6 +832,7 @@
             chapter_ids: roleplayResourceCommaList(readRoleplayResourceField(row, 'chapter_ids'), MAX_ROLEPLAY_CHAPTERS),
             enabled: readRoleplayResourceField(row, 'enabled'),
             locked: readRoleplayResourceField(row, 'locked'),
+            extensions: readRoleplayResourceExtensions(row),
             source: row.getAttribute('data-resource-source') || 'manual'
         })).filter(Boolean);
         const memories = visibleRoleplayResourceRows(modal, 'memory').map((row) => normalizeRoleplayMemory({
@@ -835,6 +876,17 @@
             active_id: selectedChapter,
             items: chapters
         };
+        const resourceRoot = modal?.querySelector('[data-describe-vlm-chat-roleplay-resources]');
+        let worldBookMetadata = target.world_book?.metadata && typeof target.world_book.metadata === 'object'
+            ? target.world_book.metadata
+            : {};
+        const encodedWorldBookMetadata = String(resourceRoot?.getAttribute('data-roleplay-world-book-metadata') || '').trim();
+        if (encodedWorldBookMetadata) {
+            try {
+                const parsed = JSON.parse(decodeURIComponent(encodedWorldBookMetadata));
+                if (parsed && typeof parsed === 'object') worldBookMetadata = parsed;
+            } catch (error) {}
+        }
         const storyState = Object.assign({}, target.story_state, {
             world_facts: worldEntries.filter((item) => item.mode === 'always').map((item) => item.content),
             memories: memories.slice(-MAX_ROLEPLAY_MEMORIES),
@@ -842,7 +894,7 @@
         });
         return normalizeRoleplaySession(Object.assign({}, target, {
             story_state: storyState,
-            world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: target.world_book?.enabled !== false, entries: worldEntries },
+            world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: target.world_book?.enabled !== false, entries: worldEntries, metadata: worldBookMetadata },
             memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: memories },
             chapters: chapterStore,
             active_chapter_id: selectedChapter
@@ -1094,6 +1146,21 @@
                 speech_style: String(sourceCard.speech_style || '').slice(0, MAX_PERSISTED_TEXT),
                 image_prompt: String(sourceCard.image_prompt || sourceCard.visual_prompt || '').slice(0, MAX_PERSISTED_TEXT),
                 negative_prompt: String(sourceCard.negative_prompt || '').slice(0, 4000),
+                world_book: normalizeRoleplayResourceStores({ world_book: sourceCard.world_book }, {}, 'main').world_book,
+                import_metadata: sourceCard.import_metadata && typeof sourceCard.import_metadata === 'object'
+                    ? {
+                        source_format: String(sourceCard.import_metadata.source_format || '').slice(0, 80),
+                        source_name: String(sourceCard.import_metadata.source_name || '').slice(0, 240),
+                        warnings: cleanList(sourceCard.import_metadata.warnings, 40),
+                        unsupported_fields: cleanList(sourceCard.import_metadata.unsupported_fields, 40),
+                        tavern: sourceCard.import_metadata.tavern && typeof sourceCard.import_metadata.tavern === 'object'
+                            ? sourceCard.import_metadata.tavern
+                            : {},
+                        raw: sourceCard.import_metadata.raw && typeof sourceCard.import_metadata.raw === 'object'
+                            ? sourceCard.import_metadata.raw
+                            : {}
+                    }
+                    : { source_format: '', source_name: '', warnings: [], unsupported_fields: [], tavern: {}, raw: {} },
                 state_image_history: Array.isArray(sourceCard.state_image_history)
                     ? sourceCard.state_image_history.map((item) => {
                         const entry = item && typeof item === 'object' ? item : {};
@@ -3112,6 +3179,265 @@
         return state.roleplayCharacterLibraryPromise;
     }
 
+    function decodeTavernMetadataBase64(value) {
+        const source = String(value || '').trim().replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (!source) return '';
+        try {
+            const binary = atob(source + '='.repeat((4 - (source.length % 4)) % 4));
+            const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+            return new TextDecoder('utf-8', { fatal: false }).decode(bytes).trim();
+        } catch (error) {
+            return '';
+        }
+    }
+
+    async function inflateTavernPngText(value) {
+        if (typeof DecompressionStream !== 'function') return null;
+        try {
+            const stream = new Blob([value]).stream().pipeThrough(new DecompressionStream('deflate'));
+            return new Uint8Array(await new Response(stream).arrayBuffer());
+        } catch (error) {
+            return null;
+        }
+    }
+
+    async function decodeTavernPngCharacterCard(buffer) {
+        const bytes = new Uint8Array(buffer);
+        const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (bytes.length < 8 || !signature.every((value, index) => bytes[index] === value)) {
+            throw new Error(localText('The selected PNG is not a valid PNG file.', '所选 PNG 不是有效的 PNG 文件。'));
+        }
+        const view = new DataView(buffer);
+        const metadata = [];
+        const readTextChunk = (chunk) => {
+            const separator = chunk.indexOf(0);
+            if (separator < 0) return null;
+            const key = new TextDecoder('latin1').decode(chunk.slice(0, separator)).trim().toLowerCase();
+            if (!['chara', 'ccv3', 'character_card'].includes(key)) return null;
+            return new TextDecoder('latin1').decode(chunk.slice(separator + 1)).trim();
+        };
+        const readCompressedTextChunk = async (chunk) => {
+            const separator = chunk.indexOf(0);
+            if (separator < 0) return null;
+            const key = new TextDecoder('latin1').decode(chunk.slice(0, separator)).trim().toLowerCase();
+            if (!['chara', 'ccv3', 'character_card'].includes(key)) return null;
+            const compressed = chunk.slice(separator + 1);
+            if (compressed.length < 2 || compressed[0] !== 0) return null;
+            const inflated = await inflateTavernPngText(compressed.slice(1));
+            return inflated ? new TextDecoder('utf-8').decode(inflated).trim() : null;
+        };
+        const readInternationalTextChunk = async (chunk) => {
+            let cursor = chunk.indexOf(0);
+            if (cursor < 0) return null;
+            const key = new TextDecoder('utf-8').decode(chunk.slice(0, cursor)).trim().toLowerCase();
+            if (!['chara', 'ccv3', 'character_card'].includes(key)) return null;
+            const compressionFlag = chunk[cursor + 1];
+            cursor += 3;
+            const languageEnd = chunk.indexOf(0, cursor);
+            if (languageEnd < 0) return null;
+            cursor = languageEnd + 1;
+            const translatedEnd = chunk.indexOf(0, cursor);
+            if (translatedEnd < 0) return null;
+            let text = chunk.slice(translatedEnd + 1);
+            if (compressionFlag === 1) {
+                text = await inflateTavernPngText(text);
+                if (!text) return null;
+            }
+            return new TextDecoder('utf-8').decode(text).trim();
+        };
+        let offset = 8;
+        while (offset + 12 <= bytes.length) {
+            const length = view.getUint32(offset);
+            const start = offset + 8;
+            const end = start + length;
+            if (end + 4 > bytes.length) break;
+            const type = new TextDecoder('latin1').decode(bytes.slice(offset + 4, offset + 8));
+            const chunk = bytes.slice(start, end);
+            const value = type === 'tEXt'
+                ? readTextChunk(chunk)
+                : type === 'zTXt'
+                    ? await readCompressedTextChunk(chunk)
+                    : type === 'iTXt'
+                        ? await readInternationalTextChunk(chunk)
+                        : null;
+            if (value) metadata.push(value);
+            offset = end + 4;
+            if (type === 'IEND') break;
+        }
+        for (let index = metadata.length - 1; index >= 0; index -= 1) {
+            const candidate = metadata[index];
+            const decoded = decodeTavernMetadataBase64(candidate);
+            for (const text of [decoded, candidate]) {
+                if (!String(text || '').trim().startsWith('{')) continue;
+                try {
+                    const parsed = JSON.parse(text);
+                    if (parsed && typeof parsed === 'object') return parsed;
+                } catch (error) {}
+            }
+        }
+        throw new Error(localText('No Tavern character metadata was found in this PNG.', '这个 PNG 中没有找到酒馆角色卡元数据。'));
+    }
+
+    async function readTavernImportFile(file) {
+        const name = String(file?.name || '').toLowerCase();
+        if (/\.png$/i.test(name) || String(file?.type || '').toLowerCase() === 'image/png') {
+            return decodeTavernPngCharacterCard(await file.arrayBuffer());
+        }
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const encoding = bytes[0] === 0xff && bytes[1] === 0xfe
+            ? 'utf-16le'
+            : bytes[0] === 0xfe && bytes[1] === 0xff
+                ? 'utf-16be'
+                : 'utf-8';
+        const text = new TextDecoder(encoding).decode(bytes);
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            throw new Error(localText('The selected JSON file could not be parsed.', '无法解析所选 JSON 文件。'));
+        }
+    }
+
+    function roleplayImportWarningsText(result, worldBook = null) {
+        const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean).slice(0, 3) : [];
+        const localizedWarnings = warnings.map((warning) => {
+            const text = String(warning);
+            if (/Advanced world-book options preserved/i.test(text)) {
+                return localText('Advanced world-book options were preserved for review.', '世界书高级选项已保留，等待兼容处理。');
+            }
+            if (/no usable content/i.test(text)) {
+                return localText('One world-book entry had no usable content.', '有一条世界书记录没有可用正文。');
+            }
+            if (/no name/i.test(text)) {
+                return localText('The character card has no name.', '角色卡没有名称。');
+            }
+            if (/embedded world book; basic identity fields are empty/i.test(text)) {
+                return localText(
+                    'Most of this card is stored in its embedded world book; the basic identity fields are empty.',
+                    '这张卡的大部分设定位于内置世界书，基础身份字段本身为空。'
+                );
+            }
+            return text;
+        });
+        const count = Array.isArray(worldBook?.entries) ? worldBook.entries.length : 0;
+        const imported = count
+            ? localText(` Imported ${count} world-book entries.`, `，已导入 ${count} 条世界书条目`)
+            : '';
+        return warnings.length
+            ? `${localText('Imported with notes:', '已导入，提示：')}${imported} ${localizedWarnings.join(' ')}`
+            : `${localText('Imported successfully.', '导入成功。')}${imported}`;
+    }
+
+    async function importRoleplayCharacterLibraryFile(modal, file) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!file || workspace.busy) return false;
+        workspace.busy = true;
+        roleplayCharacterLibraryFeedback(modal, localText('Reading Tavern character card...', '正在读取酒馆角色卡……'));
+        try {
+            const raw = await readTavernImportFile(file);
+            const response = await postJson('/describe-image/vlm-roleplay/import', {
+                kind: 'character_card',
+                card: raw,
+                filename: file.name || '',
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+            if (!response?.ok || !response.character) {
+                if (response?.error === 'world_book_file_detected') {
+                    throw new Error(localText(
+                        'This JSON is a Tavern world book. Import it from the World book panel.',
+                        '这个 JSON 是酒馆世界书，请从“世界书”面板导入。'
+                    ));
+                }
+                if (response?.error === 'tavern_preset_file_detected') {
+                    throw new Error(localText(
+                        'This JSON is a Tavern preset, not a character card.',
+                        '这个 JSON 是酒馆预设，不是角色卡。'
+                    ));
+                }
+                throw new Error(String(response?.error || localText('The character card could not be imported.', '角色卡导入失败。')));
+            }
+            workspace.selectedId = '';
+            workspace.draft = normalizeRoleplayCharacterLibraryCard(response.character);
+            workspace.agentDraftUndo = null;
+            workspace.imagePayload = null;
+            workspace.imageAssetId = workspace.draft.avatar_asset_id || '';
+            renderRoleplayCharacterLibraryWorkspace(modal);
+            if (/\.png$/i.test(String(file.name || '')) || String(file.type || '').toLowerCase() === 'image/png') {
+                await uploadRoleplayCharacterLibraryImage(modal, file);
+            }
+            renderRoleplayCharacterLibraryWorkspace(modal);
+            roleplayCharacterLibraryFeedback(modal, roleplayImportWarningsText(response, response.world_book));
+            return true;
+        } catch (error) {
+            roleplayCharacterLibraryFeedback(modal, String(error?.message || localText('The character card could not be imported.', '角色卡导入失败。')), true);
+            return false;
+        } finally {
+            workspace.busy = false;
+        }
+    }
+
+    function mergeImportedRoleplayWorldBook(modal, worldBook, sourceName = '') {
+        const resources = modal?.querySelector('[data-describe-vlm-chat-roleplay-resources]');
+        const list = resources?.querySelector('[data-resource-list="world"]');
+        if (!resources || !list || !Array.isArray(worldBook?.entries)) return 0;
+        if (worldBook.metadata && typeof worldBook.metadata === 'object') {
+            resources.setAttribute('data-roleplay-world-book-metadata', encodeURIComponent(JSON.stringify(worldBook.metadata)));
+        }
+        const rows = visibleRoleplayResourceRows(modal, 'world');
+        const existing = new Set(rows.map((row) => String(row.getAttribute('data-resource-id') || '').trim()).filter(Boolean));
+        if (list.querySelector('.describe-vlm-chat-roleplay-resource-empty')) list.innerHTML = '';
+        let imported = 0;
+        worldBook.entries.slice(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES).forEach((entry, index) => {
+            const normalized = normalizeRoleplayWorldBookEntry(entry, index);
+            if (!normalized) return;
+            let id = normalized.id;
+            while (existing.has(id)) id = `${normalized.id}_${imported + 2}`;
+            normalized.id = id;
+            normalized.source = sourceName ? `tavern:${sourceName}` : 'tavern_import';
+            list.insertAdjacentHTML('beforeend', renderRoleplayResourceWorldEntry(normalized, rows.length + imported));
+            existing.add(id);
+            imported += 1;
+        });
+        setRoleplayResourceTab(resources, 'world');
+        updateRoleplayResourceCounts(resources);
+        return imported;
+    }
+
+    async function importRoleplayWorldBookFile(modal, file) {
+        if (!file) return false;
+        const runtime = syncCurrentRuntimeFromState();
+        setConversationStatus(runtime, localText('Reading Tavern world book...', '正在读取酒馆世界书……'));
+        try {
+            const raw = await readTavernImportFile(file);
+            const isPng = /\.png$/i.test(String(file.name || '')) || String(file.type || '').toLowerCase() === 'image/png';
+            const response = await postJson('/describe-image/vlm-roleplay/import', {
+                kind: isPng ? 'character_card' : 'world_book',
+                [isPng ? 'card' : 'world_book']: raw,
+                filename: file.name || '',
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+            if (!response?.ok || !response.world_book) {
+                if (response?.error === 'tavern_preset_file_detected') {
+                    throw new Error(localText(
+                        'This JSON is a Tavern preset, not a world book.',
+                        '这个 JSON 是酒馆预设，不是世界书。'
+                    ));
+                }
+                throw new Error(String(response?.error || localText('The world book could not be imported.', '世界书导入失败。')));
+            }
+            const count = mergeImportedRoleplayWorldBook(modal, response.world_book, file.name || '');
+            setConversationStatus(runtime, count
+                ? localText(`Imported ${count} world-book entries. Click Apply to use them.`, `已导入 ${count} 条世界书条目，点击“应用”后生效。`)
+                : localText('No usable world-book entries were found.', '没有找到可用的世界书条目。'), !count);
+            return count > 0;
+        } catch (error) {
+            setConversationStatus(runtime, String(error?.message || localText('The world book could not be imported.', '世界书导入失败。')), true);
+            return false;
+        }
+    }
+
     function roleplayCharacterIdForLibraryCard(session, sourceId) {
         const normalized = normalizeRoleplaySession(session);
         const existing = new Set(Object.keys(normalized.characters || {}));
@@ -3161,6 +3487,23 @@
             presentCharacterIds.push(targetId);
         }
         session.story_state.scene.present_character_ids = presentCharacterIds.slice(0, MAX_ROLEPLAY_CHARACTERS);
+        const importedWorldEntries = Array.isArray(response.character.world_book?.entries)
+            ? response.character.world_book.entries.map((entry, index) => normalizeRoleplayWorldBookEntry(entry, index)).filter(Boolean)
+            : [];
+        if (importedWorldEntries.length) {
+            const currentEntries = Array.isArray(session.world_book?.entries) ? session.world_book.entries : [];
+            const ids = new Set(currentEntries.map((entry) => String(entry?.id || '').trim()).filter(Boolean));
+            importedWorldEntries.forEach((entry, index) => {
+                let id = entry.id;
+                while (ids.has(id)) id = `${entry.id}_${index + 2}`;
+                entry.id = id;
+                entry.source = 'tavern_import';
+                ids.add(id);
+            });
+            session.world_book = Object.assign({}, session.world_book, {
+                entries: currentEntries.concat(importedWorldEntries).slice(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES)
+            });
+        }
         session.active_character_id = targetId;
         session.character = card;
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
@@ -3602,7 +3945,7 @@
   </header>
   <div class="describe-vlm-chat-character-library-body">
     <aside class="describe-vlm-chat-character-library-sidebar">
-      <div class="describe-vlm-chat-character-library-sidebar-actions"><button type="button" data-roleplay-character-library-new><i class="fa-solid fa-plus"></i><span>${escapeHtml(localText('New character', '新建角色'))}</span></button></div>
+      <div class="describe-vlm-chat-character-library-sidebar-actions"><button type="button" data-roleplay-character-library-new><i class="fa-solid fa-plus"></i><span>${escapeHtml(localText('New character', '新建角色'))}</span></button><button type="button" data-roleplay-character-library-import title="${escapeHtml(localText('Import Tavern character card', '导入酒馆角色卡'))}" aria-label="${escapeHtml(localText('Import Tavern character card', '导入酒馆角色卡'))}"><i class="fa-solid fa-file-import"></i><span>${escapeHtml(localText('Import card', '导入卡片'))}</span></button><input type="file" accept=".png,.json,image/png,application/json" data-roleplay-character-library-import-file hidden></div>
       <label class="describe-vlm-chat-character-library-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-roleplay-character-library-search placeholder="${escapeHtml(localText('Search characters', '搜索角色'))}" aria-label="${escapeHtml(localText('Search characters', '搜索角色'))}"></label>
       <div class="describe-vlm-chat-character-library-list" data-roleplay-character-library-list></div>
     </aside>
@@ -8223,7 +8566,7 @@
           <button type="button" data-resource-tab="chapter" role="tab" aria-selected="false"><i class="fa-solid fa-bookmark"></i><span>${escapeHtml(localText('Chapters', '章节'))}</span><b data-resource-count="chapter">0</b></button>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="world" role="tabpanel">
-          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('New entry', '新条目'))}</span><input data-describe-vlm-chat-roleplay-world-book-draft-context type="text" maxlength="5000" placeholder="${escapeHtml(localText('Describe the lore, rule, place, faction, or item', '描述要生成的设定、规则、地点、势力或物品'))}" aria-label="${escapeHtml(localText('World book generation request', '世界书生成要求'))}"></label><button type="button" data-describe-vlm-chat-roleplay-draft="world_book" title="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-resource-add="world" title="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}" aria-label="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-resource-toolbar"><label><span>${escapeHtml(localText('New entry', '新条目'))}</span><input data-describe-vlm-chat-roleplay-world-book-draft-context type="text" maxlength="5000" placeholder="${escapeHtml(localText('Describe the lore, rule, place, faction, or item', '描述要生成的设定、规则、地点、势力或物品'))}" aria-label="${escapeHtml(localText('World book generation request', '世界书生成要求'))}"></label><button type="button" data-describe-vlm-chat-roleplay-draft="world_book" title="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a world book entry', '让助手生成世界书条目'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button><button type="button" data-resource-import="world" title="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}" aria-label="${escapeHtml(localText('Import Tavern world book', '导入酒馆世界书'))}"><i class="fa-solid fa-file-import"></i></button><input type="file" accept=".json,.png,application/json,image/png" data-resource-import-file="world" hidden><button type="button" data-resource-add="world" title="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}" aria-label="${escapeHtml(localText('Add world book entry manually', '手动新增世界书条目'))}"><i class="fa-solid fa-plus"></i></button></div>
           <div data-resource-list="world"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-resource-panel" data-resource-panel="memory" role="tabpanel" hidden>
@@ -14895,6 +15238,20 @@
             if (modal && file) uploadRoleplayCharacterLibraryImage(modal, file).finally(() => { evt.target.value = ''; });
             return;
         }
+        const libraryImportFile = evt.target.closest?.('[data-roleplay-character-library-import-file]');
+        if (libraryImportFile) {
+            const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
+            const file = Array.from(evt.target.files || [])[0];
+            if (modal && file) importRoleplayCharacterLibraryFile(modal, file).finally(() => { evt.target.value = ''; });
+            return;
+        }
+        const resourceImportFile = evt.target.closest?.('[data-resource-import-file]');
+        if (resourceImportFile) {
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const file = Array.from(evt.target.files || [])[0];
+            if (modal && file) importRoleplayWorldBookFile(modal, file).finally(() => { evt.target.value = ''; });
+            return;
+        }
         const stateFile = evt.target.closest?.('[data-roleplay-character-library-state-file]');
         if (stateFile) {
             const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
@@ -14949,6 +15306,10 @@
                 workspace.imageAssetId = '';
                 renderRoleplayCharacterLibraryWorkspace(characterLibraryModal);
                 roleplayCharacterLibraryFeedback(characterLibraryModal, localText('New character ready.', '新角色已准备好。'));
+                return;
+            }
+            if (evt.target.closest('[data-roleplay-character-library-import]')) {
+                characterLibraryModal.querySelector('[data-roleplay-character-library-import-file]')?.click();
                 return;
             }
             if (evt.target.closest('[data-roleplay-character-library-agent-keep]')) {
@@ -15092,6 +15453,12 @@
         if (resourceAdd) {
             const kind = String(resourceAdd.getAttribute('data-resource-add') || '').trim();
             addRoleplayResource(modal, kind, syncCurrentRuntimeFromState());
+            return;
+        }
+        const resourceImport = evt.target.closest('[data-resource-import]');
+        if (resourceImport) {
+            const kind = String(resourceImport.getAttribute('data-resource-import') || '').trim();
+            if (kind === 'world') modal.querySelector(`[data-resource-import-file="${kind}"]`)?.click();
             return;
         }
         const resourceRemove = evt.target.closest('[data-roleplay-resource-remove]');

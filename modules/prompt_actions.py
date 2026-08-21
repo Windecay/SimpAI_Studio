@@ -178,6 +178,13 @@ def prompt_action_capability_from_state(state):
     }
 
 
+def _prompt_action_media_profile(state):
+    scene = _prompt_action_scene_frontend(state)
+    theme = _prompt_action_scene_theme(state, scene)
+    raw = _prompt_action_theme_value(scene.get("prompt_action_media"), theme)
+    return copy.deepcopy(raw) if isinstance(raw, dict) else {}
+
+
 def _prompt_action_h3_reference_mode(state):
     data = state if isinstance(state, dict) else {}
     scene = _prompt_action_scene_frontend(data)
@@ -271,30 +278,39 @@ def _prompt_action_image_map(input_images):
     }
 
 
-def _prompt_action_image_roles(entries, capability):
+def _prompt_action_image_roles(entries, capability, explicit_roles=None):
     count = len(entries)
     modes = capability.get("image_modes") if isinstance(capability, dict) else []
     modes = {str(item or "").strip().lower() for item in (modes or [])}
     if count >= 3 and "ordered_keyframes" in modes:
-        return ["first_frame", *[f"middle_frame_{index}" for index in range(1, count - 1)], "last_frame"]
-    if count >= 3 and "reference_set" in modes:
-        return [f"reference_image_{index}" for index in range(1, count + 1)]
-    if count == 2 and "first_last" in modes:
-        return ["first_frame", "last_frame"]
-    if count == 1 and "last_frame" in modes:
-        return ["last_frame"]
-    if count == 1 and "first_frame" in modes:
-        return ["first_frame"]
-    if "reference_set" in modes:
-        return [f"reference_image_{index}" for index in range(1, count + 1)]
-    roles = []
-    reference_index = 1
-    for slot, _image in entries:
-        if slot == "scene_canvas_image":
-            roles.append("source_image")
-        else:
-            roles.append(f"reference_image_{reference_index}")
-            reference_index += 1
+        roles = ["first_frame", *[f"middle_frame_{index}" for index in range(1, count - 1)], "last_frame"]
+    elif count >= 3 and "reference_set" in modes:
+        roles = [f"reference_image_{index}" for index in range(1, count + 1)]
+    elif count == 2 and "first_last" in modes:
+        roles = ["first_frame", "last_frame"]
+    elif count == 1 and "last_frame" in modes:
+        roles = ["last_frame"]
+    elif count == 1 and "first_frame" in modes:
+        roles = ["first_frame"]
+    elif "reference_set" in modes:
+        roles = [f"reference_image_{index}" for index in range(1, count + 1)]
+    else:
+        roles = []
+        reference_index = 1
+        for slot, _image in entries:
+            if slot == "scene_canvas_image":
+                roles.append("source_image")
+            else:
+                roles.append(f"reference_image_{reference_index}")
+                reference_index += 1
+
+    configured = [
+        str(item or "").strip()
+        for item in (explicit_roles or [])
+        if str(item or "").strip()
+    ]
+    if configured:
+        roles = [configured[index] if index < len(configured) else roles[index] for index in range(count)]
     return roles
 
 
@@ -471,6 +487,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     scene_mode = prompt_action_mode(data) == "scene"
     declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
     capability = copy.deepcopy(declared_capability)
+    media_profile = _prompt_action_media_profile(data) if scene_mode else {}
     hidden = _prompt_action_hidden_scene_slots(data) if scene_mode else set()
     image_map = _prompt_action_image_map(input_images)
     raw_entries = [
@@ -543,7 +560,11 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         }
 
     entries, unresolved_image_slots = _prompt_action_normalize_image_entries(entries)
-    roles = ["storyboard"] * len(entries) if analysis_only_images else _prompt_action_image_roles(entries, capability)
+    roles = ["storyboard"] * len(entries) if analysis_only_images else _prompt_action_image_roles(
+        entries,
+        capability,
+        media_profile.get("image_roles"),
+    )
     image_descriptors = [
         {
             "slot": slot,
@@ -716,6 +737,17 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "video_count": len(video_descriptors),
         "video_descriptors": video_descriptors,
         "video_reference_index": video_reference_index,
+        "video_visual_position": (
+            "after_images"
+            if str(media_profile.get("video_visual_position") or "").strip().lower() == "after_images"
+            else "before_images"
+        ),
+        "video_frame_mode": (
+            str(media_profile.get("video_frame_mode") or "").strip().lower()
+            if str(media_profile.get("video_frame_mode") or "").strip().lower() in {"contact_sheet", "multi_frame"}
+            else ""
+        ),
+        "video_role": str(media_profile.get("video_role") or "").strip().lower(),
         # With multiple pictures, leave the target unknown until the existing
         # storyboard shot explicitly pairs the motion video with a Picture token.
         # A guessed Picture 1 here would override that later inference.
@@ -1024,7 +1056,7 @@ def prepare_prompt_action_media(
     if not use_video:
         return images, media_meta
 
-    visual_mode = str(opts.get("video_frame_mode") or "contact_sheet").strip().lower()
+    visual_mode = str(opts.get("video_frame_mode") or media_meta.get("video_frame_mode") or "contact_sheet").strip().lower()
     if visual_mode == "multi_frame":
         video_visuals, video_meta = build_video_frame_sequence(video_path, first_frame_path)
     else:
@@ -1036,7 +1068,12 @@ def prepare_prompt_action_media(
         video_visuals and media_meta.get("video_source") == "reference_video"
     )
     if video_visuals:
-        images[0:0] = video_visuals
+        if str(media_meta.get("video_visual_position") or "").strip().lower() == "after_images":
+            media_meta["video_visual_start_index"] = len(images) + 1
+            images.extend(video_visuals)
+        else:
+            media_meta["video_visual_start_index"] = 1
+            images[0:0] = video_visuals
     return images, media_meta
 
 
@@ -1050,6 +1087,11 @@ def _prompt_action_role_label(role):
         return "first frame"
     if key == "last_frame":
         return "last frame"
+    if key == "character_reference":
+        return (
+            "character appearance reference; the only source for identity, face, hair, body proportions, "
+            "clothing, accessories, and visual style"
+        )
     match = re.match(r"^reference_image_(\d+)$", key)
     if match:
         return f"reference image {match.group(1)}"
@@ -1058,7 +1100,12 @@ def _prompt_action_role_label(role):
 
 def prompt_action_media_note(media_meta):
     meta = media_meta if isinstance(media_meta, dict) else {}
-    parts = []
+    video_parts = []
+    image_parts = []
+    descriptors = meta.get("image_descriptors") if isinstance(meta.get("image_descriptors"), list) else []
+    video_visual_count = int(meta.get("video_visual_count") or 1) if meta.get("video_used") else 0
+    video_after_images = str(meta.get("video_visual_position") or "").strip().lower() == "after_images"
+    video_start_index = int(meta.get("video_visual_start_index") or (len(descriptors) + 1 if video_after_images else 1))
     if meta.get("video_used"):
         frame_count = int(meta.get("sampled_frames") or 0)
         video_source = str(meta.get("video_source") or "")
@@ -1073,18 +1120,23 @@ def prompt_action_media_note(media_meta):
             source_label = "main input video"
         if meta.get("used_first_frame_only") or frame_count <= 1:
             first_frame_note = (
-                "The first visual input is the first decodable frame from the main input video. "
+                f"Visual input {video_start_index} is the first decodable frame from the main input video. "
                 "Use it for visible subject and setting details, but do not infer motion that is not visible."
             )
-            parts.append(first_frame_note.replace("main input video", source_label))
+            video_parts.append(first_frame_note.replace("main input video", source_label))
         elif str(meta.get("video_visual_mode") or "") == "multi_frame":
             timestamps = meta.get("timestamps") if isinstance(meta.get("timestamps"), list) else []
             labels = [
-                f"visual input {index + 1} = frame {index + 1} at {_format_timestamp(timestamps[index] if index < len(timestamps) else 0)}"
+                f"visual input {video_start_index + index} = frame {index + 1} at {_format_timestamp(timestamps[index] if index < len(timestamps) else 0)}"
                 for index in range(frame_count)
             ]
-            parts.append(
-                f"The first {frame_count} visual inputs are chronological frames sampled from the {source_label}. "
+            visual_range = (
+                f"The first {frame_count} visual inputs"
+                if video_start_index == 1
+                else f"Visual inputs {video_start_index}-{video_start_index + frame_count - 1}"
+            )
+            video_parts.append(
+                f"{visual_range} are chronological frames sampled from the {source_label}. "
                 + "; ".join(labels)
                 + ". Compare them in order for visible subject motion, scene development, and camera movement; "
                 "do not invent audio, dialogue, or events between sampled frames."
@@ -1092,21 +1144,27 @@ def prompt_action_media_note(media_meta):
         else:
             duration = float(meta.get("duration_seconds") or 0.0)
             duration_text = f" across approximately {duration:.2f} seconds" if duration > 0 else ""
-            parts.append(
-                f"The first visual input is a chronological contact sheet sampled from the {source_label} "
+            video_parts.append(
+                f"Visual input {video_start_index} is a chronological contact sheet sampled from the {source_label} "
                 f"({frame_count} frames{duration_text}). "
                 "Read panels left-to-right and top-to-bottom. Timestamps are printed below each panel. "
                 "Use visible changes as evidence for subject motion, scene development, and camera movement; "
                 "do not invent audio, dialogue, or events between sampled frames."
             )
-    offset = int(meta.get("video_visual_count") or 1) if meta.get("video_used") else 0
-    descriptors = meta.get("image_descriptors") if isinstance(meta.get("image_descriptors"), list) else []
+        if str(meta.get("video_role") or "").strip().lower() == "motion_only":
+            video_parts.append(
+                "The video visuals are motion-only evidence. Extract the chronological action, pose changes, limb and "
+                "torso movement, body orientation, timing, camera movement, and scene motion. Ignore the video person's "
+                "identity, face, hair, skin tone, body shape, clothing, accessories, and visual style; none of those "
+                "appearance traits may enter the final prompt."
+            )
+    image_offset = 0 if video_after_images else video_visual_count
     analysis_only_count = int(meta.get("analysis_only_image_count") or 0)
     if analysis_only_count and meta.get("visual_analysis_intent") == "storyboard":
-        first_index = offset + 1
-        last_index = offset + analysis_only_count
+        first_index = image_offset + 1
+        last_index = image_offset + analysis_only_count
         visual_range = f"visual input {first_index}" if first_index == last_index else f"visual inputs {first_index}-{last_index}"
-        parts.append(
+        image_parts.append(
             f"The {visual_range} contain analysis-only storyboard sheets. Read every panel in its visible order, "
             "including shot composition, subject continuity, action progression, camera direction, captions, dialogue, "
             "and timing notes. Use that evidence to design the H3 shot sequence. These images are not H3 endpoint frames "
@@ -1118,13 +1176,14 @@ def prompt_action_media_note(media_meta):
         for index, item in enumerate(descriptors):
             if not isinstance(item, dict):
                 continue
-            visual_index = offset + index + 1
+            visual_index = image_offset + index + 1
             labels.append(f"visual input {visual_index} = {_prompt_action_role_label(item.get('role'))}")
         if labels:
-            parts.append(
+            image_parts.append(
                 "Visual input roles for the current preset: " + "; ".join(labels) + ". "
                 "Use each image only for its stated role."
             )
+    parts = image_parts + video_parts if video_after_images else video_parts + image_parts
     return "\n\n".join(parts)
 
 
@@ -1171,6 +1230,8 @@ def prompt_action_resource_contract_note(media_meta):
         "- reference_video_content_available_to_agent: "
         f"{str(bool(meta.get('reference_video_content_available'))).lower()}"
     )
+    if meta.get("video_role"):
+        lines.append(f"- video_evidence_role: {meta.get('video_role')}")
     if director:
         lines.extend([
             f"- director_current_segment: {int(director.get('segment_index') or 0) + 1}",

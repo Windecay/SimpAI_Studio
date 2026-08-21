@@ -53,11 +53,7 @@ import ldm_patched.modules.model_management as model_management
 from ui.components.sketch_image import create_sketch_image
 from ui.components import sketch_cache as sketch_payload_cache
 from ui.generation_performance import force_generation_preview, generation_preview_interval
-from ui.generation_sync import (
-    mark_model_params_ui_authoritative,
-    model_params_ui_is_authoritative,
-    synchronize_generation_inputs,
-)
+from ui.generation_sync import synchronize_generation_inputs
 from ui.layout.floating import floating_card, floating_panel, floating_shell
 from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app, wait_for_frontend_port_release
 from ui.workspace_recovery import install_workspace_recovery
@@ -284,6 +280,8 @@ def _vlm_resolve_version(value):
         return VLM.CUSTOM_VERSION
     if value in VLM.VERSIONS or value.endswith("-Thinking"):
         return VLM.resolve_version(value)
+    if value.startswith(("llamacpp:", "comfy:")):
+        return value
     item = VLM.get_version_catalog_item(value) if value else None
     if item:
         return str(item.get("id") or value)
@@ -292,8 +290,6 @@ def _vlm_resolve_version(value):
         label = str(item.get("display_label") or item.get("label") or "")
         if version and (version in value or (label and label in value)):
             return version
-    if value.startswith(("llamacpp:", "comfy:")):
-        return value
     return VLM.DEFAULT_VERSION
 
 
@@ -323,45 +319,45 @@ def _main_vlm_profile_choices(state=None):
     return [(empty_label, MAIN_VLM_EMPTY_PROFILE_VALUE), *choices]
 
 
-def _main_vlm_model_catalog(state=None, request=None, refresh=False):
+def _main_vlm_model_catalog(state=None, request=None, refresh=False, include_dynamic=True):
     return vlm_api_profiles.merge_catalog(
-        VLM.get_model_catalog(refresh=bool(refresh)),
+        VLM.get_model_catalog(refresh=bool(refresh), include_dynamic=include_dynamic),
         allow_raw_custom=False,
     )
 
 
-def _main_vlm_catalog_item(version, state=None, request=None):
+def _main_vlm_catalog_item(version, state=None, request=None, include_dynamic=True):
     target = str(version or "").strip()
-    for item in _main_vlm_model_catalog(state, request).get("items") or []:
+    for item in _main_vlm_model_catalog(state, request, include_dynamic=include_dynamic).get("items") or []:
         if str(item.get("id") or "") == target:
             return item
     return None
 
 
-def _vlm_model_choice_label(version, state=None, request=None):
+def _vlm_model_choice_label(version, state=None, request=None, include_dynamic=True, scan_catalog=True):
     version = _vlm_resolve_version(version)
     profile = vlm_api_profiles.profile_by_version(version)
-    status = {"icon": "✓" if vlm_api_profiles.profile_ready(profile) else "⚠"} if profile else VLM.get_version_status(version)
-    item = _main_vlm_catalog_item(version, state, request)
+    status = {"icon": "✓" if vlm_api_profiles.profile_ready(profile) else "⚠"} if profile else VLM.get_version_status(version, scan_catalog=scan_catalog)
+    item = _main_vlm_catalog_item(version, state, request, include_dynamic=include_dynamic)
     label = str(item.get("display_label") or item.get("label") or version) if item else version
     if version == VLM.CUSTOM_VERSION:
         label = _main_vlm_text(state, "API Settings", "API 设置")
     return f'{status["icon"]} {label}'
 
 
-def _vlm_model_choices(current=None, state=None, request=None):
+def _vlm_model_choices(current=None, state=None, request=None, include_dynamic=True, scan_catalog=True):
     choices = [
-        (_vlm_model_choice_label(item.get("id"), state, request), item.get("id"))
-        for item in _main_vlm_model_catalog(state, request).get("items") or []
+        (_vlm_model_choice_label(item.get("id"), state, request, include_dynamic=include_dynamic, scan_catalog=scan_catalog), item.get("id"))
+        for item in _main_vlm_model_catalog(state, request, include_dynamic=include_dynamic).get("items") or []
         if item.get("id")
     ]
     current = _main_vlm_selectable_version(current) if current else ""
     if current and current not in {value for _, value in choices}:
-        choices.insert(0, (_vlm_model_choice_label(current, state, request), current))
+        choices.insert(0, (_vlm_model_choice_label(current, state, request, include_dynamic=include_dynamic, scan_catalog=scan_catalog), current))
     return choices
 
 
-def _vlm_model_status_html(version):
+def _vlm_model_status_html(version, scan_catalog=True):
     version = _vlm_resolve_version(version)
     profile = vlm_api_profiles.profile_by_version(version)
     if profile:
@@ -374,7 +370,7 @@ def _vlm_model_status_html(version):
             f'<span>{html.escape(label)}</span>'
             '</div>'
         )
-    status = VLM.get_version_status(version)
+    status = VLM.get_version_status(version, scan_catalog=scan_catalog)
     state_class = "ready" if status["exists"] else "missing"
     if version == VLM.CUSTOM_VERSION and status["exists"]:
         title = "API settings are ready."
@@ -2546,6 +2542,46 @@ def get_initial_model_params_state():
         modules.config.default_loras,
     )
 
+
+def _model_params_scene_context(state_params):
+    if not isinstance(state_params, dict):
+        return None
+    scene_frontend = state_params.get("scene_frontend")
+    if not isinstance(scene_frontend, dict):
+        return None
+    theme = state_params.get("scene_theme") or state_params.get("__scene_theme")
+    if not theme:
+        return None
+    try:
+        revision = int(state_params.get("__scene_theme_revision", 0) or 0)
+    except Exception:
+        revision = 0
+    return {
+        "preset": str(state_params.get("__preset") or state_params.get("__scene_theme_preset") or ""),
+        "theme": str(theme),
+        "revision": revision,
+    }
+
+
+def _model_params_state_with_scene_context(model_state, state_params=None, fallback_state=None):
+    if not isinstance(model_state, dict) or not model_state.get("__model_params_state"):
+        return model_state
+    result = dict(model_state)
+    context = _model_params_scene_context(state_params)
+    if context is None and isinstance(fallback_state, dict):
+        context = fallback_state.get("__scene_model_context")
+    if context is not None:
+        result["__scene_model_context"] = context
+    return result
+
+
+def _model_params_scene_context_changed(model_state, state_params):
+    target = _model_params_scene_context(state_params)
+    if target is None:
+        return False
+    return not isinstance(model_state, dict) or model_state.get("__scene_model_context") != target
+
+
 def _parse_bool_like(value, default=True):
     if isinstance(value, bool):
         return value
@@ -2557,6 +2593,65 @@ def _parse_bool_like(value, default=True):
     if text in ("0", "false", "no", "off", "disable", "disabled"):
         return False
     return default
+
+
+def _model_params_lora_defaults_for_state(state_params):
+    if not isinstance(state_params, dict):
+        return None
+
+    scene_loras = topbar.get_scene_lora_defaults(state_params)
+    if scene_loras is not None:
+        return scene_loras
+
+    # A scene preset may have theme-specific loras but no resolved theme yet.
+    # Do not replace that state with the preset-wide fallback in that case.
+    scene_frontend = state_params.get("scene_frontend")
+    if isinstance(scene_frontend, dict) and scene_frontend.get("loras") is not None:
+        return None
+
+    preset_prepared = state_params.get("__preset_prepared", {})
+    if not isinstance(preset_prepared, dict):
+        preset_prepared = {}
+    preset_backend_params = preset_prepared.get("engine", {}).get("backend_params", {}) if isinstance(preset_prepared.get("engine", {}), dict) else {}
+    raw_loras = (
+        preset_prepared.get("default_loras")
+        or preset_prepared.get("loras")
+        or preset_backend_params.get("default_loras")
+        or preset_backend_params.get("loras")
+    )
+    if raw_loras:
+        return raw_loras
+
+    combined_entries = {}
+    for index in range(modules.config.default_max_lora_number):
+        combined = preset_prepared.get(f"lora_combined_{index + 1}") or state_params.get(f"lora_combined_{index + 1}")
+        if combined not in (None, ""):
+            combined_entries[index] = combined
+    if not combined_entries:
+        return None
+
+    combined_loras = [[False, "None", 1.0] for _ in range(max(combined_entries) + 1)]
+    for index, combined in combined_entries.items():
+        parts = [part.strip() for part in str(combined).split(" : ")]
+        enabled = True
+        model_name = "None"
+        weight = 1.0
+        if len(parts) >= 3:
+            enabled = _parse_bool_like(parts[0], enabled)
+            model_name = parts[1] or "None"
+            weight = parts[2]
+        elif len(parts) >= 2:
+            model_name = parts[0] or "None"
+            weight = parts[1]
+        elif len(parts) == 1:
+            model_name = parts[0] or "None"
+        try:
+            weight = float(weight)
+        except Exception:
+            weight = 1.0
+        combined_loras[index] = [bool(enabled), str(model_name or "None"), weight]
+    return combined_loras
+
 
 def _model_params_state_from_state_params(state_params, fallback_state=None):
     fallback = fallback_state if isinstance(fallback_state, dict) and fallback_state.get("__model_params_state") else get_initial_model_params_state()
@@ -2613,13 +2708,7 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
         or fallback.get("upscale_model")
     )
 
-    scene_loras = topbar.get_scene_lora_defaults(state_params)
-    raw_loras = scene_loras if scene_loras is not None else (
-        preset_prepared.get("default_loras")
-        or preset_prepared.get("loras")
-        or preset_backend_params.get("default_loras")
-        or preset_backend_params.get("loras")
-    )
+    raw_loras = _model_params_lora_defaults_for_state(state_params)
     if raw_loras:
         loras = _normalize_lora_triplets(raw_loras)
     else:
@@ -2648,7 +2737,7 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
                 weight = fallback_lora[2]
             loras[index] = [bool(enabled), str(model_name or "None"), weight]
 
-    return _model_params_state_payload(
+    return _model_params_state_with_scene_context(_model_params_state_payload(
         base_model,
         refiner_model,
         refiner_switch,
@@ -2656,7 +2745,119 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
         vae_name,
         upscale_model,
         loras,
+    ), state_params=state_params)
+
+
+def _scene_lora_fixed_slot_count(state_params):
+    scene_frontend = state_params.get("scene_frontend") if isinstance(state_params, dict) else None
+    raw_loras = scene_frontend.get("loras") if isinstance(scene_frontend, dict) else None
+    if raw_loras is None:
+        raw_loras = _model_params_lora_defaults_for_state(state_params)
+    theme_lora_lists = list(raw_loras.values()) if isinstance(raw_loras, dict) else [raw_loras]
+    fixed_count = 0
+    for lora_list in theme_lora_lists:
+        if not isinstance(lora_list, (list, tuple)):
+            continue
+        for index, raw_lora in enumerate(lora_list):
+            normalized = _normalize_lora_triplets([raw_lora])
+            if normalized and str(normalized[0][1] or "None") != "None":
+                fixed_count = max(fixed_count, index + 1)
+    return min(fixed_count, modules.config.default_max_lora_number)
+
+
+def _model_params_state_for_scene_theme(state_params, current_model_params_state=None):
+    current_state = (
+        current_model_params_state
+        if isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state")
+        else _model_params_state_from_state_params(state_params)
     )
+    scene_loras = _model_params_lora_defaults_for_state(state_params)
+    if scene_loras is None:
+        return current_state
+
+    current_loras = _normalize_lora_triplets(current_state.get("loras"))
+    theme_loras = _normalize_lora_triplets(scene_loras)
+    fixed_slot_count = _scene_lora_fixed_slot_count(state_params)
+    for index in range(min(fixed_slot_count, len(current_loras), len(theme_loras))):
+        theme_model = str(theme_loras[index][1] or "None").strip().casefold()
+        if not theme_model or theme_model == "none":
+            continue
+        current_loras[index] = theme_loras[index]
+
+    return _model_params_state_with_scene_context(_model_params_state_payload(
+        current_state.get("base_model"),
+        current_state.get("refiner_model"),
+        current_state.get("refiner_switch"),
+        current_state.get("clip_model"),
+        current_state.get("vae_name"),
+        current_state.get("upscale_model"),
+        current_loras,
+    ), state_params=state_params)
+
+
+def _model_params_state_from_models_payload(payload, fallback_state=None):
+    fallback = fallback_state if isinstance(fallback_state, dict) and fallback_state.get("__model_params_state") else get_initial_model_params_state()
+    data = payload
+    if isinstance(payload, str):
+        try:
+            data = json.loads(payload or "{}")
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        return fallback
+
+    def pick(key):
+        value = data.get(key)
+        return value if value not in (None, "") else fallback.get(key)
+
+    loras = _normalize_lora_triplets(fallback.get("loras"))
+    incoming_loras = data.get("loras")
+    if isinstance(incoming_loras, list):
+        for index in range(min(len(loras), len(incoming_loras))):
+            item = incoming_loras[index]
+            if not isinstance(item, (list, tuple, dict)):
+                continue
+            current = loras[index]
+            if isinstance(item, dict):
+                enabled = item.get("enabled", current[0])
+                model_name = item.get("model", current[1])
+                weight = item.get("weight", current[2])
+            else:
+                enabled = item[0] if len(item) > 0 else current[0]
+                model_name = item[1] if len(item) > 1 else current[1]
+                weight = item[2] if len(item) > 2 else current[2]
+            try:
+                weight = float(weight)
+            except Exception:
+                weight = current[2]
+            loras[index] = [bool(enabled), str(model_name or "None"), weight]
+
+    return _model_params_state_with_scene_context(_model_params_state_payload(
+        pick("base_model"),
+        pick("refiner_model"),
+        pick("refiner_switch"),
+        pick("clip_model"),
+        pick("vae_name"),
+        pick("upscale_model"),
+        loras,
+    ), fallback_state=fallback)
+
+
+def _apply_model_params_state_to_backend_params(backend_params, model_state):
+    params = dict(backend_params or {})
+    if not isinstance(model_state, dict) or not model_state.get("__model_params_state"):
+        return params
+
+    clip_value = model_state.get("clip_model")
+    if clip_value and clip_value not in (modules.flags.default_clip, modules.flags.default_vae, "auto"):
+        params["clip_model"] = clip_value
+    else:
+        params.pop("clip_model", None)
+
+    upscale_value = _normalize_model_bridge_value(model_state.get("upscale_model"), "default")
+    params["upscale_model"] = upscale_value or "default"
+    return params
+
 
 def _render_models_js_panel(current_model_params_state=None):
     model_state = current_model_params_state if isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state") else get_initial_model_params_state()
@@ -3014,7 +3215,7 @@ with shared.gradio_root:
                     gallery_index_stat=gallery_index_stat,
                     get_start_timestamp=get_start_timestamp,
                     get_wildcards_list=get_wildcards_list,
-                    preset_samples=topbar.get_preset_samples(),
+                    preset_samples=topbar.get_preset_samples(include_status_markers=False),
                 )
                 start_timestamp = topbar_layout.start_timestamp
                 bar_store_button = topbar_layout.bar_store_button
@@ -5285,7 +5486,45 @@ with shared.gradio_root:
                                     current_upstream_status = gr.Markdown(elem_classes='note_info')
                                     identity_export_btn = gr.Button(value='Export identity', size='sm', min_width=35, elem_classes='identity_export', visible=False)
                             identity_note_info = gr.Markdown(elem_classes=['note_info', 'identity_flow_note'], value=simpleai.identity_note)
-                            with gr.Row(visible=True, elem_id="identity_input_row", elem_classes=["identity-bind-grid"]) as input_identity:
+                            identity_activation_state = gr.State(False)
+                            initial_activation_copy = simpleai.get_multi_user_activation_copy({"__lang": args_manager.args.language})
+                            with gr.Column(
+                                visible=False,
+                                elem_id="identity_multi_user_activation_guard",
+                                elem_classes=["identity-activation-guard"],
+                            ) as identity_activation_guard:
+                                identity_activation_note = gr.Markdown(
+                                    value=initial_activation_copy["notice"],
+                                    elem_classes=["note_info", "identity-activation-note"],
+                                )
+                                identity_activation_mode = gr.Radio(
+                                    label=initial_activation_copy["mode_label"],
+                                    choices=initial_activation_copy["mode_choices"],
+                                    value="local",
+                                    elem_id="identity_activation_mode",
+                                    elem_classes=["identity-activation-mode"],
+                                )
+                                identity_activation_scope_confirm = gr.Checkbox(
+                                    label=initial_activation_copy["scope_confirm"],
+                                    value=False,
+                                    elem_id="identity_activation_scope_confirm",
+                                )
+                                identity_activation_permission_confirm = gr.Checkbox(
+                                    label=initial_activation_copy["permission_confirm"],
+                                    value=False,
+                                    elem_id="identity_activation_permission_confirm",
+                                )
+                                identity_activation_phrase_confirm = gr.Checkbox(
+                                    label=initial_activation_copy["phrase_confirm"],
+                                    value=False,
+                                    elem_id="identity_activation_phrase_confirm",
+                                )
+                                identity_activation_apply_button = gr.Button(
+                                    value=initial_activation_copy["apply"],
+                                    elem_id="identity_activation_apply_button",
+                                    variant="primary",
+                                )
+                            with gr.Row(visible=False, elem_id="identity_input_row", elem_classes=["identity-bind-grid"]) as input_identity:
                                 with gr.Column(scale=4, min_width=126, elem_classes=["identity-bind-card", "identity-bind-card-qr"]):
                                     input_qr_title = gr.Markdown(elem_classes='input_note_info', value='<b>Upload QrCode to bind</b>')
                                     identity_qr = gr.Image(label='Identity QrCode', sources=['upload'], type='numpy', height=126, width=126, elem_id="identity_qr", elem_classes='identity_qr', buttons=["download", "fullscreen"])
@@ -5371,6 +5610,75 @@ with shared.gradio_root:
 
                     def trigger_input_identity_flow(img):
                         return _identity_flow_row_updates(simpleai.trigger_input_identity(img))
+
+                    def refresh_identity_activation_guard(state_params, opened):
+                        copy_text = simpleai.get_multi_user_activation_copy(state_params)
+                        guard_visible = bool(opened and simpleai.requires_multi_user_activation(False))
+                        return [
+                            gr_update(visible=guard_visible),
+                            gr_update(value=copy_text["notice"]),
+                            gr_update(
+                                label=copy_text["mode_label"],
+                                choices=copy_text["mode_choices"],
+                                value="local",
+                            ),
+                            gr_update(label=copy_text["scope_confirm"], value=False),
+                            gr_update(label=copy_text["permission_confirm"], value=False),
+                            gr_update(label=copy_text["phrase_confirm"], value=False),
+                            gr_update(value=copy_text["apply"]),
+                            False,
+                        ]
+
+                    def apply_identity_activation_choice(mode, scope_ok, permission_ok, phrase_ok, state_params):
+                        state_params = dict(state_params or {})
+                        copy_text = simpleai.get_multi_user_activation_copy(state_params)
+                        if not is_local_mode():
+                            state_params["identity_dialog"] = True
+                            return [
+                                gr_update(visible=True),
+                                gr_update(visible=False),
+                                gr_update(value=copy_text["ready"]),
+                                gr_update(visible=True),
+                                gr_update(value=simpleai.get_identity_dialog_note(None, state_params.get("__lang"))),
+                                "input",
+                                True,
+                                state_params,
+                            ]
+                        if mode != "multi-user":
+                            state_params["identity_dialog"] = False
+                            return [
+                                gr_update(visible=False),
+                                gr_update(visible=False),
+                                gr_update(value=copy_text["keep_local"]),
+                                gr_update(visible=False),
+                                gr_update(value=simpleai.get_identity_dialog_note(None, state_params.get("__lang"))),
+                                "closed",
+                                False,
+                                state_params,
+                            ]
+                        if not all((scope_ok, permission_ok, phrase_ok)):
+                            state_params["identity_dialog"] = True
+                            return [
+                                gr_update(visible=True),
+                                gr_update(visible=True),
+                                gr_update(value=copy_text["incomplete"]),
+                                gr_update(visible=False),
+                                skip_component_update(),
+                                "activation",
+                                False,
+                                state_params,
+                            ]
+                        state_params["identity_dialog"] = True
+                        return [
+                            gr_update(visible=True),
+                            gr_update(visible=False),
+                            gr_update(value=copy_text["ready"]),
+                            gr_update(visible=True),
+                            gr_update(value=copy_text["ready"]),
+                            "input",
+                            True,
+                            state_params,
+                        ]
 
                     identity_bind_button.click(bind_identity_flow, inputs=[identity_nick_input, identity_areacode, identity_tele_input], outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [input_id_info], show_progress=False)
                     identity_change_button.click(change_identity_flow,  outputs=[identity_stage_state] + identity_ctrls + identity_input, show_progress=False)
@@ -5538,7 +5846,7 @@ with shared.gradio_root:
                         )
                     wildcards_list = gr.Dataset(components=[prompt], type='index', label='Wildcards examples: [__color__:L3:4] = 3 items in order starting from the 4th. [__color__:3] = 3 random candidates (3 images). __color__ = 1 random per image.', samples=wildcards.get_wildcards_samples(), visible=True, samples_per_page=28, elem_id='wildcards_list')
                     with gr.Accordion(label='Words/phrases of wildcard', visible=True, open=False, elem_id='words_in_wildcard') as words_in_wildcard:
-                        wildcard_tag_name_selection = gr.Dataset(components=[prompt], label='Words:', samples=wildcards.get_words_of_wildcard_samples(), visible=True, samples_per_page=30, type='index', elem_id='wildcard_tag_name_selection')
+                        wildcard_tag_name_selection = gr.Dataset(components=[prompt], label='Words:', samples=[], visible=True, samples_per_page=30, type='index', elem_id='wildcard_tag_name_selection')
                     wildcards_list.click(wildcards.add_wildcards_and_array_to_prompt, inputs=[wildcards_list, prompt, state_topbar], outputs=[prompt, wildcard_tag_name_selection, words_in_wildcard], show_progress=False, queue=False)
                     wildcard_tag_name_selection.click(wildcards.add_word_to_prompt, inputs=[wildcards_list, wildcard_tag_name_selection, prompt, state_topbar], outputs=prompt, show_progress=False, queue=False)
                     wildcards_array = [prompt_wildcards, words_in_wildcard, wildcards_list, wildcard_tag_name_selection, wc_name]
@@ -7328,7 +7636,7 @@ with shared.gradio_root:
                                         unload_btn = gr.Button(value='🗑️Unload Models', min_width=150)
                                     with gr.Row(visible=True, elem_id='describe_vlm_model_bar') as vlm_describe_col:
                                         describe_vlm_model = gr.Dropdown(
-                                            choices=_vlm_model_choices(_initial_main_vlm_version),
+                                            choices=_vlm_model_choices(_initial_main_vlm_version, include_dynamic=False, scan_catalog=False),
                                             value=_initial_main_vlm_version,
                                             show_label=False,
                                             container=False,
@@ -7345,7 +7653,7 @@ with shared.gradio_root:
                                             elem_id='describe_vlm_api_settings_btn',
                                             elem_classes=['describe-vlm-api-settings-button'],
                                         )
-                                        vlm_status_info = gr.HTML(value=_vlm_model_status_html(VLM.current_version), visible=False, elem_id='describe_vlm_model_status')
+                                        vlm_status_info = gr.HTML(value=_vlm_model_status_html(VLM.current_version, scan_catalog=False), visible=False, elem_id='describe_vlm_model_status')
                                     describe_vlm_api_settings_open_bridge = gr.Textbox(
                                         value='',
                                         visible='hidden',
@@ -8093,6 +8401,13 @@ with shared.gradio_root:
                                                        show_progress=False, queue=False) \
                                                        .then(fn=None, js='''() => { try { if (window.reopenModelBrowserPopup) window.reopenModelBrowserPopup(); } catch (e) { console.warn('model_browser.reopen_failed', e); } }''')
                         def _sync_model_params_state_from_ui(current_state, models_tab_active, current_base_model, current_refiner_model, current_refiner_switch, current_clip_model, current_vae_name, current_upscale_model, *lora_values):
+                            lora_value_count = modules.config.default_max_lora_number * 3
+                            models_js_payload_value = None
+                            if len(lora_values) > lora_value_count:
+                                models_js_payload_value = lora_values[lora_value_count]
+                                lora_values = lora_values[:lora_value_count]
+                            if models_js_payload_value not in (None, ""):
+                                return _model_params_state_from_models_payload(models_js_payload_value, current_state)
                             fallback = current_state if isinstance(current_state, dict) and current_state.get("__model_params_state") else get_initial_model_params_state()
                             if not models_tab_active:
                                 return fallback
@@ -8114,12 +8429,13 @@ with shared.gradio_root:
                                 current_upscale_model or fallback.get("upscale_model"),
                                 loras,
                             )
-                            return mark_model_params_ui_authoritative(model_state)
+                            return _model_params_state_with_scene_context(model_state, fallback_state=fallback)
 
                         def _models_panel_update_from_state(current_model_params_state):
                             return gr_update(value=_render_models_js_panel(current_model_params_state))
 
                         model_state_ui_inputs = [model_params_state, models_tab_active_state, base_model, refiner_model, refiner_switch, clip_model, vae_name, upscale_model] + lora_ctrls
+                        generation_model_state_inputs = model_state_ui_inputs + [models_js_payload]
                         model_browser_select_evt = model_browser_gallery.select(on_model_browser_select,
                                                      inputs=[current_filtered_previews, current_previews, active_target],
                                                      outputs=[base_model, refiner_model, clip_model, vae_name, upscale_model] + lora_models + [model_browser_status],
@@ -8176,7 +8492,7 @@ with shared.gradio_root:
                         return _model_bridge_updates_from_model_state(model_state, include_refiner_switch=False)
 
                     def _sync_scene_model_params_for_theme(state_params, current_model_params_state):
-                        model_state = _model_params_state_from_state_params(state_params, current_model_params_state)
+                        model_state = _model_params_state_for_scene_theme(state_params, current_model_params_state)
                         lora_summary = []
                         for enabled, model_name, weight in _normalize_lora_triplets(model_state.get("loras")):
                             try:
@@ -8195,15 +8511,12 @@ with shared.gradio_root:
                         return (
                             [model_state]
                             + _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
-                            + [gr_update(value=_render_models_js_panel(model_state))]
+                            + [
+                                gr_update(value=_render_models_js_panel(model_state)),
+                                gr_update(value=json.dumps(model_state, ensure_ascii=False)),
+                                gr_update(value=json.dumps(model_state, ensure_ascii=False)),
+                            ]
                         )
-
-                    def _sync_scene_model_params_for_generation(current_model_params_state, state_params):
-                        if model_params_ui_is_authoritative(current_model_params_state):
-                            return current_model_params_state
-                        if not isinstance(state_params, dict) or not isinstance(state_params.get("scene_frontend"), dict):
-                            return current_model_params_state
-                        return _model_params_state_from_state_params(state_params, current_model_params_state)
 
                     def _refresh_files_clicked_with_info(state_params, use_model_filter):
                         return refresh_files_clicked(state_params, use_model_filter, True)
@@ -8212,7 +8525,13 @@ with shared.gradio_root:
                         return refresh_files_clicked(state_params, use_model_filter, False)
 
                     def _rehydrate_models_tab_from_state(state_params, current_model_params_state):
-                        model_state = current_model_params_state if isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state") else _model_params_state_from_state_params(state_params)
+                        has_current_state = isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state")
+                        if has_current_state and not _model_params_scene_context_changed(current_model_params_state, state_params):
+                            model_state = current_model_params_state
+                        elif has_current_state:
+                            model_state = _model_params_state_for_scene_theme(state_params, current_model_params_state)
+                        else:
+                            model_state = _model_params_state_from_state_params(state_params)
                         return (
                             _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
                             + [gr_update(value=_render_models_js_panel(model_state))]
@@ -8263,59 +8582,10 @@ with shared.gradio_root:
                         return _model_bridge_refresh_updates_from_state_params(state_params)
 
                     def _apply_models_js_payload(current_model_params_state, payload, backend_params, state_params):
-                        fallback = current_model_params_state if isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state") else get_initial_model_params_state()
-                        try:
-                            data = json.loads(payload or "{}")
-                        except Exception:
-                            data = {}
-                        if not isinstance(data, dict):
-                            data = {}
+                        model_state = _model_params_state_from_models_payload(payload, current_model_params_state)
 
-                        def pick(key):
-                            value = data.get(key)
-                            return value if value not in (None, "") else fallback.get(key)
-
-                        loras = _normalize_lora_triplets(fallback.get("loras"))
-                        incoming_loras = data.get("loras")
-                        if isinstance(incoming_loras, list):
-                            for index in range(min(len(loras), len(incoming_loras))):
-                                item = incoming_loras[index]
-                                if not isinstance(item, (list, tuple, dict)):
-                                    continue
-                                current = loras[index]
-                                if isinstance(item, dict):
-                                    enabled = item.get("enabled", current[0])
-                                    model_name = item.get("model", current[1])
-                                    weight = item.get("weight", current[2])
-                                else:
-                                    enabled = item[0] if len(item) > 0 else current[0]
-                                    model_name = item[1] if len(item) > 1 else current[1]
-                                    weight = item[2] if len(item) > 2 else current[2]
-                                try:
-                                    weight = float(weight)
-                                except Exception:
-                                    weight = current[2]
-                                loras[index] = [bool(enabled), str(model_name or "None"), weight]
-
-                        model_state = _model_params_state_payload(
-                            pick("base_model"),
-                            pick("refiner_model"),
-                            pick("refiner_switch"),
-                            pick("clip_model"),
-                            pick("vae_name"),
-                            pick("upscale_model"),
-                            loras,
-                        )
-                        model_state = mark_model_params_ui_authoritative(model_state)
-
-                        backend_params = dict(backend_params or {})
+                        backend_params = _apply_model_params_state_to_backend_params(backend_params, model_state)
                         clip_value = model_state.get("clip_model")
-                        if clip_value and clip_value not in (modules.flags.default_clip, modules.flags.default_vae, "auto"):
-                            backend_params["clip_model"] = clip_value
-                        else:
-                            backend_params.pop("clip_model", None)
-                        upscale_value = str(model_state.get("upscale_model") or "default").replace("\\", os.sep).replace("/", os.sep).lstrip(os.sep)
-                        backend_params["upscale_model"] = upscale_value or "default"
                         if isinstance(state_params, dict):
                             state_params["clip_model"] = clip_value
                             state_params["upscale_model"] = backend_params["upscale_model"]
@@ -8478,7 +8748,7 @@ with shared.gradio_root:
                                                 vlm_checkbox = gr.Checkbox(label='Enable VLM', value=True, info='Enable it for describe, translate and expand.', elem_id='vlm_checkbox', visible=False)
                                                 advanced_logs = gr.Checkbox(label='Enable advanced logs', value=ads.get_admin_default('advanced_logs'), info='Enabling with more infomation in logs.', visible=False)
                                                 with gr.Column():
-                                                    vlm_version = gr.Dropdown(label='VLM Version', choices=_vlm_model_choices(_initial_main_vlm_version), value=_initial_main_vlm_version, info='Select the VLM model version to use')
+                                                     vlm_version = gr.Dropdown(label='VLM Version', choices=_vlm_model_choices(_initial_main_vlm_version, include_dynamic=False, scan_catalog=False), value=_initial_main_vlm_version, info='Select the VLM model version to use')
                                             with gr.Column(visible=True if not args_manager.args.disable_backend else False):
                                                 reserved_vram = gr.Slider(label='Reserved VRAM(GB)', minimum=0, maximum=24, step=0.1, value=ads.get_admin_default('reserved_vram'), info='Reserve VRAM to prevent OOM or Slow inference.')
                                                 cache_ram_enable = gr.Checkbox(label='Enable Cache RAM', value=ads.get_admin_default('cache_ram_enable'), info='When disabled, always use Classic cache mode.')
@@ -9475,13 +9745,13 @@ with shared.gradio_root:
                 ],
                 outputs=prompt_action_result,
                 queue=False,
-                show_progress=True
+                show_progress='hidden'
             )
             prompt_action_event.then(
                 fn=None,
                 inputs=[prompt_action_result],
                 queue=False,
-                show_progress=False,
+                show_progress='hidden',
                 js='(result)=>{try{if(typeof window.completeSimpleAIPromptAction==="function") window.completeSimpleAIPromptAction(result);}catch(e){console.warn("[UI-TRACE] prompt_action_complete_failed",e);}}'
             )
             scene_params = [scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_video_duration, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_mask_color_state, scene_video, scene_reference_video, scene_audio]
@@ -9794,6 +10064,28 @@ with shared.gradio_root:
         ctrls += enhance_ctrls
         # ctrls += [random_aspect_ratio_checkbox]
 
+        def _models_payload_submit_body(inputs):
+            payload_index = inputs.index(models_js_payload)
+            return """
+            try {
+                const liveModelState = typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
+                    ? window.simpleaiReadVisibleModelsJsPanelState()
+                    : null;
+                args[%d] = liveModelState && typeof liveModelState === "object"
+                    ? JSON.stringify(liveModelState)
+                    : "";
+            } catch (e) {
+                args[%d] = "";
+                console.warn("[UI-TRACE] models_payload_submit_failed", e);
+            }
+            """ % (payload_index, payload_index)
+
+        def _models_payload_submit_js(inputs):
+            return """(...args) => {
+                %s
+                return args;
+            }""" % _models_payload_submit_body(inputs)
+
         batch_stop_fn = functools.partial(batch_utils.stop_batch, worker=worker)
         batch_run_uov_fn = functools.partial(
             batch_utils.batch_run_uov,
@@ -9827,12 +10119,49 @@ with shared.gradio_root:
 
         batch_lock_controls = [random_button, super_prompter, background_theme, image_tools_checkbox] + nav_bars
 
+        def _prepare_batch_model_state(current_model_params_state, models_payload, backend_params, state_params):
+            model_state = _model_params_state_from_models_payload(models_payload, current_model_params_state)
+            backend_params = _apply_model_params_state_to_backend_params(backend_params, model_state)
+            if isinstance(state_params, dict):
+                state_params["clip_model"] = model_state.get("clip_model")
+                state_params["upscale_model"] = backend_params.get("upscale_model", "default")
+            return model_state, backend_params
+
+        def _start_uov_batch(current_model_params_state, models_payload, backend_params, state_params):
+            model_state, backend_params = _prepare_batch_model_state(
+                current_model_params_state,
+                models_payload,
+                backend_params,
+                state_params,
+            )
+            return [model_state, backend_params] + [gr_update(interactive=False)] * len(batch_lock_controls)
+
+        def _start_enhance_batch(current_model_params_state, models_payload, backend_params, state_params):
+            model_state, backend_params = _prepare_batch_model_state(
+                current_model_params_state,
+                models_payload,
+                backend_params,
+                state_params,
+            )
+            return [model_state, backend_params, gr_update(value=True)] + [gr_update(interactive=False)] * len(batch_lock_controls)
+
+        def _start_scene_batch(current_model_params_state, models_payload, backend_params, state_params):
+            model_state, backend_params = _prepare_batch_model_state(
+                current_model_params_state,
+                models_payload,
+                backend_params,
+                state_params,
+            )
+            return [model_state, backend_params] + [gr_update(interactive=False)] * len(batch_lock_controls)
+
         uov_batch_stop.click(fn=batch_stop_fn, inputs=[uov_batch_id, state_topbar], outputs=[uov_batch_status], queue=False, show_progress=False)
         uov_batch_evt = uov_batch_start.click(
-            fn=lambda: [gr_update(interactive=False)] * len(batch_lock_controls),
-            outputs=batch_lock_controls,
+            fn=_start_uov_batch,
+            inputs=[model_params_state, models_js_payload, params_backend, state_topbar],
+            outputs=[model_params_state, params_backend] + batch_lock_controls,
             queue=False,
-            show_progress=False
+            show_progress=False,
+            js=_models_payload_submit_js([model_params_state, models_js_payload, params_backend, state_topbar]),
         ).then(
             fn=sync_inpaint_engine_dropdowns_before_generation,
             inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls],
@@ -9848,10 +10177,12 @@ with shared.gradio_root:
 
         enhance_batch_stop.click(fn=batch_stop_fn, inputs=[enhance_batch_id, state_topbar], outputs=[enhance_batch_status], queue=False, show_progress=False)
         enhance_batch_evt = enhance_batch_start.click(
-            fn=lambda: [gr_update(value=True)] + [gr_update(interactive=False)] * len(batch_lock_controls),
-            outputs=[enhance_checkbox] + batch_lock_controls,
+            fn=_start_enhance_batch,
+            inputs=[model_params_state, models_js_payload, params_backend, state_topbar],
+            outputs=[model_params_state, params_backend, enhance_checkbox] + batch_lock_controls,
             queue=False,
-            show_progress=False
+            show_progress=False,
+            js=_models_payload_submit_js([model_params_state, models_js_payload, params_backend, state_topbar]),
         ).then(
             fn=sync_inpaint_engine_dropdowns_before_generation,
             inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls],
@@ -9865,13 +10196,6 @@ with shared.gradio_root:
             show_progress=False
         )
 
-        scene_sketch_flush_js = """async () => {
-            try {
-                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
-            } catch (e) {
-                console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
-            }
-        }"""
         generation_start_js = """async (...args) => {
             const frontendStartAt = performance.now();
             const perfMark = (event, data = {}) => {
@@ -9882,14 +10206,6 @@ with shared.gradio_root:
                 || Object.prototype.hasOwnProperty.call(value, "__main_gallery_browser_folder")
                 || Object.prototype.hasOwnProperty.call(value, "__preset")
             ));
-            try {
-                window.simpleaiPendingGenerationModelsState = typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
-                    ? window.simpleaiReadVisibleModelsJsPanelState()
-                    : null;
-            } catch (e) {
-                window.simpleaiPendingGenerationModelsState = null;
-                console.warn("[UI-TRACE] generation_models_snapshot_failed", e);
-            }
             const rootById = (id) => {
                 try {
                     return (typeof getGradioRootById === "function" ? getGradioRootById(id) : null)
@@ -10005,14 +10321,6 @@ with shared.gradio_root:
         }"""
         preview_start_js = """async () => {
             try {
-                window.simpleaiPendingGenerationModelsState = typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
-                    ? window.simpleaiReadVisibleModelsJsPanelState()
-                    : null;
-            } catch (e) {
-                window.simpleaiPendingGenerationModelsState = null;
-                console.warn("[UI-TRACE] preview_models_snapshot_failed", e);
-            }
-            try {
                 if (typeof prepareSimpleAIGenerationStartSurface === "function") {
                     prepareSimpleAIGenerationStartSurface("preview_start");
                 } else if (typeof scheduleSimpleAIPresetGalleryClear === "function") {
@@ -10038,12 +10346,22 @@ with shared.gradio_root:
         }"""
 
         scene_batch_stop.click(fn=batch_stop_fn, inputs=[scene_batch_id, state_topbar], outputs=[scene_batch_status], queue=False, show_progress=False)
+        scene_batch_start_js = """async (...args) => {
+            %s
+            try {
+                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
+            } catch (e) {
+                console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
+            }
+            return args;
+        }""" % _models_payload_submit_body([model_params_state, models_js_payload, params_backend, state_topbar])
         scene_batch_evt = scene_batch_start.click(
-            fn=lambda: [gr_update(interactive=False)] * len(batch_lock_controls),
-            outputs=batch_lock_controls,
+            fn=_start_scene_batch,
+            inputs=[model_params_state, models_js_payload, params_backend, state_topbar],
+            outputs=[model_params_state, params_backend] + batch_lock_controls,
             queue=False,
             show_progress=False,
-            js=scene_sketch_flush_js,
+            js=scene_batch_start_js,
         ).then(
             fn=sync_inpaint_engine_dropdowns_before_generation,
             inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls],
@@ -10879,7 +11197,7 @@ with shared.gradio_root:
             return event
 
         generation_sync_groups = {
-            "model": list(model_state_ui_inputs),
+            "model": list(generation_model_state_inputs),
             "prompt": [prompt, state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2],
             "backend": [params_backend],
             "director": [scene_director_enabled, scene_director_state],
@@ -10925,7 +11243,7 @@ with shared.gradio_root:
             if cursor != len(values):
                 raise ValueError(f"Unexpected generation sync input count: {len(values)}")
 
-            return synchronize_generation_inputs(
+            result = synchronize_generation_inputs(
                 model_values=model_values,
                 prompt_values=prompt_values,
                 backend_params=backend_params_value,
@@ -10943,69 +11261,14 @@ with shared.gradio_root:
                 sync_inpaint_engines=sync_inpaint_engine_dropdowns_before_generation,
                 sync_cloud_params=sync_cloud_image_params,
             )
+            result[2] = _apply_model_params_state_to_backend_params(result[2], result[0])
+            return result
 
         quick_enhance_input_index = sum(
             len(generation_sync_groups[name])
             for name in ("model", "prompt", "backend", "director", "random")
         )
         enhance_checkbox_input_index = quick_enhance_input_index + 2
-        def _models_submit_state_sync_js(inputs):
-            submit_indices = {
-                "active": inputs.index(models_tab_active_state),
-                "base_model": inputs.index(base_model),
-                "refiner_model": inputs.index(refiner_model),
-                "refiner_switch": inputs.index(refiner_switch),
-                "clip_model": inputs.index(clip_model),
-                "vae_name": inputs.index(vae_name),
-                "upscale_model": inputs.index(upscale_model),
-                "loras": [
-                    [
-                        inputs.index(lora_enableds[index]),
-                        inputs.index(lora_models[index]),
-                        inputs.index(lora_weights[index]),
-                    ]
-                    for index in range(len(lora_models))
-                ],
-            }
-            return """
-            try {
-                const modelSubmitIndices = %s;
-                const pendingModelState = window.simpleaiPendingGenerationModelsState;
-                const liveModelState = pendingModelState && typeof pendingModelState === "object"
-                    ? pendingModelState
-                    : (typeof window.simpleaiReadVisibleModelsJsPanelState === "function"
-                        ? window.simpleaiReadVisibleModelsJsPanelState()
-                        : null);
-                window.simpleaiPendingGenerationModelsState = null;
-                if (liveModelState && typeof liveModelState === "object") {
-                    args[modelSubmitIndices.active] = true;
-                    for (const key of ["base_model", "refiner_model", "clip_model", "vae_name", "upscale_model"]) {
-                        if (Object.prototype.hasOwnProperty.call(liveModelState, key)) {
-                            args[modelSubmitIndices[key]] = String(liveModelState[key] ?? "");
-                        }
-                    }
-                    if (Object.prototype.hasOwnProperty.call(liveModelState, "refiner_switch")) {
-                        const refinerSwitch = Number(liveModelState.refiner_switch);
-                        if (Number.isFinite(refinerSwitch)) args[modelSubmitIndices.refiner_switch] = refinerSwitch;
-                    }
-                    if (Array.isArray(liveModelState.loras)) {
-                        modelSubmitIndices.loras.forEach((indices, index) => {
-                            const item = liveModelState.loras[index];
-                            if (!item || typeof item !== "object") return;
-                            if (Object.prototype.hasOwnProperty.call(item, "enabled")) args[indices[0]] = !!item.enabled;
-                            if (Object.prototype.hasOwnProperty.call(item, "model")) args[indices[1]] = String(item.model || "None");
-                            if (Object.prototype.hasOwnProperty.call(item, "weight")) {
-                                const weight = Number(item.weight);
-                                if (Number.isFinite(weight)) args[indices[2]] = weight;
-                            }
-                        });
-                    }
-                }
-            } catch (e) {
-                console.warn("[UI-TRACE] generation_models_submit_state_failed", e);
-            }
-            """ % json.dumps(submit_indices, ensure_ascii=True)
-
         generation_sync_submit_state_js = """(...args) => {
             %s
             try {
@@ -11021,7 +11284,7 @@ with shared.gradio_root:
             }
             return args;
         }""" % (
-            _models_submit_state_sync_js(generation_sync_inputs),
+            _models_payload_submit_body(generation_sync_inputs),
             quick_enhance_input_index,
             quick_enhance_input_index,
             enhance_checkbox_input_index,
@@ -11030,7 +11293,7 @@ with shared.gradio_root:
         preview_model_submit_state_js = """(...args) => {
             %s
             return args;
-        }""" % _models_submit_state_sync_js(model_state_ui_inputs)
+        }""" % _models_payload_submit_body(generation_model_state_inputs)
 
         scene_generation_inputs = [
             state_topbar, seed_random, image_seed, params_backend, scene_theme,
@@ -11085,7 +11348,6 @@ with shared.gradio_root:
             js=scene_generation_sync_js,
         ))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(_sync_scene_model_params_for_generation, inputs=[model_params_state, state_topbar], outputs=[model_params_state], show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts, prompt_history_data], show_progress=False)
@@ -11113,8 +11375,7 @@ with shared.gradio_root:
             show_progress=False,
             js=scene_generation_sync_js,
         ))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=model_state_ui_inputs, outputs=model_params_state, show_progress=False, js=preview_model_submit_state_js))
-        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_scene_model_params_for_generation, inputs=[model_params_state, state_topbar], outputs=[model_params_state], show_progress=False, queue=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(_sync_model_params_state_from_ui, inputs=generation_model_state_inputs, outputs=model_params_state, show_progress=False, js=preview_model_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False))
@@ -11481,7 +11742,8 @@ with shared.gradio_root:
 
         scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
-                   .then(_sync_scene_model_params_for_theme, inputs=[state_topbar, model_params_state], outputs=[model_params_state] + model_bridge_rehydrate_targets + [models_js_panel], queue=False, show_progress=False) \
+                   .then(_sync_scene_model_params_for_theme, inputs=[state_topbar, model_params_state], outputs=[model_params_state] + model_bridge_rehydrate_targets + [models_js_panel, models_js_payload, models_nav_rehydrate_payload], queue=False, show_progress=False) \
+                   .then(fn=None, inputs=[model_params_state], outputs=None, js="(modelState)=>{try{window.simpleaiApplyPresetModelsPanelState?.({seq:String(Date.now()),model_state:modelState});}catch(e){console.warn('[UI-TRACE] scene_theme_models_panel_apply_failed',e);}}", queue=False, show_progress=False) \
                    .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state,theme)=>{try{const resolvedTheme=String(theme||(state&&state.scene_theme)||'').trim(); if(typeof markSimpleAISceneThemeChanged==='function') markSimpleAISceneThemeChanged(resolvedTheme,state); if(typeof window.syncSimpleAISceneModeCheckbox==='function') window.syncSimpleAISceneModeCheckbox(state,resolvedTheme); if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda state: None, inputs=[state_topbar], js='(state)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", state); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
@@ -11813,6 +12075,18 @@ with shared.gradio_root:
         qwen_custom_style_preset_choices=qwen_custom_style_preset_choices,
         binding_id_button=binding_id_button,
         identity_dialog=identity_dialog,
+        identity_activation={
+            "guard": identity_activation_guard,
+            "note": identity_activation_note,
+            "mode": identity_activation_mode,
+            "scope_confirm": identity_activation_scope_confirm,
+            "permission_confirm": identity_activation_permission_confirm,
+            "phrase_confirm": identity_activation_phrase_confirm,
+            "apply_button": identity_activation_apply_button,
+            "state": identity_activation_state,
+            "refresh_fn": refresh_identity_activation_guard,
+            "continue_fn": apply_identity_activation_choice,
+        },
         admin_access_refresh_fn=_admin_access_refresh,
         admin_access_user_select=admin_access_user_select,
         admin_access_outputs=admin_access_outputs,
@@ -11955,14 +12229,18 @@ with shared.gradio_root:
         if scene_loras is not None and bool(state_params.get("__preset_switched", False)):
             loras = _normalize_lora_triplets(scene_loras)
 
-        return _model_params_state_payload(
-            pick("base_model", "base_model"),
-            pick("refiner_model", "refiner_model"),
-            pick("refiner_switch", "refiner_switch"),
-            pick("clip_model", "clip_model"),
-            pick("vae_name", "vae_name"),
-            pick("upscale_model", "upscale_model"),
-            loras,
+        return _model_params_state_with_scene_context(
+            _model_params_state_payload(
+                pick("base_model", "base_model"),
+                pick("refiner_model", "refiner_model"),
+                pick("refiner_switch", "refiner_switch"),
+                pick("clip_model", "clip_model"),
+                pick("vae_name", "vae_name"),
+                pick("upscale_model", "upscale_model"),
+                loras,
+            ),
+            state_params=state_params,
+            fallback_state=fallback,
         )
 
     def _normalize_reset_layout_values(result, trace_name="reset_layout_values_safe"):
@@ -12130,7 +12408,14 @@ with shared.gradio_root:
             if index not in reset_layout_value_nav_omitted_output_indices
         ]
         after_identity_updates = result[load_end:load_end + len(after_identity)]
-        model_state_update = _model_params_state_from_load_updates(load_updates, current_model_params_state, state_params=state_params)
+        # When Models is not the active tab, its mounted controls can still
+        # contain the previous preset. Rebuild from the new preset state so
+        # preset LoRA defaults are not replaced by stale checkbox values.
+        model_state_update = (
+            _model_params_state_from_state_params(state_params, current_model_params_state)
+            if not models_tab_active
+            else _model_params_state_from_load_updates(load_updates, current_model_params_state, state_params=state_params)
+        )
         previous_base = current_model_params_state.get("base_model") if isinstance(current_model_params_state, dict) else None
         lora_enabled = "".join("1" if item[0] else "0" for item in _normalize_lora_triplets(model_state_update.get("loras"))[:5])
         util.log_ui_trace(
@@ -12584,6 +12869,8 @@ app, local_url, share_url = _launch_root_app_with_frontend_port_retry(
     blocked_paths=[constants.AUTH_FILENAME],
     prevent_thread_lock=True
 )
+worker.start_worker()
+topbar.start_preset_status_refresh()
 
 import threading
 import uuid
@@ -14418,10 +14705,15 @@ _canvas_queue_vlm_model_downloads = canvas_vlm_runtime.canvas_queue_vlm_model_do
 _canvas_vlm_status_log_signatures = {}
 
 @app.get("/vlm-model-catalog")
-async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False):
+async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False, include_dynamic: bool = False):
     try:
         result = await run_in_threadpool(
-            lambda: _main_vlm_model_catalog({}, request=request, refresh=bool(refresh))
+            lambda: _main_vlm_model_catalog(
+                {},
+                request=request,
+                refresh=bool(refresh),
+                include_dynamic=bool(include_dynamic or refresh),
+            )
         )
         return JSONResponse(result, status_code=200)
     except Exception as e:
@@ -15580,6 +15872,28 @@ async def describe_image_vlm_roleplay_draft_endpoint(payload: dict = Body(defaul
         return JSONResponse({"ok": False, "error": "system_prompt_required"}, status_code=400)
     draft = await run_in_threadpool(vlm_roleplay.build_character_draft_from_system_prompt, prompt)
     return JSONResponse(draft, status_code=200 if draft.get("ok") else 400)
+
+
+@app.post("/describe-image/vlm-roleplay/import")
+async def describe_image_vlm_roleplay_import_endpoint(payload: dict = Body(default={})):
+    payload = payload if isinstance(payload, dict) else {}
+    kind = str(payload.get("kind") or payload.get("type") or "character_card").strip().lower()
+    filename = str(payload.get("filename") or payload.get("name") or "").strip()
+    raw = payload.get("card") if kind in {"character", "character_card", "card"} else payload.get("world_book")
+    if raw is None:
+        raw = payload.get("data")
+    if raw is None and payload.get("content_base64"):
+        try:
+            raw = base64.b64decode(str(payload.get("content_base64")), validate=False)
+        except (ValueError, TypeError):
+            raw = None
+    if raw is None:
+        return JSONResponse({"ok": False, "error": "import_content_required"}, status_code=400)
+    if kind in {"world", "worldbook", "world_book", "lorebook"}:
+        result = await run_in_threadpool(vlm_roleplay.import_tavern_world_book, raw, filename)
+    else:
+        result = await run_in_threadpool(vlm_roleplay.import_tavern_character_card, raw, filename)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 
 @app.post("/describe-image/vlm-roleplay/characters/list")

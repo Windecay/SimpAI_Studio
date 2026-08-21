@@ -22,8 +22,8 @@
         2
       ],
       "num_frames": [
-        "65",
-        1
+        "258",
+        0
       ],
       "latents": [
         "39",
@@ -122,7 +122,7 @@
         0
       ],
       "image": [
-        "114",
+        "256",
         0
       ]
     },
@@ -148,7 +148,7 @@
         0
       ],
       "image": [
-        "98",
+        "257",
         0
       ]
     },
@@ -262,7 +262,7 @@
       ],
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "format": "Wan"
+      "format": "AnimateDiff"
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
@@ -379,10 +379,10 @@
       "trim_to_audio": false,
       "pingpong": true,
       "save_output": true,
-      "images": [
-        "231",
-        0
-      ],
+        "images": [
+          "255",
+          0
+        ],
       "audio": [
         "251",
         0
@@ -561,7 +561,7 @@
       ],
       "crf": 19,
       "images": [
-        "223",
+        "253",
         0
       ],
       "audio": [
@@ -984,6 +984,129 @@
     "class_type": "WanVideoLoraSelect",
     "_meta": {
       "title": "WanVideoLoraSelect9"
+    }
+  },
+  "252": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "218",
+        7
+      ],
+      "b": [
+        "226",
+        0
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "253": {
+    "inputs": {
+      "images": [
+        "223",
+        0
+      ],
+      "target_frame_count": [
+        "252",
+        0
+      ],
+      "source_fps": [
+        "218",
+        5
+      ],
+      "target_fps": [
+        "226",
+        1
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
+    }
+  },
+  "254": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "218",
+        7
+      ],
+      "b": [
+        "218",
+        5
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Comparison Video Frame Count"
+    }
+  },
+  "255": {
+    "inputs": {
+      "images": [
+        "231",
+        0
+      ],
+      "target_frame_count": [
+        "254",
+        0
+      ],
+      "source_fps": [
+        "218",
+        5
+      ],
+      "target_fps": [
+        "218",
+        5
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Comparison Video Frame Align"
+    }
+  },
+  "256": {
+    "inputs": {
+      "images": [
+        "114",
+        0
+      ],
+      "time_scale_factor": 4
+    },
+    "class_type": "SimpAILTXVFramePad",
+    "_meta": {
+      "title": "Remover Source Frame Grid Pad"
+    }
+  },
+  "257": {
+    "inputs": {
+      "images": [
+        "98",
+        0
+      ],
+      "time_scale_factor": 4
+    },
+    "class_type": "SimpAILTXVFramePad",
+    "_meta": {
+      "title": "Remover Mask Frame Grid Pad"
+    }
+  },
+  "258": {
+    "inputs": {
+      "value": "((a+2)//4)*4+1",
+      "a": [
+        "65",
+        1
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Remover Sampling Frame Count"
     }
   }
 }

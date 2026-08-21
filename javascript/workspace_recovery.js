@@ -15,12 +15,17 @@
     const RESTORE_READY_TIMEOUT_MS = 30 * 1000;
     const RESTORE_READY_SETTLE_MS = 650;
     const RESTORE_POST_NAV_SETTLE_MS = 350;
+    const RESTORE_LAYOUT_SETTLE_TIMEOUT_MS = 2500;
+    const RESTORE_LAYOUT_POLL_MS = 100;
+    const RESTORE_LAYOUT_STABLE_POLLS = 3;
+    const RESTORE_POST_LAYOUT_SETTLE_MS = 350;
     const WORKSPACE_STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
     const AUTO_RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
     const RESTORE_PROGRESS_ID = 'workspace_restore_progress';
     const RESTORE_PROGRESS_MIN_VISIBLE_MS = 260;
     const RESTORE_PROGRESS_HIDE_DELAY_MS = 220;
     const RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS = 900;
+    const LEGACY_RECONNECT_CAPTURE_WINDOW_MS = 10 * 1000;
 
     let restoreCompleted = false;
     let restoreRequested = false;
@@ -499,15 +504,21 @@
         if (!updatedAt || Date.now() - updatedAt > AUTO_RESTORE_MAX_AGE_MS) return null;
         if (!uiSnapshot && !dataSnapshot) return null;
 
+        const uiContext = normalizedWorkspaceContext(uiSnapshot?.context);
+        const dataContext = normalizedWorkspaceContext(dataSnapshot?.workspaces?.[owner]?.context);
+        const context = uiContext.preset
+            ? uiContext
+            : (dataContext.preset ? dataContext : normalizedWorkspaceContext(currentWorkspaceContext()));
+
         const request = {
             version: MANUAL_RECONNECT_VERSION,
             owner,
             session_key: reconnectSessionKey(),
             pathname: String(window.location?.pathname || ''),
             requested_at: Date.now(),
-            context: uiSnapshot?.context || currentWorkspaceContext(),
+            context,
             snapshot: dataSnapshot || emptyWorkspaceSnapshot(),
-            value_count: storedWorkspaceValueCount(owner),
+            value_count: storedWorkspaceValueCount(owner, context),
             source: 'browser_history',
             navigation_type: type,
             lifecycle_reason: lifecycle?.reason || '',
@@ -574,22 +585,26 @@
             : value;
     }
 
-    function saveValue(key, signature, value, fallbackState, kind) {
-        if (captureWritesBlocked()) {
+    function saveWorkspaceValue(key, signature, value, fallbackState, kind, options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        if (!settings.force && captureWritesBlocked()) {
             const fallback = fallbackState && typeof fallbackState === 'object' && !Array.isArray(fallbackState)
                 ? fallbackState
                 : null;
             return fallback || workspaceSnapshot() || emptyWorkspaceSnapshot();
         }
-        const owner = ownerKey();
-        const source = workspaceSnapshot()
+        const owner = String(settings.owner || ownerKey());
+        const context = normalizedWorkspaceContext(settings.context || currentWorkspaceContext());
+        const source = workspaceSnapshot(owner)
             || (fallbackState && typeof fallbackState === 'object' && !Array.isArray(fallbackState) ? fallbackState : null)
             || emptyWorkspaceSnapshot();
+        if (!context.preset) return source;
         const workspaces = source.workspaces && typeof source.workspaces === 'object' && !Array.isArray(source.workspaces)
             ? { ...source.workspaces }
             : {};
         const current = workspaces[owner] && typeof workspaces[owner] === 'object' ? workspaces[owner] : {};
-        const values = current.values && typeof current.values === 'object' && !Array.isArray(current.values)
+        const values = workspaceContextsMatch(current.context, context)
+            && current.values && typeof current.values === 'object' && !Array.isArray(current.values)
             ? { ...current.values }
             : {};
         const now = Date.now();
@@ -598,10 +613,14 @@
             value: storedWorkspaceValue(value, kind),
             updated_at: now,
         };
-        workspaces[owner] = { ...current, values, updated_at: now };
+        workspaces[owner] = { ...current, context, values, updated_at: now };
         const next = { ...source, schema: 1, workspaces, updated_at: now };
         saveWorkspaceSnapshot(next, owner);
         return next;
+    }
+
+    function saveValue(key, signature, value, fallbackState, kind) {
+        return saveWorkspaceValue(key, signature, value, fallbackState, kind);
     }
 
     function markPerformance(eventName, data, urgent) {
@@ -617,7 +636,27 @@
     function controlValueById(elemId) {
         const root = rootNode();
         const field = root.querySelector?.(`#${elemId}`);
+        const checkedRadio = field?.querySelector?.('input[type="radio"]:checked');
+        if (checkedRadio) return checkedRadio.value;
+        const checkbox = field?.querySelector?.('input[type="checkbox"]');
+        if (checkbox) return !!checkbox.checked;
         return field?.querySelector?.('textarea, input, select')?.value ?? '';
+    }
+
+    function normalizedWorkspaceContext(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        return {
+            preset: normalizedPresetName(source.preset || source.__preset || ''),
+            scene_theme: String(source.scene_theme || source.__scene_theme || '').trim(),
+        };
+    }
+
+    function workspaceContextsMatch(left, right) {
+        const expected = normalizedWorkspaceContext(left);
+        const actual = normalizedWorkspaceContext(right);
+        return !!expected.preset
+            && expected.preset === actual.preset
+            && expected.scene_theme === actual.scene_theme;
     }
 
     function currentWorkspaceContext() {
@@ -629,9 +668,9 @@
         const completedPreset = window.__simpleai_preset_nav_completed?.preset || '';
         const preset = String(params.__preset || params.preset || lastPreset || completedPreset || domPresetName() || '').trim();
         const sceneTheme = String(
-            params.__scene_theme
+            controlValueById('scene_theme')
+            || params.__scene_theme
             || params.scene_theme
-            || controlValueById('scene_theme')
             || ''
         ).trim();
         return {
@@ -700,20 +739,149 @@
         return !restoreCompleted && !!pendingManualReconnectRequest();
     }
 
-    function storedWorkspaceValueCount(owner) {
+    function storedWorkspaceValueCount(owner, context) {
         const snapshot = workspaceSnapshot(owner);
-        const values = snapshot?.workspaces?.[owner]?.values;
+        const workspace = snapshot?.workspaces?.[owner];
+        if (context && !workspaceContextsMatch(workspace?.context, context)) return 0;
+        const values = workspace?.values;
         return values && typeof values === 'object' ? Object.keys(values).length : 0;
+    }
+
+    function workspaceEntryForElemId(snapshot, owner, elemId) {
+        const workspace = snapshot?.workspaces?.[owner];
+        const values = workspace?.values;
+        if (!values || typeof values !== 'object') return null;
+        const field = rootNode().querySelector?.(`#${elemId}`);
+        const key = workspaceKey(field);
+        const signature = workspaceSignature(field);
+        const entry = key ? values[key] : null;
+        if (!entry || typeof entry !== 'object') return null;
+        if (signature && entry.signature !== signature) return null;
+        return { entry, field, key };
+    }
+
+    function legacyEntryWasCapturedForReconnect(entry, request) {
+        const requestedAt = Number(request?.requested_at || 0);
+        const updatedAt = Number(entry?.updated_at || 0);
+        return Number.isFinite(requestedAt)
+            && requestedAt > 0
+            && Number.isFinite(updatedAt)
+            && updatedAt >= requestedAt - LEGACY_RECONNECT_CAPTURE_WINDOW_MS
+            && updatedAt <= requestedAt + 1000;
+    }
+
+    function legacyWorkspaceValuesForRequest(workspace, request) {
+        const source = workspace?.values;
+        if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+        const root = rootNode();
+        const restored = {};
+        for (const [key, entry] of Object.entries(source)) {
+            const field = root.querySelector?.(`.simpai-workspace-key-${key}`);
+            const kind = workspaceKind(field);
+            const media = ['image', 'video', 'audio', 'file'].includes(kind);
+            if (media || legacyEntryWasCapturedForReconnect(entry, request)) {
+                restored[key] = entry;
+            }
+        }
+        return restored;
+    }
+
+    function workspaceValueFitsCurrentControl(key, entry) {
+        const field = rootNode().querySelector?.(`.simpai-workspace-key-${key}`);
+        const kind = workspaceKind(field);
+        if (!['number', 'slider'].includes(kind)) return true;
+        const value = Number(entry?.value);
+        if (!Number.isFinite(value)) return entry?.value === null || entry?.value === '';
+        const input = field?.querySelector?.('input');
+        const minimum = input?.min;
+        const maximum = input?.max;
+        if (minimum !== undefined && minimum !== null && minimum !== '' && value < Number(minimum)) return false;
+        if (maximum !== undefined && maximum !== null && maximum !== '' && value > Number(maximum)) return false;
+        return true;
+    }
+
+    function validatedWorkspaceValues(values) {
+        const source = values && typeof values === 'object' && !Array.isArray(values) ? values : {};
+        const restored = {};
+        let rejected = 0;
+        for (const [key, entry] of Object.entries(source)) {
+            if (workspaceValueFitsCurrentControl(key, entry)) restored[key] = entry;
+            else rejected += 1;
+        }
+        return { values: restored, rejected };
+    }
+
+    function requestWorkspaceContext(request) {
+        const snapshot = request?.snapshot;
+        const owner = request?.owner;
+        const workspace = snapshot?.workspaces?.[owner];
+        const storedContext = normalizedWorkspaceContext(workspace?.context);
+        let context = normalizedWorkspaceContext(request?.context);
+        if (storedContext.preset && (!context.preset || storedContext.preset === context.preset)) {
+            context = storedContext;
+        }
+        if (!workspace?.context) {
+            const sceneTheme = workspaceEntryForElemId(snapshot, owner, 'scene_theme');
+            if (
+                sceneTheme
+                && legacyEntryWasCapturedForReconnect(sceneTheme.entry, request)
+                && typeof sceneTheme.entry.value === 'string'
+            ) {
+                context.scene_theme = sceneTheme.entry.value.trim();
+            }
+        }
+        return context;
+    }
+
+    function materializeWorkspaceSnapshot(snapshot, owner, context, request) {
+        const source = snapshot && snapshot.schema === 1 && snapshot.workspaces
+            && typeof snapshot.workspaces === 'object'
+            ? snapshot
+            : emptyRestoreSnapshot();
+        const workspace = source.workspaces?.[owner];
+        const storedContext = normalizedWorkspaceContext(workspace?.context);
+        let values = {};
+        let sourceType = 'empty';
+        if (workspaceContextsMatch(storedContext, context)) {
+            values = workspace?.values && typeof workspace.values === 'object' && !Array.isArray(workspace.values)
+                ? workspace.values
+                : {};
+            sourceType = 'context';
+        } else if (!storedContext.preset) {
+            values = legacyWorkspaceValuesForRequest(workspace, request);
+            sourceType = Object.keys(values).length ? 'legacy_recent' : 'legacy_skipped';
+        } else {
+            sourceType = 'context_mismatch';
+        }
+        const validated = validatedWorkspaceValues(values);
+        return {
+            snapshot: {
+                schema: 1,
+                workspaces: {
+                    [owner]: {
+                        context: normalizedWorkspaceContext(context),
+                        values: validated.values,
+                        updated_at: Number(workspace?.updated_at || source.updated_at || Date.now()),
+                    },
+                },
+                updated_at: Number(source.updated_at || Date.now()),
+            },
+            sourceType,
+            valueCount: Object.keys(validated.values).length,
+            rejectedCount: validated.rejected,
+        };
     }
 
     function markManualReconnect(options) {
         const settings = options && typeof options === 'object' ? options : {};
+        const owner = ownerKey();
+        const liveContext = normalizedWorkspaceContext(currentWorkspaceContext());
         preserveUiSnapshotUntilUnload = settings.capture === false;
         if (preserveUiSnapshotUntilUnload) {
             window.clearTimeout(captureTimer);
             captureTimer = 0;
         } else {
-            prepareForReload();
+            prepareForReload({ force: true, owner, context: liveContext });
         }
         restoreCompleted = false;
         restoreRequested = false;
@@ -721,19 +889,20 @@
         restoreLayoutEnabled = true;
         automaticRestoreCandidate = null;
         restoreStartedAt = 0;
-        const owner = ownerKey();
         const uiSnapshot = readUiSnapshot(owner);
-        const context = uiSnapshot?.context || currentWorkspaceContext();
+        const storedUiContext = normalizedWorkspaceContext(uiSnapshot?.context);
+        const context = liveContext.preset ? liveContext : storedUiContext;
         const dataSnapshot = workspaceSnapshot(owner) || emptyWorkspaceSnapshot();
+        const requestedAt = Date.now();
         const request = {
             version: MANUAL_RECONNECT_VERSION,
             owner,
             session_key: reconnectSessionKey(),
             pathname: String(window.location?.pathname || ''),
-            requested_at: Date.now(),
+            requested_at: requestedAt,
             context,
             snapshot: dataSnapshot,
-            value_count: storedWorkspaceValueCount(owner),
+            value_count: storedWorkspaceValueCount(owner, context),
         };
         try {
             localStorage.setItem(MANUAL_RECONNECT_KEY, JSON.stringify(request));
@@ -759,6 +928,7 @@
         const params = systemParams && typeof systemParams === 'object' ? systemParams : {};
         const request = activeRestoreRequest();
         if (!request) return params;
+        request.context = requestWorkspaceContext(request);
         if (!restoreProgressActive) startRestoreProgress(request);
         else restoreProgressUpdate(12, restoreProgressText('Restoring workspace', 'Restoring workspace'));
         restoreRequest = request;
@@ -768,7 +938,7 @@
         restoreCompleted = false;
         restoreRequested = false;
         restoreStartedAt = Date.now();
-        const context = request.context && typeof request.context === 'object' ? request.context : {};
+        const context = normalizedWorkspaceContext(request.context);
         const preset = String(context.preset || '').trim();
         const sceneTheme = String(context.scene_theme || '').trim();
         if (preset) {
@@ -943,6 +1113,7 @@
     async function prepareRestoreRequest(fallbackState, fallbackOwner) {
         const request = restoreRequest || activeRestoreRequest();
         if (!request) return [emptyRestoreSnapshot(), ownerKey() || fallbackOwner || 'local'];
+        request.context = requestWorkspaceContext(request);
         restoreRequest = request;
         if (!restoreProgressActive) startRestoreProgress(request);
         restoreLayoutEnabled = request.source !== 'browser_history';
@@ -959,6 +1130,7 @@
             }, true);
             return [emptyRestoreSnapshot(), request.owner];
         }
+        await prepareRestoredLayout(request);
         const requestSnapshot = request.snapshot
             && request.snapshot.schema === 1
             && request.snapshot.workspaces
@@ -967,21 +1139,26 @@
             : null;
         const stored = workspaceSnapshot(request.owner);
         const fallback = fallbackState && typeof fallbackState === 'object' ? fallbackState : null;
-        const snapshot = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
+        const candidate = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
+        const materialized = materializeWorkspaceSnapshot(
+            candidate,
+            request.owner,
+            request.context,
+            request,
+        );
+        const snapshot = materialized.snapshot;
+        request.restore_snapshot = snapshot;
         updateRestoreProgress(82, 'Restoring parameters');
         markPerformance('workspace.restore_values_ready', {
             owner: request.owner,
             preset: currentPresetName(),
-            scene_theme: String(
-                window.simpleaiTopbarSystemParams?.__scene_theme
-                || window.simpleaiTopbarSystemParams?.scene_theme
-                || ''
-            ),
-            value_count: storedWorkspaceValueCount(request.owner),
+            scene_theme: String(request.context?.scene_theme || ''),
+            value_count: materialized.valueCount,
+            rejected_values: materialized.rejectedCount,
             ui_ready: uiReady,
             snapshot_source: requestSnapshot
-                ? (request.source === 'browser_history' ? 'browser_history' : 'manual_reconnect')
-                : (stored ? 'workspace_storage' : 'browser_state'),
+                ? `${request.source === 'browser_history' ? 'browser_history' : 'manual_reconnect'}:${materialized.sourceType}`
+                : `${stored ? 'workspace_storage' : 'browser_state'}:${materialized.sourceType}`,
         }, true);
         return [snapshot, request.owner];
     }
@@ -1031,24 +1208,49 @@
         return undefined;
     }
 
-    function captureWorkspaceField(node) {
-        if (captureWritesBlocked()) return false;
+    function markRestoredSceneParameterEdit(request) {
+        const snapshot = request?.restore_snapshot || request?.snapshot;
+        const owner = String(request?.owner || ownerKey());
+        const elemIds = [
+            'scene_var_number3',
+            'scene_var_number7',
+            'scene_switch_option2',
+            'scene_switch_option3',
+            'scene_var_number2',
+            'scene_video_duration',
+        ];
+        for (const elemId of elemIds) {
+            const resolved = workspaceEntryForElemId(snapshot, owner, elemId);
+            if (!resolved?.entry || !resolved?.field) continue;
+            const control = resolved.field.querySelector?.('input, textarea, select');
+            if (!control?.dispatchEvent) continue;
+            control.dispatchEvent(new Event('input', { bubbles: true }));
+            markPerformance('workspace.restore_scene_defaults_cancelled', { elem_id: elemId }, true);
+            return true;
+        }
+        return false;
+    }
+
+    function captureWorkspaceField(node, options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        if (!settings.force && captureWritesBlocked()) return false;
         const field = closestWorkspaceField(node);
         const key = workspaceKey(field);
         const signature = workspaceSignature(field);
         if (!field || !key || !signature) return false;
         const value = domWorkspaceValue(field);
         if (value === undefined) return false;
-        saveValue(key, signature, value, null, workspaceKind(field));
+        saveWorkspaceValue(key, signature, value, null, workspaceKind(field), settings);
         return true;
     }
 
-    function captureAllWorkspaceFields() {
-        if (captureWritesBlocked()) return 0;
+    function captureAllWorkspaceFields(options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        if (!settings.force && captureWritesBlocked()) return 0;
         const root = rootNode();
         let captured = 0;
         for (const field of Array.from(root.querySelectorAll?.('.simpai-workspace-field') || [])) {
-            if (captureWorkspaceField(field)) captured += 1;
+            if (captureWorkspaceField(field, settings)) captured += 1;
         }
         return captured;
     }
@@ -1146,14 +1348,15 @@
         };
     }
 
-    function captureNow() {
-        if (captureWritesBlocked()) return false;
+    function captureNow(options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        if (!settings.force && captureWritesBlocked()) return false;
         const root = rootNode();
-        const owner = ownerKey();
+        const owner = String(settings.owner || ownerKey());
         const snapshot = {
             version: UI_STATE_VERSION,
             owner,
-            context: currentWorkspaceContext(),
+            context: normalizedWorkspaceContext(settings.context || currentWorkspaceContext()),
             tabs: collectTabs(root),
             accordions: collectAccordions(root),
             scroll_x: Math.max(0, Number(window.scrollX || 0)),
@@ -1256,6 +1459,48 @@
         try { window.syncMainLayoutResponsiveStack?.(); } catch (error) {}
     }
 
+    function applyRestoredLayout(root, snapshot) {
+        restoreTabs(root, snapshot.tabs);
+        restoreAccordions(root, snapshot.accordions);
+    }
+
+    function mountedWorkspaceFieldCount() {
+        return Array.from(rootNode().querySelectorAll?.('.simpai-workspace-field') || []).length;
+    }
+
+    async function prepareRestoredLayout(request) {
+        if (!restoreLayoutEnabled) return false;
+        const snapshot = readUiSnapshot(String(request?.owner || ownerKey()));
+        if (!snapshot) return false;
+
+        updateRestoreProgress(72, 'Restoring workspace');
+        applyRestoredLayout(rootNode(), snapshot);
+        syncRestoredDynamicVisibility();
+
+        const deadline = Date.now() + RESTORE_LAYOUT_SETTLE_TIMEOUT_MS;
+        let previousCount = -1;
+        let stablePolls = 0;
+        let mountedFields = 0;
+        while (Date.now() < deadline) {
+            await wait(RESTORE_LAYOUT_POLL_MS);
+            mountedFields = mountedWorkspaceFieldCount();
+            if (mountedFields === previousCount && !presetNavigationActive()) stablePolls += 1;
+            else stablePolls = 0;
+            previousCount = mountedFields;
+            if (stablePolls >= RESTORE_LAYOUT_STABLE_POLLS) break;
+        }
+
+        applyRestoredLayout(rootNode(), snapshot);
+        syncRestoredDynamicVisibility();
+        await wait(RESTORE_POST_LAYOUT_SETTLE_MS);
+        markPerformance('workspace.restore_layout_ready', {
+            owner: String(request?.owner || ''),
+            mounted_fields: mountedFields,
+            stable: stablePolls >= RESTORE_LAYOUT_STABLE_POLLS,
+        }, true);
+        return true;
+    }
+
     function restoreUiState(owner) {
         if (!restoreRequested && !owner) return false;
         const restoreOwner = String(owner || restoreRequest?.owner || ownerKey());
@@ -1263,8 +1508,7 @@
         if (!snapshot) return false;
         const root = rootNode();
         if (restoreLayoutEnabled) {
-            restoreTabs(root, snapshot.tabs);
-            restoreAccordions(root, snapshot.accordions);
+            applyRestoredLayout(root, snapshot);
         }
         restoreFocus(root, snapshot.focus);
         window.requestAnimationFrame(() => {
@@ -1284,11 +1528,8 @@
         const request = restoreRequest || pendingManualReconnectRequest();
         if (!request) return false;
         restoreCompleted = true;
+        markRestoredSceneParameterEdit(request);
         restoreUiState(request.owner);
-        window.setTimeout(() => restoreUiState(request.owner), 250);
-        window.setTimeout(() => restoreUiState(request.owner), 800);
-        window.setTimeout(syncRestoredDynamicVisibility, 120);
-        window.setTimeout(syncRestoredDynamicVisibility, 520);
         finishRestoreProgress(true);
         if (request.source !== 'browser_history') clearManualReconnectRequest(request);
         else clearPageLifecycle();
@@ -1317,12 +1558,16 @@
         return true;
     }
 
-    function prepareForReload() {
-        if (captureWritesBlocked()) {
+    function prepareForReload(options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        const owner = String(settings.owner || ownerKey());
+        const context = normalizedWorkspaceContext(settings.context || currentWorkspaceContext());
+        const captureOptions = { ...settings, owner, context };
+        if (!settings.force && captureWritesBlocked()) {
             markPerformance('workspace.pagehide_capture', {
-                owner: ownerKey(),
-                preset: currentWorkspaceContext().preset,
-                scene_theme: currentWorkspaceContext().scene_theme,
+                owner,
+                preset: context.preset,
+                scene_theme: context.scene_theme,
                 captured_fields: 0,
                 ui_snapshot_saved: false,
                 skipped: true,
@@ -1330,16 +1575,15 @@
             return true;
         }
         const active = document.activeElement;
-        captureWorkspaceField(active);
+        captureWorkspaceField(active, captureOptions);
         if (active?.dispatchEvent) {
             try { active.dispatchEvent(new Event('input', { bubbles: true })); } catch (error) {}
             try { active.dispatchEvent(new Event('change', { bubbles: true })); } catch (error) {}
         }
-        const capturedFields = captureAllWorkspaceFields();
-        const uiSnapshotSaved = captureNow();
-        const context = currentWorkspaceContext();
+        const capturedFields = captureAllWorkspaceFields(captureOptions);
+        const uiSnapshotSaved = captureNow(captureOptions);
         markPerformance('workspace.pagehide_capture', {
-            owner: ownerKey(),
+            owner,
             preset: context.preset,
             scene_theme: context.scene_theme,
             captured_fields: capturedFields,

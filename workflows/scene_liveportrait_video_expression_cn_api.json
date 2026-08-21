@@ -257,7 +257,7 @@
       ],
       "crf": 19,
       "images": [
-        "10",
+        "12",
         0
       ],
       "audio": [
@@ -268,6 +268,48 @@
     "class_type": "SaveVideoWebsocket",
     "_meta": {
       "title": "SaveVideoWebsocket"
+    }
+  },
+  "11": {
+    "inputs": {
+      "value": "max(1, round(a*b))",
+      "a": [
+        "8",
+        2
+      ],
+      "b": [
+        "9",
+        0
+      ],
+      "c": 0
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "12": {
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ],
+      "target_frame_count": [
+        "11",
+        0
+      ],
+      "source_fps": [
+        "8",
+        0
+      ],
+      "target_fps": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }

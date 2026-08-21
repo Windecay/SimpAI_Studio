@@ -23,7 +23,7 @@
       ],
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "format": "Wan"
+      "format": "AnimateDiff"
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
@@ -162,7 +162,7 @@
       ],
       "crf": 19,
       "images": [
-        "488",
+        "928",
         0
       ],
       "audio": [
@@ -1053,6 +1053,51 @@
     "class_type": "CLIPLoaderGGUF",
     "_meta": {
       "title": "clip_model"
+    }
+  },
+  "927": {
+    "inputs": {
+      "value": "max(1, round(a*b/c))",
+      "a": [
+        "400",
+        1
+      ],
+      "b": [
+        "688",
+        0
+      ],
+      "c": [
+        "724",
+        12
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Video Output Frame Count"
+    }
+  },
+  "928": {
+    "inputs": {
+      "images": [
+        "488",
+        0
+      ],
+      "target_frame_count": [
+        "927",
+        0
+      ],
+      "source_fps": [
+        "724",
+        12
+      ],
+      "target_fps": [
+        "688",
+        1
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "SimpAI Video Frame Align"
     }
   }
 }
