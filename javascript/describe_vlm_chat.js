@@ -1749,6 +1749,253 @@
         return parts.join(' · ') || localText('Roleplay setup', '角色扮演设置');
     }
 
+    function roleplayParticipantEntries(session) {
+        const normalized = normalizeRoleplaySession(session);
+        const scene = normalized.story_state?.scene || {};
+        const rawPresentIds = Array.isArray(scene.present_character_ids)
+            ? scene.present_character_ids.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        const hasExplicitRoster = rawPresentIds.length > 0;
+        const presentIds = new Set(rawPresentIds);
+        const playerState = normalizeRoleplayPlayerState(normalized.story_state?.player_state);
+        const player = {
+            id: String(normalized.persona?.id || 'player').trim() || 'player',
+            entity_type: 'player',
+            name: String(normalized.persona?.name || localText('You', '你')).trim() || localText('You', '你'),
+            role_label: localText('Player', '玩家'),
+            is_present: playerState.status === 'present',
+            status_label: playerState.status === 'present'
+                ? localText('Present', '在场')
+                : localText('Absent', '离场'),
+            status: playerState.status,
+            location: '',
+            condition: [],
+            state_text: playerState.state_text,
+            state_fields: playerState.state_fields,
+            emotion: '',
+            current_action: '',
+            inventory: [],
+            goals: [],
+            avatar_asset_ids: Array.isArray(normalized.persona?.reference_asset_ids)
+                ? normalized.persona.reference_asset_ids.slice(0, MAX_ROLEPLAY_REFERENCE_IMAGES)
+                : []
+        };
+        const characters = roleplayCharacterEntries(normalized).map((character) => {
+            const runtime = normalized.story_state?.characters?.[character.id] || {};
+            const isPresent = hasExplicitRoster
+                ? presentIds.has(character.id)
+                : character.id === normalized.active_character_id;
+            return {
+                id: character.id,
+                entity_type: 'character',
+                name: String(character.name || character.id || localText('Unnamed character', '未命名角色')).trim(),
+                role_label: localText('Character', '角色'),
+                is_present: isPresent,
+                status_label: isPresent
+                    ? localText('Present', '在场')
+                    : localText('Absent', '离场'),
+                status: isPresent ? 'present' : 'absent',
+                location: String(runtime.location || '').trim(),
+                condition: Array.isArray(runtime.condition) ? runtime.condition : [],
+                state_text: String(runtime.state_text || '').trim(),
+                state_fields: normalizeRoleplayStateFields(runtime.state_fields),
+                emotion: String(runtime.emotion || '').trim(),
+                current_action: String(runtime.current_action || '').trim(),
+                inventory: Array.isArray(runtime.inventory) ? runtime.inventory : [],
+                goals: Array.isArray(runtime.goals) ? runtime.goals : [],
+                avatar_asset_ids: [
+                    ...(Array.isArray(runtime.current_appearance_asset_ids) ? runtime.current_appearance_asset_ids : []),
+                    String(character.avatar_asset_id || '').trim(),
+                    ...(Array.isArray(character.reference_asset_ids) ? character.reference_asset_ids : [])
+                ].filter(Boolean).slice(0, MAX_ROLEPLAY_REFERENCE_IMAGES + 2),
+                card: character,
+                runtime
+            };
+        });
+        return [player, ...characters];
+    }
+
+    function roleplayParticipantForMessage(message, session, role = '') {
+        const normalized = normalizeRoleplaySession(session);
+        const participants = roleplayParticipantEntries(normalized);
+        if (role === 'user' || message?.roleplay_control_only) {
+            return participants.find((item) => item.entity_type === 'player') || participants[0] || null;
+        }
+        const speakerId = String(message?.roleplay_speaker_id || '').trim();
+        if (speakerId) {
+            const byId = participants.find((item) => item.entity_type === 'character' && item.id === speakerId);
+            if (byId) return byId;
+        }
+        const explicitName = String(message?.roleplay_speaker_name || '').trim();
+        if (explicitName) {
+            const byName = participants.find((item) => item.entity_type === 'character' && item.name === explicitName);
+            if (byName) return byName;
+            return Object.assign({}, participants.find((item) => item.entity_type === 'character') || {}, {
+                id: speakerId || `speaker_${explicitName}`,
+                entity_type: 'character',
+                name: explicitName,
+                role_label: localText('Character', '角色')
+            });
+        }
+        return participants.find((item) => item.entity_type === 'character' && item.id === normalized.active_character_id)
+            || participants.find((item) => item.entity_type === 'character')
+            || null;
+    }
+
+    function roleplayCurrentSpeakerForMessages(session, messages = []) {
+        const normalized = normalizeRoleplaySession(session);
+        const list = Array.isArray(messages) ? messages : [];
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+            const message = list[index];
+            if (message?.role !== 'assistant' || message?.pending) continue;
+            const participant = roleplayParticipantForMessage(message, normalized, 'assistant');
+            if (participant?.entity_type === 'character') return participant;
+        }
+        return roleplayParticipantForMessage({ roleplay_speaker_id: normalized.active_character_id }, normalized, 'assistant');
+    }
+
+    function roleplayParticipantAvatarSource(participant) {
+        const ids = Array.isArray(participant?.avatar_asset_ids) ? participant.avatar_asset_ids : [];
+        for (const assetId of ids) {
+            const source = roleplayReferencePreviewUrl(assetId);
+            if (source) return source;
+        }
+        return '';
+    }
+
+    function roleplayParticipantStatusRows(participant) {
+        const rows = [];
+        const add = (label, value) => {
+            const text = compactRoleplayStateText(value, 180);
+            if (!text || text === localText('Empty', '已清空')) return;
+            rows.push(`<div class="describe-vlm-chat-roleplay-speaker-status-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(text)}</dd></div>`);
+        };
+        add(localText('Location', '位置'), participant?.location);
+        add(localText('Current action', '当前行动'), participant?.current_action);
+        add(localText('Current state', '当前状态'), participant?.state_text);
+        add(localText('Condition', '状况'), Array.isArray(participant?.condition) ? participant.condition.join('；') : participant?.condition);
+        add(localText('Emotion', '情绪'), participant?.emotion);
+        const fields = normalizeRoleplayStateFields(participant?.state_fields);
+        fields.forEach((field) => add(field.label, field.value));
+        add(localText('Inventory', '物品'), Array.isArray(participant?.inventory) ? participant.inventory.join('、') : participant?.inventory);
+        return rows.join('');
+    }
+
+    function renderRoleplayParticipantStatusCard(participant, cardId, options = {}) {
+        const source = participant || {};
+        const name = String(source.name || localText('Unnamed participant', '未命名参与者')).trim();
+        const avatarSource = roleplayParticipantAvatarSource(source);
+        const statusClass = source.is_present ? 'is-present' : 'is-absent';
+        const statusText = source.is_present
+            ? localText('Present', '在场')
+            : localText('Absent', '离场');
+        const roleText = options.controlOnly
+            ? localText('Story control', '剧情控制')
+            : String(source.role_label || localText('Participant', '参与者'));
+        const headline = options.controlOnly
+            ? localText('Story control', '剧情控制')
+            : name;
+        const identityDetail = options.controlOnly
+            ? `${name} · ${statusText}`
+            : `${roleText} · ${statusText}`;
+        const statusRows = roleplayParticipantStatusRows(source);
+        const absentNotice = source.entity_type === 'player' && !source.is_present
+            ? `<p class="describe-vlm-chat-roleplay-speaker-status-notice"><i class="fa-solid fa-route"></i>${escapeHtml(localText('Input controls the story and is not spoken as player dialogue.', '当前输入仅用于控制剧情，不会作为玩家台词发出。'))}</p>`
+            : '';
+        const emptyState = !statusRows
+            ? `<p class="describe-vlm-chat-roleplay-speaker-status-empty">${escapeHtml(localText('No runtime details yet.', '暂时没有更多实时状态。'))}</p>`
+            : '';
+        return `<div class="describe-vlm-chat-roleplay-speaker-identity ${statusClass}" data-describe-vlm-chat-roleplay-speaker-identity>
+  <button type="button" class="describe-vlm-chat-roleplay-speaker-trigger" data-describe-vlm-chat-roleplay-speaker-trigger aria-expanded="false" aria-controls="${escapeHtml(cardId)}" aria-label="${escapeHtml(localText(`View ${name} runtime status`, `查看${name}的实时状态`))}">
+    <span class="describe-vlm-chat-roleplay-speaker-avatar" aria-hidden="true">${avatarSource ? `<img src="${escapeHtml(avatarSource)}" alt="">` : '<i class="fa-solid fa-user"></i>'}</span>
+    <span class="describe-vlm-chat-roleplay-speaker-copy"><b>${escapeHtml(headline)}</b><small>${escapeHtml(identityDetail)}</small></span>
+  </button>
+  <div class="describe-vlm-chat-roleplay-speaker-status-card" id="${escapeHtml(cardId)}" data-describe-vlm-chat-roleplay-speaker-status-card role="status">
+    <div class="describe-vlm-chat-roleplay-speaker-status-head"><strong>${escapeHtml(name)}</strong><span class="${statusClass}"><i class="fa-solid ${source.is_present ? 'fa-circle-check' : 'fa-circle-minus'}"></i>${escapeHtml(statusText)}</span></div>
+    <dl>${statusRows || ''}</dl>
+    ${emptyState}
+    ${absentNotice}
+  </div>
+</div>`;
+    }
+
+    function positionRoleplaySpeakerStatusCard(identity, trigger = null) {
+        if (!identity) return;
+        const card = identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
+        const anchor = trigger || identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-trigger]');
+        if (!card || !anchor) return;
+        const log = identity.closest('[data-describe-vlm-chat-log]');
+        const anchorRect = anchor.getBoundingClientRect();
+        const logRect = log?.getBoundingClientRect?.() || {
+            top: 0,
+            right: window.innerWidth,
+            bottom: window.innerHeight,
+            left: 0
+        };
+        if (!anchorRect.width || !anchorRect.height) return;
+        const gap = 8;
+        card.style.maxHeight = '';
+        const naturalHeight = Math.max(96, Math.min(card.scrollHeight || 300, 300));
+        const naturalWidth = Math.max(card.getBoundingClientRect().width || 0, 180);
+        const spaceAbove = Math.max(0, anchorRect.top - logRect.top - gap);
+        const spaceBelow = Math.max(0, logRect.bottom - anchorRect.bottom - gap);
+        const opensUpward = spaceBelow < naturalHeight && spaceAbove >= spaceBelow;
+        const availableHeight = opensUpward ? spaceAbove : spaceBelow;
+        const usableHeight = Math.max(80, Math.min(naturalHeight, availableHeight || naturalHeight));
+        const spaceRight = Math.max(0, logRect.right - anchorRect.left - gap);
+        const spaceLeft = Math.max(0, anchorRect.right - logRect.left - gap);
+        const alignsRight = spaceRight < naturalWidth && spaceLeft > spaceRight;
+        identity.classList.toggle('opens-upward', opensUpward);
+        identity.classList.toggle('align-right', alignsRight);
+        card.style.maxHeight = `${usableHeight}px`;
+    }
+
+    let roleplaySpeakerCardRefreshFrame = 0;
+
+    function scheduleRoleplaySpeakerCardPositionRefresh() {
+        if (roleplaySpeakerCardRefreshFrame) return;
+        const refresh = () => {
+            roleplaySpeakerCardRefreshFrame = 0;
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            if (!modal || modal.hidden) return;
+            modal.querySelectorAll('[data-describe-vlm-chat-roleplay-speaker-identity]').forEach((identity) => {
+                if (!identity.classList.contains('is-open')
+                    && !identity.matches(':hover')
+                    && !identity.matches(':focus-within')) return;
+                positionRoleplaySpeakerStatusCard(identity);
+            });
+        };
+        roleplaySpeakerCardRefreshFrame = window.requestAnimationFrame
+            ? window.requestAnimationFrame(refresh)
+            : window.setTimeout(refresh, 0);
+    }
+
+    function renderRoleplayParticipantChips(participants, emptyLabel) {
+        const list = Array.isArray(participants) ? participants : [];
+        return list.length
+            ? list.map((participant) => `<span class="describe-vlm-chat-roleplay-participant-chip ${participant.is_present ? 'is-present' : 'is-absent'}" title="${escapeHtml(`${participant.name} · ${participant.status_label}`)}"><i class="fa-solid ${participant.entity_type === 'player' ? 'fa-user' : 'fa-user-astronaut'}" aria-hidden="true"></i><span>${escapeHtml(participant.name)}</span></span>`).join('')
+            : `<span class="describe-vlm-chat-roleplay-participant-empty">${escapeHtml(emptyLabel)}</span>`;
+    }
+
+    function renderRoleplayParticipantSummary(runtime) {
+        const target = runtime || currentConversationRuntime();
+        const session = normalizeRoleplaySession(target?.roleplaySession, target?.conversationId);
+        const participants = roleplayParticipantEntries(session);
+        const present = participants.filter((item) => item.is_present);
+        const absent = participants.filter((item) => !item.is_present);
+        const currentSpeaker = roleplayCurrentSpeakerForMessages(session, target?.messages);
+        const player = participants.find((item) => item.entity_type === 'player');
+        const playerNotice = player && !player.is_present
+            ? `<span class="describe-vlm-chat-roleplay-player-control-notice"><i class="fa-solid fa-route" aria-hidden="true"></i>${escapeHtml(localText('Input only controls the story', '输入仅用于控制剧情'))}</span>`
+            : '';
+        return `<div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite">
+  <span class="describe-vlm-chat-roleplay-participant-group"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'))}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-absent"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'))}</span></span>
+  <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(localText('Speaking', '当前发言'))}</b><span>${escapeHtml(currentSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
+  ${playerNotice}
+</div>`;
+    }
+
     function normalizeRoleplayTurnIntentSetting(value) {
         const intent = String(value || '').trim().toLowerCase().replace(/-/g, '_').replace(/\s+/g, '_');
         if (intent === 'story_control' || intent === 'storycontrol' || intent === 'control' || intent === 'director') {
@@ -4886,6 +5133,7 @@
         if (panel) panel.hidden = !active || !state.roleplayPanelOpen;
         const summary = modal.querySelector('[data-describe-vlm-chat-roleplay-summary-text]');
         const status = modal.querySelector('[data-describe-vlm-chat-roleplay-state]');
+        const participantSummary = modal.querySelector('[data-describe-vlm-chat-roleplay-participant-summary]');
         const turnIntentWrap = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent-wrap]');
         const turnIntent = modal.querySelector('[data-describe-vlm-chat-roleplay-turn-intent]');
         if (turnIntentWrap) turnIntentWrap.hidden = !active;
@@ -4906,6 +5154,7 @@
             roleplayStateSummary(session),
             roleplayAutoplayLabel(autoplayState)
         ].filter(Boolean).join(' · ');
+        if (participantSummary) participantSummary.outerHTML = renderRoleplayParticipantSummary(runtime);
         const setAutoplayButton = (selector, disabled, hidden = false) => {
             const button = modal.querySelector(selector);
             if (!button) return;
@@ -8440,6 +8689,7 @@
       <span data-describe-vlm-chat-roleplay-summary-text>${escapeHtml(localText('Roleplay setup', '角色扮演设置'))}</span>
     </button>
     <span class="describe-vlm-chat-roleplay-state" data-describe-vlm-chat-roleplay-state aria-live="polite"></span>
+    <div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite"></div>
     <div class="describe-vlm-chat-roleplay-autoplay-controls" role="group" aria-label="${escapeHtml(localText('Autoplay controls', '托管控制'))}">
       <button type="button" data-describe-vlm-chat-roleplay-play title="${escapeHtml(localText('Start autoplay', '开始托管'))}" aria-label="${escapeHtml(localText('Start autoplay', '开始托管'))}"><i class="fa-solid fa-play"></i></button>
       <button type="button" data-describe-vlm-chat-roleplay-step title="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}" aria-label="${escapeHtml(localText('Run one hosted turn', '执行一步托管'))}"><i class="fa-solid fa-forward-step"></i></button>
@@ -13660,12 +13910,10 @@
 
     function roleplaySpeakerLabel(message) {
         const explicitName = String(message?.roleplay_speaker_name || '').trim();
-        if (explicitName) return explicitName;
-        const speakerId = String(message?.roleplay_speaker_id || '').trim();
-        if (!speakerId) return '';
         const runtime = currentConversationRuntime();
         const session = normalizeRoleplaySession(runtime?.roleplaySession, runtime?.conversationId);
-        return String(session.characters?.[speakerId]?.name || '').trim();
+        const participant = roleplayParticipantForMessage(message, session, message?.role === 'user' ? 'user' : 'assistant');
+        return String(participant?.name || explicitName || '').trim();
     }
 
     function renderMessages(options = {}) {
@@ -13690,6 +13938,11 @@
         log.innerHTML = state.messages.map((message, messageIndex) => {
             if (!message.id) message.id = uid(`describe_vlm_chat_${message.role || 'message'}`);
             const role = message.role === 'assistant' ? 'assistant' : 'user';
+            const isRoleplay = normalizeChatMode(state.chatMode) === 'roleplay';
+            const roleplayRuntime = isRoleplay ? currentConversationRuntime() : null;
+            const roleplaySession = isRoleplay
+                ? normalizeRoleplaySession(roleplayRuntime?.roleplaySession, roleplayRuntime?.conversationId)
+                : null;
             const pending = !!message.pending;
             const actions = Array.isArray(message.actions) ? message.actions : [];
             const actionHtml = actions.length && !pending ? `<div class="describe-vlm-chat-actions">${actions.map((action, actionIndex) => {
@@ -13719,13 +13972,23 @@
   </div>
 </div>`;
             }).join('')}</div>` : '';
-            const roleplayLabel = role === 'assistant' && normalizeChatMode(state.chatMode) === 'roleplay'
-                ? roleplaySpeakerLabel(message)
+            const roleplayParticipant = isRoleplay
+                ? roleplayParticipantForMessage(message, roleplaySession, role)
+                : null;
+            const roleplayLabel = role === 'assistant' && isRoleplay
+                ? roleplayParticipant?.name || roleplaySpeakerLabel(message)
                 : '';
             const controlLabel = role === 'user' && message.roleplay_control_only
                 ? t('Story control', '剧情控制')
                 : '';
             const label = roleplayLabel || controlLabel || (role === 'assistant' ? t('Assistant', '助手') : t('You', '你'));
+            const roleplayIdentityHtml = roleplayParticipant
+                ? renderRoleplayParticipantStatusCard(
+                    roleplayParticipant,
+                    `describe-vlm-chat-roleplay-speaker-${messageIndex}-${String(roleplayParticipant.id || role).replace(/[^a-zA-Z0-9_-]+/g, '_')}`,
+                    { controlOnly: !!message.roleplay_control_only }
+                )
+                : `<b>${escapeHtml(label)}</b>`;
             const variants = role === 'assistant' ? roleplayMessageVariants(message) : [];
             const activeVariantIndex = Math.max(0, Math.min(variants.length - 1, Number(message.active_variant_index) || 0));
             const activeVariant = variants[activeVariantIndex] || null;
@@ -13750,7 +14013,7 @@
                 ? renderRoleplayResourceChanges(message.roleplay_resource_changes)
                 : '';
             return `<div class="describe-vlm-chat-msg is-${role} ${pending ? 'is-pending' : ''}" data-describe-vlm-chat-message="${messageIndex}">
-  <div class="describe-vlm-chat-msg-head"><b>${escapeHtml(label)}</b><span>
+  <div class="describe-vlm-chat-msg-head">${roleplayIdentityHtml}<span>
     ${responseSource}
     ${completionSpeed}
     ${variantControls}
@@ -15399,6 +15662,31 @@
             return;
         }
         if (modal.hidden) return;
+        const speakerTrigger = evt.target.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
+        if (speakerTrigger) {
+            const identity = speakerTrigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]');
+            if (!identity) return;
+            document.querySelectorAll('[data-describe-vlm-chat-roleplay-speaker-identity].is-open').forEach((item) => {
+                if (item !== identity) {
+                    item.classList.remove('is-open', 'opens-upward', 'align-right');
+                    const itemCard = item.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
+                    if (itemCard) itemCard.style.maxHeight = '';
+                    item.querySelector('[data-describe-vlm-chat-roleplay-speaker-trigger]')?.setAttribute('aria-expanded', 'false');
+                }
+            });
+            const open = !identity.classList.contains('is-open');
+            identity.classList.toggle('is-open', open);
+            if (open) {
+                positionRoleplaySpeakerStatusCard(identity, speakerTrigger);
+            } else {
+                identity.classList.remove('opens-upward', 'align-right');
+                const card = identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
+                if (card) card.style.maxHeight = '';
+            }
+            speakerTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            evt.preventDefault();
+            return;
+        }
         if (evt.target.closest('[data-describe-vlm-chat-close]')) {
             closeModal();
             return;
@@ -16360,7 +16648,35 @@
         addPendingImageFiles(files);
     });
 
+    document.addEventListener('pointerover', (evt) => {
+        const identity = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-identity]');
+        if (!identity) return;
+        positionRoleplaySpeakerStatusCard(identity);
+    });
+
+    document.addEventListener('focusin', (evt) => {
+        const trigger = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
+        if (!trigger) return;
+        positionRoleplaySpeakerStatusCard(trigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]'), trigger);
+    });
+
+    document.addEventListener('scroll', (evt) => {
+        if (evt.target?.closest?.('[data-describe-vlm-chat-log]')) scheduleRoleplaySpeakerCardPositionRefresh();
+    }, true);
+
+    window.addEventListener('resize', scheduleRoleplaySpeakerCardPositionRefresh, { passive: true });
+
     document.addEventListener('keydown', (evt) => {
+        const speakerTrigger = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
+        if (speakerTrigger && evt.key === 'Escape') {
+            const identity = speakerTrigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]');
+            identity?.classList.remove('is-open', 'opens-upward', 'align-right');
+            const card = identity?.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
+            if (card) card.style.maxHeight = '';
+            speakerTrigger.setAttribute('aria-expanded', 'false');
+            evt.preventDefault();
+            return;
+        }
         const input = evt.target?.closest?.('[data-describe-vlm-chat-input]');
         if (!input) return;
         if (evt.key === 'Enter' && !evt.shiftKey) {

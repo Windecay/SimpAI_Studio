@@ -37,7 +37,8 @@
         request: null,
         requestSerial: 0,
         dateRefreshTimer: 0,
-        toastTimer: 0
+        toastTimer: 0,
+        refreshing: false
     };
 
     const refs = {};
@@ -99,6 +100,46 @@
             throw error;
         }
         return payload;
+    }
+
+    function delay(milliseconds) {
+        return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+    }
+
+    async function waitForRescan(maxMilliseconds = 125000) {
+        const deadline = Date.now() + maxMilliseconds;
+        while (Date.now() < deadline) {
+            const status = await request('/api/rescan/status');
+            if (!status.running) return true;
+            await delay(250);
+        }
+        return false;
+    }
+
+    function setRefreshBusy(busy) {
+        state.refreshing = !!busy;
+        [refs.refresh, refs.rescan].forEach((button) => {
+            if (button) button.disabled = state.refreshing;
+        });
+    }
+
+    async function refreshLibrary() {
+        if (state.refreshing) return;
+        window.clearTimeout(state.dateRefreshTimer);
+        state.dateRefreshTimer = 0;
+        setRefreshBusy(true);
+        setStatus(t('Loading...'));
+        try {
+            await request('/api/rescan', { method: 'POST' });
+            showToast(t('Rescan started'));
+            const completed = await waitForRescan();
+            await Promise.all([loadDates(), loadPage(true)]);
+            showToast(t(completed ? 'Refresh complete' : 'Refresh still running'), !completed);
+        } catch (err) {
+            showToast(t('Unable to refresh media'), true);
+        } finally {
+            setRefreshBusy(false);
+        }
     }
 
     function showToast(message, error) {
@@ -1007,22 +1048,8 @@
             window.clearTimeout(searchTimer);
             searchTimer = window.setTimeout(() => { state.query = refs.search.value.trim(); clearSelectionForQueryChange(); loadPage(true); }, 240);
         });
-        refs.refresh.addEventListener('click', async () => {
-            try {
-                await request('/api/rescan', { method: 'POST' });
-                showToast(t('Rescan started'));
-            } catch (err) {
-                showToast(t('Unable to start rescan'), true);
-            }
-            window.setTimeout(() => { loadDates(); loadPage(true); }, 700);
-        });
-        refs.rescan.addEventListener('click', async () => {
-            try {
-                await request('/api/rescan', { method: 'POST' });
-                showToast(t('Rescan started'));
-                window.setTimeout(() => { loadDates(); loadPage(true); }, 800);
-            } catch (err) { showToast(t('Unable to start rescan'), true); }
-        });
+        refs.refresh.addEventListener('click', refreshLibrary);
+        refs.rescan.addEventListener('click', refreshLibrary);
         refs.datesToggle.addEventListener('click', () => refs.dateSidebar.classList.toggle('is-open'));
         refs.viewerClose.addEventListener('click', closeViewer);
         refs.viewerBackdrop.addEventListener('click', closeViewer);

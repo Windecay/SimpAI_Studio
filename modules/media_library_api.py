@@ -318,6 +318,15 @@ async def media_library_rescan(request: Request, payload: dict = Body(default={}
     return {"ok": True, "started": started, "running": not started}
 
 
+@router.get("/simpleai/gallery/api/rescan/status")
+async def media_library_rescan_status(request: Request):
+    library = _library_for_request(request=request)
+    with _scan_tasks_lock:
+        task = _scan_tasks.get(library.db_path)
+        running = bool(task and not task.done())
+    return {"ok": True, "running": running}
+
+
 @router.get("/simpleai/gallery/media/{media_id}")
 async def media_library_media(request: Request, media_id: str):
     library = _library_for_request(request=request)
