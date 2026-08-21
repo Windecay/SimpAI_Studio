@@ -26,6 +26,10 @@
     const RESTORE_PROGRESS_HIDE_DELAY_MS = 220;
     const RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS = 900;
     const LEGACY_RECONNECT_CAPTURE_WINDOW_MS = 10 * 1000;
+    const SKETCH_DB_NAME = 'simpai.studio.workspace.sketch.v1';
+    const SKETCH_DB_VERSION = 1;
+    const SKETCH_STORE_NAME = 'snapshots';
+    const SKETCH_CAPTURE_WAIT_MS = 1500;
 
     let restoreCompleted = false;
     let restoreRequested = false;
@@ -44,6 +48,8 @@
     let restoreProgressHideTimer = 0;
     let restoreProgressTargetPreset = '';
     let restoreProgressFailed = false;
+    let sketchDbPromise = null;
+    const pendingSketchWrites = new Set();
 
     function restoreProgressLanguage() {
         const candidates = [];
@@ -623,6 +629,218 @@
         return saveWorkspaceValue(key, signature, value, fallbackState, kind);
     }
 
+    function normalizedSketchPayload(value) {
+        let source = value;
+        if (typeof source === 'string') {
+            try {
+                source = JSON.parse(source || 'null');
+            } catch (error) {
+                return null;
+            }
+        }
+        if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
+        const image = typeof source.image === 'string' && source.image.startsWith('data:image/') ? source.image : '';
+        const mask = typeof source.mask === 'string' && source.mask.startsWith('data:image/') ? source.mask : '';
+        if (!image && !mask) return null;
+        const width = Number(source.width || 0);
+        const height = Number(source.height || 0);
+        return {
+            image,
+            mask,
+            width: Number.isFinite(width) && width > 0 ? width : 0,
+            height: Number.isFinite(height) && height > 0 ? height : 0,
+        };
+    }
+
+    function sketchRecordKey(owner, context, key, signature) {
+        const normalized = normalizedWorkspaceContext(context);
+        const scope = `${String(owner || ownerKey())}\n${normalized.preset}\n${normalized.scene_theme}`;
+        return `sketch:${hashText(scope)}:${String(key || '')}:${String(signature || '').slice(0, 16)}`;
+    }
+
+    function openSketchDatabase() {
+        if (sketchDbPromise) return sketchDbPromise;
+        if (!window.indexedDB || typeof window.indexedDB.open !== 'function') {
+            sketchDbPromise = Promise.resolve(null);
+            return sketchDbPromise;
+        }
+        sketchDbPromise = new Promise((resolve) => {
+            let request;
+            try {
+                request = window.indexedDB.open(SKETCH_DB_NAME, SKETCH_DB_VERSION);
+            } catch (error) {
+                resolve(null);
+                return;
+            }
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(SKETCH_STORE_NAME)) {
+                    db.createObjectStore(SKETCH_STORE_NAME, { keyPath: 'id' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+            request.onblocked = () => resolve(null);
+        });
+        return sketchDbPromise;
+    }
+
+    function sketchStoreAdapter() {
+        const adapter = window.SimpAIWorkspaceSketchStore;
+        return adapter && typeof adapter === 'object' ? adapter : null;
+    }
+
+    async function writeSketchRecord(record) {
+        const adapter = sketchStoreAdapter();
+        if (typeof adapter?.put === 'function') {
+            await adapter.put(record);
+            return true;
+        }
+        const db = await openSketchDatabase();
+        if (!db) return false;
+        return new Promise((resolve) => {
+            let transaction;
+            try {
+                transaction = db.transaction(SKETCH_STORE_NAME, 'readwrite');
+                transaction.objectStore(SKETCH_STORE_NAME).put(record);
+            } catch (error) {
+                resolve(false);
+                return;
+            }
+            transaction.oncomplete = () => resolve(true);
+            transaction.onerror = () => resolve(false);
+            transaction.onabort = () => resolve(false);
+        });
+    }
+
+    async function readSketchRecord(recordKey) {
+        const adapter = sketchStoreAdapter();
+        if (typeof adapter?.get === 'function') {
+            return await adapter.get(recordKey);
+        }
+        const db = await openSketchDatabase();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            let request;
+            try {
+                const transaction = db.transaction(SKETCH_STORE_NAME, 'readonly');
+                request = transaction.objectStore(SKETCH_STORE_NAME).get(recordKey);
+            } catch (error) {
+                resolve(null);
+                return;
+            }
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    function trackSketchWrite(task) {
+        const pending = Promise.resolve(task).catch(() => false);
+        pendingSketchWrites.add(pending);
+        pending.finally(() => pendingSketchWrites.delete(pending));
+        return pending;
+    }
+
+    async function flushPendingSaves(timeoutMs) {
+        const tasks = Array.from(pendingSketchWrites);
+        if (!tasks.length) return true;
+        const waitMs = Math.max(0, Number(timeoutMs) || SKETCH_CAPTURE_WAIT_MS);
+        let timer = 0;
+        const timeout = new Promise((resolve) => {
+            timer = window.setTimeout(() => resolve(false), waitMs);
+        });
+        const completed = Promise.allSettled(tasks).then(() => true);
+        const result = await Promise.race([completed, timeout]);
+        window.clearTimeout(timer);
+        return result;
+    }
+
+    function currentSketchPayload(elemId, fallbackValue) {
+        try {
+            const sketch = window.SimpAISketch?.get?.(elemId);
+            if (sketch) {
+                return { known: true, payload: normalizedSketchPayload(sketch.getValue?.()) };
+            }
+        } catch (error) {}
+        const parsed = normalizedSketchPayload(fallbackValue);
+        if (parsed) return { known: true, payload: parsed };
+        if (fallbackValue === null || fallbackValue === undefined || fallbackValue === '') {
+            return { known: true, payload: null };
+        }
+        return { known: false, payload: null };
+    }
+
+    function saveSketchValue(key, signature, elemId, fallbackValue, fallbackState, options) {
+        const settings = options && typeof options === 'object' ? options : {};
+        const owner = String(settings.owner || ownerKey());
+        const context = normalizedWorkspaceContext(settings.context || currentWorkspaceContext());
+        const recordKey = sketchRecordKey(owner, context, key, signature);
+        const current = currentSketchPayload(elemId, fallbackValue);
+        if (context.preset && current.known) {
+            trackSketchWrite(writeSketchRecord({
+                id: recordKey,
+                owner,
+                context,
+                signature: String(signature || ''),
+                elem_id: String(elemId || ''),
+                payload: current.payload,
+                updated_at: Date.now(),
+            }));
+        }
+        return saveWorkspaceValue(
+            key,
+            signature,
+            {
+                __simpai_workspace_sketch: true,
+                storage_key: recordKey,
+                elem_id: String(elemId || ''),
+                empty: current.known && current.payload === null,
+            },
+            fallbackState,
+            'sketch',
+            settings,
+        );
+    }
+
+    async function hydrateSketchSnapshot(snapshot, owner, context) {
+        const workspace = snapshot?.workspaces?.[owner];
+        const values = workspace?.values;
+        if (!values || typeof values !== 'object' || !workspaceContextsMatch(workspace.context, context)) return snapshot;
+        const targets = Object.entries(values).filter(([, entry]) => (
+            entry?.value?.__simpai_workspace_sketch === true
+            && typeof entry.value.storage_key === 'string'
+        ));
+        if (!targets.length) return snapshot;
+
+        const restoredValues = { ...values };
+        let restoredCount = 0;
+        await Promise.all(targets.map(async ([key, entry]) => {
+            const record = await readSketchRecord(entry.value.storage_key);
+            if (!record || record.signature !== entry.signature) return;
+            if (record.payload === null) {
+                restoredValues[key] = { ...entry, value: '' };
+                restoredCount += 1;
+                return;
+            }
+            const payload = normalizedSketchPayload(record.payload);
+            if (!payload) return;
+            restoredValues[key] = { ...entry, value: JSON.stringify(payload) };
+            restoredCount += 1;
+        }));
+        markPerformance('workspace.restore_sketch_values_ready', {
+            owner,
+            stored: targets.length,
+            restored: restoredCount,
+        }, true);
+        return {
+            ...snapshot,
+            workspaces: {
+                ...snapshot.workspaces,
+                [owner]: { ...workspace, values: restoredValues },
+            },
+        };
+    }
+
     function markPerformance(eventName, data, urgent) {
         try {
             window.SimpAIStudioPerformance?.mark?.(
@@ -1140,8 +1358,13 @@
         const stored = workspaceSnapshot(request.owner);
         const fallback = fallbackState && typeof fallbackState === 'object' ? fallbackState : null;
         const candidate = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
-        const materialized = materializeWorkspaceSnapshot(
+        const hydratedCandidate = await hydrateSketchSnapshot(
             candidate,
+            request.owner,
+            request.context,
+        );
+        const materialized = materializeWorkspaceSnapshot(
+            hydratedCandidate,
             request.owner,
             request.context,
             request,
@@ -1238,6 +1461,11 @@
         const key = workspaceKey(field);
         const signature = workspaceSignature(field);
         if (!field || !key || !signature) return false;
+        if (workspaceKind(field) === 'sketch') {
+            const input = field.querySelector?.('textarea, input[type="text"]');
+            saveSketchValue(key, signature, field.id || '', input?.value ?? '', null, settings);
+            return true;
+        }
         const value = domWorkspaceValue(field);
         if (value === undefined) return false;
         saveWorkspaceValue(key, signature, value, null, workspaceKind(field), settings);
@@ -1303,6 +1531,80 @@
         }).filter((entry) => entry.selected >= 0);
     }
 
+    function advancedModelsTabButton(root) {
+        const roots = root === document ? [root] : [root, document];
+        for (const candidateRoot of roots) {
+            const tabs = candidateRoot?.querySelector?.('#advanced_tabs');
+            if (!tabs) continue;
+            const buttons = Array.from(tabs.querySelectorAll?.('[role="tab"], .tab-nav > button') || []);
+            const matched = buttons.find((button) => {
+                const label = normalizedTabText(
+                    button.getAttribute?.('data-original-text')
+                    || button.getAttribute?.('aria-label')
+                    || button.textContent
+                ).toLowerCase();
+                return label === 'models' || label === 'model' || label === '模型';
+            });
+            if (matched) return matched;
+        }
+        return null;
+    }
+
+    function modelsPageActive(root) {
+        const button = advancedModelsTabButton(root);
+        return !!button && (
+            button.classList?.contains?.('selected')
+            || button.getAttribute?.('aria-selected') === 'true'
+        );
+    }
+
+    function collectCustomUiState(root) {
+        let models = null;
+        let infiniteCanvas = null;
+        try {
+            models = window.simpleaiReadModelsJsPanelWorkspaceState?.() || null;
+        } catch (error) {}
+        try {
+            infiniteCanvas = window.SimpAIInfiniteCanvasWorkbench?.workspaceSnapshot?.() || null;
+        } catch (error) {}
+        return {
+            models_active: modelsPageActive(root),
+            models,
+            infinite_canvas: infiniteCanvas,
+        };
+    }
+
+    async function restoreCustomUiState(request) {
+        const owner = String(request?.owner || ownerKey());
+        const snapshot = readUiSnapshot(owner);
+        if (!snapshot || !workspaceContextsMatch(snapshot.context, request?.context)) return false;
+        const custom = snapshot.custom && typeof snapshot.custom === 'object' ? snapshot.custom : {};
+        let restoredModels = false;
+        let restoredCanvas = false;
+
+        if (custom.models && typeof window.simpleaiRestoreModelsJsPanelWorkspaceState === 'function') {
+            try {
+                restoredModels = !!(await window.simpleaiRestoreModelsJsPanelWorkspaceState(custom.models));
+            } catch (error) {}
+        }
+
+        if (restoreLayoutEnabled && custom.infinite_canvas?.open === true) {
+            try {
+                if (!window.SimpAIInfiniteCanvasWorkbench?.restoreWorkspaceRecovery) {
+                    await window.loadSimpleAILazyAssetGroup?.('infiniteCanvas');
+                }
+                restoredCanvas = !!window.SimpAIInfiniteCanvasWorkbench?.restoreWorkspaceRecovery?.(custom.infinite_canvas);
+            } catch (error) {}
+        }
+
+        markPerformance('workspace.restore_custom_ui_finished', {
+            owner,
+            models: restoredModels,
+            infinite_canvas: restoredCanvas,
+        }, true);
+        return restoredModels || restoredCanvas;
+    }
+
     function accordionToggles(root) {
         return Array.from(root.querySelectorAll?.(
             'button.label-wrap, button[aria-expanded]:not([role="tab"])'
@@ -1362,6 +1664,7 @@
             scroll_x: Math.max(0, Number(window.scrollX || 0)),
             scroll_y: Math.max(0, Number(window.scrollY || 0)),
             focus: collectFocusState(),
+            custom: collectCustomUiState(root),
             updated_at: Date.now(),
         };
         try {
@@ -1461,6 +1764,10 @@
 
     function applyRestoredLayout(root, snapshot) {
         restoreTabs(root, snapshot.tabs);
+        if (snapshot?.custom?.models_active) {
+            const modelsButton = advancedModelsTabButton(root);
+            if (modelsButton && !modelsPageActive(root)) modelsButton.click();
+        }
         restoreAccordions(root, snapshot.accordions);
     }
 
@@ -1523,6 +1830,21 @@
         window.setTimeout(restoreUiState, 1000);
     }
 
+    async function finishRestoreAsync() {
+        if (!restoreRequested || restoreCompleted) return false;
+        const request = restoreRequest || pendingManualReconnectRequest();
+        if (!request) return false;
+        try {
+            await restoreCustomUiState(request);
+        } catch (error) {
+            markPerformance('workspace.restore_custom_ui_failed', {
+                owner: request.owner || '',
+                message: String(error?.message || error || ''),
+            }, true);
+        }
+        return finishRestore();
+    }
+
     function finishRestore() {
         if (!restoreRequested || restoreCompleted) return false;
         const request = restoreRequest || pendingManualReconnectRequest();
@@ -1574,6 +1896,12 @@
             }, true);
             return true;
         }
+        try {
+            const canvasTask = window.SimpAIInfiniteCanvasWorkbench?.prepareWorkspaceRecovery?.();
+            if (canvasTask && typeof canvasTask.then === 'function') {
+                trackSketchWrite(canvasTask);
+            }
+        } catch (error) {}
         const active = document.activeElement;
         captureWorkspaceField(active, captureOptions);
         if (active?.dispatchEvent) {
@@ -1603,8 +1931,11 @@
         ownerKey,
         workspaceSnapshot,
         saveValue,
+        saveSketchValue,
+        hydrateSketchSnapshot,
         captureAllWorkspaceFields,
         captureNow,
+        flushPendingSaves,
         prepareForReload,
         prepareForManualReconnect,
         markManualReconnect,
@@ -1612,6 +1943,7 @@
         automaticRestoreRequest,
         prepareInitialSystemParams,
         prepareRestoreRequest,
+        finishRestoreAsync,
         finishRestore,
         restoreUiState,
         prepareForPageHide,

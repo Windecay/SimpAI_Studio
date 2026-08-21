@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 import datetime as _datetime
+from functools import wraps
 import hashlib
 import html
 import json
@@ -43,11 +45,18 @@ _MAX_PAGE_SIZE = 120
 _LEGACY_READ_CHUNK = 64 * 1024
 _SQLITE_TIMEOUT_SECONDS = 30
 _INITIALIZE_FILE_LOCK_TIMEOUT_SECONDS = 60
+_INDEX_BATCH_SIZE = 64
 _SUMMARY_CACHE_LOCK = threading.RLock()
 _SUMMARY_CACHE: dict[tuple[str, bool, bool], tuple[int, list[dict[str, Any]]]] = {}
+_FILESYSTEM_CHECK_CACHE_LOCK = threading.RLock()
+_FILESYSTEM_CHECK_CACHE: dict[str, tuple[float, bool]] = {}
+_FILESYSTEM_CHECK_INTERVAL_SECONDS = 2.0
 _INITIALIZE_LOCKS_LOCK = threading.RLock()
 _INITIALIZE_LOCKS: dict[str, threading.RLock] = {}
+_MEDIA_WRITE_LOCKS_LOCK = threading.RLock()
+_MEDIA_WRITE_LOCKS: dict[str, threading.RLock] = {}
 _LOGGER = logging.getLogger(__name__)
+_INDEX_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="media-library-index")
 
 
 def _initialize_lock_for(db_path: str) -> threading.RLock:
@@ -57,6 +66,29 @@ def _initialize_lock_for(db_path: str) -> threading.RLock:
             lock = threading.RLock()
             _INITIALIZE_LOCKS[db_path] = lock
         return lock
+
+
+def _media_write_lock_for(db_path: str) -> threading.RLock:
+    with _MEDIA_WRITE_LOCKS_LOCK:
+        lock = _MEDIA_WRITE_LOCKS.get(db_path)
+        if lock is None:
+            lock = threading.RLock()
+            _MEDIA_WRITE_LOCKS[db_path] = lock
+        return lock
+
+
+def _serialize_media_write(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with _media_write_lock_for(self.db_path):
+            return method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def _clear_filesystem_change_cache(db_path: str) -> None:
+    with _FILESYSTEM_CHECK_CACHE_LOCK:
+        _FILESYSTEM_CHECK_CACHE.pop(db_path, None)
 
 
 @contextmanager
@@ -615,6 +647,7 @@ class MediaLibrary:
         item.pop("generation_text", None)
         return item
 
+    @_serialize_media_write
     def _refresh_stale_embedded_metadata(self, row: sqlite3.Row, item: dict[str, Any]) -> dict[str, Any]:
         if not _metadata_needs_refresh(item.get("generation_metadata")):
             return item
@@ -626,12 +659,13 @@ class MediaLibrary:
         if not metadata or _metadata_needs_refresh(metadata):
             return item
         generation_text = _metadata_search_text(metadata)
-        with self._connect() as connection:
-            connection.execute(
-                "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=? WHERE media_id=?",
-                (_json_dumps(metadata), generation_text, time.time(), str(row["media_id"])),
-            )
-            self._bump_revision(connection)
+        with _media_write_lock_for(self.db_path):
+            with self._connect() as connection:
+                connection.execute(
+                    "UPDATE media SET generation_metadata_json=?, generation_text=?, indexed_at=? WHERE media_id=?",
+                    (_json_dumps(metadata), generation_text, time.time(), str(row["media_id"])),
+                )
+                self._bump_revision(connection)
         self._clear_summary_cache()
         item["generation_metadata"] = metadata
         return item
@@ -641,11 +675,283 @@ class MediaLibrary:
             cache[date_key] = _legacy_metadata_for_folder(os.path.join(self.outputs_root, date_key))
         return cache[date_key]
 
+    def _index_file(
+        self,
+        connection: sqlite3.Connection,
+        absolute_path: str,
+        legacy_cache: dict[str, dict[str, dict[str, str]]] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            absolute_path = os.path.realpath(os.path.abspath(absolute_path))
+            stat = os.stat(absolute_path)
+        except OSError:
+            return {"ok": False, "indexed": False, "reason": "missing"}
+        relative_path = os.path.relpath(absolute_path, self.outputs_root).replace(os.sep, "/")
+        if not _path_under(self.outputs_root, relative_path):
+            return {"ok": False, "indexed": False, "reason": "outside_outputs"}
+        if os.path.splitext(relative_path)[1].lower() not in SUPPORTED_EXTENSIONS:
+            return {"ok": False, "indexed": False, "reason": "unsupported"}
+
+        folder_name = relative_path.split("/", 1)[0]
+        media_type = _media_type_for_path(absolute_path)
+        mime = _mime_for_path(absolute_path, media_type)
+        media_id = _media_id(relative_path)
+        row = connection.execute(
+            "SELECT media_id, size, mtime_ns, missing_at, trashed_at, media_type, width, height FROM media WHERE relative_path = ?",
+            (relative_path,),
+        ).fetchone()
+        signature_same = bool(
+            row
+            and int(row["size"] or 0) == int(stat.st_size)
+            and int(row["mtime_ns"] or 0) == int(stat.st_mtime_ns)
+            and str(row["media_type"] or "") == media_type
+        )
+        if signature_same:
+            dimensions = (row["width"], row["height"])
+            if media_type in {"image", "video"} and (
+                int(row["width"] or 0) <= 0 or int(row["height"] or 0) <= 0
+            ):
+                dimensions = _media_dimensions(absolute_path, media_type, mime)
+            needs_update = bool(
+                row["missing_at"] is not None
+                or row["trashed_at"] is not None
+                or dimensions != (row["width"], row["height"])
+            )
+            if needs_update:
+                connection.execute(
+                    """
+                    UPDATE media
+                    SET missing_at = NULL, trashed_at = NULL, trash_path = NULL,
+                        original_relative_path = COALESCE(original_relative_path, relative_path),
+                        width = ?, height = ?, indexed_at = ?
+                    WHERE relative_path = ?
+                    """,
+                    (dimensions[0], dimensions[1], time.time(), relative_path),
+                )
+            return {
+                "ok": True,
+                "indexed": True,
+                "added": False,
+                "changed": needs_update,
+                "summary_changed": bool(row["missing_at"] is not None or row["trashed_at"] is not None),
+                "media_id": media_id,
+            }
+
+        metadata = _extract_embedded_metadata(absolute_path, mime)
+        if not metadata and legacy_cache is not None:
+            legacy = self._legacy_for_date(folder_name, legacy_cache)
+            legacy_metadata = legacy.get(os.path.basename(absolute_path)) or {}
+            if legacy_metadata:
+                metadata = {"source": "legacy_log", "raw": legacy_metadata}
+                for key, value in legacy_metadata.items():
+                    lower = key.lower()
+                    if lower in {"prompt", "positive", "positive prompt", "raw prompt"}:
+                        metadata["prompt"] = value
+                    elif lower in {"negative", "negative prompt", "raw negative prompt"}:
+                        metadata["negative_prompt"] = value
+                    elif lower in {"model", "base model"}:
+                        metadata.setdefault("parameters", {})["model"] = value
+        width, height = _media_dimensions(absolute_path, media_type, mime)
+        generation_text = _metadata_search_text(metadata)
+        now = time.time()
+        if row:
+            connection.execute(
+                """
+                UPDATE media
+                SET user_did=?, date_key=?, name=?, media_type=?, mime=?, size=?, mtime_ns=?,
+                    created_at=?, width=?, height=?, generation_metadata_json=?, generation_text=?,
+                    missing_at=NULL, trashed_at=NULL, trash_path=NULL,
+                    original_relative_path=COALESCE(original_relative_path, relative_path), indexed_at=?
+                WHERE relative_path=?
+                """,
+                (
+                    self.user_did,
+                    _date_for_path(relative_path, stat.st_mtime),
+                    os.path.basename(absolute_path),
+                    media_type,
+                    mime,
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    stat.st_mtime,
+                    width,
+                    height,
+                    _json_dumps(metadata),
+                    generation_text,
+                    now,
+                    relative_path,
+                ),
+            )
+            return {"ok": True, "indexed": True, "added": False, "changed": True, "summary_changed": True, "media_id": media_id}
+
+        connection.execute(
+            """
+            INSERT INTO media(
+                media_id, user_did, relative_path, date_key, name, media_type, mime,
+                size, mtime_ns, created_at, width, height,
+                generation_metadata_json, generation_text, original_relative_path, indexed_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                media_id,
+                self.user_did,
+                relative_path,
+                _date_for_path(relative_path, stat.st_mtime),
+                os.path.basename(absolute_path),
+                media_type,
+                mime,
+                stat.st_size,
+                stat.st_mtime_ns,
+                stat.st_mtime,
+                width,
+                height,
+                _json_dumps(metadata),
+                generation_text,
+                relative_path,
+                now,
+            ),
+        )
+        return {"ok": True, "indexed": True, "added": True, "changed": True, "summary_changed": True, "media_id": media_id}
+
+    def index_file(self, absolute_path: str) -> dict[str, Any]:
+        """Index one completed output without walking the whole outputs tree."""
+
+        self.initialize()
+        legacy_cache: dict[str, dict[str, dict[str, str]]] = {}
+        with _media_write_lock_for(self.db_path):
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                result = self._index_file(connection, absolute_path, legacy_cache)
+                if result.get("summary_changed"):
+                    self._bump_revision(connection)
+                if result.get("indexed"):
+                    connection.execute(
+                        "INSERT OR REPLACE INTO library_meta(key, value) VALUES('last_scan_at', ?)",
+                        (str(time.time()),),
+                    )
+                connection.commit()
+        if result.get("summary_changed"):
+            self._clear_summary_cache()
+        _clear_filesystem_change_cache(self.db_path)
+        return result
+
+    def has_filesystem_changes(self) -> bool:
+        """Return whether a dated output folder changed after the last index pass."""
+
+        self.initialize()
+        latest_folder_mtime = 0.0
+        try:
+            for entry in os.scandir(self.outputs_root):
+                if not entry.is_dir() or not DATE_DIR_RE.match(entry.name):
+                    continue
+                try:
+                    latest_folder_mtime = max(latest_folder_mtime, entry.stat().st_mtime)
+                except OSError:
+                    continue
+        except OSError:
+            return False
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM library_meta WHERE key = 'last_scan_at'"
+            ).fetchone()
+        try:
+            last_scan_at = float(row[0]) if row else 0.0
+        except (TypeError, ValueError):
+            last_scan_at = 0.0
+
+        if latest_folder_mtime > last_scan_at + 1e-6:
+            with _FILESYSTEM_CHECK_CACHE_LOCK:
+                _FILESYSTEM_CHECK_CACHE[self.db_path] = (time.monotonic(), True)
+            return True
+
+        checked_at = time.monotonic()
+        with _FILESYSTEM_CHECK_CACHE_LOCK:
+            cached = _FILESYSTEM_CHECK_CACHE.get(self.db_path)
+            if cached and checked_at - cached[0] < _FILESYSTEM_CHECK_INTERVAL_SECONDS:
+                return cached[1]
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT relative_path FROM media WHERE trashed_at IS NULL AND missing_at IS NULL"
+            ).fetchall()
+        missing = any(
+            not os.path.isfile(_path_under(self.outputs_root, str(row["relative_path"])))
+            for row in rows
+        )
+        with _FILESYSTEM_CHECK_CACHE_LOCK:
+            _FILESYSTEM_CHECK_CACHE[self.db_path] = (checked_at, missing)
+        return missing
+
+    @_serialize_media_write
+    def reconcile_missing(self, max_seconds: float | None = 30.0) -> dict[str, Any]:
+        """Mark indexed files that disappeared without waiting for a full scan."""
+
+        self.initialize()
+        started = time.perf_counter()
+        deadline = started + float(max_seconds) if max_seconds else None
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT media_id, relative_path FROM media WHERE trashed_at IS NULL AND missing_at IS NULL"
+            ).fetchall()
+
+        checked = 0
+        missing = 0
+        truncated = False
+        now = time.time()
+        transaction_open = False
+        batch_count = 0
+        summary_changed = False
+        with self._connect() as connection:
+            def begin_batch() -> None:
+                nonlocal transaction_open
+                if not transaction_open:
+                    connection.execute("BEGIN IMMEDIATE")
+                    transaction_open = True
+
+            def commit_batch() -> None:
+                nonlocal transaction_open, batch_count, summary_changed
+                if not transaction_open:
+                    return
+                self._bump_revision(connection)
+                connection.commit()
+                transaction_open = False
+                batch_count = 0
+                summary_changed = True
+
+            for row in rows:
+                if deadline and time.perf_counter() >= deadline:
+                    truncated = True
+                    break
+                checked += 1
+                if os.path.isfile(_path_under(self.outputs_root, str(row["relative_path"]))):
+                    continue
+                begin_batch()
+                connection.execute(
+                    "UPDATE media SET missing_at = ? WHERE media_id = ? AND missing_at IS NULL",
+                    (now, str(row["media_id"])),
+                )
+                missing += 1
+                batch_count += 1
+                if batch_count >= _INDEX_BATCH_SIZE:
+                    commit_batch()
+            commit_batch()
+
+        if summary_changed:
+            self._clear_summary_cache()
+        _clear_filesystem_change_cache(self.db_path)
+        return {
+            "ok": True,
+            "checked": checked,
+            "missing": missing,
+            "truncated": truncated,
+            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        }
+
     def scan(self, max_seconds: float | None = 20.0) -> dict[str, Any]:
         """Index persisted media and mark externally missing files."""
 
         self.initialize()
         started = time.perf_counter()
+        missing_result = self.reconcile_missing(max_seconds=30.0)
         deadline = started + float(max_seconds) if max_seconds else None
         visited: set[str] = set()
         legacy_cache: dict[str, dict[str, dict[str, str]]] = {}
@@ -653,6 +959,7 @@ class MediaLibrary:
         added = 0
         changed = 0
         truncated = False
+        summary_changed = False
 
         try:
             folder_names = [
@@ -663,155 +970,104 @@ class MediaLibrary:
         except OSError:
             folder_names = []
 
-        with self._connect() as connection:
-            summary_changed = False
-            for folder_name in sorted(folder_names, reverse=True):
-                folder_path = os.path.join(self.outputs_root, folder_name)
-                legacy: dict[str, dict[str, str]] | None = None
-                for root, directories, filenames in os.walk(folder_path):
-                    directories.sort(reverse=True)
-                    for filename in sorted(filenames, reverse=True):
-                        if deadline and time.perf_counter() >= deadline:
-                            truncated = True
-                            break
-                        extension = os.path.splitext(filename)[1].lower()
-                        if extension not in SUPPORTED_EXTENSIONS:
-                            continue
-                        absolute_path = os.path.abspath(os.path.join(root, filename))
-                        try:
-                            stat = os.stat(absolute_path)
-                        except OSError:
-                            continue
-                        relative_path = os.path.relpath(absolute_path, self.outputs_root).replace(os.sep, "/")
-                        if not _path_under(self.outputs_root, relative_path):
-                            continue
-                        visited.add(relative_path)
-                        scanned += 1
-                        media_type = _media_type_for_path(absolute_path)
-                        mime = _mime_for_path(absolute_path, media_type)
-                        media_id = _media_id(relative_path)
-                        row = connection.execute(
-                            "SELECT media_id, size, mtime_ns, missing_at, trashed_at, media_type, width, height FROM media WHERE relative_path = ?",
-                            (relative_path,),
-                        ).fetchone()
-                        signature_same = bool(row and int(row["size"] or 0) == int(stat.st_size) and int(row["mtime_ns"] or 0) == int(stat.st_mtime_ns))
-                        if signature_same:
-                            dimensions = (row["width"], row["height"])
-                            if media_type in {"image", "video"} and (int(row["width"] or 0) <= 0 or int(row["height"] or 0) <= 0):
-                                dimensions = _media_dimensions(absolute_path, media_type, mime)
-                            connection.execute(
-                                "UPDATE media SET missing_at = NULL, trashed_at = NULL, trash_path = NULL, original_relative_path = COALESCE(original_relative_path, relative_path), width = ?, height = ? WHERE relative_path = ?",
-                                (dimensions[0], dimensions[1], relative_path),
-                            )
-                            if row and (row["missing_at"] is not None or row["trashed_at"] is not None):
-                                summary_changed = True
-                            continue
+        with _media_write_lock_for(self.db_path):
+            with self._connect() as connection:
+                batch_count = 0
+                batch_changed = False
+                transaction_open = False
 
-                        metadata = _extract_embedded_metadata(absolute_path, mime)
-                        if not metadata:
-                            if legacy is None:
-                                legacy = self._legacy_for_date(folder_name, legacy_cache)
-                            legacy_metadata = legacy.get(filename) or {}
-                            if legacy_metadata:
-                                metadata = {"source": "legacy_log", "raw": legacy_metadata}
-                                for key, value in legacy_metadata.items():
-                                    lower = key.lower()
-                                    if lower in {"prompt", "positive", "positive prompt", "raw prompt"}:
-                                        metadata["prompt"] = value
-                                    elif lower in {"negative", "negative prompt", "raw negative prompt"}:
-                                        metadata["negative_prompt"] = value
-                                    elif lower in {"model", "base model"}:
-                                        metadata.setdefault("parameters", {})["model"] = value
-                        width, height = _media_dimensions(absolute_path, media_type, mime)
-                        generation_text = _metadata_search_text(metadata)
-                        now = time.time()
-                        if row:
-                            connection.execute(
-                                """
-                                UPDATE media
-                                SET user_did=?, date_key=?, name=?, media_type=?, mime=?, size=?, mtime_ns=?,
-                                    created_at=?, width=?, height=?, generation_metadata_json=?, generation_text=?,
-                                    missing_at=NULL, trashed_at=NULL, trash_path=NULL,
-                                    original_relative_path=COALESCE(original_relative_path, relative_path), indexed_at=?
-                                WHERE relative_path=?
-                                """,
-                                (
-                                    self.user_did,
-                                    _date_for_path(relative_path, stat.st_mtime),
-                                    filename,
-                                    media_type,
-                                    mime,
-                                    stat.st_size,
-                                    stat.st_mtime_ns,
-                                    stat.st_mtime,
-                                    width,
-                                    height,
-                                    _json_dumps(metadata),
-                                    generation_text,
-                                    now,
-                                    relative_path,
-                                ),
-                            )
-                            changed += 1
-                            summary_changed = True
-                        else:
-                            connection.execute(
-                                """
-                                INSERT INTO media(
-                                    media_id, user_did, relative_path, date_key, name, media_type, mime,
-                                    size, mtime_ns, created_at, width, height,
-                                    generation_metadata_json, generation_text, original_relative_path, indexed_at
-                                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                                """,
-                                (
-                                    media_id,
-                                    self.user_did,
-                                    relative_path,
-                                    _date_for_path(relative_path, stat.st_mtime),
-                                    filename,
-                                    media_type,
-                                    mime,
-                                    stat.st_size,
-                                    stat.st_mtime_ns,
-                                    stat.st_mtime,
-                                    width,
-                                    height,
-                                    _json_dumps(metadata),
-                                    generation_text,
-                                    relative_path,
-                                    now,
-                                ),
-                            )
-                            added += 1
-                            summary_changed = True
+                def begin_batch() -> None:
+                    nonlocal transaction_open
+                    if not transaction_open:
+                        connection.execute("BEGIN IMMEDIATE")
+                        transaction_open = True
+
+                def commit_batch() -> None:
+                    nonlocal batch_count, batch_changed, summary_changed, transaction_open
+                    if not transaction_open:
+                        return
+                    if batch_changed:
+                        self._bump_revision(connection)
+                        summary_changed = True
+                    connection.commit()
+                    batch_count = 0
+                    batch_changed = False
+                    transaction_open = False
+
+                for folder_name in sorted(folder_names, reverse=True):
+                    folder_path = os.path.join(self.outputs_root, folder_name)
+                    legacy: dict[str, dict[str, str]] | None = None
+                    for root, directories, filenames in os.walk(folder_path):
+                        directories.sort(reverse=True)
+                        for filename in sorted(filenames, reverse=True):
+                            if deadline and time.perf_counter() >= deadline:
+                                truncated = True
+                                break
+                            extension = os.path.splitext(filename)[1].lower()
+                            if extension not in SUPPORTED_EXTENSIONS:
+                                continue
+                            absolute_path = os.path.abspath(os.path.join(root, filename))
+                            try:
+                                os.stat(absolute_path)
+                            except OSError:
+                                continue
+                            relative_path = os.path.relpath(absolute_path, self.outputs_root).replace(os.sep, "/")
+                            if not _path_under(self.outputs_root, relative_path):
+                                continue
+                            visited.add(relative_path)
+                            scanned += 1
+                            begin_batch()
+                            result = self._index_file(connection, absolute_path, legacy_cache)
+                            if not result.get("indexed"):
+                                continue
+                            added += int(bool(result.get("added")))
+                            changed += int(bool(result.get("changed")))
+                            batch_count += 1
+                            batch_changed = batch_changed or bool(result.get("summary_changed"))
+                            if batch_count >= _INDEX_BATCH_SIZE:
+                                commit_batch()
+                        if truncated:
+                            break
                     if truncated:
                         break
-                if truncated:
-                    break
 
-            if not truncated:
-                now = time.time()
-                rows = connection.execute(
-                    "SELECT relative_path FROM media WHERE trashed_at IS NULL AND missing_at IS NULL"
-                ).fetchall()
-                for row in rows:
-                    relative_path = str(row["relative_path"])
-                    if relative_path not in visited and not os.path.isfile(_path_under(self.outputs_root, relative_path)):
-                        connection.execute(
-                            "UPDATE media SET missing_at = ? WHERE relative_path = ?",
-                            (now, relative_path),
-                        )
-                        summary_changed = True
-            if summary_changed:
-                self._bump_revision(connection)
+                if not truncated:
+                    now = time.time()
+                    rows = connection.execute(
+                        "SELECT relative_path FROM media WHERE trashed_at IS NULL AND missing_at IS NULL"
+                    ).fetchall()
+                    for row in rows:
+                        relative_path = str(row["relative_path"])
+                        if relative_path not in visited and not os.path.isfile(_path_under(self.outputs_root, relative_path)):
+                            begin_batch()
+                            connection.execute(
+                                "UPDATE media SET missing_at = ? WHERE relative_path = ?",
+                                (now, relative_path),
+                            )
+                            batch_count += 1
+                            batch_changed = True
+                            if batch_count >= _INDEX_BATCH_SIZE:
+                                commit_batch()
+
+                commit_batch()
+                if not truncated:
+                    connection.execute("BEGIN IMMEDIATE")
+                    connection.execute(
+                        "INSERT OR REPLACE INTO library_meta(key, value) VALUES('last_scan_at', ?)",
+                        (str(time.time()),),
+                    )
+                    connection.commit()
 
         if summary_changed:
             self._clear_summary_cache()
+        _clear_filesystem_change_cache(self.db_path)
         return {
             "ok": True,
             "scanned": scanned,
             "added": added,
             "changed": changed,
+            "missing_reconciled": int(missing_result.get("missing") or 0),
+            "missing_reconcile_truncated": bool(missing_result.get("truncated")),
             "truncated": truncated,
             "elapsed_ms": int((time.perf_counter() - started) * 1000),
         }
@@ -952,6 +1208,7 @@ class MediaLibrary:
             item = self._refresh_stale_embedded_metadata(row, item)
         return item
 
+    @_serialize_media_write
     def update_user_metadata(
         self,
         media_id: str,
@@ -994,6 +1251,7 @@ class MediaLibrary:
             connection.execute(f"UPDATE media SET {', '.join(updates)} WHERE media_id = ?", params)
         return self.get_item(media_id, include_trashed=True)
 
+    @_serialize_media_write
     def trash_items(self, media_ids: Iterable[Any]) -> dict[str, Any]:
         self.initialize()
         deleted: list[str] = []
@@ -1001,6 +1259,7 @@ class MediaLibrary:
         now = time.time()
         ids = list(dict.fromkeys(str(value or "") for value in media_ids))[:120]
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             summary_changed = False
             for media_id in ids:
                 row = connection.execute("SELECT * FROM media WHERE media_id = ? AND trashed_at IS NULL", (media_id,)).fetchone()
@@ -1032,12 +1291,14 @@ class MediaLibrary:
             invalidate_legacy_gallery_cache(self.user_did)
         return {"ok": bool(deleted) and not errors, "trashed": deleted, "errors": errors}
 
+    @_serialize_media_write
     def restore_items(self, media_ids: Iterable[Any]) -> dict[str, Any]:
         self.initialize()
         restored: list[str] = []
         errors: list[dict[str, str]] = []
         ids = list(dict.fromkeys(str(value or "") for value in media_ids))[:120]
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             summary_changed = False
             for media_id in ids:
                 row = connection.execute("SELECT * FROM media WHERE media_id = ? AND trashed_at IS NOT NULL", (media_id,)).fetchone()
@@ -1074,10 +1335,12 @@ class MediaLibrary:
             invalidate_legacy_gallery_cache(self.user_did)
         return {"ok": bool(restored) and not errors, "restored": restored, "errors": errors}
 
+    @_serialize_media_write
     def purge_trash(self, media_ids: Iterable[Any] | None = None) -> dict[str, Any]:
         self.initialize()
         ids = list(dict.fromkeys(str(value or "") for value in (media_ids or [])))[:120]
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             if ids:
                 placeholders = ",".join("?" for _ in ids)
                 rows = connection.execute(f"SELECT * FROM media WHERE trashed_at IS NOT NULL AND media_id IN ({placeholders})", ids).fetchall()
@@ -1174,6 +1437,42 @@ class MediaLibrary:
 def get_user_media_library(user_did: Any = None, state_params: dict[str, Any] | None = None) -> MediaLibrary:
     did = resolve_user_did(user_did, state_params)
     return MediaLibrary(_default_outputs_root(did), _default_gallery_root(did), did)
+
+
+def queue_media_file_index(absolute_path: str, user_did: Any = None) -> bool:
+    """Queue a completed output for indexing without blocking generation."""
+
+    path = os.path.abspath(os.fspath(absolute_path)) if absolute_path else ""
+    if not path or os.path.splitext(path)[1].lower() not in SUPPORTED_EXTENSIONS:
+        return False
+    did = resolve_user_did(user_did)
+    output_root = _default_outputs_root(did)
+    try:
+        if os.path.commonpath([output_root, path]) != output_root:
+            return False
+    except ValueError:
+        return False
+
+    def worker() -> None:
+        try:
+            library = get_user_media_library(did)
+            result = library.index_file(path)
+            if result.get("indexed"):
+                _LOGGER.debug(
+                    "Queued media index completed: user_did=%s path=%s added=%s changed=%s",
+                    did,
+                    path,
+                    result.get("added"),
+                    result.get("changed"),
+                )
+        except Exception:
+            _LOGGER.exception("Queued media index failed: user_did=%s path=%s", did, path)
+
+    try:
+        _INDEX_EXECUTOR.submit(worker)
+    except RuntimeError:
+        return False
+    return True
 
 
 def scan_user_media(user_did: Any = None, state_params: dict[str, Any] | None = None, max_seconds: float | None = 20.0) -> dict[str, Any]:

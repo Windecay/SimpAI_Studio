@@ -36,6 +36,7 @@ def _icon_font_css(font_url: str) -> str:
         "square-check": "\\f14a",
         "spinner": "\\f110",
         "download": "\\f019",
+        "copy": "\\f0c5",
         "trash": "\\f2ed",
         "floppy-disk": "\\f0c7",
         "xmark": "\\f00d",

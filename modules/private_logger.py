@@ -25,6 +25,17 @@ log_cache = {}
 max_html_log_bytes = 24 * 1024 * 1024
 
 
+def _queue_media_library_index(file_path, user_did=None):
+    """Schedule indexing after a persisted output has been fully written."""
+
+    try:
+        from modules.media_library import queue_media_file_index
+
+        queue_media_file_index(file_path, user_did=user_did)
+    except (Exception, SystemExit) as exc:
+        logger.debug("Media library indexing was not queued for %s: %s", file_path, exc)
+
+
 def _get_ffmpeg_exe():
     try:
         import imageio_ffmpeg
@@ -288,6 +299,7 @@ def log_audio_file(audio_path: str, metadata, user_did=None):
     if not audio_path:
         return audio_path
     if args_manager.args.disable_image_log:
+        _queue_media_library_index(audio_path, user_did=user_did)
         return audio_path
 
     if not user_did:
@@ -316,6 +328,7 @@ def log_audio_file(audio_path: str, metadata, user_did=None):
     item += "</tr></table></div>\n\n"
 
     append_item_to_html_log(html_name, date_string, item_head + item)
+    _queue_media_library_index(local_audio_path, user_did=user_did)
     try:
         log_ext(local_audio_path)
     except Exception:
@@ -411,6 +424,8 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
         img_result = img
 
     if disable_image_log:
+        if remote_task is None:
+            _queue_media_library_index(local_temp_filename, user_did=user_did)
         return local_temp_filename, img_result, ''
 
     html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')
@@ -433,6 +448,7 @@ def log(img, metadata, metadata_parser: MetadataParser | None = None, output_for
 
     if remote_task is None:
         append_item_to_html_log(html_name, date_string, item_head + item)
+        _queue_media_library_index(local_temp_filename, user_did=user_did)
 
         logger.info(f'Image generated with private log at: {html_name}')
     
@@ -476,6 +492,7 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
         f.write(result_img)
 
     if disable_image_log:
+        _queue_media_library_index(local_temp_filename, user_did=user_did)
         return local_temp_filename
 
     html_name = os.path.join(os.path.dirname(local_temp_filename), 'log.html')
@@ -483,6 +500,7 @@ def p2p_log(result_img, result_log, output_format, persist_image=True, user_did=
     item_head = item_head_html(only_name)
 
     append_item_to_html_log(html_name, date_string, item_head + result_log)
+    _queue_media_library_index(local_temp_filename, user_did=user_did)
 
     logger.info(f'Image generated with private log at: {html_name}')
 

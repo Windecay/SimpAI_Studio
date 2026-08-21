@@ -83,6 +83,8 @@ class WorkspaceRecoveryHandles:
 
 
 def _component_kind(component: Any) -> str | None:
+    if _is_custom_sketch_component(component):
+        return "sketch"
     component_types = (
         (gr.Textbox, "textbox"),
         (gr.Number, "number"),
@@ -149,11 +151,6 @@ def _is_hidden_internal_component(component: Any) -> bool:
 
 
 def _is_workspace_component(component: Any, input_ids: set[int]) -> bool:
-    # The sketch canvas is a Textbox with instance-level preprocess/postprocess
-    # bridges. Gradio recreates plain Textbox instances for value updates, which
-    # would drop that bridge and turn canvas payloads back into JSON strings.
-    if _is_custom_sketch_component(component):
-        return False
     kind = _component_kind(component)
     component_id = getattr(component, "_id", None)
     if kind is None or component_id not in input_ids:
@@ -229,6 +226,16 @@ def _workspace_save_js(spec: WorkspaceComponentSpec) -> str:
     key_json = json.dumps(spec.key)
     signature_json = json.dumps(spec.signature)
     kind_json = json.dumps(spec.kind)
+    if spec.kind == "sketch":
+        elem_id_json = json.dumps(_component_text(getattr(spec.component, "elem_id", None)))
+        return f"""
+(state, value) => {{
+    const api = window.SimpAIWorkspaceRecovery;
+    return api && typeof api.saveSketchValue === "function"
+        ? api.saveSketchValue({key_json}, {signature_json}, {elem_id_json}, value, state)
+        : state;
+}}
+""".strip()
     return f"""
 (state, value) => {{
     const api = window.SimpAIWorkspaceRecovery;
@@ -372,6 +379,14 @@ def _restore_component_value(spec: WorkspaceComponentSpec, entry: Any) -> Any:
 
     value = entry.get("value")
 
+    if spec.kind == "sketch":
+        if isinstance(value, dict) and value.get("__simpai_workspace_sketch"):
+            return gr.skip()
+        if isinstance(value, dict):
+            value = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+        if value is None:
+            value = ""
+        return value if isinstance(value, str) else gr.skip()
     if spec.kind == "textbox":
         return gr.update(value=value)
     if spec.kind in {"number", "slider"}:
@@ -477,7 +492,7 @@ def install_workspace_recovery(blocks: Any, after_event: Any | None = None) -> W
     restore_event = after_event.then(**restore_kwargs) if after_event is not None else blocks.load(**restore_kwargs)
     restore_event.then(
         fn=None,
-        js="() => { window.SimpAIWorkspaceRecovery?.finishRestore(); }",
+        js="() => window.SimpAIWorkspaceRecovery?.finishRestoreAsync?.() || window.SimpAIWorkspaceRecovery?.finishRestore?.()",
         queue=False,
         show_progress="hidden",
         api_visibility="private",

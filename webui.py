@@ -8630,6 +8630,16 @@ with shared.gradio_root:
                         [model_params_state, params_backend] + model_bridge_rehydrate_targets,
                         queue=False,
                         show_progress=False,
+                    ).then(
+                        fn=None,
+                        inputs=None,
+                        outputs=None,
+                        js="""() => {
+                            const token = String(window.__simpleaiModelsWorkspaceRestoreToken || '');
+                            window.dispatchEvent(new CustomEvent('simpai:models-js-applied', { detail: { token } }));
+                        }""",
+                        queue=False,
+                        show_progress=False,
                     )
 
                     def _on_model_filter_toggle_from_main(state_params, use_model_filter, sync_lock, current_state, current_model_params_state, browser_visible, target_type, search_text, folder_name):

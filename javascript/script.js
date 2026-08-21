@@ -1102,7 +1102,9 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const root = getRoot();
         const node = root.getElementById?.(rootId) || root.querySelector?.(`#${rootId}`) || document.getElementById(rootId);
         if (!node) return false;
-        node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        const button = node.matches?.('button') ? node : node.querySelector?.('button');
+        if (!button) return false;
+        button.click();
         return true;
     }
 
@@ -1801,6 +1803,61 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         return null;
     }
 
+    function collectModelsPanelPayloadForWorkspace() {
+        const panel = document.querySelector('[data-simpai-models-js-root]');
+        return panel ? collectModelsPanelPayload(panel) : null;
+    }
+
+    function waitForModelsWorkspaceApply(token, timeoutMs = 4000) {
+        return new Promise((resolve) => {
+            let timer = 0;
+            const onApplied = (event) => {
+                if (String(event?.detail?.token || '') !== String(token || '')) return;
+                window.removeEventListener('simpai:models-js-applied', onApplied);
+                window.clearTimeout(timer);
+                resolve(true);
+            };
+            window.addEventListener('simpai:models-js-applied', onApplied);
+            timer = window.setTimeout(() => {
+                window.removeEventListener('simpai:models-js-applied', onApplied);
+                resolve(false);
+            }, Math.max(100, Number(timeoutMs) || 4000));
+        });
+    }
+
+    async function restoreModelsPanelPayloadForWorkspace(payload) {
+        if (!payload || typeof payload !== 'object') return false;
+        const seq = `workspace-${Date.now()}`;
+        const restoreState = { seq, model_state: payload };
+        applyPresetModelsPanelState(restoreState);
+
+        const deadline = Date.now() + 2500;
+        let panel = null;
+        while (Date.now() < deadline) {
+            await new Promise((resolve) => window.setTimeout(resolve, 50));
+            panel = document.querySelector('[data-simpai-models-js-root]');
+            if (panel) break;
+        }
+        if (!panel) return false;
+
+        applyPresetModelsPanelState(restoreState);
+        await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+        syncModelsPanelBridgeControls(panel, payload);
+        if (!setGradioValue('models_js_payload', JSON.stringify(payload))) return false;
+        window.__simpleaiModelsWorkspaceRestoreToken = seq;
+        if (!clickGradioButton('models_js_apply_trigger')) {
+            delete window.__simpleaiModelsWorkspaceRestoreToken;
+            return false;
+        }
+        const applied = await waitForModelsWorkspaceApply(seq);
+        if (window.__simpleaiModelsWorkspaceRestoreToken === seq) {
+            delete window.__simpleaiModelsWorkspaceRestoreToken;
+        }
+        applyPresetModelsPanelState(restoreState);
+        await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+        return applied;
+    }
+
     const modelsPanelBridgeIds = {
         base_model: 'model_bridge_base',
         refiner_model: 'model_bridge_refiner',
@@ -2162,6 +2219,8 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     window.simpleaiApplyPresetModelsPanelState = applyPresetModelsPanelState;
     window.simpleaiSyncModelsJsPanelBridge = syncActiveModelsPanelBridgeControls;
     window.simpleaiReadVisibleModelsJsPanelState = collectVisibleModelsPanelPayload;
+    window.simpleaiReadModelsJsPanelWorkspaceState = collectModelsPanelPayloadForWorkspace;
+    window.simpleaiRestoreModelsJsPanelWorkspaceState = restoreModelsPanelPayloadForWorkspace;
     window.simpleaiRefreshModelsJsPanelCatalog = refreshModelsPanelCatalog;
     window.simpleaiInvalidateModelsPanelCatalog = markModelsPanelCatalogDirty;
     window.simpleaiPopulateModelsJsSelect = populateLiteModelSelect;

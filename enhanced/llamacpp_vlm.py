@@ -790,6 +790,13 @@ class LlamaCppVLM:
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
+            logger.info(
+                "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s",
+                chat_handler_name or "",
+                getattr(handler_class, "__name__", "") if handler_class else "",
+                mmproj_path or "",
+                bool(handler_class and mmproj_path),
+            )
             same_model_identity = (
                 self.llm is not None
                 and self.current_model_path == model_path
@@ -1273,6 +1280,31 @@ class LlamaCppVLM:
     def _default_system_prompt(self):
         return "You are a helpful visual assistant. Answer directly and use the conversation context when it is relevant."
 
+    def _vision_runtime_enabled(self):
+        return bool(self.chat_handler is not None and self.current_mmproj_path)
+
+    def _message_media_summary(self, messages):
+        image_url_lengths = []
+        text_parts = 0
+        for message in messages if isinstance(messages, list) else []:
+            content = message.get("content") if isinstance(message, dict) else None
+            items = content if isinstance(content, list) else [content]
+            for item in items:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    image_url = item.get("image_url")
+                    url = image_url.get("url") if isinstance(image_url, dict) else image_url
+                    image_url_lengths.append(len(str(url or "")))
+                elif isinstance(item, dict) and item.get("type") == "text":
+                    text_parts += 1
+                elif isinstance(item, str) and item:
+                    text_parts += 1
+        return {
+            "messages": len(messages) if isinstance(messages, list) else 0,
+            "image_url_count": len(image_url_lengths),
+            "image_url_lengths": image_url_lengths,
+            "text_parts": text_parts,
+        }
+
     def _image_to_base64(self, image):
         import io
         import base64
@@ -1308,15 +1340,25 @@ class LlamaCppVLM:
         if image is None:
             return {"role": "user", "content": prompt}
 
-        user_content = [{"type": "text", "text": prompt}]
+        user_content = []
         images = image if isinstance(image, (list, tuple)) else [image]
+        converted_lengths = []
         for img in images:
             base64_image = self._image_to_base64(img)
             if base64_image:
+                converted_lengths.append(len(base64_image))
                 user_content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                 })
+        user_content.append({"type": "text", "text": prompt})
+        logger.info(
+            "LlamaCpp image payload: input_type=%s image_count=%s converted_images=%s base64_lengths=%s",
+            type(image).__name__,
+            len(images),
+            len(converted_lengths),
+            converted_lengths,
+        )
         return {"role": "user", "content": user_content}
 
     def _sanitize_messages(self, messages):
@@ -1435,7 +1477,14 @@ class LlamaCppVLM:
                     self.conversation_system_prompts[conversation_key] = system_msg
 
             messages.append(self._build_user_message(image, prompt))
-            logger.info(f"LlamaCpp Chat: id={conversation_key}, prompt={prompt[:50]}... (image={'Yes' if image is not None else 'No'})")
+            logger.info(
+                "LlamaCpp Chat: id=%s, prompt=%s... (image=%s, media=%s, vision_enabled=%s)",
+                conversation_key,
+                prompt[:50],
+                "Yes" if image is not None else "No",
+                self._message_media_summary(messages),
+                self._vision_runtime_enabled(),
+            )
 
             try:
                 started = time.monotonic()
@@ -1478,20 +1527,8 @@ class LlamaCppVLM:
                 logger.error("Model not loaded")
                 return "Error: Model not loaded"
 
-            import io
-            import base64
-
             if chat_handler_override and self.current_chat_handler_name != chat_handler_override:
                  logger.info(f"Inference with chat_handler_override: {chat_handler_override}")
-
-            def image_to_base64(img_np):
-                img = Image.fromarray(img_np)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                img = self._resize_image_for_llamacpp(img)
-                buffered = io.BytesIO()
-                img.save(buffered, format="JPEG", quality=85)
-                return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
             messages = []
             default_system_msg = "You are a helpful assistant. Follow instructions precisely. For any task (captioning, translation, expansion), output ONLY the result. Do not include any preamble, introduction, explanation, or conversational filler."
@@ -1500,36 +1537,15 @@ class LlamaCppVLM:
             if system_msg:
                 messages.append({"role": "system", "content": system_msg})
 
-            if image is not None:
-                user_content = []
-                user_content.append({"type": "text", "text": prompt})
-                
-                images = image if isinstance(image, (list, tuple)) else [image]
-                for img in images:
-                    if img is None:
-                        continue
-                    if isinstance(img, np.ndarray):
-                        base64_image = image_to_base64(img)
-                    elif isinstance(img, Image.Image):
-                        if img.mode != 'RGB':
-                            img = img.convert('RGB')
-                        img = self._resize_image_for_llamacpp(img)
-                        buffered = io.BytesIO()
-                        img.save(buffered, format="JPEG", quality=85)
-                        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                    else:
-                        base64_image = None
+            messages.append(self._build_user_message(image, prompt))
 
-                    if base64_image:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                        })
-                messages.append({"role": "user", "content": user_content})
-            else:
-                messages.append({"role": "user", "content": prompt})
-
-            logger.info(f"LlamaCpp Inference: prompt={prompt[:50]}... (image={'Yes' if image is not None else 'No'})")
+            logger.info(
+                "LlamaCpp Inference: prompt=%s... (image=%s, media=%s, vision_enabled=%s)",
+                prompt[:50],
+                "Yes" if image is not None else "No",
+                self._message_media_summary(messages),
+                self._vision_runtime_enabled(),
+            )
             
             try:
                 started = time.monotonic()

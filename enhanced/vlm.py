@@ -24,7 +24,12 @@ from modules.llama_cpp_runtime import (
     normalize_llama_cpp_n_ctx,
     normalize_llama_cpp_vram_policy,
 )
-from modules.vlm_model_catalog import is_visual_component_filename
+from modules.vlm_model_catalog import (
+    infer_gguf_handler,
+    is_visual_component_filename,
+    read_gguf_metadata,
+    select_mmproj_for_model,
+)
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from enhanced.comfy_textgen_vlm import comfy_textgen_vlm
@@ -594,6 +599,51 @@ class VLM:
                 if any(needle in lower_name for needle in needles):
                     handler = candidate
                     break
+            model_path = find_model_in_dirs(config.paths_LLM, relative_path)
+            mmproj_file = ""
+            if model_path and os.path.isfile(model_path):
+                try:
+                    detected = infer_gguf_handler(
+                        read_gguf_metadata(model_path),
+                        os.path.basename(model_path),
+                    )
+                except Exception:
+                    detected = None
+                if detected and detected.get("handler"):
+                    handler = str(detected["handler"])
+
+                try:
+                    model_dir_path = os.path.dirname(model_path)
+                    projectors = [
+                        os.path.join(model_dir_path, name)
+                        for name in os.listdir(model_dir_path)
+                        if is_visual_component_filename(name)
+                        and str(name).lower().endswith(".gguf")
+                    ]
+                    mmproj_path = select_mmproj_for_model(model_path, projectors)
+                    if mmproj_path:
+                        for root in config.paths_LLM if isinstance(config.paths_LLM, (list, tuple, set)) else [config.paths_LLM]:
+                            root_path = os.path.abspath(str(root or ""))
+                            try:
+                                if os.path.commonpath((root_path, mmproj_path)) != root_path:
+                                    continue
+                            except (OSError, ValueError):
+                                continue
+                            mmproj_file = os.path.relpath(mmproj_path, root_path).replace("\\", "/")
+                            break
+                        if not mmproj_file:
+                            mmproj_file = os.path.basename(mmproj_path)
+                except (OSError, ValueError):
+                    mmproj_file = ""
+
+            capabilities = ["text", "image"] if handler and mmproj_file else ["text"]
+            logger.info(
+                "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s",
+                relative_path,
+                handler or "",
+                mmproj_file or "",
+                capabilities,
+            )
             return {
                 "model": model_dir,
                 "backend": "llamacpp",
@@ -601,10 +651,10 @@ class VLM:
                 "chat_handler": handler,
                 "gguf_file": file_name,
                 "model_file": relative_path,
-                "mmproj_file": "",
+                "mmproj_file": mmproj_file,
                 "n_ctx": 8192,
                 "source_catalog": "LLM",
-                "capabilities": ["text"],
+                "capabilities": capabilities,
                 "recommended": False,
             }
         if version.startswith(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):

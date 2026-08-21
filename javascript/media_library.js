@@ -12,6 +12,7 @@
     const PAGE_SIZE = 48;
 
     const state = {
+        __lang: config.lang,
         items: [],
         itemById: new Map(),
         dates: [],
@@ -36,17 +37,20 @@
         layout: null,
         request: null,
         requestSerial: 0,
+        dateSignature: '',
         dateRefreshTimer: 0,
         toastTimer: 0,
-        refreshing: false
+        refreshing: false,
+        cardClickTimer: 0
     };
 
     const refs = {};
     const t = (text) => {
+        const lang = state.__lang || config.lang;
         if (window.SimpAII18n && typeof window.SimpAII18n.t === 'function') {
-            return window.SimpAII18n.t(text, text, { __lang: config.lang });
+            return window.SimpAII18n.t(text, text, { __lang: lang });
         }
-        if (config.lang === 'cn' && window.localization && window.localization[text]) return window.localization[text];
+        if (lang === 'cn' && window.localization && window.localization[text]) return window.localization[text];
         return text;
     };
 
@@ -102,20 +106,6 @@
         return payload;
     }
 
-    function delay(milliseconds) {
-        return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-    }
-
-    async function waitForRescan(maxMilliseconds = 125000) {
-        const deadline = Date.now() + maxMilliseconds;
-        while (Date.now() < deadline) {
-            const status = await request('/api/rescan/status');
-            if (!status.running) return true;
-            await delay(250);
-        }
-        return false;
-    }
-
     function setRefreshBusy(busy) {
         state.refreshing = !!busy;
         [refs.refresh, refs.rescan].forEach((button) => {
@@ -132,9 +122,7 @@
         try {
             await request('/api/rescan', { method: 'POST' });
             showToast(t('Rescan started'));
-            const completed = await waitForRescan();
             await Promise.all([loadDates(), loadPage(true)]);
-            showToast(t(completed ? 'Refresh complete' : 'Refresh still running'), !completed);
         } catch (err) {
             showToast(t('Unable to refresh media'), true);
         } finally {
@@ -149,6 +137,11 @@
         refs.toast.classList.add('is-visible');
         window.clearTimeout(state.toastTimer);
         state.toastTimer = window.setTimeout(() => refs.toast.classList.remove('is-visible'), 2600);
+    }
+
+    function clearCardClickTimer() {
+        window.clearTimeout(state.cardClickTimer);
+        state.cardClickTimer = 0;
     }
 
     function setStatus(message) {
@@ -193,20 +186,42 @@
         refs.dateList.replaceChildren(fragment);
     }
 
-    async function loadDates() {
+    function dateSummarySignature(dates) {
+        return (Array.isArray(dates) ? dates : []).map((entry) => [
+            entry.date_key || '',
+            Number(entry.total || 0),
+            Number(entry.images || 0),
+            Number(entry.videos || 0),
+            Number(entry.audios || 0)
+        ].join(':')).join('\u001f');
+    }
+
+    function scheduleDatePolling(delayMilliseconds = 2500) {
+        window.clearTimeout(state.dateRefreshTimer);
+        state.dateRefreshTimer = window.setTimeout(() => {
+            state.dateRefreshTimer = 0;
+            loadDates({ syncItems: true, silent: true });
+        }, delayMilliseconds);
+    }
+
+    async function loadDates(options = {}) {
+        window.clearTimeout(state.dateRefreshTimer);
+        state.dateRefreshTimer = 0;
         try {
-            const payload = await request('/api/dates');
-            state.dates = Array.isArray(payload.dates) ? payload.dates : [];
+            const suffix = state.trashMode ? '?trash=1' : '';
+            const payload = await request(`/api/dates${suffix}`);
+            const dates = Array.isArray(payload.dates) ? payload.dates : [];
+            const changed = dateSummarySignature(dates) !== state.dateSignature;
+            state.dates = dates;
+            state.dateSignature = dateSummarySignature(dates);
             renderDates();
-            if (!state.items.length && !state.dates.length && !state.dateRefreshTimer) {
-                state.dateRefreshTimer = window.setTimeout(() => {
-                    state.dateRefreshTimer = 0;
-                    loadDates();
-                    loadPage(true);
-                }, 1800);
+            if (changed && options.syncItems && !state.loading && !state.refreshing) {
+                await loadPage(true);
             }
         } catch (err) {
-            showToast(t('Unable to load dates'), true);
+            if (!options.silent) showToast(t('Unable to load dates'), true);
+        } finally {
+            scheduleDatePolling();
         }
     }
 
@@ -716,6 +731,62 @@
         adjustViewerZoom(event.deltaY < 0 ? .25 : -.25);
     }
 
+    function promptText(item) {
+        const metadata = item && item.generation_metadata;
+        if (!metadata || typeof metadata !== 'object') return '';
+        const parameters = metadata.parameters && typeof metadata.parameters === 'object' ? metadata.parameters : {};
+        const raw = metadata.raw && typeof metadata.raw === 'object' ? metadata.raw : {};
+        const candidates = [
+            metadata.prompt,
+            metadata.positive_prompt,
+            metadata.raw_prompt,
+            metadata.Prompt,
+            parameters.prompt,
+            parameters.positive_prompt,
+            raw.prompt,
+            raw.positive_prompt,
+            raw.Prompt,
+            raw['Positive prompt']
+        ];
+        return candidates.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+    }
+
+    async function copyText(text) {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                // Fall through to the selection-based copy path for non-secure pages.
+            }
+        }
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        document.body.appendChild(input);
+        input.select();
+        let copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (err) {
+            copied = false;
+        }
+        input.remove();
+        return copied;
+    }
+
+    async function copyPrompt(item) {
+        const prompt = promptText(item);
+        if (!prompt) {
+            showToast(t('No prompt available'), true);
+            return;
+        }
+        const copied = await copyText(prompt);
+        showToast(t(copied ? 'Prompt copied' : 'Unable to copy prompt'), !copied);
+    }
+
     function syncDetailLayout() {
         const open = !!refs.drawer && refs.drawer.getAttribute('aria-hidden') === 'false';
         if (refs.layout) refs.layout.classList.remove('has-detail');
@@ -769,6 +840,7 @@
     function renderDetail(item) {
         const metadata = item.generation_metadata && typeof item.generation_metadata === 'object' ? item.generation_metadata : {};
         const tags = Array.isArray(item.tags) ? item.tags.join(', ') : '';
+        const copyPromptLabel = t('Copy prompt');
         const trashed = !!item.is_trashed || state.trashMode;
         const lifecycleActions = trashed
             ? `<button class="primary-button" type="button" id="detail-viewer"><i class="fa fa-expand"></i> ${escapeHtml(t('View full screen'))}</button><button class="primary-button" type="button" id="detail-restore"><i class="fa fa-rotate-left"></i> ${escapeHtml(t('Restore media'))}</button><button class="danger-button" type="button" id="detail-purge"><i class="fa fa-trash"></i> ${escapeHtml(t('Delete permanently'))}</button>`
@@ -783,13 +855,14 @@
                 <div class="detail-actions"><button class="primary-button" type="button" id="detail-save"><i class="fa fa-floppy-disk"></i> ${escapeHtml(t('Save'))}</button><button class="secondary-button" type="button" id="detail-favorite"><i class="fa fa-star"></i> ${escapeHtml(item.favorite ? t('Unfavorite') : t('Favorite'))}</button></div>
             </div></section>
             <section class="detail-section"><h3>${escapeHtml(t('File'))}</h3><dl class="detail-grid"><dt>${escapeHtml(t('Name'))}</dt><dd>${escapeHtml(item.name || '')}</dd><dt>${escapeHtml(t('Date'))}</dt><dd>${escapeHtml(formatDate(item.date_key))}</dd><dt>${escapeHtml(t('Size'))}</dt><dd>${escapeHtml(formatBytes(item.size))}</dd><dt>${escapeHtml(t('Dimensions'))}</dt><dd>${item.width && item.height ? `${item.width} × ${item.height}` : '-'}</dd></dl></section>
-            <section class="detail-section"><h3>${escapeHtml(t('Generation metadata'))}</h3><div class="metadata-block">${escapeHtml(JSON.stringify(metadata, null, 2))}</div></section>`;
+            <section class="detail-section"><div class="detail-section-heading"><h3>${escapeHtml(t('Generation metadata'))}</h3><button class="secondary-button copy-prompt-button" type="button" id="detail-copy-prompt" title="${escapeHtml(copyPromptLabel)}" aria-label="${escapeHtml(copyPromptLabel)}"><i class="fa fa-copy"></i><span>${escapeHtml(copyPromptLabel)}</span></button></div><div class="metadata-block">${escapeHtml(JSON.stringify(metadata, null, 2))}</div></section>`;
         refs.detail.querySelector('#detail-save').addEventListener('click', () => saveDetail(item));
         refs.detail.querySelector('#detail-favorite').addEventListener('click', () => saveDetail(item, { favorite: !item.favorite }));
         refs.detail.querySelector('#detail-trash')?.addEventListener('click', () => trashItem(item.media_id));
         refs.detail.querySelector('#detail-restore')?.addEventListener('click', () => restoreItem(item.media_id));
         refs.detail.querySelector('#detail-purge')?.addEventListener('click', () => purgeItem(item.media_id));
         refs.detail.querySelector('#detail-viewer')?.addEventListener('click', () => openViewer(item));
+        refs.detail.querySelector('#detail-copy-prompt')?.addEventListener('click', () => copyPrompt(item));
     }
 
     async function saveDetail(item, override) {
@@ -990,6 +1063,7 @@
         refs.feed.addEventListener('click', (event) => {
             const selectButton = event.target.closest('.card-select');
             if (selectButton) {
+                clearCardClickTimer();
                 event.stopPropagation();
                 const card = selectButton.closest('.media-card');
                 if (card) toggleItemSelection(card.dataset.id);
@@ -997,6 +1071,7 @@
             }
             const favoriteButton = event.target.closest('.card-favorite');
             if (favoriteButton) {
+                clearCardClickTimer();
                 event.stopPropagation();
                 const card = favoriteButton.closest('.media-card');
                 const item = card && state.itemById.get(card.dataset.id);
@@ -1006,8 +1081,22 @@
             const card = event.target.closest('.media-card');
             if (card) {
                 if (state.selectionMode) toggleItemSelection(card.dataset.id);
-                else openDetail(card.dataset.id);
+                else {
+                    clearCardClickTimer();
+                    state.cardClickTimer = window.setTimeout(() => {
+                        state.cardClickTimer = 0;
+                        openDetail(card.dataset.id);
+                    }, 220);
+                }
             }
+        });
+        refs.feed.addEventListener('dblclick', (event) => {
+            const card = event.target.closest('.media-card');
+            if (!card || state.selectionMode || event.target.closest('button, a, input, select, textarea')) return;
+            clearCardClickTimer();
+            event.preventDefault();
+            const item = state.itemById.get(card.dataset.id);
+            if (item) openViewer(item);
         });
         refs.dateList.addEventListener('click', (event) => {
             const button = event.target.closest('.date-item');

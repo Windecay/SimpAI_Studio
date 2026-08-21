@@ -9080,7 +9080,7 @@
             media_inputs: persistedMediaInputs,
             prompt,
             preset: String(action.preset || (action.execution_plan?.status === 'no_compatible_route' || CREATIVE_VIDEO_TASKS.has(task) ? '' : CREATIVE_DEFAULT_PRESET)).slice(0, 200),
-            preset_source: ['agent_auto', 'session_preference', 'user', 'roleplay_visual', 'roleplay_state_image', 'roleplay_character_reference'].includes(String(action.preset_source || ''))
+            preset_source: ['agent_auto', 'session_preference', 'user', 'roleplay_visual', 'roleplay_state_image', 'roleplay_character_reference', 'roleplay_scene_reference'].includes(String(action.preset_source || ''))
                 ? String(action.preset_source)
                 : '',
             parameter_profile: String(action.parameter_profile || action.execution_plan?.parameter_profile || '').slice(0, 200),
@@ -9132,6 +9132,7 @@
                 : [],
             roleplay_state_image: !!action.roleplay_state_image,
             roleplay_character_image: !!action.roleplay_character_image,
+            roleplay_scene_reference_image: !!action.roleplay_scene_reference_image,
             character_reference_id: String(action.character_reference_id || '').slice(0, 160),
             appearance_character_id: String(action.appearance_character_id || '').slice(0, 160),
             accepted_asset_id: String(action.accepted_asset_id || '').slice(0, MAX_PERSISTED_TEXT),
@@ -12186,6 +12187,26 @@
         })[0] || null;
     }
 
+    function roleplayAutomaticPresetAction(action) {
+        return !!(
+            action?.roleplay_character_image
+            || action?.roleplay_scene_reference_image
+            || action?.roleplay_visual
+        );
+    }
+
+    function roleplayPreferredPresetEntry(action, task, inputCount = 0) {
+        if (!roleplayAutomaticPresetAction(action)) return null;
+        if (['user', 'session_preference'].includes(String(action?.preset_source || ''))) return null;
+        // Krea2-ImageEdit is intentionally not used for roleplay auto-routing.
+        // Character portraits and standalone scene references use Krea2-Turbo T2I;
+        // scene actions with reference images keep the existing compatible route.
+        if (task !== 'text_to_image' || inputCount !== 0) return null;
+        const entry = creativePresetEntry('Krea2-Turbo');
+        if (!entry || creativePresetModelReadiness(entry) === 'missing') return null;
+        return creativePresetHasTaskRoute(entry, task, inputCount) ? entry : null;
+    }
+
     function creativePresetCapabilitiesPayload() {
         return state.creativePresetCatalog.slice(0, 100).map((entry) => {
             const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes.slice(0, 40).map((theme) => String(theme || '')).filter(Boolean) : [];
@@ -12498,11 +12519,12 @@
         const task = creativeActionTask(action, inputCount);
         let selected = String(action?.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET));
         if (
-            action?.roleplay_visual
+            roleplayAutomaticPresetAction(action)
             && !['user', 'session_preference'].includes(String(action?.preset_source || ''))
             && (!creativePresetEntry(selected) || selected === 'MiniMax-H3(R2I)')
         ) {
-            const automatic = creativeCompatiblePresetEntry(task, inputCount);
+            const automatic = roleplayPreferredPresetEntry(action, task, inputCount)
+                || creativeCompatiblePresetEntry(task, inputCount);
             if (automatic) {
                 selected = automatic.name;
                 action.preset = selected;
@@ -13671,10 +13693,13 @@
         const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
         const requestedTask = creativeActionTask(action, inputCount);
         let entry = creativePresetEntry(action.preset);
-        const automaticRoleplayRoute = action?.roleplay_visual
+        const automaticRoleplayRoute = roleplayAutomaticPresetAction(action)
             && !['user', 'session_preference'].includes(String(action?.preset_source || ''));
-        if (automaticRoleplayRoute && (!entry || String(action.preset || '') === 'MiniMax-H3(R2I)')) {
-            const automatic = creativeCompatiblePresetEntry(requestedTask, inputCount);
+        if (automaticRoleplayRoute) {
+            const automatic = roleplayPreferredPresetEntry(action, requestedTask, inputCount)
+                || ((!entry || String(action.preset || '') === 'MiniMax-H3(R2I)')
+                    ? creativeCompatiblePresetEntry(requestedTask, inputCount)
+                    : null);
             if (automatic) {
                 action.preset = automatic.name;
                 entry = automatic;

@@ -2084,12 +2084,14 @@
         }
     }
 
-    function requestWorkspaceReload() {
+    async function requestWorkspaceReload() {
         if (state.reloadScheduled) return;
         state.reloadScheduled = true;
         updateStatusUI('recovering');
+        let captureTask = null;
         try {
             window.SimpAIWorkspaceRecovery?.prepareForManualReconnect();
+            captureTask = window.SimpAIWorkspaceRecovery?.flushPendingSaves?.(1500) || null;
         } catch (error) {}
         try {
             window.SimpAIStudioPerformance?.mark?.('workspace.reload_requested', {
@@ -2101,7 +2103,11 @@
         window.dispatchEvent(new CustomEvent('simpai:workspace-reload-requested', {
             detail: { requestedAt: Date.now(), source: 'reconnect_button', userRequested: true }
         }));
-        window.setTimeout(() => window.location.reload(), 150);
+        if (captureTask) {
+            try { await captureTask; } catch (error) {}
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+        window.location.reload();
     }
 
     async function performHealthCheck() {

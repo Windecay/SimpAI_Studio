@@ -199,6 +199,17 @@ def _schedule_scan(library: media_library.MediaLibrary, *, force: bool = False) 
         return True
 
 
+async def _schedule_scan_if_needed(library: media_library.MediaLibrary, *, force: bool = False) -> bool:
+    if not force and os.path.exists(library.db_path):
+        try:
+            changed = await run_in_threadpool(library.has_filesystem_changes)
+        except Exception:
+            changed = False
+        if not changed:
+            return False
+    return _schedule_scan(library, force=force)
+
+
 def _bool_query(value: Any) -> bool | None:
     text = str(value or "").strip().lower()
     if text in {"1", "true", "yes", "on"}:
@@ -214,7 +225,7 @@ async def media_library_app(request: Request):
     theme = str(query.get("__theme") or "light")
     lang = str(query.get("__lang") or query.get("lang") or "en")
     library = _library_for_request(request=request)
-    _schedule_scan(library)
+    await _schedule_scan_if_needed(library)
     response = HTMLResponse(
         render_media_library_html(root_path=_root_path(request), theme=theme, lang=lang),
         headers={"Cache-Control": "no-store"},
@@ -228,6 +239,7 @@ async def media_library_app(request: Request):
 @router.get("/simpleai/gallery/api/dates")
 async def media_library_dates(request: Request):
     library = _library_for_request(request=request)
+    await _schedule_scan_if_needed(library)
     include_trashed = _bool_query(request.query_params.get("trash")) is True
     dates = await run_in_threadpool(lambda: library.date_summary(include_trashed=include_trashed))
     return {"ok": True, "dates": dates}
@@ -243,6 +255,7 @@ async def media_library_items(request: Request):
     except (TypeError, ValueError):
         limit = 48
     library = _library_for_request(request=request)
+    await _schedule_scan_if_needed(library)
     result = await run_in_threadpool(
         lambda: library.list_items(
             date_key=query.get("date") or None,

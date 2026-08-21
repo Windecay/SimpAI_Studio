@@ -198,6 +198,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .detail-preview img, .detail-preview video { display: block; max-width: 100%; max-height: 340px; object-fit: contain; }
 .detail-preview audio { width: calc(100% - 20px); }
 .detail-section { margin-top: 18px; }
+.detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .detail-section h3 { margin: 0 0 8px; color: var(--ml-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .detail-grid { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 7px 10px; font-size: 12px; }
 .detail-grid dt { color: var(--ml-muted); }
@@ -217,6 +218,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .primary-button { color: #fff; background: var(--ml-accent); }
 .primary-button:hover { background: var(--ml-accent-strong); }
 .secondary-button { border-color: var(--ml-border); background: var(--ml-surface-2); }
+.copy-prompt-button { min-height: 30px; padding: 0 8px; font-size: 11px; }
+.copy-prompt-button:disabled { opacity: .55; cursor: default; }
 .danger-button { color: #fff; background: var(--ml-danger); }
 .metadata-block { max-height: 220px; overflow: auto; padding: 9px; border: 1px solid var(--ml-border); border-radius: 6px; white-space: pre-wrap; word-break: break-word; color: var(--ml-muted); background: var(--ml-surface-2); font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
 

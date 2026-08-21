@@ -1373,6 +1373,25 @@ def canvas_vlm_run(payload):
     image_input = None
     if images:
         image_input = images if (VLM.is_llamacpp or VLM.backend == "comfy_textgen") and len(images) > 1 else images[0]
+    version_runtime_config = VLM.get_version_config(version_name, scan_catalog=False) or {}
+    logger.info(
+        "Canvas VLM visual input: version=%s backend=%s handler=%s mmproj=%s supports_vision=%s "
+        "sources=%s materialized_assets=%s decoded_images=%s video_frames=%s image_input_type=%s",
+        version_name,
+        VLM.backend,
+        version_runtime_config.get("chat_handler") or "",
+        version_runtime_config.get("mmproj_file") or "",
+        bool(
+            VLM.is_llamacpp
+            and version_runtime_config.get("chat_handler")
+            and version_runtime_config.get("mmproj_file")
+        ),
+        len(sources),
+        len(asset_refs),
+        len(images),
+        video_frames,
+        type(image_input).__name__ if image_input is not None else "None",
+    )
 
     stage_started = time.monotonic()
     max_tokens = clamp_int(params.get("max_tokens", 1024), 1024, 64, 8192)

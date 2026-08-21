@@ -47773,6 +47773,26 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return getCanvasPerfSnapshot();
     }
 
+    function canvasWorkspaceSnapshot() {
+        return {
+            version: 1,
+            open: !!(root && !root.hidden),
+            project_id: String(project?.id || PROJECT_ID),
+            updated_at: String(project?.updated_at || '')
+        };
+    }
+
+    async function prepareCanvasWorkspaceRecovery() {
+        const cached = await saveProject(true, { persist: false });
+        return Object.assign(canvasWorkspaceSnapshot(), { cached });
+    }
+
+    function restoreCanvasWorkspaceRecovery(snapshot) {
+        if (!snapshot || snapshot.open !== true) return false;
+        openWorkbench();
+        return true;
+    }
+
     window.SimpAIInfiniteCanvasWorkbench = {
         version: '0.1.0',
         open: openWorkbench,
@@ -47822,6 +47842,9 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         debugVlmChatScroll: (nodeId = '') => vlmChatScrollDebug(nodeId),
         dumpVlmRenderKeys: () => vlmRenderDebugSummary(),
         lastVlmRenderDiffs: () => Array.from(vlmRenderDebugLast.values()),
+        workspaceSnapshot: canvasWorkspaceSnapshot,
+        prepareWorkspaceRecovery: prepareCanvasWorkspaceRecovery,
+        restoreWorkspaceRecovery: restoreCanvasWorkspaceRecovery,
         __runPoseStudioCanvasSmoke: (options) => runPoseStudioCanvasSmoke(options || {}),
         __perfLoadProject: (nextProject, options) => loadCanvasPerfProject(nextProject, options || {}),
         __perfGetStats: () => getCanvasPerfSnapshot(),
