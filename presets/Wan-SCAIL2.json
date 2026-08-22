@@ -25,10 +25,11 @@
                 "image_policy": "required",
                 "audio_policy": "forbidden",
                 "video_policy": "required",
-                "max_images": 1,
+                "max_images": 5,
                 "min_images": 1,
                 "image_modes": [
-                    "first_frame"
+                    "first_frame",
+                    "reference_set"
                 ],
                 "video_modes": [
                     "explicit"
@@ -39,18 +40,24 @@
             },
             "prompt_action_media": {
                 "image_roles": [
+                    "character_reference",
+                    "character_reference",
+                    "character_reference",
+                    "character_reference",
                     "character_reference"
                 ],
                 "video_visual_position": "after_images",
                 "video_frame_mode": "contact_sheet",
                 "video_role": "motion_only"
             },
+            "divisible": [
+                "scene_input_image3",
+                "scene_input_image4"
+            ],
             "disable_canvas_mask": true,
             "disvisible": [
-                "scene_input_image1",
                 "scene_additional_prompt",
                 "scene_additional_prompt_2",
-                "scene_input_image2",
                 "scene_audio",
                 "scene_refiner_model",
                 "scene_var_number5",

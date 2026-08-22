@@ -1572,14 +1572,15 @@ class VLM:
         options=None,
     ):
         input_text = str(input_text or "").strip()
-        if not input_text:
+        action_data = action if isinstance(action, dict) else {}
+        action_id = str(action_data.get("id") or "smart_expand").strip() or "smart_expand"
+        allow_empty_input = bool(action_data) and action_id in {"smart_expand", "detailed_expand"}
+        if not input_text and not allow_empty_input:
             return input_text
         if not VLM.get_enable() or not self.model_exists():
             return None
         try:
             import modules.canvas_vlm_agent as canvas_vlm_agent
-            action_data = action if isinstance(action, dict) else {}
-            action_id = str(action_data.get("id") or "smart_expand").strip() or "smart_expand"
             action_options = options if isinstance(options, dict) else {}
             target_override = _superprompt_action_target_override(action_data, action_options, state)
             use_scene_agent_prompt = action_options.get(
@@ -1624,6 +1625,13 @@ class VLM:
                 system_prompt = f"{system_prompt}\n\n{resource_contract}"
             prompt_prefix = str(prompt or "").strip()
             custom_instruction = str(action_options.get("instruction") or "").strip()
+            if custom_instruction:
+                custom_instruction = (
+                    "Additional user instructions for this expansion are explicit constraints. Follow them together with "
+                    "the current preset, media contract, target duration, and output format. Do not copy this wrapper into "
+                    "the final prompt:\n"
+                    + custom_instruction
+                )
             action_instruction = "\n".join(
                 part for part in (custom_instruction, str(action_data.get("instruction") or "").strip()) if part
             )
@@ -1658,7 +1666,11 @@ class VLM:
                     request_parts.append(text_context_note)
                 if action_data.get("handler") == "smart_expand" and prompt_prefix:
                     request_parts.append(prompt_prefix)
-                request_parts.append(f"User prompt:\n{input_text}")
+                request_parts.append(
+                    f"User prompt:\n{input_text}"
+                    if input_text
+                    else "User prompt: none provided; infer the task from the current media, preset, and explicit instructions."
+                )
                 user_prompt = "\n\n".join(request_parts)
             if compiler:
                 compiler_request = minimax_h3_prompt_compiler.build_rewrite_request(
@@ -1709,7 +1721,10 @@ class VLM:
         options=None,
     ):
         input_text = str(input_text or "")
-        if not input_text.strip():
+        action_data = action if isinstance(action, dict) else {}
+        action_id = str(action_data.get("id") or "smart_expand").strip() or "smart_expand"
+        allow_empty_input = bool(action_data) and action_id in {"smart_expand", "detailed_expand"}
+        if not input_text.strip() and not allow_empty_input:
             return input_text
         state = state if isinstance(state, dict) else {}
         skill_result = self.extended_prompt_with_skills(
@@ -1789,12 +1804,11 @@ class VLM:
         scene_resources=None,
     ):
         original = str(input_text or "")
-        if not original.strip():
-            return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Prompt is empty."}
-
         action = prompt_actions.get_prompt_action(action_id)
         if not action:
             return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Unknown prompt action."}
+        if not original.strip() and str(action.get("id") or "") not in {"smart_expand", "detailed_expand"}:
+            return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt is empty."}
         state_data = state if isinstance(state, dict) else {}
         mode = prompt_actions.prompt_action_mode(state_data)
         if mode not in action.get("modes", []):

@@ -11843,11 +11843,44 @@ with shared.gradio_root:
             scene_reference_video_original_path,
             *camera_motion_generation_inputs,
         ]
+        camera_motion_reference_status_js = """
+(...args) => {
+    const getInput = (elemId) => {
+        try {
+            const app = typeof gradioApp === "function" ? gradioApp() : null;
+            const root = app?.getElementById?.(elemId) || document.getElementById(elemId);
+            return root?.querySelector?.('input[type="number"], input[type="range"], input') || null;
+        } catch (error) {
+            return null;
+        }
+    };
+    const readBound = (raw, fallback) => {
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : fallback;
+    };
+    const readSceneNumber = (elemId, fallback) => {
+        const input = getInput(elemId);
+        const props = window.simpleaiTopbarSystemParams?.__scene_control_props?.[elemId] || {};
+        let value = readBound(input?.value, readBound(fallback, NaN));
+        if (!Number.isFinite(value)) return fallback;
+        const minimum = readBound(input?.min, readBound(props.minimum, NaN));
+        const maximum = readBound(input?.max, readBound(props.maximum, NaN));
+        if (Number.isFinite(minimum)) value = Math.max(minimum, value);
+        if (Number.isFinite(maximum)) value = Math.min(maximum, value);
+        return value;
+    };
+    // Gradio 6 can submit a stale positional value while preset defaults are syncing.
+    args[7] = readSceneNumber("scene_video_duration", args[7]);
+    args[8] = readSceneNumber("scene_var_number2", args[8]);
+    return args;
+}
+""".strip()
         for camera_motion_component in camera_motion_generation_inputs:
             camera_motion_component.input(
                 camera_motion_reference_parameter_status,
                 inputs=camera_motion_status_inputs,
                 outputs=[camera_motion_generated_snapshot, camera_motion_status],
+                js=camera_motion_reference_status_js,
                 show_progress=False,
                 queue=False,
             )

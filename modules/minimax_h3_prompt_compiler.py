@@ -417,7 +417,8 @@ def build_system_instructions(target_or_compiler, context=None):
         f"The H3 output duration must be between {H3_MIN_OUTPUT_DURATION:g} and {H3_MAX_OUTPUT_DURATION:g} seconds when supplied, "
         "and the exact requested duration must be used. For 10-30 second outputs, distribute the timeline across a readable "
         "opening state, action development, visible change, and ending result; do not compress all meaningful motion into the "
-        "opening seconds. Every shot must use an explicit [Shot N] START-ENDs interval marker in chronological order; Shot 1 must start at "
+        "opening seconds. If the source draft contains a different timeline, the runtime target duration overrides the draft; "
+        "rebuild the shot intervals instead of copying the old timestamps. Every shot must use an explicit [Shot N] START-ENDs interval marker in chronological order; Shot 1 must start at "
         "0 seconds, all later starts must increase, and the final end must match the target duration. Legacy prompts may "
         "still contain [Shot N] At MM:SS.mmm markers and must remain readable. Give each speaking or singing source a stable "
         "(S1), (S2), and so on. Put visible "
@@ -467,6 +468,18 @@ def _shot_marker_text(match):
     return marker
 
 
+def _explicit_shot_timeline_duration(matches):
+    ends = []
+    for match in matches:
+        if match.group(5) is None:
+            continue
+        try:
+            ends.append(float(match.group(5)))
+        except (TypeError, ValueError):
+            continue
+    return round(max(ends), 3) if ends else None
+
+
 def _infer_motion_picture_index(text, video_reference_index, fallback=0):
     source = _clean_text(text)
     video_number = _safe_count(video_reference_index)
@@ -508,6 +521,10 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
     if not mode:
         return _clean_text(prompt)
     source_prompt = _clean_text(prompt)
+    user_intent = source_prompt or (
+        "(No prompt text was provided. Infer the requested scene from the runtime media inventory, "
+        "current preset contract, and explicit user instructions.)"
+    )
     if mode == MODE_REF2VA and isinstance(target_context, dict):
         target_context = dict(target_context)
         if not _safe_count(target_context.get("motion_picture_index")):
@@ -519,15 +536,33 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
     source_shots = list(_SHOT_RE.finditer(source_prompt))
     storyboard_lock = ""
     if source_shots:
-        markers = []
-        for shot in source_shots:
-            markers.append(_shot_marker_text(shot))
-        storyboard_lock = (
-            "\n\nStructured storyboard lock:\n"
-            f"Preserve exactly {len(source_shots)} shots, in the same order, with these exact markers and start times: "
-            + "; ".join(markers)
-            + ". Improve the content inside each shot without merging, deleting, splitting, or renumbering shots."
+        runtime_duration = normalize_context(target_context).get("duration_seconds")
+        source_duration = _explicit_shot_timeline_duration(source_shots)
+        duration_changed = (
+            runtime_duration is not None
+            and source_duration is not None
+            and abs(runtime_duration - source_duration) > 0.001
         )
+        if duration_changed:
+            storyboard_lock = (
+                "\n\nDuration retargeting required:\n"
+                f"The source storyboard timeline ends at {source_duration:.3f} seconds, but the runtime target is "
+                f"{runtime_duration:.3f} seconds. Keep the existing {len(source_shots)} shot order and core action beats, "
+                "but discard every source timestamp and rebuild the shot intervals across the full runtime target. "
+                "Do not return the original shorter timeline or merely repeat its wording. Split a shot into additional "
+                "chronological shots only when needed for natural pacing, and do not add unrelated events. The final shot "
+                "must end exactly at the runtime target."
+            )
+        else:
+            markers = []
+            for shot in source_shots:
+                markers.append(_shot_marker_text(shot))
+            storyboard_lock = (
+                "\n\nStructured storyboard lock:\n"
+                f"Preserve exactly {len(source_shots)} shots, in the same order, with these exact markers and start times: "
+                + "; ".join(markers)
+                + ". Improve the content inside each shot without merging, deleting, splitting, or renumbering shots."
+            )
     protected_references = protected_reference_tokens(source_prompt, compiler, target_context)
     reference_lock = ""
     if protected_references:
@@ -549,7 +584,7 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
     return (
         f"Compile this rough request into the required MiniMax H3 {mode} structure.\n\n"
         f"Runtime context:\n{context_note(target_context)}\n\n"
-        f"User intent:\n{source_prompt}{storyboard_lock}{reference_lock}{subject_binding_lock}{motion_transfer_lock}"
+        f"User intent:\n{user_intent}{storyboard_lock}{reference_lock}{subject_binding_lock}{motion_transfer_lock}"
     )
 
 

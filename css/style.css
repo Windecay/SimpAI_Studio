@@ -15102,6 +15102,72 @@ button.simpleai-auto-random-preparing {
   accent-color: #f97316;
 }
 
+.simpleai-prompt-action-instruction {
+  display: block;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 10px 12px 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(251, 146, 60, 0.28);
+  border-radius: 8px;
+  background: rgba(249, 115, 22, 0.07);
+}
+
+.simpleai-prompt-action-instruction[hidden] {
+  display: none !important;
+}
+
+.simpleai-prompt-action-instruction-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.simpleai-prompt-action-instruction-title > span {
+  min-width: 0;
+  margin-bottom: 4px;
+  color: var(--body-text-color, #f8fafc);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.simpleai-prompt-action-instruction-title > small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--body-text-color-subdued, #aeb6c2);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simpleai-prompt-action-instruction > textarea {
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
+  resize: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  padding: 7px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  background: var(--input-background-fill, rgba(15, 23, 42, 0.72));
+  color: var(--body-text-color, #f8fafc);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.simpleai-prompt-action-instruction > textarea:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.82);
+  outline-offset: 1px;
+}
+
 .simpleai-prompt-action-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

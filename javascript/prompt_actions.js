@@ -290,6 +290,9 @@
         if ((item.requires_vlm || (mode === "scene" && item.requires_vlm_scene)) && !isVlmEnabled()) {
             return { enabled: false, reason: text("Enable VLM first", "需要启用 VLM") };
         }
+        if (!currentPrompt().trim() && !["smart_expand", "detailed_expand"].includes(item.id)) {
+            return { enabled: false, reason: text("Enter a prompt for this action", "此功能需要先填写提示词") };
+        }
         return { enabled: !pending, reason: "" };
     }
 
@@ -316,6 +319,13 @@
                         <span data-role="video-label"></span>
                     </span>
                     <input type="checkbox" data-role="use-video" checked>
+                </label>
+                <label class="simpleai-prompt-action-instruction" data-role="instruction-wrap" hidden>
+                    <span class="simpleai-prompt-action-instruction-title">
+                        <span data-role="instruction-label"></span>
+                        <small data-role="instruction-hint"></small>
+                    </span>
+                    <textarea data-role="instruction" rows="1" maxlength="4000"></textarea>
                 </label>
                 <div class="simpleai-prompt-action-list" data-role="list"></div>
                 <div class="simpleai-prompt-action-status" data-role="status" aria-live="polite"></div>
@@ -462,10 +472,26 @@
         videoOption.hidden = !hasVideo;
         node.querySelector('[data-role="use-video"]').disabled = !hasVideo;
         node.querySelector('[data-role="video-label"]').textContent = videoContextLabel(videoSlot);
+        const instructionWrap = node.querySelector('[data-role="instruction-wrap"]');
+        const instructionField = node.querySelector('[data-role="instruction"]');
+        const instructionLabel = node.querySelector('[data-role="instruction-label"]');
+        const instructionHint = node.querySelector('[data-role="instruction-hint"]');
 
         const mode = isSceneMode() ? "scene" : "classic";
         const h3Compiler = mode === "scene" && usesMiniMaxH3PromptCompiler();
         const items = catalogItems().filter((item) => !Array.isArray(item.modes) || item.modes.includes(mode));
+        const supportsExtraInstruction = items.some((item) => item.id === "smart_expand" || item.id === "detailed_expand");
+        instructionWrap.hidden = !supportsExtraInstruction;
+        instructionLabel.textContent = text("Extra instructions", "额外指令");
+        instructionField.placeholder = text(
+            "Optional constraints for duration, shots, action, camera, or output format",
+            "可选：补充时长、分镜、动作、镜头或输出格式要求",
+        );
+        instructionField.setAttribute("aria-label", text("Extra instructions", "额外指令"));
+        instructionHint.textContent = text(
+            "Applied as constraints to Smart Expand and Detailed Expand.",
+            "仅作为智能扩写和详细扩写的约束。",
+        );
         const list = node.querySelector('[data-role="list"]');
         if (!items.length) {
             list.innerHTML = `<div class="simpleai-prompt-action-empty">${escapeHtml(text("No prompt actions are registered.", "没有可用的提示词能力。"))}</div>`;
@@ -506,7 +532,7 @@
 
     function openModal(field = null) {
         activePromptField = promptField(field);
-        if (!currentPrompt().trim() || isGenerationActive()) return;
+        if (isGenerationActive()) return;
         lastFocused = document.activeElement;
         renderModal();
         setStatus("", "");
@@ -520,6 +546,8 @@
         if (!modal) return;
         modal.classList.remove("is-open");
         modal.setAttribute("aria-hidden", "true");
+        const instruction = modal.querySelector('[data-role="instruction"]');
+        if (instruction) instruction.value = "";
         if (lastFocused?.focus) requestAnimationFrame(() => lastFocused.focus());
     }
 
@@ -574,6 +602,10 @@
             language: currentLang(),
             direction: "auto",
         };
+        if (item.id === "smart_expand" || item.id === "detailed_expand") {
+            const instruction = String(ensureModal().querySelector('[data-role="instruction"]')?.value || "").trim();
+            if (instruction) options.instruction = instruction;
+        }
         if (!setField("prompt_action_input", previousPrompt)
                 || !setField("prompt_action_id", actionId)
                 || !setField("prompt_action_options", JSON.stringify(options))) {
@@ -751,7 +783,7 @@
             }
 
             const original = String(inputText ?? "");
-            if (!original.trim()) {
+            if (!original.trim() && !["smart_expand", "detailed_expand"].includes(item.id)) {
                 reject(new Error(text("Prompt is empty.", "提示词不能为空。")));
                 return;
             }
@@ -792,7 +824,9 @@
         });
     };
     window.simpleAIPromptToolsHasText = function simpleAIPromptToolsHasText() {
-        return !!String(defaultPromptField()?.value || "").trim();
+        // The prompt tool is also the place where users can enter extra
+        // instructions before an empty prompt is sent to the LLM.
+        return !!promptButton();
     };
     if (typeof onUiLoaded === "function") onUiLoaded(bindButton);
     if (typeof onAfterUiUpdate === "function") onAfterUiUpdate(bindButton);

@@ -638,6 +638,106 @@
       "title": "LoadInputImage"
     }
   },
+  "920": {
+    "inputs": {
+      "image_name": [
+        "724",
+        2
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "SCAIL2 Reference View 2"
+    }
+  },
+  "921": {
+    "inputs": {
+      "image_name": [
+        "724",
+        3
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "SCAIL2 Reference View 3"
+    }
+  },
+  "922": {
+    "inputs": {
+      "image_name": [
+        "724",
+        27
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "SCAIL2 Reference View 4"
+    }
+  },
+  "923": {
+    "inputs": {
+      "image_name": [
+        "724",
+        28
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "SCAIL2 Reference View 5"
+    }
+  },
+  "928": {
+    "inputs": {
+      "image_1": [
+        "421",
+        0
+      ],
+      "image_name_1": [
+        "724",
+        4
+      ],
+      "image_2": [
+        "920",
+        0
+      ],
+      "image_name_2": [
+        "724",
+        2
+      ],
+      "image_3": [
+        "921",
+        0
+      ],
+      "image_name_3": [
+        "724",
+        3
+      ],
+      "image_4": [
+        "922",
+        0
+      ],
+      "image_name_4": [
+        "724",
+        27
+      ],
+      "image_5": [
+        "923",
+        0
+      ],
+      "image_name_5": [
+        "724",
+        28
+      ]
+    },
+    "class_type": "SCAIL2ReferenceImageBatch",
+    "_meta": {
+      "title": "SCAIL2 Reference Image Batch"
+    }
+  },
   "900": {
     "inputs": {
       "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
@@ -846,7 +946,7 @@
         0
       ],
       "reference_1": [
-        "421",
+        "928",
         0
       ]
     },

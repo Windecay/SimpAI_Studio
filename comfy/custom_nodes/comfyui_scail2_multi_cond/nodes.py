@@ -947,12 +947,12 @@ def _infer_generation_size(pose_video: torch.Tensor) -> tuple[int, int]:
     return width, height
 
 
-def _first_image(value: torch.Tensor, name: str) -> torch.Tensor:
+def _reference_batch(value: torch.Tensor, name: str) -> torch.Tensor:
     if not isinstance(value, torch.Tensor) or value.ndim != 4:
         raise ValueError(f"{name} must be a ComfyUI IMAGE tensor.")
     if value.shape[0] <= 0:
         raise ValueError(f"{name} has no images.")
-    return value[:1].detach().contiguous()
+    return value.detach().contiguous()
 
 
 def _encode_text(clip, text: str):
@@ -996,18 +996,26 @@ def _run_sam3_track(
 def _apply_reference_mask(reference_image: torch.Tensor, reference_image_mask: Optional[torch.Tensor]) -> torch.Tensor:
     if reference_image_mask is None:
         return reference_image
+    if reference_image_mask.ndim != 4 or reference_image_mask.shape[0] <= 0:
+        raise ValueError("reference_image_mask must be a non-empty ComfyUI IMAGE batch.")
     if reference_image_mask.shape[1:3] != reference_image.shape[1:3]:
         import torch.nn.functional as F
 
         resized = F.interpolate(
-            reference_image_mask[:1].detach().float().movedim(-1, 1),
+            reference_image_mask.detach().float().movedim(-1, 1),
             size=(int(reference_image.shape[1]), int(reference_image.shape[2])),
             mode="nearest",
         ).movedim(1, -1)
     else:
-        resized = reference_image_mask[:1].detach()
+        resized = reference_image_mask.detach()
+    if resized.shape[0] == 1 and reference_image.shape[0] > 1:
+        resized = resized.repeat(int(reference_image.shape[0]), 1, 1, 1)
+    elif resized.shape[0] < reference_image.shape[0]:
+        resized = resized[[min(index, resized.shape[0] - 1) for index in range(reference_image.shape[0])]]
+    else:
+        resized = resized[:reference_image.shape[0]]
     alpha = (resized[..., :3].max(dim=-1, keepdim=True).values > 0.1).to(dtype=reference_image.dtype)
-    return (reference_image[:1].detach() * alpha).contiguous()
+    return (reference_image.detach() * alpha).contiguous()
 
 
 def _resize_image_tensor_like(image: torch.Tensor, target: torch.Tensor, *, mode: str = "nearest") -> torch.Tensor:
@@ -2246,6 +2254,76 @@ class SCAIL2ChunkKeyframeExtractor:
         )
 
 
+class SCAIL2ReferenceImageBatch:
+    """Collect uploaded reference views into one ordered SCAIL-2 IMAGE batch."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional = {
+            "image_name_1": ("STRING", {"default": "None"}),
+        }
+        for index in range(2, MAX_REFERENCES + 1):
+            optional[f"image_{index}"] = ("IMAGE",)
+            optional[f"image_name_{index}"] = ("STRING", {"default": "None"})
+        return {
+            "required": {
+                "image_1": ("IMAGE",),
+            },
+            "optional": optional,
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "STRING")
+    RETURN_NAMES = ("reference_batch", "view_count", "summary")
+    FUNCTION = "build"
+    CATEGORY = CATEGORY
+
+    @staticmethod
+    def _is_uploaded_name(value: Any) -> bool:
+        text = str(value or "").strip().lower()
+        return text not in {"", "none", "null"}
+
+    def build(self, image_1: torch.Tensor, **kwargs):
+        active: list[tuple[int, torch.Tensor]] = []
+        for index in range(1, MAX_REFERENCES + 1):
+            image = image_1 if index == 1 else kwargs.get(f"image_{index}")
+            image_name = kwargs.get(f"image_name_{index}")
+            if index == 1 and not self._is_uploaded_name(image_name):
+                raise ValueError("SCAIL-2 reference batch requires the first uploaded image as the primary view.")
+            if image_name is not None and not self._is_uploaded_name(image_name):
+                continue
+            if image is None:
+                continue
+            if not isinstance(image, torch.Tensor) or image.ndim != 4 or image.shape[0] <= 0:
+                raise ValueError(f"image_{index} must be a non-empty ComfyUI IMAGE batch.")
+            active.append((index, image.detach().contiguous()))
+
+        if not active:
+            raise ValueError("At least one uploaded SCAIL-2 reference image is required.")
+
+        target_height = int(active[0][1].shape[1])
+        target_width = int(active[0][1].shape[2])
+        normalized: list[torch.Tensor] = []
+        for _index, image in active:
+            if int(image.shape[1]) != target_height or int(image.shape[2]) != target_width:
+                image = _fit_image_to_size(
+                    image,
+                    target_height,
+                    target_width,
+                    fit_mode="center_crop",
+                    mode="bicubic",
+                )
+            normalized.append(image.contiguous())
+
+        reference_batch = torch.cat(normalized, dim=0).contiguous()
+        summary = {
+            "view_count": int(reference_batch.shape[0]),
+            "source_slots": [index for index, _image in active],
+            "primary_view_index": 0,
+            "shape": list(reference_batch.shape),
+        }
+        return reference_batch, int(reference_batch.shape[0]), json.dumps(summary, indent=2)
+
+
 class SCAIL2SegmentPlanBuilder:
     @classmethod
     def INPUT_TYPES(cls):
@@ -2576,7 +2654,7 @@ class SCAIL2ScheduledLongVideo:
         for index in range(1, active_reference_count + 1):
             image = kwargs.get(f"reference_{index}")
             if image is not None:
-                references[index] = _first_image(image, f"reference_{index}")
+                references[index] = _reference_batch(image, f"reference_{index}")
             mask = kwargs.get(f"reference_{index}_mask")
             if mask is not None:
                 reference_masks[index] = mask.detach().contiguous()
@@ -2967,7 +3045,7 @@ class SCAIL2ScheduledLongVideoWithSAM(SCAIL2ScheduledLongVideo):
         for index in range(1, active_reference_count + 1):
             image = kwargs.get(f"reference_{index}")
             if image is not None:
-                references[index] = _first_image(image, f"reference_{index}")
+                references[index] = _reference_batch(image, f"reference_{index}")
         missing = [index for index in used_refs if index not in references]
         if missing:
             raise ValueError(f"segment_plan references missing image input(s): {missing}")
@@ -3961,6 +4039,7 @@ class SCAIL2KeyframeMatrixViewer:
 NODE_CLASS_MAPPINGS = {
     "SCAIL2ChunkKeyframeExtractor": SCAIL2ChunkKeyframeExtractor,
     "SCAIL2KeyframeMatrixViewer": SCAIL2KeyframeMatrixViewer,
+    "SCAIL2ReferenceImageBatch": SCAIL2ReferenceImageBatch,
     "SCAIL2SegmentPlanBuilder": SCAIL2SegmentPlanBuilder,
     "SCAIL2SegmentPlanner": SCAIL2SegmentPlanner,
     "SCAIL2MultiReferenceColoredMask": SCAIL2MultiReferenceColoredMask,
@@ -3974,6 +4053,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SCAIL2ChunkKeyframeExtractor": "SCAIL-2 Chunk Keyframe Extractor",
     "SCAIL2KeyframeMatrixViewer": "SCAIL-2 Keyframe Matrix Viewer",
+    "SCAIL2ReferenceImageBatch": "SCAIL-2 Reference Image Batch",
     "SCAIL2SegmentPlanBuilder": "SCAIL-2 Segment Plan Builder",
     "SCAIL2SegmentPlanner": "SCAIL-2 Segment Planner",
     "SCAIL2MultiReferenceColoredMask": "SCAIL-2 Multi Reference Colored Mask",
