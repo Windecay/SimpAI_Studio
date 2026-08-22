@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import torch
 from torch.nn import functional as F
 
+from .scene_detection import SceneChangeDetector, choose_scene_boundary_frame
 from .train_log.RIFE_HDv3 import Model
 
 
@@ -40,6 +41,8 @@ class RIFEWrapper:
         scale: float = 1.0,
         progress_callback=None,
         batch_size: int = 8,
+        scene_detect: bool = True,
+        scene_threshold: float = 0.15,
     ) -> torch.Tensor:
         """
         Interpolate frames from source FPS to target FPS
@@ -51,6 +54,8 @@ class RIFEWrapper:
             scale: Scale factor for processing
             progress_callback: Optional callback function that accepts (current, total) parameters
             batch_size: Number of frames to process in parallel (default: 8)
+            scene_detect: Skip RIFE across hard scene changes (default: True)
+            scene_threshold: Scene-change score threshold (default: 0.15)
 
         Returns:
             Interpolated ComfyUI Image tensor [M, H, W, C] in range [0, 1]
@@ -73,6 +78,12 @@ class RIFEWrapper:
         # Calculate frame positions
         frame_positions = self._calculate_target_frame_positions(source_fps, target_fps, total_source_frames)
 
+        scene_changes = [False] * max(0, total_source_frames - 1)
+        if scene_detect and total_source_frames > 1:
+            detector = SceneChangeDetector(scene_threshold)
+            for source_index in range(total_source_frames - 1):
+                scene_changes[source_index] = detector.is_cut(images[source_index], images[source_index + 1])
+
         # Pre-allocate output on CPU (NOT GPU to avoid OOM)
         output_frames = []
 
@@ -84,6 +95,11 @@ class RIFEWrapper:
             if interp_factor == 0.0 or source_idx1 == source_idx2:
                 # Direct copy, no interpolation needed
                 output_frames.append(images[source_idx1])
+            elif scene_changes[source_idx1]:
+                # Keep a real source frame instead of blending across a hard cut.
+                output_frames.append(
+                    choose_scene_boundary_frame(images[source_idx1], images[source_idx2], interp_factor)
+                )
             else:
                 # Need interpolation - add placeholder
                 output_frames.append(None)

@@ -422,6 +422,12 @@ class AsyncTask:
         self.task_name = self.params_backend.pop('preset', 'default')
         default_task_method = 'text2image' if self.task_class == 'Fooocus' else 'z_image_turbo_aio_cn'
         self.task_method = self.params_backend.pop('task_method', default_task_method)
+        normalized_task_method = str(self.task_method or '').strip().casefold().removeprefix('scene_')
+        native_process = str(self.params_backend.get('native_process', '') or '').strip().casefold()
+        normalized_task_name = str(self.task_name or '').strip().casefold().replace('_', '-')
+        self.simpleai_native_process = normalized_task_method == 'nvidia_vsr' and (
+            native_process == 'studio' or normalized_task_name == 'nvidia-vsr'
+        )
         self.task_class_full = task_class_mapping[self.task_class]
         self.clip_model_name = self.params_backend.get('clip_model', default_clip)
         if self.clip_model_name in (None, '', default_clip, default_vae, 'auto'):
@@ -618,7 +624,7 @@ def worker():
     from extras.expansion import safe_str
     from modules.util import (remove_empty_str, join_prompts, HWC3, resize_image, get_image_shape_ceil, set_image_shape_ceil,
                               get_shape_ceil, resample_image, erode_or_dilate, parse_lora_references_from_prompt,
-                              apply_wildcards, normalize_inpaint_mask_upload)
+                              apply_wildcards, normalize_inpaint_mask_upload, generate_temp_filename)
     from modules.lora_params import sync_loras_to_params_backend
     from modules.upscaler import perform_upscale
     from modules.flags import Performance
@@ -727,7 +733,7 @@ def worker():
                 logger.info(f'Processing stop, status:{status}')
             else:
                 logger.info(f'Processing time (total): {processing_time:.2f} seconds, status:{status}')
-        if async_task.task_class in flags.comfy_classes:
+        if async_task.task_class in flags.comfy_classes and not getattr(async_task, 'simpleai_native_process', False):
             _restore_standard_streams_if_closed()
             if ads.get_admin_default('comfyd_active_checkbox'):
                 comfyd.finished()
@@ -746,6 +752,8 @@ def worker():
         _restore_standard_streams_if_closed()
         if getattr(prompt_id, "task_class", None) == 'Cloud':
             return
+        if getattr(prompt_id, "simpleai_native_process", False):
+            return
         target_prompt_id = None
         if isinstance(prompt_id, str):
             target_prompt_id = str(prompt_id).strip() or None
@@ -760,6 +768,81 @@ def worker():
         else:
             comfyd.interrupt()
         ldm_patched.modules.model_management.interrupt_current_processing()
+
+    def run_native_nvidia_vsr(async_task, processing_start_time):
+        from enhanced import nvidia_vsr
+
+        output_path = None
+        status = "Finished"
+        try:
+            source_path = nvidia_vsr.resolve_input_video(async_task.params_backend)
+            output_root = modules.config.get_user_path_outputs(async_task.user_did)
+            _, output_path, _ = generate_temp_filename(folder=output_root, extension="mp4")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            def report_progress(percentage, title):
+                progressbar(async_task, percentage, title)
+
+            result = nvidia_vsr.run_nvidia_vsr(
+                source_path,
+                output_path,
+                async_task,
+                language=getattr(async_task, "simpleai_lang", None),
+                progress_callback=report_progress,
+                cancel_callback=lambda: async_task.last_stop in ("stop", "skip"),
+            )
+            async_task.results = []
+            yield_result(
+                async_task,
+                [result["output_path"]],
+                100,
+                getattr(async_task, "black_out_nsfw", False),
+                censor=False,
+                do_not_show_finished_images=bool(getattr(async_task, "disable_intermediate_results", False)),
+            )
+            try:
+                from modules.media_library import queue_media_file_index
+
+                queue_media_file_index(result["output_path"], user_did=async_task.user_did)
+            except Exception:
+                logger.debug("Native Nvidia VSR media indexing was not queued", exc_info=True)
+            logger.info(
+                "Native Nvidia VSR finished: task_id=%s input=%s output=%s source_frames=%s output_frames=%s "
+                "source_fps=%s output_fps=%s size=%sx%s encoder=%s audio_muxed=%s",
+                async_task.task_id,
+                source_path,
+                result["output_path"],
+                result["source_frames"],
+                result["output_frames"],
+                result["source_fps"],
+                result["output_fps"],
+                result["output_width"],
+                result["output_height"],
+                result["encoder"],
+                result["audio_muxed"],
+            )
+        except nvidia_vsr.NvidiaVSRCancelled:
+            action = async_task.last_stop if async_task.last_stop in ("stop", "skip") else "stop"
+            async_task.user_cancel_action = action
+            status = "Skipped" if action == "skip" else "Stopped"
+            title = nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                "NVIDIA VSR was stopped by the user.",
+                "NVIDIA VSR 已由用户停止。",
+            )
+            progressbar(async_task, 100, title)
+        except Exception as exc:
+            status = "Failed"
+            logger.exception("Native Nvidia VSR failed: task_id=%s", async_task.task_id)
+            async_task.simpleai_native_error = str(exc)
+            title = nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                f"NVIDIA VSR failed: {exc}",
+                f"NVIDIA VSR 处理失败：{exc}",
+            )
+            progressbar(async_task, 100, title)
+        finally:
+            stop_processing(async_task, processing_start_time, status)
 
     def run_cloud_task(async_task: AsyncTask):
         from modules import cloud_image
@@ -2134,6 +2217,9 @@ def worker():
         # if is_models_file_absent(async_task.task_name):
         #     stop_processing(async_task, 0, "Model absent")
         #     return
+        if getattr(async_task, 'simpleai_native_process', False):
+            run_native_nvidia_vsr(async_task, int(time.time() * 1000))
+            return
         ldm_patched.modules.model_management.print_memory_info("begin at handler")
         async_task.outpaint_selections = [o.lower() for o in async_task.outpaint_selections]
         base_model_additional_loras = []

@@ -1423,6 +1423,8 @@ def generate_clicked(task: worker.AsyncTask, state):
         return tuple(updates)
 
     def generation_controls_unlocked():
+        if getattr(task, "simpleai_native_process", False):
+            return bool(getattr(task, "processing", False) or len(task.yields) > 0 or len(task.results) > 0)
         if getattr(task, "task_class", None) in flags.comfy_classes:
             return bool(getattr(task, "simpleai_comfy_prompt_accepted", False))
         return bool(getattr(task, "processing", False) or len(task.yields) > 0 or len(task.results) > 0)

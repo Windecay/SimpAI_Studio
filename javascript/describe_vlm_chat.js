@@ -7800,6 +7800,34 @@
         };
     }
 
+    function syncRoleplayAgentRoutingFromVisibleForm(modal, runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        if (!modal || !target?.roleplaySession) return null;
+        const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        const routing = normalizeRoleplayAgentRouting(session.agent_routing);
+        ROLEPLAY_AGENT_ROLES.forEach((role) => {
+            const value = String(modal.querySelector(`[data-describe-vlm-chat-roleplay-agent-route="${role}"]`)?.value || '').toLowerCase();
+            if (['auto', 'api', 'local'].includes(value)) routing.routes[role].mode = value;
+        });
+        const fallback = modal.querySelector('[data-describe-vlm-chat-roleplay-agent-fallback]');
+        if (fallback) {
+            ROLEPLAY_AGENT_ROLES.forEach((role) => {
+                routing.routes[role].fallback_enabled = !!fallback.checked;
+            });
+        }
+        const localVersion = String(modal.querySelector('[data-describe-vlm-chat-roleplay-agent-local-version]')?.value || '').trim();
+        if (localVersion) routing.profiles.local_main.version = localVersion;
+        const apiVersion = String(modal.querySelector('[data-describe-vlm-chat-roleplay-agent-api-version]')?.value || '').trim();
+        if (apiVersion) {
+            routing.profiles.api_main.version = apiVersion;
+            routing.profiles.api_main.type = 'api';
+        }
+        session.agent_routing = normalizeRoleplayAgentRouting(routing);
+        target.roleplaySession = session;
+        if (isCurrentConversationRuntime(target)) state.roleplaySession = session;
+        return session;
+    }
+
     function buildVlmModelStatusPayload(version) {
         const cleanVersion = resolveVlmVersion(version);
         const customApi = readDescribeCustomApi(cleanVersion);
@@ -8880,9 +8908,9 @@
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
-      <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(localText('Choose how this one message should drive the story. This does not change whether the player is present.', '选择本条消息如何推动剧情，不会改变玩家是否在场。'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(localText('Perspective', '本轮视角'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(localText('Roleplay turn perspective', '角色扮演本轮视角'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
-      <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
-      <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
+       <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(localText('Choose how this one message should drive the story. This does not change whether the player is present.', '选择本条消息如何推动剧情，不会改变玩家是否在场。'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(localText('Perspective', '本轮视角'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(localText('Roleplay turn perspective', '角色扮演本轮视角'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
+       <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image><i class="fa-solid fa-image" aria-hidden="true"></i><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
+       <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><i class="fa-solid fa-power-off" aria-hidden="true"></i><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
       <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}" aria-label="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}"><i class="fa-solid fa-photo-film"></i></button>
       <button type="button" class="describe-vlm-chat-roleplay-visual-draft-tool" data-describe-vlm-chat-roleplay-visual-draft title="${escapeHtml(localText('Ask the Agent to draft a story scene image', '让 Agent 生成场照提议'))}" aria-label="${escapeHtml(localText('Ask the Agent to draft a story scene image', '让 Agent 生成场照提议'))}" hidden><i class="fa-solid fa-clapperboard"></i></button>
     </div>
@@ -14606,6 +14634,9 @@
             : '';
         runtime.userSystemPromptContent = userSystemPromptContent;
         runtime.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
+        if (selectedMode === 'roleplay') {
+            syncRoleplayAgentRoutingFromVisibleForm(modal, runtime);
+        }
         applyConversationRuntime(runtime);
         saveChatSettings();
         const hasMessageOverride = typeof options.messageOverride === 'string';
@@ -14953,6 +14984,20 @@
                 syncRoleplayControls(modal);
             }
         }
+        if (selectedMode === 'roleplay' && response?.roleplay && typeof response.roleplay === 'object') {
+            const directorStatus = String(response.roleplay.status || '').trim().toLowerCase();
+            if (directorStatus && directorStatus !== 'committed') {
+                const detail = String(
+                    response.roleplay.error
+                    || response.roleplay.warnings?.[0]
+                    || localText('The external director did not commit a state update.', '外场导演没有提交状态更新。')
+                ).slice(0, 240);
+                setConversationStatus(runtime, localText(
+                    `Story state update failed: ${detail}`,
+                    `剧情状态更新失败：${detail}`
+                ), true);
+            }
+        }
         if (selectedMode === 'roleplay') {
             const speakerId = String(assistant.roleplay_speaker_id || '').trim();
             assistant.roleplay_speaker_name = String(
@@ -15050,8 +15095,20 @@
                 'The selected Custom API has image input disabled; text was sent without images.',
                 '当前 Custom API 未启用图像输入，本次仅发送文字。'
             ));
+        } else if (
+            selectedMode === 'roleplay'
+            && response?.roleplay
+            && String(response.roleplay.status || '').trim().toLowerCase() !== 'committed'
+        ) {
+            // Keep the director error shown above instead of clearing it below.
         } else if (selectedMode === 'roleplay' && response?.roleplay_state_version !== undefined) {
-            const route = response?.agent_route && typeof response.agent_route === 'object' ? response.agent_route : null;
+            const route = response?.roleplay_agent_route && typeof response.roleplay_agent_route === 'object'
+                ? response.roleplay_agent_route
+                : response?.roleplay?.agent_route && typeof response.roleplay.agent_route === 'object'
+                    ? response.roleplay.agent_route
+                    : response?.agent_route && typeof response.agent_route === 'object'
+                        ? response.agent_route
+                        : null;
             const routeType = route?.profile_type === 'api'
                 ? localText('API', 'API')
                 : route?.profile_type === 'local'

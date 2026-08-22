@@ -914,16 +914,20 @@
     function toggleItemSelection(mediaId) {
         const id = String(mediaId || '');
         if (!id) return;
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         if (state.selectedIds.has(id)) state.selectedIds.delete(id);
         else state.selectedIds.add(id);
         updateSelectionControls();
         renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
     }
 
     function clearSelection() {
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectedIds.clear();
         updateSelectionControls();
         renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
     }
 
     function clearSelectionForQueryChange() {
@@ -933,10 +937,12 @@
     }
 
     function toggleSelectionMode() {
+        const scrollTop = refs.feedScroll ? refs.feedScroll.scrollTop : 0;
         state.selectionMode = !state.selectionMode;
         if (!state.selectionMode) state.selectedIds.clear();
         updateSelectionControls();
         renderWindow(true);
+        if (refs.feedScroll) refs.feedScroll.scrollTop = scrollTop;
     }
 
     async function applySelectionAction(action) {

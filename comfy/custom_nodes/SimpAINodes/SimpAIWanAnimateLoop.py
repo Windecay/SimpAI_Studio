@@ -2822,6 +2822,7 @@ class SimpAIWanAnimateLoop:
                 "enable_overlap_color_calibration": ("BOOLEAN", {"default": False}),
                 "calibration_debug": ("BOOLEAN", {"default": False}),
                 "preserve_input_frame_count": ("BOOLEAN", {"default": False}),
+                "use_timeline_aligned_noise": ("BOOLEAN", {"default": True}),
             },
         }
 
@@ -2863,11 +2864,14 @@ class SimpAIWanAnimateLoop:
         enable_overlap_color_calibration=False,
         calibration_debug=False,
         preserve_input_frame_count=False,
+        use_timeline_aligned_noise=False,
     ):
         if not isinstance(driving_video, torch.Tensor) or driving_video.ndim != 4:
             raise ValueError("driving_video must be a ComfyUI IMAGE tensor.")
         if not isinstance(reference_image, torch.Tensor) or reference_image.ndim != 4 or reference_image.shape[0] == 0:
             raise ValueError("reference_image must contain at least one image.")
+
+        use_timeline_aligned_noise = bool(use_timeline_aligned_noise)
 
         from comfy_extras.nodes_wan import WanAnimateToVideo
 
@@ -3056,12 +3060,17 @@ class SimpAIWanAnimateLoop:
             if len(conditioned) != 6:
                 raise RuntimeError("WanAnimateToVideo returned an unexpected result.")
             chunk_positive, chunk_negative, latent, trim_latent, _trim_image, _next_offset = conditioned
-            chunk_noise, noise_start, noise_length = _timeline_aligned_noise(
-                latent,
-                trim_latent,
-                source_start,
-                seed,
-            )
+            if use_timeline_aligned_noise:
+                chunk_noise, noise_start, noise_length = _timeline_aligned_noise(
+                    latent,
+                    trim_latent,
+                    source_start,
+                    seed,
+                )
+            else:
+                chunk_noise = None
+                noise_start = None
+                noise_length = None
             sampled = _sample(
                 model,
                 chunk_positive,
@@ -3481,8 +3490,17 @@ class SimpAIWanAnimateLoop:
                     "blend_frames": int(blend_frames),
                     "continue_motion_frames": int(continuation_frames),
                     "continuation_rgb": continuation_rgb_summary,
-                    "global_noise_start": int(noise_start),
-                    "global_noise_length": int(noise_length),
+                    "global_noise_start": (
+                        int(noise_start) if noise_start is not None else None
+                    ),
+                    "global_noise_length": (
+                        int(noise_length) if noise_length is not None else None
+                    ),
+                    "noise_strategy": (
+                        "global_timeline_aligned"
+                        if use_timeline_aligned_noise
+                        else "SamplerCustom.execute"
+                    ),
                     "background_calibration": calibration_summary,
                     "character_color_calibration": character_color_summary,
                     "character_tone_inverse": character_tone_summary,
@@ -3531,7 +3549,12 @@ class SimpAIWanAnimateLoop:
                     _MIN_CHUNK_SAMPLE_FRAMES,
                     chunk_limit,
                 ),
-                "seed_strategy": "global_timeline_aligned_noise",
+                "seed_strategy": (
+                    "global_timeline_aligned_noise"
+                    if use_timeline_aligned_noise
+                    else "SamplerCustom.execute_seeded"
+                ),
+                "timeline_aligned_noise_enabled": bool(use_timeline_aligned_noise),
                 "continue_motion_strategy": (
                     "previous_generated_conditioning_normalized_rgb"
                     if enable_continuation_normalization

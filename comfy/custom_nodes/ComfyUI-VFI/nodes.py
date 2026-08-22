@@ -87,6 +87,24 @@ class RIFEInterpolation:
                         "tooltip": "Use half precision (FP16) for faster inference and lower VRAM usage. Requires CUDA GPU",
                     },
                 ),
+                "scene_detect": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Skip interpolation across hard scene changes without using another model",
+                    },
+                ),
+                "scene_threshold": (
+                    "FLOAT",
+                    {
+                        "default": 0.15,
+                        "min": 0.05,
+                        "max": 0.95,
+                        "step": 0.01,
+                        "display": "number",
+                        "tooltip": "Scene-change score threshold; higher values detect fewer cuts",
+                    },
+                ),
             },
         }
 
@@ -97,9 +115,20 @@ class RIFEInterpolation:
 
     CATEGORY = "image/animation"
 
-    DESCRIPTION = "Interpolate video frames using RIFE (Real-Time Intermediate Flow Estimation) to increase frame rate"
+    DESCRIPTION = "Interpolate video frames using RIFE while skipping hard scene changes"
 
-    def interpolate(self, images, source_fps, target_fps, scale, model_name="flownet.pkl", batch_size=8, use_fp16=True):
+    def interpolate(
+        self,
+        images,
+        source_fps,
+        target_fps,
+        scale,
+        model_name="flownet.pkl",
+        batch_size=8,
+        use_fp16=True,
+        scene_detect=True,
+        scene_threshold=0.15,
+    ):
         # Validate inputs
         if images is None or len(images) == 0:
             raise ValueError("No images provided")
@@ -144,6 +173,8 @@ class RIFEInterpolation:
                     scale=scale,
                     progress_callback=progress_callback,
                     batch_size=batch_size,
+                    scene_detect=scene_detect,
+                    scene_threshold=scene_threshold,
                 )
 
             return (interpolated_images,)
