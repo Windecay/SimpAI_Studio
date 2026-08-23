@@ -1982,5 +1982,18 @@
   "Unable to permanently delete media": "永久删除失败",
   "Empty the trash permanently?": "要永久清空回收站吗？",
   "Trash emptied": "回收站已清空",
-  "Unable to empty trash": "清空回收站失败"
+  "Unable to empty trash": "清空回收站失败",
+  "Wan-Animate-2": "Wan数字人2",
+  "Wan-Animate-2\u2B07": "Wan数字人2\u2B07",
+  "Wan-Animate-2 Motion Transfer": "Wan-Animate-2 动作迁移",
+  "Wan-Animate-2 Character Animation": "Wan-Animate-2 人物动画",
+  "Driving video description": "驱动视频描述",
+  "Describe the motion in the driving video.": "描述驱动视频中的动作。",
+  "Reserved legacy control": "保留的旧版控制项",
+  "Driving video processing FPS [0 = source]": "驱动视频处理帧率 [0 = 源视频]",
+  "Pose strength": "姿态强度",
+  "Reference image strength": "参考图强度",
+  "Pose influence end": "姿态影响结束位置",
+  "Use GPU pose cache": "使用 GPU 姿态缓存",
+  "Reference image: Crop / Pad": "参考图：裁剪 / 填充"
 }

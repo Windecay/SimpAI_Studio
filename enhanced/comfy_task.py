@@ -25,6 +25,8 @@ def _register_runtime_preview_nodes():
     node_name = "SimpAIWanAnimateLoop"
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add(node_name)
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add(node_name)
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanAnimate2Loop")
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanAnimate2Loop")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAILatentDetailSampler")
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAILatentDetailSampler")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update({

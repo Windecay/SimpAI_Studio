@@ -1811,9 +1811,14 @@ def _save_models_info_json(path: str, data: Dict[str, Any]) -> None:
 def _get_filter_profile_key(engine: str, task_method: Optional[str] = None) -> str:
     engine_text = str(engine or "").strip()
     haystack = f"{engine_text} {task_method or ''}".lower()
-    if "anima" in haystack or "anima_aio" in haystack:
+
+    def contains_profile_token(token: str, allow_numeric_suffix: bool = False) -> bool:
+        suffix = r"\d*" if allow_numeric_suffix else ""
+        pattern = rf"(?<![a-z0-9]){re.escape(token)}{suffix}(?![a-z0-9])"
+        return re.search(pattern, haystack) is not None
+    if contains_profile_token("anima"):
         return "Anima"
-    if "ltx" in haystack:
+    if contains_profile_token("ltx", allow_numeric_suffix=True):
         return "LTX"
     return engine_text
 
@@ -1995,19 +2000,24 @@ def _match_model_filter_name(name: str, patterns) -> bool:
 
 
 def _model_arch_family_allows(entry: Any, families: set) -> bool:
+    decision = _model_arch_family_decision(entry, families)
+    return True if decision is None else decision
+
+
+def _model_arch_family_decision(entry: Any, families: set) -> Optional[bool]:
     if not isinstance(entry, dict):
-        return True
+        return None
     arch_family = str(entry.get("arch_family") or "").strip().lower()
     if not arch_family or arch_family == "unknown":
-        return True
+        return None
     source = str(entry.get("arch_family_source") or "").strip().lower()
     if source in {"weight_inspector", "name_rule", "builtin_model_arch_family_cache"} and "arch_family_algo" in entry:
         try:
             algo = int(entry.get("arch_family_algo"))
         except Exception:
-            return True
+            return None
         if algo != ARCH_FAMILY_ALGO:
-            return True
+            return None
     return arch_family in families
 
 
@@ -2171,18 +2181,20 @@ def _refine_names_by_catalog(models_root: str, engine: str, catalog: str, names:
     basename_index = _build_catalog_basename_index(data, catalog)
     out: List[str] = []
     for name in names:
-        if _match_model_filter_name(name, patterns):
-            out.append(name)
-            continue
         resolved_key = _resolve_models_info_key(data, catalog, name)
         if not resolved_key and "/" not in name:
             resolved_key = basename_index.get(name) or None
-        if not resolved_key:
+        entry = data.get(resolved_key) if resolved_key else None
+        decision = _model_arch_family_decision(entry, families)
+        if decision is True:
             out.append(name)
             continue
-        entry = data.get(resolved_key)
-        if _model_arch_family_allows(entry, families):
+        if decision is False:
+            continue
+        if not resolved_key or _match_model_filter_name(name, patterns):
             out.append(name)
+            continue
+        out.append(name)
     return out
 
 
@@ -2203,25 +2215,31 @@ def _refine_models_by_arch_family(models_root: str, engine: str, models: List[st
     dm_basename_index = _build_catalog_basename_index(data, "diffusion_models")
     out: List[str] = []
     for name in models:
-        if _match_model_filter_name(name, patterns):
-            out.append(name)
-            continue
+        decisions = []
         ck_key = _resolve_models_info_key(data, "checkpoints", name)
         if not ck_key and "/" not in name:
             ck_key = ck_basename_index.get(name) or None
         ck = data.get(ck_key) if ck_key else None
-        if ck_key and _model_arch_family_allows(ck, families):
-            out.append(name)
-            continue
+        ck_decision = _model_arch_family_decision(ck, families)
+        if ck_decision is not None:
+            decisions.append(ck_decision)
         dm_key = _resolve_models_info_key(data, "diffusion_models", name)
         if not dm_key and "/" not in name:
             dm_key = dm_basename_index.get(name) or None
         dm = data.get(dm_key) if dm_key else None
-        if dm_key and _model_arch_family_allows(dm, families):
+        dm_decision = _model_arch_family_decision(dm, families)
+        if dm_decision is not None:
+            decisions.append(dm_decision)
+        if decisions:
+            if any(decisions):
+                out.append(name)
+            continue
+        # Unknown or stale classifications stay visible. Filename rules are only
+        # a fallback for those entries and never override a trusted classification.
+        if _match_model_filter_name(name, patterns):
             out.append(name)
             continue
-        if not ck_key and not dm_key:
-            out.append(name)
+        out.append(name)
     return out
 
 

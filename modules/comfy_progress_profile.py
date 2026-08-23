@@ -118,6 +118,8 @@ def build_progress_profile(task_method, params, base_steps, duration_probe=None,
         return _build_infinitetalk_profile(method, params, steps, probe)
     if "qwen_faceswap" in method:
         return _build_qwen_faceswap_profile(steps)
+    if "wan_animate2" in method:
+        return _build_wan_animate2_profile(params, steps, probe, fps_probe)
     if "wan_animate" in method:
         return _build_wan_animate_profile(method, params, steps, probe)
     if "wan_scail2" in method:
@@ -212,6 +214,33 @@ def _build_wan_animate_profile(method, params, steps, probe):
         pass_count=pass_count,
         total_steps=steps * pass_count,
         source_duration=output_frames / frame_rate,
+    )
+
+
+def _build_wan_animate2_profile(params, steps, probe, fps_probe):
+    video_path = _media_path(params.get("video"))
+    duration = _probe_positive_duration(probe, video_path)
+    if duration is None:
+        return None
+
+    frame_rate = _positive_float(params.get("var_number3"))
+    if frame_rate is None:
+        frame_rate = _positive_float(fps_probe(video_path)) or 16.0
+
+    duration_limit = _positive_float(params.get("video_duration"))
+    if duration_limit is not None:
+        duration = min(duration, duration_limit)
+
+    total_frames = max(1, int(round(duration * frame_rate)))
+    chunk_limit = _positive_int(params.get("var_number7")) or 81
+    pass_count = _wan_animate2_segment_count(total_frames, chunk_limit)
+    return ProgressProfile(
+        name="wan_animate2_chunks",
+        pass_steps=steps,
+        pass_count=pass_count,
+        total_steps=steps * pass_count,
+        source_duration=total_frames / frame_rate,
+        known_total_sampler_classes=("SimpAIWanAnimate2Loop",),
     )
 
 
@@ -383,6 +412,18 @@ def _best_wan_animate_window(total_frames):
             best_candidate = candidate
             best_window = window
     return best_window
+
+
+def _normalize_wan_animate2_chunk_limit(value):
+    return min(81, max(5, _align_4n_plus_1(value)))
+
+
+def _wan_animate2_segment_count(total_frames, chunk_limit):
+    total_frames = max(1, int(total_frames))
+    chunk_limit = _normalize_wan_animate2_chunk_limit(chunk_limit)
+    if total_frames <= chunk_limit:
+        return 1
+    return 1 + int(math.ceil((total_frames - chunk_limit) / float(chunk_limit - 1)))
 
 
 def _best_segment_frames(total_frames, target_frames, min_frames, max_frames):

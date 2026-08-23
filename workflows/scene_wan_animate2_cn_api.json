@@ -1,0 +1,927 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "Describe the motion in the driving video.",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 832,
+      "height": 480,
+      "cfg": 1,
+      "steps": 6,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 0,
+      "var_number4": 1,
+      "var_number5": 1,
+      "var_number6": 1,
+      "var_number7": 81,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": true,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "lcm",
+      "scheduler": "simple",
+      "video_duration": 0
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seed": 0
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "3": {
+    "inputs": {
+      "video": "",
+      "force_rate": [
+        "1",
+        12
+      ],
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "duration": [
+        "1",
+        32
+      ]
+    },
+    "class_type": "SimpAIOptionalVideoPath",
+    "_meta": {
+      "title": "SimpAIOptionalVideoPath"
+    }
+  },
+  "4": {
+    "inputs": {
+      "image_name": [
+        "1",
+        4
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "Load reference image"
+    }
+  },
+  "5": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "6": {
+    "inputs": {
+      "unet_name": "placeholder.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "base_model_gguf"
+    }
+  },
+  "7": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Safetensors model type"
+    }
+  },
+  "8": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "1",
+        24
+      ],
+      "b": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Select Animate 2 model loader"
+    }
+  },
+  "9": {
+    "inputs": {
+      "boolean": [
+        "8",
+        0
+      ],
+      "on_true": [
+        "5",
+        0
+      ],
+      "on_false": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Animate 2 model"
+    }
+  },
+  "10": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "11": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model_gguf"
+    }
+  },
+  "12": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "1",
+        26
+      ],
+      "b": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Select Animate 2 text encoder"
+    }
+  },
+  "13": {
+    "inputs": {
+      "boolean": [
+        "12",
+        0
+      ],
+      "on_true": [
+        "10",
+        0
+      ],
+      "on_false": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Animate 2 text encoder"
+    }
+  },
+  "14": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_1"
+    }
+  },
+  "15": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "16": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "17": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "18": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "19": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "20": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "21": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "22": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "21",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "23": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
+    }
+  },
+  "24": {
+    "inputs": {
+      "device": "gpu",
+      "dtype": "int4",
+      "model": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "WanAnimate2Cache",
+    "_meta": {
+      "title": "Animate 2 pose cache"
+    }
+  },
+  "25": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "44",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "Animate 2 model sampling"
+    }
+  },
+  "26": {
+    "inputs": {
+      "scheduler": [
+        "1",
+        31
+      ],
+      "steps": [
+        "1",
+        9
+      ],
+      "denoise": 1,
+      "model": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "Animate 2 scheduler"
+    }
+  },
+  "27": {
+    "inputs": {
+      "sampler_name": [
+        "1",
+        30
+      ]
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Animate 2 sampler"
+    }
+  },
+  "28": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "29": {
+    "inputs": {
+      "image_name": [
+        "1",
+        4
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "Load reference image"
+    }
+  },
+  "30": {
+    "inputs": {
+      "width": [
+        "1",
+        6
+      ],
+      "height": [
+        "1",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
+      "image": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Crop reference image"
+    }
+  },
+  "31": {
+    "inputs": {
+      "width": [
+        "1",
+        6
+      ],
+      "height": [
+        "1",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "pad_edge_pixel",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
+      "image": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Pad reference image"
+    }
+  },
+  "32": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "1",
+        23
+      ],
+      "b": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Reference image crop or pad"
+    }
+  },
+  "33": {
+    "inputs": {
+      "boolean": [
+        "32",
+        0
+      ],
+      "on_true": [
+        "30",
+        0
+      ],
+      "on_false": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Reference image resize"
+    }
+  },
+  "34": {
+    "inputs": {
+      "batch_index": 0,
+      "length": 1,
+      "image": [
+        "46",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Driving video first frame"
+    }
+  },
+  "35": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "36": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "35",
+        0
+      ],
+      "image": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "Encode reference image"
+    }
+  },
+  "37": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "35",
+        0
+      ],
+      "image": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "Encode driving video"
+    }
+  },
+  "38": {
+    "inputs": {
+      "text": [
+        "1",
+        0
+      ],
+      "clip": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Animate 2 character prompt"
+    }
+  },
+  "39": {
+    "inputs": {
+      "text": [
+        "1",
+        29
+      ],
+      "clip": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Animate 2 negative prompt"
+    }
+  },
+  "40": {
+    "inputs": {
+      "text": [
+        "1",
+        1
+      ],
+      "clip": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Driving motion prompt"
+    }
+  },
+  "41": {
+    "inputs": {
+      "width": [
+        "1",
+        6
+      ],
+      "height": [
+        "1",
+        7
+      ],
+      "seed": [
+        "2",
+        0
+      ],
+      "cfg": [
+        "1",
+        8
+      ],
+      "max_frames": [
+        "3",
+        1
+      ],
+      "max_chunk_frames": [
+        "1",
+        16
+      ],
+      "pose_strength": [
+        "1",
+        13
+      ],
+      "pose_start_percent": 0,
+      "pose_end_percent": [
+        "1",
+        15
+      ],
+      "reference_image_strength": [
+        "1",
+        14
+      ],
+      "model": [
+        "25",
+        0
+      ],
+      "positive": [
+        "38",
+        0
+      ],
+      "negative": [
+        "39",
+        0
+      ],
+      "vae": [
+        "28",
+        0
+      ],
+      "sampler": [
+        "27",
+        0
+      ],
+      "sigmas": [
+        "26",
+        0
+      ],
+      "reference_image": [
+        "33",
+        0
+      ],
+      "pose_video": [
+        "46",
+        0
+      ],
+      "clip_vision_output": [
+        "36",
+        0
+      ],
+      "clip_vision_output_pose": [
+        "37",
+        0
+      ],
+      "positive_pose": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "SimpAIWanAnimate2Loop",
+    "_meta": {
+      "title": "SimpAI Wan Animate 2"
+    }
+  },
+  "42": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": [
+        "48",
+        0
+      ],
+      "crf": 19,
+      "images": [
+        "53",
+        0
+      ],
+      "audio": [
+        "3",
+        2
+      ]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {
+      "title": "Save Animate 2 video"
+    }
+  },
+  "43": {
+    "inputs": {
+      "device": "cpu",
+      "dtype": "int4",
+      "model": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "WanAnimate2Cache",
+    "_meta": {
+      "title": "Animate 2 CPU pose cache"
+    }
+  },
+  "44": {
+    "inputs": {
+      "boolean": [
+        "1",
+        20
+      ],
+      "on_true": [
+        "24",
+        0
+      ],
+      "on_false": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Animate 2 pose cache"
+    }
+  },
+  "46": {
+    "inputs": {
+      "width": [
+        "1",
+        6
+      ],
+      "height": [
+        "1",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
+      "image": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize driving video"
+    }
+  },
+  "47": {
+    "inputs": {
+      "video": "example.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 1,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "Wan"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "48": {
+    "inputs": {
+      "video_info": [
+        "47",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoSource",
+    "_meta": {
+      "title": "Wan Animate 2 Source Video Info"
+    }
+  },
+  "49": {
+    "inputs": {
+      "value": "(a>0)*min(b,max(1,round(a*c)))+(a<=0)*b",
+      "a": [
+        "1",
+        32
+      ],
+      "b": [
+        "48",
+        1
+      ],
+      "c": [
+        "48",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Wan Animate 2 Output Frame Count"
+    }
+  },
+  "50": {
+    "inputs": {
+      "value": "(a==c)*b+(a!=c)*a*b/(c+0.001)",
+      "a": [
+        "3",
+        1
+      ],
+      "b": [
+        "48",
+        0
+      ],
+      "c": [
+        "49",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Wan Animate 2 RIFE Source FPS"
+    }
+  },
+  "51": {
+    "inputs": {
+      "source_fps": [
+        "50",
+        1
+      ],
+      "target_fps": [
+        "48",
+        0
+      ],
+      "scale": 2,
+      "model_name": "flownet.pkl",
+      "batch_size": 16,
+      "use_fp16": true,
+      "images": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "RIFEInterpolation",
+    "_meta": {
+      "title": "RIFE Frame Interpolation"
+    }
+  },
+  "52": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "3",
+        1
+      ],
+      "b": [
+        "49",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Wan Animate 2 Frame Count Match"
+    }
+  },
+  "53": {
+    "inputs": {
+      "boolean": [
+        "52",
+        0
+      ],
+      "on_true": [
+        "41",
+        0
+      ],
+      "on_false": [
+        "51",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select Wan Animate 2 Final Frames"
+    }
+  }
+}

@@ -316,6 +316,7 @@ PRESET_STORE_ORDER = [
     "Bernini-VideoUpscale",
     "Wan-TTP",
     "Wan-Animate",
+    "Wan-Animate-2",
     "Wan-Swap",
     "Wan-SCAIL2",
     "Wan-SCAIL2-SAM3",

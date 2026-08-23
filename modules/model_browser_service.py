@@ -667,6 +667,15 @@ def _sync_models_info_entry(key: str, entry: Dict[str, Any]) -> None:
         pass
 
 
+def _invalidate_canvas_model_catalog_cache() -> None:
+    try:
+        from modules import canvas_workbench_models
+
+        canvas_workbench_models.invalidate_model_catalog_cache()
+    except Exception:
+        pass
+
+
 def _stamp_for_model_path(model_path: str) -> Dict[str, Any]:
     stamp: Dict[str, Any] = {}
     try:
@@ -1499,6 +1508,7 @@ def inspect_arch_family(payload: Optional[Dict[str, Any]] = None) -> Dict[str, A
     except Exception as exc:
         return {"ok": False, "error": f"architecture inspection failed: {type(exc).__name__}: {exc}", "item": item}
 
+    _invalidate_canvas_model_catalog_cache()
     refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     return {
         "ok": True,
@@ -1522,6 +1532,7 @@ def update_arch_family(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
         _persist_arch_family_for_item(item, value, "manual")
     except Exception as exc:
         return {"ok": False, "error": f"architecture classification save failed: {type(exc).__name__}: {exc}", "item": item}
+    _invalidate_canvas_model_catalog_cache()
     refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     return {
         "ok": True,

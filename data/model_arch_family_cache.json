@@ -39,6 +39,7 @@
     "diffusion_models/Wan2_1-MiniMaxRemover_1_3B_fp16.safetensors": {"arch_family": "wan"},
     "diffusion_models/Wan2_1-VACE_module_14B_fp8_e4m3fn.safetensors": {"arch_family": "wan"},
     "diffusion_models/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors": {"arch_family": "wan"},
+    "diffusion_models/wan_animate_2_distill_int8_convrot.safetensors": {"arch_family": "wan"},
     "diffusion_models/z_image_turbo_bf16.safetensors": {"arch_family": "z_image"},
     "loras/flux1-turbo.safetensors": {"arch_family": "flux"},
     "loras/Hyper-SDXL-8steps-lora.safetensors": {"arch_family": "sdxl"},

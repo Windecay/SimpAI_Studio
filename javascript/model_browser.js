@@ -172,6 +172,49 @@
         return TYPE_LABELS[text] ? text : 'base';
     }
 
+    function normalizeModelReference(value) {
+        return String(value ?? '')
+            .trim()
+            .replaceAll('\\', '/')
+            .replace(/^\.\/+/, '')
+            .replace(/\/{2,}/g, '/')
+            .toLowerCase();
+    }
+
+    function modelItemLabel(item) {
+        return String(item?.file_name || item?.display_name || item?.name || '').trim();
+    }
+
+    function isModelPlaceholder(value) {
+        const text = String(value || '').trim().toLowerCase();
+        return !text || ['none', 'default', 'default (model)'].includes(text);
+    }
+
+    function currentModelNames() {
+        const raw = Array.isArray(state?.context?.current_model_names)
+            ? state.context.current_model_names
+            : [];
+        const seen = new Set();
+        return raw
+            .map(value => String(value || '').trim())
+            .filter(value => !isModelPlaceholder(value))
+            .filter(value => {
+                const key = normalizeModelReference(value);
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+    }
+
+    function isCurrentModel(item) {
+        const current = new Set(currentModelNames().map(normalizeModelReference));
+        if (!current.size) return false;
+        return [item?.name, item?.relative_path, item?.display_name, item?.file_name]
+            .map(normalizeModelReference)
+            .filter(Boolean)
+            .some(value => current.has(value));
+    }
+
     function modelFilterAvailableForType(type) {
         return normalizeType(type) !== 'style';
     }
@@ -440,11 +483,14 @@
     function renderCard(item) {
         const checked = state.checkedIds.has(item.id);
         const selected = state.selectedId === item.id;
+        const current = isCurrentModel(item);
+        const label = modelItemLabel(item);
         const fetchable = item.remote_enabled && !item.synthetic;
-        return `<article class="sai-model-browser-card ${selected ? 'is-selected' : ''}" data-smb-item="${escapeHtml(item.id)}">
-  <div role="button" tabindex="0" class="sai-model-browser-card-main" data-smb-select="${escapeHtml(item.id)}">
+        return `<article class="sai-model-browser-card ${selected ? 'is-selected ' : ''}${current ? 'is-current' : ''}" data-smb-item="${escapeHtml(item.id)}">
+  <div role="button" tabindex="0" class="sai-model-browser-card-main" data-smb-select="${escapeHtml(item.id)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
     <span class="sai-model-browser-thumb">${renderThumb(item)}</span>
-    <span class="sai-model-browser-card-title">${escapeHtml(item.file_name || item.display_name || item.name)}</span>
+    ${current ? `<span class="sai-model-browser-current-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>${escapeHtml(tr('In use', '使用中'))}</span></span>` : ''}
+    <span class="sai-model-browser-card-title" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
     <span class="sai-model-browser-card-sub">${escapeHtml(itemSubtitle(item) || typeLabel(item.type) || item.type_label || '')}</span>
   </div>
   <div class="sai-model-browser-card-actions">
@@ -516,6 +562,8 @@
         if (!item) {
             return `<aside class="sai-model-browser-detail"><p>${escapeHtml(tr('Select a model to inspect it.', '选择一个模型查看详情。'))}</p></aside>`;
         }
+        const current = isCurrentModel(item);
+        const label = modelItemLabel(item);
         const tags = [...(item.trained_words || []), ...(item.tags || [])].slice(0, 16);
         const hashSource = hashSourceLabel(item.hash_source);
         const hashValue = String(item.sha256 || '');
@@ -523,7 +571,8 @@
         const civitaiUrl = safeHttpUrl(item.civitai_url);
         return `<aside class="sai-model-browser-detail">
   <div class="sai-model-browser-detail-preview">${renderThumb(item)}</div>
-  <h3>${escapeHtml(item.file_name || item.display_name || item.name)}</h3>
+  <h3 title="${escapeHtml(label)}">${escapeHtml(label)}</h3>
+  ${current ? `<div class="sai-model-browser-current-detail"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>${escapeHtml(tr('In use', '使用中'))}</span></div>` : ''}
   <dl>
     <dt>${escapeHtml(tr('Type', '类型'))}</dt><dd>${escapeHtml(typeLabel(item.type) || item.type_label || item.type || '')}</dd>
     <dt>${escapeHtml(tr('Folder', '文件夹'))}</dt><dd>${escapeHtml(item.folder || tr('Root', '根目录'))}</dd>
@@ -588,7 +637,15 @@
             ? tr('{count} selected', '已选 {count} 个').replace('{count}', totalCheckedCount)
             : tr('No selection', '未选择');
         const mobileBatchOpen = state.mobileBatchExpanded || batchBusy;
+        const currentNames = currentModelNames();
+        const currentUsage = currentNames.length
+            ? `<div class="sai-model-browser-current-usage">
+  <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+  <div><b>${escapeHtml(tr('Currently in use', '当前使用中'))}</b><span>${currentNames.map(name => `<span title="${escapeHtml(name)}">${escapeHtml(name)}</span>`).join('')}</span></div>
+</div>`
+            : '';
         return `<div class="sai-model-browser-batchbar ${mobileBatchOpen ? 'is-mobile-open' : ''}">
+  ${currentUsage}
   <button type="button" class="sai-model-browser-batchtoggle" data-smb-batch-toggle aria-expanded="${mobileBatchOpen ? 'true' : 'false'}">
     <span><i class="fa-solid fa-list-check"></i>${escapeHtml(tr('Batch tools', '批量操作'))}</span>
     <small>${escapeHtml(mobileBatchSummary)}</small>
@@ -1601,11 +1658,15 @@
                 select.add(new Option(value, value));
             }
             setNativeValue(select, value);
+            select.title = String(value || '');
             return true;
         }
         const inputs = Array.from(root.querySelectorAll?.('input, textarea') || []);
         if (!inputs.length) return false;
-        inputs.forEach(input => setNativeValue(input, value));
+        inputs.forEach(input => {
+            setNativeValue(input, value);
+            input.title = String(value || '');
+        });
         root.__simpaiLastModelBrowserValue = value;
         return true;
     }
@@ -1617,6 +1678,14 @@
         return Array.from(select.options || [])
             .map(option => option.value || option.textContent || '')
             .filter(Boolean);
+    }
+
+    function dropdownValue(dropdownId) {
+        const root = getGradioRoot(dropdownId);
+        const select = root?.matches?.('select') ? root : root?.querySelector?.('select');
+        if (select) return String(select.value || '').trim();
+        const input = root?.querySelector?.('input, textarea');
+        return String(input?.value || '').trim();
     }
 
     function dropdownType(dropdownId, fallback) {
@@ -1653,6 +1722,10 @@
             const choices = dropdownChoices(opts.dropdownId);
             if (choices.length) context.choices = choices;
             else delete context.choices;
+        }
+        if (!Array.isArray(context.current_model_names)) {
+            const current = dropdownValue(opts.dropdownId);
+            if (!isModelPlaceholder(current)) context.current_model_names = [current];
         }
         open({
             type,

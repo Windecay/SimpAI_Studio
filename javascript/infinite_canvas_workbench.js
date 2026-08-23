@@ -20507,6 +20507,35 @@ ${renderRunnableNodeStatusFoot(node)}
         });
     }
 
+    function modelSelectionIsPlaceholder(value) {
+        const text = String(value || '').trim().toLowerCase();
+        return !text || ['none', 'default', 'default (model)'].includes(text);
+    }
+
+    function modelSelectTitleAttr(value) {
+        const text = String(value || '').trim();
+        return text ? ` title="${escapeHtml(text)}"` : '';
+    }
+
+    function syncModelSelectTitle(select) {
+        if (!select || String(select.tagName || '').toLowerCase() !== 'select') return;
+        const value = String(select.value || select.selectedOptions?.[0]?.textContent || '').trim();
+        if (value) select.setAttribute('title', value);
+        else select.removeAttribute('title');
+    }
+
+    function currentModelBrowserNames(node, isLora, select, key) {
+        if (isLora) {
+            const loras = normalizeInitialConfigLoras(node.config?.defaults || {}, node.config?.values || {});
+            return loras
+                .filter(lora => lora.enabled && !modelSelectionIsPlaceholder(lora.model))
+                .map(lora => String(lora.model || '').trim())
+                .filter(Boolean);
+        }
+        const value = String(select?.value || node.config?.values?.[key] || '').trim();
+        return modelSelectionIsPlaceholder(value) ? [] : [value];
+    }
+
     function modelBrowserTypeForConfigKey(key) {
         if (key === 'refiner_model') return 'refiner';
         if (key === 'clip_model') return 'clip';
@@ -20522,7 +20551,7 @@ ${renderRunnableNodeStatusFoot(node)}
     function renderModelConfigField(label, key, choices, value, preview = true, extraClass = '') {
         const attrs = preview ? ` data-hover-preview-kind="model" data-model-preview-param="${escapeHtml(key)}"` : '';
         const className = `sai-node-field${extraClass ? ` ${extraClass}` : ''}`;
-        return `<label class="${className}"><span>${escapeHtml(label)}</span><div class="sai-model-config-select-row"><select data-config-param="${escapeHtml(key)}"${attrs}>${optionHtml(choices, value)}</select>${renderModelBrowserButton('data-model-browser-param', key)}</div></label>`;
+        return `<label class="${className}"><span>${escapeHtml(label)}</span><div class="sai-model-config-select-row"><select data-config-param="${escapeHtml(key)}"${attrs}${modelSelectTitleAttr(value)}>${optionHtml(choices, value)}</select>${renderModelBrowserButton('data-model-browser-param', key)}</div></label>`;
     }
 
     function renderModelsConfigNodeHtml(node) {
@@ -20547,7 +20576,7 @@ ${renderRunnableNodeStatusFoot(node)}
   <div class="sai-lora-config-list">
     ${loras.map((lora, index) => `<div class="sai-lora-config-row">
       <input data-config-lora-enabled="${index}" type="checkbox" ${lora.enabled ? 'checked' : ''} title="${escapeHtml(t('Enable LoRA {index}', '启用 LoRA {index}').replace('{index}', index + 1))}">
-      <div class="sai-model-config-select-row"><select data-config-lora-model="${index}" data-hover-preview-kind="lora" data-model-preview-lora-index="${index}">${optionHtml(choices.lora, lora.model || 'None')}</select>${renderModelBrowserButton('data-model-browser-lora-index', index, t('Browse LoRA models', '浏览 LoRA 模型'))}</div>
+      <div class="sai-model-config-select-row"><select data-config-lora-model="${index}" data-hover-preview-kind="lora" data-model-preview-lora-index="${index}"${modelSelectTitleAttr(lora.model || 'None')}>${optionHtml(choices.lora, lora.model || 'None')}</select>${renderModelBrowserButton('data-model-browser-lora-index', index, t('Browse LoRA models', '浏览 LoRA 模型'))}</div>
       <input data-config-lora-weight="${index}" type="number" min="-4" max="4" step="0.05" value="${escapeHtml(lora.weight ?? 1)}">
     </div>`).join('')}
   </div>
@@ -20585,6 +20614,7 @@ ${renderRunnableNodeStatusFoot(node)}
             : t('Browse {label}', '浏览 {label}').replace('{label}', labelByKey[key] || key || t('Model', '模型'));
         const catalog = node.config?.catalog || window.simpleaiTopbarSystemParams?.__canvas_model_catalog || {};
         const targetPreset = getConfigTargetPreset(node);
+        const currentModelNames = currentModelBrowserNames(node, isLora, select, key);
         window.SimpAIModelBrowser.open({
             type,
             title,
@@ -20594,6 +20624,7 @@ ${renderRunnableNodeStatusFoot(node)}
                 catalog,
                 choices,
                 use_model_filter: modelConfigUsesFilter(node),
+                current_model_names: currentModelNames,
                 engine: catalog.engine || undefined,
                 task_method: catalog.task_method || undefined,
                 preset_node: targetPreset ? serializePresetForRun(targetPreset) : undefined
@@ -20604,7 +20635,10 @@ ${renderRunnableNodeStatusFoot(node)}
                 if (select && !Array.from(select.options || []).some(option => option.value === value)) {
                     select.add(new Option(value, value));
                 }
-                if (select) select.value = value;
+                if (select) {
+                    select.value = value;
+                    syncModelSelectTitle(select);
+                }
                 if (isLora) {
                     updateConfigLora(node.id, index, 'model', value);
                 } else {
@@ -24272,6 +24306,7 @@ ${actions}
             const configParam = evt.target.closest('[data-config-param]');
             if (configParam) {
                 if (configParam.disabled) return;
+                syncModelSelectTitle(configParam);
                 syncTwinParamInputs(configParam, '[data-config-param]');
                 const key = configParam.getAttribute('data-config-param');
                 const liveResolutionParam = node.type === 'config' && node.config_kind === 'resolution' && ['width', 'height', 'multiplier'].includes(key);
@@ -24281,6 +24316,7 @@ ${actions}
             }
             const loraModel = evt.target.closest('[data-config-lora-model]');
             if (loraModel) {
+                syncModelSelectTitle(loraModel);
                 updateConfigLora(node.id, Number(loraModel.getAttribute('data-config-lora-model')), 'model', loraModel.value);
                 return;
             }
@@ -24527,6 +24563,7 @@ ${actions}
             const configParam = evt.target.closest('[data-config-param]');
             if (configParam) {
                 if (configParam.disabled) return;
+                syncModelSelectTitle(configParam);
                 syncTwinParamInputs(configParam, '[data-config-param]');
                 const key = configParam.getAttribute('data-config-param');
                 const liveResolutionParam = node.type === 'config' && node.config_kind === 'resolution' && ['width', 'height', 'multiplier'].includes(key);
@@ -24536,6 +24573,7 @@ ${actions}
             }
             const loraModel = evt.target.closest('[data-config-lora-model]');
             if (loraModel) {
+                syncModelSelectTitle(loraModel);
                 updateConfigLora(node.id, Number(loraModel.getAttribute('data-config-lora-model')), 'model', loraModel.value);
                 return;
             }

@@ -49,14 +49,14 @@ function updateOnBackgroundChange() {
 }
 
 function all_gallery_buttons() {
-    var allGalleryButtons = gradioApp().querySelectorAll('.image_gallery .thumbnails > .thumbnail-item.thumbnail-small');
-    var visibleGalleryButtons = [];
-    allGalleryButtons.forEach(function(elem) {
-        if (elem.parentElement.offsetParent) {
-            visibleGalleryButtons.push(elem);
-        }
-    });
-    return visibleGalleryButtons;
+    const app = typeof gradioApp === 'function' ? gradioApp() : document;
+    const roots = ['#finished_gallery', '#final_gallery']
+        .map((selector) => app.querySelector(selector))
+        .filter(Boolean);
+    const activeRoots = roots.filter(simpleaiGalleryRootIsVisible);
+    return activeRoots.flatMap((root) => Array.from(
+        root.querySelectorAll('.thumbnails > .thumbnail-item.thumbnail-small')
+    ));
 }
 
 function selected_gallery_button() {
@@ -65,6 +65,23 @@ function selected_gallery_button() {
 
 function selected_gallery_index() {
     return all_gallery_buttons().findIndex(elem => elem.classList.contains('selected'));
+}
+
+function simpleaiGalleryRootIsVisible(root) {
+    if (!root) return false;
+    try {
+        for (let node = root; node && node !== document.documentElement; node = node.parentElement) {
+            if (node.hidden || node.hasAttribute('hidden')) return false;
+            const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+            if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) {
+                return false;
+            }
+        }
+        const rect = root.getBoundingClientRect ? root.getBoundingClientRect() : null;
+        return !!(root.offsetParent || (rect && (rect.width > 0 || rect.height > 0)));
+    } catch (e) {
+        return !!root.offsetParent;
+    }
 }
 
 function simpleaiSyncGallerySelectionIntoState(state) {
@@ -80,8 +97,8 @@ function simpleaiSyncGallerySelectionIntoState(state) {
     const roots = ['#finished_gallery', '#final_gallery']
         .map((selector) => app.querySelector(selector))
         .filter(Boolean);
-    let root = roots.find((node) => node.offsetParent !== null && node.querySelector('.thumbnail-item.thumbnail-small.selected'));
-    if (!root) root = roots.find((node) => node.querySelector('.thumbnail-item.thumbnail-small.selected'));
+    const visibleRoots = roots.filter(simpleaiGalleryRootIsVisible);
+    const root = visibleRoots.find((node) => node.querySelector('.thumbnail-item.thumbnail-small.selected'));
     if (!root) return targetState;
 
     const buttons = Array.from(root.querySelectorAll('.thumbnail-item.thumbnail-small'));

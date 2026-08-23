@@ -1,5 +1,6 @@
 import os
 import gc
+import copy
 import json
 import re
 import base64
@@ -40,6 +41,9 @@ _DYNAMIC_LLAMACPP_VERSION_PREFIX = "llamacpp:LLM:"
 _DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX = "comfy:text_encoders:"
 _catalog_refresh_lock = threading.Lock()
 _catalog_refresh_thread = None
+_dynamic_fallback_cache_lock = threading.RLock()
+_dynamic_fallback_cache = {}
+_dynamic_fallback_log_keys = set()
 
 from PIL import Image, ImageOps
 from transformers import AutoTokenizer, AutoModel
@@ -580,6 +584,27 @@ class VLM:
             if not separator:
                 file_name = model_dir
                 model_dir = ""
+            model_path = find_model_in_dirs(config.paths_LLM, relative_path)
+            cache_key = None
+            if model_path and os.path.isfile(model_path):
+                try:
+                    model_stat = os.stat(model_path)
+                    directory_stat = os.stat(os.path.dirname(model_path))
+                    cache_key = (
+                        relative_path,
+                        os.path.normcase(os.path.abspath(model_path)),
+                        int(model_stat.st_mtime_ns),
+                        int(model_stat.st_size),
+                        int(directory_stat.st_mtime_ns),
+                    )
+                except OSError:
+                    cache_key = None
+            if cache_key:
+                with _dynamic_fallback_cache_lock:
+                    cached = _dynamic_fallback_cache.get(cache_key)
+                if cached is not None:
+                    return copy.deepcopy(cached)
+
             lower_name = file_name.lower()
             handler = ""
             for needles, candidate in (
@@ -599,7 +624,6 @@ class VLM:
                 if any(needle in lower_name for needle in needles):
                     handler = candidate
                     break
-            model_path = find_model_in_dirs(config.paths_LLM, relative_path)
             mmproj_file = ""
             if model_path and os.path.isfile(model_path):
                 try:
@@ -638,14 +662,7 @@ class VLM:
 
             handler = handler if mmproj_file else ""
             capabilities = ["text", "image"] if handler and mmproj_file else ["text"]
-            logger.info(
-                "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s",
-                relative_path,
-                handler or "",
-                mmproj_file or "",
-                capabilities,
-            )
-            return {
+            result = {
                 "model": model_dir,
                 "backend": "llamacpp",
                 "is_llamacpp": True,
@@ -658,6 +675,23 @@ class VLM:
                 "capabilities": capabilities,
                 "recommended": False,
             }
+            if cache_key:
+                with _dynamic_fallback_cache_lock:
+                    _dynamic_fallback_cache[cache_key] = copy.deepcopy(result)
+                    log_key = (cache_key, handler, mmproj_file, tuple(capabilities))
+                    first_resolution = log_key not in _dynamic_fallback_log_keys
+                    _dynamic_fallback_log_keys.add(log_key)
+            else:
+                first_resolution = True
+            log_method = logger.info if first_resolution else logger.debug
+            log_method(
+                "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s",
+                relative_path,
+                handler or "",
+                mmproj_file or "",
+                capabilities,
+            )
+            return result
         if version.startswith(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):
             relative_path = version[len(_DYNAMIC_COMFY_TEXT_ENCODER_VERSION_PREFIX):].replace("\\", "/").lstrip("/")
             if not relative_path:

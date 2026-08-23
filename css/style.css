@@ -18095,6 +18095,10 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   --smb-progress-fill: #a1a1aa;
   --smb-selected-border: rgba(212, 212, 216, 0.84);
   --smb-selected-ring: rgba(212, 212, 216, 0.26);
+  --smb-current-border: rgba(74, 222, 128, 0.86);
+  --smb-current-ring: rgba(74, 222, 128, 0.24);
+  --smb-current-bg: rgba(22, 101, 52, 0.88);
+  --smb-current-text: #dcfce7;
   --smb-card-size: 176px;
   --smb-card-height: 288px;
   position: fixed;
@@ -18295,6 +18299,47 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   background: #202020;
 }
 
+.sai-model-browser-current-usage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  flex: 1 1 100%;
+  gap: 6px 8px;
+  min-width: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(74, 222, 128, 0.22);
+  color: var(--smb-current-text);
+  font-size: 12px;
+}
+
+.sai-model-browser-current-usage > i {
+  padding-top: 2px;
+}
+
+.sai-model-browser-current-usage > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sai-model-browser-current-usage b {
+  color: var(--smb-current-text);
+  font-size: 12px;
+}
+
+.sai-model-browser-current-usage > div > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: #d1fae5;
+  overflow-wrap: anywhere;
+}
+
+.sai-model-browser-current-usage > div > span > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .sai-model-browser-batchcopy {
   display: grid;
   flex: 1 1 220px;
@@ -18421,6 +18466,16 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   box-shadow: 0 0 0 1px var(--smb-selected-ring);
 }
 
+.sai-model-browser-card.is-current {
+  border-color: var(--smb-current-border);
+  box-shadow: 0 0 0 1px var(--smb-current-ring);
+}
+
+.sai-model-browser-card.is-current.is-selected {
+  border-color: var(--smb-current-border);
+  box-shadow: 0 0 0 1px var(--smb-current-ring), 0 0 0 3px var(--smb-selected-ring);
+}
+
 .sai-model-browser-card.is-loading {
   min-height: 230px;
   background: linear-gradient(90deg, #262626, #303030, #262626);
@@ -18429,6 +18484,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 }
 
 .sai-model-browser-card-main {
+  position: relative;
   display: grid;
   grid-template-rows: var(--smb-card-size) 32px 14px;
   gap: 5px;
@@ -18441,6 +18497,35 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.sai-model-browser-current-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 16px);
+  min-height: 24px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--smb-current-border);
+  border-radius: 6px;
+  color: var(--smb-current-text);
+  background: var(--smb-current-bg);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.sai-model-browser-current-badge span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sai-model-browser-card-main:focus-visible {
@@ -18561,6 +18646,21 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   overflow-wrap: anywhere;
   font-size: 16px;
   line-height: 1.3;
+}
+
+.sai-model-browser-current-detail {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--smb-current-border);
+  border-radius: 6px;
+  color: var(--smb-current-text);
+  background: var(--smb-current-bg);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .sai-model-browser-detail dl {

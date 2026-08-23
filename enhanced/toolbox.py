@@ -27,6 +27,49 @@ from modules.model_loader import load_file_from_url
 from shared import sysinfo
 
 
+_REGEN_PARAMETER_ALIASES = {
+    "prompt": ("Prompt",),
+    "negative_prompt": ("Negative Prompt",),
+    "steps": ("Steps",),
+    "guidance_scale": ("Guidance Scale", "CFG scale"),
+    "sampler": ("Sampler",),
+    "scheduler": ("Scheduler", "Schedule type"),
+    "seed": ("Seed",),
+    "resolution": ("Resolution", "Size"),
+    "sharpness": ("Sharpness",),
+    "adm_guidance": ("ADM Guidance",),
+    "performance": ("Performance",),
+    "base_model": ("Base Model", "Model"),
+    "refiner_model": ("Refiner Model", "Refiner"),
+    "refiner_switch": ("Refiner Switch",),
+    "clip_model": ("CLIP / Text Encoder", "Text Encoder", "CLIP Model"),
+    "vae": ("VAE",),
+    "upscale_model": ("Upscale Model",),
+    "overwrite_switch": ("Overwrite Switch",),
+    "adaptive_cfg": ("Adaptive CFG",),
+    "refiner_swap_method": ("Refiner Swap Method",),
+    "backend_engine": ("Backend Engine",),
+}
+
+
+def _overlay_regen_parameter_aliases(restored, parsed_parameters):
+    """Let legacy display-key metadata override preset defaults during regen."""
+    if not isinstance(restored, dict) or not isinstance(parsed_parameters, dict):
+        return restored
+
+    for canonical_key, aliases in _REGEN_PARAMETER_ALIASES.items():
+        value = parsed_parameters.get(canonical_key)
+        if value in (None, ""):
+            for alias in aliases:
+                alias_value = parsed_parameters.get(alias)
+                if alias_value not in (None, ""):
+                    value = alias_value
+                    break
+        if value not in (None, ""):
+            restored[canonical_key] = value
+    return restored
+
+
 # app context
 toolbox_note_preset_title='Save a new preset for the current params and configuration.'
 toolbox_note_regenerate_title='Extract parameters to backfill for regeneration. Please note that some parameters will be modified!'
@@ -1009,6 +1052,7 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         for key, value in parsed_parameters.items()
         if key not in (regen_manifest.KEY, regen_manifest.LABEL, "SimpleAI Regen Manifest")
     })
+    _overlay_regen_parameter_aliases(restored, parsed_parameters)
 
     backend_params = manifest.get("backend_params", {})
     if not isinstance(backend_params, dict):

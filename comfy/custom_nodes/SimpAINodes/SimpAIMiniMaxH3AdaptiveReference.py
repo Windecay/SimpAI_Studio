@@ -12,6 +12,7 @@ from comfy_extras.nodes_minimax_h3 import (
     CANVAS_MULTIPLE,
     FPS,
     MiniMaxH3ReferenceToVideo,
+    _encode_ref_audio,
     _empty_av_latent,
     adapt_canvas,
     align_frame_count,
@@ -548,7 +549,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
             if soundtrack is not None:
                 if audio_vae is None:
                     raise ValueError("audio_vae is required when a reference video has audio")
-                audio_latent, ref_audio_t = MiniMaxH3ReferenceToVideo._encode_ref_audio(
+                audio_latent, ref_audio_t = _encode_ref_audio(
                     audio_vae,
                     soundtrack,
                 )
@@ -580,7 +581,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
                 continue
             if audio_vae is None:
                 raise ValueError("audio_vae is required when an audio reference is provided")
-            audio_latent, ref_audio_t = MiniMaxH3ReferenceToVideo._encode_ref_audio(
+            audio_latent, ref_audio_t = _encode_ref_audio(
                 audio_vae,
                 audio,
             )
