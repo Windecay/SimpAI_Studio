@@ -3,7 +3,11 @@
 
     const TARGETS = new Map([
         ['scene_audio', { kind: 'audio' }],
+        ['scene_audio2', { kind: 'audio' }],
+        ['scene_audio3', { kind: 'audio' }],
         ['scene_video', { kind: 'video' }],
+        ['scene_reference_video', { kind: 'video' }],
+        ['scene_reference_video2', { kind: 'video' }],
         ['sam3_input_video', { kind: 'video' }],
         ['sam3_output_mask_video', { kind: 'video', claimDrop: false, dropKinds: ['video', 'image'] }],
     ]);

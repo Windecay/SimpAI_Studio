@@ -5311,6 +5311,10 @@ function reconcileSceneVisibilityForPreset(system_params) {
         scene_input_image2: "scene_input_image2",
         scene_input_image3: "scene_input_image3",
         scene_input_image4: "scene_input_image4",
+        scene_input_image5: "scene_input_image5",
+        scene_input_image6: "scene_input_image6",
+        scene_input_image7: "scene_input_image7",
+        scene_input_image8: "scene_input_image8",
         scene_additional_prompt: "scene_additional_prompt",
         scene_additional_prompt_2: "scene_additional_prompt_2",
         scene_video_duration: "scene_video_duration",
@@ -5332,11 +5336,18 @@ function reconcileSceneVisibilityForPreset(system_params) {
         scene_image_number: "scene_image_number",
         scene_video: "scene_video",
         scene_reference_video: "scene_reference_video",
+        scene_reference_video2: "scene_reference_video2",
         scene_audio: "scene_audio",
+        scene_audio2: "scene_audio2",
+        scene_audio3: "scene_audio3",
     };
 
     const rowTargets = [
-        ["scene_input_images", ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"]],
+        ["scene_input_images_row_1", ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"]],
+        ["scene_input_images_row_2", ["scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"]],
+        ["scene_input_images", ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"]],
+        ["scene_reference_videos", ["scene_reference_video", "scene_reference_video2"]],
+        ["scene_reference_audios", ["scene_audio", "scene_audio2", "scene_audio3"]],
         ["scene_duration_row", ["scene_video_duration", "scene_var_number"]],
         ["scene_var_number7_8_row", ["scene_var_number7", "scene_var_number8"]],
         ["scene_var_number9_10_row", ["scene_var_number9", "scene_var_number10"]],
@@ -5388,7 +5399,7 @@ function reconcileSceneVisibilityForPreset(system_params) {
     const sceneInputImages = gradioApp().getElementById("scene_input_images") || document.getElementById("scene_input_images");
     if (sceneInputImages) {
         const visibleImageCount = isScene
-            ? ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"].filter((name) => !hidden.has(name)).length
+            ? ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"].filter((name) => !hidden.has(name)).length
             : 0;
         sceneInputImages.dataset.simpleaiVisibleCount = String(visibleImageCount);
         sceneInputImages.classList.toggle("scene-input-images-single", visibleImageCount === 1);
@@ -5715,7 +5726,7 @@ function syncSceneCanvasMaskMode(systemParams) {
 
 window.syncSceneCanvasMaskMode = syncSceneCanvasMaskMode;
 
-const SCENE_BATCH_TARGET_SLOT_ORDER = ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"];
+const SCENE_BATCH_TARGET_SLOT_ORDER = ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"];
 
 let sceneUploadImageLabelObserver = null;
 let sceneUploadImageLabelObserverRoot = null;
@@ -5757,14 +5768,14 @@ function normalizeSceneUploadPromptLabelIdentity(value) {
             if (reverse && reverse[raw]) raw = reverse[raw];
         }
     } catch (e) {}
-    for (let i = 1; i <= 5; i += 1) {
+    for (let i = 1; i <= 9; i += 1) {
         const english = `Upload prompt image(${i})`;
         if (raw === english) return english;
         try {
             if (raw === topbarTranslateText(english)) return english;
         } catch (e) {}
     }
-    const match = raw.match(/(?:Upload prompt image|参考图片)\(([1-5])\)/);
+    const match = raw.match(/(?:Upload prompt image|参考图片)\(([1-9])\)/);
     return match ? `Upload prompt image(${match[1]})` : "";
 }
 
@@ -5783,12 +5794,12 @@ function normalizeSceneBatchTargetSlotIdentity(value) {
     if (lowered.includes("scene_canvas") || lowered.includes("upload and canvas") || lowered.includes("canvas") || raw.includes("主体图片")) {
         return "scene_canvas_image";
     }
-    for (let i = 4; i >= 1; i -= 1) {
+    for (let i = 8; i >= 1; i -= 1) {
         if (lowered.includes(`scene_input_image${i}`)) return `scene_input_image${i}`;
     }
-    const promptMatch = raw.match(/(?:Upload prompt image|Prompt image|参考图片)\(([1-5])\)/i);
+    const promptMatch = raw.match(/(?:Upload prompt image|Prompt image|参考图片)\(([1-9])\)/i);
     if (promptMatch) {
-        const slotIndex = Math.max(1, Math.min(4, Number(promptMatch[1]) - 1));
+        const slotIndex = Math.max(1, Math.min(8, Number(promptMatch[1]) - 1));
         return `scene_input_image${slotIndex}`;
     }
     return "";
@@ -5818,8 +5829,8 @@ function setSceneUploadPromptBlockLabel(controlId, englishLabel) {
 
     const translated = topbarTranslateText(englishLabel);
     const currentText = String(textNode.textContent || "");
-    const nextText = currentText.match(/(?:Upload prompt image|参考图片)\([1-5]\)/)
-        ? currentText.replace(/(?:Upload prompt image|参考图片)\([1-5]\)/, translated)
+    const nextText = currentText.match(/(?:Upload prompt image|参考图片)\([1-9]\)/)
+        ? currentText.replace(/(?:Upload prompt image|参考图片)\([1-9]\)/, translated)
         : translated;
     if (textNode.textContent !== nextText) {
         textNode.textContent = nextText;
@@ -5884,8 +5895,8 @@ function setSceneBatchTargetChoiceLabel(label, englishLabel) {
     if (!label || !textNode) return false;
     const translated = topbarTranslateText(englishLabel);
     const currentText = String(textNode.textContent || "");
-    const nextText = currentText.match(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-5]\)/)
-        ? currentText.replace(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-5]\)/, translated)
+    const nextText = currentText.match(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-9]\)/)
+        ? currentText.replace(/(?:Upload and canvas|Upload prompt image|Prompt image|主体图片|参考图片)\([1-9]\)/, translated)
         : translated;
     if (textNode.textContent !== nextText) {
         textNode.textContent = nextText;

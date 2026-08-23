@@ -797,6 +797,7 @@ def build_model_catalog(
             "choices": [item["id"] for item in public_items],
             "labels": {item["id"]: item["display_label"] for item in public_items},
             "context_windows": {item["id"]: int(item["context_window"]) for item in public_items},
+            "include_dynamic": bool(include_dynamic),
             "generated_at": time.time(),
         }
         with _CACHE_LOCK:

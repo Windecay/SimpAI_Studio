@@ -12,7 +12,7 @@ SEGMENT_IMAGE_LIMITS = {
     "t2v": 0,
     "flf": 1,
     "fmlf": 2,
-    "ref": 5,
+    "ref": 9,
 }
 TASK_METHOD_ALIASES = {
     "t2v": "wan2.2_t2v_cn",
@@ -135,7 +135,7 @@ def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
     end = max(start, _number(raw.get("end"), start + 1, 0, 86400))
     images = _normalize_media_items(raw.get("images"), "image")
     image_seen = {_text(item.get("source_ref")) for item in images if isinstance(item, dict)}
-    for key in ["image_ref", *[f"image_ref_{index}" for index in range(1, 6)], *[f"image{index}" for index in range(1, 6)]]:
+    for key in ["image_ref", *[f"image_ref_{index}" for index in range(1, 10)], *[f"image{index}" for index in range(1, 10)]]:
         source_ref = _text(raw.get(key))
         if source_ref and source_ref not in image_seen:
             image_seen.add(source_ref)

@@ -8,12 +8,12 @@
     const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
 
     const SCHEMA = 'simpai.director_timeline.v1';
-    const MAX_IMAGE_REFS = 5;
+    const MAX_IMAGE_REFS = 9;
     const MAX_AUDIO_REFS = 5;
     const MAX_VIDEO_REFS = 5;
     const PREVIOUS_SEGMENT_VIDEO_REF = 'previous_segment';
     const PREVIOUS_SEGMENT_IMAGE_REF = 'previous_segment_last_frame';
-    const IMAGE_REF_PARAM_KEYS = ['image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5'];
+    const IMAGE_REF_PARAM_KEYS = Array.from({ length: MAX_IMAGE_REFS }, (_, index) => `image_ref_${index + 1}`);
     const VIDEO_REF_PARAM_KEYS = ['video_ref'];
     const MEDIA_SLOT_SPECS = [
         { key: 'image_1', kind: 'image', label: t('Image 1', '图片 1'), icon: 'fa-image' },
@@ -21,6 +21,10 @@
         { key: 'image_3', kind: 'image', label: t('Image 3', '图片 3'), icon: 'fa-image' },
         { key: 'image_4', kind: 'image', label: t('Image 4', '图片 4'), icon: 'fa-image' },
         { key: 'image_5', kind: 'image', label: t('Image 5', '图片 5'), icon: 'fa-image' },
+        { key: 'image_6', kind: 'image', label: t('Image 6', '图片 6'), icon: 'fa-image' },
+        { key: 'image_7', kind: 'image', label: t('Image 7', '图片 7'), icon: 'fa-image' },
+        { key: 'image_8', kind: 'image', label: t('Image 8', '图片 8'), icon: 'fa-image' },
+        { key: 'image_9', kind: 'image', label: t('Image 9', '图片 9'), icon: 'fa-image' },
         { key: 'audio_1', kind: 'audio', label: t('Audio 1', '音频 1'), icon: 'fa-wave-square' },
         { key: 'audio_2', kind: 'audio', label: t('Audio 2', '音频 2'), icon: 'fa-wave-square' },
         { key: 'audio_3', kind: 'audio', label: t('Audio 3', '音频 3'), icon: 'fa-wave-square' },
@@ -52,7 +56,7 @@
         t2v: 0,
         flf: 1,
         fmlf: 2,
-        ref: 5
+        ref: 9
     };
     const FORMATS = ['Wan', 'LTXV', 'LTXV TA2V', 'Custom'];
 
@@ -491,12 +495,12 @@
                 .replace('{image}', labels[0]);
         }
         if (type === 'ref' && refs.length >= 3) {
-            return t('3-5 images: reference set ({images})', '3-5 张图：参考图组（{images}）')
+            return t('3-9 images: reference set ({images})', '3-9 张图：参考图组（{images}）')
                 .replace('{images}', labels.join(', '));
         }
         if (type === 'fmlf') return t('2 images: first/last frame', '2 张图：首尾帧');
         if (type === 'flf') return t('1 image: image-to-video', '1 张图：图生视频');
-        if (type === 'ref') return t('3-5 images: reference set', '3-5 张图：参考图组');
+        if (type === 'ref') return t('3-9 images: reference set', '3-9 张图：参考图组');
         return t('0 images: text-to-video', '0 张图：文生视频');
     }
 

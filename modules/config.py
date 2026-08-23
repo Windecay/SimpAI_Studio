@@ -369,9 +369,14 @@ def resolve_preset_supported_tasks(preset_content, preset_name=""):
     engine_type = str(engine.get("engine_type") or "image").strip().lower()
     raw_hidden = scene.get("disvisible") if isinstance(scene.get("disvisible"), list) else []
     hidden = {str(item or "") for item in raw_hidden}
+    raw_enabled = scene.get("divisible") if isinstance(scene.get("divisible"), list) else []
+    enabled = {str(item or "") for item in raw_enabled}
+    standard_image_slots = ("scene_canvas_image", "scene_input_image1", "scene_input_image2")
+    optional_image_slots = tuple(f"scene_input_image{index}" for index in range(3, 9))
     image_slots = [
-        slot for slot in ("scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
-        if scene and slot not in hidden
+        slot
+        for slot in standard_image_slots + optional_image_slots
+        if scene and slot not in hidden and (slot in standard_image_slots or slot in enabled)
     ]
 
     if engine_type == "video":

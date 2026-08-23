@@ -1469,6 +1469,10 @@ def _scene_disvisible_with_optional_inputs(scene_frontend):
     for slot in optional_video_slots:
         if slot not in hidden and slot not in enabled:
             hidden.append(slot)
+    optional_audio_slots = getattr(meta_parser, "SCENE_OPTIONAL_AUDIO_SLOTS", ("scene_audio2", "scene_audio3"))
+    for slot in optional_audio_slots:
+        if slot not in hidden and slot not in enabled:
+            hidden.append(slot)
     if "scene_video_duration" not in hidden and "scene_video_duration" not in enabled and "video_duration" not in scene_frontend:
         hidden.append("scene_video_duration")
     return hidden
@@ -1527,14 +1531,21 @@ def _build_canvas_scene_schema(scene_frontend):
     slot_defs = [
         ("scene_video", "Scene Video"),
         ("scene_reference_video", "Reference Video"),
+        ("scene_reference_video2", "Additional Reference Video"),
         ("sam3_input_video", "SAM3 Input Video"),
         ("sam3_mask_video", "SAM3 Mask Video"),
         ("scene_audio", "Scene Audio"),
+        ("scene_audio2", "Scene Audio 2"),
+        ("scene_audio3", "Scene Audio 3"),
         ("scene_canvas_image", "Canvas Image"),
         ("scene_input_image1", "Input Image"),
         ("scene_input_image2", "Input Image"),
         ("scene_input_image3", "Input Image"),
         ("scene_input_image4", "Input Image"),
+        ("scene_input_image5", "Input Image"),
+        ("scene_input_image6", "Input Image"),
+        ("scene_input_image7", "Input Image"),
+        ("scene_input_image8", "Input Image"),
     ]
     def _slot_visible(key):
         if key in disvisible:
@@ -1680,7 +1691,13 @@ def _build_canvas_media_capability(
         "scene_input_image2",
         "scene_input_image3",
         "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
     )
+    ordered_video_slots = ("scene_video", "scene_reference_video", "scene_reference_video2")
+    ordered_audio_slots = ("scene_audio", "scene_audio2", "scene_audio3")
     upload_slots = schema.get("upload_slots") if isinstance(schema.get("upload_slots"), list) else []
     visible = {
         str(item.get("key") or ""): item.get("visible") is not False
@@ -1688,6 +1705,8 @@ def _build_canvas_media_capability(
         if isinstance(item, dict)
     }
     image_slots = [slot for slot in ordered_image_slots if visible.get(slot, False)]
+    video_slots = [slot for slot in ordered_video_slots if visible.get(slot, False)]
+    audio_slots = [slot for slot in ordered_audio_slots if visible.get(slot, False)]
     director = schema.get("director_capability") if isinstance(schema.get("director_capability"), dict) else {}
     try:
         declared_max = int(director.get("max_images")) if director.get("max_images") is not None else len(image_slots)
@@ -1699,6 +1718,23 @@ def _build_canvas_media_capability(
         declared_min = 0
     max_images = max(0, min(len(image_slots), declared_max))
     min_images = max(0, min(max_images, declared_min))
+    typed_limits = {}
+    for media_type, slots in (("video", video_slots), ("audio", audio_slots)):
+        try:
+            declared_typed_max = int(director.get(f"max_{media_type}s")) if director.get(f"max_{media_type}s") is not None else len(slots)
+        except Exception:
+            declared_typed_max = len(slots)
+        policy = str(director.get(f"{media_type}_policy") or "").strip().lower()
+        try:
+            declared_typed_min = int(director.get(f"min_{media_type}s")) if director.get(f"min_{media_type}s") is not None else (1 if policy == "required" else 0)
+        except Exception:
+            declared_typed_min = 1 if policy == "required" else 0
+        maximum = max(0, min(len(slots), declared_typed_max))
+        typed_limits[media_type] = {
+            "slots": slots[:maximum],
+            "max": maximum,
+            "min": max(0, min(maximum, declared_typed_min)),
+        }
     task_aliases = {
         "t2i": "text_to_image",
         "text2image": "text_to_image",
@@ -1788,6 +1824,12 @@ def _build_canvas_media_capability(
         "image_slots": image_slots[:max_images],
         "min_images": min_images,
         "max_images": max_images,
+        "video_slots": typed_limits["video"]["slots"],
+        "min_videos": typed_limits["video"]["min"],
+        "max_videos": typed_limits["video"]["max"],
+        "audio_slots": typed_limits["audio"]["slots"],
+        "min_audios": typed_limits["audio"]["min"],
+        "max_audios": typed_limits["audio"]["max"],
         "supported_tasks": supported_tasks,
     }
     if task_modes:
@@ -2189,6 +2231,10 @@ def _build_regen_manifest_for_generation(
     scene_input_image2,
     scene_input_image3,
     scene_input_image4,
+    scene_input_image5,
+    scene_input_image6,
+    scene_input_image7,
+    scene_input_image8,
     scene_additional_prompt,
     scene_additional_prompt_2,
     scene_var_number,
@@ -2210,7 +2256,10 @@ def _build_regen_manifest_for_generation(
     scene_image_number,
     scene_video,
     scene_reference_video,
+    scene_reference_video2,
     scene_audio,
+    scene_audio2,
+    scene_audio3,
     scene_original_video_path,
     active_video_source,
     sam3_input_video,
@@ -2270,6 +2319,7 @@ def _build_regen_manifest_for_generation(
             "scene_image_number": scene_image_number,
             "active_video_source": active_video_source,
             "scene_reference_video": scene_reference_video,
+            "scene_reference_video2": scene_reference_video2,
         })
 
     asset_refs = {}
@@ -2280,9 +2330,16 @@ def _build_regen_manifest_for_generation(
             "scene_input_image2": _asset_ref(scene_input_image2),
             "scene_input_image3": _asset_ref(scene_input_image3),
             "scene_input_image4": _asset_ref(scene_input_image4),
+            "scene_input_image5": _asset_ref(scene_input_image5),
+            "scene_input_image6": _asset_ref(scene_input_image6),
+            "scene_input_image7": _asset_ref(scene_input_image7),
+            "scene_input_image8": _asset_ref(scene_input_image8),
             "scene_video": _asset_ref(scene_video),
             "scene_reference_video": _asset_ref(scene_reference_video),
+            "scene_reference_video2": _asset_ref(scene_reference_video2),
             "scene_audio": _asset_ref(scene_audio),
+            "scene_audio2": _asset_ref(scene_audio2),
+            "scene_audio3": _asset_ref(scene_audio3),
             "scene_original_video_path": _asset_ref(scene_original_video_path),
             "sam3_input_video": _asset_ref(sam3_input_video),
             "sam3_original_video_path": _asset_ref(sam3_original_video_path),
@@ -2296,9 +2353,16 @@ def _build_regen_manifest_for_generation(
         "scene_input_image2",
         "scene_input_image3",
         "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
         "video",
         "reference_video",
+        "reference_video2",
         "audio",
+        "audio2",
+        "audio3",
         "mask_video",
         regen_manifest.KEY,
     }
@@ -2412,16 +2476,21 @@ def _apply_scene_reference_video_backend_param(backend_params, reference_video):
         backend_params.pop("reference_video", None)
 
 
-def _apply_scene_video_backend_params(backend_params, video, mask_video, reference_video):
+def _apply_scene_video_backend_params(backend_params, video, mask_video, reference_video, reference_video2=None):
     backend_params["video"] = _clean_scene_reference_video_path(video)
     backend_params["mask_video"] = _clean_scene_reference_video_path(mask_video)
     _apply_scene_reference_video_backend_param(
         backend_params,
         _clean_scene_reference_video_path(reference_video),
     )
+    reference_video2 = _clean_scene_reference_video_path(reference_video2)
+    if reference_video2:
+        backend_params["reference_video2"] = reference_video2
+    else:
+        backend_params.pop("reference_video2", None)
 
 
-def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None):
+def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None, scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None, scene_reference_video2=None, scene_reference_video2_original_path=None, scene_reference_video2_trim_payload=None, scene_audio2=None, scene_audio3=None):
     regen_scene_additional_prompt = scene_additional_prompt
     regen_scene_additional_prompt_2 = scene_additional_prompt_2
     user_did = _state_user_did(state_params)
@@ -2438,12 +2507,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
     state_clip_model = str(state_params.get("clip_model") or "").replace("\\", os.sep).replace("/", os.sep).lstrip(os.sep)
     if state_clip_model and state_clip_model not in (modules.flags.default_clip, modules.flags.default_vae, "auto"):
         backend_params["clip_model"] = state_clip_model
-    if scene_audio is not None and not (isinstance(scene_audio, str) and os.path.exists(scene_audio)):
-        try:
-            from extras.media_normalize import normalize_gradio_audio_value
-            scene_audio = normalize_gradio_audio_value(scene_audio)
-        except Exception:
-            pass
+    try:
+        from extras.media_normalize import normalize_gradio_audio_value
+
+        scene_audio = normalize_gradio_audio_value(scene_audio)
+        scene_audio2 = normalize_gradio_audio_value(scene_audio2)
+        scene_audio3 = normalize_gradio_audio_value(scene_audio3)
+    except Exception:
+        pass
 
     if user_did:
         try:
@@ -2476,6 +2547,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image3 = None
         if 'scene_input_image4' in disvisible:
             scene_input_image4 = None
+        if 'scene_input_image5' in disvisible:
+            scene_input_image5 = None
+        if 'scene_input_image6' in disvisible:
+            scene_input_image6 = None
+        if 'scene_input_image7' in disvisible:
+            scene_input_image7 = None
+        if 'scene_input_image8' in disvisible:
+            scene_input_image8 = None
         if 'scene_video' in disvisible:
             scene_video = None
             scene_original_video_path = None
@@ -2486,8 +2565,16 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video = None
             scene_reference_video_original_path = None
             scene_reference_video_trim_payload = ""
+        if 'scene_reference_video2' in disvisible:
+            scene_reference_video2 = None
+            scene_reference_video2_original_path = None
+            scene_reference_video2_trim_payload = ""
         if 'scene_audio' in disvisible:
             scene_audio = None
+        if 'scene_audio2' in disvisible:
+            scene_audio2 = None
+        if 'scene_audio3' in disvisible:
+            scene_audio3 = None
         sam3_hidden = not meta_parser.scene_sam3_inputs_enabled(scene_frontend, scene_theme)
         if sam3_hidden:
             sam3_input_video = None
@@ -2532,6 +2619,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_input_image2 = util.normalize_gradio_image_value(scene_input_image2, image_mode="RGBA")
         scene_input_image3 = util.normalize_gradio_image_value(scene_input_image3, image_mode="RGBA")
         scene_input_image4 = util.normalize_gradio_image_value(scene_input_image4, image_mode="RGBA")
+        scene_input_image5 = util.normalize_gradio_image_value(scene_input_image5, image_mode="RGBA")
+        scene_input_image6 = util.normalize_gradio_image_value(scene_input_image6, image_mode="RGBA")
+        scene_input_image7 = util.normalize_gradio_image_value(scene_input_image7, image_mode="RGBA")
+        scene_input_image8 = util.normalize_gradio_image_value(scene_input_image8, image_mode="RGBA")
         scene_canvas_mask_disabled = _resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme)
 
         scene_additional_prompt = f'{scene_additional_prompt}{scene_additional_prompt_2}'
@@ -2555,6 +2646,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image2=scene_input_image2,
             scene_input_image3=scene_input_image3,
             scene_input_image4=scene_input_image4,
+            scene_input_image5=scene_input_image5,
+            scene_input_image6=scene_input_image6,
+            scene_input_image7=scene_input_image7,
+            scene_input_image8=scene_input_image8,
         )
         resize_image_flag = not resolution_original_input
         mask_color_flag = False
@@ -2573,6 +2668,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image2=scene_input_image2,
             scene_input_image3=scene_input_image3,
             scene_input_image4=scene_input_image4,
+            scene_input_image5=scene_input_image5,
+            scene_input_image6=scene_input_image6,
+            scene_input_image7=scene_input_image7,
+            scene_input_image8=scene_input_image8,
             scene_video=scene_video,
             scene_original_video_path=scene_original_video_path,
             active_video_source=active_video_source,
@@ -2595,6 +2694,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image2 = resolution_preprocess_result.get("scene_input_image2")
             scene_input_image3 = resolution_preprocess_result.get("scene_input_image3")
             scene_input_image4 = resolution_preprocess_result.get("scene_input_image4")
+            scene_input_image5 = resolution_preprocess_result.get("scene_input_image5")
+            scene_input_image6 = resolution_preprocess_result.get("scene_input_image6")
+            scene_input_image7 = resolution_preprocess_result.get("scene_input_image7")
+            scene_input_image8 = resolution_preprocess_result.get("scene_input_image8")
             scene_video = resolution_preprocess_result.get("scene_video")
             scene_original_video_path = resolution_preprocess_result.get("scene_original_video_path")
             sam3_input_video = resolution_preprocess_result.get("sam3_input_video")
@@ -2610,6 +2713,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image3 = util.resize_image_by_max_area(scene_input_image3, max_area=1024 * 1024) if resize_image_flag else scene_input_image3
         if scene_input_image4 is not None:
             scene_input_image4 = util.resize_image_by_max_area(scene_input_image4, max_area=1024 * 1024) if resize_image_flag else scene_input_image4
+        if scene_input_image5 is not None:
+            scene_input_image5 = util.resize_image_by_max_area(scene_input_image5, max_area=1024 * 1024) if resize_image_flag else scene_input_image5
+        if scene_input_image6 is not None:
+            scene_input_image6 = util.resize_image_by_max_area(scene_input_image6, max_area=1024 * 1024) if resize_image_flag else scene_input_image6
+        if scene_input_image7 is not None:
+            scene_input_image7 = util.resize_image_by_max_area(scene_input_image7, max_area=1024 * 1024) if resize_image_flag else scene_input_image7
+        if scene_input_image8 is not None:
+            scene_input_image8 = util.resize_image_by_max_area(scene_input_image8, max_area=1024 * 1024) if resize_image_flag else scene_input_image8
 
         if scene_canvas_image is not None:
             image = scene_canvas_image['image']
@@ -2657,6 +2768,13 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video,
             scene_reference_video_original_path,
             scene_reference_video_trim_payload,
+        )
+        reference_video2_effective = _effective_scene_reference_video(
+            state_params,
+            scene_theme,
+            scene_reference_video2,
+            scene_reference_video2_original_path,
+            scene_reference_video2_trim_payload,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
         if scene_task_method_value == "wan_scail2_sam3_cn":
@@ -2805,6 +2923,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_input_image2=scene_input_image2,
             scene_input_image3=scene_input_image3,
             scene_input_image4=scene_input_image4,
+            scene_input_image5=scene_input_image5,
+            scene_input_image6=scene_input_image6,
+            scene_input_image7=scene_input_image7,
+            scene_input_image8=scene_input_image8,
             scene_theme=scene_theme,
             scene_additional_prompt=scene_additional_prompt,
             scene_var_number=None if 'var_number' not in scene_frontend else scene_var_number,
@@ -2824,14 +2946,19 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_switch_option4=scene_switch_option4,
             scene_aspect_ratio=_scene_aspect_to_resolution(scene_aspect_ratio),
             scene_image_number=scene_image_number,
-            audio=scene_audio,
             scene_steps=None,
             ))
+        for key, value in (("audio", scene_audio), ("audio2", scene_audio2), ("audio3", scene_audio3)):
+            if value:
+                backend_params[key] = value
+            else:
+                backend_params.pop(key, None)
         _apply_scene_video_backend_params(
             backend_params,
             video_effective,
             sam3_mask_video,
             reference_video_effective,
+            reference_video2_effective,
         )
     regen_data = _build_regen_manifest_for_generation(
         state_params,
@@ -2842,6 +2969,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_input_image2,
         scene_input_image3,
         scene_input_image4,
+        scene_input_image5,
+        scene_input_image6,
+        scene_input_image7,
+        scene_input_image8,
         regen_scene_additional_prompt,
         regen_scene_additional_prompt_2,
         scene_var_number,
@@ -2863,7 +2994,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_image_number,
         scene_video_effective if 'scene_frontend' in state_params else scene_video,
         reference_video_effective if 'scene_frontend' in state_params else scene_reference_video,
+        reference_video2_effective if 'scene_frontend' in state_params else scene_reference_video2,
         scene_audio,
+        scene_audio2,
+        scene_audio3,
         scene_original_video_path,
         active_video_source,
         sam3_input_video,
@@ -3111,13 +3245,20 @@ SCENE_PRESET_SWITCH_CLEAR_OUTPUTS = {
     44: "scene_video",
     45: "scene_reference_video",
     46: "scene_audio",
-    47: "sam3_input_video",
-    48: "sam3_original_video_path",
-    49: "sam3_mask_video",
-    50: "sam3_trim_payload",
+    47: "scene_input_image5",
+    48: "scene_input_image6",
+    49: "scene_input_image7",
+    50: "scene_input_image8",
+    51: "scene_reference_video2",
+    52: "scene_audio2",
+    53: "scene_audio3",
+    54: "sam3_input_video",
+    55: "sam3_original_video_path",
+    56: "sam3_mask_video",
+    57: "sam3_trim_payload",
 }
 SCENE_PRESET_SWITCH_CLEAR_VALUES = {
-    50: "",
+    57: "",
 }
 
 def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpaint_mode, comfyd_active_checkbox, bar_button = None, include_scene_outputs=True):
@@ -3571,11 +3712,11 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
         results += update_after_identity_sub(state_params)
         after_identity = time.perf_counter()
 
-    reset_ui_results_len = 15 + (len(config.default_loras) * 4)
+    reset_ui_results_len = 19 + (len(config.default_loras) * 4)
     if fast_nav:
         reset_ui_results = [skip_update() for _ in range(reset_ui_results_len)]
     else:
-        reset_ui_results = [gr.update(), gr.update(), gr.update(), gr.update(), gr.update()] + [True] + \
+        reset_ui_results = [gr.update() for _ in range(9)] + [True] + \
                    [False, [], [], "base", gr.update(visible=False), gr.update(value=""), gr.update(choices=["All folders"], value="All folders"), gr.update(value="Showing **0** / **0** items"), gr.update(value=[])] + \
                    [gr.update(visible=False) for _ in config.default_loras] + \
                    [False for _ in config.default_loras] + \

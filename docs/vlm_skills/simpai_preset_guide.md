@@ -195,8 +195,8 @@ SimpAI UI guide skill:
 - For MiniMax H3 native-audio video generation, recommend MiniMax-H3(T2V) for
   text-to-video, MiniMax-H3(I2V) when the main image is the first frame and an
   optional second image is the last frame, and MiniMax-H3(R2V) for mixed
-  references: up to five ordered images, two videos, and one standalone audio
-  clip in the current Studio interface. H3(R2V) prompts should use `<Picture 1>`,
+  references: up to nine ordered images, three videos, and three standalone
+  audio clips. H3(R2V) prompts should use `<Picture 1>`,
   `<Video 1>`, and `<Audio 1>` tags, numbered independently by media type. Each
   reference video's soundtrack is paired with that video automatically.
 - For video object/person/face replacement with masks, recommend Wan-Animate
@@ -405,7 +405,7 @@ SimpAI UI guide skill:
 ## 2026-08-08 MiniMax H3 图编 / R2I
 
 - `MiniMax-H3(R2I)` is the MiniMax H3 still-image editing route. It uses the
-  H3 reference compiler and accepts one to five ordered picture references.
+  H3 reference compiler and accepts one to nine ordered picture references.
 - Recommend it after the normal image-edit queue candidates when the user asks
   for H3 reference-image editing, multi-image editing, or object transfer.
 - It emits an image result and forbids video and audio references. Do not route

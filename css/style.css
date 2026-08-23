@@ -6000,6 +6000,7 @@ html.describe-vlm-chat-resizing * {
   border-radius: 6px;
   background: rgba(34, 197, 94, 0.08);
   color: #d9fbe4;
+  line-height: 1.2;
 }
 
 .describe-vlm-chat-roleplay-state-changes-head {
@@ -6009,15 +6010,112 @@ html.describe-vlm-chat-resizing * {
   color: #86efac;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+}
+
+.describe-vlm-chat-roleplay-state-change-groups {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.describe-vlm-chat-roleplay-state-change-columns {
+  display: grid;
+  grid-template-columns: minmax(86px, 31%) minmax(0, 1fr);
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0 2px;
+  color: rgba(226, 252, 234, 0.58);
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.describe-vlm-chat-roleplay-state-change-values-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-roleplay-state-change-values-head span:first-child {
+  flex: 0 1 48%;
+  min-width: 0;
+}
+
+.describe-vlm-chat-roleplay-state-change-values-head span:nth-child(2) {
+  flex: 0 0 auto;
+}
+
+.describe-vlm-chat-roleplay-state-change-values-head span:last-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-roleplay-state-change-group {
+  min-width: 0;
+  padding: 4px 5px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.describe-vlm-chat-roleplay-state-change-group[data-roleplay-state-group-kind="player"] {
+  border-color: rgba(96, 165, 250, 0.18);
+  background: rgba(96, 165, 250, 0.055);
+}
+
+.describe-vlm-chat-roleplay-state-change-group[data-roleplay-state-group-kind="character"][data-roleplay-state-group-index="1"] {
+  border-color: rgba(245, 158, 11, 0.16);
+  background: rgba(245, 158, 11, 0.045);
+}
+
+.describe-vlm-chat-roleplay-state-change-group[data-roleplay-state-group-kind="character"][data-roleplay-state-group-index="2"] {
+  border-color: rgba(167, 139, 250, 0.16);
+  background: rgba(167, 139, 250, 0.045);
+}
+
+.describe-vlm-chat-roleplay-state-change-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: #e2e8f0;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.describe-vlm-chat-roleplay-state-change-group-head i {
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 10px;
+}
+
+.describe-vlm-chat-roleplay-state-change-group-head b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-roleplay-state-change-group-head small {
+  color: rgba(226, 232, 240, 0.54);
+  font-size: 10px;
+}
+
+.describe-vlm-chat-roleplay-state-change-group > ul {
+  margin-top: 3px;
 }
 
 .describe-vlm-chat-roleplay-state-changes ul {
   display: grid;
-  gap: 3px;
-  margin: 5px 0 0;
+  gap: 2px;
+  margin: 3px 0 0;
   padding: 0;
   list-style: none;
   font-size: 12px;
+  line-height: 1.2;
 }
 
 .describe-vlm-chat-roleplay-state-changes li {
@@ -6026,24 +6124,33 @@ html.describe-vlm-chat-resizing * {
   gap: 6px;
   min-width: 0;
   align-items: start;
+  line-height: 1.2;
 }
 
 .describe-vlm-chat-roleplay-state-change-values {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-  align-items: start;
-  gap: 5px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
   min-width: 0;
   overflow-wrap: anywhere;
   color: rgba(226, 252, 234, 0.84);
+  line-height: 1.2;
 }
 
 .describe-vlm-chat-roleplay-state-change-before,
 .describe-vlm-chat-roleplay-state-change-after {
-  display: grid;
-  gap: 1px;
+  display: block;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-roleplay-state-change-before {
+  flex: 0 1 48%;
+  max-width: 48%;
+}
+
+.describe-vlm-chat-roleplay-state-change-after {
+  flex: 1 1 auto;
 }
 
 .describe-vlm-chat-roleplay-state-change-before small,
@@ -6068,6 +6175,7 @@ html.describe-vlm-chat-resizing * {
   min-width: 0;
   overflow: hidden;
   overflow-wrap: anywhere;
+  line-height: 1.2;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
@@ -6085,8 +6193,10 @@ html.describe-vlm-chat-resizing * {
 }
 
 .describe-vlm-chat-roleplay-state-change-arrow {
-  align-self: center;
-  padding-top: 13px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding-top: 0;
   color: #86efac;
   font-size: 11px;
   line-height: 1;
@@ -6196,16 +6306,25 @@ html.describe-vlm-chat-resizing * {
 }
 
 @media (max-width: 760px) {
-  .describe-vlm-chat-roleplay-state-change-values {
+  .describe-vlm-chat-roleplay-state-change-columns {
     grid-template-columns: minmax(0, 1fr);
-    gap: 3px;
+  }
+
+  .describe-vlm-chat-roleplay-state-change-columns > span:first-child {
+    display: none;
+  }
+
+  .describe-vlm-chat-roleplay-state-change-values {
+    gap: 6px;
+  }
+
+  .describe-vlm-chat-roleplay-state-change-before {
+    flex-basis: 46%;
+    max-width: 46%;
   }
 
   .describe-vlm-chat-roleplay-state-change-arrow {
-    justify-self: start;
-    padding-top: 0;
-    transform: rotate(90deg);
-    transform-origin: center;
+    margin-top: 2px;
   }
 }
 
@@ -10182,7 +10301,9 @@ html.describe-vlm-chat-resizing * {
     #pose_studio,
     #scene_canvas,
     #scene_video,
-    #scene_audio {
+    #scene_audio,
+    #scene_audio2,
+    #scene_audio3 {
         width: 100% !important;
     }
 
@@ -10197,8 +10318,8 @@ html.describe-vlm-chat-resizing * {
     }
 
     #scene_input_images {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: flex !important;
+        flex-direction: column !important;
         gap: 8px !important;
         align-items: start !important;
         width: 100% !important;
@@ -10213,6 +10334,28 @@ html.describe-vlm-chat-resizing * {
         max-width: 100% !important;
         box-sizing: border-box !important;
         overflow-x: hidden !important;
+    }
+
+    #scene_input_images_row_1,
+    #scene_input_images_row_2 {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        align-items: start !important;
+    }
+
+    #scene_reference_videos {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        align-items: start !important;
+    }
+
+    #scene_reference_audios {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        align-items: start !important;
     }
 
     #sam3_params_row_1,
@@ -11139,24 +11282,39 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 }
 
 #scene_input_images[data-simpleai-visible-count="1"],
-#scene_input_images.scene-input-images-single,
-#scene_input_images:has(#scene_input_image1[style*="display: none"]):has(#scene_input_image2:not([style*="display: none"])),
-#scene_input_images:has(#scene_input_image2[style*="display: none"]):has(#scene_input_image1:not([style*="display: none"])) {
-    grid-template-columns: minmax(0, 1fr) !important;
+#scene_input_images.scene-input-images-single {
+    --simpai-scene-reference-columns: 1;
 }
 
 #scene_input_images[data-simpleai-visible-count="2"],
 #scene_input_images[data-simpleai-visible-count="3"],
 #scene_input_images[data-simpleai-visible-count="4"],
 #scene_input_images.scene-input-images-pair {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    --simpai-scene-reference-columns: 2;
 }
 
-#scene_input_images.sai-gaussian-studio-image-flow {
+#scene_input_images[data-simpleai-visible-count="3"] {
+    --simpai-scene-reference-columns: 3;
+}
+
+#scene_input_images[data-simpleai-visible-count="4"],
+#scene_input_images[data-simpleai-visible-count="5"],
+#scene_input_images[data-simpleai-visible-count="6"],
+#scene_input_images[data-simpleai-visible-count="7"],
+#scene_input_images[data-simpleai-visible-count="8"] {
+    --simpai-scene-reference-columns: 4;
+}
+
+#scene_input_images_row_1,
+#scene_input_images_row_2 {
+    grid-template-columns: repeat(var(--simpai-scene-reference-columns, 4), minmax(0, 1fr)) !important;
+}
+
+#scene_input_images.sai-gaussian-studio-image-flow #scene_input_images_row_1 {
     grid-template-columns: minmax(0, 1fr) !important;
 }
 
-#scene_input_images.sai-liveportrait-expression-image-flow {
+#scene_input_images.sai-liveportrait-expression-image-flow #scene_input_images_row_1 {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
@@ -11243,10 +11401,18 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     background: color-mix(in srgb, var(--block-background-fill, #24262b) 90%, var(--color-accent, #f97316)) !important;
 }
 
+/* Keep compact scene references separate from the standard upload surfaces. */
 #scene_input_image1,
 #scene_input_image2,
 #scene_input_image3,
 #scene_input_image4,
+#scene_input_image5,
+#scene_input_image6,
+#scene_input_image7,
+#scene_input_image8 {
+    --simpai-upload-media-height: 180px;
+}
+
 #uov_input_image,
 #enhance_input_image,
 #describe_input_image,
@@ -11298,7 +11464,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
-:is(#scene_audio, #scene_video, #sam3_input_video, #sam3_output_mask_video).simpai-media-replacement-drag-over {
+:is(#scene_audio, #scene_audio2, #scene_audio3, #scene_video, #scene_reference_video, #scene_reference_video2, #sam3_input_video, #sam3_output_mask_video).simpai-media-replacement-drag-over {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
@@ -11317,6 +11483,10 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     #scene_input_image2,
     #scene_input_image3,
     #scene_input_image4,
+    #scene_input_image5,
+    #scene_input_image6,
+    #scene_input_image7,
+    #scene_input_image8,
     #uov_input_image,
     #enhance_input_image,
     #describe_input_image,
@@ -11339,6 +11509,10 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     #scene_input_image2,
     #scene_input_image3,
     #scene_input_image4,
+    #scene_input_image5,
+    #scene_input_image6,
+    #scene_input_image7,
+    #scene_input_image8,
     #uov_input_image,
     #enhance_input_image,
     #describe_input_image,
@@ -16760,15 +16934,13 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   font-size: 13px !important;
 }
 
-#identity_dialog_content .tabitem > .row:nth-of-type(2):not([style*="display: none"]),
-#identity_dialog_content #identity_input_row {
+#identity_dialog_content #identity_input_row[data-identity-stage-visible="true"] {
   display: grid !important;
   grid-template-columns: minmax(230px, 280px) minmax(0, 1fr) !important;
   align-items: start !important;
   gap: 16px !important;
 }
 
-#identity_dialog_content .tabitem > .row:nth-of-type(2) > .column,
 #identity_dialog_content #identity_input_row > .column {
   min-width: 0 !important;
   padding: 14px !important;
@@ -16800,7 +16972,9 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   overflow: visible !important;
 }
 
-#identity_dialog_content .tabitem > .row:nth-of-type(n+3):not([style*="display: none"]) {
+#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(132px, auto) !important;
   align-items: center !important;
@@ -16808,13 +16982,27 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   padding: 0 !important;
 }
 
-#identity_dialog_content .tabitem > .row:nth-of-type(n+3) input {
+#identity_dialog_content .identity-action-row input {
   min-height: 42px !important;
 }
 
-#identity_dialog_content .tabitem > .row:nth-of-type(n+3) button {
+#identity_dialog_content .identity-action-row button {
   min-width: 132px !important;
   white-space: normal !important;
+}
+
+#identity_dialog_content [data-identity-stage-visible="false"],
+#identity_dialog_content .simpleai-identity-stage-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
 }
 
 #identity_vcode_row:has(#identity_vcode_input.hidden):has(#identity_verify_button.hidden),
@@ -16980,7 +17168,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
     max-height: calc(100vh - 80px) !important;
   }
 
-  #identity_dialog_content .tabitem > .row:nth-of-type(2) {
+  #identity_dialog_content #identity_input_row[data-identity-stage-visible="true"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -16988,7 +17176,9 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
     grid-template-columns: 1fr !important;
   }
 
-  #identity_dialog_content .tabitem > .row:nth-of-type(n+3):not([style*="display: none"]) {
+  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
     grid-template-columns: 1fr !important;
   }
 }
@@ -17262,20 +17452,59 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 #identity_dialog_content #identity_multi_user_activation_guard {
   gap: 12px !important;
   width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   margin: 0 !important;
   padding: 14px 0 !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
   border-top: 1px solid color-mix(in srgb, #f59e0b 58%, var(--border-color-primary)) !important;
   border-bottom: 1px solid color-mix(in srgb, #f59e0b 42%, var(--border-color-primary)) !important;
   background: color-mix(in srgb, var(--background-fill-secondary) 86%, #f59e0b 14%) !important;
 }
 
-#identity_dialog_content .identity-activation-note,
+#identity_dialog_content #identity_multi_user_activation_guard > *,
+#identity_dialog_content #identity_multi_user_activation_guard .wrap,
+#identity_dialog_content #identity_multi_user_activation_guard fieldset,
+#identity_dialog_content #identity_multi_user_activation_guard label {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard label {
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+#identity_dialog_content #identity_activation_mode .wrap,
+#identity_dialog_content #identity_activation_mode fieldset,
+#identity_dialog_content #identity_activation_mode [role="radiogroup"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  flex-wrap: wrap !important;
+  box-sizing: border-box !important;
+}
+
+#identity_dialog_content .identity-activation-note {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding: 0 14px !important;
+}
+
 #identity_dialog_content .identity-activation-note .wrap,
 #identity_dialog_content .identity-activation-note [data-testid="markdown"],
 #identity_dialog_content .identity-activation-note .prose {
   min-height: 0 !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   margin: 0 !important;
-  padding: 0 14px !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
 }
 
 #identity_dialog_content .identity-activation-note h3 {
@@ -17289,7 +17518,12 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 #identity_dialog_content #identity_activation_scope_confirm,
 #identity_dialog_content #identity_activation_permission_confirm,
 #identity_dialog_content #identity_activation_phrase_confirm {
+  width: calc(100% - 28px) !important;
+  max-width: calc(100% - 28px) !important;
+  min-width: 0 !important;
   margin: 0 14px !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
 }
 
 #identity_dialog_content #identity_activation_apply_button {
@@ -17321,7 +17555,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   overflow-wrap: anywhere;
 }
 
-#identity_dialog_content #identity_input_row.identity-bind-grid {
+#identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"] {
   display: grid !important;
   grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr) !important;
   align-items: stretch !important;
@@ -17407,10 +17641,10 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   width: 100% !important;
 }
 
-#identity_dialog_content .identity-action-row,
-#identity_dialog_content #identity_id_display_row,
-#identity_dialog_content #identity_vcode_row,
-#identity_dialog_content #identity_phrase_row {
+#identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: center !important;
@@ -17476,9 +17710,9 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   box-sizing: border-box !important;
 }
 
-#identity_dialog_content #identity_id_display_row,
-#identity_dialog_content #identity_vcode_row,
-#identity_dialog_content #identity_phrase_row {
+#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(112px, max-content) !important;
   column-gap: 10px !important;
@@ -17535,11 +17769,11 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   }
 
   #identity_dialog_content .identity-summary-row,
-  #identity_dialog_content #identity_input_row.identity-bind-grid,
-  #identity_dialog_content .identity-action-row,
-  #identity_dialog_content #identity_id_display_row,
-  #identity_dialog_content #identity_vcode_row,
-  #identity_dialog_content #identity_phrase_row {
+  #identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"],
+  #identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -20225,7 +20459,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 #sam3_input_video .edit-buttons,
 #sam3_output_mask_video .edit-buttons,
 #scene_video .edit-buttons,
-#scene_reference_video .edit-buttons {
+#scene_reference_video .edit-buttons,
+#scene_reference_video2 .edit-buttons {
     display: flex !important;
     align-items: center !important;
     justify-content: flex-end !important;
@@ -20235,14 +20470,16 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 #sam3_input_video .timeline-wrapper,
 #sam3_output_mask_video .timeline-wrapper,
 #scene_video .timeline-wrapper,
-#scene_reference_video .timeline-wrapper {
+#scene_reference_video .timeline-wrapper,
+#scene_reference_video2 .timeline-wrapper {
     margin-bottom: 28px !important;
 }
 
 #sam3_input_video [data-testid="waveform-controls"],
 #sam3_output_mask_video [data-testid="waveform-controls"],
 #scene_video [data-testid="waveform-controls"],
-#scene_reference_video [data-testid="waveform-controls"] {
+#scene_reference_video [data-testid="waveform-controls"],
+#scene_reference_video2 [data-testid="waveform-controls"] {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -20257,7 +20494,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 #sam3_input_video [data-testid="waveform-controls"] time,
 #sam3_output_mask_video [data-testid="waveform-controls"] time,
 #scene_video [data-testid="waveform-controls"] time,
-#scene_reference_video [data-testid="waveform-controls"] time {
+#scene_reference_video [data-testid="waveform-controls"] time,
+#scene_reference_video2 [data-testid="waveform-controls"] time {
     min-width: 0 !important;
     padding-left: 0 !important;
     font-size: 20px !important;
@@ -20267,7 +20505,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 #sam3_input_video .edit-buttons button,
 #sam3_output_mask_video .edit-buttons button,
 #scene_video .edit-buttons button,
-#scene_reference_video .edit-buttons button {
+#scene_reference_video .edit-buttons button,
+#scene_reference_video2 .edit-buttons button {
     min-width: 64px !important;
     max-width: 86px !important;
     height: 30px !important;
@@ -20456,11 +20695,11 @@ button[aria-label="Edit"][title="Edit"] {
   }
 
   #identity_dialog_content .identity-summary-row,
-  #identity_dialog_content #identity_input_row.identity-bind-grid,
-  #identity_dialog_content .identity-action-row,
-  #identity_dialog_content #identity_id_display_row,
-  #identity_dialog_content #identity_vcode_row,
-  #identity_dialog_content #identity_phrase_row {
+  #identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"],
+  #identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
+  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     gap: 10px !important;

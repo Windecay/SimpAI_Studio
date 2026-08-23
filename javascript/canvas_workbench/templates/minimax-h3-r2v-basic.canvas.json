@@ -439,12 +439,14 @@
             "zh": "基础"
           }
         },
-        "theme_title": "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]",
+        "theme_title": "MiniMax H3 Reference-to-Video [Up to 9 images, 3 videos, and 3 standalone audio references]",
         "director_capability": {
           "image_policy": "optional",
           "audio_policy": "optional",
           "video_policy": "optional",
-          "max_images": 5,
+          "max_images": 9,
+          "max_videos": 3,
+          "max_audios": 3,
           "min_images": 0,
           "image_modes": [
             "none",
@@ -462,8 +464,6 @@
           "scene_additional_prompt_2",
           "scene_var_number",
           "scene_var_number2",
-          "scene_var_number5",
-          "scene_var_number6",
           "scene_var_number7",
           "scene_var_number8",
           "scene_var_number9",
@@ -481,7 +481,14 @@
         "divisible": [
           "scene_input_image3",
           "scene_input_image4",
-          "scene_reference_video"
+          "scene_input_image5",
+          "scene_input_image6",
+          "scene_input_image7",
+          "scene_input_image8",
+          "scene_reference_video",
+          "scene_reference_video2",
+          "scene_audio2",
+          "scene_audio3"
         ],
         "image_preprocessor_method": [],
         "disable_canvas_mask": true,
@@ -495,6 +502,12 @@
           {
             "key": "scene_reference_video",
             "label": "Reference Video 2",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_reference_video2",
+            "label": "Reference Video 3",
             "visible": true,
             "interactive": true
           },
@@ -513,6 +526,18 @@
           {
             "key": "scene_audio",
             "label": "Reference Audio 1",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_audio2",
+            "label": "Reference Audio 2",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_audio3",
+            "label": "Reference Audio 3",
             "visible": true,
             "interactive": true
           },
@@ -542,6 +567,30 @@
           },
           {
             "key": "scene_input_image4",
+            "label": "Input Image",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image5",
+            "label": "Input Image",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image6",
+            "label": "Input Image",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image7",
+            "label": "Input Image",
+            "visible": true,
+            "interactive": true
+          },
+          {
+            "key": "scene_input_image8",
             "label": "Input Image",
             "visible": true,
             "interactive": true
@@ -961,8 +1010,8 @@
       "zh": "MiniMax-H3 多参考视频"
     },
     "description": {
-      "en": "A runnable MiniMax H3 reference-to-video template supporting up to five images, two videos with paired soundtracks, and one standalone audio reference.",
-      "zh": "可运行的 MiniMax H3 多参考视频模板，支持最多五张图片、两个带配对音轨的视频和一个独立音频参考。"
+        "en": "A runnable MiniMax H3 reference-to-video template supporting up to nine images, three videos with paired soundtracks, and three standalone audio references.",
+        "zh": "可运行的 MiniMax H3 多参考视频模板，支持最多九张图片、三个带配对音轨的视频和三个独立音频参考。"
     },
     "category": "video",
     "tags": [

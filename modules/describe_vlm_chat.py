@@ -58,10 +58,19 @@ VIDEO_GENERATION_TASKS = {
     "text_to_video",
     "image_to_video",
     "multi_image_to_video",
+    "audio_to_video",
+    "image_audio_to_video",
+    "video_audio_to_video",
 }
 GENERATION_TASKS = IMAGE_GENERATION_TASKS | VIDEO_GENERATION_TASKS
 TEXT_GENERATION_TASKS = {"text_to_image", "text_to_video"}
-IMAGE_INPUT_GENERATION_TASKS = GENERATION_TASKS - TEXT_GENERATION_TASKS
+IMAGE_INPUT_GENERATION_TASKS = (IMAGE_GENERATION_TASKS - {"text_to_image"}) | {
+    "image_to_video",
+    "multi_image_to_video",
+    "image_audio_to_video",
+}
+AUDIO_INPUT_GENERATION_TASKS = {"audio_to_video", "image_audio_to_video", "video_audio_to_video"}
+VIDEO_INPUT_GENERATION_TASKS = {"video_audio_to_video"}
 MULTI_IMAGE_GENERATION_TASKS = {
     "multi_image_edit",
     "image_style_transfer",
@@ -112,6 +121,12 @@ GENERATION_TASK_ALIASES = {
     "ref_to_image": "image_edit",
     "r2i": "image_edit",
     "multi_i2v": "multi_image_to_video",
+    "a2v": "audio_to_video",
+    "audio2video": "audio_to_video",
+    "image_audio2video": "image_audio_to_video",
+    "ia2v": "image_audio_to_video",
+    "video_audio2video": "video_audio_to_video",
+    "va2v": "video_audio_to_video",
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit"),
@@ -120,6 +135,8 @@ PRESET_FAMILY_ALIASES = {
     "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
 }
 CREATIVE_ASPECT_RATIOS = {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "7:4", "4:7"}
+CREATIVE_REFERENCE_MEDIA_LIMITS = {"image": 9, "video": 3, "audio": 3}
+CREATIVE_MAX_ATTACHMENTS = sum(CREATIVE_REFERENCE_MEDIA_LIMITS.values())
 _CANCEL_TTL_SECONDS = 1800
 _CANCELLED_REQUESTS = {}
 _CANCELLED_REQUESTS_LOCK = threading.Lock()
@@ -153,9 +170,10 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
     "The generate_image action is a task request, not an execution plan and not proof that generation has started. The application selects and validates the Preset, theme, task_method, models, input slots, and interaction requirements. "
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
-    "For video work, use text_to_video with no image refs, image_to_video with one image ref, and multi_image_to_video with two or more image refs in the user's intended order. "
-    "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) uses one to five ordered reference images. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
-    "MiniMax-H3(R2I) is the still-image text/reference route: use text_to_image when no image ref is supplied, or image_edit/multi_image_edit with one to five ordered image refs; preserve referenced identity and never add video or audio refs. "
+    "For video work, use text_to_video with no refs, image_to_video with one image ref, multi_image_to_video with two or more image refs, audio_to_video with audio refs only, image_audio_to_video with image and audio refs, and video_audio_to_video whenever a reference video is included. "
+    "MiniMax-H3(T2V) is text-to-video, MiniMax-H3(I2V) uses the first image as the first frame and an optional second image as the last frame, and MiniMax-H3(R2V) accepts up to nine ordered images, three ordered videos, and three ordered standalone audio clips. Preserve the user's language and describe coherent motion, camera movement, timing, and matching generated audio. "
+    "For MiniMax-H3(R2V), preserve the attached source order in media_refs. Refer to inputs in the prompt with independently numbered tags such as <Picture 1>, <Video 1>, and <Audio 1>; use only tags listed in the attached media manifest. A reference video's soundtrack remains paired with that video. "
+    "MiniMax-H3(R2I) is the still-image text/reference route: use text_to_image when no image ref is supplied, or image_edit/multi_image_edit with one to nine ordered image refs; preserve referenced identity and never add video or audio refs. "
     "For image_face_swap, when two attached inputs are available, include exactly two media refs in this order: the target/base image first, then the source face-identity image. Never invent missing refs; the application will request them. The application prefers the automatic QwenFaceSwap route when its models are ready; it does not require a painted mask. "
     "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo and image-input editing to Krea2-ImageEdit; do not promise the wrong family member. "
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
@@ -751,7 +769,12 @@ def _media_source_from_payload(media, conversation_id, index=0):
     if not data_url:
         return None
     mime = str(media.get("mime") or _data_url_mime(data_url)).strip().lower()
-    media_type = "video" if mime.startswith("video/") else "image" if mime.startswith("image/") else ""
+    media_type = (
+        "video" if mime.startswith("video/")
+        else "audio" if mime.startswith("audio/")
+        else "image" if mime.startswith("image/")
+        else ""
+    )
     if not media_type:
         return None
     asset_id = str(media.get("id") or f"describe_vlm_chat_{int(time.time() * 1000)}")
@@ -775,60 +798,163 @@ def _media_source_from_payload(media, conversation_id, index=0):
     }
 
 
-def _media_sources_from_payload(payload, conversation_id, limit=5):
+def _limited_reference_media(items, limit=CREATIVE_MAX_ATTACHMENTS):
+    limited = []
+    seen = set()
+    counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    total_limit = max(1, min(CREATIVE_MAX_ATTACHMENTS, int(limit or CREATIVE_MAX_ATTACHMENTS)))
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict) or item.get("placeholder"):
+            continue
+        data_url = str(item.get("data_url") or "").strip()
+        mime = str(item.get("mime") or _data_url_mime(data_url)).strip().lower()
+        media_type = (
+            "video" if mime.startswith("video/")
+            else "audio" if mime.startswith("audio/")
+            else "image" if mime.startswith("image/")
+            else ""
+        )
+        if not data_url or not media_type:
+            continue
+        key = str(item.get("id") or data_url[:160])
+        if key in seen or counts[media_type] >= CREATIVE_REFERENCE_MEDIA_LIMITS[media_type]:
+            continue
+        seen.add(key)
+        counts[media_type] += 1
+        limited.append(item)
+        if len(limited) >= total_limit:
+            break
+    return limited
+
+
+def _media_sources_from_payload(payload, conversation_id, limit=CREATIVE_MAX_ATTACHMENTS):
     raw_images = []
     if isinstance(payload.get("images"), list):
         raw_images.extend(payload.get("images") or [])
     elif isinstance(payload.get("image"), dict):
         raw_images.append(payload.get("image"))
 
-    seen = set()
     sources = []
-    for image in raw_images:
-        if not isinstance(image, dict) or image.get("placeholder"):
-            continue
-        data_url = str(image.get("data_url") or "").strip()
-        if not data_url:
-            continue
-        key = str(image.get("id") or data_url[:160])
-        if key in seen:
-            continue
-        seen.add(key)
-        source = _media_source_from_payload(image, conversation_id, len(sources))
+    for media in _limited_reference_media(raw_images, limit):
+        source = _media_source_from_payload(media, conversation_id, len(sources))
         if source:
             sources.append(source)
-        if len(sources) >= max(1, int(limit or 5)):
-            break
     return sources
 
 
-def _media_manifest_from_payload(payload, limit=5):
+def _media_manifest_from_payload(payload, limit=CREATIVE_MAX_ATTACHMENTS):
     raw_media = payload.get("images") if isinstance(payload.get("images"), list) else []
     if not raw_media and isinstance(payload.get("image"), dict):
         raw_media = [payload.get("image")]
     manifest = []
-    seen = set()
-    for item in raw_media:
-        if not isinstance(item, dict) or item.get("placeholder"):
-            continue
+    type_counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    for item in _limited_reference_media(raw_media, limit):
         data_url = str(item.get("data_url") or "").strip()
         mime = str(item.get("mime") or _data_url_mime(data_url)).strip().lower()
-        media_type = "video" if mime.startswith("video/") else "image" if mime.startswith("image/") else ""
+        media_type = (
+            "video" if mime.startswith("video/")
+            else "audio" if mime.startswith("audio/")
+            else "image" if mime.startswith("image/")
+            else ""
+        )
         ref = _clean_text(item.get("id"))[:160]
-        if not ref or not media_type or ref in seen:
+        if not ref or not media_type:
             continue
-        seen.add(ref)
+        type_counts[media_type] += 1
+        type_index = type_counts[media_type]
+        tag_prefix = {"image": "Picture", "video": "Video", "audio": "Audio"}[media_type]
         manifest.append(
             {
                 "ref": ref,
                 "index": len(manifest) + 1,
                 "type": media_type,
+                "type_index": type_index,
+                "tag": f"<{tag_prefix} {type_index}>",
                 "name": _clean_text(item.get("name"))[:160] or f"{media_type} {len(manifest) + 1}",
             }
         )
-        if len(manifest) >= max(1, min(5, int(limit or 5))):
-            break
     return manifest
+
+
+def _normalized_media_counts(value=None):
+    counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    if isinstance(value, dict):
+        for media_type in counts:
+            try:
+                counts[media_type] = max(0, int(value.get(media_type) or value.get(f"{media_type}s") or 0))
+            except Exception:
+                counts[media_type] = 0
+    else:
+        try:
+            counts["image"] = max(0, int(value or 0))
+        except Exception:
+            pass
+    return counts
+
+
+def _generation_task_media_requirements(task, capability=None):
+    normalized_task = str(task or "").strip().lower().replace("-", "_")
+    source = capability if isinstance(capability, dict) else {}
+    requirements = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    declared_minimums = {}
+    for media_type in requirements:
+        try:
+            declared_minimums[media_type] = max(0, int(source.get(f"min_{media_type}s") or 0))
+        except Exception:
+            declared_minimums[media_type] = 0
+    if normalized_task in IMAGE_INPUT_GENERATION_TASKS:
+        requirements["image"] = max(
+            2 if normalized_task in MULTI_IMAGE_GENERATION_TASKS else 1,
+            declared_minimums["image"],
+        )
+    if normalized_task in VIDEO_INPUT_GENERATION_TASKS:
+        requirements["video"] = max(1, declared_minimums["video"])
+    if normalized_task in AUDIO_INPUT_GENERATION_TASKS:
+        requirements["audio"] = max(
+            1 if normalized_task in {"audio_to_video", "image_audio_to_video"} else 0,
+            declared_minimums["audio"],
+        )
+    return requirements
+
+
+def _generation_task_allowed_media_types(task):
+    normalized_task = str(task or "").strip().lower().replace("-", "_")
+    if normalized_task in TEXT_GENERATION_TASKS:
+        return set()
+    if normalized_task in IMAGE_GENERATION_TASKS or normalized_task in {"image_to_video", "multi_image_to_video"}:
+        return {"image"}
+    if normalized_task == "audio_to_video":
+        return {"audio"}
+    if normalized_task == "image_audio_to_video":
+        return {"image", "audio"}
+    if normalized_task == "video_audio_to_video":
+        return {"image", "video", "audio"}
+    return set(CREATIVE_REFERENCE_MEDIA_LIMITS)
+
+
+def _capability_media_counts_can_complete(capability, task, media_counts):
+    source = capability if isinstance(capability, dict) else {}
+    counts = _normalized_media_counts(media_counts)
+    allowed_types = _generation_task_allowed_media_types(task)
+    requirements = _generation_task_media_requirements(task, source)
+    for media_type, hard_limit in CREATIVE_REFERENCE_MEDIA_LIMITS.items():
+        try:
+            maximum = max(0, min(hard_limit, int(source.get(f"max_{media_type}s") or 0)))
+        except Exception:
+            maximum = 0
+        if media_type not in allowed_types and counts[media_type] > 0:
+            return False
+        if counts[media_type] > maximum or requirements[media_type] > maximum:
+            return False
+    return True
+
+
+def _capability_accepts_media_counts(capability, task, media_counts):
+    if not _capability_media_counts_can_complete(capability, task, media_counts):
+        return False
+    counts = _normalized_media_counts(media_counts)
+    requirements = _generation_task_media_requirements(task, capability)
+    return all(counts[media_type] >= requirements[media_type] for media_type in requirements)
 
 
 def _normalize_preset_capabilities(value, limit=100):
@@ -842,14 +968,23 @@ def _normalize_preset_capabilities(value, limit=100):
         if not name or key in seen:
             continue
         seen.add(key)
-        try:
-            max_images = max(0, min(5, int(item.get("max_images") or 0)))
-        except Exception:
-            max_images = 0
-        try:
-            min_images = max(0, min(max_images, int(item.get("min_images") or 0)))
-        except Exception:
-            min_images = 0
+        maxima = {}
+        minima = {}
+        for media_type, hard_limit in CREATIVE_REFERENCE_MEDIA_LIMITS.items():
+            try:
+                maxima[media_type] = max(0, min(hard_limit, int(item.get(f"max_{media_type}s") or 0)))
+            except Exception:
+                maxima[media_type] = 0
+            try:
+                minima[media_type] = max(0, min(maxima[media_type], int(item.get(f"min_{media_type}s") or 0)))
+            except Exception:
+                minima[media_type] = 0
+        max_images = maxima["image"]
+        min_images = minima["image"]
+        max_videos = maxima["video"]
+        min_videos = minima["video"]
+        max_audios = maxima["audio"]
+        min_audios = minima["audio"]
         output_type = "video" if str(item.get("output_type") or "").strip().lower() == "video" else "image"
         supported_tasks = []
         for raw_task in item.get("supported_tasks") if isinstance(item.get("supported_tasks"), list) else []:
@@ -881,11 +1016,17 @@ def _normalize_preset_capabilities(value, limit=100):
                     supported_tasks.append("multi_image_edit")
             else:
                 supported_tasks = ["text_to_image"]
+        media_capacity = {
+            "max_images": max_images,
+            "min_images": min_images,
+            "max_videos": max_videos,
+            "min_videos": min_videos,
+            "max_audios": max_audios,
+            "min_audios": min_audios,
+        }
         supported_tasks = [
             task for task in supported_tasks
-            if task in TEXT_GENERATION_TASKS
-            or (task in IMAGE_INPUT_GENERATION_TASKS and max_images >= 1)
-            and (task not in MULTI_IMAGE_GENERATION_TASKS or max_images >= 2)
+            if _capability_media_counts_can_complete(media_capacity, task, {})
         ]
         interaction_requirements = []
         for raw_requirement in item.get("interaction_requirements") if isinstance(item.get("interaction_requirements"), list) else []:
@@ -908,6 +1049,10 @@ def _normalize_preset_capabilities(value, limit=100):
             "scene_input_image2",
             "scene_input_image3",
             "scene_input_image4",
+            "scene_input_image5",
+            "scene_input_image6",
+            "scene_input_image7",
+            "scene_input_image8",
         )
         image_slots = []
         for raw_slot in raw_slots:
@@ -915,6 +1060,27 @@ def _normalize_preset_capabilities(value, limit=100):
             if slot in allowed_slots and slot not in image_slots:
                 image_slots.append(slot)
         image_slots = image_slots[:max_images]
+        typed_slots = {}
+        for media_type, allowed_slots_for_type, raw_slots_for_type, maximum in (
+            (
+                "video",
+                ("scene_video", "scene_reference_video", "scene_reference_video2"),
+                item.get("video_slots"),
+                max_videos,
+            ),
+            (
+                "audio",
+                ("scene_audio", "scene_audio2", "scene_audio3"),
+                item.get("audio_slots"),
+                max_audios,
+            ),
+        ):
+            slots = []
+            for raw_slot in raw_slots_for_type if isinstance(raw_slots_for_type, list) else []:
+                slot = str(raw_slot or "").strip()
+                if slot in allowed_slots_for_type and slot not in slots:
+                    slots.append(slot)
+            typed_slots[media_type] = slots[:maximum]
         raw_task_modes = item.get("task_modes") if isinstance(item.get("task_modes"), dict) else {}
         task_modes = {}
         for raw_task, raw_mode in raw_task_modes.items():
@@ -949,6 +1115,10 @@ def _normalize_preset_capabilities(value, limit=100):
             "name": name,
             "min_images": min_images,
             "max_images": max_images,
+            "min_videos": min_videos,
+            "max_videos": max_videos,
+            "min_audios": min_audios,
+            "max_audios": max_audios,
             "output_type": output_type,
             "supported_tasks": supported_tasks,
             "interaction_requirements": interaction_requirements,
@@ -959,6 +1129,8 @@ def _normalize_preset_capabilities(value, limit=100):
             "prompt_format": _clean_text(item.get("prompt_format"))[:120],
             "purpose": _clean_text(item.get("purpose"))[:240],
             "image_slots": image_slots,
+            "video_slots": typed_slots["video"],
+            "audio_slots": typed_slots["audio"],
             "task_modes": task_modes,
             "themes": themes,
             "default_theme": default_theme,
@@ -1276,8 +1448,9 @@ H3_DIRECT_PROMPT_SECTION_RE = re.compile(
 )
 
 
-def _direct_run_task(prompt, media_refs, preferred_preset, preset_capabilities):
+def _direct_run_task(prompt, media_refs, preferred_preset, preset_capabilities, available_media_refs=None):
     refs = media_refs if isinstance(media_refs, list) else []
+    media_counts = _generation_media_counts(refs, available_media_refs)
     capabilities = preset_capabilities if isinstance(preset_capabilities, list) else []
     preferred = _preset_capability_map(capabilities).get(str(preferred_preset or "").strip().lower())
     prompt_text = str(prompt or "")
@@ -1286,30 +1459,37 @@ def _direct_run_task(prompt, media_refs, preferred_preset, preset_capabilities):
 
     if is_h3_prompt:
         if preferred and preferred.get("output_type") == "video":
-            candidates = (
-                ("multi_image_to_video", "image_to_video", "text_to_video")
-                if len(refs) > 1
-                else ("image_to_video", "text_to_video")
-                if refs or has_visual_reference_token
-                else ("text_to_video",)
-            )
+            if media_counts["video"]:
+                candidates = ("video_audio_to_video",)
+            elif media_counts["image"] and media_counts["audio"]:
+                candidates = ("image_audio_to_video", "audio_to_video")
+            elif media_counts["audio"]:
+                candidates = ("audio_to_video",)
+            elif media_counts["image"] > 1:
+                candidates = ("multi_image_to_video", "image_to_video", "text_to_video")
+            elif media_counts["image"] or has_visual_reference_token:
+                candidates = ("image_to_video", "text_to_video")
+            else:
+                candidates = ("text_to_video",)
             for task in candidates:
-                if _preset_supports_generation_task(preferred.get("name"), task, len(refs), capabilities):
+                if _preset_supports_generation_task(preferred.get("name"), task, media_counts, capabilities):
                     return task
-        return (
-            "multi_image_to_video"
-            if len(refs) > 1
-            else "image_to_video"
-            if refs
-            else "text_to_video"
-        )
+        if media_counts["video"]:
+            return "video_audio_to_video"
+        if media_counts["audio"] and media_counts["image"]:
+            return "image_audio_to_video"
+        if media_counts["audio"]:
+            return "audio_to_video"
+        if media_counts["image"] > 1:
+            return "multi_image_to_video"
+        return "image_to_video" if media_counts["image"] else "text_to_video"
 
     if preferred:
         supported = preferred.get("supported_tasks") if isinstance(preferred.get("supported_tasks"), list) else []
         for task in supported:
-            if _preset_supports_generation_task(preferred.get("name"), task, len(refs), capabilities):
+            if _preset_supports_generation_task(preferred.get("name"), task, media_counts, capabilities):
                 return task
-    return _normalize_generation_task(None, refs, prompt)
+    return _normalize_generation_task(None, refs, prompt, available_media_refs)
 
 
 def _materialize_direct_run_media(payload, conversation_id):
@@ -1333,7 +1513,7 @@ def _materialize_direct_run_media(payload, conversation_id):
     manifest = _media_manifest_from_payload(payload)
     media_refs = []
     for position, asset_ref in enumerate(asset_refs):
-        match = re.search(r":(?:image|video):(\d+)$", str(asset_ref.get("node_id") or ""))
+        match = re.search(r":(?:image|video|audio):(\d+)$", str(asset_ref.get("node_id") or ""))
         source_index = int(match.group(1)) if match else position
         if 0 <= source_index < len(manifest):
             ref = str(manifest[source_index].get("ref") or "").strip()
@@ -1371,7 +1551,7 @@ def _build_direct_run_result(payload):
         item for item in _media_manifest_from_payload(payload)
         if str(item.get("ref") or "").strip() in media_ref_set
     ]
-    task = _direct_run_task(prompt, media_refs, preferences.get("preset"), capabilities)
+    task = _direct_run_task(prompt, media_refs, preferences.get("preset"), capabilities, available_media_refs)
     action = {
         "type": "generate_image",
         "target": "canvas_run",
@@ -1619,12 +1799,12 @@ def _describe_chat_system_prompt(options, lang):
         media_manifest = options.get("media_manifest") if isinstance(options.get("media_manifest"), list) else []
         if media_manifest:
             manifest_text = ", ".join(
-                f"visual input {item.get('index')} ref={item.get('ref')} type={item.get('type')}"
+                f"source {item.get('index')} tag={item.get('tag')} ref={item.get('ref')} type={item.get('type')}"
                 for item in media_manifest if isinstance(item, dict)
             )
             sections.append(
-                f"Attached media manifest, in the exact order seen by the VLM: {manifest_text}. "
-                "Use only these refs in media_refs."
+                f"Attached media manifest, in exact connection order: {manifest_text}. "
+                "Use only these refs in media_refs, preserve that order, and use the listed tags when referring to media in the executable prompt."
             )
         if preferred_style or preferred_preset or preferred_parameter_profile:
             sections.append(
@@ -2280,6 +2460,108 @@ def _extract_json_object(text):
     return None
 
 
+class _CreativeStreamPreview:
+    """Expose only safe creative reply text while buffering action JSON."""
+
+    _REPLY_KEY_RE = re.compile(
+        r"\"(?:reply|message|text|response|answer|content)\"\s*:\s*\"",
+        re.I,
+    )
+
+    def __init__(self, emit):
+        self.emit = emit if callable(emit) else None
+        self.buffer = ""
+        self.mode = ""
+        self.emitted_reply = ""
+
+    def _send(self, value):
+        text = str(value or "")
+        if self.emit and text:
+            self.emit(text)
+
+    @staticmethod
+    def _decode_json_string_prefix(value):
+        decoded = []
+        index = 0
+        escapes = {
+            '"': '"',
+            "\\": "\\",
+            "/": "/",
+            "b": "\b",
+            "f": "\f",
+            "n": "\n",
+            "r": "\r",
+            "t": "\t",
+        }
+        while index < len(value):
+            char = value[index]
+            if char == '"':
+                break
+            if char != "\\":
+                decoded.append(char)
+                index += 1
+                continue
+            if index + 1 >= len(value):
+                break
+            escaped = value[index + 1]
+            if escaped == "u":
+                if index + 5 >= len(value):
+                    break
+                code = value[index + 2:index + 6]
+                if not re.fullmatch(r"[0-9a-fA-F]{4}", code):
+                    break
+                decoded.append(chr(int(code, 16)))
+                index += 6
+                continue
+            decoded.append(escapes.get(escaped, escaped))
+            index += 2
+        return "".join(decoded)
+
+    def _emit_reply_prefix(self):
+        match = self._REPLY_KEY_RE.search(self.buffer)
+        if not match:
+            return
+        decoded = self._decode_json_string_prefix(self.buffer[match.end():])
+        if len(decoded) <= len(self.emitted_reply):
+            return
+        self._send(decoded[len(self.emitted_reply):])
+        self.emitted_reply = decoded
+
+    def push(self, delta):
+        text = str(delta or "")
+        if not text:
+            return
+        if self.mode == "plain":
+            self._send(text)
+            return
+        self.buffer += text
+        if not self.mode:
+            probe = self.buffer.lstrip("\ufeff \t\r\n")
+            if not probe:
+                return
+            if probe.startswith(("{", "[", "```")):
+                self.mode = "structured"
+            else:
+                self.mode = "plain"
+                self._send(self.buffer)
+                self.buffer = ""
+                return
+        self._emit_reply_prefix()
+
+    def finish(self):
+        if not self.mode and self.buffer:
+            self._send(self.buffer)
+        self._emit_reply_prefix()
+
+
+class _PromptStreamPreview(_CreativeStreamPreview):
+    """Expose only the short prompt-assistant reply while buffering prompt actions."""
+
+
+class _GuideStreamPreview(_CreativeStreamPreview):
+    """Expose guide prose while buffering an unexpected structured response."""
+
+
 def _visible_response_text(value):
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, indent=2)
@@ -2586,11 +2868,15 @@ def _creative_video_duration_for_capability(value, capability):
 
 def _normalize_generation_media_refs(value, available_media_refs=None):
     available = []
+    available_types = {}
     for item in available_media_refs if isinstance(available_media_refs, list) else []:
         ref = _clean_text(item.get("ref") if isinstance(item, dict) else item)[:160]
         media_type = str(item.get("type") or "image").strip().lower() if isinstance(item, dict) else "image"
-        if ref and media_type == "image" and ref not in available:
+        if media_type not in CREATIVE_REFERENCE_MEDIA_LIMITS:
+            media_type = "image"
+        if ref and ref not in available:
             available.append(ref)
+            available_types[ref] = media_type
     allowed = set(available)
     normalized = []
     raw_refs = value if isinstance(value, list) else []
@@ -2599,6 +2885,34 @@ def _normalize_generation_media_refs(value, available_media_refs=None):
         if ref and ref in allowed and ref not in normalized:
             normalized.append(ref)
     return normalized, available
+
+
+def _generation_media_type_map(available_media_refs=None):
+    type_map = {}
+    for item in available_media_refs if isinstance(available_media_refs, list) else []:
+        ref = _clean_text(item.get("ref") if isinstance(item, dict) else item)[:160]
+        media_type = str(item.get("type") or "image").strip().lower() if isinstance(item, dict) else "image"
+        if ref and media_type in CREATIVE_REFERENCE_MEDIA_LIMITS and ref not in type_map:
+            type_map[ref] = media_type
+    return type_map
+
+
+def _generation_media_counts(media_refs, available_media_refs=None):
+    type_map = _generation_media_type_map(available_media_refs)
+    counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    for ref in media_refs if isinstance(media_refs, list) else []:
+        media_type = type_map.get(str(ref or "").strip(), "image")
+        counts[media_type] += 1
+    return counts
+
+
+def _generation_media_refs_for_task(media_refs, task, available_media_refs=None):
+    allowed_types = _generation_task_allowed_media_types(task)
+    type_map = _generation_media_type_map(available_media_refs)
+    return [
+        ref for ref in (media_refs if isinstance(media_refs, list) else [])
+        if type_map.get(str(ref or "").strip(), "image") in allowed_types
+    ]
 
 
 SPECIALIZED_IMAGE_TASK_PATTERNS = (
@@ -2631,42 +2945,55 @@ def _infer_specialized_generation_task(text):
     return ""
 
 
-def _infer_video_generation_task(text, media_refs=None):
+def _infer_video_generation_task(text, media_refs=None, available_media_refs=None):
     source = str(text or "").strip()
     refs = media_refs if isinstance(media_refs, list) else []
     if not source or not VIDEO_GENERATION_INTENT_RE.search(source):
         return ""
-    if len(refs) > 1 or re.search(r"多参考|多图|reference[-_ ]?to[-_ ]?video|\br2v\b", source, re.I):
+    counts = _generation_media_counts(refs, available_media_refs)
+    if counts["video"]:
+        return "video_audio_to_video"
+    if counts["audio"] and counts["image"]:
+        return "image_audio_to_video"
+    if counts["audio"]:
+        return "audio_to_video"
+    if counts["image"] > 1 or re.search(r"多参考|多图|reference[-_ ]?to[-_ ]?video|\br2v\b", source, re.I):
         return "multi_image_to_video"
-    if refs or re.search(r"图生视频|image[-_ ]?to[-_ ]?video|\bi2v\b|参考图", source, re.I):
+    if counts["image"] or re.search(r"图生视频|image[-_ ]?to[-_ ]?video|\bi2v\b|参考图", source, re.I):
         return "image_to_video"
     return "text_to_video"
 
 
-def _normalize_generation_task(value, media_refs, intent_text=""):
+def _normalize_generation_task(value, media_refs, intent_text="", available_media_refs=None):
     task_key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     task = GENERATION_TASK_ALIASES.get(task_key, task_key)
     inferred_task = _infer_specialized_generation_task(intent_text)
-    inferred_video_task = _infer_video_generation_task(intent_text, media_refs)
+    inferred_video_task = _infer_video_generation_task(intent_text, media_refs, available_media_refs)
     if task not in GENERATION_TASKS:
-        task = inferred_video_task or inferred_task or ("multi_image_edit" if len(media_refs) > 1 else "image_edit" if media_refs else "text_to_image")
+        image_count = _generation_media_counts(media_refs, available_media_refs)["image"]
+        task = inferred_video_task or inferred_task or ("multi_image_edit" if image_count > 1 else "image_edit" if image_count else "text_to_image")
     elif inferred_video_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
         task = inferred_video_task
     elif inferred_task and task in {"text_to_image", "image_edit", "multi_image_edit"}:
         task = inferred_task
     if not media_refs:
         return task
+    counts = _generation_media_counts(media_refs, available_media_refs)
+    if task in VIDEO_GENERATION_TASKS and counts["video"]:
+        return "video_audio_to_video"
+    if task in {"text_to_video", "image_to_video", "multi_image_to_video"} and counts["audio"]:
+        return "image_audio_to_video" if counts["image"] else "audio_to_video"
     if task == "text_to_video":
-        return "multi_image_to_video" if len(media_refs) > 1 else "image_to_video"
-    if task == "image_to_video" and len(media_refs) > 1:
+        return "multi_image_to_video" if counts["image"] > 1 else "image_to_video" if counts["image"] else task
+    if task == "image_to_video" and counts["image"] > 1:
         return "multi_image_to_video"
-    if task == "multi_image_to_video" and len(media_refs) == 1:
+    if task == "multi_image_to_video" and counts["image"] == 1:
         return "image_to_video"
     if task == "text_to_image":
-        return "multi_image_edit" if len(media_refs) > 1 else "image_edit"
-    if task == "image_edit" and len(media_refs) > 1:
+        return "multi_image_edit" if counts["image"] > 1 else "image_edit" if counts["image"] else task
+    if task == "image_edit" and counts["image"] > 1:
         return "multi_image_edit"
-    if task == "multi_image_edit" and len(media_refs) == 1:
+    if task == "multi_image_edit" and counts["image"] == 1:
         return "image_edit"
     return task
 
@@ -2675,17 +3002,45 @@ def _generation_task_output_type(task):
     return "video" if str(task or "").strip().lower() in VIDEO_GENERATION_TASKS else "image"
 
 
-def _generation_media_limit(preset, preset_capabilities, default=5):
+def _generation_media_limits(preset, preset_capabilities, default=None):
     capability = _preset_capability_map(preset_capabilities).get(str(preset or "").strip().lower())
-    if not capability:
-        return max(0, min(5, int(default or 5)))
-    try:
-        return max(0, min(5, int(capability.get("max_images") or 0)))
-    except Exception:
-        return 0
+    defaults = default if isinstance(default, dict) else CREATIVE_REFERENCE_MEDIA_LIMITS
+    limits = {}
+    for media_type, hard_limit in CREATIVE_REFERENCE_MEDIA_LIMITS.items():
+        raw_value = capability.get(f"max_{media_type}s") if capability else defaults.get(media_type)
+        try:
+            limits[media_type] = max(0, min(hard_limit, int(raw_value or 0)))
+        except Exception:
+            limits[media_type] = 0
+    return limits
 
 
-def _preset_supports_generation_task(preset, task, image_count, preset_capabilities):
+def _generation_media_limit(preset, preset_capabilities, default=9):
+    return _generation_media_limits(
+        preset,
+        preset_capabilities,
+        {"image": default, "video": 0, "audio": 0},
+    )["image"]
+
+
+def _limit_generation_media_refs(media_refs, available_media_refs, limits):
+    type_map = _generation_media_type_map(available_media_refs)
+    normalized_limits = {
+        media_type: max(0, min(CREATIVE_REFERENCE_MEDIA_LIMITS[media_type], int((limits or {}).get(media_type) or 0)))
+        for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS
+    }
+    counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    limited = []
+    for ref in media_refs if isinstance(media_refs, list) else []:
+        media_type = type_map.get(str(ref or "").strip(), "image")
+        if counts[media_type] >= normalized_limits[media_type]:
+            continue
+        counts[media_type] += 1
+        limited.append(ref)
+    return limited
+
+
+def _preset_supports_generation_task(preset, task, media_counts, preset_capabilities):
     capability = _preset_capability_map(preset_capabilities).get(str(preset or "").strip().lower())
     if not capability or capability.get("output_type") != _generation_task_output_type(task):
         return False
@@ -2693,18 +3048,7 @@ def _preset_supports_generation_task(preset, task, image_count, preset_capabilit
     supported_tasks = capability.get("supported_tasks") if isinstance(capability.get("supported_tasks"), list) else []
     if normalized_task not in supported_tasks:
         return False
-    try:
-        min_images = max(0, int(capability.get("min_images") or 0))
-        max_images = max(0, int(capability.get("max_images") or 0))
-        count = max(0, int(image_count or 0))
-    except Exception:
-        return False
-    if normalized_task in TEXT_GENERATION_TASKS:
-        return count == 0
-    required = max(1, min_images)
-    if normalized_task in MULTI_IMAGE_GENERATION_TASKS:
-        required = max(2, required)
-    return required <= count <= max_images
+    return _capability_accepts_media_counts(capability, normalized_task, media_counts)
 
 
 def _preset_model_status(capability):
@@ -2722,6 +3066,9 @@ GENERATION_PRESET_PRIORITIES = {
     "text_to_video": ("MiniMax-H3(T2V)", "Wan(T2V)", "LTX(T2V)", "Wan-TTP"),
     "image_to_video": ("MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "Wan(I2V)", "Dasiwa(I2V)", "LTX(I2V)"),
     "multi_image_to_video": ("MiniMax-H3(R2V)", "MiniMax-H3(I2V)", "Wan(I2V)", "Dasiwa(I2V)"),
+    "audio_to_video": ("MiniMax-H3(R2V)", "LTX(TA2V)", "LTX(IA2V)"),
+    "image_audio_to_video": ("MiniMax-H3(R2V)", "LTX(IA2V)"),
+    "video_audio_to_video": ("MiniMax-H3(R2V)",),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
     "image_restore": ("Imagerepair+", "OneKeyKontext"),
     "image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext"),
@@ -2779,18 +3126,7 @@ def _capability_route_rows(capability, task):
 
 
 def _capability_accepts_image_count(capability, task, image_count):
-    try:
-        min_images = max(0, int(capability.get("min_images") or 0))
-        max_images = max(0, int(capability.get("max_images") or 0))
-        count = max(0, int(image_count or 0))
-    except Exception:
-        return False
-    if task in TEXT_GENERATION_TASKS:
-        return count == 0 and min_images == 0
-    required = max(1, min_images)
-    if task in MULTI_IMAGE_GENERATION_TASKS:
-        required = max(2, required)
-    return required <= count <= max_images
+    return _capability_accepts_media_counts(capability, task, image_count)
 
 
 def _explicit_preset_family(message):
@@ -2815,7 +3151,7 @@ def _preset_family_names(preset):
     return ()
 
 
-def _explicit_preset_hint(value, user_message, preset_capabilities, task="", image_count=0):
+def _explicit_preset_hint(value, user_message, preset_capabilities, task="", media_counts=None):
     hint = re.sub(r"[\x00-\x1f\x7f]+", "", str(value or "")).strip()[:120]
     message = str(user_message or "").lower()
     capability_map = _preset_capability_map(preset_capabilities)
@@ -2835,7 +3171,7 @@ def _explicit_preset_hint(value, user_message, preset_capabilities, task="", ima
         matching = [
             item for item in candidates
             if _preset_supports_generation_task(
-                item.get("name"), task, image_count, preset_capabilities
+                item.get("name"), task, media_counts, preset_capabilities
             )
         ]
         if matching:
@@ -3011,12 +3347,20 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
         source.get("task") or source.get("task_type"),
         refs,
         intent_text,
+        available_media_refs,
     )
     if task == "text_to_image" and CREATIVE_EDIT_INTENT_RE.search(intent_text):
-        task = "multi_image_edit" if len(available) > 1 else "image_edit"
-    if task in IMAGE_INPUT_GENERATION_TASKS and not refs:
-        refs = available[:5]
-        task = _normalize_generation_task(task, refs, user_message or instruction)
+        image_count = _generation_media_counts(available, available_media_refs)["image"]
+        task = "multi_image_edit" if image_count > 1 else "image_edit"
+    if not refs and available and (task not in TEXT_GENERATION_TASKS or task == "text_to_video"):
+        refs = (
+            list(available)
+            if task in VIDEO_GENERATION_TASKS
+            else _generation_media_refs_for_task(available, task, available_media_refs)
+        )
+        refs = _limit_generation_media_refs(refs, available_media_refs, CREATIVE_REFERENCE_MEDIA_LIMITS)
+        task = _normalize_generation_task(task, refs, user_message or instruction, available_media_refs)
+    refs = _generation_media_refs_for_task(refs, task, available_media_refs)
     outpaint = _normalize_outpaint_intent(
         source.get("outpaint") or source.get("outpaint_percentages"),
         intent_text,
@@ -3073,28 +3417,33 @@ def compile_creative_execution_plan(
     capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
     refs = request["media_refs"]
     task = request["task"]
+    media_counts = _generation_media_counts(refs, available_media_refs)
     route_rows = []
     for order, capability in enumerate(capabilities):
         for route in _capability_route_rows(capability, task):
             route_rows.append({"capability": capability, "order": order, **route})
 
-    required_count = 0 if task in TEXT_GENERATION_TASKS else 2 if task in MULTI_IMAGE_GENERATION_TASKS else 1
     count_compatible = [
         route for route in route_rows
-        if _capability_accepts_image_count(route["capability"], task, len(refs))
+        if _capability_accepts_media_counts(route["capability"], task, media_counts)
     ]
     status = "ready"
     candidates = count_compatible
-    if not refs and required_count:
-        status = "needs_media"
-        candidates = [
+    if not candidates:
+        incomplete_candidates = [
             route for route in route_rows
-            if int(route["capability"].get("max_images") or 0) >= required_count
+            if _capability_media_counts_can_complete(route["capability"], task, media_counts)
         ]
+        if incomplete_candidates:
+            candidates = incomplete_candidates
+            status = "needs_media"
+
+    if not refs and any(_generation_task_media_requirements(task).values()) and candidates:
+        status = "needs_media"
 
     preferred = str(preferred_preset or "").strip()
     hint = _explicit_preset_hint(
-        request.get("preset_hint"), user_message, capabilities, task, len(refs)
+        request.get("preset_hint"), user_message, capabilities, task, media_counts
     )
     explicit_profile, requested_profile_name, profile_error = _explicit_parameter_profile_hint(
         request.get("parameter_profile_hint"),
@@ -3135,7 +3484,7 @@ def compile_creative_execution_plan(
     if not candidates:
         unavailable_plan = {
             "schema": "simpai.execution_plan.v1",
-            "status": "parameter_profile_incompatible" if selected_profile else "needs_media" if route_rows and len(refs) < required_count else "no_compatible_route",
+            "status": "parameter_profile_incompatible" if selected_profile else "no_compatible_route",
             "task": task,
             "preset": requested_preset if selected_profile else "",
             "theme": "",
@@ -3212,12 +3561,22 @@ def compile_creative_execution_plan(
         status = "needs_mask" if "mask" in requirements else "needs_interaction"
     if status == "ready" and model_status == "missing":
         status = "models_missing"
-    slots = capability.get("image_slots") if isinstance(capability.get("image_slots"), list) else []
-    bindings = [
-        {"ref": ref, "slot": slots[index]}
-        for index, ref in enumerate(refs)
-        if index < len(slots)
-    ]
+    slot_map = {
+        media_type: capability.get(f"{media_type}_slots")
+        if isinstance(capability.get(f"{media_type}_slots"), list)
+        else []
+        for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS
+    }
+    type_map = _generation_media_type_map(available_media_refs)
+    slot_positions = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+    bindings = []
+    for ref in refs:
+        media_type = type_map.get(str(ref or "").strip(), "image")
+        position = slot_positions[media_type]
+        slots = slot_map[media_type]
+        if position < len(slots):
+            bindings.append({"ref": ref, "slot": slots[position]})
+        slot_positions[media_type] += 1
     parameter_overrides = {}
     if task == "image_outpaint":
         outpaint = request.get("outpaint") if isinstance(request.get("outpaint"), dict) else {}
@@ -3256,12 +3615,12 @@ def compile_creative_execution_plan(
     return plan
 
 
-def _compatible_generation_preset(preset, task, image_count, preset_capabilities):
+def _compatible_generation_preset(preset, task, media_counts, preset_capabilities):
     current = str(preset or "").strip()
     capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
     compatible = [
         item for item in capabilities
-        if _preset_supports_generation_task(item.get("name"), task, image_count, capabilities)
+        if _preset_supports_generation_task(item.get("name"), task, media_counts, capabilities)
     ]
     priorities = _generation_preset_priorities(task)
     priority_map = {name.lower(): index for index, name in enumerate(priorities)}
@@ -3274,7 +3633,7 @@ def _compatible_generation_preset(preset, task, image_count, preset_capabilities
         )
     )
     current_capability = _preset_capability_map(capabilities).get(current.lower())
-    current_is_compatible = _preset_supports_generation_task(current, task, image_count, capabilities)
+    current_is_compatible = _preset_supports_generation_task(current, task, media_counts, capabilities)
     if current_is_compatible:
         automatic_choice = next((item for item in compatible if not _preset_requires_manual_interaction(item)), None)
         if _preset_requires_manual_interaction(current_capability) and automatic_choice:
@@ -3298,17 +3657,23 @@ def _apply_generation_media_limits(actions, available_media_refs=None, preset_ca
             continue
         item = dict(action)
         refs, _ = _normalize_generation_media_refs(item.get("media_refs"), available_media_refs)
-        task = _normalize_generation_task(item.get("task"), refs, item.get("prompt"))
-        if task in IMAGE_INPUT_GENERATION_TASKS and not refs:
-            refs = available[:5]
-            task = _normalize_generation_task(task, refs)
+        task = _normalize_generation_task(item.get("task"), refs, item.get("prompt"), available_media_refs)
+        if not refs and available and (task not in TEXT_GENERATION_TASKS or task == "text_to_video"):
+            refs = (
+                list(available)
+                if task in VIDEO_GENERATION_TASKS
+                else _generation_media_refs_for_task(available, task, available_media_refs)
+            )
+            task = _normalize_generation_task(task, refs, item.get("prompt"), available_media_refs)
+        refs = _generation_media_refs_for_task(refs, task, available_media_refs)
+        media_counts = _generation_media_counts(refs, available_media_refs)
         item["preset"] = _compatible_generation_preset(
-            item.get("preset"), task, len(refs), preset_capabilities
+            item.get("preset"), task, media_counts, preset_capabilities
         )
-        limit = _generation_media_limit(item.get("preset"), preset_capabilities)
-        refs = refs[:limit]
+        limits = _generation_media_limits(item.get("preset"), preset_capabilities)
+        refs = _limit_generation_media_refs(refs, available_media_refs, limits)
         item["media_refs"] = refs
-        item["task"] = _normalize_generation_task(task, refs)
+        item["task"] = _normalize_generation_task(task, refs, item.get("prompt"), available_media_refs)
         normalized.append(item)
     return normalized
 
@@ -3556,7 +3921,7 @@ def normalize_limited_actions(
                 preset = _compatible_generation_preset(
                     default_generation_preset,
                     request["task"],
-                    len(request["media_refs"]),
+                    _generation_media_counts(request["media_refs"], available_media_refs),
                     preset_capabilities,
                 )
             normalized.append(
@@ -3961,12 +4326,18 @@ def recover_creative_generation_action(
     )
     if not prompt:
         return None
-    refs = available_refs[:5]
-    task = _normalize_generation_task(None, refs, message)
+    refs = _limit_generation_media_refs(
+        available_refs,
+        available_media_refs,
+        CREATIVE_REFERENCE_MEDIA_LIMITS,
+    )
+    task = _normalize_generation_task(None, refs, message, available_media_refs)
+    refs = _generation_media_refs_for_task(refs, task, available_media_refs)
+    media_counts = _generation_media_counts(refs, available_media_refs)
     preset = _compatible_generation_preset(
         default_generation_preset,
         task,
-        len(refs),
+        media_counts,
         preset_capabilities,
     )
     actions = normalize_limited_actions(
@@ -4049,8 +4420,21 @@ def _apply_creative_preference_preset(actions, active_preset="", preset_capabili
             preferred_preset = str(item.get("preset") or "").strip()[:120]
         elif item.get("type") == "generate_image" and preferred_preset:
             refs = item.get("media_refs") if isinstance(item.get("media_refs"), list) else []
+            bindings = (
+                item.get("execution_plan", {}).get("media_bindings")
+                if isinstance(item.get("execution_plan"), dict)
+                else []
+            )
+            type_by_ref = {
+                str(binding.get("ref") or ""): str(binding.get("type") or "image")
+                for binding in bindings if isinstance(binding, dict)
+            }
+            media_counts = {media_type: 0 for media_type in CREATIVE_REFERENCE_MEDIA_LIMITS}
+            for ref in refs:
+                media_type = type_by_ref.get(str(ref or ""), "image")
+                media_counts[media_type if media_type in media_counts else "image"] += 1
             task = _normalize_generation_task(item.get("task"), refs, item.get("prompt"))
-            if _preset_supports_generation_task(preferred_preset, task, len(refs), preset_capabilities):
+            if _preset_supports_generation_task(preferred_preset, task, media_counts, preset_capabilities):
                 item["preset"] = preferred_preset
         normalized.append(item)
     return normalized
@@ -4099,7 +4483,7 @@ def _describe_input_media_assets(payload, asset_refs):
     for position, asset_ref in enumerate(refs):
         if not isinstance(asset_ref, dict):
             continue
-        match = re.search(r":(?:image|video):(\d+)$", str(asset_ref.get("node_id") or ""))
+        match = re.search(r":(?:image|video|audio):(\d+)$", str(asset_ref.get("node_id") or ""))
         source_index = int(match.group(1)) if match else position
         refs_by_source_index.setdefault(source_index, asset_ref)
     assets = []
@@ -4198,8 +4582,8 @@ def _attach_response_source(response, runtime_result):
     return output
 
 
-def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None):
-    """Run one roleplay agent with the configured primary/fallback profiles."""
+def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None, stream_callback=None):
+    """Run one roleplay agent with configured primary/fallback profiles."""
     from modules import canvas_vlm_runtime
 
     runtime_payload = runtime_payload if isinstance(runtime_payload, dict) else {}
@@ -4247,9 +4631,14 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None):
         local_version=local_version,
         api_profile=api_profile,
     )
+    def run_candidate(candidate):
+        if callable(stream_callback) and role == vlm_agent_router.ROLE_CHARACTER_REPLY:
+            return canvas_vlm_runtime.canvas_vlm_run(candidate, stream_callback=stream_callback)
+        return canvas_vlm_runtime.canvas_vlm_run(candidate)
+
     if not attempts:
         try:
-            result = canvas_vlm_runtime.canvas_vlm_run(runtime_payload)
+            result = run_candidate(runtime_payload)
         except Exception as exc:
             result = {"ok": False, "error": str(exc), "details": "runtime_exception"}
         if isinstance(result, dict):
@@ -4264,11 +4653,16 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None):
 
     attempt_rows = []
     last_result = None
-    for attempt in attempts:
+    for attempt_index, attempt in enumerate(attempts):
         selected = attempt.get("profile") or {}
         candidate = vlm_agent_router.apply_profile_to_runtime_payload(runtime_payload, selected)
+        if attempt_index > 0 and callable(stream_callback) and role == vlm_agent_router.ROLE_CHARACTER_REPLY:
+            try:
+                stream_callback({"type": "reset"})
+            except Exception:
+                pass
         try:
-            result = canvas_vlm_runtime.canvas_vlm_run(candidate)
+            result = run_candidate(candidate)
         except Exception as exc:
             result = {"ok": False, "error": str(exc), "details": "runtime_exception"}
         if isinstance(result, dict) and result.get("ok"):
@@ -4331,7 +4725,7 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None):
     return last_result
 
 
-def run_describe_vlm_chat(payload):
+def run_describe_vlm_chat(payload, stream_callback=None):
     payload = payload if isinstance(payload, dict) else {}
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
@@ -4373,16 +4767,62 @@ def run_describe_vlm_chat(payload):
             "error": "Stopped.",
             "details": "Stopped by user.",
         }, "cancel_check")
-    if runtime_payload.get("params", {}).get("describe_roleplay_enabled"):
-        result = _run_vlm_with_agent_router(
-            runtime_payload,
-            payload,
-            runtime_payload.get("params", {}).get("roleplay_agent_role")
-            or vlm_agent_router.ROLE_CHARACTER_REPLY,
-            runtime_payload.get("params", {}).get("roleplay_session"),
-        )
-    else:
-        result = canvas_vlm_runtime.canvas_vlm_run(runtime_payload)
+    structured_stream_preview = None
+    effective_stream_callback = stream_callback
+    chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
+    preview_classes = {
+        "creative": _CreativeStreamPreview,
+        "prompt": _PromptStreamPreview,
+        "guide": _GuideStreamPreview,
+    }
+    if (
+        callable(stream_callback)
+        and request_kind not in {"creative_offer", "direct_run"}
+        and chat_mode in preview_classes
+    ):
+        preview_class = preview_classes[chat_mode]
+        structured_stream_preview = preview_class(stream_callback)
+        effective_stream_callback = structured_stream_preview.push
+    try:
+        if runtime_payload.get("params", {}).get("describe_roleplay_enabled"):
+            roleplay_role = (
+                runtime_payload.get("params", {}).get("roleplay_agent_role")
+                or vlm_agent_router.ROLE_CHARACTER_REPLY
+            )
+            roleplay_request_kind = str(
+                runtime_payload.get("params", {}).get("roleplay_request_kind")
+                or payload.get("roleplay_request_kind")
+                or "character"
+            ).strip().lower()
+            roleplay_stream_callback = (
+                effective_stream_callback
+                if roleplay_role == vlm_agent_router.ROLE_CHARACTER_REPLY
+                and roleplay_request_kind in {"", "character", "character_reply", "reply"}
+                else None
+            )
+            router_kwargs = (
+                {"stream_callback": roleplay_stream_callback}
+                if callable(roleplay_stream_callback)
+                else {}
+            )
+            result = _run_vlm_with_agent_router(
+                runtime_payload,
+                payload,
+                roleplay_role,
+                runtime_payload.get("params", {}).get("roleplay_session"),
+                **router_kwargs,
+            )
+        else:
+            if callable(effective_stream_callback):
+                result = canvas_vlm_runtime.canvas_vlm_run(
+                    runtime_payload,
+                    stream_callback=effective_stream_callback,
+                )
+            else:
+                result = canvas_vlm_runtime.canvas_vlm_run(runtime_payload)
+    finally:
+        if structured_stream_preview is not None:
+            structured_stream_preview.finish()
     if is_describe_vlm_chat_cancelled(conversation_id, request_id):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
         return _describe_vlm_chat_failure({

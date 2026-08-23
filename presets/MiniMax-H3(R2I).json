@@ -22,12 +22,12 @@
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
         "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
-      "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional up to 5 reference images]",
+      "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional up to 9 reference images]",
       "director_capability": {
         "image_policy": "optional",
         "audio_policy": "forbidden",
         "video_policy": "forbidden",
-        "max_images": 5,
+        "max_images": 9,
         "min_images": 0,
         "image_modes": ["none", "reference_set"],
         "duration_strategy": "shot",
@@ -35,7 +35,7 @@
         "mixed_segments": false
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4", "minimax_h3_storyboard_control"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",
@@ -62,7 +62,7 @@
       ],
       "prompt": {"Basic": "", "2 pass": ""},
       "task_method": {"Basic": "minimax_h3_r2i_cn", "2 pass": "minimax_h3_r2i_2_pass_cn"},
-      "prompt_compiler": {"Basic": "minimax_h3_ref2va", "2 pass": "minimax_h3_ref2va"},
+      "prompt_compiler": {"Basic": "minimax_h3_r2i", "2 pass": "minimax_h3_r2i"},
       "overwrite_step": {"Basic": 10, "2 pass": 15},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {

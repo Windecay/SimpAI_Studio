@@ -108,7 +108,11 @@ def build_frontend_reference_plan(
 
     frame_count = _requested_frame_count(duration)
     video_sources = []
-    for name, param_key in (("ref_video_0", "video"), ("ref_video_1", "reference_video")):
+    for name, param_key in (
+        ("ref_video_0", "video"),
+        ("ref_video_1", "reference_video"),
+        ("ref_video_2", "reference_video2"),
+    ):
         path = _clean_path(params_backend.get(param_key))
         if not path or not os.path.isfile(path):
             continue

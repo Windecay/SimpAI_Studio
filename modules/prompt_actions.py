@@ -23,8 +23,12 @@ PROMPT_ACTION_SCENE_IMAGE_SLOTS = (
     "scene_input_image2",
     "scene_input_image3",
     "scene_input_image4",
+    "scene_input_image5",
+    "scene_input_image6",
+    "scene_input_image7",
+    "scene_input_image8",
 )
-PROMPT_ACTION_OPTIONAL_IMAGE_SLOTS = ("scene_input_image3", "scene_input_image4")
+PROMPT_ACTION_OPTIONAL_IMAGE_SLOTS = tuple(f"scene_input_image{index}" for index in range(3, 9))
 PROMPT_ACTION_CAPABILITY_KEYS = (
     "image_policy",
     "min_images",
@@ -194,7 +198,7 @@ def _prompt_action_h3_reference_mode(state):
 
         compiler = minimax_h3_prompt_compiler.scene_compiler(scene, theme)
         if isinstance(compiler, dict):
-            return str(compiler.get("route") or "").lower() == "reference"
+            return str(compiler.get("route") or "").lower() in {"reference", "image_reference"}
     except Exception:
         pass
     task_method = _prompt_action_theme_value(scene.get("task_method"), theme)
@@ -208,7 +212,11 @@ def _prompt_action_h3_reference_mode(state):
             scene.get("theme_title"),
         )
     ).lower()
-    return "minimax" in haystack and "h3" in haystack and "r2v" in haystack
+    return (
+        "minimax" in haystack
+        and "h3" in haystack
+        and ("r2v" in haystack or "r2i" in haystack or "r2c" in haystack)
+    )
 
 
 def _prompt_action_reconcile_h3_reference_capability(state, capability, declared_capability=None):
@@ -578,9 +586,14 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
 
     video_component = _prompt_action_existing_path(resources.get("scene_video"))
     reference_video_component = _prompt_action_existing_path(resources.get("scene_reference_video"))
+    reference_video2_component = _prompt_action_existing_path(resources.get("scene_reference_video2"))
     reference_original_video = _prompt_action_existing_path(
         resources.get("scene_reference_video_original_path")
         or resources.get("reference_video_original_path")
+    )
+    reference_original_video2 = _prompt_action_existing_path(
+        resources.get("scene_reference_video2_original_path")
+        or resources.get("reference_video2_original_path")
     )
     original_video = _prompt_action_existing_path(resources.get("scene_original_video_path") or resources.get("video_path"))
     first_frame = _prompt_action_existing_path(resources.get("video_first_frame_path"))
@@ -597,10 +610,19 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         video_policy != "forbidden"
         and (not scene_mode or "scene_reference_video" not in hidden)
     )
+    reference_video2_allowed = (
+        video_policy != "forbidden"
+        and (not scene_mode or "scene_reference_video2" not in hidden)
+    )
     main_video_path = (original_video or video_component) if main_video_allowed and video_component else ""
     reference_video_path = (
         reference_original_video or reference_video_component
         if reference_video_allowed and reference_video_component
+        else ""
+    )
+    reference_video2_path = (
+        reference_original_video2 or reference_video2_component
+        if reference_video2_allowed and reference_video2_component
         else ""
     )
     if main_video_path:
@@ -612,6 +634,12 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     if reference_video_path:
         video_descriptors.append({
             "slot": "scene_reference_video",
+            "index": len(video_descriptors) + 1,
+            "role": "motion/timing reference video",
+        })
+    if reference_video2_path:
+        video_descriptors.append({
+            "slot": "scene_reference_video2",
             "index": len(video_descriptors) + 1,
             "role": "motion/timing reference video",
         })
@@ -643,13 +671,22 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     elif scene_mode:
         preferred_video_slot = str(opts.get("preferred_video_slot") or "").strip()
         if preferred_video_slot not in descriptor_by_slot:
-            if _prompt_action_h3_reference_mode(data) and reference_video_path:
+            if _prompt_action_h3_reference_mode(data) and reference_video2_path:
+                preferred_video_slot = "scene_reference_video2"
+            elif _prompt_action_h3_reference_mode(data) and reference_video_path:
                 preferred_video_slot = "scene_reference_video"
             elif main_video_path:
                 preferred_video_slot = "scene_video"
             elif reference_video_path:
                 preferred_video_slot = "scene_reference_video"
-        if preferred_video_slot == "scene_reference_video" and reference_video_path:
+            elif reference_video2_path:
+                preferred_video_slot = "scene_reference_video2"
+        if preferred_video_slot == "scene_reference_video2" and reference_video2_path:
+            video_path = reference_video2_path
+            video_source = "reference_video2"
+            video_reference_index = int(descriptor_by_slot[preferred_video_slot]["index"])
+            first_frame = ""
+        elif preferred_video_slot == "scene_reference_video" and reference_video_path:
             video_path = reference_video_path
             video_source = "reference_video"
             video_reference_index = int(descriptor_by_slot[preferred_video_slot]["index"])
@@ -692,7 +729,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             slot = str(descriptor.get("slot") or "").strip()
             if slot == selected_slot:
                 descriptor["role"] = "motion/timing reference video"
-            elif slot == "scene_reference_video":
+            elif slot in ("scene_reference_video", "scene_reference_video2"):
                 descriptor["role"] = "scene/composition video reference"
             elif slot == "scene_video":
                 descriptor["role"] = "scene/composition video reference"
@@ -707,10 +744,15 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         if (not scene_mode or key not in hidden) and str(resources.get(key) or "").strip()
     ]
     audio_allowed = str(capability.get("audio_policy") or "").lower() != "forbidden"
-    audio_present = audio_allowed and (not scene_mode or "scene_audio" not in hidden) and bool(resources.get("scene_audio"))
+    audio_slots = [
+        slot
+        for slot in ("scene_audio", "scene_audio2", "scene_audio3")
+        if (not scene_mode or slot not in hidden) and bool(resources.get(slot))
+    ]
+    audio_present = audio_allowed and bool(audio_slots)
     if audio_allowed and director_context.get("audio_ref"):
         audio_present = bool(_prompt_action_director_media_value(director_runtime, director_context["audio_ref"]))
-    reference_video_present = bool(reference_video_path)
+    reference_video_present = bool(reference_video_path or reference_video2_path)
 
     requested_motion_picture_index = 0
     try:
@@ -755,6 +797,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "motion_video_slot": selected_video_descriptor.get("slot") if selected_video_descriptor else "",
         "target_duration_seconds": target_duration,
         "audio_present": audio_present,
+        "audio_count": len(audio_slots),
         "audio_content_available": False,
         "reference_video_present": reference_video_present,
         "additional_prompts": additional_prompts,

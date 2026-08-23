@@ -224,6 +224,8 @@ def _canvas_vlm_skill_language(params=None, payload=None, target=None):
 
 
 def _canvas_h3_prompt_writing_skill_file(params=None, payload=None, target=None):
+    if _canvas_h3_prompt_writing_mode(target) == "image_reference":
+        return ""
     language = _canvas_vlm_skill_language(params=params, payload=payload, target=target)
     return VLM_H3_PROMPT_WRITING_SKILL_FILES[language]
 
@@ -235,13 +237,17 @@ def _canvas_h3_prompt_writing_mode(target=None):
         return ""
     context = target.get("prompt_compiler_context") if isinstance(target.get("prompt_compiler_context"), dict) else {}
     mode = minimax_h3_prompt_compiler.resolve_mode(compiler, context)
+    if mode == minimax_h3_prompt_compiler.MODE_R2I:
+        return "image_reference"
     return "reference" if mode == minimax_h3_prompt_compiler.MODE_REF2VA else "base"
 
 
 def _canvas_h3_prompt_writing_skill_files(params=None, payload=None, target=None):
     language = _canvas_vlm_skill_language(params=params, payload=payload, target=target)
-    files = [VLM_H3_PROMPT_WRITING_SKILL_FILES[language]]
     mode_key = _canvas_h3_prompt_writing_mode(target)
+    if mode_key == "image_reference":
+        return []
+    files = [VLM_H3_PROMPT_WRITING_SKILL_FILES[language]]
     mode_files = VLM_H3_PROMPT_WRITING_MODE_SKILL_FILES.get(mode_key) or {}
     mode_file = mode_files.get(language)
     if mode_file:
@@ -3552,6 +3558,33 @@ def _canvas_vlm_text_budget(params, version_name=None):
     default_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     max_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     return _canvas_vlm_int(params.get("context_chars") or params.get("rolling_context_chars"), default_chars, 1200, max_chars)
+
+
+def _canvas_vlm_stateless_prompt_text(prompt, text_budget, *, preserve_contract=False):
+    """Keep structured-request instructions visible when a stateless prompt is shortened."""
+    current = str(prompt or "").strip()
+    if not current:
+        return ""
+    try:
+        budget = max(1200, int(text_budget or 6000))
+    except (TypeError, ValueError):
+        budget = 6000
+    if preserve_contract:
+        # Director prompts need both the JSON contract at the head and the latest
+        # exchange at the tail; dropping the head makes local models answer prose.
+        limit = min(max(budget, 6000), 12000)
+        if len(current) <= limit:
+            return current
+        marker = "\n\n[Middle of director context omitted for the local context window.]\n\n"
+        head_chars = max(1600, int((limit - len(marker)) * 0.72))
+        tail_chars = max(600, limit - len(marker) - head_chars)
+        return (
+            current[:head_chars].rstrip()
+            + marker
+            + current[-tail_chars:].lstrip()
+        ).strip()
+    limit = max(800, budget // 3)
+    return current[-limit:].lstrip()
 
 def _canvas_vlm_message_text(message):
     if not isinstance(message, dict):

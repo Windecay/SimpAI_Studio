@@ -60,10 +60,11 @@ except Exception:
     Image = None
 
 
-UPLOAD_ORDER_WITH_CANVAS = ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_video", "scene_reference_video", "sam3_input_video", "sam3_mask_video", "scene_audio"]
-UPLOAD_ORDER_NO_CANVAS = ["scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_canvas_image", "scene_video", "scene_reference_video", "sam3_input_video", "sam3_mask_video", "scene_audio"]
+SCENE_REFERENCE_IMAGE_SLOTS = tuple(f"scene_input_image{index}" for index in range(1, 9))
+UPLOAD_ORDER_WITH_CANVAS = ["scene_canvas_image", *SCENE_REFERENCE_IMAGE_SLOTS, "scene_video", "scene_reference_video", "scene_reference_video2", "sam3_input_video", "sam3_mask_video", "scene_audio", "scene_audio2", "scene_audio3"]
+UPLOAD_ORDER_NO_CANVAS = [*SCENE_REFERENCE_IMAGE_SLOTS, "scene_canvas_image", "scene_video", "scene_reference_video", "scene_reference_video2", "sam3_input_video", "sam3_mask_video", "scene_audio", "scene_audio2", "scene_audio3"]
 SCENE_MEDIA_BACKEND_KEYS = tuple(dict.fromkeys(UPLOAD_ORDER_WITH_CANVAS + UPLOAD_ORDER_NO_CANVAS))
-SCENE_MEDIA_ALIAS_KEYS = ("scene_original_video_path", "sam3_original_video_path", "video", "reference_video", "audio", "mask_video")
+SCENE_MEDIA_ALIAS_KEYS = ("scene_original_video_path", "sam3_original_video_path", "video", "reference_video", "reference_video2", "audio", "audio2", "audio3", "mask_video")
 CANVAS_RUNS = {}
 CANVAS_RUNS_LOCK = threading.Lock()
 CANVAS_RUN_RETENTION_SECONDS = 60 * 60 * 6
@@ -758,8 +759,14 @@ def _apply_scene_media_backend_aliases(params_backend):
         params_backend["video"] = video_effective
     if params_backend.get("scene_reference_video") is not None:
         params_backend["reference_video"] = params_backend.get("scene_reference_video")
+    if params_backend.get("scene_reference_video2") is not None:
+        params_backend["reference_video2"] = params_backend.get("scene_reference_video2")
     if params_backend.get("scene_audio") is not None:
         params_backend["audio"] = params_backend.get("scene_audio")
+    if params_backend.get("scene_audio2") is not None:
+        params_backend["audio2"] = params_backend.get("scene_audio2")
+    if params_backend.get("scene_audio3") is not None:
+        params_backend["audio3"] = params_backend.get("scene_audio3")
     if params_backend.get("sam3_mask_video") is not None:
         params_backend["mask_video"] = params_backend.get("sam3_mask_video")
     return params_backend
@@ -876,7 +883,7 @@ def _resize_workbench_scene_images_by_max_area(params_backend):
     except Exception:
         return params_backend
 
-    for key in ("scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"):
+    for key in SCENE_REFERENCE_IMAGE_SLOTS:
         if params_backend.get(key) is not None:
             params_backend[key] = util.resize_image_by_max_area(params_backend.get(key), max_area=1024 * 1024)
 
@@ -918,6 +925,10 @@ def _apply_workbench_scene_preprocess(params_backend, defaults):
             scene_input_image2=params_backend.get("scene_input_image2"),
             scene_input_image3=params_backend.get("scene_input_image3"),
             scene_input_image4=params_backend.get("scene_input_image4"),
+            scene_input_image5=params_backend.get("scene_input_image5"),
+            scene_input_image6=params_backend.get("scene_input_image6"),
+            scene_input_image7=params_backend.get("scene_input_image7"),
+            scene_input_image8=params_backend.get("scene_input_image8"),
             scene_video=params_backend.get("scene_video"),
             scene_original_video_path=params_backend.get("scene_original_video_path"),
             active_video_source=params_backend.get("active_video_source") or "scene",
@@ -937,6 +948,10 @@ def _apply_workbench_scene_preprocess(params_backend, defaults):
             params_backend["scene_input_image2"] = preprocess_result.get("scene_input_image2")
             params_backend["scene_input_image3"] = preprocess_result.get("scene_input_image3")
             params_backend["scene_input_image4"] = preprocess_result.get("scene_input_image4")
+            params_backend["scene_input_image5"] = preprocess_result.get("scene_input_image5")
+            params_backend["scene_input_image6"] = preprocess_result.get("scene_input_image6")
+            params_backend["scene_input_image7"] = preprocess_result.get("scene_input_image7")
+            params_backend["scene_input_image8"] = preprocess_result.get("scene_input_image8")
             params_backend["scene_video"] = preprocess_result.get("scene_video")
             params_backend["scene_original_video_path"] = preprocess_result.get("scene_original_video_path")
             params_backend["sam3_input_video"] = preprocess_result.get("sam3_input_video")
@@ -1265,6 +1280,10 @@ def validate_canvas_async_task_args(args):
                 "has_scene_input_image2": getattr(task, "scene_input_image2", None) is not None,
                 "has_scene_input_image3": getattr(task, "scene_input_image3", None) is not None,
                 "has_scene_input_image4": getattr(task, "scene_input_image4", None) is not None,
+                "has_scene_input_image5": getattr(task, "scene_input_image5", None) is not None,
+                "has_scene_input_image6": getattr(task, "scene_input_image6", None) is not None,
+                "has_scene_input_image7": getattr(task, "scene_input_image7", None) is not None,
+                "has_scene_input_image8": getattr(task, "scene_input_image8", None) is not None,
             },
         }
     except Exception as err:

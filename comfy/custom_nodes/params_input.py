@@ -81,17 +81,21 @@ class SceneInput:
                     "sampler": (SAMPLER_NAMES, {"default": SAMPLER_NAMES[0]}),
                     "scheduler": (SCHEDULER_NAMES, {"default": SCHEDULER_NAMES[0]}),
                     "video_duration": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 86400.0, "step": 0.1}),
+                    "ip_image4": ("STRING", {"default": "None", "multiline": False}),
+                    "ip_image5": ("STRING", {"default": "None", "multiline": False}),
+                    "ip_image6": ("STRING", {"default": "None", "multiline": False}),
+                    "ip_image7": ("STRING", {"default": "None", "multiline": False}),
                 }}
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "INT", "FLOAT", "INT", "INT", "INT", "FLOAT", "FLOAT", "FLOAT", "FLOAT", "INT", "INT", "INT", "INT", "BOOLEAN", "BOOLEAN", "BOOLEAN", "BOOLEAN", "INT", "INT", "INT", "STRING", "STRING", "STRING", SAMPLER_NAMES, SCHEDULER_NAMES, "FLOAT", )
-    RETURN_NAMES = ("prompt", "additional_prompt", "ip_image", "ip_image1", "inpaint_image", "inpaint_mask", "width", "height", "cfg", "steps", "var_number", "var_number2", "var_number3", "var_number4", "var_number5", "var_number6", "var_number7", "var_number8", "var_number9", "var_number10", "switch_option1", "switch_option2", "switch_option3", "switch_option4", "model_type", "model_type2", "clip_type", "ip_image2", "ip_image3", "negative_prompt", "sampler", "scheduler", "video_duration", )
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "INT", "FLOAT", "INT", "INT", "INT", "FLOAT", "FLOAT", "FLOAT", "FLOAT", "INT", "INT", "INT", "INT", "BOOLEAN", "BOOLEAN", "BOOLEAN", "BOOLEAN", "INT", "INT", "INT", "STRING", "STRING", "STRING", SAMPLER_NAMES, SCHEDULER_NAMES, "FLOAT", "STRING", "STRING", "STRING", "STRING", )
+    RETURN_NAMES = ("prompt", "additional_prompt", "ip_image", "ip_image1", "inpaint_image", "inpaint_mask", "width", "height", "cfg", "steps", "var_number", "var_number2", "var_number3", "var_number4", "var_number5", "var_number6", "var_number7", "var_number8", "var_number9", "var_number10", "switch_option1", "switch_option2", "switch_option3", "switch_option4", "model_type", "model_type2", "clip_type", "ip_image2", "ip_image3", "negative_prompt", "sampler", "scheduler", "video_duration", "ip_image4", "ip_image5", "ip_image6", "ip_image7", )
 
     FUNCTION = "scene_input"
 
     CATEGORY = "api/input"
 
-    def scene_input(self, prompt, additional_prompt, ip_image, ip_image1, ip_image2, ip_image3, inpaint_image, inpaint_mask, width, height, cfg, steps, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, switch_option1, switch_option2, switch_option3, switch_option4, model_type, model_type2, clip_type=1, negative_prompt="", sampler=SAMPLER_NAMES[0], scheduler=SCHEDULER_NAMES[0], video_duration=0.0):
+    def scene_input(self, prompt, additional_prompt, ip_image, ip_image1, ip_image2, ip_image3, inpaint_image, inpaint_mask, width, height, cfg, steps, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, switch_option1, switch_option2, switch_option3, switch_option4, model_type, model_type2, clip_type=1, negative_prompt="", sampler=SAMPLER_NAMES[0], scheduler=SCHEDULER_NAMES[0], video_duration=0.0, ip_image4="None", ip_image5="None", ip_image6="None", ip_image7="None"):
 
-        return (prompt, additional_prompt, ip_image, ip_image1, inpaint_image, inpaint_mask, width, height, cfg, steps, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, switch_option1, switch_option2, switch_option3, switch_option4, model_type, model_type2, clip_type, ip_image2, ip_image3, negative_prompt, sampler, scheduler, video_duration)
+        return (prompt, additional_prompt, ip_image, ip_image1, inpaint_image, inpaint_mask, width, height, cfg, steps, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, switch_option1, switch_option2, switch_option3, switch_option4, model_type, model_type2, clip_type, ip_image2, ip_image3, negative_prompt, sampler, scheduler, video_duration, ip_image4, ip_image5, ip_image6, ip_image7)
 
 class SeedInput:
     @classmethod

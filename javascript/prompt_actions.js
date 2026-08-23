@@ -173,14 +173,19 @@
     }
 
     function preferredVideoSlot() {
+        const reference2Available = videoSlotEnabled("scene_reference_video2") && videoSlotAvailable("scene_reference_video2");
         const referenceAvailable = videoSlotEnabled("scene_reference_video") && videoSlotAvailable("scene_reference_video");
         const mainAvailable = videoSlotEnabled("scene_video") && videoSlotAvailable("scene_video");
         const compiler = currentPromptCompiler();
+        if (reference2Available && /minimax[_\s-]*h3/i.test(compiler) && /ref2va|r2v|reference/i.test(compiler)) {
+            return "scene_reference_video2";
+        }
         if (referenceAvailable && /minimax[_\s-]*h3/i.test(compiler) && /ref2va|r2v|reference/i.test(compiler)) {
             return "scene_reference_video";
         }
         if (mainAvailable) return "scene_video";
         if (referenceAvailable) return "scene_reference_video";
+        if (reference2Available) return "scene_reference_video2";
         return "";
     }
 
@@ -189,7 +194,7 @@
     }
 
     function videoContextLabel(slot) {
-        return slot === "scene_reference_video"
+        return slot === "scene_reference_video" || slot === "scene_reference_video2"
             ? text(
                 "Use the reference video for visual expansion (up to 8 frames)",
                 "扩写时读取参考视频（最多 8 帧）",
@@ -240,7 +245,7 @@
         const sceneFrontend = currentSceneFrontend(params);
         const hasResolvedHidden = Object.prototype.hasOwnProperty.call(params, "__scene_disvisible");
         const hidden = sceneList(hasResolvedHidden ? params.__scene_disvisible : sceneFrontend.disvisible);
-        if (hidden.has("scene_video") && hidden.has("scene_reference_video")) return false;
+        if (hidden.has("scene_video") && hidden.has("scene_reference_video") && hidden.has("scene_reference_video2")) return false;
 
         const theme = String(params.__scene_theme || params.scene_theme || "").trim();
         const rawCapability = sceneFrontend.director_capability;

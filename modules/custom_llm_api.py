@@ -155,6 +155,98 @@ def request_json(url, payload=None, api_key="", method="POST", timeout=120, max_
                 time.sleep(delay)
 
 
+def _iter_stream_events(response):
+    """Yield JSON events from SSE, JSONL, or a provider's one-line stream."""
+    data_lines = []
+
+    def flush_data():
+        if not data_lines:
+            return None
+        raw = "\n".join(data_lines).strip()
+        data_lines.clear()
+        if not raw or raw == "[DONE]":
+            return {"_done": True} if raw == "[DONE]" else None
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+
+    for raw_line in response:
+        line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+        line = line.rstrip("\r\n")
+        if not line.strip():
+            event = flush_data()
+            if event is not None:
+                yield event
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+            continue
+        if data_lines:
+            data_lines.append(line)
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            yield event
+
+    event = flush_data()
+    if event is not None:
+        yield event
+
+
+def request_stream(url, payload=None, api_key="", timeout=180):
+    """Open one streaming completion request and yield decoded provider events.
+
+    A stream is not retried after it starts because replaying a partially visible
+    assistant reply would duplicate text in the chat window.
+    """
+    data = json.dumps(payload or {}).encode("utf-8")
+    headers = {
+        "Accept": "text/event-stream, application/json",
+        "Content-Type": "application/json",
+    }
+    api_key = str(api_key or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            yield from _iter_stream_events(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(body)
+        except Exception:
+            parsed = None
+        message = ""
+        if isinstance(parsed, dict):
+            error = parsed.get("error")
+            if isinstance(error, dict):
+                message = str(error.get("message") or "")
+            elif isinstance(error, str):
+                message = error
+            if not message:
+                message = str(parsed.get("message") or parsed.get("detail") or "")
+        if not message:
+            message = _response_preview(body)
+        raise CustomLLMRequestError(
+            f"HTTP {exc.code}: {message}",
+            status=exc.code,
+            retryable=exc.code in RETRYABLE_HTTP_STATUS_CODES,
+            retry_after=_retry_after_seconds(getattr(exc, "headers", None)),
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError) as exc:
+        raise CustomLLMRequestError(
+            f"API stream request failed: {exc}",
+            retryable=True,
+        ) from exc
+
+
 def _content_text(content):
     if isinstance(content, str):
         return content
@@ -170,6 +262,33 @@ def _content_text(content):
         elif isinstance(item.get("content"), str):
             parts.append(item["content"])
     return "\n".join(part for part in parts if part)
+
+
+def extract_stream_text_delta(event):
+    """Extract visible assistant text from common OpenAI-compatible stream events."""
+    if not isinstance(event, dict):
+        return ""
+    event_type = str(event.get("type") or "").strip().lower()
+    if event_type in {
+        "response.output_text.delta",
+        "response.text.delta",
+        "output_text.delta",
+    }:
+        value = event.get("delta")
+        return str(value or "") if isinstance(value, (str, int, float)) else ""
+    choices = event.get("choices")
+    choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+    delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
+    value = delta.get("content")
+    if isinstance(value, list):
+        value = _content_text(value)
+    if isinstance(value, str) and value:
+        return value
+    value = delta.get("text")
+    if isinstance(value, str) and value:
+        return value
+    value = choice.get("text")
+    return value if isinstance(value, str) else ""
 
 
 def strip_reasoning_text(text):

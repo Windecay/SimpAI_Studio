@@ -477,6 +477,10 @@ class AsyncTask:
             self.scene_input_image2 = self.params_backend.pop('scene_input_image2', None)
             self.scene_input_image3 = self.params_backend.pop('scene_input_image3', None)
             self.scene_input_image4 = self.params_backend.pop('scene_input_image4', None)
+            self.scene_input_image5 = self.params_backend.pop('scene_input_image5', None)
+            self.scene_input_image6 = self.params_backend.pop('scene_input_image6', None)
+            self.scene_input_image7 = self.params_backend.pop('scene_input_image7', None)
+            self.scene_input_image8 = self.params_backend.pop('scene_input_image8', None)
             self.scene_theme = self.params_backend.pop('scene_theme')
             self.scene_additional_prompt = self.params_backend.pop('scene_additional_prompt', None)
             self.scene_var_number = self.params_backend.pop('scene_var_number', None)
@@ -1019,6 +1023,10 @@ def worker():
                         getattr(async_task, "scene_input_image2", None),
                         getattr(async_task, "scene_input_image3", None),
                         getattr(async_task, "scene_input_image4", None),
+                        getattr(async_task, "scene_input_image5", None),
+                        getattr(async_task, "scene_input_image6", None),
+                        getattr(async_task, "scene_input_image7", None),
+                        getattr(async_task, "scene_input_image8", None),
                     ],
                 )
             except Exception as err:
@@ -2523,7 +2531,7 @@ def worker():
                 async_task.enhance_checkbox = False
                 async_task.should_enhance = False
                 input_images = comfypipeline.ComfyInputImage([])
-                for scene_index in range(1, 5):
+                for scene_index in range(1, 9):
                     scene_img = getattr(async_task, f"scene_input_image{scene_index}", None)
                     if scene_img is None:
                         continue

@@ -235,6 +235,10 @@ def _image_paths(task):
         "scene_input_image2",
         "scene_input_image3",
         "scene_input_image4",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
     ):
         value = getattr(task, slot_name, None)
         path = _save_temp_image(value, f"cloud_edit_{slot_name}")
@@ -690,7 +694,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
     input_image_bytes = sum(Path(path).stat().st_size for path in image_paths if os.path.isfile(path))
     request_timeout = _request_timeout(protocol, image_paths)
     logger.info(
-        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s request_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s",
+        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s request_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s scene_input5=%s scene_input6=%s scene_input7=%s scene_input8=%s",
         getattr(task, "task_id", None),
         protocol,
         model,
@@ -708,6 +712,10 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         getattr(task, "scene_input_image2", None) is not None,
         getattr(task, "scene_input_image3", None) is not None,
         getattr(task, "scene_input_image4", None) is not None,
+        getattr(task, "scene_input_image5", None) is not None,
+        getattr(task, "scene_input_image6", None) is not None,
+        getattr(task, "scene_input_image7", None) is not None,
+        getattr(task, "scene_input_image8", None) is not None,
     )
     results = []
     result_prompts = []

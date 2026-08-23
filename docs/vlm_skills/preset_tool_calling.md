@@ -137,6 +137,6 @@ default text-to-image or image-edit tools.
 - The exact preset is `MiniMax-H3(R2I)`, shown as `MiniMax-H3图编` in the
   Chinese preset store. Keep `MiniMax-H3(R2I)` as the English key.
 - The route supports `image_edit`, `multi_image_edit`, and
-  `image_object_transfer`, with one to five ordered image references and no
+  `image_object_transfer`, with one to nine ordered image references and no
   video or audio input.
 - Follow `state.__lang` for all visible route and status labels.

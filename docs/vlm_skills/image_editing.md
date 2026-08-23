@@ -56,12 +56,12 @@ in English and Chinese stages.
 
 ## R2I / 图编路线
 
-- `MiniMax-H3(R2I)` is a still-image editing route. It accepts one to five
+- `MiniMax-H3(R2I)` is a still-image editing route. It accepts one to nine
   ordered image references and emits an image result.
 - This route does not use video or audio references.
-- Use the H3 reference compiler with `<Picture N>` labels, but do not create
-  video shots, dialogue, synchronized sound, audio references, or video
-  references for this route.
+- Use the H3 R2I still-image compiler with `<Picture N>` labels, but do not
+  create H3 storyboard sections, video shots, dialogue, synchronized sound,
+  audio references, or video references for this route.
 - `MiniMax-H3(R2I)` may be selected for `image_edit`, `multi_image_edit`, or
   `image_object_transfer` after the normal edit queue candidates. The result
   still needs the normal confirmation and model-readiness checks.

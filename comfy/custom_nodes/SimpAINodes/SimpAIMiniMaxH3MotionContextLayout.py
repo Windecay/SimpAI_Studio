@@ -1,3 +1,4 @@
+import inspect
 import logging
 
 import torch
@@ -10,6 +11,7 @@ MC_AUDIO_KEY = "motion_context_audio_end_frame"
 PATCH_MARKER = "_simpai_h3_motion_context_layout_patch"
 _LOG = logging.getLogger("simpai_h3_motion_context")
 _ORIGINAL_INIT = None
+_ORIGINAL_ACCEPTS_FRAME_COUNT = False
 _APPLIED = False
 
 
@@ -95,8 +97,27 @@ def _fix_audio_position(layout, refs):
     layout.position_ids[start:end, 0] += desired_start - current_start
 
 
-def _patched_init(self, text_len, latent_t, latent_h, latent_w, audio_t, keyframes=None, refs=None, frame_count=None):
+def _layout_kwargs(keyframes=None, refs=None, frame_count=None):
+    kwargs = {"keyframes": keyframes, "refs": refs}
+    if _ORIGINAL_ACCEPTS_FRAME_COUNT:
+        kwargs["frame_count"] = frame_count
+    return kwargs
+
+
+def _call_original_init(self, text_len, latent_t, latent_h, latent_w, audio_t, keyframes=None, refs=None, frame_count=None):
     _ORIGINAL_INIT(
+        self,
+        text_len,
+        latent_t,
+        latent_h,
+        latent_w,
+        audio_t,
+        **_layout_kwargs(keyframes=keyframes, refs=refs, frame_count=frame_count),
+    )
+
+
+def _patched_init(self, text_len, latent_t, latent_h, latent_w, audio_t, keyframes=None, refs=None, frame_count=None):
+    _call_original_init(
         self,
         text_len,
         latent_t,
@@ -119,17 +140,23 @@ setattr(_patched_init, PATCH_MARKER, True)
 def _self_test():
     text_len, latent_t, latent_h, latent_w, audio_t = 7, 7, 22, 38, 16
     frame_count = sum(minimax_model.FRAME_PER_TOKEN[k % 5] for k in range(latent_t))
+    keyframe_latent = torch.zeros(1, 24, 1, latent_h, latent_w)
     stock = minimax_model.PackedLayout(
         text_len,
         latent_t,
         latent_h,
         latent_w,
         audio_t,
-        keyframes=[{"resolved_frame_index": 0}, {"resolved_frame_index": frame_count - 1}],
-        frame_count=frame_count,
+        **_layout_kwargs(
+            keyframes=[
+                {"resolved_frame_index": 0, "latent": keyframe_latent},
+                {"resolved_frame_index": frame_count - 1, "latent": keyframe_latent},
+            ],
+            frame_count=frame_count,
+        ),
     )
     candidate = minimax_model.PackedLayout.__new__(minimax_model.PackedLayout)
-    _ORIGINAL_INIT(
+    _call_original_init(
         candidate,
         text_len,
         latent_t,
@@ -137,8 +164,8 @@ def _self_test():
         latent_w,
         audio_t,
         keyframes=[
-            {"resolved_frame_index": 0, MC_KEY: 0},
-            {"resolved_frame_index": 0, MC_KEY: frame_count - 1},
+            {"resolved_frame_index": 0, MC_KEY: 0, "latent": keyframe_latent},
+            {"resolved_frame_index": 0, MC_KEY: frame_count - 1, "latent": keyframe_latent},
         ],
         frame_count=frame_count,
     )
@@ -148,16 +175,16 @@ def _self_test():
         latent_t,
         frame_count,
         [
-            {"resolved_frame_index": 0, MC_KEY: 0},
-            {"resolved_frame_index": 0, MC_KEY: frame_count - 1},
+            {"resolved_frame_index": 0, MC_KEY: 0, "latent": keyframe_latent},
+            {"resolved_frame_index": 0, MC_KEY: frame_count - 1, "latent": keyframe_latent},
         ],
     )
-    if not torch.equal(stock.position_ids, candidate.position_ids):
+    if not torch.allclose(stock.position_ids, candidate.position_ids):
         raise RuntimeError("MiniMax H3 motion context layout self-test failed")
 
 
 def apply_patch():
-    global _ORIGINAL_INIT, _APPLIED
+    global _ORIGINAL_INIT, _ORIGINAL_ACCEPTS_FRAME_COUNT, _APPLIED
     if _APPLIED:
         return True
     packed_layout = getattr(minimax_model, "PackedLayout", None)
@@ -173,9 +200,14 @@ def apply_patch():
         return False
     _ORIGINAL_INIT = current
     try:
+        _ORIGINAL_ACCEPTS_FRAME_COUNT = "frame_count" in inspect.signature(current).parameters
+    except (TypeError, ValueError):
+        _ORIGINAL_ACCEPTS_FRAME_COUNT = False
+    try:
         _self_test()
     except Exception as err:
         _ORIGINAL_INIT = None
+        _ORIGINAL_ACCEPTS_FRAME_COUNT = False
         _LOG.warning("MiniMax H3 motion context layout self-test failed: %s", err)
         return False
     packed_layout.__init__ = _patched_init

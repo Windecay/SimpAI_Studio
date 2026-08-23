@@ -9,6 +9,7 @@ MODE_I2VA = "I2VA"
 MODE_FL2VA = "FL2VA"
 MODE_L2VA = "L2VA"
 MODE_REF2VA = "Ref2VA"
+MODE_R2I = "R2I"
 
 BASE_SECTIONS = (
     "integrated_multimodal_description",
@@ -40,6 +41,13 @@ _REFERENCE_VARIANT_RE = re.compile(
     r"(?:\s*[>\uff1e\u3009\]])?(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+_R2I_FIELD_RE = re.compile(
+    r"(?i)(?<![A-Za-z])(?:Camera|Dialogue and visible text|Synchronized sound)\s*:"
+)
+_R2I_TIMESTAMP_RE = re.compile(
+    r"(?i)(?:\b\d{1,2}:\d{2}(?:\.\d{1,3})?\b|"
+    r"\b\d+(?:\.\d{1,3})?\s*-\s*\d+(?:\.\d{1,3})?\s*(?:s|seconds?)\b)"
+)
 _REFERENCE_TITLES = {
     "picture": "Picture",
     "image": "Picture",
@@ -69,6 +77,20 @@ def _safe_duration(value):
     return round(duration, 3)
 
 
+def _is_video_continuation(context):
+    data = context if isinstance(context, dict) else {}
+    if "is_video_continuation" in data:
+        return bool(data.get("is_video_continuation"))
+    source = _clean_text(data.get("continuation_source")).lower().replace("-", "_").replace(" ", "_")
+    if source in {"previous_segment", "previous_video", "video_continuation", "continuation", "r2c"}:
+        return True
+    haystack = " ".join(
+        _clean_text(data.get(key))
+        for key in ("task_method", "task_name", "task_type", "video_mode", "continuation_source")
+    ).lower()
+    return bool(re.search(r"(?:^|[_\s/-])(?:r2c|video_extend|video_continuation)(?:$|[_\s/-])", haystack))
+
+
 def normalize_compiler(value):
     if isinstance(value, dict):
         compiler_id = _clean_text(value.get("id") or value.get("compiler") or value.get("name"))
@@ -85,7 +107,17 @@ def normalize_compiler(value):
     if "minimax" not in normalized or "h3" not in normalized:
         return None
     route_normalized = _clean_text(route).lower().replace("-", "_").replace(" ", "_")
-    if route_normalized == "reference" or "ref2va" in route_normalized or "r2v" in route_normalized:
+    if (
+        "r2i" in route_normalized
+        or route_normalized in {"image_reference", "image_edit", "reference_to_image"}
+    ):
+        route_id = "image_reference"
+    elif (
+        route_normalized == "reference"
+        or "ref2va" in route_normalized
+        or "r2v" in route_normalized
+        or "r2c" in route_normalized
+    ):
         route_id = "reference"
     elif "fl2va" in route_normalized:
         route_id = "frame_anchor"
@@ -124,7 +156,9 @@ def target_compiler(target):
     task_method = _clean_text(data.get("task_method")).lower()
     if "minimax_h3_upscale" in task_method:
         return None
-    if "r2v" in task_method or "r2i" in task_method:
+    if "r2i" in task_method:
+        return {"id": COMPILER_ID, "route": "image_reference"}
+    if "r2v" in task_method or "r2c" in task_method:
         return {"id": COMPILER_ID, "route": "reference"}
     if "i2v" in task_method:
         return {"id": COMPILER_ID, "route": "frame_anchor"}
@@ -185,6 +219,11 @@ def normalize_context(context=None):
         "video_requested": bool(data.get("video_requested")),
         "video_used": bool(data.get("video_used")),
         "video_source": _clean_text(data.get("video_source")),
+        "continuation_source": _clean_text(data.get("continuation_source"))
+        or ("previous_segment" if _is_video_continuation(data) else ""),
+        "is_video_continuation": _is_video_continuation(data),
+        "task_method": _clean_text(data.get("task_method")),
+        "task_name": _clean_text(data.get("task_name")),
         "video_visual_count": _safe_count(data.get("video_visual_count")),
         "reference_video_present": bool(data.get("reference_video_present")),
         "reference_video_content_available": bool(data.get("reference_video_content_available")),
@@ -203,6 +242,8 @@ def resolve_mode(compiler, context=None):
         return ""
     route = _clean_text(spec.get("route")).lower()
     media = normalize_context(context)
+    if route == "image_reference":
+        return MODE_R2I
     if route == "reference":
         return MODE_REF2VA
     if route == "last_frame":
@@ -224,7 +265,13 @@ def _reference_inventory_lines(context):
     for index in range(media["video_count"]):
         descriptor = video_descriptors[index] if index < len(video_descriptors) and isinstance(video_descriptors[index], dict) else {}
         role = _clean_text(descriptor.get("role"))
-        details = "video reference; its embedded soundtrack stays paired with this video"
+        if media.get("is_video_continuation") and index + 1 == media.get("video_reference_index"):
+            details = (
+                "previous H3 clip and continuation source; start from its final scene, motion, camera direction, "
+                "pacing, style, and embedded soundtrack; supplied pictures may define characters who continue or enter"
+            )
+        else:
+            details = "video reference; its embedded soundtrack stays paired with this video"
         if role and role != "video reference":
             details += f"; runtime role: {role}"
         if media.get("video_used") and media.get("video_reference_index") == index + 1:
@@ -253,6 +300,12 @@ def context_note(context=None):
             "Read them for shot planning, but never name them as <Picture N> or treat them as H3 generation media."
         )
     lines.extend(_reference_inventory_lines(media))
+    if media.get("is_video_continuation"):
+        selected_video = media.get("video_reference_index") or 1
+        lines.append(
+            f"- Continuation mode: <Video {selected_video}> is the previous H3 clip; write only what happens after its exact final state. "
+            "Uploaded pictures define identity and appearance for characters who may continue, enter, or become visible later."
+        )
     if (
         media.get("video_requested")
         and media.get("video_reference_index")
@@ -285,6 +338,33 @@ def context_note(context=None):
         )
     if not lines:
         lines.append("- No runtime media inventory was supplied; never exceed the selected H3 mode limits.")
+    return "\n".join(lines)
+
+
+def _r2i_context_note(context=None):
+    media = normalize_context(context)
+    lines = []
+    if media["language"] == "cn":
+        lines.append("- Editable prompt content language: Simplified Chinese.")
+    elif media["language"] == "en":
+        lines.append("- Editable prompt content language: English.")
+    for index in range(media["image_count"]):
+        descriptor = (
+            media["image_descriptors"][index]
+            if index < len(media["image_descriptors"])
+            and isinstance(media["image_descriptors"][index], dict)
+            else {}
+        )
+        role = _clean_text(descriptor.get("role")) or "image reference"
+        lines.append(f"- <Picture {index + 1}>: {role}")
+    if media["inventory_known"] and not media["image_count"]:
+        lines.append("- Numbered runtime picture references: none. Do not write <Picture N>.")
+    if media["video_count"] or media["audio_count"]:
+        lines.append(
+            "- R2I media policy: video and audio inputs are forbidden for this route; do not reference or describe them."
+        )
+    if not lines:
+        lines.append("- No runtime picture inventory was supplied; use no numbered reference labels.")
     return "\n".join(lines)
 
 
@@ -340,7 +420,7 @@ def _ref2va_subject_binding_rules(context=None):
 
 def _ref2va_motion_transfer_rules(context=None):
     media = normalize_context(context)
-    if media["image_count"] < 1 or media["video_count"] < 1:
+    if media["is_video_continuation"] or media["image_count"] < 1 or media["video_count"] < 1:
         return ""
     selected_video = media.get("video_reference_index") or 1
     selected_video = min(max(1, selected_video), media["video_count"])
@@ -378,6 +458,38 @@ def _ref2va_motion_transfer_rules(context=None):
     )
 
 
+def _ref2va_continuation_rules(context=None):
+    media = normalize_context(context)
+    if not media["is_video_continuation"] or media["video_count"] < 1:
+        return ""
+    selected_video = media.get("video_reference_index") or 1
+    selected_video = min(max(1, selected_video), media["video_count"])
+    video_token = f"<Video {selected_video}>"
+    picture_rule = (
+        "Optional <Picture N> tokens define a character's identity and appearance; they do not replace the previous "
+        "clip's scene or drive its motion, and they may ground a character who enters later."
+        if media["image_count"]
+        else "No identity picture is available, so preserve the previous clip's visible subject directly."
+    )
+    return (
+        "This is R2C video continuation, not R2V motion transfer. The selected previous clip "
+        f"{video_token} is the continuity source for the world, timeline, final scene state, camera, lighting, motion "
+        "direction, pacing, style, and synchronized sound. Start from its exact final scene and action state, but do not "
+        "assume every character in the next segment must be visible in the previous clip's final frame. "
+        f"{picture_rule} A picture-defined character may continue, enter, or become visible after the previous clip ends "
+        "when the user's intent or shot plan calls for it, even if that character is absent from the previous final frame. "
+        "Keep the scene and camera transition causal. Do not invent a character without a supplied picture or explicit user "
+        "request, and do not silently replace a previous subject. In summary, make video continuation the primary task "
+        "type; reference generation may be secondary when identity pictures are supplied. In retention_analysis, describe "
+        "the previous clip as fully_preserved or partially_preserved continuity and explain its final scene, action, camera, "
+        "and sound continuity. Describe each used picture separately as identity/appearance reference, including whether "
+        "the character continues or enters later. Do not label the previous clip attribute_transfer unless the user explicitly "
+        "requests a separate motion-transfer task. In detailed_description, include the continuation source "
+        f"{video_token} in the continuation shot(s), and pair it with each applicable <Picture N> in the same shot when "
+        "that picture-defined character appears. Do not restart the previous action or replay events already completed."
+    )
+
+
 def build_system_instructions(target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -388,6 +500,31 @@ def build_system_instructions(target_or_compiler, context=None):
     if not mode:
         return ""
     media = normalize_context(target_context)
+    if mode == MODE_R2I:
+        if media["language"] == "cn":
+            language_rule = "Write the single editable prompt in fluent Simplified Chinese."
+        elif media["language"] == "en":
+            language_rule = "Write the single editable prompt in fluent English."
+        else:
+            language_rule = (
+                "Write the single editable prompt in the user's language; use Simplified Chinese when the request contains Chinese."
+            )
+        return (
+            "MiniMax H3 prompt compiler mode: R2I.\n"
+            "Output exactly one self-contained, generator-ready still-image generation or editing prompt, with no "
+            "Markdown fence, explanation, JSON, headings, metadata, or completion claim. "
+            f"{language_rule} Preserve the user's requested identity, subject count, composition, pose, lighting, "
+            "style, text, and unchanged content. Describe the requested visible result directly and keep edits limited "
+            "to the user's intent. Use exact runtime picture labels <Picture N>, such as <Picture 1>, only when they exist; explain "
+            "what each supplied picture contributes when more than one picture is present. Never invent, reorder, "
+            "renumber, translate, or replace picture labels.\n"
+            "R2I is a still-image route. Do not output subject_definitions, summary, retention_analysis, "
+            "detailed_description, overall_soundscape, non_diegetic_music, [Shot N], timestamps, Camera:, "
+            "Dialogue and visible text:, Synchronized sound:, video references, or audio references. A still-image "
+            "prompt may describe composition, lens look, pose, and lighting, but it must not describe a timeline, "
+            "shot list, camera movement, dialogue, soundtrack, or video action.\n"
+            f"Runtime picture inventory:\n{_r2i_context_note(target_context)}"
+        )
     if media["language"] == "cn":
         language_rule = (
             "Keep required H3 section names, shot markers, timestamps, media tokens, and the field labels Camera, "
@@ -442,6 +579,7 @@ def build_system_instructions(target_or_compiler, context=None):
             "detailed_description, then write an explicit chronological plan with enough detail for the existing shots. "
             "Do not add filler, new shots, or unrelated events. "
             f"{_ref2va_subject_binding_rules(target_context)}"
+            f"{_ref2va_continuation_rules(target_context)}"
             f"{_ref2va_motion_transfer_rules(target_context)}"
         )
     else:
@@ -511,6 +649,77 @@ def _motion_picture_fallback(context):
     return 1 if media["image_count"] == 1 else 0
 
 
+def _continuation_validation_warnings(values, timeline, media):
+    if not media.get("is_video_continuation") or not media.get("video_count"):
+        return []
+    warnings = []
+    selected_video = media.get("video_reference_index") or 1
+    selected_video = min(max(1, selected_video), media["video_count"])
+    video_token = f"<Video {selected_video}>"
+    summary = values.get("summary", [""])[0] if values.get("summary") else ""
+    retention = values.get("retention_analysis", [""])[0] if values.get("retention_analysis") else ""
+    if summary and not re.search(r"video\s+continuation|continuation|续写|续接|延续", summary, re.IGNORECASE):
+        warnings.append("R2C summary should identify video continuation as the primary task type.")
+    if not media.get("video_used"):
+        warnings.append(
+            f"Continuation source {video_token} produced no decoded visual frames; do not claim that its final state or motion was observed."
+        )
+        return list(dict.fromkeys(warnings))
+    retention_match = re.search(
+        rf"{re.escape(video_token)}\s*:\s*([^\r\n]+)",
+        retention,
+        re.IGNORECASE,
+    )
+    retention_line = retention_match.group(1) if retention_match else ""
+    if not retention_match:
+        warnings.append(f"Continuation source {video_token} is missing from retention_analysis.")
+    else:
+        if re.search(r"attribute[_\s-]*transfer", retention_line, re.IGNORECASE):
+            warnings.append(
+                f"Continuation source {video_token} is labeled attribute_transfer; R2C should preserve the previous clip's continuity instead."
+            )
+        if not re.search(
+            r"continuation|previous|final|last|end|continuity|续写|续接|上一段|前一段|最后|结尾|延续|连续",
+            retention_line,
+            re.IGNORECASE,
+        ):
+            warnings.append(
+                f"Continuation source {video_token} is missing previous-clip final-state continuity in retention_analysis."
+            )
+    if video_token not in timeline:
+        warnings.append(
+            f"Continuation source {video_token} is not used in detailed_description; the prompt does not define where the previous clip continues."
+        )
+        return list(dict.fromkeys(warnings))
+    timeline_bodies = _shot_bodies(timeline)
+    picture_numbers = sorted(
+        set(
+            int(number)
+            for number in re.findall(r"<Picture\s+(\d+)>", timeline, re.IGNORECASE)
+        )
+    )
+    unpaired_pictures = [
+        number
+        for number in picture_numbers
+        if not any(
+            video_token in body and f"<Picture {number}>" in body
+            for _shot_number, body in timeline_bodies
+        )
+    ]
+    if unpaired_pictures:
+        labels = ", ".join(f"<Picture {number}>" for number in unpaired_pictures)
+        warnings.append(
+            f"Continuation source {video_token} is not paired with {labels} in the same continuation shot."
+        )
+    for number in picture_numbers:
+        picture_token = f"<Picture {number}>"
+        if picture_token not in retention:
+            warnings.append(
+                f"R2C retention_analysis does not explain the identity/appearance role of {picture_token}."
+            )
+    return list(dict.fromkeys(warnings))
+
+
 def build_rewrite_request(prompt, target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -525,6 +734,30 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
         "(No prompt text was provided. Infer the requested scene from the runtime media inventory, "
         "current preset contract, and explicit user instructions.)"
     )
+    if mode == MODE_R2I:
+        protected_references = protected_reference_tokens(source_prompt, compiler, target_context)
+        reference_lock = ""
+        if protected_references:
+            reference_lock = (
+                "\n\nProtected picture reference lock:\nPreserve these exact source tokens wherever they already "
+                "appear: "
+                + ", ".join(protected_references)
+                + ". Use only these picture labels and never add video or audio labels."
+            )
+        return (
+            "Compile this rough request into one complete MiniMax H3 R2I still-image prompt.\n\n"
+            f"Runtime picture context:\n{_r2i_context_note(target_context)}\n\n"
+            "Rewrite rules:\n"
+            "- Return one self-contained positive image generation or editing instruction.\n"
+            "- Preserve the source image, identity, composition, pose, lighting, and all unrequested content when "
+            "the user supplies a picture; when multiple pictures are supplied, state the role of each one.\n"
+            "- Keep the requested change concrete, localized, and visually verifiable.\n"
+            "- If the rough request contains H3 video sections, [Shot N], timestamps, Camera:, dialogue, sound, "
+            "video, or audio material, convert only the still-image intent and remove that video structure.\n"
+            "- Do not output headings, JSON, explanations, subject definitions, timelines, shot lists, or media labels "
+            "other than existing <Picture N> tokens.\n"
+            f"User intent:\n{user_intent}{reference_lock}"
+        )
     if mode == MODE_REF2VA and isinstance(target_context, dict):
         target_context = dict(target_context)
         if not _safe_count(target_context.get("motion_picture_index")):
@@ -572,19 +805,23 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             + ". Never delete, translate, renumber, retype, or replace them with synonyms."
         )
     subject_binding_lock = ""
+    continuation_lock = ""
     motion_transfer_lock = ""
     if mode == MODE_REF2VA:
         subject_binding_lock = (
             "\n\nRef2VA subject definitions and picture references:\n"
             + _ref2va_subject_binding_rules(target_context)
         )
+        continuation_rules = _ref2va_continuation_rules(target_context)
+        if continuation_rules:
+            continuation_lock = "\n\nRef2VA continuation source and identity binding:\n" + continuation_rules
         motion_rules = _ref2va_motion_transfer_rules(target_context)
         if motion_rules:
             motion_transfer_lock = "\n\nRef2VA picture identity and video motion binding:\n" + motion_rules
     return (
         f"Compile this rough request into the required MiniMax H3 {mode} structure.\n\n"
         f"Runtime context:\n{context_note(target_context)}\n\n"
-        f"User intent:\n{user_intent}{storyboard_lock}{reference_lock}{subject_binding_lock}{motion_transfer_lock}"
+        f"User intent:\n{user_intent}{storyboard_lock}{reference_lock}{subject_binding_lock}{continuation_lock}{motion_transfer_lock}"
     )
 
 
@@ -679,6 +916,12 @@ def _preamble_mentions_time(preamble, seconds):
 def _reference_limits(mode, media):
     if mode == MODE_T2VA:
         return {"picture": 0, "video": 0, "audio": 0}
+    if mode == MODE_R2I:
+        return {
+            "picture": media["image_count"] if media.get("inventory_known") else 9,
+            "video": 0,
+            "audio": 0,
+        }
     if mode in {MODE_I2VA, MODE_L2VA}:
         return {"picture": 1, "video": 0, "audio": 0}
     if mode == MODE_FL2VA:
@@ -840,6 +1083,61 @@ def rewrite_request_source_prompt(value):
     return _clean_text(text[matches[-1].end():]) if matches else text
 
 
+def _validate_r2i_prompt(text, media):
+    errors = []
+    warnings = []
+    references = {"picture": [], "video": [], "audio": []}
+    section_matches = list(_SECTION_RE.finditer(text))
+    if section_matches:
+        names = ", ".join(dict.fromkeys(match.group(1).lower() for match in section_matches))
+        errors.append(f"R2I must be one still-image prompt without H3 storyboard sections: {names}.")
+    if _SHOT_RE.search(text):
+        errors.append("R2I must not contain [Shot N] markers or a video shot list.")
+    if _R2I_TIMESTAMP_RE.search(text):
+        errors.append("R2I must not contain a video timeline or shot timestamps.")
+    if _R2I_FIELD_RE.search(text):
+        errors.append("R2I must not contain Camera, Dialogue and visible text, or Synchronized sound fields.")
+
+    for kind, raw_number in _REFERENCE_RE.findall(text):
+        key = kind.lower()
+        number = int(raw_number)
+        if number not in references[key]:
+            references[key].append(number)
+    limits = _reference_limits(MODE_R2I, media)
+    for number in references["video"]:
+        errors.append(f"R2I accepts only <Picture N> references; <Video {number}> is not allowed.")
+    for number in references["audio"]:
+        errors.append(f"R2I accepts only <Picture N> references; <Audio {number}> is not allowed.")
+    for number in references["picture"]:
+        if number < 1 or number > limits["picture"]:
+            errors.append(f"<Picture {number}> has no matching runtime picture reference.")
+
+    if media["inventory_known"] and media["image_count"]:
+        unused = [
+            index
+            for index in range(1, media["image_count"] + 1)
+            if index not in references["picture"]
+        ]
+        if unused:
+            labels = ", ".join(f"<Picture {index}>" for index in unused)
+            warnings.append(f"Uploaded picture references not mentioned in the R2I prompt: {labels}.")
+    errors = list(dict.fromkeys(errors))
+    warnings = list(dict.fromkeys(warnings))
+    return {
+        "ok": not errors,
+        "mode": MODE_R2I,
+        "errors": errors,
+        "warnings": warnings,
+        "references": references,
+        "inventory": {
+            "pictures": media["image_count"],
+            "videos": 0,
+            "audio": 0,
+            "known": media["inventory_known"],
+        },
+    }
+
+
 def validate_prompt(prompt, target_or_compiler, context=None):
     text = _clean_text(prompt)
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
@@ -855,7 +1153,9 @@ def validate_prompt(prompt, target_or_compiler, context=None):
     warnings = []
     if not text:
         return {"ok": False, "mode": mode, "errors": ["Prompt is empty."], "warnings": [], "references": {}}
-    if mode == MODE_REF2VA and not media.get("motion_picture_index"):
+    if mode == MODE_R2I:
+        return _validate_r2i_prompt(text, media)
+    if mode == MODE_REF2VA and not media.get("motion_picture_index") and not media.get("is_video_continuation"):
         media["motion_picture_index"] = _infer_motion_picture_index(
             text,
             media.get("video_reference_index"),
@@ -932,8 +1232,11 @@ def validate_prompt(prompt, target_or_compiler, context=None):
         detail_words = re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", timeline)
         if len(detail_words) < 180:
             warnings.append("Ref2VA detailed_description is shorter than the recommended production detail level.")
+        if media.get("is_video_continuation"):
+            warnings.extend(_continuation_validation_warnings(values, timeline, media))
         if (
-            media.get("video_requested")
+            not media.get("is_video_continuation")
+            and media.get("video_requested")
             and media.get("video_source") == "reference_video"
             and media.get("reference_video_present")
             and not media.get("reference_video_content_available")
@@ -942,7 +1245,12 @@ def validate_prompt(prompt, target_or_compiler, context=None):
                 "Selected reference video was requested for motion/timing transfer, but no decoded visual frames reached the agent."
             )
         selected_video = media.get("video_reference_index") or 0
-        if (media.get("video_requested") or media.get("video_used")) and selected_video and media.get("image_count"):
+        if (
+            not media.get("is_video_continuation")
+            and (media.get("video_requested") or media.get("video_used"))
+            and selected_video
+            and media.get("image_count")
+        ):
             video_token = f"<Video {selected_video}>"
             if not media.get("video_used"):
                 warnings.append(
@@ -1040,6 +1348,20 @@ def validation_error_text(validation, limit=3):
 def context_from_task(task):
     params = getattr(task, "params_backend", None)
     params = params if isinstance(params, dict) else {}
+    task_method = _clean_text(getattr(task, "task_method", None) or params.get("task_method"))
+    task_name = _clean_text(getattr(task, "task_name", None) or params.get("task_name"))
+    task_context = {
+        "task_method": task_method,
+        "task_name": task_name,
+        "task_type": _clean_text(params.get("task_type")),
+        "video_mode": _clean_text(params.get("video_mode")),
+        "continuation_source": _clean_text(params.get("continuation_source")),
+    }
+    is_video_continuation = _is_video_continuation(task_context)
+    language = getattr(task, "simpleai_lang", None) or params.get("__lang")
+    state = getattr(task, "state", None)
+    if not language and isinstance(state, dict):
+        language = state.get("__lang")
     images = [
         getattr(task, key, None)
         for key in (
@@ -1048,24 +1370,41 @@ def context_from_task(task):
             "scene_input_image2",
             "scene_input_image3",
             "scene_input_image4",
+            "scene_input_image5",
+            "scene_input_image6",
+            "scene_input_image7",
+            "scene_input_image8",
         )
     ]
     main_video = params.get("video")
     reference_video = params.get("reference_video")
+    reference_video2 = params.get("reference_video2")
     video_descriptors = []
     if main_video:
+        if is_video_continuation:
+            main_video_role = "previous H3 clip continuation source"
+        elif reference_video or reference_video2:
+            main_video_role = "scene/composition video reference"
+        else:
+            main_video_role = "motion/timing reference video"
         video_descriptors.append({
             "slot": "scene_video",
             "index": len(video_descriptors) + 1,
-            "role": "scene/composition video reference" if reference_video else "motion/timing reference video",
+            "role": main_video_role,
         })
     if reference_video:
         video_descriptors.append({
             "slot": "scene_reference_video",
             "index": len(video_descriptors) + 1,
+            "role": "scene/composition video reference" if reference_video2 else "motion/timing reference video",
+        })
+    if reference_video2:
+        video_descriptors.append({
+            "slot": "scene_reference_video2",
+            "index": len(video_descriptors) + 1,
             "role": "motion/timing reference video",
         })
-    selected_video_index = len(video_descriptors) if reference_video else (1 if main_video else 0)
+    selected_video_index = len(video_descriptors) if reference_video or reference_video2 else (1 if main_video else 0)
     return {
         "duration_seconds": getattr(task, "scene_video_duration", None) or params.get("video_duration"),
         "image_count": sum(value is not None for value in images),
@@ -1074,10 +1413,16 @@ def context_from_task(task):
         "video_reference_index": selected_video_index,
         "video_requested": bool(video_descriptors),
         "video_used": bool(video_descriptors),
-        "video_source": "reference_video" if reference_video else ("main_video" if main_video else ""),
-        "reference_video_present": bool(reference_video),
-        "reference_video_content_available": bool(reference_video),
-        "audio_count": int(bool(params.get("audio"))),
+        "video_source": "reference_video2" if reference_video2 else ("reference_video" if reference_video else ("main_video" if main_video else "")),
+        "continuation_source": _clean_text(params.get("continuation_source"))
+        or ("previous_segment" if is_video_continuation else ""),
+        "is_video_continuation": is_video_continuation,
+        "task_method": task_method,
+        "task_name": task_name,
+        "language": language,
+        "reference_video_present": bool(reference_video or reference_video2),
+        "reference_video_content_available": bool(reference_video or reference_video2),
+        "audio_count": sum(bool(params.get(key)) for key in ("audio", "audio2", "audio3")),
         "inventory_known": True,
     }
 

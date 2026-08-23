@@ -1376,7 +1376,8 @@
         const motionEntries = videoEntries.filter((entry) => entry.content === 'motion_timing');
         const candidates = motionEntries.length ? motionEntries : videoEntries;
         return cleanText(
-            candidates.find((entry) => entry.item.slot === 'scene_reference_video')?.item?.slot
+            candidates.find((entry) => entry.item.slot === 'scene_reference_video2')?.item?.slot
+            || candidates.find((entry) => entry.item.slot === 'scene_reference_video')?.item?.slot
             || candidates[0]?.item?.slot
         );
     }
@@ -2158,7 +2159,7 @@
             .filter(Boolean));
         if (!hasResolvedHidden) {
             const enabled = new Set(Array.isArray(scene.divisible) ? scene.divisible.map(String) : []);
-            ['scene_input_image3', 'scene_input_image4'].forEach((slot) => {
+            ['scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8', 'scene_reference_video2', 'scene_audio2', 'scene_audio3'].forEach((slot) => {
                 if (!hidden.has(slot) && !enabled.has(slot)) hidden.add(slot);
             });
         }
@@ -2172,11 +2173,16 @@
             { id: 'scene_input_image1', slot: 'scene_input_image1', label_en: 'Prompt image (2)', label_cn: '\u63d0\u793a\u56fe (2)' },
             { id: 'scene_input_image2', slot: 'scene_input_image2', label_en: 'Prompt image (3)', label_cn: '\u63d0\u793a\u56fe (3)' },
             { id: 'scene_input_image3', slot: 'scene_input_image3', label_en: 'Prompt image (4)', label_cn: '\u63d0\u793a\u56fe (4)' },
-            { id: 'scene_input_image4', slot: 'scene_input_image4', label_en: 'Prompt image (5)', label_cn: '\u63d0\u793a\u56fe (5)' }
+            { id: 'scene_input_image4', slot: 'scene_input_image4', label_en: 'Prompt image (5)', label_cn: '\u63d0\u793a\u56fe (5)' },
+            { id: 'scene_input_image5', slot: 'scene_input_image5', label_en: 'Prompt image (6)', label_cn: '\u63d0\u793a\u56fe (6)' },
+            { id: 'scene_input_image6', slot: 'scene_input_image6', label_en: 'Prompt image (7)', label_cn: '\u63d0\u793a\u56fe (7)' },
+            { id: 'scene_input_image7', slot: 'scene_input_image7', label_en: 'Prompt image (8)', label_cn: '\u63d0\u793a\u56fe (8)' },
+            { id: 'scene_input_image8', slot: 'scene_input_image8', label_en: 'Prompt image (9)', label_cn: '\u63d0\u793a\u56fe (9)' }
         ];
         const videoSlots = [
             { id: 'scene_video', slot: 'scene_video', label_en: 'Video', label_cn: '\u89c6\u9891' },
-            { id: 'scene_reference_video', slot: 'scene_reference_video', label_en: 'Reference video', label_cn: '\u53c2\u8003\u89c6\u9891' }
+            { id: 'scene_reference_video', slot: 'scene_reference_video', label_en: 'Reference video', label_cn: '\u53c2\u8003\u89c6\u9891' },
+            { id: 'scene_reference_video2', slot: 'scene_reference_video2', label_en: 'Additional reference video', label_cn: '\u9644\u52a0\u53c2\u8003\u89c6\u9891' }
         ];
         const imageRefs = imageSlots.flatMap((item) => {
             if (hidden.has(item.slot)) return [];
@@ -2188,14 +2194,15 @@
             const info = sceneMediaInfo(item.id, 'video');
             return info.available ? [Object.assign({}, item, { preview: info.preview })] : [];
         });
-        const audioInfo = hidden.has('scene_audio') ? { available: false } : sceneMediaInfo('scene_audio', 'audio');
-        const audioRefs = audioInfo.available ? [{
-            id: 'scene_audio',
-            slot: 'scene_audio',
-            label_en: 'Audio',
-            label_cn: '\u97f3\u9891',
-            preview: ''
-        }] : [];
+        const audioRefs = [
+            { id: 'scene_audio', slot: 'scene_audio', label_en: 'Audio 1', label_cn: '\u97f3\u9891 1' },
+            { id: 'scene_audio2', slot: 'scene_audio2', label_en: 'Audio 2', label_cn: '\u97f3\u9891 2' },
+            { id: 'scene_audio3', slot: 'scene_audio3', label_en: 'Audio 3', label_cn: '\u97f3\u9891 3' }
+        ].flatMap((item) => {
+            if (hidden.has(item.slot)) return [];
+            const info = sceneMediaInfo(item.id, 'audio');
+            return info.available ? [Object.assign({}, item, { preview: '' })] : [];
+        });
         return inventoryFromOptions({ inventory: {
             image_refs: imageRefs,
             video_refs: videoRefs,
@@ -3418,12 +3425,12 @@
             if (event.target === positivePromptField()
                     || event.target?.matches?.('[data-scene-director-field="prompt"]')
                     || event.target === bridgeInput('minimax_h3_storyboard_scene_state')
-                    || event.target?.closest?.('#scene_canvas,#scene_input_image1,#scene_input_image2,#scene_input_image3,#scene_input_image4,#scene_video,#scene_reference_video,#scene_audio')) {
+                    || event.target?.closest?.('#scene_canvas,#scene_input_image1,#scene_input_image2,#scene_input_image3,#scene_input_image4,#scene_input_image5,#scene_input_image6,#scene_input_image7,#scene_input_image8,#scene_video,#scene_reference_video,#scene_reference_video2,#scene_audio,#scene_audio2,#scene_audio3')) {
                 syncSceneControl(languageState());
             }
         });
         document.addEventListener('change', (event) => {
-            if (event.target?.closest?.('#scene_canvas,#scene_input_image1,#scene_input_image2,#scene_input_image3,#scene_input_image4,#scene_video,#scene_reference_video,#scene_audio')) {
+            if (event.target?.closest?.('#scene_canvas,#scene_input_image1,#scene_input_image2,#scene_input_image3,#scene_input_image4,#scene_input_image5,#scene_input_image6,#scene_input_image7,#scene_input_image8,#scene_video,#scene_reference_video,#scene_reference_video2,#scene_audio,#scene_audio2,#scene_audio3')) {
                 syncSceneControl(languageState());
             }
         });

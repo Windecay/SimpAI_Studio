@@ -10,11 +10,18 @@
         'scene_input_image2',
         'scene_input_image3',
         'scene_input_image4',
+        'scene_input_image5',
+        'scene_input_image6',
+        'scene_input_image7',
+        'scene_input_image8',
         'scene_video',
         'scene_reference_video',
+        'scene_reference_video2',
         'sam3_input_video',
         'sam3_mask_video',
-        'scene_audio'
+        'scene_audio',
+        'scene_audio2',
+        'scene_audio3'
     ];
     const SLOT_LABELS = {
         scene_canvas_image: t('Canvas / Main Image', '画布 / 主图'),
@@ -22,11 +29,18 @@
         scene_input_image2: t('Input Image 2', '输入图 2'),
         scene_input_image3: t('Input Image 3', '输入图 3'),
         scene_input_image4: t('Input Image 4', '输入图 4'),
+        scene_input_image5: t('Input Image 5', '输入图 5'),
+        scene_input_image6: t('Input Image 6', '输入图 6'),
+        scene_input_image7: t('Input Image 7', '输入图 7'),
+        scene_input_image8: t('Input Image 8', '输入图 8'),
         scene_video: t('Scene Video', '场景视频'),
         scene_reference_video: t('Reference Video', '参考视频'),
+        scene_reference_video2: t('Additional Reference Video', '附加参考视频'),
         sam3_input_video: t('SAM3 Input Video', 'SAM3 输入视频'),
         sam3_mask_video: t('SAM3 Mask Video', 'SAM3 遮罩视频'),
-        scene_audio: t('Scene Audio', '场景音频')
+        scene_audio: t('Scene Audio 1', '场景音频 1'),
+        scene_audio2: t('Scene Audio 2', '场景音频 2'),
+        scene_audio3: t('Scene Audio 3', '场景音频 3')
     };
     const BUILTIN_VLM_VERSION_CHOICES = Object.freeze([
         'Qwen3.5-9B-abliterated-Q4_K_M',

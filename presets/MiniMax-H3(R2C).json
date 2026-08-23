@@ -22,12 +22,12 @@
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
         "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
-      "theme_title": "MiniMax H3 Video Continuation [Previous video + optional 1-5 identity images]",
+      "theme_title": "MiniMax H3 Video Continuation [Previous video + optional 1-9 identity images]",
       "director_capability": {
         "image_policy": "optional",
         "audio_policy": "forbidden",
         "video_policy": "required",
-        "max_images": 5,
+        "max_images": 9,
         "min_images": 0,
         "image_modes": ["none", "reference_set"],
         "video_modes": ["explicit", "previous_segment"],
@@ -38,7 +38,7 @@
         "mixed_segments": false
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4", "minimax_h3_storyboard_control"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",

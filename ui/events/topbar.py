@@ -1385,17 +1385,17 @@ def bind_topbar_identity_events(
     ]
     activation_toggle_outputs = [item for item in activation_toggle_outputs if item is not None]
 
-    def _activation_is_required():
+    def _activation_is_required(activation_confirmed=False):
         required_fn = getattr(simpleai_module, "requires_multi_user_activation", None)
         if not activation_toggle_outputs or not callable(required_fn):
             return False
-        return bool(required_fn(False))
+        return bool(required_fn(activation_confirmed))
 
-    def _activation_refresh_updates(state, opened):
+    def _activation_refresh_updates(state, opened, activation_confirmed=False):
         refresh_fn = activation.get("refresh_fn")
         if not activation_toggle_outputs or not callable(refresh_fn):
             return []
-        return list(refresh_fn(state, opened))
+        return list(refresh_fn(state, opened, activation_confirmed))
 
     def _identity_stage_from_base(base):
         def is_visible(index):
@@ -1501,7 +1501,7 @@ def bind_topbar_identity_events(
             )
         return chain
 
-    def _toggle_identity_dialog_reset(state):
+    def _toggle_identity_dialog_reset(state, activation_confirmed=False):
         old_flag = bool(state.get("identity_dialog", False)) if isinstance(state, dict) else False
         base = list(simpleai_module.toggle_identity_dialog(state))
         if isinstance(state, dict):
@@ -1512,7 +1512,7 @@ def bind_topbar_identity_events(
         vcode_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[3:5])
         phrase_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[5:10])
         new_flag = bool(state.get("identity_dialog", False)) if isinstance(state, dict) else not old_flag
-        activation_required = bool(new_flag and _activation_is_required())
+        activation_required = bool(new_flag and _activation_is_required(activation_confirmed))
         if activation_required and len(ctrls) > 1:
             ctrls[1] = gr_update(visible=False)
         _log_ui_trace(
@@ -1527,12 +1527,12 @@ def bind_topbar_identity_events(
         )
         stage = "activation" if activation_required else (_identity_stage_from_base(ctrls) if new_flag else "closed")
         result = head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
-        return result + _activation_refresh_updates(state, new_flag)
+        return result + _activation_refresh_updates(state, new_flag, activation_confirmed) + [_identity_state_update(state)]
 
-    def _close_identity_dialog_reset(state):
+    def _close_identity_dialog_reset(state, activation_confirmed=False):
         if isinstance(state, dict):
             state["identity_dialog"] = True
-        return _toggle_identity_dialog_reset(state)
+        return _toggle_identity_dialog_reset(state, activation_confirmed)
 
     identity_export_btn.click(
         topbar_module.export_identity,
@@ -1596,7 +1596,10 @@ def bind_topbar_identity_events(
         current_upstream_status,
         identity_export_btn,
         identity_stage_state,
-    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]] + activation_toggle_outputs
+    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]] + activation_toggle_outputs + [state_topbar]
+    identity_toggle_inputs = [state_topbar]
+    if activation_state is not None:
+        identity_toggle_inputs.append(activation_state)
 
     activation_continue_fn = activation.get("continue_fn")
     activation_apply_button = activation.get("apply_button")
@@ -1626,7 +1629,7 @@ def bind_topbar_identity_events(
 
     binding_id_button.click(
         _toggle_identity_dialog_reset,
-        inputs=state_topbar,
+        inputs=identity_toggle_inputs,
         outputs=identity_toggle_outputs,
         show_progress=False,
         queue=False,
@@ -1634,7 +1637,7 @@ def bind_topbar_identity_events(
 
     identity_close_button.click(
         _close_identity_dialog_reset,
-        inputs=state_topbar,
+        inputs=identity_toggle_inputs,
         outputs=identity_toggle_outputs,
         show_progress=False,
         queue=False,

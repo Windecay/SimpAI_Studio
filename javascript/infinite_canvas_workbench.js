@@ -40,25 +40,31 @@
     function runtimeUiLang(source) {
         return getUiLang(source || window.simpleaiTopbarSystemParams || {});
     }
-    const SLOT_ORDER = WORKBENCH_REGISTRY.SLOT_ORDER || ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_video', 'scene_reference_video', 'sam3_input_video', 'sam3_mask_video', 'scene_audio'];
+    const SLOT_ORDER = WORKBENCH_REGISTRY.SLOT_ORDER || ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8', 'scene_video', 'scene_reference_video', 'scene_reference_video2', 'sam3_input_video', 'sam3_mask_video', 'scene_audio', 'scene_audio2', 'scene_audio3'];
     const SLOT_LABELS = WORKBENCH_REGISTRY.SLOT_LABELS || {
         scene_canvas_image: t('Canvas / Main Image', '画布 / 主图'),
         scene_input_image1: t('Input Image 1', '输入图 1'),
         scene_input_image2: t('Input Image 2', '输入图 2'),
         scene_input_image3: t('Input Image 3', '输入图 3'),
         scene_input_image4: t('Input Image 4', '输入图 4'),
+        scene_input_image5: t('Input Image 5', '输入图 5'),
+        scene_input_image6: t('Input Image 6', '输入图 6'),
+        scene_input_image7: t('Input Image 7', '输入图 7'),
+        scene_input_image8: t('Input Image 8', '输入图 8'),
         scene_video: t('Scene Video', '场景视频'),
         scene_reference_video: t('Reference Video', '参考视频'),
+        scene_reference_video2: t('Additional Reference Video', '附加参考视频'),
         sam3_input_video: t('SAM3 Input Video', 'SAM3 输入视频'),
         sam3_mask_video: t('SAM3 Mask Video', 'SAM3 遮罩视频'),
-        scene_audio: t('Scene Audio', '场景音频')
+        scene_audio: t('Scene Audio 1', '场景音频 1'),
+        scene_audio2: t('Scene Audio 2', '场景音频 2'),
+        scene_audio3: t('Scene Audio 3', '场景音频 3')
     };
     const VLM_VERSION_CHOICES = WORKBENCH_VLM.VLM_VERSION_CHOICES || WORKBENCH_REGISTRY.VLM_VERSION_CHOICES || [
         'Qwen3.5-9B-abliterated-Q4_K_M',
         'Qwen3.5-9B-abliterated-Q6_K',
         'Qwen3.5-9B-abliterated-Q8_0',
         'Gemma4-12B-it-heretic-Q4_K_XL',
-        'Gemma3-12B-TextEncoder',
         'Qwen3VL-4B-TextEncoder',
         'Custom'
     ];
@@ -126,6 +132,7 @@
     const CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE || ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'];
     const CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE || ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'];
     const CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE || ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'];
+    const CANVAS_AGENT_DEFAULT_REFERENCE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_REFERENCE_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)'];
     const CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX(TA2V)', 'LTX(IA2V)'];
     const CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE || ['MiniMax-H3(R2V)', 'LTX(IA2V)', 'LTX(TA2V)'];
     const CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET || 'LTX-Outpaint';
@@ -207,10 +214,10 @@
     const VLM_MODEL_STATUS_CACHE_TTL_MS = WORKBENCH_VLM.VLM_MODEL_STATUS_CACHE_TTL_MS || 5 * 60 * 1000;
     const TEMPLATE_LIBRARY_MANIFEST_PATH = workbenchStaticFilePath('javascript/canvas_workbench/templates/template-library.json');
     const TEMPLATE_PREVIEW_ROOT = 'javascript/canvas_workbench/templates/previews/';
-    const CANVAS_AGENT_MAX_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_IMAGE_REFERENCES || 5;
-    const CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES || 4;
-    const CANVAS_AGENT_MAX_VIDEO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_VIDEO_REFERENCES || 2;
-    const CANVAS_AGENT_MAX_AUDIO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_AUDIO_REFERENCES || 1;
+    const CANVAS_AGENT_MAX_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_IMAGE_REFERENCES || 9;
+    const CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES || 8;
+    const CANVAS_AGENT_MAX_VIDEO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_VIDEO_REFERENCES || 3;
+    const CANVAS_AGENT_MAX_AUDIO_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_AUDIO_REFERENCES || 3;
     const CANVAS_AGENT_MAX_TEXT_REFERENCES = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_MAX_TEXT_REFERENCES || 4;
     const CANVAS_AGENT_ASPECT_OPTIONS = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_ASPECT_OPTIONS || [
         { key: 'auto', label: t('Auto', '自适应'), icon: 'fa-image', value: '' },
@@ -4626,11 +4633,13 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const compact = text.replace(/\s+/g, '');
         const wantsVideo = /(video|i2v|t2v|mp4|movie|clip|animate|animation|motion|视频|影片|动画|动起来|图生视频|文生视频|生成视频|成片|镜头)/i.test(text);
         const wantsVideoExtend = /(extend|extension|continue|continuation|longer|loop|延长|续写|继续|加长|扩展|补帧|拉长)/i.test(text);
+        const wantsVideoEdit = wantsVideoExtend || /(edit|modify|replace|remove|erase|retouch|repaint|编辑|修改|替换|移除|擦除|重绘|换脸|扩图)/i.test(text);
         const wantsAudio = /(audio|tts|voice|speech|sound|music|song|音频|声音|语音|配音|朗读|说话|唱歌|音乐)/i.test(text);
         const wantsImage = /(image|photo|picture|img|图片|图像|照片|画面|生图|绘图)/i.test(text);
         return {
             wantsVideo,
             wantsVideoExtend,
+            wantsVideoEdit,
             wantsAudio,
             wantsImage,
             wantsI2v: wantsVideo && /(i2v|image to video|image-to-video|图生视频|用这张图|这张图|图片生成视频|图像生成视频)/i.test(compact),
@@ -4801,23 +4810,35 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         let role = opts.role || '';
         if (kind === 'image') {
             if (counts.images >= CANVAS_AGENT_MAX_IMAGE_REFERENCES) {
-                if (!opts.silent) showToast(t('Image edit supports at most 1 main image + 2 reference images.', '图片编辑最多支持 1 张主图 + 2 张参考图。'));
+                if (!opts.silent) showToast(t(
+                    'Agent references support at most {count} images.',
+                    'Agent 引用最多支持 {count} 张图片。'
+                ).replace('{count}', CANVAS_AGENT_MAX_IMAGE_REFERENCES));
                 return false;
             }
             role = role || (counts.hasPrimaryImage ? 'reference' : 'primary');
             if (role !== 'primary' && counts.imageReferences >= CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES) {
-                if (!opts.silent) showToast(t('Only 2 extra image references are supported.', '额外图片参考最多 2 张。'));
+                if (!opts.silent) showToast(t(
+                    'Only {count} extra image references are supported.',
+                    '额外图片参考最多 {count} 张。'
+                ).replace('{count}', CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES));
                 return false;
             }
         } else if (kind === 'video') {
             if (counts.videos >= CANVAS_AGENT_MAX_VIDEO_REFERENCES) {
-                if (!opts.silent) showToast(t('Only 2 video references are supported in this version.', '当前版本最多支持 2 个视频引用。'));
+                if (!opts.silent) showToast(t(
+                    'Only {count} video references are supported.',
+                    '最多支持 {count} 个视频引用。'
+                ).replace('{count}', CANVAS_AGENT_MAX_VIDEO_REFERENCES));
                 return false;
             }
             role = 'reference';
         } else if (kind === 'audio') {
             if (counts.audio >= CANVAS_AGENT_MAX_AUDIO_REFERENCES) {
-                if (!opts.silent) showToast(t('Only 1 audio reference is supported in this version.', '当前版本最多支持 1 个音频引用。'));
+                if (!opts.silent) showToast(t(
+                    'Only {count} audio references are supported.',
+                    '最多支持 {count} 个音频引用。'
+                ).replace('{count}', CANVAS_AGENT_MAX_AUDIO_REFERENCES));
                 return false;
             }
             role = 'audio';
@@ -4902,6 +4923,71 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         return normalizeCanvasAgentReferences().filter(ref => ref.kind === 'image' && ref.role !== 'primary').slice(0, CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES);
     }
 
+    function canvasAgentMediaReferenceLimit(kind) {
+        if (kind === 'video') return CANVAS_AGENT_MAX_VIDEO_REFERENCES;
+        if (kind === 'audio') return CANVAS_AGENT_MAX_AUDIO_REFERENCES;
+        return CANVAS_AGENT_MAX_IMAGE_REFERENCES;
+    }
+
+    function getCanvasAgentMediaReferenceNodes(primaryNodes) {
+        const primary = primaryNodes && typeof primaryNodes === 'object' ? primaryNodes : {};
+        const grouped = { image: [], video: [], audio: [] };
+        const seen = new Set();
+        const add = (kind, node) => {
+            if (!grouped[kind] || !node || getCanvasAgentTargetMediaKind(node) !== kind) return;
+            const key = canvasAgentReferenceKey(node, kind);
+            if (!key || seen.has(key) || grouped[kind].length >= canvasAgentMediaReferenceLimit(kind)) return;
+            seen.add(key);
+            grouped[kind].push(node);
+        };
+        ['image', 'video', 'audio'].forEach((kind) => add(kind, primary[kind]));
+        normalizeCanvasAgentReferences().forEach((ref) => {
+            if (!grouped[ref.kind]) return;
+            add(ref.kind, canvasAgentReferenceNode(ref));
+        });
+        return grouped;
+    }
+
+    function canvasAgentMediaNodeCounts(grouped) {
+        const source = grouped && typeof grouped === 'object' ? grouped : {};
+        return {
+            image: Array.isArray(source.image) ? source.image.length : 0,
+            video: Array.isArray(source.video) ? source.video.length : 0,
+            audio: Array.isArray(source.audio) ? source.audio.length : 0
+        };
+    }
+
+    function canvasAgentVideoTaskForMedia(counts) {
+        const media = counts && typeof counts === 'object' ? counts : {};
+        if (Number(media.video) > 0) return 'video_audio_to_video';
+        if (Number(media.audio) > 0 && Number(media.image) > 0) return 'image_audio_to_video';
+        if (Number(media.audio) > 0) return 'audio_to_video';
+        if (Number(media.image) > 1) return 'multi_image_to_video';
+        if (Number(media.image) > 0) return 'image_to_video';
+        return 'text_to_video';
+    }
+
+    function canvasAgentVideoTaskLabel(task) {
+        const labels = {
+            image_to_video: t('Image-to-video', '图生视频'),
+            multi_image_to_video: t('Multi-image to video', '多图生成视频'),
+            audio_to_video: t('Audio-to-video', '音频生成视频'),
+            image_audio_to_video: t('Image + audio to video', '图像和音频生成视频'),
+            video_audio_to_video: t('Mixed references to video', '混合参考生成视频'),
+            text_to_video: t('Text-to-video', '文生视频')
+        };
+        return labels[String(task || '')] || labels.text_to_video;
+    }
+
+    function canvasAgentMediaNodeFacts(grouped) {
+        const counts = canvasAgentMediaNodeCounts(grouped);
+        return [
+            counts.image ? { label: t('Images', '图片'), value: String(counts.image) } : null,
+            counts.video ? { label: t('Videos', '视频'), value: String(counts.video) } : null,
+            counts.audio ? { label: t('Audio clips', '音频'), value: String(counts.audio) } : null
+        ].filter(Boolean);
+    }
+
     function getCanvasAgentVlmReferenceSources(options) {
         const opts = options || {};
         const refs = normalizeCanvasAgentReferences();
@@ -4930,7 +5016,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref), ref));
         }
         if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) addNode(opts.fallbackTarget);
-        const defaultLimit = opts.imagesOnly ? CANVAS_AGENT_MAX_IMAGE_REFERENCES : 4;
+        const defaultLimit = opts.imagesOnly
+            ? CANVAS_AGENT_MAX_IMAGE_REFERENCES
+            : CANVAS_AGENT_MAX_IMAGE_REFERENCES + CANVAS_AGENT_MAX_VIDEO_REFERENCES;
         const requestedLimit = Math.round(Number(opts.maxSources || defaultLimit));
         const maxSources = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
         const selected = nodes.slice(0, maxSources);
@@ -5016,10 +5104,18 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const hasImage = targetKind === 'image' || counts.images > 0;
         const hasVideo = targetKind === 'video' || counts.videos > 0;
         const hasAudio = targetKind === 'audio' || counts.audio > 0;
-        if ((intent.wantsVideo || intent.wantsVideoExtend) && hasVideo) {
+        if (intent.wantsVideoEdit && hasVideo) {
             return {
                 action: 'edit-video',
                 label: intent.wantsVideoExtend ? t('Extend video', '延长视频') : t('Edit video', '编辑视频'),
+                icon: 'fa-film',
+                enabled: true
+            };
+        }
+        if (intent.wantsVideo && hasVideo) {
+            return {
+                action: 'generate-video',
+                label: t('Reference to video', '参考生成视频'),
                 icon: 'fa-film',
                 enabled: true
             };
@@ -5220,9 +5316,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
 </div>`;
         return `<div class="sai-canvas-agent-refs">
   ${group(t('Main', '主素材'), main, t('No main image', '暂无主图'))}
-  ${group(t('Image references', '图片参考'), imageRefs, t('Up to 2 extra images', '最多 2 张额外参考图'))}
-  ${group(t('Video', '视频'), videos, t('Optional: 1 video reference', '可选 1 个视频引用'))}
-  ${group(t('Audio', '音频'), audio, t('Optional: 1 audio reference', '可选 1 个音频引用'))}
+  ${group(t('Image references', '图片参考'), imageRefs, t('Up to {count} extra images', '最多 {count} 张额外参考图').replace('{count}', CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES))}
+  ${group(t('Video', '视频'), videos, t('Up to {count} video references', '最多 {count} 个视频引用').replace('{count}', CANVAS_AGENT_MAX_VIDEO_REFERENCES))}
+  ${group(t('Audio', '音频'), audio, t('Up to {count} audio references', '最多 {count} 个音频引用').replace('{count}', CANVAS_AGENT_MAX_AUDIO_REFERENCES))}
   ${texts.length ? group(t('Prompt text', '提示词文本'), texts, '') : ''}
 </div>`;
     }
@@ -5673,7 +5769,10 @@ ${expanded ? `
 </div>
 ${renderCanvasAgentReferences(decisionActive || runActive)}
 ${renderCanvasAgentToolShelf(decisionActive || runActive)}
-<div class="sai-canvas-agent-limit-note">${escapeHtml(t('Image edit limit: 1 main image + 2 reference images. Video and audio references are limited to 1 each in this version.', '图片编辑限制：1 张主图 + 2 张参考图。当前版本视频和音频引用各最多 1 个。'))}</div>` : ''}
+<div class="sai-canvas-agent-limit-note">${escapeHtml(t(
+    'Reference capacity: {images} images, {videos} videos, and {audios} audio clips.',
+    '引用容量：{images} 张图片、{videos} 个视频、{audios} 个音频。'
+).replace('{images}', CANVAS_AGENT_MAX_IMAGE_REFERENCES).replace('{videos}', CANVAS_AGENT_MAX_VIDEO_REFERENCES).replace('{audios}', CANVAS_AGENT_MAX_AUDIO_REFERENCES))}</div>` : ''}
 <div class="sai-canvas-agent-actions">
   <button type="button" class="is-primary" data-canvas-agent-action="${escapeHtml(primary.action)}" ${primary.enabled && !decisionActive && !runActive ? '' : 'disabled'}><i class="fa-solid ${escapeHtml(primary.icon)}"></i><span>${escapeHtml(primary.label)}</span></button>
   <button type="button" data-canvas-agent-action="clear-input" ${runActive ? 'disabled' : ''}><i class="fa-solid fa-eraser"></i><span>${escapeHtml(t('Clear', '清空'))}</span></button>
@@ -6134,6 +6233,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         if (key === 'video' || key === 'video_edit' || key === 'edit_video') {
             return { key: 'video_edit', setting: 'videoEditPreset', fallback: CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE };
         }
+        if (key === 'reference_to_video' || key === 'video_audio_to_video' || key === 'r2v') {
+            return { key: 'reference_to_video', setting: 'i2vPreset', fallback: CANVAS_AGENT_DEFAULT_REFERENCE_TO_VIDEO_PRESET_QUEUE };
+        }
         if (key === 'audio_to_video' || key === 'ta2v') {
             return { key: 'audio_to_video', setting: 'audioToVideoPreset', fallback: CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE };
         }
@@ -6361,6 +6463,65 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         return canvasAgentUploadSlotsForNode(probe).filter(slot => getUploadSlotMediaKind(slot.key) === 'image').length;
     }
 
+    function canvasAgentPresetMediaCapacity(entry, kind) {
+        if (kind === 'image') return canvasAgentPresetImageCapacity(entry);
+        const plural = kind === 'video' ? 'videos' : 'audios';
+        const declared = Number(entry?.media_capability?.[`max_${plural}`] ?? entry?.schema?.director_capability?.[`max_${plural}`]);
+        if (Number.isFinite(declared)) return Math.max(0, Math.round(declared));
+        const probe = createCanvasAgentPresetProbeNode(entry);
+        return canvasAgentUploadSlotsForNode(probe)
+            .filter(slot => !isCanvasAgentMaskSlot(slot) && getUploadSlotMediaKind(slot.key) === kind)
+            .length;
+    }
+
+    function canvasAgentPresetSupportsTask(entry, task) {
+        const requested = String(task || '').trim().toLowerCase().replace(/[- ]/g, '_');
+        if (!requested) return true;
+        const declared = Array.isArray(entry?.media_capability?.supported_tasks)
+            ? entry.media_capability.supported_tasks
+            : (Array.isArray(entry?.supported_tasks) ? entry.supported_tasks : []);
+        if (!declared.length) return true;
+        return declared.some(value => String(value || '').trim().toLowerCase().replace(/[- ]/g, '_') === requested);
+    }
+
+    function canvasAgentRequestedMediaCounts(options) {
+        const opts = options || {};
+        const source = opts.mediaCounts && typeof opts.mediaCounts === 'object' ? opts.mediaCounts : {};
+        const read = (kind, legacyValue) => {
+            const value = Number(source[kind] ?? source[`${kind}s`] ?? legacyValue ?? 0);
+            return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+        };
+        return {
+            image: read('image', opts.imageCount),
+            video: read('video', opts.videoCount),
+            audio: read('audio', opts.audioCount)
+        };
+    }
+
+    function canvasAgentPresetSupportsMediaRequest(entry, counts, task) {
+        if (!entry) return false;
+        const requested = counts && typeof counts === 'object' ? counts : {};
+        return ['image', 'video', 'audio'].every(kind => (
+            Math.max(0, Number(requested[kind]) || 0) <= canvasAgentPresetMediaCapacity(entry, kind)
+        )) && canvasAgentPresetSupportsTask(entry, task);
+    }
+
+    function canvasAgentPresetMediaCapacityMessage(name, kind, requested, capacity) {
+        const labels = {
+            image: t('images', '张图片'),
+            video: t('videos', '个视频'),
+            audio: t('audio clips', '个音频')
+        };
+        return t(
+            '{preset}: accepts {capacity} {kind}, but {requested} are attached',
+            '{preset}：支持 {capacity}{kind}，当前挂载了 {requested}{kind}'
+        )
+            .replace('{preset}', name)
+            .replaceAll('{capacity}', String(capacity))
+            .replaceAll('{requested}', String(requested))
+            .replaceAll('{kind}', labels[kind] || kind);
+    }
+
     async function chooseCanvasAgentPresetEntry(kind, options) {
         const opts = options || {};
         const settings = getCanvasAgentSettings();
@@ -6376,7 +6537,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         const uniqueQueue = Array.from(new Set(queue.filter(Boolean)));
         const checked = [];
-        const requiredImageCount = Math.max(0, Math.round(Number(opts.imageCount) || 0));
+        const requiredMediaCounts = canvasAgentRequestedMediaCounts(opts);
+        const requiredImageCount = requiredMediaCounts.image;
+        const requiredTask = String(opts.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         for (const name of uniqueQueue) {
             const entry = findPresetCatalogEntryByName(name);
             if (!entry) {
@@ -6388,7 +6551,31 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 continue;
             }
             if (requiredImageCount && canvasAgentPresetImageCapacity(entry) < requiredImageCount) {
-                checked.push(`${name}: accepts fewer than ${requiredImageCount} images`);
+                checked.push(canvasAgentPresetMediaCapacityMessage(
+                    name,
+                    'image',
+                    requiredImageCount,
+                    canvasAgentPresetImageCapacity(entry)
+                ));
+                continue;
+            }
+            const incompatibleKind = ['video', 'audio'].find(mediaKind => (
+                requiredMediaCounts[mediaKind] > canvasAgentPresetMediaCapacity(entry, mediaKind)
+            ));
+            if (incompatibleKind) {
+                checked.push(canvasAgentPresetMediaCapacityMessage(
+                    name,
+                    incompatibleKind,
+                    requiredMediaCounts[incompatibleKind],
+                    canvasAgentPresetMediaCapacity(entry, incompatibleKind)
+                ));
+                continue;
+            }
+            if (requiredTask && !canvasAgentPresetSupportsTask(entry, requiredTask)) {
+                checked.push(t(
+                    '{preset}: does not support {task}',
+                    '{preset}：不支持 {task}'
+                ).replace('{preset}', name).replace('{task}', requiredTask));
                 continue;
             }
             const status = await getCanvasAgentPresetStatus(entry);
@@ -6399,7 +6586,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         const firstAvailable = uniqueQueue
             .map(findPresetCatalogEntryByName)
-            .find(entry => entry && (!requiredImageCount || canvasAgentPresetImageCapacity(entry) >= requiredImageCount));
+            .find(entry => canvasAgentPresetSupportsMediaRequest(entry, requiredMediaCounts, requiredTask));
         return { entry: firstAvailable || null, status: null, queue: uniqueQueue, checked, override: false };
     }
 
@@ -6594,7 +6781,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const isH3ReferenceMode = /minimax[_\s-]*h3/.test(compilerText) && /ref2va|r2v|reference/.test(compilerText);
         const referenceRoleForSlot = (kind, slot) => {
             if (kind === 'video') {
-                if (slot === 'scene_reference_video') return 'motion/timing reference video';
+                if (slot === 'scene_reference_video' || slot === 'scene_reference_video2') return 'motion/timing reference video';
                 if (slot === 'scene_video' && isH3ReferenceMode) return 'scene/composition video reference';
                 return 'video reference';
             }
@@ -6645,11 +6832,21 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             ?? themeDefaults.scene_video_duration
             ?? null;
         const duration = Number(rawDuration);
-        const selectedVideo = videoDescriptors.find((item) => item.slot === 'scene_reference_video') || videoDescriptors[0] || null;
-        const referenceVideo = videoDescriptors.find((item) => item.slot === 'scene_reference_video') || null;
-        if (isH3ReferenceMode && selectedVideo?.slot === 'scene_video' && !referenceVideo) {
-            selectedVideo.role = 'motion/timing reference video';
+        const selectedVideo = videoDescriptors.find((item) => item.slot === 'scene_reference_video2')
+            || videoDescriptors.find((item) => item.slot === 'scene_reference_video')
+            || videoDescriptors[0]
+            || null;
+        const referenceVideos = videoDescriptors.filter((item) => item.slot === 'scene_reference_video' || item.slot === 'scene_reference_video2');
+        if (isH3ReferenceMode && selectedVideo) {
+            videoDescriptors.forEach((item) => {
+                item.role = item === selectedVideo
+                    ? 'motion/timing reference video'
+                    : 'scene/composition video reference';
+            });
         }
+        const videoSource = selectedVideo?.slot === 'scene_reference_video2'
+            ? 'reference_video2'
+            : (selectedVideo?.slot === 'scene_reference_video' ? 'reference_video' : (selectedVideo ? 'main_video' : ''));
         return {
             image_count: node ? imageDescriptors.length : imageIds.size,
             video_count: node ? videoDescriptors.length : videoIds.size,
@@ -6663,9 +6860,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             motion_picture_index: selectedVideo && (node ? imageDescriptors.length : imageIds.size) === 1 ? 1 : 0,
             video_requested: !!selectedVideo,
             video_used: !!selectedVideo?.available,
-            video_source: selectedVideo?.slot === 'scene_reference_video' ? 'reference_video' : (selectedVideo ? 'main_video' : ''),
-            reference_video_present: !!referenceVideo,
-            reference_video_content_available: !!referenceVideo?.available,
+            video_source: videoSource,
+            reference_video_present: referenceVideos.length > 0,
+            reference_video_content_available: referenceVideos.some((item) => item.available),
             duration_seconds: Number.isFinite(duration) && duration > 0 ? duration : null,
             inventory_known: true,
             language: runtimeUiLang()
@@ -7715,6 +7912,62 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         return { ok: true, mainSlot, refCount };
     }
 
+    function connectCanvasAgentMediaToGenerator(generator, groupedNodes) {
+        const grouped = groupedNodes && typeof groupedNodes === 'object' ? groupedNodes : {};
+        const uploadSlots = canvasAgentUploadSlotsForNode(generator).filter(slot => !isCanvasAgentMaskSlot(slot));
+        const usedSlots = new Set(Object.keys(generator?.upload_slots || {}).filter(key => generator.upload_slots?.[key]));
+        const connected = { image: 0, video: 0, audio: 0 };
+        const missing = { image: 0, video: 0, audio: 0 };
+        ['image', 'video', 'audio'].forEach((kind) => {
+            const nodes = Array.isArray(grouped[kind]) ? grouped[kind] : [];
+            nodes.forEach((sourceNode) => {
+                const slot = uploadSlots.find(item => (
+                    !usedSlots.has(item.key)
+                    && getUploadSlotMediaKind(item.key) === kind
+                    && canNodeConnectToUploadSlot(sourceNode, item.key)
+                ))?.key || '';
+                if (!slot) {
+                    missing[kind] += 1;
+                    return;
+                }
+                usedSlots.add(slot);
+                createUploadEdge(sourceNode.id, generator.id, slot, { silent: true });
+                connected[kind] += 1;
+            });
+        });
+        const totalConnected = connected.image + connected.video + connected.audio;
+        const totalMissing = missing.image + missing.video + missing.audio;
+        return {
+            ok: totalConnected > 0 && totalMissing === 0,
+            connected,
+            missing,
+            totalConnected,
+            totalMissing
+        };
+    }
+
+    function canvasAgentMediaConnectionError(result) {
+        const missing = result?.missing || {};
+        const partsEn = [];
+        const partsCn = [];
+        if (missing.image) {
+            partsEn.push(`${missing.image} image${missing.image === 1 ? '' : 's'}`);
+            partsCn.push(`${missing.image} 张图片`);
+        }
+        if (missing.video) {
+            partsEn.push(`${missing.video} video${missing.video === 1 ? '' : 's'}`);
+            partsCn.push(`${missing.video} 个视频`);
+        }
+        if (missing.audio) {
+            partsEn.push(`${missing.audio} audio clip${missing.audio === 1 ? '' : 's'}`);
+            partsCn.push(`${missing.audio} 个音频`);
+        }
+        return t(
+            'The selected preset has no free compatible slots for: {media}.',
+            '所选 preset 没有足够的兼容槽位：{media}。'
+        ).replace('{media}', runtimeUiLang() === 'cn' ? partsCn.join('、') : partsEn.join(', '));
+    }
+
     function canvasAgentReferenceUploadSlotForGenerator(generator, mainSlot) {
         if (!generator) return '';
         const probeImageNode = { type: 'image', asset: null };
@@ -8241,11 +8494,24 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             if (!opts.silent) showToast(t('Select an Audio node or audio Result first.', '请先选择音频节点或音频结果。'));
             return false;
         }
-        const ref = createCanvasAgentReferenceFromNode(node, 'audio');
-        if (!ref) return false;
-        canvasAgentState.references = (Array.isArray(canvasAgentState.references) ? canvasAgentState.references : [])
-            .filter(item => item.kind !== 'audio');
-        canvasAgentState.references.push(ref);
+        normalizeCanvasAgentReferences();
+        const key = canvasAgentReferenceKey(node, 'audio');
+        let ref = canvasAgentState.references.find(item => item.key === key) || null;
+        if (!ref) {
+            if (canvasAgentReferenceCounts().audio >= CANVAS_AGENT_MAX_AUDIO_REFERENCES) {
+                const message = t(
+                    'Only {count} audio references are supported.',
+                    '最多支持 {count} 个音频引用。'
+                ).replace('{count}', CANVAS_AGENT_MAX_AUDIO_REFERENCES);
+                setCanvasAgentMessage(message);
+                showToast(message);
+                renderCanvasAgentPanel();
+                return false;
+            }
+            ref = createCanvasAgentReferenceFromNode(node, 'audio');
+            if (!ref) return false;
+            canvasAgentState.references.push(ref);
+        }
         normalizeCanvasAgentReferences();
         if (!opts.keepSelection) {
             selectedNodeId = node.id;
@@ -8351,6 +8617,8 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             edit_image: 'image_edit',
             i2v: 'image_to_video',
             image2video: 'image_to_video',
+            multi_i2v: 'multi_image_to_video',
+            multi_image2video: 'multi_image_to_video',
             text2video: 'text_to_video',
             t2v: 'text_to_video',
             edit_video: 'video_edit',
@@ -8359,14 +8627,16 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             ta2v: 'audio_to_video',
             a2v: 'audio_to_video',
             audio2video: 'audio_to_video',
-            audio_image_to_video: 'audio_to_video',
-            ia2v: 'audio_to_video',
+            audio_image_to_video: 'image_audio_to_video',
+            ia2v: 'image_audio_to_video',
+            reference_to_video: 'video_audio_to_video',
+            r2v: 'video_audio_to_video',
             edit_audio: 'audio_edit',
             text_to_audio: 'audio_generate',
             tts: 'audio_generate'
         };
         const normalizedAction = actionAliases[action] || action;
-        const allowedAction = ['text_to_image', 'image_edit', 'image_to_video', 'text_to_video', 'video_edit', 'audio_to_video', 'audio_edit', 'audio_generate', 'unsupported'].includes(normalizedAction) ? normalizedAction : '';
+        const allowedAction = ['text_to_image', 'image_edit', 'image_to_video', 'multi_image_to_video', 'text_to_video', 'video_edit', 'audio_to_video', 'image_audio_to_video', 'video_audio_to_video', 'audio_edit', 'audio_generate', 'unsupported'].includes(normalizedAction) ? normalizedAction : '';
         const preset = normalizePresetName(plan.preset || plan.preset_name || '');
         const prompt = String(plan.prompt || plan.image_prompt || plan.user_intent || fallbackPrompt || '').trim();
         const recommendedPrompt = String(plan.recommended_prompt || plan.rewrite_prompt || plan.rewritten_prompt || plan.final_prompt || '').trim();
@@ -8438,17 +8708,17 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const hasImageReferences = counts.images > 0;
         const hasVideoReferences = counts.videos > 0;
         const hasAudioReferences = counts.audio > 0;
+        const primaryMedia = ['image', 'video', 'audio'].includes(targetKind) ? { [targetKind]: target } : {};
+        const videoTask = canvasAgentVideoTaskForMedia(canvasAgentMediaNodeCounts(getCanvasAgentMediaReferenceNodes(primaryMedia)));
         let action = 'text_to_image';
-        if (requestedAction === 'image-to-video') action = 'image_to_video';
+        if (requestedAction === 'image-to-video') action = videoTask === 'text_to_video' ? 'image_to_video' : videoTask;
         else if (requestedAction === 'audio-to-video') action = 'audio_to_video';
-        else if (requestedAction === 'generate-video') action = (hasAudioReferences || targetKind === 'audio') ? 'audio_to_video' : ((isCanvasAgentImageTarget(target) || hasImageReferences) ? 'image_to_video' : 'text_to_video');
+        else if (requestedAction === 'generate-video') action = intent.wantsVideoEdit && (targetKind === 'video' || hasVideoReferences) ? 'video_edit' : videoTask;
         else if (requestedAction === 'edit-video') action = 'video_edit';
         else if (requestedAction === 'edit-audio') action = 'audio_edit';
         else if (requestedAction === 'generate-audio') action = 'audio_generate';
-        else if ((intent.wantsVideo || intent.wantsVideoExtend) && (targetKind === 'video' || hasVideoReferences)) action = 'video_edit';
-        else if (intent.wantsVideo && (targetKind === 'audio' || hasAudioReferences)) action = 'audio_to_video';
-        else if (intent.wantsVideo && (isCanvasAgentImageTarget(target) || hasImageReferences)) action = 'image_to_video';
-        else if (intent.wantsVideo) action = 'text_to_video';
+        else if (intent.wantsVideoEdit && (targetKind === 'video' || hasVideoReferences)) action = 'video_edit';
+        else if (intent.wantsVideo) action = videoTask;
         else if ((intent.wantsAudio || targetKind === 'audio' || hasAudioReferences) && (targetKind === 'audio' || hasAudioReferences)) action = 'audio_edit';
         else if (intent.wantsAudio) action = 'audio_generate';
         else if (requestedAction === 'edit-image' || isCanvasAgentImageTarget(target) || hasImageReferences) action = 'image_edit';
@@ -8477,6 +8747,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         getCanvasAgentPresetQueue('i2v').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('t2v').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('video_edit').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
+        getCanvasAgentPresetQueue('reference_to_video').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('audio_to_video').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('audio_image_to_video').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('audio').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
@@ -8525,13 +8796,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             'Also produce one recommended prompt in the same response. This replaces a second prompt refinement call unless the user asks to regenerate.',
             'Return JSON only. Do not use markdown.',
             'Allowed JSON schema:',
-            '{"action":"text_to_image|image_edit|image_to_video|text_to_video|video_edit|audio_to_video|audio_edit|audio_generate|unsupported","preset":"preset name or empty","prompt":"user intent without preset name","recommended_prompt":"polished generation/edit prompt to submit","negative_prompt":null,"aspect_ratio":"auto|1:1|16:9|9:16|4:3|3:4|2:3|3:2|7:4|4:7 or null","width":null,"height":null,"resolution_scale":null,"image_number":null,"seed":null,"seed_random":null,"steps":null,"cfg_scale":null,"reason":"short reason","confidence":"0.00-1.00"}',
+            '{"action":"text_to_image|image_edit|image_to_video|multi_image_to_video|text_to_video|video_edit|audio_to_video|image_audio_to_video|video_audio_to_video|audio_edit|audio_generate|unsupported","preset":"preset name or empty","prompt":"user intent without preset name","recommended_prompt":"polished generation/edit prompt to submit","negative_prompt":null,"aspect_ratio":"auto|1:1|16:9|9:16|4:3|3:4|2:3|3:2|7:4|4:7 or null","width":null,"height":null,"resolution_scale":null,"image_number":null,"seed":null,"seed_random":null,"steps":null,"cfg_scale":null,"reason":"short reason","confidence":"0.00-1.00"}',
             canvasAgentPromptTargetRulesText(),
             'After choosing the preset/action, enforce its prompt target format before returning JSON. For FLUX/T5XXL, recommended_prompt must contain no Chinese characters. For SDXL/Danbooru, recommended_prompt must be comma-separated tags, not a paragraph.',
             'Extract generation controls from the user instruction when explicit: aspect ratio (16:9/9:16/1:1, landscape/portrait, horizontal/vertical), exact width/height when stated, requested image count, fixed seed/random seed, steps, CFG/guidance, resolution scale, and a separate negative prompt only when the user explicitly asks for negative/negative_prompt. Leave optional fields null when not requested. Do not output negative_prompt just because the selected preset has a default negative; preset defaults are submitted separately. Do not put aspect_ratio, width, height, seed, steps, CFG, resolution_scale, or negative prompt terms inside the image prompt text.',
             'Important example: user says "使用Zimage生成一张美女图片" and catalog contains "Z-imageT"; return action text_to_image, preset Z-imageT, prompt "一张美女图片", recommended_prompt as a concise high-quality image prompt.',
             'For image_edit, recommended_prompt must describe the edit while preserving source identity/composition unless the user requests a change.',
-            'Route image + video intent to image_to_video. Route selected audio + video intent to audio_to_video. Route a selected video plus extend/continue/edit intent to video_edit. Route text-only video intent to text_to_video. Route selected audio to audio_edit only when a matching audio-capable preset is available. Route text-only audio/music/voice intent to audio_generate when the audio queue is configured; otherwise unsupported is acceptable.',
+            'For video generation, classify attached media by type. Use multi_image_to_video for several images, image_audio_to_video for image plus standalone audio, and video_audio_to_video whenever one or more reference videos are attached; video_audio_to_video may also include images and standalone audio. Use video_edit only when the user explicitly asks to edit, extend, continue, replace, or remove content from a selected video. Route text-only video intent to text_to_video. Route selected audio to audio_edit only when a matching audio-capable preset is available. Route text-only audio/music/voice intent to audio_generate when the audio queue is configured; otherwise unsupported is acceptable.',
             `Requested UI action: ${requestedAction || 'generate-image'}`,
             `Selected target: ${target ? `${target.type} ${target.title || target.id}` : 'none'}`,
             `Selected media kind: ${getCanvasAgentTargetMediaKind(target) || 'none'}`,
@@ -8543,6 +8814,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             `Image-to-video queue: ${getCanvasAgentPresetQueue('i2v').join(', ')}`,
             `Text-to-video queue: ${getCanvasAgentPresetQueue('t2v').join(', ')}`,
             `Video-edit queue: ${getCanvasAgentPresetQueue('video_edit').join(', ')}`,
+            `Reference-to-video queue: ${getCanvasAgentPresetQueue('reference_to_video').join(', ')}`,
             `Audio-to-video queue: ${getCanvasAgentPresetQueue('audio_to_video').join(', ')}`,
             `Audio+image-to-video queue: ${getCanvasAgentPresetQueue('audio_image_to_video').join(', ')}`,
             `Audio queue: ${getCanvasAgentPresetQueue('audio').join(', ') || 'not configured'}`,
@@ -8624,11 +8896,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             plan.reason = [plan.reason, planResult.error ? `VLM fallback: ${planResult.error}` : ''].filter(Boolean).join(' ');
         }
         if (requestedAction === 'edit-image') plan.action = 'image_edit';
-        if (requestedAction === 'image-to-video') plan.action = 'image_to_video';
-        if (requestedAction === 'generate-video' && !['image_to_video', 'video_edit', 'audio_to_video'].includes(plan.action)) {
-            const target = getCanvasAgentTargetNode();
-            const counts = canvasAgentReferenceCounts();
-            plan.action = (isCanvasAgentAudioTarget(target) || counts.audio > 0) ? 'audio_to_video' : ((isCanvasAgentImageTarget(target) || counts.images > 0) ? 'image_to_video' : 'text_to_video');
+        const target = getCanvasAgentTargetNode();
+        const targetKind = getCanvasAgentTargetMediaKind(target);
+        const primaryMedia = ['image', 'video', 'audio'].includes(targetKind) ? { [targetKind]: target } : {};
+        const requestedVideoTask = canvasAgentVideoTaskForMedia(canvasAgentMediaNodeCounts(getCanvasAgentMediaReferenceNodes(primaryMedia)));
+        if (requestedAction === 'image-to-video') plan.action = requestedVideoTask === 'text_to_video' ? 'image_to_video' : requestedVideoTask;
+        if (requestedAction === 'generate-video' && !['image_to_video', 'multi_image_to_video', 'video_edit', 'audio_to_video', 'image_audio_to_video', 'video_audio_to_video'].includes(plan.action)) {
+            plan.action = requestedVideoTask;
         }
         if (requestedAction === 'edit-video') plan.action = 'video_edit';
         if (requestedAction === 'edit-audio') plan.action = 'audio_edit';
@@ -8649,7 +8923,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 recommendedPrompt: plan.recommendedPrompt,
                 plan
             });
-        } else if (plan.action === 'image_to_video') {
+        } else if (plan.action === 'image_to_video' || plan.action === 'multi_image_to_video') {
             await runCanvasAgentImageToVideo(plan.prompt || rawPrompt, {
                 originalPrompt: rawPrompt,
                 presetName: plan.preset,
@@ -8670,8 +8944,15 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 recommendedPrompt: plan.recommendedPrompt,
                 plan
             });
-        } else if (plan.action === 'audio_to_video') {
+        } else if (plan.action === 'audio_to_video' || plan.action === 'image_audio_to_video') {
             await runCanvasAgentAudioToVideo(plan.prompt || rawPrompt, {
+                originalPrompt: rawPrompt,
+                presetName: plan.preset,
+                recommendedPrompt: plan.recommendedPrompt,
+                plan
+            });
+        } else if (plan.action === 'video_audio_to_video') {
+            await runCanvasAgentVideoReferenceToVideo(plan.prompt || rawPrompt, {
                 originalPrompt: rawPrompt,
                 presetName: plan.preset,
                 recommendedPrompt: plan.recommendedPrompt,
@@ -9604,21 +9885,26 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             || null;
     }
 
-    function canvasAgentAudioVideoSceneTheme(entry, hasImage) {
+    function canvasAgentAudioVideoSceneTheme(entry, hasImage, task) {
         const schema = entry?.schema && typeof entry.schema === 'object' ? entry.schema : {};
         const themes = Array.isArray(schema.themes) ? schema.themes : [];
         if (!themes.length) return '';
         const normalized = themes.map(theme => ({ theme, key: String(theme || '').toLowerCase().replace(/\s+/g, '') }));
         if (hasImage) {
-            return normalized.find(item => item.key.includes('image+audiotovideo') || item.key.includes('audio+imagetovideo'))?.theme
+            const matched = normalized.find(item => item.key.includes('image+audiotovideo') || item.key.includes('audio+imagetovideo'))?.theme
                 || normalized.find(item => item.key.includes('audio') && item.key.includes('image'))?.theme
                 || normalized.find(item => item.key.includes('audio') && !item.key.includes('text'))?.theme
                 || '';
+            if (matched) return matched;
+        } else {
+            const matched = normalized.find(item => item.key.includes('text+audiotovideo') || item.key.includes('audio+texttovideo'))?.theme
+                || normalized.find(item => item.key.includes('audio') && item.key.includes('text'))?.theme
+                || normalized.find(item => item.key.includes('audio') && !item.key.includes('image'))?.theme
+                || '';
+            if (matched) return matched;
         }
-        return normalized.find(item => item.key.includes('text+audiotovideo') || item.key.includes('audio+texttovideo'))?.theme
-            || normalized.find(item => item.key.includes('audio') && item.key.includes('text'))?.theme
-            || normalized.find(item => item.key.includes('audio') && !item.key.includes('image'))?.theme
-            || '';
+        if (canvasAgentPresetSupportsTask(entry, task)) return String(schema.default_theme || themes[0] || '');
+        return '';
     }
 
     function findCanvasAgentUploadSlotForTarget(node, target, preferredKey) {
@@ -10783,8 +11069,19 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             return;
         }
         const imageNode = getCanvasAgentPrimaryMediaNode('image', opts);
-        const bridgeKind = imageNode ? 'audio_image_to_video' : 'audio_to_video';
-        const choice = await chooseCanvasAgentPresetEntry(bridgeKind, { prompt: opts.originalPrompt || prompt, presetName: opts.presetName || opts.plan?.preset || '' });
+        const videoNode = getCanvasAgentPrimaryMediaNode('video', opts);
+        const mediaNodes = getCanvasAgentMediaReferenceNodes({ image: imageNode, video: videoNode, audio: target });
+        const mediaCounts = canvasAgentMediaNodeCounts(mediaNodes);
+        const videoTask = canvasAgentVideoTaskForMedia(mediaCounts);
+        const bridgeKind = videoTask === 'video_audio_to_video'
+            ? 'reference_to_video'
+            : (imageNode ? 'audio_image_to_video' : 'audio_to_video');
+        const choice = await chooseCanvasAgentPresetEntry(bridgeKind, {
+            prompt: opts.originalPrompt || prompt,
+            presetName: opts.presetName || opts.plan?.preset || '',
+            mediaCounts,
+            task: videoTask
+        });
         let entry = choice.entry;
         if (!entry) {
             resetCanvasAgentRunInfo();
@@ -10803,7 +11100,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             setCanvasAgentMessage(t('Audio-to-video cancelled before prompt submit.', '音频转视频已在提示词提交前取消。'));
             return;
         }
-        let audioVideoTheme = canvasAgentAudioVideoSceneTheme(entry, !!imageNode);
+        let audioVideoTheme = canvasAgentAudioVideoSceneTheme(entry, !!imageNode, videoTask);
         let audioSlotPreview = previewCanvasAgentMediaInputSlot(entry, target, { compatibleOnly: true, sceneTheme: audioVideoTheme });
         const decisionForm = {
             preset: normalizePresetName(entry?.name || entry?.display_name || ''),
@@ -10812,7 +11109,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const promptTarget = canvasAgentPromptTargetFromEntry(entry, imageNode ? 'audio+image-to-video' : 'audio-to-video');
         const preflightGate = await ensureCanvasAgentPromptPreflightAllows(resolved.prompt, promptTarget, imageNode ? 'audio+image-to-video' : 'audio-to-video', {
             entry,
-            action: imageNode ? 'audio_image_to_video' : 'audio_to_video',
+            action: videoTask,
             presetName: opts.presetName || opts.plan?.preset || '',
             plan: opts.plan || null
         });
@@ -10825,20 +11122,20 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         decisionForm.prompt = resolved.prompt;
         const preflight = preflightGate.preflight;
         const ok = await askCanvasAgentDecision({
-            title: imageNode ? t('Start audio+image-to-video?', '开始音频+图像转视频？') : t('Start audio-to-video?', '开始音频转视频？'),
-            message: t('Agent will use {preset}, connect the selected audio, and submit this prompt.', 'Agent 将使用 {preset}，连接选中的音频，并提交这个提示词。').replace('{preset}', entry.display_name || entry.name || t('audio-to-video preset', '音频转视频预设')),
+            title: t('Start {action}?', '开始{action}？').replace('{action}', canvasAgentVideoTaskLabel(videoTask)),
+            message: t('Agent will use {preset}, connect all compatible attached references, and submit this prompt.', 'Agent 将使用 {preset}，连接全部兼容的已挂载引用，并提交这个提示词。').replace('{preset}', entry.display_name || entry.name || t('audio-to-video preset', '音频转视频预设')),
             form: decisionForm,
             fields: [
                 { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(entry) },
                 canvasAgentPromptDecisionField()
             ],
             facts: [
-                { label: t('Action', '动作'), value: imageNode ? 'Audio + Image to Video' : 'Audio to Video' },
+                { label: t('Action', '动作'), value: canvasAgentVideoTaskLabel(videoTask) },
                 { label: t('Preset', '预设'), value: entry.display_name || entry.name || t('audio-to-video preset', '音频转视频预设') },
                 opts.plan ? { label: t('Route', '路线'), value: opts.plan.source === 'vlm_agent' ? t('Thinking mode', 'Thinking 模式') : t('Local fallback plan', '本地 fallback 计划') } : null,
                 choice.override ? { label: t('Override', '覆盖'), value: t('Preset mentioned in request', '按指令指定 preset') } : null,
                 { label: t('Audio', '音频'), value: canvasAgentShortNodeLabel(target) },
-                imageNode ? { label: t('Image', '图像'), value: canvasAgentShortNodeLabel(imageNode) } : null,
+                ...canvasAgentMediaNodeFacts(mediaNodes),
                 audioVideoTheme ? { label: t('Mode', '模式'), value: audioVideoTheme } : null,
                 { label: t('Audio slot', '音频槽'), value: audioSlotPreview?.label || audioSlotPreview?.key || t('No compatible audio input', '没有兼容音频输入槽') },
                 { label: t('Prompt', '提示词'), value: canvasAgentPromptSourceLabel(resolved.source) },
@@ -10862,7 +11159,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         resolved.prompt = canvasAgentPromptFromDecision(decisionForm, resolved.prompt);
         entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
-        audioVideoTheme = canvasAgentAudioVideoSceneTheme(entry, !!imageNode);
+        if (!canvasAgentPresetSupportsMediaRequest(entry, mediaCounts, videoTask)) {
+            resetCanvasAgentRunInfo();
+            showToast(t('Selected preset cannot accept all attached references.', '所选 preset 无法接收全部已挂载引用。'));
+            setCanvasAgentMessage(t('Choose a preset whose image, video, and audio capacities cover the attached references.', '请选择图片、视频和音频容量能够容纳当前引用的 preset。'));
+            return;
+        }
+        audioVideoTheme = canvasAgentAudioVideoSceneTheme(entry, !!imageNode, videoTask);
         audioSlotPreview = previewCanvasAgentMediaInputSlot(entry, target, { compatibleOnly: true, sceneTheme: audioVideoTheme });
         if (Array.isArray(entry?.schema?.themes) && entry.schema.themes.length > 1 && !audioVideoTheme) {
             resetCanvasAgentRunInfo();
@@ -10879,38 +11182,35 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
             collapsed: true,
             sceneTheme: audioVideoTheme,
-            source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_audio_mode: imageNode ? 'audio_image_to_video' : 'audio_to_video', agent_audio_scene_theme: audioVideoTheme || '' }
+            source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_audio_mode: videoTask, agent_audio_scene_theme: audioVideoTheme || '' }
         }));
         applyCanvasAgentPromptToGenerator(node, resolved.prompt);
-        const audioSlot = findCanvasAgentUploadSlotForTarget(node, target, audioSlotPreview?.key);
-        if (!audioSlot) {
+        const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
+        if (!connections.ok) {
+            const error = canvasAgentMediaConnectionError(connections);
             resetCanvasAgentRunInfo();
-            showToast(t('Selected preset has no compatible audio input.', '所选 preset 没有兼容音频输入槽。'));
+            showToast(error);
+            setCanvasAgentMessage(error);
             return;
-        }
-        createUploadEdge(target.id, node.id, audioSlot, { silent: true });
-        if (imageNode && imageNode.id !== target.id) {
-            const imageSlot = findCanvasAgentUploadSlotForTarget(node, imageNode, '');
-            if (imageSlot) createUploadEdge(imageNode.id, node.id, imageSlot, { silent: true });
         }
         applyCanvasAgentResolutionToGenerator(node);
         canvasAgentRunNodeSelection(node);
         setCanvasAgentRunInfo({
             token: uid('agent_run'),
-            stage: t('Submitting audio-to-video', '提交音频转视频'),
+            stage: t('Submitting {action}', '提交{action}').replace('{action}', canvasAgentVideoTaskLabel(videoTask)),
             preset: node.title || node.preset?.display_name || node.preset?.name || entry.display_name || entry.name || '',
             model: ['llm_rewrite', 'thinking_recommendation'].includes(resolved.source) ? getCanvasAgentRewriteModel() : t('Direct prompt', '直接提示词')
         });
-        setCanvasAgentMessage(t('Submitted audio-to-video with {source}.', '已使用 {source} 提交音频转视频任务。').replace('{source}', canvasAgentPromptSourceLabel(resolved.source)));
+        setCanvasAgentMessage(t('Submitted reference-to-video generation with {source}.', '已使用 {source} 提交参考生成视频任务。').replace('{source}', canvasAgentPromptSourceLabel(resolved.source)));
         await runPresetNode(node, {
-            agentWorkflowTitle: imageNode ? 'Agent audio+image-to-video' : 'Agent audio-to-video'
+            agentWorkflowTitle: t('Agent reference-to-video', 'Agent 参考生成视频')
         });
         clearCanvasAgentRunInfo(1800);
     }
 
     async function runCanvasAgentImageToVideo(prompt, options) {
         const opts = options || {};
-        const target = getCanvasAgentPrimaryMediaNode('image');
+        const target = getCanvasAgentPrimaryMediaNode('image', opts);
         if (!isCanvasAgentImageTarget(target)) {
             resetCanvasAgentRunInfo();
             showToast(t('Select or attach an image first.', '请先选择或挂载一张图片'));
@@ -10931,10 +11231,23 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             .map(ref => canvasAgentReferenceNode(ref))
             .filter(node => node && node.id !== target.id && isCanvasAgentImageTarget(node))
             .slice(0, CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES);
-        const choice = await chooseCanvasAgentPresetEntry('i2v', {
+        const videoNode = getCanvasAgentPrimaryMediaNode('video', opts);
+        const audioNode = getCanvasAgentPrimaryMediaNode('audio', opts);
+        const mediaNodes = getCanvasAgentMediaReferenceNodes({ image: target, video: videoNode, audio: audioNode });
+        mediaNodes.image = [target].concat(extraImageRefs).filter((node, index, list) => (
+            node && list.findIndex(item => canvasAgentReferenceKey(item, 'image') === canvasAgentReferenceKey(node, 'image')) === index
+        )).slice(0, CANVAS_AGENT_MAX_IMAGE_REFERENCES);
+        const mediaCounts = canvasAgentMediaNodeCounts(mediaNodes);
+        const videoTask = canvasAgentVideoTaskForMedia(mediaCounts);
+        const queueKind = videoTask === 'video_audio_to_video'
+            ? 'reference_to_video'
+            : (videoTask === 'image_audio_to_video' ? 'audio_image_to_video' : 'i2v');
+        const choice = await chooseCanvasAgentPresetEntry(queueKind, {
             prompt: opts.originalPrompt || prompt,
             presetName: opts.presetName || opts.plan?.preset || '',
-            imageCount: 1 + extraImageRefs.length
+            imageCount: mediaCounts.image,
+            mediaCounts,
+            task: videoTask
         });
         let entry = choice.entry;
         if (!entry) {
@@ -10951,7 +11264,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const promptTarget = canvasAgentPromptTargetFromEntry(entry, 'image to video');
         const preflightGate = await ensureCanvasAgentPromptPreflightAllows(resolved.prompt, promptTarget, 'image to video', {
             entry,
-            action: 'image_to_video',
+            action: videoTask,
             presetName: opts.presetName || opts.plan?.preset || '',
             plan: opts.plan || null
         });
@@ -10964,20 +11277,20 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         decisionForm.prompt = resolved.prompt;
         const preflight = preflightGate.preflight;
         const ok = await askCanvasAgentDecision({
-            title: t('Start image-to-video?', '开始图生视频？'),
-            message: t('Agent will use {preset}, connect the selected image, and submit this prompt.', 'Agent 将使用 {preset}、连接当前图片，并提交以下提示词。').replace('{preset}', entry.display_name || entry.name || t('I2V preset', '图生视频预设')),
+            title: t('Start {action}?', '开始{action}？').replace('{action}', canvasAgentVideoTaskLabel(videoTask)),
+            message: t('Agent will use {preset}, connect all compatible attached references, and submit this prompt.', 'Agent 将使用 {preset}，连接全部兼容的已挂载引用，并提交以下提示词。').replace('{preset}', entry.display_name || entry.name || t('I2V preset', '图生视频预设')),
             form: decisionForm,
             fields: [
                 { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(entry) },
                 canvasAgentPromptDecisionField()
             ],
             facts: [
-                { label: t('Action', '动作'), value: t('Image-to-video', '图生视频') },
+                { label: t('Action', '动作'), value: canvasAgentVideoTaskLabel(videoTask) },
                 { label: t('Preset', '预设'), value: entry.display_name || entry.name || t('I2V preset', '图生视频预设') },
                 opts.plan ? { label: t('Route', '路线'), value: opts.plan.source === 'vlm_agent' ? t('Thinking mode', 'Thinking 模式') : t('Local fallback plan', '本地 fallback 计划') } : null,
                 choice.override ? { label: t('Override', '覆盖'), value: t('Preset mentioned in request', '按指令指定 preset') } : null,
                 { label: t('Source', '源图'), value: canvasAgentShortNodeLabel(target) },
-                extraImageRefs.length ? { label: t('Image refs', '图片参考'), value: String(extraImageRefs.length) } : null,
+                ...canvasAgentMediaNodeFacts(mediaNodes),
                 { label: t('Input slot', '输入槽'), value: slotPreview?.label || slotPreview?.key || t('First compatible slot', '第一个兼容输入槽') },
                 { label: t('Resolution', '分辨率'), value: canvasAgentResolutionLabel() },
                 { label: t('Prompt', '提示词'), value: canvasAgentPromptSourceLabel(resolved.source) },
@@ -11001,28 +11314,177 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         }
         resolved.prompt = canvasAgentPromptFromDecision(decisionForm, resolved.prompt);
         entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+        if (!canvasAgentPresetSupportsMediaRequest(entry, mediaCounts, videoTask)) {
+            resetCanvasAgentRunInfo();
+            showToast(t('Selected preset cannot accept all attached references.', '所选 preset 无法接收全部已挂载引用。'));
+            setCanvasAgentMessage(t('Choose a preset whose image, video, and audio capacities cover the attached references.', '请选择图片、视频和音频容量能够容纳当前引用的 preset。'));
+            return;
+        }
         slotPreview = previewCanvasAgentMediaInputSlot(entry, target);
         const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
             collapsed: true,
             source: { kind: 'canvas_agent_created', created_at: nowIso() }
         }));
         applyCanvasAgentPromptToGenerator(node, resolved.prompt);
-        const connections = connectCanvasAgentImagesToGenerator(node, target, extraImageRefs);
+        const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
         if (!connections.ok) {
-            showToast(t('Selected image-to-video preset has no compatible image input.', '选择的图生视频预设没有兼容的图片输入'));
+            const error = canvasAgentMediaConnectionError(connections);
+            showToast(error);
+            setCanvasAgentMessage(error);
             return;
         }
         applyCanvasAgentResolutionToGenerator(node);
         canvasAgentRunNodeSelection(node);
         setCanvasAgentRunInfo({
             token: uid('agent_run'),
-            stage: t('Submitting image-to-video', '提交图生视频'),
+            stage: t('Submitting {action}', '提交{action}').replace('{action}', canvasAgentVideoTaskLabel(videoTask)),
             preset: node.title || node.preset?.display_name || node.preset?.name || entry.display_name || entry.name || '',
             model: ['llm_rewrite', 'thinking_recommendation'].includes(resolved.source) ? getCanvasAgentRewriteModel() : t('Direct prompt', '直接提示词')
         });
-        setCanvasAgentMessage(t('Submitted image-to-video generation with {source}.', '已使用 {source} 提交图生视频任务。').replace('{source}', canvasAgentPromptSourceLabel(resolved.source)));
+        setCanvasAgentMessage(t('Submitted reference-to-video generation with {source}.', '已使用 {source} 提交参考生成视频任务。').replace('{source}', canvasAgentPromptSourceLabel(resolved.source)));
         await runPresetNode(node, {
-            agentWorkflowTitle: t('Agent image-to-video', 'Agent 图生视频')
+            agentWorkflowTitle: t('Agent reference-to-video', 'Agent 参考生成视频')
+        });
+        clearCanvasAgentRunInfo(1800);
+    }
+
+    async function runCanvasAgentVideoReferenceToVideo(prompt, options) {
+        const opts = options || {};
+        const target = getCanvasAgentPrimaryMediaNode('video', opts);
+        if (!isCanvasAgentVideoTarget(target)) {
+            resetCanvasAgentRunInfo();
+            showToast(t('Select or attach a reference video first.', '请先选择或挂载一个参考视频。'));
+            setCanvasAgentMessage(t('Reference-to-video needs at least one Video node or video Result.', '参考生成视频至少需要一个视频节点或视频结果。'));
+            return;
+        }
+        if (getCanvasAgentPrimaryMediaNode('audio', opts)) {
+            await runCanvasAgentAudioToVideo(prompt, Object.assign({}, opts, { targetNodeId: target.id }));
+            return;
+        }
+        if (getCanvasAgentPrimaryMediaNode('image', opts)) {
+            await runCanvasAgentImageToVideo(prompt, Object.assign({}, opts, { targetNodeId: target.id }));
+            return;
+        }
+        const mediaNodes = getCanvasAgentMediaReferenceNodes({ video: target });
+        const mediaCounts = canvasAgentMediaNodeCounts(mediaNodes);
+        const videoTask = canvasAgentVideoTaskForMedia(mediaCounts);
+        const choice = await chooseCanvasAgentPresetEntry('reference_to_video', {
+            prompt: opts.originalPrompt || prompt,
+            presetName: opts.presetName || opts.plan?.preset || '',
+            mediaCounts,
+            task: videoTask
+        });
+        let entry = choice.entry;
+        if (!entry) {
+            resetCanvasAgentRunInfo();
+            showToast(t('No reference-to-video preset was found.', '没有找到可用的参考生成视频预设。'));
+            setCanvasAgentMessage((choice.checked || []).join('; '));
+            return;
+        }
+        const resolved = await resolveCanvasAgentPrompt(prompt, 'reference video to video', {
+            mediaTarget: target,
+            recommendedPrompt: opts.recommendedPrompt || opts.plan?.recommendedPrompt || '',
+            plan: opts.plan || null
+        });
+        if (!resolved.ok) {
+            resetCanvasAgentRunInfo();
+            setCanvasAgentMessage(t('Reference-to-video cancelled before prompt submit.', '参考生成视频已在提示词提交前取消。'));
+            return;
+        }
+        let slotPreview = previewCanvasAgentMediaInputSlot(entry, target, { compatibleOnly: true });
+        const decisionForm = {
+            preset: normalizePresetName(entry?.name || entry?.display_name || ''),
+            prompt: resolved.prompt
+        };
+        const promptTarget = canvasAgentPromptTargetFromEntry(entry, 'reference video to video');
+        const preflightGate = await ensureCanvasAgentPromptPreflightAllows(resolved.prompt, promptTarget, 'reference video to video', {
+            entry,
+            action: videoTask,
+            presetName: opts.presetName || opts.plan?.preset || '',
+            plan: opts.plan || null
+        });
+        if (!preflightGate.ok) {
+            resetCanvasAgentRunInfo();
+            setCanvasAgentMessage(preflightGate.error || t('Prompt preflight blocked reference-to-video.', '提示词预检查阻止了参考生成视频。'));
+            return;
+        }
+        resolved.prompt = preflightGate.prompt;
+        decisionForm.prompt = resolved.prompt;
+        const preflight = preflightGate.preflight;
+        const ok = await askCanvasAgentDecision({
+            title: t('Start reference-to-video?', '开始参考生成视频？'),
+            message: t('Agent will use {preset}, connect all attached reference videos, and submit this prompt.', 'Agent 将使用 {preset}，连接全部已挂载参考视频，并提交这个提示词。').replace('{preset}', entry.display_name || entry.name || t('reference-to-video preset', '参考生成视频预设')),
+            form: decisionForm,
+            fields: [
+                { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(entry) },
+                canvasAgentPromptDecisionField()
+            ],
+            facts: [
+                { label: t('Action', '动作'), value: t('Reference-to-video', '参考生成视频') },
+                { label: t('Preset', '预设'), value: entry.display_name || entry.name || t('reference-to-video preset', '参考生成视频预设') },
+                opts.plan ? { label: t('Route', '路线'), value: opts.plan.source === 'vlm_agent' ? t('Thinking mode', 'Thinking 模式') : t('Local fallback plan', '本地 fallback 计划') } : null,
+                choice.override ? { label: t('Override', '覆盖'), value: t('Preset mentioned in request', '按指令指定 preset') } : null,
+                { label: t('Source', '源视频'), value: canvasAgentShortNodeLabel(target) },
+                ...canvasAgentMediaNodeFacts(mediaNodes),
+                { label: t('Input slot', '输入槽'), value: slotPreview?.label || slotPreview?.key || t('No compatible video input', '没有兼容视频输入槽') },
+                { label: t('Resolution', '分辨率'), value: canvasAgentResolutionLabel() },
+                { label: t('Prompt', '提示词'), value: canvasAgentPromptSourceLabel(resolved.source) },
+                canvasAgentPromptTargetFact(promptTarget),
+                canvasAgentPromptValidationFact(resolved.prompt, promptTarget),
+                ...canvasAgentPromptPreflightFacts(preflight),
+                ...canvasAgentPresetPromptDefaultsFacts(promptTarget, entry),
+                { label: t('Models', '模型'), value: canvasAgentModelStatusLabel(choice.status) }
+            ].filter(Boolean),
+            details: resolved.prompt,
+            note: [opts.plan?.reason ? `${t('Plan', '计划')}: ${opts.plan.reason}` : '', `${t('Prompt source', '提示词来源')}: ${canvasAgentPromptSourceLabel(resolved.source)}`].filter(Boolean).join('\n'),
+            actions: [
+                { value: 'continue', label: t('Start video', '开始视频'), icon: 'fa-play', primary: true },
+                { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
+            ]
+        });
+        if (ok !== 'continue') {
+            resetCanvasAgentRunInfo();
+            setCanvasAgentMessage(t('Reference-to-video cancelled before submit.', '参考生成视频已在提交前取消。'));
+            return;
+        }
+        resolved.prompt = canvasAgentPromptFromDecision(decisionForm, resolved.prompt);
+        entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+        if (!canvasAgentPresetSupportsMediaRequest(entry, mediaCounts, videoTask)) {
+            resetCanvasAgentRunInfo();
+            showToast(t('Selected preset cannot accept all attached reference videos.', '所选 preset 无法接收全部已挂载参考视频。'));
+            setCanvasAgentMessage(t('Choose a preset whose video capacity covers the attached references.', '请选择视频容量能够容纳当前引用的 preset。'));
+            return;
+        }
+        slotPreview = previewCanvasAgentMediaInputSlot(entry, target, { compatibleOnly: true });
+        if (!slotPreview) {
+            resetCanvasAgentRunInfo();
+            showToast(t('Selected preset has no compatible video input.', '所选 preset 没有兼容视频输入槽。'));
+            return;
+        }
+        const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
+            collapsed: true,
+            source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_video_mode: videoTask }
+        }));
+        applyCanvasAgentPromptToGenerator(node, resolved.prompt);
+        const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
+        if (!connections.ok) {
+            const error = canvasAgentMediaConnectionError(connections);
+            resetCanvasAgentRunInfo();
+            showToast(error);
+            setCanvasAgentMessage(error);
+            return;
+        }
+        applyCanvasAgentResolutionToGenerator(node);
+        canvasAgentRunNodeSelection(node);
+        setCanvasAgentRunInfo({
+            token: uid('agent_run'),
+            stage: t('Submitting reference-to-video', '提交参考生成视频'),
+            preset: node.title || node.preset?.display_name || node.preset?.name || entry.display_name || entry.name || '',
+            model: ['llm_rewrite', 'thinking_recommendation'].includes(resolved.source) ? getCanvasAgentRewriteModel() : t('Direct prompt', '直接提示词')
+        });
+        setCanvasAgentMessage(t('Submitted reference-to-video generation with {source}.', '已使用 {source} 提交参考生成视频任务。').replace('{source}', canvasAgentPromptSourceLabel(resolved.source)));
+        await runPresetNode(node, {
+            agentWorkflowTitle: t('Agent reference-to-video', 'Agent 参考生成视频')
         });
         clearCanvasAgentRunInfo(1800);
     }
@@ -11812,10 +12274,11 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             }
             if (action === 'generate-image') {
                 const localPlan = buildCanvasAgentLocalInstructionPlan(prompt, action);
-                if (localPlan.action === 'image_to_video') await runCanvasAgentImageToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                if (localPlan.action === 'image_to_video' || localPlan.action === 'multi_image_to_video') await runCanvasAgentImageToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else if (localPlan.action === 'text_to_video') await runCanvasAgentTextToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else if (localPlan.action === 'video_edit') await runCanvasAgentVideoEdit(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
-                else if (localPlan.action === 'audio_to_video') await runCanvasAgentAudioToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                else if (localPlan.action === 'audio_to_video' || localPlan.action === 'image_audio_to_video') await runCanvasAgentAudioToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                else if (localPlan.action === 'video_audio_to_video') await runCanvasAgentVideoReferenceToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else if (localPlan.action === 'audio_generate') await runCanvasAgentTextToAudio(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else if (localPlan.action === 'audio_edit') await runCanvasAgentAudioEdit(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else await runCanvasAgentTextToImage(prompt);
@@ -11825,8 +12288,10 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 await runCanvasAgentImageToVideo(prompt);
             } else if (action === 'generate-video') {
                 const localPlan = buildCanvasAgentLocalInstructionPlan(prompt, action);
-                if (localPlan.action === 'image_to_video') await runCanvasAgentImageToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
-                else if (localPlan.action === 'audio_to_video') await runCanvasAgentAudioToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                if (localPlan.action === 'image_to_video' || localPlan.action === 'multi_image_to_video') await runCanvasAgentImageToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                else if (localPlan.action === 'audio_to_video' || localPlan.action === 'image_audio_to_video') await runCanvasAgentAudioToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                else if (localPlan.action === 'video_audio_to_video') await runCanvasAgentVideoReferenceToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
+                else if (localPlan.action === 'video_edit') await runCanvasAgentVideoEdit(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
                 else await runCanvasAgentTextToVideo(localPlan.prompt || prompt, { originalPrompt: prompt, presetName: localPlan.preset, recommendedPrompt: localPlan.recommendedPrompt, plan: localPlan });
             } else if (action === 'edit-video') {
                 await runCanvasAgentVideoEdit(prompt);
@@ -16034,7 +16499,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (kind === 'audio') return node?.type === 'audio' || (node?.type === 'result' && mime.startsWith('audio/'));
         if (kind === 'video') {
             if (node?.type === 'camera_motion') {
-                return String(slotKey || '').toLowerCase() === 'scene_reference_video';
+                return ['scene_reference_video', 'scene_reference_video2'].includes(String(slotKey || '').toLowerCase());
             }
             if (node?.type === 'sam3_video_mask') {
                 const key = String(slotKey || '').toLowerCase();
@@ -16113,15 +16578,15 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (slotKey === 'sam3_input_video') return t('Double-click to upload source video; connect this video to a SAM3 Video Mask node input', '双击上传源视频；此视频应连接到 SAM3 视频遮罩节点输入');
         if (slotKey === 'sam3_mask_video') return t('Double-click to create/select SAM3 Video Mask; connect the SAM3 output here', '双击创建/选择 SAM3 视频遮罩；SAM3 输出接到这里');
         if (slotKey === 'scene_video') return t('Double-click to upload scene video; right-click port to disconnect', '双击上传场景视频；右键接口断开');
-        if (slotKey === 'scene_reference_video') return t('Double-click to upload reference video; right-click port to disconnect', '双击上传参考视频；右键接口断开');
-        if (slotKey === 'scene_audio') return t('Connect an Audio node here; right-click port to disconnect', '连接音频节点到这里；右键接口断开');
+        if (slotKey === 'scene_reference_video' || slotKey === 'scene_reference_video2') return t('Double-click to upload reference video; right-click port to disconnect', '双击上传参考视频；右键接口断开');
+        if (slotKey === 'scene_audio' || slotKey === 'scene_audio2' || slotKey === 'scene_audio3') return t('Connect an Audio node here; right-click port to disconnect', '连接音频节点到这里；右键接口断开');
         return imagePortTitle();
     }
 
     function slotPortButtonTitle(slotKey) {
-        if (slotKey === 'sam3_input_video' || slotKey === 'scene_video' || slotKey === 'scene_reference_video') return t('Double-click to upload video', '双击上传视频');
+        if (slotKey === 'sam3_input_video' || slotKey === 'scene_video' || slotKey === 'scene_reference_video' || slotKey === 'scene_reference_video2') return t('Double-click to upload video', '双击上传视频');
         if (slotKey === 'sam3_mask_video') return t('Double-click to add SAM3 Video Mask', '双击添加 SAM3 视频遮罩');
-        if (slotKey === 'scene_audio') return t('Audio input', '音频输入');
+        if (slotKey === 'scene_audio' || slotKey === 'scene_audio2' || slotKey === 'scene_audio3') return t('Audio input', '音频输入');
         return imagePortButtonTitle();
     }
 
@@ -19618,7 +20083,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function presetSpecialInputAssetUrl(node) {
         const slots = node?.upload_slots || {};
-        const preferredSlots = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4'];
+        const preferredSlots = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
         for (const slot of preferredSlots) {
             const source = getNode(slots[slot]);
             if (!source) continue;
@@ -21012,14 +21477,22 @@ ${renderRunnableNodeStatusFoot(node)}
             scene_input_image2: ['scene_input_image2'],
             scene_input_image3: ['scene_input_image3'],
             scene_input_image4: ['scene_input_image4'],
+            scene_input_image5: ['scene_input_image5'],
+            scene_input_image6: ['scene_input_image6'],
+            scene_input_image7: ['scene_input_image7'],
+            scene_input_image8: ['scene_input_image8'],
             image_1: ['scene_canvas_image'],
             image_2: ['scene_input_image1'],
             image_3: ['scene_input_image2'],
             image_4: ['scene_input_image3'],
-            image_5: ['scene_input_image4']
+            image_5: ['scene_input_image4'],
+            image_6: ['scene_input_image5'],
+            image_7: ['scene_input_image6'],
+            image_8: ['scene_input_image7'],
+            image_9: ['scene_input_image8']
         };
         const source = String(profile?.source || '').trim();
-        const slots = aliases[source] || [source, 'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4'];
+        const slots = aliases[source] || [source, 'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
         for (const slot of slots) {
             const sourceId = presetNode.upload_slots?.[slot];
             const node = sourceId ? getNode(sourceId) : null;
@@ -29439,7 +29912,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                 { key: 'sam3', label: t('SAM3 Video Mask node', 'SAM3 视频遮罩节点'), icon: 'fa-wand-magic-sparkles' },
                 mediaCreationOption('video', false)
             ];
-            if (target.slot === 'scene_reference_video') return [
+            if (target.slot === 'scene_reference_video' || target.slot === 'scene_reference_video2') return [
                 mediaCreationOption('video', false),
                 { key: 'camera_motion', label: t('Uni3C Camera Motion node', 'Uni3C 运镜节点'), icon: 'fa-camera-rotate' }
             ];
@@ -30867,7 +31340,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             {
                 id: 'minimax_h3_r2v_basic',
                 title: t('MiniMax H3 Mixed References to Video', 'MiniMax-H3 多参考视频'),
-                description: t('A runnable MiniMax H3 reference-to-video template supporting up to five images, two videos with paired soundtracks, and one standalone audio reference.', '可运行的 MiniMax H3 多参考视频模板，支持最多五张图片、两个带配对音轨的视频和一个独立音频参考。'),
+                description: t('A runnable MiniMax H3 reference-to-video template supporting up to nine images, three videos with paired soundtracks, and three standalone audio references.', '可运行的 MiniMax H3 多参考视频模板，支持最多九张图片、三个带配对音轨的视频和三个独立音频参考。'),
                 category: 'video',
                 tags: ['video', 'minimax', 'h3', 'r2v', 'reference-to-video', 'multi-image', 'multi-modal', 'video-reference', 'audio-reference', 'ordered-references', 'native-audio', 'runnable', '多参考视频'],
                 typeLabel: t('Mixed references to video', '多参考视频'),
@@ -38133,20 +38606,20 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             const parsed = Number(value);
             segment[key] = Number.isFinite(parsed) ? parsed : value;
         } else if (key === 'inherit_previous_tail') {
-            const images = Array.isArray(segment.images) ? segment.images.slice(0, 5).map(item => Object.assign({}, item)) : [];
+            const images = Array.isArray(segment.images) ? segment.images.slice(0, 9).map(item => Object.assign({}, item)) : [];
             const explicitImages = images.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
             if (value && segment.type === 'flf' && explicitImages.length) segment.type = 'fmlf';
             if (!value && segment.type === 'fmlf' && explicitImages.length <= 1) segment.type = 'flf';
             segment.images = value
                 ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
                 : explicitImages;
-        } else if (key === 'image_ref' || /^image_ref_[1-5]$/.test(key)) {
-            const currentImages = Array.isArray(segment.images) ? segment.images.slice(0, 5).map(item => Object.assign({}, item)) : [];
+        } else if (key === 'image_ref' || /^image_ref_[1-9]$/.test(key)) {
+            const currentImages = Array.isArray(segment.images) ? segment.images.slice(0, 9).map(item => Object.assign({}, item)) : [];
             const inherited = currentImages.some(item => item.source_ref === DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
             const images = currentImages.filter(item => item.source_ref !== DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF);
             const slotIndex = key === 'image_ref'
                 ? 0
-                : Math.max(0, Math.min(4, Number(String(key).split('_').pop() || 1) - 1));
+                : Math.max(0, Math.min(8, Number(String(key).split('_').pop() || 1) - 1));
             const roleForIndex = (imageIndex) => {
                 if (segment.type === 'fmlf') return imageIndex === 1 ? 'last_frame' : 'first_frame';
                 if (segment.type === 'ref') return 'reference';
@@ -38161,7 +38634,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             segment.images = inherited
                 ? [{ source_ref: DIRECTOR_PREVIOUS_SEGMENT_IMAGE_REF, role: 'first_frame' }, ...explicitImages]
                 : explicitImages;
-            ['image_ref', 'image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5'].forEach((refKey) => {
+            ['image_ref', 'image_ref_1', 'image_ref_2', 'image_ref_3', 'image_ref_4', 'image_ref_5', 'image_ref_6', 'image_ref_7', 'image_ref_8', 'image_ref_9'].forEach((refKey) => {
                 delete segment[refKey];
             });
         } else if (key === 'audio_ref') {
@@ -40631,6 +41104,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                     ? window.SimpAIH3StoryboardEditor.preferredStoryboardVideoSlot(response?.state, options.inventory)
                     : '';
                 const motionReference = h3References.find((reference) => reference.kind === 'video' && reference.slot === requestedMotionSlot)
+                    || h3References.find((reference) => reference.kind === 'video' && reference.slot === 'scene_reference_video2')
                     || h3References.find((reference) => reference.kind === 'video' && reference.slot === 'scene_reference_video')
                     || h3References.find((reference) => reference.kind === 'video')
                     || null;
@@ -40644,7 +41118,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                     preserveReferenceDuplicates: true,
                     includeCanvasAgentReferences: false,
                     referenceImagesOnly: false,
-                    maxReferenceSources: 7,
+                    maxReferenceSources: 12,
                     referenceSummary: h3StoryboardVlmReferenceSummary(h3References, runtimeUiLang(), motionReference?.slot || ''),
                     motionReferenceToken: motionReference?.token || '',
                     motionReferenceSlot: motionReference?.slot || ''
@@ -40687,8 +41161,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                         ),
                         video_requested: true,
                         video_used: true,
-                        video_source: motionReference.slot === 'scene_reference_video' ? 'reference_video' : 'main_video',
-                        reference_video_content_available: motionReference.slot === 'scene_reference_video'
+                        video_source: motionReference.slot === 'scene_reference_video2'
+                            ? 'reference_video2'
+                            : (motionReference.slot === 'scene_reference_video' ? 'reference_video' : 'main_video'),
+                        reference_video_content_available: motionReference.slot === 'scene_reference_video' || motionReference.slot === 'scene_reference_video2'
                     });
                     if (Array.isArray(compilerContext.video_descriptors)) {
                         compilerContext.video_descriptors = compilerContext.video_descriptors.map((descriptor) => ({
@@ -41714,7 +42190,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         'scene_input_image1',
         'scene_input_image2',
         'scene_input_image3',
-        'scene_input_image4'
+        'scene_input_image4',
+        'scene_input_image5',
+        'scene_input_image6',
+        'scene_input_image7',
+        'scene_input_image8'
     ];
 
     function directorCapabilityVideoModes(capability) {
@@ -42025,7 +42505,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         if (!next || typeof next !== 'object') return next;
         const uploadSources = cloneRunValue(next.upload_slot_sources || {}, {});
         const uploadSlots = cloneRunValue(next.upload_slots || {}, {});
-        DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.concat(['scene_audio', 'scene_video', 'scene_reference_video']).forEach((slot) => {
+        DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.concat(['scene_audio', 'scene_audio2', 'scene_audio3', 'scene_video', 'scene_reference_video', 'scene_reference_video2']).forEach((slot) => {
             delete uploadSources[slot];
             delete uploadSlots[slot];
         });

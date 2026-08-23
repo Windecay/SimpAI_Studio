@@ -187,10 +187,10 @@ confirmation flow.
 ## MiniMax H3 图编 / Image Editing
 
 - `MiniMax-H3(R2I)` is a still-image edit fallback after the normal
-  `Flux2-KleinEdit` queue candidate. It accepts one to five ordered image
+  `Flux2-KleinEdit` queue candidate. It accepts one to nine ordered image
   references and does not accept video or audio references.
 - The confirmation card should identify the source image, any additional
   picture references, the requested edit, and the selected input slot before
   submission.
-- `stage.__lang` selects visible labels: `Image editing` / `图像编辑` and
+- `state.__lang` selects visible labels: `Image editing` / `图像编辑` and
   `MiniMax-H3(R2I)` / `MiniMax-H3图编`.

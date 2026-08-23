@@ -219,7 +219,6 @@
           "scene_var_number": 0,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number7": 300,
           "scene_var_number8": 2,
           "scene_switch_option1": false,
           "image_number": 1
@@ -228,7 +227,6 @@
           "scene_var_number": 0,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number7": 300,
           "scene_var_number8": 2,
           "scene_switch_option1": false,
           "image_number": 1
@@ -388,16 +386,6 @@
             "max": 120
           },
           {
-            "key": "scene_var_number7",
-            "label": "Long video segment length (frames) [longer segments use more RAM]",
-            "type": "number",
-            "default": 300,
-            "visible": true,
-            "interactive": true,
-            "min": 60,
-            "max": 600
-          },
-          {
             "key": "scene_var_number8",
             "label": "Upscale factor",
             "type": "number",
@@ -423,7 +411,6 @@
               "scene_var_number": 0,
               "scene_var_number2": 19,
               "scene_var_number3": 30,
-              "scene_var_number7": 300,
               "scene_var_number8": 2,
               "scene_switch_option1": false,
               "scene_aspect_ratio": "origin|Original"
@@ -489,7 +476,6 @@
           "scene_var_number": 0,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number7": 300,
           "scene_var_number8": 2,
           "scene_switch_option1": false,
           "image_number": 1
@@ -498,7 +484,6 @@
           "scene_var_number": 0,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number7": 300,
           "scene_var_number8": 2,
           "scene_switch_option1": false,
           "image_number": 1
@@ -527,7 +512,6 @@
         "image_seed": 0,
         "scene_var_number2": 19,
         "scene_var_number3": 30,
-        "scene_var_number7": 300,
         "scene_var_number8": 2,
         "scene_switch_option1": false,
         "scene_video_duration": 0

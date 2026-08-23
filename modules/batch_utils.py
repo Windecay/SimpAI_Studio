@@ -240,8 +240,8 @@ def _scene_batch_set_task_resolution_args(
     return task_size
 
 
-_SCENE_BATCH_TARGET_SLOTS = ("scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
-_SCENE_BATCH_UPLOAD_SLOTS = ("scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
+_SCENE_BATCH_TARGET_SLOTS = ("scene_canvas_image",) + tuple(f"scene_input_image{index}" for index in range(1, 9))
+_SCENE_BATCH_UPLOAD_SLOTS = tuple(f"scene_input_image{index}" for index in range(1, 9))
 
 
 def _scene_batch_lang_is_cn(state_params):
@@ -264,7 +264,7 @@ def _scene_batch_disvisible(state_params):
     enabled = scenes.get("divisible", []) if isinstance(scenes, dict) else []
     enabled = set(str(item) for item in enabled) if isinstance(enabled, list) else set()
     disvisible = [str(item) for item in disvisible]
-    for slot in ("scene_input_image3", "scene_input_image4"):
+    for slot in tuple(f"scene_input_image{index}" for index in range(3, 9)):
         if slot not in disvisible and slot not in enabled:
             disvisible.append(slot)
     return set(str(item) for item in disvisible)
@@ -331,16 +331,17 @@ def normalize_scene_batch_target_slot(target, state_params=None):
     return slot or "scene_input_image1"
 
 
-def _scene_batch_source_value(target, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3=None, scene_input_image4=None):
+def _scene_batch_source_value(target, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3=None, scene_input_image4=None, scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None):
     if target == "scene_canvas_image":
         return scene_canvas_image
-    if target == "scene_input_image2":
-        return scene_input_image2
-    if target == "scene_input_image3":
-        return scene_input_image3
-    if target == "scene_input_image4":
-        return scene_input_image4
-    return scene_input_image1
+    image_values = {
+        f"scene_input_image{index}": value
+        for index, value in enumerate(
+            (scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8),
+            start=1,
+        )
+    }
+    return image_values.get(target, scene_input_image1)
 
 
 def create_batch(batch_id=None):
@@ -663,7 +664,12 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                     scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio,
                     scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source,
                     sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_step=None, overwrite_width=None, overwrite_height=None,
-                    resolution_edit_mode=None, resolution_original_input=False, scene_video_duration=None, *args, get_task_with_resolution_multiplier,
+                    resolution_edit_mode=None, resolution_original_input=False, scene_video_duration=None,
+                    scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None,
+                    scene_reference_video=None, scene_reference_video_original_path=None, scene_reference_video_trim_payload=None,
+                    scene_reference_video2=None, scene_reference_video2_original_path=None, scene_reference_video2_trim_payload=None,
+                    scene_audio2=None, scene_audio3=None, scene_video_trim_payload=None,
+                    *args, get_task_with_resolution_multiplier,
                     generate_clicked, worker, constants, html, get_welcome_image, api_params, topbar):
     if len(args) < 3:
         return
@@ -675,7 +681,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
     ctrls_values = list(args[:-3])
     ctrls_values = _ensure_backend_ctrl(ctrls_values, state)
     target_slot = normalize_scene_batch_target_slot(target, state)
-    current_source_size = _image_size_from_value(_scene_batch_source_value(target_slot, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4))
+    current_source_size = _image_size_from_value(_scene_batch_source_value(target_slot, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8))
     current_target_size = _positive_size_pair(overwrite_width, overwrite_height)
     try:
         from enhanced import resolution_preprocess
@@ -744,16 +750,35 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
         scene_input_image2_v = scene_input_image2
         scene_input_image3_v = scene_input_image3
         scene_input_image4_v = scene_input_image4
+        scene_input_image5_v = scene_input_image5
+        scene_input_image6_v = scene_input_image6
+        scene_input_image7_v = scene_input_image7
+        scene_input_image8_v = scene_input_image8
         if target_slot == "scene_canvas_image":
             scene_canvas_image_v = _build_canvas_value(img)
-        elif target_slot == "scene_input_image2":
-            scene_input_image2_v = img
-        elif target_slot == "scene_input_image3":
-            scene_input_image3_v = img
-        elif target_slot == "scene_input_image4":
-            scene_input_image4_v = img
         else:
-            scene_input_image1_v = img
+            image_values = [
+                scene_input_image1_v,
+                scene_input_image2_v,
+                scene_input_image3_v,
+                scene_input_image4_v,
+                scene_input_image5_v,
+                scene_input_image6_v,
+                scene_input_image7_v,
+                scene_input_image8_v,
+            ]
+            target_index = max(0, min(7, _scene_batch_slot_fixed_index(target_slot) - 2))
+            image_values[target_index] = img
+            (
+                scene_input_image1_v,
+                scene_input_image2_v,
+                scene_input_image3_v,
+                scene_input_image4_v,
+                scene_input_image5_v,
+                scene_input_image6_v,
+                scene_input_image7_v,
+                scene_input_image8_v,
+            ) = image_values
 
         overwrite_width_v = overwrite_width
         overwrite_height_v = overwrite_height
@@ -792,6 +817,19 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                 resolution_edit_mode, resolution_original_input_v,
                 overwrite_step=overwrite_step,
                 scene_video_duration=scene_video_duration,
+                scene_reference_video=scene_reference_video,
+                scene_reference_video_original_path=scene_reference_video_original_path,
+                scene_video_trim_payload=scene_video_trim_payload,
+                scene_reference_video_trim_payload=scene_reference_video_trim_payload,
+                scene_input_image5=scene_input_image5_v,
+                scene_input_image6=scene_input_image6_v,
+                scene_input_image7=scene_input_image7_v,
+                scene_input_image8=scene_input_image8_v,
+                scene_reference_video2=scene_reference_video2,
+                scene_reference_video2_original_path=scene_reference_video2_original_path,
+                scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
+                scene_audio2=scene_audio2,
+                scene_audio3=scene_audio3,
             )
         except Exception:
             bp = {} if backend_params is None else copy.deepcopy(backend_params)

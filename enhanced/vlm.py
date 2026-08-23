@@ -1373,6 +1373,51 @@ class VLM:
             VLM.set_processing_status(False)
             logger.debug("VLM local inference completed")
 
+    def inference_stream(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8,
+                         top_k=100, repetition_penalty=1.05, seed=-1, system_prompt=None,
+                         on_delta=None):
+        """Stream text deltas for the llama.cpp backend, then return the full text."""
+        callback = on_delta if callable(on_delta) else None
+        VLM.set_processing_status(True)
+        logger.debug("Starting VLM streaming inference...")
+        try:
+            if VLM.is_custom_version() or not VLM.is_llamacpp:
+                result = self.inference(
+                    image,
+                    prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=system_prompt,
+                )
+                if callback and result:
+                    callback(str(result))
+                return result
+
+            _safe_stop_comfyd_for_vlm()
+            pipeline.free_everything()
+            ldm_patched.modules.model_management.print_vram_info_by_nvml("before VLM streaming inference")
+            VLM.ensure_model_files_ready(VLM.current_version)
+            self.load_model(download=False)
+            return llamacpp_vlm.inference_stream(
+                image=image,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                seed=seed,
+                system_prompt=system_prompt,
+                on_delta=callback,
+            )
+        finally:
+            VLM.set_processing_status(False)
+            logger.debug("VLM streaming inference completed")
+
     def clear_conversation(self, conversation_id=None):
         if VLM.is_llamacpp:
             llamacpp_vlm.clear_conversation(conversation_id)
@@ -1968,6 +2013,10 @@ class VLM:
                     "scene_input_image2": "提示图(3)",
                     "scene_input_image3": "提示图(4)",
                     "scene_input_image4": "提示图(5)",
+                    "scene_input_image5": "提示图(6)",
+                    "scene_input_image6": "提示图(7)",
+                    "scene_input_image7": "提示图(8)",
+                    "scene_input_image8": "提示图(9)",
                 }
                 slot_labels_en = {
                     "scene_canvas_image": "Upload and canvas (1)",
@@ -1975,6 +2024,10 @@ class VLM:
                     "scene_input_image2": "Prompt image (3)",
                     "scene_input_image3": "Prompt image (4)",
                     "scene_input_image4": "Prompt image (5)",
+                    "scene_input_image5": "Prompt image (6)",
+                    "scene_input_image6": "Prompt image (7)",
+                    "scene_input_image7": "Prompt image (8)",
+                    "scene_input_image8": "Prompt image (9)",
                 }
                 language = str(action_options.get("language") or state_data.get("__lang") or "").strip().lower()
                 if language.startswith(("cn", "zh")):

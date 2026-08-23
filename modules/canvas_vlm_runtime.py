@@ -28,9 +28,11 @@ from modules.custom_llm_api import (
     custom_llm_url,
     extract_response_metadata,
     extract_response_text,
+    extract_stream_text_delta,
     models_url,
     prepare_completion_request,
     request_json,
+    request_stream,
 )
 from modules.model_path_utils import find_model_in_dirs
 from modules.llama_cpp_runtime import normalize_llama_cpp_kv_cache_type, normalize_llama_cpp_n_ctx
@@ -571,7 +573,7 @@ def _canvas_vlm_update_prompt_compiler_context(payload, visual_reference_manifes
             item for item in visual_reference_manifest
             if isinstance(item, dict)
             and (
-                str(item.get("slot") or "").strip() == "scene_reference_video"
+                str(item.get("slot") or "").strip() in {"scene_reference_video", "scene_reference_video2"}
                 or "motion/timing" in str(item.get("role") or "").lower()
             )
         ]
@@ -659,7 +661,7 @@ def canvas_custom_llm_models(payload):
         return {"ok": False, "error": "Custom LLM model list failed", "details": str(exc)}
 
 
-def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, mode):
+def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, mode, stream_callback=None):
     custom_started = time.monotonic()
     base_url = str(params.get("custom_base_url") or "").strip()
     api_key = str(params.get("custom_api_key") or payload.get("api_key") or "").strip()
@@ -786,23 +788,75 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         messages.append({"role": "user", "content": prompt})
 
     max_tokens = int(params.get("max_tokens", 1024))
+    stream_enabled = bool(callable(stream_callback) and mode == "chat" and not params.get("disable_streaming"))
     request_payload = prepare_custom_request({
         "model": model,
         "messages": messages,
         "temperature": float(params.get("temperature", 0.8)),
         "top_p": float(params.get("top_p", 0.9)),
         "max_tokens": max_tokens,
+        "stream": stream_enabled,
     })
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     main_started = time.monotonic()
-    response = canvas_custom_llm_completion_request(
-        base_url,
-        api_key,
-        api_format,
-        request_payload,
-        timeout=180,
-    )
+    if stream_enabled:
+        streamed_parts = []
+        streamed_meta = {}
+        last_stream_event = {}
+        try:
+            stream_url, stream_request_payload = prepare_completion_request(base_url, api_format, request_payload)
+            for event in request_stream(
+                stream_url,
+                stream_request_payload,
+                api_key=api_key,
+                timeout=180,
+            ):
+                if not isinstance(event, dict) or event.get("_done"):
+                    continue
+                last_stream_event = event
+                delta = extract_stream_text_delta(event)
+                if delta:
+                    streamed_parts.append(delta)
+                    stream_callback(delta)
+                if isinstance(event.get("usage"), dict):
+                    streamed_meta["usage"] = event["usage"]
+                choices = event.get("choices")
+                if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                    finish_reason = choices[0].get("finish_reason")
+                    if finish_reason:
+                        streamed_meta["finish_reason"] = finish_reason
+            text_from_stream = "".join(streamed_parts)
+            if not text_from_stream and last_stream_event:
+                text_from_stream = canvas_extract_openai_text(last_stream_event)
+                if text_from_stream:
+                    stream_callback(text_from_stream)
+            response = {
+                "choices": [{
+                    "message": {"role": "assistant", "content": text_from_stream},
+                    "finish_reason": streamed_meta.get("finish_reason") or "stop",
+                }],
+            }
+            response.update({key: value for key, value in streamed_meta.items() if key != "finish_reason"})
+        except Exception as exc:
+            logger.exception("Custom VLM streaming request failed")
+            return {
+                "ok": False,
+                "error": "Custom API streaming failed",
+                "details": str(exc),
+                "version": str(params.get("custom_profile_version") or "Custom"),
+                "provider": params.get("custom_provider") or "custom",
+                "model": model,
+                "asset_refs": asset_refs,
+            }
+    else:
+        response = canvas_custom_llm_completion_request(
+            base_url,
+            api_key,
+            api_format,
+            request_payload,
+            timeout=180,
+        )
     main_elapsed = time.monotonic() - main_started
     _canvas_vlm_add_timing(params, "custom_main_api_call", main_elapsed)
     completion = extract_response_metadata(response)
@@ -968,7 +1022,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         "params": response_params,
     }
 
-def canvas_vlm_run(payload):
+def canvas_vlm_run(payload, stream_callback=None):
     run_started = time.monotonic()
 
     def clamp_number(value, default, min_value=None, max_value=None):
@@ -1347,7 +1401,15 @@ def canvas_vlm_run(payload):
     if is_custom_api:
         if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
             return _canvas_vlm_cancelled_response(project_id, node_id, conversation_id, request_id, mode)
-        result = canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, mode)
+        result = canvas_custom_llm_run(
+            payload,
+            params,
+            prompt,
+            asset_refs,
+            conversation_id,
+            mode,
+            stream_callback=stream_callback,
+        )
         if isinstance(result, dict):
             result_params = result.setdefault("params", {})
             if visual_reference_manifest:
@@ -1474,9 +1536,11 @@ def canvas_vlm_run(payload):
             label = {"user": "User", "assistant": "Assistant", "system": "System"}.get(role, "User")
             lines.append(f"{label}: {content}")
         text_budget = int(stats.get("budget") or canvas_vlm_agent.vlm_text_budget(params, version_name))
-        current_prompt = str(base_prompt or "").strip()
-        if len(current_prompt) > max(800, text_budget // 3):
-            current_prompt = current_prompt[-max(800, text_budget // 3):].lstrip()
+        current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
+            base_prompt,
+            text_budget,
+            preserve_contract=bool(params.get("describe_roleplay_director")),
+        )
         sections = []
         system_text = ""
         system_prompt = params.get("system_prompt")
@@ -1545,17 +1609,31 @@ def canvas_vlm_run(payload):
                 conversation_id,
                 rolling_context_stats,
             )
-        text = vlm.inference(
-            image_input,
-            inference_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            repetition_penalty=repetition_penalty,
-            seed=seed,
-            system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
-        )
+        if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:
+            text = vlm.inference_stream(
+                image_input,
+                inference_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                seed=seed,
+                system_prompt=stateless_system_prompt,
+                on_delta=stream_callback,
+            )
+        else:
+            text = vlm.inference(
+                image_input,
+                inference_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                seed=seed,
+                system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
+            )
         completion_stats = _canvas_vlm_local_completion_stats()
         if (
             stateless_llamacpp_chat
@@ -1566,17 +1644,31 @@ def canvas_vlm_run(payload):
             retry_budget = max(1200, int((rolling_context_stats.get("budget") or 2400) * 0.45))
             inference_prompt, stateless_prompt_includes_text_history, rolling_context_stats, stateless_system_prompt = build_stateless_llamacpp_chat_prompt(prompt, retry_budget)
             logger.warning("Retrying Canvas VLM llama.cpp chat with smaller rolling context: %s", rolling_context_stats)
-            text = vlm.inference(
-                image_input,
-                inference_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                repetition_penalty=repetition_penalty,
-                seed=seed,
-                system_prompt=stateless_system_prompt,
-            )
+            if callable(stream_callback) and VLM.is_llamacpp:
+                text = vlm.inference_stream(
+                    image_input,
+                    inference_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=stateless_system_prompt,
+                    on_delta=stream_callback,
+                )
+            else:
+                text = vlm.inference(
+                    image_input,
+                    inference_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=stateless_system_prompt,
+                )
             completion_stats = _canvas_vlm_local_completion_stats()
     if text is None:
         text = ""

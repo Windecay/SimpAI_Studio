@@ -22,12 +22,14 @@
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
         "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
-      "theme_title": "MiniMax H3 Reference-to-Video [Up to 5 images, 2 videos, and 1 audio reference]",
+      "theme_title": "MiniMax H3 Reference-to-Video [Up to 9 images, 3 videos, and 3 standalone audio references]",
       "director_capability": {
         "image_policy": "optional",
         "audio_policy": "optional",
         "video_policy": "optional",
-        "max_images": 5,
+        "max_images": 9,
+        "max_videos": 3,
+        "max_audios": 3,
         "min_images": 0,
         "image_modes": ["none", "reference_set"],
         "video_modes": ["explicit"],
@@ -36,7 +38,7 @@
         "mixed_segments": true
       },
       "disable_canvas_mask": true,
-      "divisible": ["scene_input_image3", "scene_input_image4", "scene_reference_video", "minimax_h3_storyboard_control"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "scene_reference_video", "scene_reference_video2", "scene_audio2", "scene_audio3", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
         "scene_additional_prompt_2",

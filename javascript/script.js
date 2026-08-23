@@ -2911,6 +2911,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const bindings = [
         { componentId: 'scene_video', payloadId: 'scene_video_trim_payload' },
         { componentId: 'scene_reference_video', payloadId: 'scene_reference_video_trim_payload' },
+        { componentId: 'scene_reference_video2', payloadId: 'scene_reference_video2_trim_payload' },
     ];
     const trimHandleSelector = [
         'button[aria-label="start drag handle for trimming video"]',
@@ -3556,6 +3557,10 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'scene_input_image2', group: 'scene' },
         { id: 'scene_input_image3', group: 'scene' },
         { id: 'scene_input_image4', group: 'scene' },
+        { id: 'scene_input_image5', group: 'scene' },
+        { id: 'scene_input_image6', group: 'scene' },
+        { id: 'scene_input_image7', group: 'scene' },
+        { id: 'scene_input_image8', group: 'scene' },
         { id: 'scene_additional_prompt', group: 'scene' },
         { id: 'scene_additional_prompt_2', group: 'scene' },
         { id: 'scene_video_duration', group: 'scene' },
@@ -3576,7 +3581,10 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'scene_switch_option4', group: 'scene' },
         { id: 'scene_video', group: 'scene' },
         { id: 'scene_reference_video', group: 'scene' },
+        { id: 'scene_reference_video2', group: 'scene' },
         { id: 'scene_audio', group: 'scene' },
+        { id: 'scene_audio2', group: 'scene' },
+        { id: 'scene_audio3', group: 'scene' },
         { id: 'camera_control_accordion', group: 'scene-aux' },
         { id: 'camera_motion_reference_accordion', group: 'scene-aux' },
         { id: 'anglelight_control_accordion', group: 'scene-aux' },
@@ -3917,13 +3925,14 @@ document.addEventListener("DOMContentLoaded", function() {
 
         [
             'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4',
+            'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8',
             'scene_additional_prompt', 'scene_additional_prompt_2', 'scene_video_duration', 'scene_var_number',
             'scene_var_number2', 'scene_var_number3', 'scene_var_number4',
             'scene_var_number5', 'scene_var_number6', 'scene_var_number7',
             'scene_var_number8', 'scene_var_number9', 'scene_var_number10',
             'scene_steps', 'scene_switch_option1', 'scene_switch_option2',
             'scene_switch_option3', 'scene_switch_option4', 'scene_video',
-            'scene_reference_video', 'scene_audio'
+            'scene_reference_video', 'scene_reference_video2', 'scene_audio', 'scene_audio2', 'scene_audio3'
         ].forEach((id) => {
             setVisible(id, !disvisible.has(id) && !relightHiddenControls.has(id));
         });
@@ -8246,18 +8255,17 @@ function getGradioFieldValue(rootId) {
 function applyIdentityStage(reason = 'manual') {
     if (!document.getElementById('identity_stage_state')) return false;
     const dialog = document.getElementById('identity_dialog_content');
-    if (dialog) {
-        const dialogStyle = window.getComputedStyle(dialog);
-        if (dialogStyle.display === 'none' || dialog.classList.contains('hide') || dialog.classList.contains('hidden')) {
-            return false;
-        }
-    }
+    if (!dialog) return false;
     const stage = getGradioFieldValue('identity_stage_state') || 'input';
+    dialog.dataset.identityStage = stage;
     const show = (id, display = '') => {
         const el = document.getElementById(id);
         if (!el) return;
+        el.dataset.identityStageVisible = 'true';
+        el.classList.remove('simpleai-identity-stage-hidden');
         el.classList.remove('hide', 'hidden');
         el.removeAttribute('aria-hidden');
+        el.removeAttribute('hidden');
         el.hidden = false;
         if (display) {
             setImportantStyle(el, 'display', display);
@@ -8265,15 +8273,23 @@ function applyIdentityStage(reason = 'manual') {
             el.style.removeProperty('display');
         }
         setImportantStyle(el, 'visibility', 'visible');
+        el.style.removeProperty('pointer-events');
     };
     const hide = (id) => {
         const el = document.getElementById(id);
         if (!el) return;
+        el.dataset.identityStageVisible = 'false';
+        el.classList.add('simpleai-identity-stage-hidden');
+        el.setAttribute('aria-hidden', 'true');
+        el.hidden = true;
         setImportantStyle(el, 'display', 'none');
+        setImportantStyle(el, 'visibility', 'hidden');
+        setImportantStyle(el, 'pointer-events', 'none');
     };
 
+    const isClosed = stage === 'closed';
     const isActivation = stage === 'activation';
-    const isInput = stage === 'input' || stage === 'closed' || stage === 'uploading';
+    const isInput = stage === 'input' || stage === 'uploading';
     const isVcode = stage === 'vcode';
     const isPhraseSet = stage === 'phrase_set' || stage === 'phrase';
     const isPhraseConfirm = stage === 'phrase_confirm';
@@ -8281,13 +8297,14 @@ function applyIdentityStage(reason = 'manual') {
     const isUnbind = stage === 'unbind' || stage === 'summary';
     const showPhraseRow = isPhraseSet || isPhraseConfirm || isConfirm || isUnbind;
 
-    if (isActivation) {
-        hide('identity_input_row');
-        hide('identity_id_display_row');
-    } else {
-        if (isInput) show('identity_input_row', 'grid'); else hide('identity_input_row');
-        if (isInput) hide('identity_id_display_row'); else show('identity_id_display_row', 'grid');
-    }
+    if (isActivation) show('identity_multi_user_activation_guard', 'flex');
+    else hide('identity_multi_user_activation_guard');
+
+    if (isInput) show('identity_input_row', 'grid');
+    else hide('identity_input_row');
+
+    if (!isClosed && !isActivation && !isInput) show('identity_id_display_row', 'grid');
+    else hide('identity_id_display_row');
 
     if (isVcode) {
         show('identity_vcode_row', 'grid');
@@ -8355,6 +8372,7 @@ function initIdentityStageSync() {
 function initIdentityStageActionSync() {
     const ids = [
         'identity_center',
+        'identity_dialog_close_button',
         'identity_activation_apply_button',
         'identity_change_button',
         'identity_qr',

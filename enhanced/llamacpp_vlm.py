@@ -309,6 +309,17 @@ class LlamaCppVLM:
             "tokens_per_second": round(tokens_per_second, 2) if tokens_per_second else 0,
         }
 
+    def _estimate_completion_tokens(self, text):
+        """Count visible output tokens when a streaming chunk has no usage block."""
+        value = str(text or "")
+        if not value or self.llm is None:
+            return 0
+        try:
+            return max(0, len(self.llm.tokenize(value.encode("utf-8"), add_bos=False, special=False)))
+        except Exception as exc:
+            logger.debug("LlamaCpp output token estimate unavailable: %s", exc)
+            return 0
+
     def get_last_completion_stats(self):
         with self.lock:
             return dict(self.last_completion_stats or {})
@@ -1625,6 +1636,124 @@ class LlamaCppVLM:
                     self._invalidate_runtime_after_slot_error("inference", e, context)
                 self.last_completion_stats = {}
                 logger.error("LlamaCpp Inference Error: %s; context=%s", str(e), context)
+                return f"Error during inference: {str(e)}"
+            finally:
+                self._clear_hybrid_cache_if_needed()
+
+    def inference_stream(self, image, prompt, chat_handler_override=None, max_tokens=1024,
+                         temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1,
+                         seed=-1, system_prompt=None, on_delta=None):
+        """Run one stateless llama.cpp completion and emit assistant text deltas."""
+        callback = on_delta if callable(on_delta) else None
+        with self.lock:
+            self.last_completion_stats = {}
+            if self.llm is None:
+                logger.error("Model not loaded")
+                return "Error: Model not loaded"
+
+            messages = []
+            default_system_msg = (
+                "You are a helpful assistant. Follow instructions precisely. For any task (captioning, translation, expansion), "
+                "output ONLY the result. Do not include any preamble, introduction, explanation, or conversational filler."
+            )
+            system_msg = default_system_msg if system_prompt is None else str(system_prompt or "").strip()
+            system_msg = self._with_non_thinking_guard(system_msg)
+            if system_msg:
+                messages.append({"role": "system", "content": system_msg})
+            messages.append(self._build_user_message(image, prompt))
+            logger.info(
+                "LlamaCpp Streaming Inference: prompt=%s... (image=%s, media=%s, vision_enabled=%s, context=%s)",
+                prompt[:50],
+                "Yes" if image is not None else "No",
+                self._message_media_summary(messages),
+                self._vision_runtime_enabled(),
+                self._runtime_context_summary(messages, max_tokens),
+            )
+
+            try:
+                started = time.monotonic()
+                output = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repeat_penalty=repetition_penalty,
+                    seed=seed if seed != -1 else None,
+                    stream=True,
+                    **self._qwen38_non_thinking_kwargs(),
+                )
+                pieces = []
+                final_event = {}
+
+                def event_delta(event):
+                    if not isinstance(event, dict):
+                        return ""
+                    choices = event.get("choices")
+                    choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+                    delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
+                    value = delta.get("content")
+                    if isinstance(value, list):
+                        value = "".join(
+                            str(item.get("text") or "")
+                            for item in value
+                            if isinstance(item, dict) and item.get("text") is not None
+                        )
+                    if isinstance(value, str) and value:
+                        return value
+                    value = delta.get("text")
+                    if isinstance(value, str):
+                        return value
+                    value = choice.get("text")
+                    return value if isinstance(value, str) else ""
+
+                if isinstance(output, dict):
+                    final_event = output
+                    value = output.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if isinstance(value, str) and value:
+                        pieces.append(value)
+                        if callback:
+                            callback(value)
+                else:
+                    for event in output:
+                        if not isinstance(event, dict):
+                            continue
+                        final_event = event
+                        value = event_delta(event)
+                        if not value:
+                            continue
+                        pieces.append(value)
+                        if callback:
+                            callback(value)
+
+                raw_text = "".join(pieces)
+                result = strip_reasoning_text(raw_text)
+                elapsed = time.monotonic() - started
+                stats_event = dict(final_event) if isinstance(final_event, dict) else {}
+                usage = stats_event.get("usage") if isinstance(stats_event.get("usage"), dict) else {}
+                has_output_tokens = any(
+                    usage.get(key) not in (None, "")
+                    for key in ("output_tokens", "completion_tokens")
+                )
+                if not has_output_tokens:
+                    estimated_tokens = self._estimate_completion_tokens(result)
+                    if estimated_tokens:
+                        stats_event["usage"] = dict(usage, completion_tokens=estimated_tokens)
+                self._record_completion_stats(stats_event, elapsed)
+                logger.info(
+                    "LlamaCpp Streaming Inference stats: elapsed=%.3fs, prompt_chars=%s, result_chars=%s, usage=%s",
+                    elapsed,
+                    self._messages_text_length(messages),
+                    len(result),
+                    stats_event.get("usage") if isinstance(stats_event, dict) else None,
+                )
+                return result
+            except Exception as e:
+                context = self._runtime_context_summary(messages, max_tokens)
+                if is_llama_cpp_slot_error(e):
+                    self._invalidate_runtime_after_slot_error("inference_stream", e, context)
+                self.last_completion_stats = {}
+                logger.error("LlamaCpp Streaming Inference Error: %s; context=%s", str(e), context)
                 return f"Error during inference: {str(e)}"
             finally:
                 self._clear_hybrid_cache_if_needed()

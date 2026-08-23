@@ -11,13 +11,20 @@
         .replace(/'/g, '&#39;'));
     const getUiLang = UTILS.getUiLang || (() => 'en');
 
-    const MAX_ATTACHMENTS = 5;
+    const MAX_REFERENCE_IMAGES = 9;
+    const MAX_REFERENCE_VIDEOS = 3;
+    const MAX_REFERENCE_AUDIOS = 3;
+    const MAX_ATTACHMENTS = MAX_REFERENCE_IMAGES + MAX_REFERENCE_VIDEOS + MAX_REFERENCE_AUDIOS;
     const MAX_VIDEO_ATTACHMENT_BYTES = 80 * 1024 * 1024;
+    const MAX_AUDIO_ATTACHMENT_BYTES = 80 * 1024 * 1024;
     const IMAGE_MESSAGE_PREVIEW_MAX_SIDE = 256;
     const IMAGE_PRIMARY_MAX_SIDE = 1280;
     const IMAGE_FALLBACK_MAX_SIDE = 1024;
     const IMAGE_TARGET_BYTES = 800 * 1024;
     const MAX_RUNTIME_IMAGE_DATA_URL_LENGTH = 4 * 1024 * 1024;
+    const MAX_RUNTIME_AV_DATA_URL_LENGTH = Math.ceil(
+        Math.max(MAX_VIDEO_ATTACHMENT_BYTES, MAX_AUDIO_ATTACHMENT_BYTES) * 4 / 3
+    ) + 1024;
     const MAX_RUNTIME_IMAGE_THUMB_LENGTH = 512 * 1024;
     const MAX_ROLEPLAY_REFERENCE_IMAGES = 5;
     const MAX_ROLEPLAY_STATE_IMAGE_HISTORY = 30;
@@ -101,14 +108,23 @@
         'image_anime_to_real', 'image_view_synthesis', 'image_depth_estimation',
         'image_object_transfer', 'image_expression_transfer'
     ]);
-    const CREATIVE_VIDEO_TASKS = new Set(['text_to_video', 'image_to_video', 'multi_image_to_video']);
+    const CREATIVE_VIDEO_TASKS = new Set([
+        'text_to_video', 'image_to_video', 'multi_image_to_video',
+        'audio_to_video', 'image_audio_to_video', 'video_audio_to_video'
+    ]);
     const CREATIVE_MANUAL_OUTPUT_TASKS = new Set([
         'text_to_image', 'image_edit', 'multi_image_edit',
-        'text_to_video', 'image_to_video', 'multi_image_to_video'
+        'text_to_video', 'image_to_video', 'multi_image_to_video',
+        'audio_to_video', 'image_audio_to_video', 'video_audio_to_video'
     ]);
     const CREATIVE_GENERATION_TASKS = new Set([...CREATIVE_IMAGE_TASKS, ...CREATIVE_VIDEO_TASKS]);
     const CREATIVE_TEXT_TASKS = new Set(['text_to_image', 'text_to_video']);
-    const CREATIVE_IMAGE_INPUT_TASKS = new Set([...CREATIVE_GENERATION_TASKS].filter((task) => !CREATIVE_TEXT_TASKS.has(task)));
+    const CREATIVE_IMAGE_INPUT_TASKS = new Set([
+        ...[...CREATIVE_IMAGE_TASKS].filter((task) => task !== 'text_to_image'),
+        'image_to_video', 'multi_image_to_video', 'image_audio_to_video'
+    ]);
+    const CREATIVE_VIDEO_INPUT_TASKS = new Set(['video_audio_to_video']);
+    const CREATIVE_AUDIO_INPUT_TASKS = new Set(['audio_to_video', 'image_audio_to_video', 'video_audio_to_video']);
     const CREATIVE_MULTI_IMAGE_TASKS = new Set([
         'multi_image_edit', 'image_style_transfer', 'image_face_swap', 'image_pose_transfer',
         'image_object_transfer', 'image_expression_transfer', 'multi_image_to_video'
@@ -152,7 +168,13 @@
         reference_to_image: 'image_edit',
         ref_to_image: 'image_edit',
         r2i: 'image_edit',
-        multi_i2v: 'multi_image_to_video'
+        multi_i2v: 'multi_image_to_video',
+        a2v: 'audio_to_video',
+        audio2video: 'audio_to_video',
+        image_audio2video: 'image_audio_to_video',
+        ia2v: 'image_audio_to_video',
+        video_audio2video: 'video_audio_to_video',
+        va2v: 'video_audio_to_video'
     };
 
     function normalizeCreativePreference(value) {
@@ -1060,19 +1082,54 @@
             ? `<details class="describe-vlm-chat-roleplay-state-change-details" data-describe-vlm-chat-roleplay-state-change-details><summary>${escapeHtml(localText('Details', '详情'))}</summary><div>${escapeHtml(fullTransition)}</div></details>`
             : '';
         const valueTitle = `${beforeLabel}: ${beforeFull} / ${afterLabel}: ${afterFull}`;
-        return `<li data-describe-vlm-chat-roleplay-state-change-field="${escapeHtml(change.field)}"><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}</b><span class="describe-vlm-chat-roleplay-state-change-values" title="${escapeHtml(valueTitle)}"><span class="describe-vlm-chat-roleplay-state-change-before"><small>${escapeHtml(beforeLabel)}</small><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(beforeCompact)}</span></span><span class="describe-vlm-chat-roleplay-state-change-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span class="describe-vlm-chat-roleplay-state-change-after"><small>${escapeHtml(afterLabel)}</small><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(compactAfter)}</span></span></span>${detailHtml}</li>`;
+        const valueAriaLabel = `${beforeLabel}: ${beforeCompact}; ${afterLabel}: ${compactAfter}`;
+        return `<li data-describe-vlm-chat-roleplay-state-change-field="${escapeHtml(change.field)}"><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}</b><span class="describe-vlm-chat-roleplay-state-change-values" title="${escapeHtml(valueTitle)}" aria-label="${escapeHtml(valueAriaLabel)}"><span class="describe-vlm-chat-roleplay-state-change-before"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(beforeCompact)}</span></span><span class="describe-vlm-chat-roleplay-state-change-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span class="describe-vlm-chat-roleplay-state-change-after"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(compactAfter)}</span></span></span>${detailHtml}</li>`;
+    }
+
+    function renderRoleplayStateChangeColumns() {
+        const beforeLabel = localText('Before', '原状态');
+        const afterLabel = localText('After', '新状态');
+        return `<div class="describe-vlm-chat-roleplay-state-change-columns" aria-hidden="true"><span></span><span class="describe-vlm-chat-roleplay-state-change-values-head"><span>${escapeHtml(beforeLabel)}</span><span></span><span>${escapeHtml(afterLabel)}</span></span></div>`;
     }
 
     function renderRoleplayStateChanges(value) {
         const changes = normalizeRoleplayStateChanges(value);
         if (!changes.length) return '';
         const visibleChanges = changes.slice(0, MAX_ROLEPLAY_STATE_CHANGE_ROWS);
-        const rows = visibleChanges.map(renderRoleplayStateChangeRow).join('');
+        const groups = [];
+        const groupMap = new Map();
+        visibleChanges.forEach((change) => {
+            const groupId = String(change.entity_id || change.entity_name || change.entity_type || 'story').trim() || 'story';
+            const key = `${change.entity_type}:${groupId}`;
+            let group = groupMap.get(key);
+            if (!group) {
+                group = {
+                    key,
+                    entity_type: change.entity_type,
+                    entity_id: groupId,
+                    entity_name: change.entity_name || groupId,
+                    changes: []
+                };
+                groupMap.set(key, group);
+                groups.push(group);
+            }
+            group.changes.push(change);
+        });
+        const groupHtml = groups.map((group, groupIndex) => {
+            const label = group.entity_type === 'player'
+                ? localText('Player', '玩家')
+                : localText('Character', '角色');
+            const icon = group.entity_type === 'player' ? 'fa-user' : 'fa-user-pen';
+            return `<section class="describe-vlm-chat-roleplay-state-change-group" data-roleplay-state-group-kind="${escapeHtml(group.entity_type)}" data-roleplay-state-group-index="${groupIndex % 3}">
+  <div class="describe-vlm-chat-roleplay-state-change-group-head"><i class="fa-solid ${icon}" aria-hidden="true"></i><b>${escapeHtml(group.entity_name)}</b><small>${escapeHtml(label)}</small></div>
+  <ul>${group.changes.map(renderRoleplayStateChangeRow).join('')}</ul>
+</section>`;
+        }).join('');
         const hiddenChanges = changes.slice(MAX_ROLEPLAY_STATE_CHANGE_ROWS);
         const moreHtml = hiddenChanges.length
             ? `<details class="describe-vlm-chat-roleplay-state-changes-more"><summary>${escapeHtml(localText(`${hiddenChanges.length} more changes`, `还有 ${hiddenChanges.length} 项变化`))}</summary><ul>${hiddenChanges.map(renderRoleplayStateChangeRow).join('')}</ul></details>`
             : '';
-        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div><ul>${rows}</ul>${moreHtml}</div>`;
+        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div>${renderRoleplayStateChangeColumns()}<div class="describe-vlm-chat-roleplay-state-change-groups">${groupHtml}</div>${moreHtml}</div>`;
     }
 
     function normalizeRoleplaySession(value, conversationId = '') {
@@ -2354,6 +2411,7 @@
         vlmContextWindows: {},
         vlmAllowCustom: false,
         vlmModelCatalogLoaded: false,
+        vlmModelCatalogDynamicLoaded: false,
         vlmModelCatalogLoading: false,
         vlmModelCatalogPromise: null,
         creativePresetCatalog: [],
@@ -2963,15 +3021,15 @@
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
-                const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
-                const task = creativeActionTask(action, inputCount);
+                const mediaInputs = Array.isArray(action.media_inputs) ? action.media_inputs : [];
+                const task = creativeActionTask(action, mediaInputs);
                 if (
                     (
                         ['awaiting_confirmation', 'models_missing', 'preset_missing', 'needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route'].includes(generationState)
                         || ['parameter_profile_missing', 'parameter_profile_incompatible'].includes(generationState)
                     )
                     && entry
-                    && creativePresetHasTaskRoute(entry, task, inputCount)
+                    && creativePresetHasTaskRoute(entry, task, mediaInputs)
                 ) {
                     action.preset = preset;
                     action.preset_source = 'session_preference';
@@ -6878,6 +6936,81 @@
         }
     }
 
+    async function postJsonStream(endpoint, payload, options = {}, onEvent = null) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+                body: JSON.stringify(payload || {}),
+                signal: options?.signal
+            });
+            if (!response.ok) {
+                let data = null;
+                try { data = await response.json(); } catch (err) {}
+                const failure = Object.assign({}, data || {}, {
+                    ok: false,
+                    error: data?.error || `HTTP ${response.status}`,
+                    details: data?.details || response.statusText || ''
+                });
+                if (!failure.aborted) {
+                    logDescribeVlmChatFailure(endpoint, payload, Object.assign({}, failure, {
+                        http_status: response.status
+                    }));
+                }
+                return failure;
+            }
+            if (!response.body) return { ok: false, error: 'Streaming response body is unavailable.' };
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finalResult = null;
+
+            const dispatchBlock = (block) => {
+                const data = block.split(/\r?\n/)
+                    .filter(line => line.startsWith('data:'))
+                    .map(line => line.slice(5).trimStart())
+                    .join('\n')
+                    .trim();
+                if (!data || data === '[DONE]') return;
+                let event = null;
+                try { event = JSON.parse(data); } catch (err) { return; }
+                if (event?.type === 'delta') {
+                    try { onEvent?.(event); } catch (err) {}
+                    return;
+                }
+                if (event?.type === 'reset') {
+                    try { onEvent?.(event); } catch (err) {}
+                    return;
+                }
+                if (event?.type === 'result') {
+                    finalResult = event.result && typeof event.result === 'object'
+                        ? event.result
+                        : event;
+                    try { onEvent?.(event); } catch (err) {}
+                }
+            };
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const blocks = buffer.split(/\r?\n\r?\n/);
+                buffer = blocks.pop() || '';
+                blocks.forEach(dispatchBlock);
+            }
+            buffer += decoder.decode();
+            if (buffer.trim()) dispatchBlock(buffer);
+            return finalResult || { ok: false, error: 'Streaming response ended without a final result.' };
+        } catch (err) {
+            if (err?.name === 'AbortError') {
+                return { ok: false, aborted: true, error: 'aborted' };
+            }
+            const failure = { ok: false, error: err?.message || String(err || 'streaming request failed') };
+            logDescribeVlmChatFailure(endpoint, payload, { transport_error: failure.error });
+            return failure;
+        }
+    }
+
     function normalizeSystemPromptTemplates(data, key = 'templates') {
         const rows = Array.isArray(data?.[key]) ? data[key] : [];
         return rows.map((item) => {
@@ -7198,7 +7331,41 @@
     }
 
     function mediaKind(value) {
-        return String(value?.kind || '').toLowerCase() === 'video' || /^video\//i.test(String(value?.mime || value?.type || '')) ? 'video' : 'image';
+        const declared = String(value?.kind || value?.media_type || '').toLowerCase();
+        const mime = String(value?.mime || value?.type || '');
+        if (declared === 'video' || /^video\//i.test(mime)) return 'video';
+        if (declared === 'audio' || /^audio\//i.test(mime)) return 'audio';
+        return 'image';
+    }
+
+    function referenceMediaLimit(kind) {
+        if (kind === 'video') return MAX_REFERENCE_VIDEOS;
+        if (kind === 'audio') return MAX_REFERENCE_AUDIOS;
+        return MAX_REFERENCE_IMAGES;
+    }
+
+    function referenceMediaCounts(items) {
+        const counts = { image: 0, video: 0, audio: 0 };
+        (Array.isArray(items) ? items : []).forEach((item) => {
+            counts[mediaKind(item)] += 1;
+        });
+        return counts;
+    }
+
+    function limitReferenceMedia(items) {
+        const counts = { image: 0, video: 0, audio: 0 };
+        const limited = [];
+        const seen = new Set();
+        (Array.isArray(items) ? items : []).forEach((item) => {
+            if (!item || limited.length >= MAX_ATTACHMENTS) return;
+            const kind = mediaKind(item);
+            const identity = String(item?.key || item?.id || item?.ref || item?.data_url || '').trim();
+            if ((identity && seen.has(identity)) || counts[kind] >= referenceMediaLimit(kind)) return;
+            if (identity) seen.add(identity);
+            counts[kind] += 1;
+            limited.push(item);
+        });
+        return limited;
     }
 
     function describeInputMediaDescriptor() {
@@ -7427,18 +7594,23 @@
     async function fileToMediaPayload(file, options = {}) {
         if (!(file instanceof Blob)) throw new Error('media file is unavailable');
         const mime = String(file.type || options.mime || '').toLowerCase();
-        if (!mime.startsWith('video/')) {
+        if (mime.startsWith('image/')) {
             const image = await fileToImagePayload(file);
             if (options.key) image.key = options.key;
             return image;
         }
-        if (Number(file.size) > MAX_VIDEO_ATTACHMENT_BYTES) throw new Error('video attachment is too large');
+        const isVideo = mime.startsWith('video/');
+        const isAudio = mime.startsWith('audio/');
+        if (!isVideo && !isAudio) throw new Error('unsupported media attachment');
+        const byteLimit = isVideo ? MAX_VIDEO_ATTACHMENT_BYTES : MAX_AUDIO_ATTACHMENT_BYTES;
+        if (Number(file.size) > byteLimit) throw new Error(`${isVideo ? 'video' : 'audio'} attachment is too large`);
         const dataUrl = await blobToDataUrl(file);
+        const mediaType = isVideo ? 'video' : 'audio';
         return {
-            id: options.id || uid('describe_video_ref'),
-            name: options.name || file.name || 'reference-video.mp4',
-            mime: mime || 'video/mp4',
-            media_type: 'video',
+            id: options.id || uid(`describe_${mediaType}_ref`),
+            name: options.name || file.name || (isVideo ? 'reference-video.mp4' : 'reference-audio.wav'),
+            mime: mime || (isVideo ? 'video/mp4' : 'audio/wav'),
+            media_type: mediaType,
             width: options.width || null,
             height: options.height || null,
             size: Number(file.size) || dataUrlBinarySize(dataUrl),
@@ -7446,7 +7618,7 @@
             original_size: Number(file.size) || null,
             data_url: dataUrl,
             thumb: '',
-            key: options.key || `${file.name || 'video'}:${file.size || 0}:${file.lastModified || 0}`,
+            key: options.key || `${file.name || mediaType}:${file.size || 0}:${file.lastModified || 0}`,
         };
     }
 
@@ -7491,10 +7663,10 @@
                 if (!payload) return false;
                 const currentKey = String(describeInputMediaDescriptor()?.key || '');
                 if (currentKey !== key) return false;
-                runtime.pendingImages = [payload, ...runtime.pendingImages.filter((item) => {
+                runtime.pendingImages = limitReferenceMedia([payload, ...runtime.pendingImages.filter((item) => {
                     const itemKey = String(item?.key || '');
                     return itemKey !== payload.key && !itemKey.startsWith('describe-input:');
-                })].slice(0, MAX_ATTACHMENTS);
+                })]);
                 runtime.lastAutoReferencedDescribeMediaKey = key;
                 if (isCurrentConversationRuntime(runtime)) {
                     state.pendingImages = runtime.pendingImages;
@@ -7604,6 +7776,8 @@
 
     function applyDescribeVlmModelCatalog(data) {
         if (!data || typeof data !== 'object') return false;
+        const dynamicCatalog = data.include_dynamic === true;
+        if (state.vlmModelCatalogDynamicLoaded && !dynamicCatalog) return false;
         const catalogChoices = Array.isArray(data.choices)
             ? data.choices.filter(Boolean)
             : Array.isArray(data.items)
@@ -7623,13 +7797,15 @@
             });
         }
         state.vlmModelCatalogLoaded = true;
+        if (dynamicCatalog) state.vlmModelCatalogDynamicLoaded = true;
         return true;
     }
 
-    async function refreshDescribeVlmModelCatalog(refresh = false) {
+    async function refreshDescribeVlmModelCatalog(refresh = false, includeDynamic = refresh) {
         if (state.vlmModelCatalogLoading && state.vlmModelCatalogPromise) return state.vlmModelCatalogPromise;
+        if (includeDynamic && state.vlmModelCatalogDynamicLoaded && !refresh) return true;
         const registry = window.SimpAICanvasWorkbenchRegistry || {};
-        if (!refresh && Array.isArray(registry.VLM_MODEL_CATALOG) && registry.VLM_MODEL_CATALOG.length) {
+        if (!includeDynamic && !refresh && Array.isArray(registry.VLM_MODEL_CATALOG) && registry.VLM_MODEL_CATALOG.length) {
             applyDescribeVlmModelCatalog({
                 items: registry.VLM_MODEL_CATALOG,
                 choices: registry.VLM_VERSION_CHOICES || [],
@@ -7639,8 +7815,12 @@
             updateAnswerModelIndicator();
             return true;
         }
+        const query = new URLSearchParams();
+        if (includeDynamic) query.set('include_dynamic', 'true');
+        if (refresh) query.set('refresh', 'true');
+        const queryText = query.toString();
         state.vlmModelCatalogLoading = true;
-        state.vlmModelCatalogPromise = fetch(`/vlm-model-catalog${refresh ? '?refresh=true' : ''}`, { cache: 'no-store' })
+        state.vlmModelCatalogPromise = fetch(`/vlm-model-catalog${queryText ? `?${queryText}` : ''}`, { cache: 'no-store' })
             .then((response) => response.json().then((data) => ({ response, data })))
             .then(({ response, data }) => {
                 if (!response.ok || !data?.ok) throw new Error(data?.details || data?.error || `HTTP ${response.status}`);
@@ -7899,7 +8079,9 @@
     }
 
     async function ensureSelectedVlmModelReady(version) {
-        if (!state.vlmModelCatalogLoaded) await refreshDescribeVlmModelCatalog(false);
+        if (!state.vlmModelCatalogLoaded || !state.vlmModelCatalogDynamicLoaded) {
+            await refreshDescribeVlmModelCatalog(false, true);
+        }
         version = resolveVlmVersion(version);
         const { payload, customApi } = buildVlmModelStatusPayload(version);
         const response = await postJson('/canvas-workbench/vlm-model-status', payload);
@@ -8911,15 +9093,15 @@
        <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(localText('Choose how this one message should drive the story. This does not change whether the player is present.', '选择本条消息如何推动剧情，不会改变玩家是否在场。'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(localText('Perspective', '本轮视角'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(localText('Roleplay turn perspective', '角色扮演本轮视角'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
        <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image><i class="fa-solid fa-image" aria-hidden="true"></i><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
        <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><i class="fa-solid fa-power-off" aria-hidden="true"></i><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
-      <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}" aria-label="${escapeHtml(t('Attach reference image or video', '添加引用图片或视频'))}"><i class="fa-solid fa-photo-film"></i></button>
+      <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image, video, or audio', '添加引用图片、视频或音频'))}" aria-label="${escapeHtml(t('Attach reference image, video, or audio', '添加引用图片、视频或音频'))}"><i class="fa-solid fa-photo-film"></i></button>
       <button type="button" class="describe-vlm-chat-roleplay-visual-draft-tool" data-describe-vlm-chat-roleplay-visual-draft title="${escapeHtml(localText('Ask the Agent to draft a story scene image', '让 Agent 生成场照提议'))}" aria-label="${escapeHtml(localText('Ask the Agent to draft a story scene image', '让 Agent 生成场照提议'))}" hidden><i class="fa-solid fa-clapperboard"></i></button>
     </div>
     <div class="describe-vlm-chat-attachments" data-describe-vlm-chat-attachments hidden></div>
     <textarea data-describe-vlm-chat-input rows="2" placeholder="${escapeHtml(chatInputPlaceholder(state.chatMode))}"></textarea>
     <button type="button" data-describe-vlm-chat-stop title="${escapeHtml(t('Stop reply', '停止回答'))}" aria-label="${escapeHtml(t('Stop reply', '停止回答'))}" hidden><i class="fa-solid fa-stop"></i></button>
     <button type="button" data-describe-vlm-chat-send title="${escapeHtml(t('Send', '发送'))}" aria-label="${escapeHtml(t('Send', '发送'))}"><i class="fa-solid fa-paper-plane"></i></button>
-    <input type="file" accept="image/*,video/*" multiple data-describe-vlm-chat-file hidden>
-    <input type="file" accept="image/*" multiple data-describe-vlm-chat-generation-file hidden>
+    <input type="file" accept="image/*,video/*,audio/*" multiple data-describe-vlm-chat-file hidden>
+    <input type="file" accept="image/*,video/*,audio/*" multiple data-describe-vlm-chat-generation-file hidden>
     <input type="file" accept="image/*" multiple data-describe-vlm-chat-roleplay-reference-file="character" hidden>
     <input type="file" accept="image/*" multiple data-describe-vlm-chat-roleplay-reference-file="player" hidden>
     <input type="file" accept="image/*" multiple data-describe-vlm-chat-roleplay-reference-file="scene" hidden>
@@ -8952,7 +9134,7 @@
         renderMessages();
         renderPendingImages();
         ensureSystemPromptTemplates(modal).catch(() => {});
-        refreshDescribeVlmModelCatalog(false).catch(() => {});
+        refreshDescribeVlmModelCatalog(false, true).catch(() => {});
         return modal;
     }
 
@@ -8966,7 +9148,7 @@
         syncChatSettingsControls(modal);
         renderMessages();
         ensureSystemPromptTemplates(modal).catch(() => {});
-        refreshDescribeVlmModelCatalog(false).catch(() => {});
+        refreshDescribeVlmModelCatalog(false, true).catch(() => {});
         modal.hidden = false;
         autoReferenceDescribeInputMedia().catch(() => {});
         installDescribeFloatingLayer(modal);
@@ -9003,8 +9185,11 @@
         });
         const dataUrl = String(asset?.data_url || '').trim();
         const thumb = String(asset?.thumb || '').trim();
-        const hasEmbeddedMedia = /^data:(?:image|video)\/[a-z0-9.+-]+;base64,/i.test(dataUrl)
-            && dataUrl.length <= MAX_RUNTIME_IMAGE_DATA_URL_LENGTH;
+        const embeddedMatch = dataUrl.match(/^data:(image|video|audio)\/[a-z0-9.+-]+;base64,/i);
+        const embeddedLimit = String(embeddedMatch?.[1] || '').toLowerCase() === 'image'
+            ? MAX_RUNTIME_IMAGE_DATA_URL_LENGTH
+            : MAX_RUNTIME_AV_DATA_URL_LENGTH;
+        const hasEmbeddedMedia = Boolean(embeddedMatch) && dataUrl.length <= embeddedLimit;
         if (includeEmbedded && hasEmbeddedMedia) {
             clean.data_url = dataUrl;
             if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(thumb) && thumb.length <= MAX_RUNTIME_IMAGE_THUMB_LENGTH) {
@@ -9021,21 +9206,27 @@
         const asset = normalizeCreativeAsset(input.asset, options);
         const ref = String(input.ref || '').trim().slice(0, 160);
         const declaredType = String(input.type || '').trim().toLowerCase();
-        const type = declaredType === 'video' || mediaKind(asset) === 'video' ? 'video' : 'image';
-        if (!ref || !asset || !['image', 'video'].includes(type)) return null;
+        const inferredType = mediaKind(asset);
+        const type = ['image', 'video', 'audio'].includes(declaredType) ? declaredType : inferredType;
+        if (!ref || !asset || !['image', 'video', 'audio'].includes(type)) return null;
         if (type === 'video' && !String(asset.mime || '').trim()) asset.mime = 'video/mp4';
+        if (type === 'audio' && !String(asset.mime || '').trim()) asset.mime = 'audio/wav';
+        const role = type === 'video'
+            ? 'reference_video'
+            : type === 'audio'
+                ? 'reference_audio'
+                : index === 0 ? 'base_image' : `reference_image_${index}`;
         return {
             ref,
-            role: type === 'video' ? 'video' : index === 0 ? 'base_image' : `reference_image_${index}`,
-            name: String(input.name || asset.name || `${type === 'video' ? 'Video' : 'Image'} ${index + 1}`).trim().slice(0, 200),
+            role,
+            name: String(input.name || asset.name || `${type === 'video' ? 'Video' : type === 'audio' ? 'Audio' : 'Image'} ${index + 1}`).trim().slice(0, 200),
             type,
             asset
         };
     }
 
     function normalizeCreativeMediaInput(input, index = 0, options = {}) {
-        const normalized = normalizeChatMediaInput(input, index, options);
-        return normalized?.type === 'image' ? normalized : null;
+        return normalizeChatMediaInput(input, index, options);
     }
 
     function normalizeCreativeGeneration(generation) {
@@ -9085,16 +9276,17 @@
         const taskKey = String(action.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const task = CREATIVE_TASK_ALIASES[taskKey] || taskKey;
         const persistedMediaInputs = Array.isArray(action.media_inputs)
-            ? action.media_inputs.slice(0, MAX_ATTACHMENTS).map((input, index) => normalizeCreativeMediaInput(
+            ? limitReferenceMedia(action.media_inputs.map((input, index) => normalizeCreativeMediaInput(
                 input,
                 index,
                 { includeEmbedded: false }
-            )).filter(Boolean)
+            )).filter(Boolean))
             : [];
         const persistedGeneration = normalizeCreativeGeneration(action.generation) || { state: 'awaiting_confirmation', assets: [] };
-        const requiredImages = CREATIVE_MULTI_IMAGE_TASKS.has(task) ? 2 : CREATIVE_IMAGE_INPUT_TASKS.has(task) ? 1 : 0;
+        const requiredMedia = creativeRequiredMediaCounts(null, task);
+        const persistedCounts = creativeMediaCounts(persistedMediaInputs);
         if (
-            persistedMediaInputs.length < requiredImages
+            Object.keys(requiredMedia).some((kind) => persistedCounts[kind] < requiredMedia[kind])
             && !CREATIVE_ACTIVE_STATES.has(String(persistedGeneration.state || ''))
             && !CREATIVE_TERMINAL_STATES.has(String(persistedGeneration.state || ''))
         ) {
@@ -9137,13 +9329,13 @@
                     owner_type: String(item?.owner_type || 'character').trim().toLowerCase() === 'player' ? 'player' : 'character',
                     description: String(item?.description || '').trim().slice(0, 3000),
                     reference_asset_ids: Array.isArray(item?.reference_asset_ids)
-                        ? item.reference_asset_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 5)
+                        ? item.reference_asset_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, MAX_ROLEPLAY_REFERENCE_IMAGES)
                         : [],
                     selected: !!item?.selected
                 })).filter((item) => item.id)
                 : [],
             reference_bindings: Array.isArray(action.reference_bindings)
-                ? action.reference_bindings.slice(0, MAX_ATTACHMENTS).map((item, index) => ({
+                ? action.reference_bindings.slice(0, MAX_ROLEPLAY_REFERENCE_IMAGES).map((item, index) => ({
                     asset_id: String(item?.asset_id || '').trim().slice(0, 240),
                     owner_id: String(item?.owner_id || '').trim().slice(0, 160),
                     owner_type: String(item?.owner_type || '').trim().slice(0, 80),
@@ -9151,7 +9343,7 @@
                 })).filter((item) => item.asset_id)
                 : [],
             roleplay_all_reference_bindings: Array.isArray(action.roleplay_all_reference_bindings)
-                ? action.roleplay_all_reference_bindings.slice(0, MAX_ATTACHMENTS).map((item, index) => ({
+                ? action.roleplay_all_reference_bindings.slice(0, MAX_ROLEPLAY_REFERENCE_IMAGES).map((item, index) => ({
                     asset_id: String(item?.asset_id || '').trim().slice(0, 240),
                     owner_id: String(item?.owner_id || '').trim().slice(0, 160),
                     owner_type: String(item?.owner_type || '').trim().slice(0, 80),
@@ -10666,6 +10858,22 @@
         return true;
     }
 
+    function updatePendingAssistantStream(content, runtime = currentConversationRuntime()) {
+        const target = runtime || currentConversationRuntime();
+        const messages = Array.isArray(target?.messages) ? target.messages : [];
+        const pending = messages.find((item) => item?.pending);
+        if (!pending) return false;
+        pending.content = String(content || '');
+        pending.streaming = true;
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) {
+            state.messages = target.messages;
+            state.persistenceDirty = true;
+            renderMessages();
+        }
+        return true;
+    }
+
     function abortCreativeDirectorRequest(notifyBackend = false, runtime = currentConversationRuntime()) {
         const controller = runtime.creativeDirectorAbortController;
         const requestId = runtime.creativeDirectorRequestId;
@@ -10754,8 +10962,8 @@
         const rows = Array.isArray(images) ? images : [];
         const count = rows.length;
         const size = formatByteSize(totalImageUploadBytes(rows));
-        const hasVideo = rows.some((item) => mediaKind(item) === 'video');
-        const template = hasVideo
+        const hasNonImage = rows.some((item) => mediaKind(item) !== 'image');
+        const template = hasNonImage
             ? (completed
                 ? t('Uploaded {count} media file(s), about {size}.', '已上传 {count} 个媒体文件，约 {size}。')
                 : t('Estimated media upload: {count} file(s), about {size}.', '预计媒体上传：{count} 个文件，约 {size}。'))
@@ -10782,15 +10990,17 @@
     }
 
     function imageSummary(image) {
+        const kind = mediaKind(image);
         return {
-            name: image?.name || (mediaKind(image) === 'video' ? 'video' : 'image'),
+            name: image?.name || kind,
             width: image?.width || null,
             height: image?.height || null,
             size: image?.size || null,
             wire_size: imageUploadBytes(image) || null,
             mime: image?.mime || '',
             thumb: image?.thumb || ONE_PIXEL_IMAGE,
-            preview_url: mediaKind(image) === 'video' ? String(image?.data_url || '') : '',
+            preview_url: kind === 'image' ? '' : String(image?.data_url || ''),
+            media_type: kind,
             placeholder: true
         };
     }
@@ -10802,10 +11012,12 @@
             const size = image?.width && image?.height ? ` ${Number(image.width)}x${Number(image.height)}` : '';
             const uploadBytes = imageUploadBytes(image);
             const upload = uploadBytes ? ` · ↑${formatByteSize(uploadBytes)}` : '';
-            const video = mediaKind(image) === 'video';
-            const label = `${image?.name || (video ? t('Video', '视频') : t('Image', '图片'))}${size}${upload}`;
+            const kind = mediaKind(image);
+            const fallbackLabel = kind === 'video' ? t('Video', '视频') : kind === 'audio' ? t('Audio', '音频') : t('Image', '图片');
+            const label = `${image?.name || fallbackLabel}${size}${upload}`;
+            const icon = kind === 'video' ? 'fa-film' : kind === 'audio' ? 'fa-waveform-lines' : '';
             return `<span class="describe-vlm-chat-image-chip">
-  ${video ? '<i class="fa-solid fa-film" aria-hidden="true"></i>' : `<img src="${escapeHtml(image?.thumb || ONE_PIXEL_IMAGE)}" alt="">`}
+  ${icon ? `<i class="fa-solid ${icon}" aria-hidden="true"></i>` : `<img src="${escapeHtml(image?.thumb || ONE_PIXEL_IMAGE)}" alt="">`}
   <span>${escapeHtml(label)}</span>
   ${removable ? `<button type="button" data-describe-vlm-chat-remove-image="${index}" title="${escapeHtml(t('Remove', '移除'))}" aria-label="${escapeHtml(t('Remove', '移除'))}"><i class="fa-solid fa-xmark"></i></button>` : ''}
 </span>`;
@@ -10816,15 +11028,22 @@
         const rows = Array.isArray(images) ? images : [];
         if (!rows.length) return '';
         return `<div class="describe-vlm-chat-message-images">${rows.map((image, index) => {
-            const video = mediaKind(image) === 'video';
+            const kind = mediaKind(image);
             const source = String(image?.thumb || '').trim() || ONE_PIXEL_IMAGE;
             const dimensions = image?.width && image?.height ? `, ${Number(image.width)}x${Number(image.height)}` : '';
-            const label = video
+            const label = kind === 'video'
                 ? localText(`Attached video ${index + 1}${dimensions}`, `附加视频 ${index + 1}${dimensions}`)
-                : localText(`Attached image ${index + 1}${dimensions}`, `附图 ${index + 1}${dimensions}`);
-            if (video) {
+                : kind === 'audio'
+                    ? localText(`Attached audio ${index + 1}`, `附加音频 ${index + 1}`)
+                    : localText(`Attached image ${index + 1}${dimensions}`, `附图 ${index + 1}${dimensions}`);
+            if (kind !== 'image') {
                 const persistedAsset = Array.isArray(mediaAssets) ? mediaAssets[index]?.asset : null;
                 const preview = String(image?.preview_url || '').trim() || persistedMediaAssetSource(persistedAsset);
+                if (kind === 'audio') {
+                    return preview
+                        ? `<audio src="${escapeHtml(creativeAssetUrl(preview))}" aria-label="${escapeHtml(label)}" controls preload="metadata"></audio>`
+                        : `<span class="describe-vlm-chat-message-video-placeholder"><i class="fa-solid fa-waveform-lines"></i><span>${escapeHtml(image?.name || label)}</span></span>`;
+                }
                 return preview
                     ? `<video src="${escapeHtml(creativeAssetUrl(preview))}" aria-label="${escapeHtml(label)}" controls preload="metadata" playsinline></video>`
                     : `<span class="describe-vlm-chat-message-video-placeholder"><i class="fa-solid fa-film"></i><span>${escapeHtml(image?.name || label)}</span></span>`;
@@ -11042,13 +11261,13 @@
         const merged = [];
         const seen = new Set();
         [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])].forEach((image) => {
-            if (!image || !['image', 'video'].includes(mediaKind(image)) || !image.data_url) return;
+            if (!image || !['image', 'video', 'audio'].includes(mediaKind(image)) || !image.data_url) return;
             const identity = composerImageIdentity(image);
             if (identity && seen.has(identity)) return;
             if (identity) seen.add(identity);
             merged.push(image);
         });
-        return merged.slice(-MAX_ATTACHMENTS);
+        return limitReferenceMedia(merged);
     }
 
     function persistedMediaAssetSource(asset) {
@@ -11091,6 +11310,20 @@
                 key: `message-media:${asset.asset_id || normalized.ref || index}`
             };
         }
+        if (/^data:audio\//i.test(source)) {
+            return {
+                id: uid('describe_message_ref'),
+                name: normalized.name || asset.name || `message-audio-${index + 1}.wav`,
+                mime: asset.mime || 'audio/wav',
+                media_type: 'audio',
+                size: dataUrlBinarySize(source),
+                wire_size: source.length,
+                original_size: asset.size || null,
+                data_url: source,
+                thumb: '',
+                key: `message-media:${asset.asset_id || normalized.ref || index}`
+            };
+        }
         const response = await fetch(source, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`image fetch failed: ${response.status}`);
         const blob = await response.blob();
@@ -11112,6 +11345,20 @@
                 key: `message-media:${asset.asset_id || normalized.ref || source}`
             };
         }
+        if (mime.startsWith('audio/')) {
+            return {
+                id: uid('describe_message_ref'),
+                name: normalized.name || asset.name || `message-audio-${index + 1}.wav`,
+                mime,
+                media_type: 'audio',
+                size: blob.size || dataUrlBinarySize(dataUrl),
+                wire_size: dataUrl.length,
+                original_size: blob.size || null,
+                data_url: dataUrl,
+                thumb: '',
+                key: `message-media:${asset.asset_id || normalized.ref || source}`
+            };
+        }
         if (!mime.startsWith('image/')) return null;
         return imagePayloadFromDataUrl(dataUrl, {
             id: uid('describe_message_ref'),
@@ -11124,9 +11371,9 @@
 
     async function messageImagePayloadsForComposer(message) {
         const runtimePayloads = (Array.isArray(message?._image_payloads) ? message._image_payloads : [])
-            .filter((image) => ['image', 'video'].includes(mediaKind(image)) && image?.data_url)
-            .slice(0, MAX_ATTACHMENTS);
-        if (runtimePayloads.length) return runtimePayloads;
+            .filter((image) => ['image', 'video', 'audio'].includes(mediaKind(image)) && image?.data_url);
+        const limitedRuntimePayloads = limitReferenceMedia(runtimePayloads);
+        if (limitedRuntimePayloads.length) return limitedRuntimePayloads;
 
         const restoredAssets = [];
         const mediaAssets = Array.isArray(message?.media_assets) ? message.media_assets : [];
@@ -11136,7 +11383,7 @@
                 if (payload) restoredAssets.push(payload);
             } catch (err) {}
         }
-        if (restoredAssets.length) return restoredAssets;
+        if (restoredAssets.length) return limitReferenceMedia(restoredAssets);
 
         const restoredThumbs = [];
         const summaries = Array.isArray(message?.images) ? message.images : [];
@@ -11153,7 +11400,7 @@
                 key: `message-thumb:${String(message?.id || '')}:${index}`
             }));
         }
-        return restoredThumbs;
+        return limitReferenceMedia(restoredThumbs);
     }
 
     async function quoteChatMessage(messageIndex) {
@@ -11209,7 +11456,7 @@
             });
         }
         runtime.messages = runtime.messages.slice(0, index).filter((item) => !item?.pending);
-        runtime.pendingImages = restoredImages.slice(0, MAX_ATTACHMENTS);
+        runtime.pendingImages = limitReferenceMedia(restoredImages);
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
         resetConversationAfterContextEdit();
@@ -11771,7 +12018,7 @@
     }
 
     function creativePresetImageSlots(entry) {
-        const ordered = ['enhance_image', 'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4'];
+        const ordered = ['enhance_image', 'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4', 'scene_input_image5', 'scene_input_image6', 'scene_input_image7', 'scene_input_image8'];
         const declared = Array.isArray(entry?.media_capability?.image_slots)
             ? entry.media_capability.image_slots.map((slot) => String(slot || '')).filter((slot) => ordered.includes(slot))
             : [];
@@ -11780,36 +12027,156 @@
         return ordered.filter((key) => slots.some((slot) => String(slot?.key || '') === key && slot?.visible !== false));
     }
 
-    function creativePresetMaxImages(entry) {
-        const slots = creativePresetImageSlots(entry);
-        const declared = Number(entry?.media_capability?.max_images ?? entry?.schema?.director_capability?.max_images);
+    function creativePresetVideoSlots(entry) {
+        const ordered = ['scene_video', 'scene_reference_video', 'scene_reference_video2'];
+        const declared = Array.isArray(entry?.media_capability?.video_slots)
+            ? entry.media_capability.video_slots.map((slot) => String(slot || '')).filter((slot) => ordered.includes(slot))
+            : [];
+        if (declared.length) return ordered.filter((slot) => declared.includes(slot));
+        const slots = Array.isArray(entry?.schema?.upload_slots) ? entry.schema.upload_slots : [];
+        return ordered.filter((key) => slots.some((slot) => String(slot?.key || '') === key && slot?.visible !== false));
+    }
+
+    function creativePresetAudioSlots(entry) {
+        const ordered = ['scene_audio', 'scene_audio2', 'scene_audio3'];
+        const declared = Array.isArray(entry?.media_capability?.audio_slots)
+            ? entry.media_capability.audio_slots.map((slot) => String(slot || '')).filter((slot) => ordered.includes(slot))
+            : [];
+        if (declared.length) return ordered.filter((slot) => declared.includes(slot));
+        const slots = Array.isArray(entry?.schema?.upload_slots) ? entry.schema.upload_slots : [];
+        return ordered.filter((key) => slots.some((slot) => String(slot?.key || '') === key && slot?.visible !== false));
+    }
+
+    function creativePresetMediaSlots(entry, kind) {
+        if (kind === 'video') return creativePresetVideoSlots(entry);
+        if (kind === 'audio') return creativePresetAudioSlots(entry);
+        return creativePresetImageSlots(entry);
+    }
+
+    function creativePresetMaxMedia(entry, kind) {
+        const slots = creativePresetMediaSlots(entry, kind);
+        const key = `max_${kind}s`;
+        const declared = Number(entry?.media_capability?.[key] ?? entry?.schema?.director_capability?.[key]);
         return Number.isFinite(declared)
             ? Math.max(0, Math.min(slots.length, Math.round(declared)))
             : slots.length;
     }
 
-    function creativePresetMinImages(entry) {
-        const maxImages = creativePresetMaxImages(entry);
-        const declared = Number(entry?.media_capability?.min_images ?? entry?.schema?.director_capability?.min_images);
+    function creativePresetMinMedia(entry, kind) {
+        const maximum = creativePresetMaxMedia(entry, kind);
+        const key = `min_${kind}s`;
+        const policy = String(entry?.schema?.director_capability?.[`${kind}_policy`] || '').toLowerCase();
+        const fallback = policy === 'required' ? 1 : 0;
+        const declared = Number(entry?.media_capability?.[key] ?? entry?.schema?.director_capability?.[key] ?? fallback);
         return Number.isFinite(declared)
-            ? Math.max(0, Math.min(maxImages, Math.round(declared)))
-            : 0;
+            ? Math.max(0, Math.min(maximum, Math.round(declared)))
+            : fallback;
     }
 
-    function creativeActionTask(action, inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0) {
+    function creativePresetMaxImages(entry) {
+        return creativePresetMaxMedia(entry, 'image');
+    }
+
+    function creativePresetMinImages(entry) {
+        return creativePresetMinMedia(entry, 'image');
+    }
+
+    function creativeMediaCounts(value) {
+        const counts = { image: 0, video: 0, audio: 0 };
+        if (Array.isArray(value)) {
+            value.forEach((item) => { counts[mediaKind(item)] += 1; });
+            return counts;
+        }
+        if (value && typeof value === 'object') {
+            Object.keys(counts).forEach((kind) => {
+                const number = Number(value[kind] ?? value[`${kind}s`]);
+                counts[kind] = Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+            });
+            return counts;
+        }
+        const imageCount = Number(value);
+        counts.image = Number.isFinite(imageCount) ? Math.max(0, Math.round(imageCount)) : 0;
+        return counts;
+    }
+
+    function creativeActionTask(action, media = Array.isArray(action?.media_inputs) ? action.media_inputs : []) {
+        const counts = creativeMediaCounts(media);
         const stableRequest = String(action?.requested_task || action?.task_request?.task || '').trim();
         const requested = String(stableRequest || action?.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const normalized = CREATIVE_TASK_ALIASES[requested] || requested;
         if (!CREATIVE_GENERATION_TASKS.has(normalized)) {
-            return inputCount > 1 ? 'multi_image_edit' : inputCount === 1 ? 'image_edit' : 'text_to_image';
+            if (counts.video > 0) return 'video_audio_to_video';
+            if (counts.audio > 0) return counts.image > 0 ? 'image_audio_to_video' : 'audio_to_video';
+            return counts.image > 1 ? 'multi_image_edit' : counts.image === 1 ? 'image_edit' : 'text_to_image';
         }
-        if (normalized === 'text_to_video' && inputCount > 0) return inputCount > 1 ? 'multi_image_to_video' : 'image_to_video';
-        if (normalized === 'image_to_video' && inputCount > 1) return 'multi_image_to_video';
-        if (normalized === 'multi_image_to_video' && inputCount === 1 && !stableRequest) return 'image_to_video';
-        if (normalized === 'text_to_image' && inputCount > 0) return inputCount > 1 ? 'multi_image_edit' : 'image_edit';
-        if (normalized === 'image_edit' && inputCount > 1) return 'multi_image_edit';
-        if (normalized === 'multi_image_edit' && inputCount === 1 && !stableRequest) return 'image_edit';
+        if (CREATIVE_VIDEO_TASKS.has(normalized) && counts.video > 0) return 'video_audio_to_video';
+        if (['text_to_video', 'image_to_video', 'multi_image_to_video'].includes(normalized) && counts.audio > 0) {
+            return counts.image > 0 ? 'image_audio_to_video' : 'audio_to_video';
+        }
+        if (normalized === 'text_to_video' && counts.image > 0) return counts.image > 1 ? 'multi_image_to_video' : 'image_to_video';
+        if (normalized === 'image_to_video' && counts.image > 1) return 'multi_image_to_video';
+        if (normalized === 'multi_image_to_video' && counts.image === 1 && !stableRequest) return 'image_to_video';
+        if (normalized === 'text_to_image' && counts.image > 0) return counts.image > 1 ? 'multi_image_edit' : 'image_edit';
+        if (normalized === 'image_edit' && counts.image > 1) return 'multi_image_edit';
+        if (normalized === 'multi_image_edit' && counts.image === 1 && !stableRequest) return 'image_edit';
         return normalized;
+    }
+
+    function creativeTaskAllowedMediaTypes(task) {
+        if (CREATIVE_TEXT_TASKS.has(task)) return new Set();
+        if (CREATIVE_IMAGE_TASKS.has(task) || ['image_to_video', 'multi_image_to_video'].includes(task)) return new Set(['image']);
+        if (task === 'audio_to_video') return new Set(['audio']);
+        if (task === 'image_audio_to_video') return new Set(['image', 'audio']);
+        if (task === 'video_audio_to_video') return new Set(['image', 'video', 'audio']);
+        return new Set(['image', 'video', 'audio']);
+    }
+
+    function creativeRequiredMediaCounts(entry, task) {
+        const required = { image: 0, video: 0, audio: 0 };
+        if (CREATIVE_IMAGE_INPUT_TASKS.has(task)) {
+            required.image = Math.max(CREATIVE_MULTI_IMAGE_TASKS.has(task) ? 2 : 1, creativePresetMinMedia(entry, 'image'));
+        }
+        if (CREATIVE_VIDEO_INPUT_TASKS.has(task)) required.video = Math.max(1, creativePresetMinMedia(entry, 'video'));
+        if (CREATIVE_AUDIO_INPUT_TASKS.has(task)) {
+            required.audio = Math.max(['audio_to_video', 'image_audio_to_video'].includes(task) ? 1 : 0, creativePresetMinMedia(entry, 'audio'));
+        }
+        return required;
+    }
+
+    function creativeRequiredMediaMessage(required, counts = {}) {
+        const missing = ['image', 'video', 'audio'].filter((kind) => (
+            Number(counts?.[kind] || 0) < Number(required?.[kind] || 0)
+        ));
+        if (!missing.length) return '';
+        const english = missing.map((kind) => {
+            const amount = Math.max(1, Number(required?.[kind]) || 1);
+            const singular = kind === 'image' ? 'input image' : kind === 'video' ? 'input video' : 'audio clip';
+            return `${amount} ${singular}${amount === 1 ? '' : 's'}`;
+        });
+        const chinese = missing.map((kind) => {
+            const amount = Math.max(1, Number(required?.[kind]) || 1);
+            const unit = kind === 'image' ? '张输入图片' : kind === 'video' ? '个输入视频' : '个音频片段';
+            return `${amount} ${unit}`;
+        });
+        const englishList = english.length > 1
+            ? `${english.slice(0, -1).join(', ')} and ${english[english.length - 1]}`
+            : english[0];
+        return localText(
+            `This Preset requires at least ${englishList}.`,
+            `这个 Preset 至少需要${chinese.join('、')}。`
+        );
+    }
+
+    function creativePresetCanCompleteTask(entry, task, media = 0) {
+        if (!entry) return false;
+        const counts = creativeMediaCounts(media);
+        const allowed = creativeTaskAllowedMediaTypes(task);
+        const required = creativeRequiredMediaCounts(entry, task);
+        return ['image', 'video', 'audio'].every((kind) => (
+            (!counts[kind] || allowed.has(kind))
+            && counts[kind] <= creativePresetMaxMedia(entry, kind)
+            && required[kind] <= creativePresetMaxMedia(entry, kind)
+        ));
     }
 
     function creativePresetSupportedTasks(entry) {
@@ -11846,17 +12213,12 @@
         return ['text_to_image'];
     }
 
-    function creativePresetSupportsTask(entry, task, inputCount = 0) {
+    function creativePresetSupportsTask(entry, task, media = 0) {
         if (!entry || !creativePresetSupportedTasks(entry).includes(task)) return false;
-        const count = Math.max(0, Math.round(Number(inputCount) || 0));
-        if (CREATIVE_TEXT_TASKS.has(task)) return count === 0;
-        const required = creativeRequiredImageCount(entry, task);
-        return count >= required && count <= creativePresetMaxImages(entry);
-    }
-
-    function creativeRequiredImageCount(entry, task) {
-        if (!CREATIVE_IMAGE_INPUT_TASKS.has(String(task || ''))) return 0;
-        return Math.max(CREATIVE_MULTI_IMAGE_TASKS.has(task) ? 2 : 1, creativePresetMinImages(entry));
+        if (!creativePresetCanCompleteTask(entry, task, media)) return false;
+        const counts = creativeMediaCounts(media);
+        const required = creativeRequiredMediaCounts(entry, task);
+        return ['image', 'video', 'audio'].every((kind) => counts[kind] >= required[kind]);
     }
 
     function creativePresetModelReadiness(entry) {
@@ -11913,11 +12275,18 @@
         return String(configured || theme || '');
     }
 
-    function creativePresetHasTaskRoute(entry, task, inputCount = 0) {
-        if (creativePresetSupportsTask(entry, task, inputCount)) return true;
-        if (!entry || inputCount < creativePresetMinImages(entry) || inputCount > creativePresetMaxImages(entry)) return false;
+    function creativePresetDeclaresTaskRoute(entry, task) {
+        if (!entry) return false;
+        if (creativePresetSupportedTasks(entry).includes(task)) return true;
         const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes : [];
         return themes.some((theme) => creativeThemeSupportedTasks(entry, theme).includes(task));
+    }
+
+    function creativePresetHasTaskRoute(entry, task, media = 0) {
+        if (!creativePresetDeclaresTaskRoute(entry, task) || !creativePresetCanCompleteTask(entry, task, media)) return false;
+        const counts = creativeMediaCounts(media);
+        const required = creativeRequiredMediaCounts(entry, task);
+        return ['image', 'video', 'audio'].every((kind) => counts[kind] >= required[kind]);
     }
 
     function creativeOutpaintParameterOverrides(action) {
@@ -11948,8 +12317,7 @@
     }
 
     function creativeVideoDurationSpec(action, entry = null) {
-        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
-        const task = creativeActionTask(action, inputCount);
+        const task = creativeActionTask(action, action?.media_inputs || []);
         if (!CREATIVE_VIDEO_TASKS.has(task)) return null;
         const resolvedEntry = entry || creativePresetEntry(action?.preset);
         const durationParam = (Array.isArray(resolvedEntry?.schema?.params) ? resolvedEntry.schema.params : [])
@@ -12023,7 +12391,7 @@
 
     function creativeExecutionPlanForEntry(action, entry, presetSource = 'user') {
         const inputs = Array.isArray(action?.media_inputs) ? action.media_inputs : [];
-        const task = creativeActionTask(action, inputs.length);
+        const task = creativeActionTask(action, inputs);
         const parameterProfileName = String(action?.parameter_profile || action?.execution_plan?.parameter_profile || '').trim();
         const parameterProfile = creativeParameterProfileEntry(parameterProfileName, entry?.name);
         const namedProfileExists = state.creativeParameterProfiles.some(
@@ -12045,10 +12413,12 @@
                 parameter_profile_source: String(action?.execution_plan?.parameter_profile_source || presetSource)
             };
         }
-        if (!entry || !creativePresetHasTaskRoute(entry, task, inputs.length)) {
+        if (!entry || !creativePresetHasTaskRoute(entry, task, inputs)) {
             const taskDeclared = Boolean(entry) && creativeTaskThemes(entry, task).length > 0;
-            const needsMedia = CREATIVE_IMAGE_INPUT_TASKS.has(task)
-                && inputs.length < creativeRequiredImageCount(entry, task)
+            const counts = creativeMediaCounts(inputs);
+            const required = creativeRequiredMediaCounts(entry, task);
+            const needsMedia = (!entry || creativePresetCanCompleteTask(entry, task, inputs))
+                && Object.keys(required).some((kind) => counts[kind] < required[kind])
                 && (!entry || taskDeclared);
             return {
                 schema: 'simpai.execution_plan.v1', status: needsMedia ? 'needs_media' : 'no_compatible_route',
@@ -12086,7 +12456,11 @@
         const modelStatus = creativePresetModelReadiness(entry);
         let status = requirements.includes('mask') ? 'needs_mask' : requirements.length ? 'needs_interaction' : 'ready';
         if (status === 'ready' && modelStatus === 'missing') status = 'models_missing';
-        const slots = creativePresetImageSlots(entry);
+        const slots = {
+            image: creativePresetImageSlots(entry),
+            video: creativePresetVideoSlots(entry),
+            audio: creativePresetAudioSlots(entry)
+        };
         const parameterOverrides = Object.assign(
             {},
             action?.execution_plan?.parameter_overrides && typeof action.execution_plan.parameter_overrides === 'object'
@@ -12111,7 +12485,15 @@
             : {};
         const plan = {
             schema: 'simpai.execution_plan.v1', status, task, preset: String(entry.name || ''), theme, task_method: taskMethod,
-            media_bindings: inputs.slice(0, slots.length).map((input, index) => ({ ref: String(input.ref || ''), slot: slots[index] })),
+            media_bindings: (() => {
+                const positions = { image: 0, video: 0, audio: 0 };
+                return inputs.map((input) => {
+                    const kind = mediaKind(input);
+                    const slot = slots[kind][positions[kind]] || '';
+                    positions[kind] += 1;
+                    return slot ? { ref: String(input.ref || ''), slot, type: kind } : null;
+                }).filter(Boolean);
+            })(),
             interaction_requirements: requirements, model_status: modelStatus, preset_source: presetSource,
             parameter_overrides: parameterOverrides
         };
@@ -12158,7 +12540,10 @@
             task_method: String(plan.task_method || '').slice(0, 200),
             media_bindings: Array.isArray(plan.media_bindings) ? plan.media_bindings.slice(0, MAX_ATTACHMENTS).map((binding) => ({
                 ref: String(binding?.ref || '').slice(0, 160),
-                slot: String(binding?.slot || '').slice(0, 120)
+                slot: String(binding?.slot || '').slice(0, 120),
+                type: ['image', 'video', 'audio'].includes(String(binding?.type || '').toLowerCase())
+                    ? String(binding.type).toLowerCase()
+                    : ''
             })).filter((binding) => binding.ref && binding.slot) : [],
             interaction_requirements: Array.isArray(plan.interaction_requirements) ? plan.interaction_requirements.slice(0, 8).map(String) : [],
             model_status: ['ready', 'missing', 'unknown'].includes(String(plan.model_status || '')) ? String(plan.model_status) : 'unknown',
@@ -12176,12 +12561,15 @@
         return normalized;
     }
 
-    function creativeCompatiblePresetEntry(task, inputCount = 0) {
-        const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
+    function creativeCompatiblePresetEntry(task, media = 0) {
+        const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, media));
         const taskPriorities = {
             text_to_video: ['MiniMax-H3(T2V)', 'Wan(T2V)', 'LTX(T2V)', 'Wan-TTP'],
             image_to_video: ['MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Wan(I2V)', 'Dasiwa(I2V)', 'LTX(I2V)'],
             multi_image_to_video: ['MiniMax-H3(R2V)', 'MiniMax-H3(I2V)', 'Wan(I2V)', 'Dasiwa(I2V)'],
+            audio_to_video: ['MiniMax-H3(R2V)', 'LTX(TA2V)', 'LTX(IA2V)'],
+            image_audio_to_video: ['MiniMax-H3(R2V)', 'LTX(IA2V)'],
+            video_audio_to_video: ['MiniMax-H3(R2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
             image_restore: ['Imagerepair+'],
             image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext'],
@@ -12245,6 +12633,10 @@
                 name: String(entry?.name || ''),
                 min_images: creativePresetMinImages(entry),
                 max_images: creativePresetMaxImages(entry),
+                min_videos: creativePresetMinMedia(entry, 'video'),
+                max_videos: creativePresetMaxMedia(entry, 'video'),
+                min_audios: creativePresetMinMedia(entry, 'audio'),
+                max_audios: creativePresetMaxMedia(entry, 'audio'),
                 output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image',
                 supported_tasks: creativePresetSupportedTasks(entry),
                 interaction_requirements: Array.isArray(entry?.media_capability?.interaction_requirements)
@@ -12267,6 +12659,8 @@
                 ).slice(0, 120),
                 purpose: String(entry?.schema?.theme_title || '').trim().replace(/^Theme$/i, '').slice(0, 240),
                 image_slots: creativePresetImageSlots(entry),
+                video_slots: creativePresetVideoSlots(entry),
+                audio_slots: creativePresetAudioSlots(entry),
                 task_modes: entry?.media_capability?.task_modes && typeof entry.media_capability.task_modes === 'object'
                     ? Object.assign({}, entry.media_capability.task_modes)
                     : {},
@@ -12410,13 +12804,14 @@
         if (!action || typeof action !== 'object') return { state: 'awaiting_confirmation', assets: [] };
         action.type = action.type === 'offer_image' ? 'offer_image' : 'generate_image';
         action.target = 'canvas_run';
-        action.media_inputs = (Array.isArray(action.media_inputs) ? action.media_inputs : [])
-            .slice(0, MAX_ATTACHMENTS)
-            .map(normalizeCreativeMediaInput)
-            .filter(Boolean);
+        action.media_inputs = limitReferenceMedia(
+            (Array.isArray(action.media_inputs) ? action.media_inputs : [])
+                .map(normalizeCreativeMediaInput)
+                .filter(Boolean)
+        );
         const requestedTask = String(action.requested_task || action.task_request?.task || action.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         if (!action.requested_task && CREATIVE_GENERATION_TASKS.has(requestedTask)) action.requested_task = requestedTask;
-        action.task = creativeActionTask(action, action.media_inputs.length);
+        action.task = creativeActionTask(action, action.media_inputs);
         const noCompatibleRoute = action.execution_plan?.status === 'no_compatible_route';
         action.preset = String(action.preset || (noCompatibleRoute || CREATIVE_VIDEO_TASKS.has(action.task) ? '' : CREATIVE_DEFAULT_PRESET)).trim();
         action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
@@ -12432,15 +12827,34 @@
 
     function clampCreativeActionMediaInputs(action, entry = creativePresetEntry(action?.preset)) {
         if (!action || typeof action !== 'object') return [];
-        const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
-        action.media_inputs = (Array.isArray(action.media_inputs) ? action.media_inputs : [])
-            .slice(0, Math.max(0, maxImages))
-            .map(normalizeCreativeMediaInput)
-            .filter(Boolean);
-        action.media_inputs.forEach((input, index) => {
-            input.role = index === 0 ? 'base_image' : `reference_image_${index}`;
+        const normalized = limitReferenceMedia(
+            (Array.isArray(action.media_inputs) ? action.media_inputs : [])
+                .map(normalizeCreativeMediaInput)
+                .filter(Boolean)
+        );
+        const task = creativeActionTask(action, normalized);
+        const allowed = creativeTaskAllowedMediaTypes(task);
+        const limits = {
+            image: entry ? creativePresetMaxMedia(entry, 'image') : MAX_REFERENCE_IMAGES,
+            video: entry ? creativePresetMaxMedia(entry, 'video') : MAX_REFERENCE_VIDEOS,
+            audio: entry ? creativePresetMaxMedia(entry, 'audio') : MAX_REFERENCE_AUDIOS
+        };
+        const counts = { image: 0, video: 0, audio: 0 };
+        action.media_inputs = normalized.filter((input) => {
+            const kind = mediaKind(input);
+            if (!allowed.has(kind) || counts[kind] >= limits[kind]) return false;
+            counts[kind] += 1;
+            return true;
         });
-        action.task = creativeActionTask(action, action.media_inputs.length);
+        const roleCounts = { image: 0, video: 0, audio: 0 };
+        action.media_inputs.forEach((input) => {
+            const kind = mediaKind(input);
+            roleCounts[kind] += 1;
+            input.role = kind === 'image'
+                ? (roleCounts.image === 1 ? 'base_image' : `reference_image_${roleCounts.image - 1}`)
+                : kind === 'video' ? `reference_video_${roleCounts.video}` : `reference_audio_${roleCounts.audio}`;
+        });
+        action.task = creativeActionTask(action, action.media_inputs);
         return action.media_inputs;
     }
 
@@ -12449,7 +12863,7 @@
         if (!normalized) return null;
         return {
             node_id: `describe_vlm_chat_media:${normalized.ref}`,
-            type: 'image',
+            type: normalized.type,
             title: normalized.name,
             asset: Object.assign({}, normalized.asset),
             mask: null,
@@ -12487,7 +12901,6 @@
                 : Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
             action.execution_plan = plan;
             action.requested_task = plan?.task || action.task_request?.task || action.task || '';
-            action.task = plan?.task || creativeActionTask(action, requestedRefs.length);
             action.preset = plan?.preset || (plan?.status === 'no_compatible_route' ? '' : String(action.preset || CREATIVE_DEFAULT_PRESET));
             action.parameter_profile = String(plan?.parameter_profile || action.parameter_profile || '');
             action.preset_source = plan?.preset_source === 'session_preference'
@@ -12497,6 +12910,7 @@
                 const resolved = mediaByRef.get(ref);
                 return resolved ? normalizeCreativeMediaInput(resolved, index) : null;
             }).filter(Boolean);
+            action.task = plan?.task || creativeActionTask(action, action.media_inputs);
             const generation = creativeGenerationForAction(action);
             clampCreativeActionMediaInputs(action);
             if (plan && ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(plan.status) && generation.state === 'awaiting_confirmation') {
@@ -12543,22 +12957,22 @@
 
     function creativePresetOptions(action) {
         const noCompatibleRoute = action?.execution_plan?.status === 'no_compatible_route';
-        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
-        const task = creativeActionTask(action, inputCount);
+        const mediaInputs = Array.isArray(action?.media_inputs) ? action.media_inputs : [];
+        const task = creativeActionTask(action, mediaInputs);
         let selected = String(action?.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET));
         if (
             roleplayAutomaticPresetAction(action)
             && !['user', 'session_preference'].includes(String(action?.preset_source || ''))
             && (!creativePresetEntry(selected) || selected === 'MiniMax-H3(R2I)')
         ) {
-            const automatic = roleplayPreferredPresetEntry(action, task, inputCount)
-                || creativeCompatiblePresetEntry(task, inputCount);
+            const automatic = roleplayPreferredPresetEntry(action, task, mediaInputs.length)
+                || creativeCompatiblePresetEntry(task, mediaInputs);
             if (automatic) {
                 selected = automatic.name;
                 action.preset = selected;
             }
         }
-        const rows = state.creativePresetCatalog.filter((entry) => creativePresetHasTaskRoute(entry, task, inputCount));
+        const rows = state.creativePresetCatalog.filter((entry) => creativePresetHasTaskRoute(entry, task, mediaInputs));
         if (noCompatibleRoute && !selected) {
             return `<option value="" selected disabled>${escapeHtml(localText('No compatible Preset', '没有兼容的 Preset'))}</option>`;
         }
@@ -12575,10 +12989,15 @@
     }
 
     function creativeManualOutputTasks(action) {
-        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
-        const imageTask = inputCount > 1 ? 'multi_image_edit' : inputCount === 1 ? 'image_edit' : 'text_to_image';
-        const videoTask = inputCount > 1 ? 'multi_image_to_video' : inputCount === 1 ? 'image_to_video' : 'text_to_video';
-        const task = creativeActionTask(action, inputCount);
+        const mediaInputs = Array.isArray(action?.media_inputs) ? action.media_inputs : [];
+        const counts = creativeMediaCounts(mediaInputs);
+        const imageTask = counts.image > 1 ? 'multi_image_edit' : counts.image === 1 ? 'image_edit' : 'text_to_image';
+        const videoTask = counts.video > 0
+            ? 'video_audio_to_video'
+            : counts.audio > 0
+                ? (counts.image > 0 ? 'image_audio_to_video' : 'audio_to_video')
+                : counts.image > 1 ? 'multi_image_to_video' : counts.image === 1 ? 'image_to_video' : 'text_to_video';
+        const task = creativeActionTask(action, mediaInputs);
         if (!CREATIVE_MANUAL_OUTPUT_TASKS.has(task)) return null;
         return {
             imageTask,
@@ -12595,8 +13014,7 @@
 
     function creativeThemeControl(action, actionRef, disabled = '') {
         const entry = creativePresetEntry(action?.preset);
-        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
-        const task = creativeActionTask(action, inputCount);
+        const task = creativeActionTask(action, action?.media_inputs || []);
         const themes = creativeTaskThemes(entry, task);
         if (themes.length < 2) return '';
         const selected = themes.includes(String(action?.execution_plan?.theme || ''))
@@ -12628,7 +13046,7 @@
         const raw = String(value || '').trim();
         if (!raw) return '';
         if (/^\/file=/i.test(raw)) return `/gradio_api/file=${raw.slice('/file='.length)}`;
-        if (/^(?:data:(?:image|video)\/[a-z0-9.+-]+(?:;[^,]*)?,|blob:)/i.test(raw)) return raw;
+        if (/^(?:data:(?:image|video|audio)\/[a-z0-9.+-]+(?:;[^,]*)?,|blob:)/i.test(raw)) return raw;
         try {
             const pageLocation = window.location || {};
             const parsed = new URL(raw, window.location?.href || document.baseURI);
@@ -12663,7 +13081,7 @@
 
     function creativeStateLabel(generation) {
         const current = String(generation?.state || 'awaiting_confirmation').toLowerCase();
-        if (current === 'needs_media') return localText('Input image required', '需要引用输入图片');
+        if (current === 'needs_media') return localText('Reference media required', '需要引用素材');
         if (current === 'needs_mask') return localText('Manual mask required', '需要手动绘制遮罩');
         if (current === 'needs_interaction') return localText('Manual setup required', '需要手动设置');
         if (current === 'no_compatible_route') return localText('No compatible generation route', '没有兼容的生成路线');
@@ -12914,9 +13332,7 @@
         try {
             const payload = await creativeResultImagePayload(asset, index);
             state.pendingImages.push(payload);
-            if (state.pendingImages.length > MAX_ATTACHMENTS) {
-                state.pendingImages = state.pendingImages.slice(-MAX_ATTACHMENTS);
-            }
+            state.pendingImages = limitReferenceMedia(state.pendingImages);
             renderPendingImages();
             renderMessages();
             ensureModal().querySelector('[data-describe-vlm-chat-input]')?.focus();
@@ -12934,28 +13350,46 @@
     function renderCreativeMediaInputs(action, actionRef, disabled = '') {
         const inputs = clampCreativeActionMediaInputs(action);
         const entry = creativePresetEntry(action?.preset);
-        const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
-        const selectLabel = localText('Select image', '选择图片');
-        const selectButton = !disabled && inputs.length < maxImages
-            ? `<button type="button" class="describe-vlm-chat-generation-media-add" data-describe-vlm-chat-generation-pick-media="${escapeHtml(actionRef)}" title="${escapeHtml(selectLabel)}" aria-label="${escapeHtml(selectLabel)}"><i class="fa-solid fa-image"></i><span>${escapeHtml(selectLabel)}</span></button>`
+        const counts = creativeMediaCounts(inputs);
+        const maxima = {
+            image: entry ? creativePresetMaxMedia(entry, 'image') : MAX_REFERENCE_IMAGES,
+            video: entry ? creativePresetMaxMedia(entry, 'video') : MAX_REFERENCE_VIDEOS,
+            audio: entry ? creativePresetMaxMedia(entry, 'audio') : MAX_REFERENCE_AUDIOS
+        };
+        const required = creativeRequiredMediaCounts(entry, String(action?.task || ''));
+        const selectLabel = localText('Select media', '选择素材');
+        const canAdd = Object.keys(maxima).some((kind) => counts[kind] < maxima[kind]);
+        const selectButton = !disabled && canAdd
+            ? `<button type="button" class="describe-vlm-chat-generation-media-add" data-describe-vlm-chat-generation-pick-media="${escapeHtml(actionRef)}" title="${escapeHtml(selectLabel)}" aria-label="${escapeHtml(selectLabel)}"><i class="fa-solid fa-photo-film"></i><span>${escapeHtml(selectLabel)}</span></button>`
             : '';
         if (!inputs.length) {
-            return CREATIVE_IMAGE_INPUT_TASKS.has(String(action?.task || ''))
-                ? `<div class="describe-vlm-chat-generation-media-empty"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(localText('Select at least one image to continue this edit.', '选择至少一张图片后可继续当前修图。'))}</span>${selectButton}</div>`
+            return Object.values(required).some((value) => value > 0)
+                ? `<div class="describe-vlm-chat-generation-media-empty"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(localText('Select the required reference media to continue.', '选择任务所需的引用素材后继续。'))}</span>${selectButton}</div>`
                 : '';
         }
-        const countLabel = localText(`${inputs.length} / ${maxImages} input images`, `${inputs.length} / ${maxImages} 张输入图片`);
+        const countParts = [];
+        if (maxima.image) countParts.push(localText(`${counts.image}/${maxima.image} images`, `${counts.image}/${maxima.image} 图`));
+        if (maxima.video) countParts.push(localText(`${counts.video}/${maxima.video} videos`, `${counts.video}/${maxima.video} 视频`));
+        if (maxima.audio) countParts.push(localText(`${counts.audio}/${maxima.audio} audio`, `${counts.audio}/${maxima.audio} 音频`));
+        const countLabel = countParts.join(' · ');
+        const typePositions = { image: 0, video: 0, audio: 0 };
         return `<div class="describe-vlm-chat-generation-media">
-  <div class="describe-vlm-chat-generation-media-head"><span>${escapeHtml(localText('Input images', '输入图片'))}</span><b>${escapeHtml(countLabel)}</b>${selectButton}</div>
+  <div class="describe-vlm-chat-generation-media-head"><span>${escapeHtml(localText('Reference media', '引用素材'))}</span><b>${escapeHtml(countLabel)}</b>${selectButton}</div>
   <div class="describe-vlm-chat-generation-media-list">${inputs.map((input, index) => {
-            const preview = creativeAssetUrl(input?.asset?.preview_url || input?.asset?.thumb || input?.asset?.data_url);
-            const roleLabel = index === 0 ? localText('Base image', '主体图') : localText(`Reference ${index}`, `参考图 ${index}`);
-            const moveLeft = localText('Move image left', '向左移动图片');
-            const moveRight = localText('Move image right', '向右移动图片');
-            const remove = localText('Remove input image', '移除输入图片');
+            const kind = mediaKind(input);
+            typePositions[kind] += 1;
+            const typeIndex = typePositions[kind];
+            const preview = kind === 'image' ? creativeAssetUrl(input?.asset?.preview_url || input?.asset?.thumb || input?.asset?.data_url) : '';
+            const roleLabel = kind === 'image'
+                ? localText(`Picture ${typeIndex}`, `图片 ${typeIndex}`)
+                : kind === 'video' ? localText(`Video ${typeIndex}`, `视频 ${typeIndex}`) : localText(`Audio ${typeIndex}`, `音频 ${typeIndex}`);
+            const icon = kind === 'video' ? 'fa-film' : kind === 'audio' ? 'fa-waveform-lines' : 'fa-image';
+            const moveLeft = localText('Move media left', '向左移动素材');
+            const moveRight = localText('Move media right', '向右移动素材');
+            const remove = localText('Remove input media', '移除输入素材');
             return `<div class="describe-vlm-chat-generation-media-item">
-  ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(roleLabel)}" loading="lazy">` : '<i class="fa-solid fa-image"></i>'}
-  <span><b>${escapeHtml(roleLabel)}</b><small>${escapeHtml(input.name || `Image ${index + 1}`)}</small></span>
+  ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(roleLabel)}" loading="lazy">` : `<i class="fa-solid ${icon}"></i>`}
+  <span><b>${escapeHtml(roleLabel)}</b><small>${escapeHtml(input.name || roleLabel)}</small></span>
   <div>
     <button type="button" data-describe-vlm-chat-media-move="-1" data-describe-vlm-chat-media-ref="${escapeHtml(actionRef)}" data-describe-vlm-chat-media-index="${index}" title="${escapeHtml(moveLeft)}" aria-label="${escapeHtml(moveLeft)}" ${disabled || index === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-left"></i></button>
     <button type="button" data-describe-vlm-chat-media-move="1" data-describe-vlm-chat-media-ref="${escapeHtml(actionRef)}" data-describe-vlm-chat-media-index="${index}" title="${escapeHtml(moveRight)}" aria-label="${escapeHtml(moveRight)}" ${disabled || index === inputs.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-right"></i></button>
@@ -13167,7 +13601,7 @@
             : action.media_inputs.length === 1
                 ? 'image_edit'
                 : 'text_to_image';
-        action.task = creativeActionTask(action, action.media_inputs.length);
+        action.task = creativeActionTask(action, action.media_inputs);
         if (action.visual_snapshot && typeof action.visual_snapshot === 'object') {
             action.visual_snapshot.visible_characters = selected.slice();
         }
@@ -13321,20 +13755,27 @@
         const found = syncCreativeActionFromDom(ref);
         if (!found) return false;
         const entry = creativePresetEntry(found.action.preset);
-        const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
         const current = Array.isArray(found.action.media_inputs) ? found.action.media_inputs : [];
         const existing = new Set(current.map((input) => String(input?.ref || '')));
         for (const input of Array.isArray(inputs) ? inputs : []) {
             const normalized = normalizeCreativeMediaInput(input, current.length);
-            if (!normalized || existing.has(normalized.ref) || current.length >= maxImages) continue;
+            if (!normalized || existing.has(normalized.ref) || current.length >= MAX_ATTACHMENTS) continue;
             current.push(normalized);
             existing.add(normalized.ref);
         }
-        found.action.media_inputs = current;
-        clampCreativeActionMediaInputs(found.action, entry);
+        found.action.media_inputs = limitReferenceMedia(current);
+        const plannedTask = creativeActionTask(found.action, found.action.media_inputs);
+        const resolvedEntry = entry && creativePresetHasTaskRoute(entry, plannedTask, found.action.media_inputs)
+            ? entry
+            : creativeCompatiblePresetEntry(plannedTask, found.action.media_inputs) || entry;
+        if (resolvedEntry && resolvedEntry !== entry) {
+            found.action.preset = resolvedEntry.name;
+            found.action.preset_source = 'agent_auto';
+        }
+        clampCreativeActionMediaInputs(found.action, resolvedEntry);
         found.action.execution_plan = creativeExecutionPlanForEntry(
             found.action,
-            entry,
+            resolvedEntry,
             found.action.preset_source === 'session_preference' ? 'session_preference' : found.action.preset_source === 'user' ? 'request_hint' : 'automatic'
         );
         const generation = creativeGenerationForAction(found.action);
@@ -13342,50 +13783,49 @@
         generation.error = '';
         persistCreativeAction(true);
 
-        const plannedTask = String(found.action.execution_plan?.task || creativeActionTask(
-            found.action,
-            found.action.media_inputs.length
-        ));
-        const required = creativeRequiredImageCount(entry, plannedTask);
+        const finalTask = String(found.action.execution_plan?.task || creativeActionTask(found.action, found.action.media_inputs));
+        const required = creativeRequiredMediaCounts(resolvedEntry, finalTask);
+        const counts = creativeMediaCounts(found.action.media_inputs);
         const remaining = found.action.execution_plan.status === 'needs_media'
-            ? Math.max(0, required - found.action.media_inputs.length)
+            ? Object.keys(required).reduce((total, kind) => total + Math.max(0, required[kind] - counts[kind]), 0)
             : 0;
         setStatus(remaining
-            ? localText(`Image added. Select ${remaining} more to continue.`, `图片已添加，还需选择 ${remaining} 张。`)
-            : localText('Image added to the current edit. You can generate with the existing request.', '图片已加入当前修图任务，可按原请求直接生成。'));
+            ? localText(`Media added. Select ${remaining} more required item(s) to continue.`, `素材已添加，还需选择 ${remaining} 个必需素材。`)
+            : localText('Media added to the current request.', '素材已加入当前任务。'));
         return true;
     }
 
     async function addCreativeActionImageFiles(ref, files) {
         const found = creativeActionFromRef(ref);
         if (!found) return false;
-        const imageFiles = Array.from(files || []).filter((file) => /^image\//i.test(file.type || ''));
-        if (!imageFiles.length) return false;
-        const entry = creativePresetEntry(found.action.preset);
-        const remainingSlots = Math.max(0, (entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS) - (found.action.media_inputs?.length || 0));
+        const mediaFiles = Array.from(files || []).filter((file) => /^(?:image|video|audio)\//i.test(file.type || ''));
+        if (!mediaFiles.length) return false;
+        const remainingSlots = Math.max(0, MAX_ATTACHMENTS - (found.action.media_inputs?.length || 0));
         if (!remainingSlots) return false;
-        setStatus(localText('Reading image...', '正在读取图片...'));
+        setStatus(localText('Reading media...', '正在读取素材...'));
         const inputs = [];
-        for (const file of imageFiles.slice(0, remainingSlots)) {
+        for (const file of mediaFiles.slice(0, remainingSlots)) {
             try {
-                const payload = await fileToImagePayload(file);
+                const payload = await fileToMediaPayload(file);
+                const type = mediaKind(payload);
                 inputs.push({
                     ref: String(payload.id || uid('describe_ref')).slice(0, 160),
-                    name: payload.name || file.name || 'reference-image.png',
-                    type: 'image',
+                    name: payload.name || file.name || `reference-${type}`,
+                    type,
                     asset: {
                         kind: 'browser_upload',
                         asset_id: String(payload.id || uid('describe_asset')).slice(0, 240),
                         mime: payload.mime,
                         width: payload.width,
                         height: payload.height,
+                        duration: payload.duration,
                         size: payload.size,
                         data_url: payload.data_url,
                         thumb: payload.thumb
                     }
                 });
             } catch (err) {
-                setStatus(localText('Image read failed.', '读取图片失败。'), true);
+                setStatus(localText('Media read failed.', '读取素材失败。'), true);
             }
         }
         return bindCreativeMediaInputsToAction(ref, inputs);
@@ -13718,15 +14158,15 @@
         const catalog = await ensureCreativePresetCatalog({ force: true });
         const current = creativeActionFromRef(ref, runtime.messages);
         if (!current || current.action.generation?._attempt_token !== attemptToken) return;
-        const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
-        const requestedTask = creativeActionTask(action, inputCount);
+        let mediaInputs = Array.isArray(action.media_inputs) ? action.media_inputs : [];
+        const requestedTask = creativeActionTask(action, mediaInputs);
         let entry = creativePresetEntry(action.preset);
         const automaticRoleplayRoute = roleplayAutomaticPresetAction(action)
             && !['user', 'session_preference'].includes(String(action?.preset_source || ''));
         if (automaticRoleplayRoute) {
-            const automatic = roleplayPreferredPresetEntry(action, requestedTask, inputCount)
+            const automatic = roleplayPreferredPresetEntry(action, requestedTask, mediaInputs.length)
                 || ((!entry || String(action.preset || '') === 'MiniMax-H3(R2I)')
-                    ? creativeCompatiblePresetEntry(requestedTask, inputCount)
+                    ? creativeCompatiblePresetEntry(requestedTask, mediaInputs)
                     : null);
             if (automatic) {
                 action.preset = automatic.name;
@@ -13743,7 +14183,7 @@
             return;
         }
         if (!entry) {
-            entry = creativeCompatiblePresetEntry(requestedTask, inputCount)
+            entry = creativeCompatiblePresetEntry(requestedTask, mediaInputs)
                 || (CREATIVE_VIDEO_TASKS.has(requestedTask) ? null : creativePresetEntry(CREATIVE_DEFAULT_PRESET))
                 || catalog[0]
                 || null;
@@ -13754,7 +14194,10 @@
             persistCreativeAction(true, {}, runtime);
             return;
         }
-        if (!creativePresetHasTaskRoute(entry, requestedTask, inputCount)) {
+        if (
+            !creativePresetDeclaresTaskRoute(entry, requestedTask)
+            || !creativePresetCanCompleteTask(entry, requestedTask, mediaInputs)
+        ) {
             action.generation.state = 'failed';
             action.generation.error = CREATIVE_IMAGE_INPUT_TASKS.has(requestedTask)
                 ? localText(
@@ -13769,7 +14212,7 @@
             return;
         }
         action.preset = entry.name;
-        const mediaInputs = clampCreativeActionMediaInputs(action, entry);
+        mediaInputs = clampCreativeActionMediaInputs(action, entry);
         const sourceName = action.preset_source === 'session_preference' ? 'session_preference' : action.preset_source === 'user' ? 'request_hint' : 'automatic';
         const executionPlan = creativeExecutionPlanForEntry(action, entry, sourceName);
         action.execution_plan = executionPlan;
@@ -13781,6 +14224,28 @@
             persistCreativeAction(true, {}, runtime);
             return;
         }
+        const plannedTask = String(executionPlan.task || action.task || requestedTask);
+        const mediaCounts = creativeMediaCounts(mediaInputs);
+        const requiredMedia = creativeRequiredMediaCounts(entry, plannedTask);
+        const requiredMediaMessage = creativeRequiredMediaMessage(requiredMedia, mediaCounts);
+        if (executionPlan.status === 'needs_media' || requiredMediaMessage) {
+            action.generation.state = 'needs_media';
+            action.generation.error = requiredMediaMessage || localText(
+                'This Preset requires additional reference media.',
+                '这个 Preset 还需要更多引用素材。'
+            );
+            persistCreativeAction(true, {}, runtime);
+            return;
+        }
+        if (executionPlan.status === 'no_compatible_route') {
+            action.generation.state = 'failed';
+            action.generation.error = localText(
+                'This Preset does not support the requested task.',
+                '这个 Preset 不支持当前任务。'
+            );
+            persistCreativeAction(true, {}, runtime);
+            return;
+        }
         if (['needs_mask', 'needs_interaction'].includes(executionPlan.status)) {
             action.generation.state = executionPlan.status;
             action.generation.error = executionPlan.status === 'needs_mask'
@@ -13789,31 +14254,17 @@
             persistCreativeAction(true, {}, runtime);
             return;
         }
-        const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
-        const minImages = creativePresetMinImages(entry);
-        if (CREATIVE_IMAGE_INPUT_TASKS.has(String(action.task || '')) && !mediaInputs.length) {
-            action.generation.state = 'failed';
-            action.generation.error = imageSlots.length
-                ? localText('The source image is unavailable. Reference the image and send the edit request again.', '编辑源图不可用，请重新引用图片并发送编辑需求。')
-                : localText('This Preset does not accept image input. Choose an image-editing Preset.', '这个 Preset 不接收图片，请选择图片编辑 Preset。');
-            persistCreativeAction(true, {}, runtime);
-            return;
-        }
-        if (mediaInputs.length < minImages) {
-            action.generation.state = 'failed';
-            action.generation.error = localText(
-                `This Preset requires at least ${minImages} input images.`,
-                `这个 Preset 至少需要 ${minImages} 张输入图片。`
-            );
-            persistCreativeAction(true, {}, runtime);
-            return;
-        }
+        const slotSets = Object.fromEntries(['image', 'video', 'audio'].map((kind) => [
+            kind,
+            new Set(creativePresetMediaSlots(entry, kind).slice(0, creativePresetMaxMedia(entry, kind)))
+        ]));
         const assetSources = {};
         const mediaByRef = new Map(mediaInputs.map((input) => [String(input.ref || ''), input]));
         executionPlan.media_bindings.forEach((binding) => {
             const input = mediaByRef.get(String(binding.ref || ''));
             const source = creativeMediaAssetSource(input);
-            const slot = imageSlots.includes(binding.slot) ? binding.slot : '';
+            const kind = mediaKind(input);
+            const slot = slotSets[kind]?.has(String(binding.slot || '')) ? String(binding.slot) : '';
             if (source && slot) assetSources[slot] = source;
         });
         const api = creativeCanvasApi();
@@ -14140,7 +14591,7 @@
     }
 
     async function addPendingImageFiles(files) {
-        const mediaFiles = Array.from(files || []).filter((file) => /^(?:image|video)\//i.test(file.type || ''));
+        const mediaFiles = Array.from(files || []).filter((file) => /^(?:image|video|audio)\//i.test(file.type || ''));
         if (!mediaFiles.length) return;
         const selectedCustomApi = readDescribeCustomApi(readSelectedVlmVersion());
         if (selectedCustomApi && selectedCustomApi.supports_images === false) {
@@ -14156,23 +14607,25 @@
                 const payload = await fileToMediaPayload(file);
                 state.pendingImages.push(payload);
             } catch (err) {
-                setStatus(String(err?.message || '').includes('too large')
-                    ? t('Video attachment is too large (80 MB maximum).', '视频附件过大，最大支持 80 MB。')
+                const tooLarge = String(err?.message || '').includes('too large');
+                const isAudio = /^audio\//i.test(file.type || '');
+                setStatus(tooLarge
+                    ? (isAudio
+                        ? t('Audio attachment is too large (80 MB maximum).', '音频附件过大，最大支持 80 MB。')
+                        : t('Video attachment is too large (80 MB maximum).', '视频附件过大，最大支持 80 MB。'))
                     : t('Media read failed.', '读取媒体文件失败。'), true);
             }
         }
-        if (state.pendingImages.length > MAX_ATTACHMENTS) {
-            state.pendingImages = state.pendingImages.slice(-MAX_ATTACHMENTS);
-        }
+        state.pendingImages = limitReferenceMedia(state.pendingImages);
         renderPendingImages();
         setStatus(`${t('Reference media attached.', '引用媒体已添加。')} ${imageUploadStatus(state.pendingImages)}`);
     }
 
     function collectClipboardImageFiles(dataTransfer) {
-        const files = Array.from(dataTransfer?.files || []).filter((file) => /^(?:image|video)\//i.test(file.type || ''));
+        const files = Array.from(dataTransfer?.files || []).filter((file) => /^(?:image|video|audio)\//i.test(file.type || ''));
         if (files.length) return files;
         return Array.from(dataTransfer?.items || [])
-            .filter((item) => item.kind === 'file' && /^(?:image|video)\//i.test(item.type || ''))
+            .filter((item) => item.kind === 'file' && /^(?:image|video|audio)\//i.test(item.type || ''))
             .map((item) => item.getAsFile())
             .filter(Boolean);
     }
@@ -14593,6 +15046,11 @@
         const modal = ensureModal();
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const selectedMode = normalizeChatMode(modal.querySelector('[data-describe-vlm-chat-mode]')?.value || runtime.chatMode);
+        const roleplayRequestKindValue = selectedMode === 'roleplay'
+            ? String(options.roleplayRequestKind || 'character').trim().toLowerCase()
+            : '';
+        const roleplayTextStream = selectedMode === 'roleplay'
+            && ['character', 'character_reply', 'reply'].includes(roleplayRequestKindValue);
         const systemPromptField = modal.querySelector('[data-describe-vlm-chat-system]');
         const templatePicker = modal.querySelector('[data-describe-vlm-chat-template]');
         const userTemplateDialog = userSystemPromptTemplateDialog(modal);
@@ -14653,8 +15111,8 @@
             ? messages[messages.length - 1]
             : null;
         const pendingImages = hasMessageOverride
-            ? (replaySourceMessage?._image_payloads || []).slice(0, MAX_ATTACHMENTS)
-            : runtime.pendingImages.slice();
+            ? limitReferenceMedia(replaySourceMessage?._image_payloads || [])
+            : limitReferenceMedia(runtime.pendingImages);
         if (!typed && !pendingImages.length && !hasMessageOverride) return;
         if (selectedMode === 'roleplay' && !options.roleplayAutoplay && !hasMessageOverride) {
             pauseRoleplayForUserInput(runtime);
@@ -14680,7 +15138,7 @@
         if (!typed && pendingImages.length && !canSendImages) {
             setConversationStatus(runtime, t(
                 'The selected Custom API has image input disabled.',
-                '当前 Custom API 未启用图像输入。'
+                '当前 Custom API 未启用媒体输入。'
             ), true);
             return;
         }
@@ -14755,8 +15213,8 @@
             setConversationStatus(runtime, imageUploadStatus(images));
         } else if (requestedImagesButUnsupported) {
             setConversationStatus(runtime, t(
-                'The selected Custom API has image input disabled; text was sent without images.',
-                '当前 Custom API 未启用图像输入，本次仅发送文字。'
+                'The selected Custom API has media input disabled; text was sent without attachments.',
+                '当前 Custom API 未启用媒体输入，本次仅发送文字。'
             ));
         }
 
@@ -14782,7 +15240,7 @@
             content: isDirectRun ? inputSnapshot : message,
             image_count: images.length,
             images: images.map(imageSummary),
-            _image_payloads: images.filter((image) => mediaKind(image) === 'image'),
+            _image_payloads: images.slice(),
             roleplay_turn_intent: roleplayTurnIntent,
             roleplay_control_only: selectedMode === 'roleplay'
                 && roleplayTurnIntent === 'story_control'
@@ -14793,7 +15251,7 @@
             userMessage.content = message;
             userMessage.image_count = images.length;
             userMessage.images = images.map(imageSummary);
-            userMessage._image_payloads = images.filter((image) => mediaKind(image) === 'image');
+            userMessage._image_payloads = images.slice();
             userMessage.roleplay_turn_intent = roleplayTurnIntent;
             userMessage.roleplay_control_only = selectedMode === 'roleplay'
                 && roleplayTurnIntent === 'story_control';
@@ -14803,7 +15261,18 @@
         const pendingAssistant = {
             id: pendingAssistantId,
             role: 'assistant',
-            content: t('Thinking', '思考中'),
+            content: roleplayTextStream
+                ? localText('Writing the character reply...', '正在生成角色回复……')
+                : selectedMode === 'creative'
+                ? localText('Organizing the creative request...', '正在整理创作请求……')
+                : selectedMode === 'prompt'
+                    ? localText('Preparing the prompt...', '正在整理提示词……')
+                : selectedMode === 'guide'
+                        ? localText('Preparing workflow guidance...', '正在整理工作流建议……')
+                    : t('Thinking', '思考中'),
+            stream_placeholder: roleplayTextStream
+                ? localText('Writing the character reply...', '正在生成角色回复……')
+                : '',
             pending: true
         };
         if (roleplaySessionBefore) pendingAssistant.roleplay_session_before = roleplaySessionBefore;
@@ -14844,7 +15313,7 @@
             custom_api: customApi,
             chat_mode: selectedMode,
             roleplay_request_kind: selectedMode === 'roleplay'
-                ? String(options.roleplayRequestKind || 'character')
+                ? roleplayRequestKindValue || 'character'
                 : '',
             roleplay_turn_intent: selectedMode === 'roleplay' ? roleplayTurnIntent : '',
             roleplay_speaker_mode: selectedMode === 'roleplay'
@@ -14907,7 +15376,42 @@
                 syncRoleplayControls(modal, runtime);
             }
         }
-        const response = await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
+        const streamEligible = (
+            ['chat', 'creative', 'prompt', 'guide', 'raw'].includes(selectedMode)
+            || roleplayTextStream
+        ) && !isDirectRun;
+        let streamedReplyText = '';
+        let streamRenderTimer = null;
+        const onChatStreamEvent = (event) => {
+            if (event?.type === 'reset') {
+                if (streamRenderTimer !== null) {
+                    window.clearTimeout(streamRenderTimer);
+                    streamRenderTimer = null;
+                }
+                streamedReplyText = '';
+                const pending = runtime.messages.find((item) => item?.pending);
+                updatePendingAssistantStream(
+                    String(pending?.stream_placeholder || '') || localText('Writing the character reply...', '正在生成角色回复……'),
+                    runtime
+                );
+                return;
+            }
+            if (event?.type !== 'delta') return;
+            streamedReplyText += String(event.text || '');
+            if (streamRenderTimer !== null) return;
+            streamRenderTimer = window.setTimeout(() => {
+                streamRenderTimer = null;
+                updatePendingAssistantStream(streamedReplyText, runtime);
+            }, 45);
+        };
+        const response = streamEligible
+            ? await postJsonStream('/describe-image/vlm-chat-stream', payload, { signal: abortController.signal }, onChatStreamEvent)
+            : await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
+        if (streamRenderTimer !== null) {
+            window.clearTimeout(streamRenderTimer);
+            streamRenderTimer = null;
+        }
+        if (streamedReplyText) updatePendingAssistantStream(streamedReplyText, runtime);
         if (runtime.activeRequestId === requestId) {
             runtime.activeRequestId = '';
             runtime.activeAbortController = null;
@@ -16511,11 +17015,11 @@
             const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-output-type');
             const found = syncCreativeActionFromDom(ref);
             if (found) {
-                const inputCount = Array.isArray(found.action.media_inputs) ? found.action.media_inputs.length : 0;
+                const mediaInputs = Array.isArray(found.action.media_inputs) ? found.action.media_inputs : [];
                 let entry = creativePresetEntry(found.action.preset);
-                const task = creativeActionTask(found.action, inputCount);
-                if (!entry || !creativePresetHasTaskRoute(entry, task, inputCount)) {
-                    const compatible = creativeCompatiblePresetEntry(task, inputCount);
+                const task = creativeActionTask(found.action, mediaInputs);
+                if (!entry || !creativePresetHasTaskRoute(entry, task, mediaInputs)) {
+                    const compatible = creativeCompatiblePresetEntry(task, mediaInputs);
                     if (compatible) {
                         found.action.preset = compatible.name;
                         found.action.preset_source = 'user';
@@ -16780,7 +17284,7 @@
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') persistConversationBeforePageHide();
     });
-    setTimeout(() => refreshDescribeVlmModelCatalog(false).catch(() => {}), 0);
+    setTimeout(() => refreshDescribeVlmModelCatalog(false, true).catch(() => {}), 0);
 
     function labelOpenButton() {
         anchorOpenButton();

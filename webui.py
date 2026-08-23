@@ -3188,6 +3188,7 @@ with shared.gradio_root:
     scene_original_video_path = gr.State(None)
     scene_original_video_backup = gr.State(None)
     scene_reference_video_original_path = gr.State(None)
+    scene_reference_video2_original_path = gr.State(None)
     active_video_source = gr.State(None)
     resolution_source_meta = gr.Textbox(value="{}", visible="hidden", elem_id="resolution_source_meta", elem_classes=["resolution-hidden-control"])
     resolution_quantize_step = gr.Number(value=flags.default_resolution_quantize_step, visible="hidden", elem_id="resolution_quantize_step", elem_classes=["resolution-hidden-control"])
@@ -3864,13 +3865,27 @@ with shared.gradio_root:
                             user_did=user_did,
                         )
                         after_missing = time.perf_counter()
-                        util.log_ui_trace(
-                            logger,
-                            "[UI-TRACE] missing_model_modal.check_vlm | version=%r, missing=%s, missing_scan=%.3fs",
-                            version_name,
+                        missing_signature = tuple(sorted(
+                            f"{item[0]}/{item[1]}"
+                            for item in (missing_models or [])
+                            if isinstance(item, (list, tuple)) and len(item) >= 2
+                        ))
+                        log_key = (str(user_did or ""), version_name)
+                        log_signature = (
+                            bool(status.get("ready")),
+                            str(status.get("state") or ""),
                             len(missing_models or []),
-                            after_missing - start_perf,
+                            missing_signature,
                         )
+                        if _missing_model_vlm_check_log_signatures.get(log_key) != log_signature:
+                            _missing_model_vlm_check_log_signatures[log_key] = log_signature
+                            util.log_ui_trace(
+                                logger,
+                                "[UI-TRACE] missing_model_modal.check_vlm | version=%r, missing=%s, missing_scan=%.3fs",
+                                version_name,
+                                len(missing_models or []),
+                                after_missing - start_perf,
+                            )
                         if missing_models:
                             total_size = 0
                             for cata, path_file, human_size, url, size in missing_models:
@@ -4611,13 +4626,19 @@ with shared.gradio_root:
                         scene_video_first_frame_path = gr.Textbox(value="", visible="hidden", elem_id="scene_video_first_frame_path", elem_classes=["sai-gradio-hidden-bridge"])
                         scene_video_placeholder = gr.HTML('<div style="height: 400px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888; font-size: 16px;"><span>Hide When Generating...</span></div>', visible=False, elem_id="scene_video_placeholder")
                         scene_canvas_image = create_sketch_image(label='Upload and canvas(1)', show_label=True, type='numpy', height=420, width=630, brush_color="#70FF81", image_mode='RGBA', preserve_mask_color=True, elem_id='scene_canvas')
-                        with gr.Row(elem_id="scene_input_images") as scene_input_images:
-                            scene_input_image1 = gr.Image(label='Upload prompt image(2)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=300, buttons=["fullscreen"], elem_id="scene_input_image1")
-                            scene_input_image2 = gr.Image(label='Upload prompt image(3)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=300, buttons=["fullscreen"], elem_id="scene_input_image2")
-                            scene_input_image3 = gr.Image(label='Upload prompt image(4)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=300, buttons=["fullscreen"], elem_id="scene_input_image3")
-                            scene_input_image4 = gr.Image(label='Upload prompt image(5)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=300, buttons=["fullscreen"], elem_id="scene_input_image4")
+                        with gr.Column(elem_id="scene_input_images") as scene_input_images:
+                            with gr.Row(elem_id="scene_input_images_row_1"):
+                                scene_input_image1 = gr.Image(label='Upload prompt image(2)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image1")
+                                scene_input_image2 = gr.Image(label='Upload prompt image(3)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image2")
+                                scene_input_image3 = gr.Image(label='Upload prompt image(4)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image3")
+                                scene_input_image4 = gr.Image(label='Upload prompt image(5)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image4")
+                            with gr.Row(elem_id="scene_input_images_row_2"):
+                                scene_input_image5 = gr.Image(label='Upload prompt image(6)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image5")
+                                scene_input_image6 = gr.Image(label='Upload prompt image(7)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image6")
+                                scene_input_image7 = gr.Image(label='Upload prompt image(8)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image7")
+                                scene_input_image8 = gr.Image(label='Upload prompt image(9)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=180, buttons=["fullscreen"], min_width=0, elem_id="scene_input_image8")
                         with gr.Accordion("📦 Batch", open=False, elem_id="scene_batch_accordion") as scene_batch_accordion:
-                            scene_batch_target = gr.Radio(label="Batch Target", choices=[("Upload and canvas(1)", "scene_canvas_image"), ("Upload prompt image(2)", "scene_input_image1"), ("Upload prompt image(3)", "scene_input_image2"), ("Upload prompt image(4)", "scene_input_image3"), ("Upload prompt image(5)", "scene_input_image4")], value="scene_input_image1", elem_id="scene_batch_target")
+                            scene_batch_target = gr.Radio(label="Batch Target", choices=[("Upload and canvas(1)", "scene_canvas_image")] + [(f"Upload prompt image({index + 1})", f"scene_input_image{index}") for index in range(1, 9)], value="scene_input_image1", elem_id="scene_batch_target")
                             scene_batch_folder = gr.Textbox(label="Folder(Local Path)", placeholder="e.g. D:\\images\\inputs")
                             scene_batch_files = gr.File(label="Upload images", file_count="multiple", file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp"], type="filepath")
                             scene_batch_status = gr.Textbox(label="Batch status", value="", lines=1, max_lines=1, interactive=False, elem_id="scene_batch_status", elem_classes=["simpleai-status-textbox"])
@@ -5146,7 +5167,10 @@ with shared.gradio_root:
                         scene_use_resolution_override_checkbox = scene_resolution_control.use_override_checkbox
                         scene_resolution_override = scene_resolution_control.html
                         scene_aspect_ratio = scene_resolution_control.selection
-                        scene_audio = gr.Audio(label="Audio (Upload)", visible=True, sources=["upload"], type="filepath", elem_id="scene_audio", elem_classes=['simpai-mounted-hidden'])
+                        with gr.Row(elem_id="scene_reference_audios"):
+                            scene_audio = gr.Audio(label="Audio 1 (Upload)", visible=True, sources=["upload"], type="filepath", min_width=0, elem_id="scene_audio", elem_classes=['simpai-mounted-hidden', 'sai-scene-reference-audio'])
+                            scene_audio2 = gr.Audio(label="Audio 2 (Upload)", visible=True, sources=["upload"], type="filepath", min_width=0, elem_id="scene_audio2", elem_classes=['simpai-mounted-hidden', 'sai-scene-reference-audio'])
+                            scene_audio3 = gr.Audio(label="Audio 3 (Upload)", visible=True, sources=["upload"], type="filepath", min_width=0, elem_id="scene_audio3", elem_classes=['simpai-mounted-hidden', 'sai-scene-reference-audio'])
                         scene_audio_placeholder = gr.HTML('<div style="padding: 20px; text-align: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888;">Hide When Generating...</div>', visible=False, elem_id="scene_audio_placeholder")
                         scene_director_state = gr.State({})
                         scene_additional_prompt_2 = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, visible=True, elem_classes=['scene_input_2', 'simpai-mounted-hidden'], elem_id='scene_additional_prompt_2')
@@ -5356,8 +5380,11 @@ with shared.gradio_root:
                         model_filter_state = gr.State(initial_use_model_filter)
                         model_filter_sync_lock = gr.State(False)
 
-                        scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=300, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
+                        with gr.Row(elem_id="scene_reference_videos"):
+                            scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=240, min_width=0, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
+                            scene_reference_video2 = gr.Video(label="Additional Reference Video (Upload)", visible=True, sources=["upload"], height=240, min_width=0, elem_id="scene_reference_video2", elem_classes=['simpai-mounted-hidden'])
                         scene_reference_video_trim_payload = gr.Textbox(value="", visible="hidden", elem_id="scene_reference_video_trim_payload", elem_classes=["sai-gradio-hidden-bridge"])
+                        scene_reference_video2_trim_payload = gr.Textbox(value="", visible="hidden", elem_id="scene_reference_video2_trim_payload", elem_classes=["sai-gradio-hidden-bridge"])
                         with gr.Accordion("🎥 Reference Camera Motion", open=False, visible=True, elem_id="camera_motion_reference_accordion", elem_classes=['simpai-mounted-hidden']) as camera_motion_reference_accordion:
                             with gr.Row(elem_id="camera_motion_reference_row_1"):
                                 camera_motion_type = gr.Dropdown(
@@ -5401,6 +5428,16 @@ with shared.gradio_root:
                         scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video, state_topbar], outputs=[scene_reference_video, scene_reference_video_original_path, camera_motion_generated_snapshot, camera_motion_status, scene_reference_video_trim_payload], show_progress=True, queue=False)
                         scene_reference_video.clear(lambda: (None, ""), outputs=[scene_reference_video_original_path, scene_reference_video_trim_payload], queue=False, show_progress=False)
                         scene_reference_video.clear(camera_motion_reference_cleared, inputs=[state_topbar], outputs=[camera_motion_generated_snapshot, camera_motion_status], queue=False, show_progress=False)
+                        scene_reference_video2.upload(
+                            lambda video_path, state_params: (
+                                lambda result: (result[0], result[1], result[4])
+                            )(on_reference_video_upload(video_path, state_params)),
+                            inputs=[scene_reference_video2, state_topbar],
+                            outputs=[scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload],
+                            show_progress=True,
+                            queue=False,
+                        )
+                        scene_reference_video2.clear(lambda: (None, ""), outputs=[scene_reference_video2_original_path, scene_reference_video2_trim_payload], queue=False, show_progress=False)
 
                         gr.HTML(value="", elem_id="scene_panel_bottom_fill")
                 with gr.Accordion("🔧 Advanced Parameters", open=False, visible=True, elem_id="scene_advanced_parameters_accordion"):
@@ -5613,9 +5650,10 @@ with shared.gradio_root:
                     def trigger_input_identity_flow(img):
                         return _identity_flow_row_updates(simpleai.trigger_input_identity(img))
 
-                    def refresh_identity_activation_guard(state_params, opened):
+                    def refresh_identity_activation_guard(state_params, opened, activation_confirmed=False):
                         copy_text = simpleai.get_multi_user_activation_copy(state_params)
-                        guard_visible = bool(opened and simpleai.requires_multi_user_activation(False))
+                        activation_confirmed = bool(activation_confirmed)
+                        guard_visible = bool(opened and simpleai.requires_multi_user_activation(activation_confirmed))
                         return [
                             gr_update(visible=guard_visible),
                             gr_update(value=copy_text["notice"]),
@@ -5628,7 +5666,7 @@ with shared.gradio_root:
                             gr_update(label=copy_text["permission_confirm"], value=False),
                             gr_update(label=copy_text["phrase_confirm"], value=False),
                             gr_update(value=copy_text["apply"]),
-                            False,
+                            activation_confirmed,
                         ]
 
                     def apply_identity_activation_choice(mode, scope_ok, permission_ok, phrase_ok, state_params):
@@ -7822,6 +7860,8 @@ with shared.gradio_root:
 
                             def trigger_metadata_preview(file, state_params):
                                 parameters, metadata_scheme = modules.meta_parser.read_info_from_media(file)
+                                if parameters is not None:
+                                    parameters = modules.meta_parser.normalize_metadata_parameters(parameters, metadata_scheme) or parameters
                                 is_english = str((state_params or {}).get('__lang', 'en')).lower().startswith('en')
                                 media_type = modules.meta_parser.metadata_media_type(file)
 
@@ -9662,6 +9702,10 @@ with shared.gradio_root:
                 image2,
                 image3,
                 image4,
+                image5,
+                image6,
+                image7,
+                image8,
                 original_video_path,
                 video_first_frame_path,
                 scene_video_value,
@@ -9669,8 +9713,12 @@ with shared.gradio_root:
                 additional_prompt,
                 additional_prompt_2,
                 scene_audio_value,
+                scene_audio2_value,
+                scene_audio3_value,
                 reference_video_value,
                 reference_video_original_path,
+                reference_video2_value,
+                reference_video2_original_path,
                 director_enabled,
                 director_state,
                 state,
@@ -9695,6 +9743,10 @@ with shared.gradio_root:
                             "scene_input_image2": image2,
                             "scene_input_image3": image3,
                             "scene_input_image4": image4,
+                            "scene_input_image5": image5,
+                            "scene_input_image6": image6,
+                            "scene_input_image7": image7,
+                            "scene_input_image8": image8,
                         },
                         state,
                         translation_method,
@@ -9707,8 +9759,12 @@ with shared.gradio_root:
                             "scene_additional_prompt": additional_prompt,
                             "scene_additional_prompt_2": additional_prompt_2,
                             "scene_audio": scene_audio_value,
+                            "scene_audio2": scene_audio2_value,
+                            "scene_audio3": scene_audio3_value,
                             "scene_reference_video": reference_video_value,
                             "scene_reference_video_original_path": reference_video_original_path,
+                            "scene_reference_video2": reference_video2_value,
+                            "scene_reference_video2_original_path": reference_video2_original_path,
                             "director_enabled": director_enabled,
                             "director_state": director_state,
                         },
@@ -9741,6 +9797,10 @@ with shared.gradio_root:
                     scene_input_image2,
                     scene_input_image3,
                     scene_input_image4,
+                    scene_input_image5,
+                    scene_input_image6,
+                    scene_input_image7,
+                    scene_input_image8,
                     scene_original_video_path,
                     scene_video_first_frame_path,
                     scene_video,
@@ -9748,8 +9808,12 @@ with shared.gradio_root:
                     scene_additional_prompt,
                     scene_additional_prompt_2,
                     scene_audio,
+                    scene_audio2,
+                    scene_audio3,
                     scene_reference_video,
                     scene_reference_video_original_path,
+                    scene_reference_video2,
+                    scene_reference_video2_original_path,
                     scene_director_enabled,
                     scene_director_state,
                     state_topbar,
@@ -9766,7 +9830,7 @@ with shared.gradio_root:
                 show_progress='hidden',
                 js='(result)=>{try{if(typeof window.completeSimpleAIPromptAction==="function") window.completeSimpleAIPromptAction(result);}catch(e){console.warn("[UI-TRACE] prompt_action_complete_failed",e);}}'
             )
-            scene_params = [scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_video_duration, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_mask_color_state, scene_video, scene_reference_video, scene_audio]
+            scene_params = [scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_video_duration, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_mask_color_state, scene_video, scene_reference_video, scene_audio, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8, scene_reference_video2, scene_audio2, scene_audio3]
             scene_preset_save_names = ["scene_theme", "scene_additional_prompt", "scene_additional_prompt_2", "scene_video_duration", "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10", "scene_steps", "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4", "scene_aspect_ratio", "scene_image_number"]
             scene_preset_save_ctrls = [scene_theme, scene_additional_prompt, scene_additional_prompt_2, scene_video_duration, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number]
             scene_director_inputs = [scene_director_enabled, scene_director_compose, scene_director_editor_state, scene_director_width, scene_director_height, scene_director_fps, scene_director_duration, scene_director_format, scene_director_media_state, state_topbar, scene_theme]
@@ -10390,7 +10454,11 @@ with shared.gradio_root:
                 image_number, scene_video, scene_audio, scene_original_video_path, active_video_source,
                 sam3_input_video, sam3_original_video_path, sam3_mask_video,
                 overwrite_step, overwrite_width, overwrite_height, resolution_edit_mode, resolution_original_input_checkbox,
-                scene_video_duration
+                scene_video_duration,
+                scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
+                scene_reference_video, scene_reference_video_original_path, scene_reference_video_trim_payload,
+                scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload,
+                scene_audio2, scene_audio3, scene_video_trim_payload
             ] + scene_generation_model_ctrls + ctrls + [model_params_state, resolution_multiplier, resolution_quantize_step, state_topbar],
             outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button, generate_button, state_is_generating, scene_batch_status, scene_batch_id],
             show_progress=False
@@ -10398,6 +10466,8 @@ with shared.gradio_root:
 
         def trigger_metadata_import(file, state_is_generating, state_params):
             parameters, metadata_scheme = modules.meta_parser.read_info_from_media(file)
+            if parameters is not None:
+                parameters = modules.meta_parser.normalize_metadata_parameters(parameters, metadata_scheme) or parameters
             if parameters is None:
                 logger.info('Could not find reusable metadata in the media file!')
             result = toolbox.reset_params_by_image_meta_with_state(parameters, state_params, state_is_generating, inpaint_mode)
@@ -10481,14 +10551,28 @@ with shared.gradio_root:
                     "[UI-TRACE] scene_frontend_ctrls.index | "
                     f"camera=7, anglelight=8, style=9, sam3=10, pose_studio=11, gaussian_studio=12, liveportrait_expression=13, relight_light_control=14, scene_resolution_accordion=15, "
                     f"scene_resolution_checkbox=16, scene_resolution_html=17, scene_video=44, scene_reference_video=45, scene_audio=46, "
-                    f"sam3_input=47, sam3_original=48, sam3_mask=49, sam3_trim=50, len={len(scene_frontend_ctrls)}"
+                    f"scene_input_image5=47, scene_input_image6=48, scene_input_image7=49, scene_input_image8=50, "
+                    f"scene_reference_video2=51, scene_audio2=52, scene_audio3=53, "
+                    f"sam3_input=54, sam3_original=55, sam3_mask=56, sam3_trim=57, len={len(scene_frontend_ctrls)}"
                 )
             except Exception:
                 pass
 
+        def regen_update_system_params(state_params):
+            is_scene = isinstance(state_params, dict) and "scene_frontend" in state_params
+            util.log_ui_trace(
+                logger,
+                "[UI-TRACE] regen.update_system_params | preset=%r, is_scene=%r, engine_type=%r",
+                state_params.get("__preset") if isinstance(state_params, dict) else None,
+                is_scene,
+                state_params.get("engine_type") if isinstance(state_params, dict) else None,
+            )
+            return topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)[0]
+
         metadata_import_outputs = reset_preset_layout + reset_preset_func + scene_frontend_ctrls + load_data_outputs + [state_topbar]
         metadata_import_button.click(trigger_metadata_import, inputs=[metadata_input_image, state_is_generating, state_topbar], outputs=metadata_import_outputs + [model_params_state], queue=False, show_progress=True) \
-            .then(lambda x: None, inputs=state_topbar, queue=False, show_progress=False, js='(state)=>{try{if(typeof scheduleSceneAndAdvancedSync==="function") scheduleSceneAndAdvancedSync("metadata_import", !!(state && state.scene_frontend));}catch(e){console.warn("[UI-TRACE] metadata_import_scene_sync_failed", e);}}') \
+            .then(regen_update_system_params, inputs=state_topbar, outputs=system_params, queue=False, show_progress=False) \
+            .then(lambda x: None, inputs=system_params, queue=False, show_progress=False, js='(params)=>{try{if(typeof refresh_topbar_status_js_for_preset_nav==="function") refresh_topbar_status_js_for_preset_nav(params); else refresh_topbar_status_js(params);}catch(e){console.warn("[UI-TRACE] metadata_import_topbar_status_sync_failed", e);} try{if(typeof scheduleSceneAndAdvancedSync==="function") scheduleSceneAndAdvancedSync("metadata_import", !!(params && params.__is_scene_frontend));}catch(e){console.warn("[UI-TRACE] metadata_import_scene_sync_failed", e);} try{if(typeof window.simpleaiRehydrateModelsTabAfterPresetNav==="function") window.simpleaiRehydrateModelsTabAfterPresetNav();}catch(e){console.warn("[UI-TRACE] metadata_import_models_tab_rehydrate_failed", e);}}') \
             .then(toggle_image_input_panel, inputs=[input_image_checkbox, qwen_tts_checkbox], outputs=[image_input_panel, engine_class_display] + layout_image_tab + [tts_panel, qwen_tts_checkbox], queue=False, show_progress=False) \
             .then(style_sorter.sort_styles, inputs=style_selections, outputs=style_selections, queue=False, show_progress=False)
 
@@ -11322,6 +11406,9 @@ with shared.gradio_root:
             resolution_edit_mode, resolution_original_input_checkbox, sam3_trim_payload, overwrite_step,
             scene_director_enabled, scene_director_state, scene_video_duration, scene_reference_video, scene_reference_video_original_path,
             scene_video_trim_payload, scene_reference_video_trim_payload,
+            scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
+            scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload,
+            scene_audio2, scene_audio3,
         ]
         scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
         scene_generation_sync_js = """(...args) => {
@@ -12027,17 +12114,6 @@ with shared.gradio_root:
             .then(toolbox.close_note_box, inputs=state_topbar, outputs=note_box_outputs, show_progress=False) \
             .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type)); try{traceResultPanelStateSoon("delete_image.after_refresh");}catch(e){console.warn("[UI-TRACE] delete_image.dom_trace_failed", e);}}')
 
-    def regen_update_system_params(state_params):
-        is_scene = isinstance(state_params, dict) and "scene_frontend" in state_params
-        util.log_ui_trace(
-            logger,
-            "[UI-TRACE] regen.update_system_params | preset=%r, is_scene=%r, engine_type=%r",
-            state_params.get("__preset") if isinstance(state_params, dict) else None,
-            is_scene,
-            state_params.get("engine_type") if isinstance(state_params, dict) else None,
-        )
-        return topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)[0]
-    
     prompt_regen_evt = prompt_regen_button.click(toolbox.toggle_note_box_regen, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False, js='(...args)=>{try{const index=args.length-1;if(index>=0&&typeof simpleaiSyncGallerySelectionIntoState==="function")args[index]=simpleaiSyncGallerySelectionIntoState(args[index]);}catch(e){console.warn("[UI-TRACE] gallery_regen.selection_sync_failed",e);}return args;}')
     prompt_regen_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("regen");}catch(e){console.warn("[UI-TRACE] toolbox_note.regen_overlay_failed", e);}}')
     prompt_preset_evt = prompt_preset_button.click(toolbox.toggle_note_box_preset_overlay, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False)
@@ -12216,7 +12292,7 @@ with shared.gradio_root:
     reset_layout_fast_head_outputs = reset_layout_fast_outputs[:reset_layout_fast_head_count]
     reset_layout_fast_tail_outputs = reset_layout_fast_outputs[reset_layout_fast_head_count:]
     reset_layout_value_component_outputs = [scene_batch_accordion, scene_batch_target] + load_data_outputs + after_identity + \
-                                  [scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4] + [quick_enhance, gallery_visible, current_previews, current_filtered_previews, active_target, model_browser_modal, model_browser_search, model_browser_folder, model_browser_status, model_browser_gallery] + \
+                                  [scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8] + [quick_enhance, gallery_visible, current_previews, current_filtered_previews, active_target, model_browser_modal, model_browser_search, model_browser_folder, model_browser_status, model_browser_gallery] + \
                                   lora_galleries + lora_gallery_visible + lora_current_previews + lora_preview_btns
     reset_layout_values_outputs = reset_layout_value_component_outputs + [model_params_state]
     reset_layout_values_fast_outputs = reset_layout_fast_head_outputs + [reset_layout_value_tail_payload, reset_layout_after_identity_payload, model_params_state]
@@ -12920,7 +12996,7 @@ topbar.start_preset_status_refresh()
 import threading
 import uuid
 from fastapi import Body, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 import enhanced.layerforge_matting as layerforge_matting
@@ -14748,6 +14824,7 @@ async def canvas_workbench_preset_model_downloads_endpoint(payload: dict = Body(
 _canvas_vlm_model_status = canvas_vlm_runtime.canvas_vlm_model_status
 _canvas_queue_vlm_model_downloads = canvas_vlm_runtime.canvas_queue_vlm_model_downloads
 _canvas_vlm_status_log_signatures = {}
+_missing_model_vlm_check_log_signatures = {}
 
 @app.get("/vlm-model-catalog")
 async def vlm_model_catalog_endpoint(request: Request, refresh: bool = False, include_dynamic: bool = False):
@@ -14787,7 +14864,7 @@ async def canvas_workbench_vlm_model_status_endpoint(payload: dict = Body(...)):
         result = await run_in_threadpool(lambda: _canvas_vlm_model_status(payload))
         status_key = (
             str(payload.get("node_id") or ""),
-            str(params.get("version") or ""),
+            str(result.get("version") or params.get("version") or ""),
         )
         status_signature = (
             bool(result.get("ready")),
@@ -15895,6 +15972,66 @@ async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
             },
             status_code=500,
         )
+
+
+@app.post("/describe-image/vlm-chat-stream")
+async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
+    """Stream free-chat text while keeping the normal final response contract."""
+    import queue as _queue
+
+    payload = payload if isinstance(payload, dict) else {}
+    events = _queue.Queue()
+
+    def emit_delta(delta):
+        if isinstance(delta, dict):
+            event_type = str(delta.get("type") or "").strip().lower()
+            if event_type == "reset":
+                events.put({"type": "reset"})
+            return
+        text = str(delta or "")
+        if text:
+            events.put({"type": "delta", "text": text})
+
+    def worker():
+        try:
+            result = describe_vlm_chat.run_describe_vlm_chat(payload, stream_callback=emit_delta)
+            if not isinstance(result, dict):
+                result = {
+                    "ok": False,
+                    "error": "Invalid VLM response.",
+                    "failure_stage": "vlm_runtime",
+                }
+            events.put({"type": "result", "result": result})
+        except Exception as exc:
+            logger.exception("Describe Image VLM chat streaming exception")
+            events.put({
+                "type": "result",
+                "result": {
+                    "ok": False,
+                    "error": "Describe Image VLM streaming error",
+                    "details": str(exc),
+                    "failure_stage": "endpoint_exception",
+                },
+            })
+
+    threading.Thread(target=worker, name="describe-vlm-chat-stream", daemon=True).start()
+
+    async def event_stream():
+        while True:
+            event = await run_in_threadpool(events.get)
+            yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
+            if event.get("type") == "result":
+                break
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 def _roleplay_endpoint_user_did(payload, request):
     authenticated = str(_get_request_identity_did(request) or "").strip()

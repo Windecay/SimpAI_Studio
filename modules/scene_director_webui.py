@@ -22,13 +22,14 @@ from ui.update_helpers import gr_update
 
 logger = logging.getLogger(__name__)
 
-SCENE_DIRECTOR_MAX_IMAGE_REFS = 5
-SCENE_DIRECTOR_TABLE_HEADERS = ["Start", "End", "Prompt", "Image ref 1", "Image ref 2", "Image ref 3", "Image ref 4", "Image ref 5", "Audio ref", "Video ref"]
+SCENE_DIRECTOR_MAX_IMAGE_REFS = 9
+SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS = 5
+SCENE_DIRECTOR_TABLE_HEADERS = ["Start", "End", "Prompt"] + [f"Image ref {index}" for index in range(1, 10)] + ["Audio ref", "Video ref"]
 SCENE_DIRECTOR_DEFAULT_ROWS = [
-    [0, 5, "A slow camera move across a neon street.", "image_1", "", "", "", "", "", ""],
-    [5, 10, "The subject turns toward the light.", "", "", "", "", "", "", ""],
+    [0, 5, "A slow camera move across a neon street.", "image_1", "", "", "", "", "", "", "", "", "", ""],
+    [5, 10, "The subject turns toward the light.", "", "", "", "", "", "", "", "", "", "", "", ""],
 ]
-SCENE_DIRECTOR_MEDIA_RULES = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-5 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result"
+SCENE_DIRECTOR_MEDIA_RULES = "0 image = Text-to-Video | 1 image = Image-to-Video / first frame | 2 images = First/last frame | 3-9 images = Reference set | previous_segment_last_frame = previous shot last frame | audio_1-5 / video_1-5 = media refs | previous_segment = previous shot result"
 SCENE_DIRECTOR_README_LABEL = "Director README"
 SCENE_DIRECTOR_README_PATH = os.path.join("docs", "director-workspace", "README.md")
 SCENE_DIRECTOR_IMAGE_SLOTS = [
@@ -37,6 +38,10 @@ SCENE_DIRECTOR_IMAGE_SLOTS = [
     ("image_3", "Director image 3"),
     ("image_4", "Director image 4"),
     ("image_5", "Director image 5"),
+    ("image_6", "Director image 6"),
+    ("image_7", "Director image 7"),
+    ("image_8", "Director image 8"),
+    ("image_9", "Director image 9"),
 ]
 SCENE_DIRECTOR_AUDIO_SLOTS = [
     ("audio_1", "Director audio 1"),
@@ -63,6 +68,10 @@ SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS = [
     "scene_input_image2",
     "scene_input_image3",
     "scene_input_image4",
+    "scene_input_image5",
+    "scene_input_image6",
+    "scene_input_image7",
+    "scene_input_image8",
 ]
 SCENE_DIRECTOR_FORMATS = ["Wan", "LTXV", "Mochi", "Hunyuan", "Cosmos", "AnimateDiff", "None"]
 SCENE_DIRECTOR_FORMAT_ALIASES = {
@@ -568,15 +577,23 @@ def _scene_director_ref(value, kind):
         "scene_input_image2": "image_3",
         "scene_input_image3": "image_4",
         "scene_input_image4": "image_5",
+        "scene_input_image5": "image_6",
+        "scene_input_image6": "image_7",
+        "scene_input_image7": "image_8",
+        "scene_input_image8": "image_9",
     }
     audio_aliases = {
         "scene_audio": "audio_1",
+        "scene_audio2": "audio_2",
+        "scene_audio3": "audio_3",
         "audio": "audio_1",
         "qwen": "audio_1",
         "tts": "audio_1",
     }
     video_aliases = {
         "scene_video": "video_1",
+        "scene_reference_video": "video_2",
+        "scene_reference_video2": "video_3",
         "video": "video_1",
         "reference_video": "video_1",
         "ref_video": "video_1",
@@ -1125,22 +1142,36 @@ def _scene_director_image_role(shot_type, index, capability=None):
 
 
 def _scene_director_row_media_refs(row, cells, has_legacy_method_column):
+    image_start = 4 if has_legacy_method_column else 3
+    new_row_width = image_start + SCENE_DIRECTOR_MAX_IMAGE_REFS + 2
+    legacy_row_width = image_start + SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS + 2
+    legacy_audio_only_width = image_start + SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS + 1
+    if len(row) >= new_row_width:
+        image_count = SCENE_DIRECTOR_MAX_IMAGE_REFS
+        image_values = cells[image_start:image_start + image_count]
+        audio_value = cells[image_start + image_count]
+        video_value = cells[image_start + image_count + 1]
+        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), _scene_director_ref(video_value, "video")
+    if len(row) >= legacy_row_width:
+        image_count = SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS
+        image_values = cells[image_start:image_start + image_count]
+        audio_value = cells[image_start + image_count]
+        video_value = cells[image_start + image_count + 1]
+        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), _scene_director_ref(video_value, "video")
+    if len(row) >= legacy_audio_only_width:
+        image_count = SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS
+        image_values = cells[image_start:image_start + image_count]
+        audio_value = cells[image_start + image_count]
+        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), ""
     if has_legacy_method_column:
-        image_values = cells[4:4 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        audio_value = cells[4 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        video_value = cells[5 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
         if len(row) <= 6:
             image_values = [cells[4]]
             audio_value = cells[5]
             video_value = ""
-    elif len(row) >= 10:
-        image_values = cells[3:3 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        audio_value = cells[3 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        video_value = cells[4 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-    elif len(row) >= 9:
-        image_values = cells[3:3 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        audio_value = cells[3 + SCENE_DIRECTOR_MAX_IMAGE_REFS]
-        video_value = ""
+        else:
+            image_values = [cells[4]]
+            audio_value = cells[5]
+            video_value = cells[6]
     elif len(row) >= 6:
         image_values = [cells[3], cells[4]]
         audio_value = cells[5]
@@ -1652,7 +1683,7 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
     for index, row in enumerate(normalized_rows):
         if not isinstance(row, (list, tuple)):
             continue
-        cells = list(row) + [""] * 10
+        cells = list(row) + [""] * (SCENE_DIRECTOR_MAX_IMAGE_REFS + 3)
         has_legacy_method_column = len(row) >= 6 and _scene_director_looks_like_method(cells[2])
         legacy_task_method = _scene_director_task_method(cells[2]) if has_legacy_method_column else ""
         prompt_text = str((cells[3] if has_legacy_method_column else cells[2]) or "").strip()
@@ -1797,7 +1828,7 @@ def _scene_director_media_file_value(runtime, ref, kind, fallback=None):
 def _scene_director_clear_segment_media_backend(backend):
     for slot in SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS:
         backend.pop(slot, None)
-    for key in ("video", "audio", "reference_video"):
+    for key in ("video", "audio", "audio2", "audio3", "reference_video", "reference_video2"):
         backend.pop(key, None)
 
 

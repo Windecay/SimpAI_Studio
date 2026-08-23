@@ -405,6 +405,10 @@ def resolve_effective_original_input(
     scene_input_image2=None,
     scene_input_image3=None,
     scene_input_image4=None,
+    scene_input_image5=None,
+    scene_input_image6=None,
+    scene_input_image7=None,
+    scene_input_image8=None,
 ):
     if bool_value(resolution_original_input):
         return True
@@ -419,6 +423,10 @@ def resolve_effective_original_input(
         "scene_input_image2": scene_input_image2,
         "scene_input_image3": scene_input_image3,
         "scene_input_image4": scene_input_image4,
+        "scene_input_image5": scene_input_image5,
+        "scene_input_image6": scene_input_image6,
+        "scene_input_image7": scene_input_image7,
+        "scene_input_image8": scene_input_image8,
     }.get(source_key)
     source_size = _image_value_size(source_value)
     target_size = _positive_size_pair(target_size)
@@ -910,6 +918,10 @@ def apply_scene_resolution_preprocess(
     resolution_original_input=False,
     sam3_trim_payload=None,
     scene_video_duration=None,
+    scene_input_image5=None,
+    scene_input_image6=None,
+    scene_input_image7=None,
+    scene_input_image8=None,
 ):
     profile = get_resolution_profile(state_params, scene_theme)
     if bool_value(resolution_original_input) or not should_preprocess(profile):
@@ -919,6 +931,10 @@ def apply_scene_resolution_preprocess(
             "scene_input_image2": scene_input_image2,
             "scene_input_image3": scene_input_image3,
             "scene_input_image4": scene_input_image4,
+            "scene_input_image5": scene_input_image5,
+            "scene_input_image6": scene_input_image6,
+            "scene_input_image7": scene_input_image7,
+            "scene_input_image8": scene_input_image8,
             "scene_video": scene_video,
             "scene_original_video_path": scene_original_video_path,
             "sam3_input_video": sam3_input_video,
@@ -942,6 +958,10 @@ def apply_scene_resolution_preprocess(
             "scene_input_image2": scene_input_image2,
             "scene_input_image3": scene_input_image3,
             "scene_input_image4": scene_input_image4,
+            "scene_input_image5": scene_input_image5,
+            "scene_input_image6": scene_input_image6,
+            "scene_input_image7": scene_input_image7,
+            "scene_input_image8": scene_input_image8,
             "scene_video": scene_video,
             "scene_original_video_path": scene_original_video_path,
             "sam3_input_video": sam3_input_video,
@@ -1023,6 +1043,14 @@ def apply_scene_resolution_preprocess(
             scene_input_image3, did = preprocess_image_value(scene_input_image3, target_size, mode)
         elif source_key == "scene_input_image4":
             scene_input_image4, did = preprocess_image_value(scene_input_image4, target_size, mode)
+        elif source_key == "scene_input_image5":
+            scene_input_image5, did = preprocess_image_value(scene_input_image5, target_size, mode)
+        elif source_key == "scene_input_image6":
+            scene_input_image6, did = preprocess_image_value(scene_input_image6, target_size, mode)
+        elif source_key == "scene_input_image7":
+            scene_input_image7, did = preprocess_image_value(scene_input_image7, target_size, mode)
+        elif source_key == "scene_input_image8":
+            scene_input_image8, did = preprocess_image_value(scene_input_image8, target_size, mode)
         else:
             scene_input_image1, did = preprocess_image_value(scene_input_image1, target_size, mode)
         changed = changed or did
@@ -1044,6 +1072,10 @@ def apply_scene_resolution_preprocess(
         "scene_input_image2": scene_input_image2,
         "scene_input_image3": scene_input_image3,
         "scene_input_image4": scene_input_image4,
+        "scene_input_image5": scene_input_image5,
+        "scene_input_image6": scene_input_image6,
+        "scene_input_image7": scene_input_image7,
+        "scene_input_image8": scene_input_image8,
         "scene_video": scene_video,
         "scene_original_video_path": scene_original_video_path,
         "sam3_input_video": sam3_input_video,

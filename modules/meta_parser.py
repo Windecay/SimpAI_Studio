@@ -38,11 +38,12 @@ logger = logging.getLogger(format_name(__name__))
 re_param_code = r'\s*(\w[\w \-/]+):\s*("(?:\\.|[^\\"])+"|[^,]*)(?:,|$)'
 re_param = re.compile(re_param_code)
 re_imagesize = re.compile(r"^(\d+)x(\d+)$")
-SCENE_OPTIONAL_INPUT_IMAGE_SLOTS = ("scene_input_image3", "scene_input_image4")
-SCENE_OPTIONAL_VIDEO_SLOTS = ("scene_reference_video",)
-SCENE_INPUT_IMAGE_SLOTS = ("scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
+SCENE_OPTIONAL_INPUT_IMAGE_SLOTS = tuple(f"scene_input_image{index}" for index in range(3, 9))
+SCENE_OPTIONAL_VIDEO_SLOTS = ("scene_reference_video", "scene_reference_video2")
+SCENE_OPTIONAL_AUDIO_SLOTS = ("scene_audio2", "scene_audio3")
+SCENE_INPUT_IMAGE_SLOTS = tuple(f"scene_input_image{index}" for index in range(1, 9))
 SCENE_AUX_OUTPUT_COUNT = 11
-SCENE_PRIMARY_OUTPUT_COUNT = 29
+SCENE_PRIMARY_OUTPUT_COUNT = 36
 SCENE_SWITCH_OUTPUT_COUNT = SCENE_AUX_OUTPUT_COUNT + SCENE_PRIMARY_OUTPUT_COUNT
 
 
@@ -114,7 +115,7 @@ def scene_disvisible_with_optional_inputs(scenes):
         hidden = []
     enabled = scenes.get("divisible", [])
     enabled = set(str(item) for item in enabled) if isinstance(enabled, list) else set()
-    for slot in (*SCENE_OPTIONAL_INPUT_IMAGE_SLOTS, *SCENE_OPTIONAL_VIDEO_SLOTS):
+    for slot in (*SCENE_OPTIONAL_INPUT_IMAGE_SLOTS, *SCENE_OPTIONAL_VIDEO_SLOTS, *SCENE_OPTIONAL_AUDIO_SLOTS):
         if slot not in hidden and slot not in enabled:
             hidden.append(slot)
     if "scene_video_duration" not in hidden and "scene_video_duration" not in enabled and "video_duration" not in scenes:
@@ -786,6 +787,11 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     results.append(gr_update())
     results.append(gr_update())
     results.append(gr_update())
+    for _slot in range(4):
+        results.append(gr_update(value=None, height=input_height) if not switch_flag else gr_update(height=input_height))
+    results.append(gr_update())
+    results.append(gr_update())
+    results.append(gr_update())
     if simpai_ui_trace_enabled():
         try:
             task_method = get_scene_task_method(scenes, theme)
@@ -1366,6 +1372,11 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(get_scene_safe_update('scene_image_number', scene_image_number_default, visible, inter))
 
         results.append(modules.flags.get_value_by_scene_theme(state_params, theme_default, 'mask_color', "#70FF81"))
+        results.append(gr_update())
+        results.append(gr_update())
+        results.append(gr_update())
+        for _slot in range(4):
+            results.append(gr_update())
         results.append(gr_update())
         results.append(gr_update())
         results.append(gr_update())
@@ -1996,6 +2007,7 @@ class MetadataParser(ABC):
         self.refiner_model_hash: str = ''
         self.loras: list = []
         self.vae_name: str = ''
+        self.vae_filename: str = ''
         self.styles_definition = {}
 
     @abstractmethod
@@ -2034,7 +2046,8 @@ class MetadataParser(ABC):
                 lora_path = shared.modelsinfo.get_model_filepath('loras', lora_name)
                 lora_hash = shared.modelsinfo.get_file_muid(lora_path)
                 self.loras.append((Path(lora_name).stem, lora_weight, lora_hash))
-        self.vae_name = Path(vae_name).stem
+        self.vae_filename = str(vae_name or '')
+        self.vae_name = Path(self.vae_filename).stem
         if styles_definition != 'None':
             self.styles_definition = styles_definition
 
@@ -2453,7 +2466,7 @@ class SIMPLEMetadataParser(MetadataParser):
             res['Refiner Model'] = self.refiner_model_name
             res['Refiner Model Hash'] = self.refiner_model_hash
 
-        res['VAE'] = self.vae_name
+        res['VAE'] = self.vae_filename or self.vae_name
         res['LoRAs'] = self.loras
         res['styles_definition'] = self.styles_definition
 
