@@ -636,6 +636,7 @@ class VLM:
                 except (OSError, ValueError):
                     mmproj_file = ""
 
+            handler = handler if mmproj_file else ""
             capabilities = ["text", "image"] if handler and mmproj_file else ["text"]
             logger.info(
                 "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s",

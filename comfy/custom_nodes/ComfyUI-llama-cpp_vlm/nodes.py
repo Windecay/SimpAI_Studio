@@ -342,7 +342,7 @@ class LLAMA_CPP_STORAGE:
         else:
             if vram_limit != -1:
                 n_gpu_layers = max(1, int(vram_limit / gguf_layer_size))
-            if handler is not None:
+            if handler is not None and mmproj and mmproj != "None":
                 think_mode = "Thinking" in chat_handler
                 kwargs = {"verbose": False}
                 if chat_handler in [

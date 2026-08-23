@@ -227,6 +227,7 @@ from modules.llama_cpp_runtime import (
     normalize_llama_cpp_n_ctx,
     normalize_llama_cpp_vram_policy,
     normalize_llama_cpp_kv_cache_type,
+    is_llama_cpp_slot_error,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.vlm_model_catalog import gguf_int_values, is_visual_component_filename
@@ -263,6 +264,7 @@ class LlamaCppVLM:
         self.last_completion_stats = {}
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
+        self.runtime_unhealthy = False
 
     def _record_completion_stats(self, output, elapsed_seconds):
         response = output if isinstance(output, dict) else {}
@@ -556,14 +558,11 @@ class LlamaCppVLM:
                 image_max_tokens=image_max_tokens,
             )
         else:
-            logger.warning(f"No mmproj file found in {model_dir}. Some models may fail to load.")
-            self.chat_handler = self._create_chat_handler(
-                handler_class,
-                mmproj_path=None,
-                chat_handler_name=chat_handler_name,
-                image_min_tokens=image_min_tokens,
-                image_max_tokens=image_max_tokens,
+            logger.warning(
+                "No mmproj file found in %s. Loading text-only mode without the multimodal chat handler.",
+                model_dir,
             )
+            self.chat_handler = None
         return self.chat_handler
 
     def _gpu_layer_score(self, n_gpu_layers, total_layers):
@@ -811,6 +810,15 @@ class LlamaCppVLM:
                 and self.current_vram_policy == vram_policy
                 and self.current_requested_kv_cache_type == requested_kv_cache_type
             )
+
+            if self.runtime_unhealthy:
+                logger.warning(
+                    "Previous llama.cpp slot/decode failure invalidated the runtime; forcing a full context rebuild."
+                )
+                self.free_model(clear_conversations=False)
+                self.runtime_unhealthy = False
+                same_model_identity = False
+                same_loaded_model = False
 
             auto_n_gpu_layers = n_gpu_layers == -1
             auto_estimate = {}
@@ -1121,7 +1129,42 @@ class LlamaCppVLM:
             self.current_vram_estimate["loaded_kv_cache_type"] = loaded_kv_cache_type
             self.current_vram_estimate["kv_cache_quantization_supported"] = kv_cache_quantization_supported
             self.current_vram_estimate["kv_cache_quantization_fallback"] = quantization_fallback
+            self.runtime_unhealthy = False
             ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
+
+    def _runtime_context_summary(self, messages=None, max_tokens=None):
+        llm = self.llm
+        n_ctx = None
+        if llm is not None:
+            try:
+                n_ctx_method = getattr(llm, "n_ctx", None)
+                n_ctx = int(n_ctx_method()) if callable(n_ctx_method) else None
+            except (TypeError, ValueError, AttributeError):
+                n_ctx = None
+        return {
+            "model": os.path.basename(self.current_model_path or ""),
+            "handler": self.current_chat_handler_name or "",
+            "mmproj": os.path.basename(self.current_mmproj_path or ""),
+            "n_ctx": n_ctx,
+            "n_tokens": int(getattr(llm, "n_tokens", 0) or 0) if llm is not None else 0,
+            "n_batch": int(getattr(llm, "n_batch", 0) or 0) if llm is not None else 0,
+            "max_tokens": int(max_tokens or 0),
+            "prompt_chars": self._messages_text_length(messages) if messages else 0,
+            "media": self._message_media_summary(messages or []),
+            "vision_enabled": self._vision_runtime_enabled(),
+        }
+
+    def _invalidate_runtime_after_slot_error(self, operation, error, context):
+        self.runtime_unhealthy = True
+        logger.warning(
+            "llama.cpp %s hit a slot/decode failure; the current context will be rebuilt before the next request. "
+            "context=%s error=%s",
+            operation,
+            context,
+            error,
+        )
+        self.free_model(clear_conversations=False)
+        self.runtime_unhealthy = True
 
     def free_model(self, clear_conversations=False):
         with self.lock:
@@ -1157,6 +1200,7 @@ class LlamaCppVLM:
             self.current_external_process_count = None
             self.current_vram_estimate = {}
             self.last_completion_stats = {}
+            self.runtime_unhealthy = False
             if clear_conversations:
                 self.clear_conversation()
             gc.collect()
@@ -1478,12 +1522,13 @@ class LlamaCppVLM:
 
             messages.append(self._build_user_message(image, prompt))
             logger.info(
-                "LlamaCpp Chat: id=%s, prompt=%s... (image=%s, media=%s, vision_enabled=%s)",
+                "LlamaCpp Chat: id=%s, prompt=%s... (image=%s, media=%s, vision_enabled=%s, context=%s)",
                 conversation_key,
                 prompt[:50],
                 "Yes" if image is not None else "No",
                 self._message_media_summary(messages),
                 self._vision_runtime_enabled(),
+                self._runtime_context_summary(messages, max_tokens),
             )
 
             try:
@@ -1514,8 +1559,11 @@ class LlamaCppVLM:
                     self.conversation_messages[conversation_key] = self._sanitize_messages(messages)
                 return result
             except Exception as e:
+                context = self._runtime_context_summary(messages, max_tokens)
+                if is_llama_cpp_slot_error(e):
+                    self._invalidate_runtime_after_slot_error("chat", e, context)
                 self.last_completion_stats = {}
-                logger.error(f"LlamaCpp Chat Error: {str(e)}")
+                logger.error("LlamaCpp Chat Error: %s; context=%s", str(e), context)
                 return f"Error during inference: {str(e)}"
             finally:
                 self._clear_hybrid_cache_if_needed()
@@ -1540,11 +1588,12 @@ class LlamaCppVLM:
             messages.append(self._build_user_message(image, prompt))
 
             logger.info(
-                "LlamaCpp Inference: prompt=%s... (image=%s, media=%s, vision_enabled=%s)",
+                "LlamaCpp Inference: prompt=%s... (image=%s, media=%s, vision_enabled=%s, context=%s)",
                 prompt[:50],
                 "Yes" if image is not None else "No",
                 self._message_media_summary(messages),
                 self._vision_runtime_enabled(),
+                self._runtime_context_summary(messages, max_tokens),
             )
             
             try:
@@ -1571,8 +1620,11 @@ class LlamaCppVLM:
                 )
                 return result
             except Exception as e:
+                context = self._runtime_context_summary(messages, max_tokens)
+                if is_llama_cpp_slot_error(e):
+                    self._invalidate_runtime_after_slot_error("inference", e, context)
                 self.last_completion_stats = {}
-                logger.error(f"LlamaCpp Inference Error: {str(e)}")
+                logger.error("LlamaCpp Inference Error: %s; context=%s", str(e), context)
                 return f"Error during inference: {str(e)}"
             finally:
                 self._clear_hybrid_cache_if_needed()

@@ -727,6 +727,7 @@
     let historyBatchKey = '';
     let historyBatchTimer = 0;
     const HISTORY_LIMIT = 32;
+    const HISTORY_MEMORY_BUDGET_BYTES = 48 * 1024 * 1024;
     const RESULT_PREVIEW_PLAYER_MAX_FRAMES = 96;
     const bridgeRequests = new Map();
     const activeCanvasPolls = new Set();
@@ -2407,18 +2408,66 @@
     }
 
     function cloneProjectForHistory() {
-        return cloneRunValue(project, createDefaultProject());
+        return compactProjectForStorage(project, {
+            stripAllMaterializedDataUrls: true,
+            maxInlineDataUrlChars: Number.MAX_SAFE_INTEGER,
+            stripStorage: false,
+            runHistoryLimit: 8,
+        });
+    }
+
+    function createHistoryEntry(label) {
+        const snapshot = cloneProjectForHistory();
+        try {
+            const projectText = JSON.stringify(snapshot);
+            return {
+                label: label || 'Edit canvas',
+                projectText,
+                memoryBytes: projectText.length * 2,
+                selectedNodeId,
+                selectedEdgeId,
+                selectedGroupId,
+                selectedNodeIds: Array.from(selectedNodeIds || []),
+            };
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function historyMemoryBytes() {
+        return [...undoStack, ...redoStack].reduce((total, entry) => total + Math.max(0, Number(entry?.memoryBytes) || 0), 0);
+    }
+
+    function trimHistory(preferredStack) {
+        const otherStack = preferredStack === undoStack ? redoStack : undoStack;
+        while (
+            undoStack.length + redoStack.length > HISTORY_LIMIT
+            || historyMemoryBytes() > HISTORY_MEMORY_BUDGET_BYTES
+        ) {
+            if (otherStack.length) {
+                otherStack.shift();
+            } else if (preferredStack.length > 1) {
+                preferredStack.shift();
+            } else {
+                break;
+            }
+        }
+    }
+
+    function appendHistoryEntry(stack, entry) {
+        if (!entry) return false;
+        stack.push(entry);
+        trimHistory(stack);
+        return stack.includes(entry);
     }
 
     function pushHistory(label) {
-        const snapshot = cloneProjectForHistory();
+        const entry = createHistoryEntry(label);
+        if (!entry) return;
         const last = undoStack[undoStack.length - 1];
-        try {
-            if (last && JSON.stringify(last.project) === JSON.stringify(snapshot)) return;
-        } catch (err) {}
-        undoStack.push({ label: label || 'Edit canvas', project: snapshot, selectedNodeId, selectedEdgeId, selectedGroupId, selectedNodeIds: Array.from(selectedNodeIds || []) });
-        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        if (last?.projectText === entry.projectText) return;
         redoStack = [];
+        appendHistoryEntry(undoStack, entry);
         renderHistoryButtons();
     }
 
@@ -2435,9 +2484,15 @@
     }
 
     function restoreHistoryEntry(entry) {
-        if (!entry || !entry.project) return;
+        if (!entry?.projectText) return;
         const storage = project.storage || buildProjectStorageInfo(storageKey, storageScope);
-        project = sanitizeProject(cloneRunValue(entry.project, createDefaultProject()));
+        let restoredProject;
+        try {
+            restoredProject = JSON.parse(entry.projectText);
+        } catch (err) {
+            return;
+        }
+        project = sanitizeProject(restoredProject);
         project.storage = project.storage || storage;
         resetRenderedProjectDomCache();
         selectedNodeId = entry.selectedNodeId || null;
@@ -2454,8 +2509,8 @@
             showToast(t('No canvas edits to undo', '没有可撤销的画布编辑'));
             return;
         }
-        redoStack.push({ label: 'Redo snapshot', project: cloneProjectForHistory(), selectedNodeId, selectedEdgeId, selectedGroupId, selectedNodeIds: Array.from(selectedNodeIds || []) });
         const entry = undoStack.pop();
+        appendHistoryEntry(redoStack, createHistoryEntry('Redo snapshot'));
         restoreHistoryEntry(entry);
         showToast(t('Undo: {label}', '撤销：{label}').replace('{label}', entry.label || t('Edit canvas', '编辑画布')));
         renderHistoryButtons();
@@ -2466,9 +2521,8 @@
             showToast(t('No canvas edits to redo', '没有可重做的画布编辑'));
             return;
         }
-        undoStack.push({ label: 'Undo snapshot', project: cloneProjectForHistory(), selectedNodeId, selectedEdgeId, selectedGroupId, selectedNodeIds: Array.from(selectedNodeIds || []) });
-        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
         const entry = redoStack.pop();
+        appendHistoryEntry(undoStack, createHistoryEntry('Undo snapshot'));
         restoreHistoryEntry(entry);
         showToast(t('Canvas edit redone', '已重做画布编辑'));
         renderHistoryButtons();

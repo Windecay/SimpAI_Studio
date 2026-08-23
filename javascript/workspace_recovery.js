@@ -27,9 +27,14 @@
     const RESTORE_PROGRESS_ERROR_HIDE_DELAY_MS = 900;
     const LEGACY_RECONNECT_CAPTURE_WINDOW_MS = 10 * 1000;
     const SKETCH_DB_NAME = 'simpai.studio.workspace.sketch.v1';
-    const SKETCH_DB_VERSION = 1;
+    const SKETCH_DB_VERSION = 2;
     const SKETCH_STORE_NAME = 'snapshots';
+    const SKETCH_UPDATED_INDEX = 'updated_at';
+    const SKETCH_OWNER_UPDATED_INDEX = 'owner_updated_at';
     const SKETCH_CAPTURE_WAIT_MS = 1500;
+    const SKETCH_RECORD_MAX_AGE_MS = WORKSPACE_STATE_MAX_AGE_MS;
+    const SKETCH_RECORDS_PER_OWNER = 12;
+    const SKETCH_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 
     let restoreCompleted = false;
     let restoreRequested = false;
@@ -49,6 +54,7 @@
     let restoreProgressTargetPreset = '';
     let restoreProgressFailed = false;
     let sketchDbPromise = null;
+    let lastSketchPruneAt = 0;
     const pendingSketchWrites = new Set();
 
     function restoreProgressLanguage() {
@@ -674,8 +680,17 @@
             }
             request.onupgradeneeded = () => {
                 const db = request.result;
+                let store;
                 if (!db.objectStoreNames.contains(SKETCH_STORE_NAME)) {
-                    db.createObjectStore(SKETCH_STORE_NAME, { keyPath: 'id' });
+                    store = db.createObjectStore(SKETCH_STORE_NAME, { keyPath: 'id' });
+                } else {
+                    store = request.transaction.objectStore(SKETCH_STORE_NAME);
+                }
+                if (!store.indexNames.contains(SKETCH_UPDATED_INDEX)) {
+                    store.createIndex(SKETCH_UPDATED_INDEX, 'updated_at');
+                }
+                if (!store.indexNames.contains(SKETCH_OWNER_UPDATED_INDEX)) {
+                    store.createIndex(SKETCH_OWNER_UPDATED_INDEX, ['owner', 'updated_at']);
                 }
             };
             request.onsuccess = () => resolve(request.result || null);
@@ -690,15 +705,118 @@
         return adapter && typeof adapter === 'object' ? adapter : null;
     }
 
+    function sketchRecordIdsToPrune(records, owner, now) {
+        const currentTime = Number(now) || Date.now();
+        const cutoff = currentTime - SKETCH_RECORD_MAX_AGE_MS;
+        const source = Array.isArray(records) ? records : [];
+        const expiredIds = source
+            .filter((record) => !Number.isFinite(Number(record?.updated_at)) || Number(record.updated_at) < cutoff)
+            .map((record) => String(record?.id || ''))
+            .filter(Boolean);
+        const activeOwnerRecords = source
+            .filter((record) => String(record?.owner || '') === String(owner || ''))
+            .filter((record) => Number(record?.updated_at || 0) >= cutoff)
+            .sort((left, right) => Number(right?.updated_at || 0) - Number(left?.updated_at || 0));
+        const overflowIds = activeOwnerRecords
+            .slice(SKETCH_RECORDS_PER_OWNER)
+            .map((record) => String(record?.id || ''))
+            .filter(Boolean);
+        return Array.from(new Set([...expiredIds, ...overflowIds]));
+    }
+
+    async function pruneSketchRecords(owner) {
+        const adapter = sketchStoreAdapter();
+        if (typeof adapter?.prune === 'function') {
+            await adapter.prune({
+                owner: String(owner || ''),
+                max_age_ms: SKETCH_RECORD_MAX_AGE_MS,
+                max_records: SKETCH_RECORDS_PER_OWNER,
+            });
+            return true;
+        }
+        if (typeof adapter?.getAll === 'function' && typeof adapter?.delete === 'function') {
+            const records = await adapter.getAll();
+            const recordIds = sketchRecordIdsToPrune(records, owner);
+            await Promise.all(recordIds.map((recordId) => adapter.delete(recordId)));
+            return true;
+        }
+        if (adapter) return false;
+        const db = await openSketchDatabase();
+        if (!db) return false;
+        return new Promise((resolve) => {
+            let transaction;
+            let ok = true;
+            try {
+                transaction = db.transaction(SKETCH_STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(SKETCH_STORE_NAME);
+                const rangeFactory = window.IDBKeyRange;
+                const cutoff = Date.now() - SKETCH_RECORD_MAX_AGE_MS;
+                if (!rangeFactory) throw new Error('IDBKeyRange unavailable');
+
+                const expiredRequest = store.index(SKETCH_UPDATED_INDEX).openKeyCursor(
+                    rangeFactory.upperBound(cutoff, true),
+                );
+                expiredRequest.onsuccess = () => {
+                    const cursor = expiredRequest.result;
+                    if (!cursor) return;
+                    store.delete(cursor.primaryKey);
+                    cursor.continue();
+                };
+                expiredRequest.onerror = () => { ok = false; };
+
+                const ownerText = String(owner || '');
+                if (ownerText) {
+                    let ownerRecordCount = 0;
+                    const ownerRequest = store.index(SKETCH_OWNER_UPDATED_INDEX).openKeyCursor(
+                        rangeFactory.bound(
+                            [ownerText, 0],
+                            [ownerText, Number.MAX_SAFE_INTEGER],
+                        ),
+                        'prev',
+                    );
+                    ownerRequest.onsuccess = () => {
+                        const cursor = ownerRequest.result;
+                        if (!cursor) return;
+                        ownerRecordCount += 1;
+                        if (ownerRecordCount > SKETCH_RECORDS_PER_OWNER) {
+                            store.delete(cursor.primaryKey);
+                        }
+                        cursor.continue();
+                    };
+                    ownerRequest.onerror = () => { ok = false; };
+                }
+            } catch (error) {
+                try { transaction?.abort(); } catch (abortError) {}
+                resolve(false);
+                return;
+            }
+            transaction.oncomplete = () => resolve(ok);
+            transaction.onerror = () => resolve(false);
+            transaction.onabort = () => resolve(false);
+        });
+    }
+
+    async function maybePruneSketchRecords(owner) {
+        const now = Date.now();
+        if (lastSketchPruneAt && now - lastSketchPruneAt < SKETCH_PRUNE_INTERVAL_MS) return false;
+        lastSketchPruneAt = now;
+        try {
+            return await pruneSketchRecords(owner);
+        } catch (error) {
+            return false;
+        }
+    }
+
     async function writeSketchRecord(record) {
         const adapter = sketchStoreAdapter();
         if (typeof adapter?.put === 'function') {
             await adapter.put(record);
+            await maybePruneSketchRecords(record?.owner);
             return true;
         }
         const db = await openSketchDatabase();
         if (!db) return false;
-        return new Promise((resolve) => {
+        const written = await new Promise((resolve) => {
             let transaction;
             try {
                 transaction = db.transaction(SKETCH_STORE_NAME, 'readwrite');
@@ -711,6 +829,8 @@
             transaction.onerror = () => resolve(false);
             transaction.onabort = () => resolve(false);
         });
+        if (written) await maybePruneSketchRecords(record?.owner);
+        return written;
     }
 
     async function readSketchRecord(recordKey) {

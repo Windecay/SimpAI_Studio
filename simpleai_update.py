@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import filecmp
+import importlib.metadata as importlib_metadata
 import json
 import os
 import re
@@ -26,6 +27,26 @@ DEFAULT_BRANCH = "main"
 BACKUP_DIR_NAME = "update_backups"
 MANAGED_STATE_NAME = "managed_files.json"
 DEFAULT_LOG_COUNT = 20
+DEPENDENCY_UPDATE_FAILED = 6
+ROOT_REQUIREMENTS_FILE = STUDIO_ROOT / "requirements.txt"
+DEFAULT_INDEX_URL = os.environ.get("INDEX_URL", "https://mirrors.aliyun.com/pypi/simple")
+EXTRA_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# Keep this list aligned with launch.py's startup package checks.
+RUNTIME_UPDATE_PACKAGES = (
+    ("comfyui-frontend-package", "1.48.7", None),
+    ("comfyui-workflow-templates", "0.11.39", None),
+    ("comfyui-embedded-docs", "0.5.9", None),
+    ("comfy-kitchen", "0.2.30", None),
+    ("comfy-aimdo", "0.4.13", None),
+    ("av", "17.0.0", None),
+    ("PyOpenGL", None, ">=3.1.8"),
+    ("comfy-angle", None, None),
+    ("lmdb", "2.2.1", None),
+    ("shtab", "1.8.0", None),
+    ("tyro", "0.8.5", None),
+)
+BITSANDBYTES_VERSION = "0.45.5"
 
 PROTECTED_TOP_LEVEL_DIRS = {
     ".cache",
@@ -221,6 +242,193 @@ def download_zip(url: str, destination: Path) -> None:
     print(f"下载完成: {destination}")
 
 
+def _package_install_spec(pkg_name: str, pkg_version: str | None = None, version_specifier: str | None = None) -> str:
+    if pkg_version:
+        return f"{pkg_name}=={pkg_version}"
+    if version_specifier:
+        return f"{pkg_name}{version_specifier}"
+    return pkg_name
+
+
+def _installed_package_version(package: str) -> str | None:
+    try:
+        return importlib_metadata.version(package)
+    except importlib_metadata.PackageNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def _package_requirement_met(
+    package: str,
+    pkg_version: str | None = None,
+    version_specifier: str | None = None,
+) -> bool:
+    installed = _installed_package_version(package)
+    if installed is None:
+        return False
+    if not pkg_version and not version_specifier:
+        return True
+
+    try:
+        from packaging import specifiers as packaging_specifiers
+        from packaging import version as packaging_version
+
+        installed_version = packaging_version.parse(installed)
+        if pkg_version:
+            return installed_version == packaging_version.parse(pkg_version)
+        return installed_version in packaging_specifiers.SpecifierSet(version_specifier or "")
+    except Exception:
+        return False
+
+
+def _make_pip_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PIP_USER"] = "0"
+    env["PIP_PROGRESS_BAR"] = "raw"
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    return env
+
+
+def _portable_site_packages() -> Path | None:
+    if not sys.platform.startswith("win"):
+        return None
+    site_packages = PACKAGE_ROOT / "python_embeded" / "Lib" / "site-packages"
+    return site_packages if site_packages.is_dir() else None
+
+
+def _pip_command(pip_args: list[str], index_url: str) -> list[str]:
+    command = [sys.executable, "-s", "-m", "pip", *pip_args]
+    site_packages = _portable_site_packages()
+    if site_packages is not None:
+        command.extend(["--target", str(site_packages)])
+    command.append("--prefer-binary")
+    if index_url:
+        command.extend(["--index-url", index_url])
+    return command
+
+
+def pip_install_with_retry(pip_args: list[str], *, description: str) -> bool:
+    indexes = []
+    for label, index_url in (
+        ("阿里云 / Alibaba Cloud", DEFAULT_INDEX_URL),
+        ("清华大学 / Tsinghua University", EXTRA_INDEX_URL),
+    ):
+        if index_url and index_url not in {item[1] for item in indexes}:
+            indexes.append((label, index_url))
+
+    last_error: Exception | None = None
+    for label, index_url in indexes:
+        command = _pip_command(pip_args, index_url)
+        print(f"> {subprocess.list2cmdline(command)}")
+        try:
+            subprocess.run(
+                command,
+                cwd=str(STUDIO_ROOT),
+                check=True,
+                env=_make_pip_env(),
+            )
+            return True
+        except (OSError, subprocess.CalledProcessError) as exc:
+            last_error = exc
+            print(
+                f"{description}失败，正在尝试{label}。 / {description} failed; retrying with {label}."
+            )
+
+    if last_error is not None:
+        print(f"{description}失败: {last_error} / {description} failed: {last_error}")
+    return False
+
+
+def install_package_with_retry(
+    pkg_name: str,
+    pkg_version: str | None = None,
+    description: str | None = None,
+    version_specifier: str | None = None,
+) -> bool:
+    install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
+    install_description = description or f"更新包 {install_spec} / Update package {install_spec}"
+    return pip_install_with_retry(
+        ["install", "-U", install_spec],
+        description=install_description,
+    )
+
+
+def is_nvidia_cuda_runtime() -> bool:
+    try:
+        import torch
+    except Exception:
+        return False
+    version_info = getattr(torch, "version", None)
+    return bool(getattr(version_info, "cuda", None))
+
+
+def update_runtime_packages() -> int:
+    print_header("更新启动依赖 / Update runtime dependencies")
+    failed_packages: list[str] = []
+
+    for pkg_name, pkg_version, version_specifier in RUNTIME_UPDATE_PACKAGES:
+        install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
+        if _package_requirement_met(pkg_name, pkg_version, version_specifier):
+            print(f"依赖已满足: {install_spec} / Requirement already satisfied: {install_spec}")
+            continue
+
+        success = install_package_with_retry(
+            pkg_name,
+            pkg_version,
+            version_specifier=version_specifier,
+        )
+        if not success:
+            failed_packages.append(install_spec)
+
+    if is_nvidia_cuda_runtime() and sys.platform.startswith(("win", "linux")):
+        if _package_requirement_met("bitsandbytes", BITSANDBYTES_VERSION):
+            print(
+                f"依赖已满足: bitsandbytes=={BITSANDBYTES_VERSION} / "
+                f"Requirement already satisfied: bitsandbytes=={BITSANDBYTES_VERSION}"
+            )
+        elif not install_package_with_retry("bitsandbytes", BITSANDBYTES_VERSION):
+            failed_packages.append(f"bitsandbytes=={BITSANDBYTES_VERSION}")
+    else:
+        print(
+            "当前不是 NVIDIA CUDA 环境，跳过 bitsandbytes。 / "
+            "The current runtime is not NVIDIA CUDA; skipping bitsandbytes."
+        )
+
+    if failed_packages:
+        print(
+            f"以下启动依赖更新失败: {', '.join(failed_packages)} / "
+            f"The following runtime dependencies failed to update: {', '.join(failed_packages)}"
+        )
+        return DEPENDENCY_UPDATE_FAILED
+
+    print("启动依赖更新完成。 / Runtime dependency update completed.")
+    return 0
+
+
+def refresh_root_requirements() -> int:
+    print_header("刷新项目根 requirements.txt / Refresh root requirements.txt")
+    if not ROOT_REQUIREMENTS_FILE.is_file():
+        print(
+            f"找不到项目根 requirements.txt: {ROOT_REQUIREMENTS_FILE} / "
+            f"Project-root requirements.txt was not found: {ROOT_REQUIREMENTS_FILE}"
+        )
+        return 2
+
+    success = pip_install_with_retry(
+        ["install", "-U", "-r", str(ROOT_REQUIREMENTS_FILE)],
+        description="刷新项目根 requirements.txt / Refresh root requirements.txt",
+    )
+    if success:
+        print("项目根 requirements.txt 刷新完成。 / Root requirements.txt refresh completed.")
+        return 0
+
+    print("项目根 requirements.txt 刷新失败。 / Root requirements.txt refresh failed.")
+    return DEPENDENCY_UPDATE_FAILED
+
+
 def looks_like_studio_root(path: Path) -> bool:
     return (path / "entry_without_update.py").is_file() or (path / "launch.py").is_file()
 
@@ -288,7 +496,13 @@ def update_from_latest_zip(args: argparse.Namespace) -> int:
     if summary["backup_root"]:
         print(f"备份目录: {summary['backup_root']}")
     print("直接更新模式不会删除本地已有文件；需要处理删除记录时请使用 Git 模式。")
-    return 0
+    if args.dry_run or getattr(args, "skip_package_update", False):
+        if args.dry_run:
+            print("预览模式不会更新 Python 依赖。 / Dry-run mode does not update Python dependencies.")
+        else:
+            print("已跳过启动依赖更新。 / Runtime dependency update was skipped.")
+        return 0
+    return update_runtime_packages()
 
 
 def git_available() -> bool:
@@ -452,6 +666,8 @@ def run_git_mode(args: argparse.Namespace, ref: str | None = None, *, prompt_bac
 
     if result == 2 and prompt_backup:
         return offer_latest_zip_fallback(args)
+    if result == 0 and not getattr(args, "skip_package_update", False):
+        return update_runtime_packages()
     return result
 
 
@@ -527,41 +743,51 @@ def show_commit_log(args: argparse.Namespace) -> int:
 
 def run_menu(args: argparse.Namespace) -> int:
     while True:
-        print_header("SimpAI Studio 更新工具")
-        print("1. 使用 Git 更新当前分支")
-        print("2. 使用 Git 更新到指定版本 / tag / commit")
-        print("3. 查看当前版本")
-        print(f"4. 查看最近 {DEFAULT_LOG_COUNT} 个提交 / git log")
-        print("0. 退出")
-        choice = input("请选择 0-4: ").strip()
+        print_header("SimpAI Studio 更新工具 / SimpAI Studio Update Tool")
+        print("1. 使用 Git 更新当前分支 / Update current branch with Git")
+        print("2. 使用 Git 更新到指定版本 / tag / commit / Update to a version / tag / commit with Git")
+        print("3. 查看当前版本 / Show current version")
+        print(f"4. 查看最近 {DEFAULT_LOG_COUNT} 个提交 / Show the latest {DEFAULT_LOG_COUNT} commits")
+        print("5. 更新启动依赖 / Update runtime packages")
+        print("6. 刷新项目根 requirements.txt / Refresh root requirements.txt")
+        print("0. 退出 / Exit")
+        choice = input("请选择 0-6 / Choose 0-6: ").strip()
 
         if choice == "1":
             return run_git_mode(args, prompt_backup=True)
         if choice == "2":
-            target_ref = input("请输入版本 / tag / commit / branch: ").strip()
+            target_ref = input("请输入版本 / tag / commit / branch / Enter version / tag / commit / branch: ").strip()
             if not target_ref:
-                print("没有输入版本。")
+                print("没有输入版本。 / No version was entered.")
                 continue
             return run_git_mode(args, ref=target_ref, prompt_backup=True)
         if choice == "3":
             show_status()
-            input("按回车返回菜单。")
+            input("按回车返回菜单。 / Press Enter to return to the menu.")
             continue
         if choice == "4":
             show_commit_log(args)
-            input("按回车返回菜单。")
+            input("按回车返回菜单。 / Press Enter to return to the menu.")
+            continue
+        if choice == "5":
+            update_runtime_packages()
+            input("按回车返回菜单。 / Press Enter to return to the menu.")
+            continue
+        if choice == "6":
+            refresh_root_requirements()
+            input("按回车返回菜单。 / Press Enter to return to the menu.")
             continue
         if choice == "0":
             return 0
 
-        print("请选择 0 到 4。")
+        print("请选择 0 到 6。 / Choose a number from 0 to 6.")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Update a portable SimpAI_Studio package.")
     parser.add_argument(
         "--mode",
-        choices=["menu", "latest", "git", "status", "log"],
+        choices=["menu", "latest", "git", "status", "log", "packages", "requirements"],
         default="menu",
         help="Update mode. Default opens the interactive menu.",
     )
@@ -577,6 +803,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Compatibility option. Git mode force-syncs tracked files by default.",
     )
+    parser.add_argument(
+        "--skip-package-update",
+        action="store_true",
+        help="Skip runtime package updates after a successful code update.",
+    )
     return parser.parse_args(argv)
 
 
@@ -591,6 +822,10 @@ def main(argv: list[str] | None = None) -> int:
         return show_status()
     if args.mode == "log":
         return show_commit_log(args)
+    if args.mode == "packages":
+        return update_runtime_packages()
+    if args.mode == "requirements":
+        return refresh_root_requirements()
     return run_menu(args)
 
 

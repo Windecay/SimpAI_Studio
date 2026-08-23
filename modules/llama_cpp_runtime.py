@@ -259,6 +259,30 @@ def is_llama_cpp_memory_error(exc, oom_exception_type=None):
     return any(marker in text for marker in markers)
 
 
+def is_llama_cpp_slot_error(exc):
+    """Return True when llama.cpp cannot place the current decode batch."""
+    messages = []
+    pending = [exc]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in visited:
+            continue
+        visited.add(id(current))
+        messages.append(str(current).lower())
+        pending.extend((getattr(current, "__cause__", None), getattr(current, "__context__", None)))
+
+    text = " ".join(messages)
+    markers = (
+        "find_slot:",
+        "non-consecutive token position",
+        "failed to find a memory slot",
+        "failed completely even with batch size 1",
+        "kv slots completely full",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _machine_supported(machine):
     return str(machine or "").strip().lower() in {"amd64", "x86_64"}
 

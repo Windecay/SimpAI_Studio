@@ -6,6 +6,8 @@
     const DOCK_OPEN_DELAY_MS = 35;
     const DOCK_HIDE_DELAY_MS = 260;
     const INPUT_FALLBACK_SYNC_MS = 2000;
+    const SKETCH_HISTORY_LIMIT = 20;
+    const SKETCH_HISTORY_MEMORY_BUDGET = 64 * 1024 * 1024;
     const IMAGE_FILE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp|bmp|avif|tiff?|ico)$/i;
     const SKETCH_CACHE_ENDPOINT = "/simpai/sketch-cache";
     let activeSketchApi = null;
@@ -57,9 +59,8 @@
     function releaseHiddenSketches() {
         const namespace = ensureSimpAISketchNamespace();
         for (const sketch of Array.from(namespace.instances || [])) {
-            if (!sketch?.editor?.isConnected) {
-                namespace.instances.delete(sketch);
-                if (namespace.active === sketch) clearActiveSketch(sketch);
+            if (!sketch?.root?.isConnected || !sketch?.editor?.isConnected) {
+                sketch.destroy?.();
                 continue;
             }
             if (sketch.isVisible?.() !== false) continue;
@@ -71,8 +72,8 @@
     function releaseAllSketchTransientState() {
         const namespace = ensureSimpAISketchNamespace();
         for (const sketch of Array.from(namespace.instances || [])) {
-            if (!sketch?.editor?.isConnected) {
-                namespace.instances.delete(sketch);
+            if (!sketch?.root?.isConnected || !sketch?.editor?.isConnected) {
+                sketch.destroy?.();
                 continue;
             }
             sketch.releaseTransientState?.();
@@ -80,13 +81,25 @@
         clearActiveSketch(null);
     }
 
+    function releaseDetachedSketches() {
+        const namespace = ensureSimpAISketchNamespace();
+        const reconnectRoots = [];
+        for (const sketch of Array.from(namespace.instances || [])) {
+            const rootConnected = sketch?.root?.isConnected === true;
+            const editorConnected = sketch?.editor?.isConnected === true;
+            if (rootConnected && editorConnected) continue;
+            sketch.destroy?.();
+            if (rootConnected) reconnectRoots.push(sketch.root);
+        }
+        reconnectRoots.forEach(initRoot);
+    }
+
     function syncVisibleSketchInputs() {
         if (document.hidden) return;
         const namespace = ensureSimpAISketchNamespace();
         for (const sketch of Array.from(namespace.instances || [])) {
-            if (!sketch?.editor?.isConnected) {
-                namespace.instances.delete(sketch);
-                if (namespace.active === sketch) clearActiveSketch(sketch);
+            if (!sketch?.root?.isConnected || !sketch?.editor?.isConnected) {
+                sketch.destroy?.();
                 continue;
             }
             if (sketch.isVisible?.() === false) {
@@ -1072,10 +1085,13 @@
         let sourceImageDataUrl = "";
         const undoStack = [];
         const redoStack = [];
-        let currentHistoryState = null;
         let serializeTimer = null;
         let valueDirty = false;
         let lastPayload = null;
+        let destroyed = false;
+        const lifecycleListeners = [];
+        let resizeObserver = null;
+        let resizeFrame = null;
         let fullscreenMode = false;
         let panFloatingMode = false;
         let panGestureMode = false;
@@ -1097,9 +1113,13 @@
         let uiHidden = false;
         let maskDisabled = root.dataset.simpaiMaskDisabled === "1";
 
+        function addLifecycleListener(target, type, listener, options) {
+            target.addEventListener(type, listener, options);
+            lifecycleListeners.push({ target, type, listener, options });
+        }
+
         function clearMaskPixels() {
             maskCtx.clearRect(0, 0, width, height);
-            currentHistoryState = currentMaskDataUrl();
         }
 
         function setMaskDisabled(disabled, options = {}) {
@@ -1187,32 +1207,121 @@
 
         function captureMaskState() {
             try {
-                return maskCtx.getImageData(0, 0, width, height);
+                const imageData = maskCtx.getImageData(0, 0, width, height);
+                const source = imageData.data;
+                const alpha = new Uint8ClampedArray(width * height);
+                let color = null;
+                let uniformColor = true;
+                for (let src = 0, dst = 0; src < source.length; src += 4, dst += 1) {
+                    const value = source[src + 3];
+                    alpha[dst] = value;
+                    if (!value) continue;
+                    if (!color) {
+                        color = [source[src], source[src + 1], source[src + 2]];
+                    } else if (uniformColor && (
+                        color[0] !== source[src]
+                        || color[1] !== source[src + 1]
+                        || color[2] !== source[src + 2]
+                    )) {
+                        uniformColor = false;
+                    }
+                }
+                if (uniformColor) {
+                    const fallbackColor = hexToRgb(colorInput.value || "#ffffff") || { r: 255, g: 255, b: 255 };
+                    return {
+                        type: "mask-alpha",
+                        width,
+                        height,
+                        color: color || [fallbackColor.r, fallbackColor.g, fallbackColor.b],
+                        alpha
+                    };
+                }
+                return { type: "mask-rgba", width, height, imageData };
             } catch {
                 return currentMaskDataUrl();
             }
         }
 
-        async function restoreMaskState(state) {
-            if (!state || !hasImage) return false;
+        async function drawCapturedMaskState(state) {
+            if (!state) return false;
             maskCtx.clearRect(0, 0, width, height);
-            if (typeof ImageData !== "undefined" && state instanceof ImageData) {
+            if (state.type === "mask-alpha" && state.alpha) {
+                const stateWidth = Math.max(1, Number(state.width) || width);
+                const stateHeight = Math.max(1, Number(state.height) || height);
+                const imageData = maskCtx.createImageData(stateWidth, stateHeight);
+                const output = imageData.data;
+                const color = Array.isArray(state.color) ? state.color : [255, 255, 255];
+                const pixelCount = Math.min(state.alpha.length, stateWidth * stateHeight);
+                for (let src = 0, dst = 0; src < pixelCount; src += 1, dst += 4) {
+                    output[dst] = color[0] || 0;
+                    output[dst + 1] = color[1] || 0;
+                    output[dst + 2] = color[2] || 0;
+                    output[dst + 3] = state.alpha[src];
+                }
+                maskCtx.putImageData(imageData, 0, 0);
+            } else if (state.type === "mask-rgba" && state.imageData) {
+                maskCtx.putImageData(state.imageData, 0, 0);
+            } else if (typeof ImageData !== "undefined" && state instanceof ImageData) {
                 maskCtx.putImageData(state, 0, 0);
             } else {
                 const maskImg = await loadImage(state);
                 maskCtx.drawImage(maskImg, 0, 0, width, height);
             }
-            currentHistoryState = null;
+            return true;
+        }
+
+        async function restoreMaskState(state) {
+            if (!state || !hasImage) return false;
+            const restored = await drawCapturedMaskState(state);
+            if (!restored) return false;
             serialize();
             refreshToolbarState();
             return true;
+        }
+
+        function historyEntryBytes(entry) {
+            if (!entry) return 0;
+            if (typeof entry === "string") return entry.length * 2;
+            if (entry.type === "mask-alpha" && entry.alpha) return entry.alpha.byteLength + 64;
+            if (entry.type === "mask-rgba" && entry.imageData?.data) return entry.imageData.data.byteLength + 64;
+            if (typeof ImageData !== "undefined" && entry instanceof ImageData) return entry.data.byteLength + 64;
+            if (entry.type === "full") {
+                return historyEntryBytes(entry.image) + historyEntryBytes(entry.mask) + 128;
+            }
+            return 1024;
+        }
+
+        function historyMemoryBytes() {
+            return [...undoStack, ...redoStack].reduce((total, entry) => total + historyEntryBytes(entry), 0);
+        }
+
+        function trimHistory(preferredStack) {
+            const otherStack = preferredStack === undoStack ? redoStack : undoStack;
+            while (
+                undoStack.length + redoStack.length > SKETCH_HISTORY_LIMIT
+                || historyMemoryBytes() > SKETCH_HISTORY_MEMORY_BUDGET
+            ) {
+                if (otherStack.length) {
+                    otherStack.shift();
+                } else if (preferredStack.length > 1) {
+                    preferredStack.shift();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function appendHistoryEntry(stack, entry) {
+            if (!entry) return false;
+            stack.push(entry);
+            trimHistory(stack);
+            return stack.includes(entry);
         }
 
         function pushUndoState(clearRedo = true, force = false) {
             if (!hasImage || !width || !height) return;
             const current = captureMaskState();
             if (!current) return;
-            if (!force && currentHistoryState && typeof current === "string" && current === currentHistoryState) return;
             if (typeof current === "string" && undoStack.length && undoStack[undoStack.length - 1] === current) return;
             pushUndoEntry(current, clearRedo);
         }
@@ -1220,14 +1329,10 @@
         function pushUndoEntry(entry, clearRedo = true) {
             if (!entry) return;
             try {
-                undoStack.push(entry);
-                currentHistoryState = typeof entry === "string" ? entry : null;
-                if (undoStack.length > 20) {
-                    undoStack.shift();
-                }
                 if (clearRedo) {
                     redoStack.length = 0;
                 }
+                appendHistoryEntry(undoStack, entry);
                 refreshToolbarState();
             } catch {
             }
@@ -1243,7 +1348,7 @@
                 return {
                     type: "full",
                     image: sourceImageDataUrl || bgCanvas.toDataURL("image/png"),
-                    mask: maskCanvas.toDataURL("image/png"),
+                    mask: captureMaskState(),
                     width,
                     height
                 };
@@ -1257,7 +1362,6 @@
             const nextWidth = Math.max(1, Number(state.width) || width);
             const nextHeight = Math.max(1, Number(state.height) || height);
             const image = state.image ? await loadImage(state.image) : null;
-            const mask = state.mask ? await loadImage(state.mask) : null;
             hasImage = true;
             resize(nextWidth, nextHeight);
             bgCtx.clearRect(0, 0, width, height);
@@ -1270,11 +1374,10 @@
                 sourceImageDataUrl = "";
                 proxyImage.removeAttribute("src");
             }
-            if (mask) {
-                maskCtx.drawImage(mask, 0, 0, width, height);
+            if (state.mask) {
+                await drawCapturedMaskState(state.mask);
             }
             cropRect = defaultCropRect();
-            currentHistoryState = currentMaskDataUrl();
             lastPayload = null;
             valueDirty = false;
             empty.style.display = "none";
@@ -1290,7 +1393,7 @@
             if (isFullHistoryState(previous)) {
                 const current = captureEditorState();
                 if (current) {
-                    redoStack.push(current);
+                    appendHistoryEntry(redoStack, current);
                 }
                 const restored = await restoreEditorState(previous);
                 refreshToolbarState();
@@ -1298,7 +1401,7 @@
             }
             const current = captureMaskState();
             if (current) {
-                redoStack.push(current);
+                appendHistoryEntry(redoStack, current);
             }
             const restored = await restoreMaskState(previous);
             refreshToolbarState();
@@ -1615,7 +1718,10 @@
             maskCtx.drawImage(nextMask, 0, 0);
             sourceImageDataUrl = bgCanvas.toDataURL("image/png");
             proxyImage.src = sourceImageDataUrl;
-            currentHistoryState = currentMaskDataUrl();
+            nextBackground.width = 1;
+            nextBackground.height = 1;
+            nextMask.width = 1;
+            nextMask.height = 1;
             lastPayload = null;
             valueDirty = true;
             try {
@@ -2053,7 +2159,7 @@
         }
 
         async function ensureCachedPayload(payload, options = {}) {
-            if (!payload) return false;
+            if (!payload || destroyed) return false;
             const existingText = options.refresh === true ? "" : cachedReferenceText(payload);
             if (existingText) {
                 writeInputPayload(existingText, payload, options.write ? options : { change: false });
@@ -2066,6 +2172,7 @@
             payloadCacheTaskKey = key;
             payloadCacheTask = postSketchCachePayload(payload)
                 .then((result) => {
+                    if (destroyed) return false;
                     const reference = rememberCachedReference(payload, result);
                     if (!reference) return false;
                     if (sameSketchPayload(lastPayload, payload)) {
@@ -2087,6 +2194,7 @@
         }
 
         function serialize(options = {}) {
+            if (destroyed) return;
             if (serializeTimer) {
                 clearTimeout(serializeTimer);
                 serializeTimer = null;
@@ -2145,7 +2253,6 @@
             sourceImageDataUrl = "";
             undoStack.length = 0;
             redoStack.length = 0;
-            currentHistoryState = null;
             lastPayload = null;
             payloadCacheSnapshot = null;
             bgCtx.clearRect(0, 0, width, height);
@@ -2218,7 +2325,6 @@
             }
             undoStack.length = 0;
             redoStack.length = 0;
-            currentHistoryState = currentMaskDataUrl();
             payloadCacheSnapshot = null;
             lastPayload = {
                 image: payload.image || sourceImageDataUrl,
@@ -2249,7 +2355,6 @@
                 sourceImageDataUrl = dataUrl;
                 undoStack.length = 0;
                 redoStack.length = 0;
-                currentHistoryState = currentMaskDataUrl();
                 payloadCacheSnapshot = null;
                 empty.style.display = "none";
                 updateStageDisplay();
@@ -2698,7 +2803,7 @@
         maskDisabledObserver.observe(root, { attributes: true, attributeFilter: ["data-simpai-mask-disabled"] });
 
         const syncExternalInput = () => {
-            if (internalWrite || !input.isConnected) return false;
+            if (destroyed || internalWrite || !input.isConnected) return false;
             const nextValue = input.value || "";
             if (nextValue === lastExternalValue) return false;
             lastExternalValue = nextValue;
@@ -2707,13 +2812,12 @@
         };
         const observer = new MutationObserver(syncExternalInput);
         observer.observe(input, { attributes: true, attributeFilter: ["value"] });
-        input.addEventListener("input", syncExternalInput);
-        input.addEventListener("change", syncExternalInput);
+        addLifecycleListener(input, "input", syncExternalInput);
+        addLifecycleListener(input, "change", syncExternalInput);
         setPayload(input.value);
 
         if (typeof ResizeObserver !== "undefined") {
-            let resizeFrame = null;
-            const resizeObserver = new ResizeObserver(() => {
+            resizeObserver = new ResizeObserver(() => {
                 if (fullscreenMode || panFloatingMode) return;
                 if (resizeFrame) return;
                 resizeFrame = requestAnimationFrame(() => {
@@ -2723,22 +2827,22 @@
             });
             resizeObserver.observe(editor);
         } else {
-            window.addEventListener("resize", updateStageDisplay);
+            addLifecycleListener(window, "resize", updateStageDisplay);
         }
-        window.addEventListener("resize", fitFullscreenStage);
-        document.addEventListener("mousemove", (event) => {
+        addLifecycleListener(window, "resize", fitFullscreenStage);
+        addLifecycleListener(document, "mousemove", (event) => {
             if (!panGestureMode && !panFloatingMode) return;
             panFullscreen(event.movementX || 0, event.movementY || 0);
         }, true);
-        document.addEventListener("pointerdown", (event) => {
+        addLifecycleListener(document, "pointerdown", (event) => {
             if (eventTargetInsideEditor(event)) return;
             if (panFloatingMode || panGestureMode) releaseTransientState();
         }, true);
-        window.addEventListener("blur", () => releaseTransientState());
-        document.addEventListener("visibilitychange", () => {
+        addLifecycleListener(window, "blur", () => releaseTransientState());
+        addLifecycleListener(document, "visibilitychange", () => {
             if (document.hidden) releaseTransientState();
         });
-        document.addEventListener("keydown", (event) => {
+        const handleDocumentKeyDown = (event) => {
             if (document.querySelector?.(".sai-h3sb-modal")) return;
             const historyAction = sketchHistoryHotkey(event);
             if (eventTargetInsideEditor(event)) {
@@ -2803,8 +2907,9 @@
                     enterPanFloating();
                 }
             }
-        }, true);
-        document.addEventListener("keyup", (event) => {
+        };
+        addLifecycleListener(document, "keydown", handleDocumentKeyDown, true);
+        const handleDocumentKeyUp = (event) => {
             if (event.code === "KeyF") {
                 if (!isSketchHotkeyActive(event) && !panFloatingMode && !panGestureMode) return;
                 event.preventDefault();
@@ -2819,7 +2924,54 @@
                     }
                 }
             }
-        }, true);
+        };
+        addLifecycleListener(document, "keyup", handleDocumentKeyUp, true);
+
+        function destroy() {
+            if (destroyed) return false;
+            destroyed = true;
+            payloadSequence += 1;
+            releaseTransientState();
+            maskDisabledObserver.disconnect();
+            observer.disconnect();
+            resizeObserver?.disconnect();
+            if (resizeFrame) {
+                cancelAnimationFrame(resizeFrame);
+                resizeFrame = null;
+            }
+            for (const listener of lifecycleListeners.splice(0)) {
+                try {
+                    listener.target.removeEventListener(listener.type, listener.listener, listener.options);
+                } catch (error) {}
+            }
+            if (serializeTimer) {
+                clearTimeout(serializeTimer);
+                serializeTimer = null;
+            }
+            undoStack.length = 0;
+            redoStack.length = 0;
+            sourceImageDataUrl = "";
+            lastPayload = null;
+            payloadCacheSnapshot = null;
+            payloadCacheTask = null;
+            payloadCacheTaskKey = "";
+            lastExternalValue = "";
+            hasImage = false;
+            proxyImage.removeAttribute("src");
+            bgCanvas.width = 1;
+            bgCanvas.height = 1;
+            maskCanvas.width = 1;
+            maskCanvas.height = 1;
+            try { delete root.__simpaiSketch; } catch (error) { root.__simpaiSketch = null; }
+            try { delete editor.__simpaiSketch; } catch (error) { editor.__simpaiSketch = null; }
+            try { delete root.dataset.simpaiSketchReady; } catch (error) {}
+            try { delete root.dataset.simpaiSketch; } catch (error) {}
+            const namespace = ensureSimpAISketchNamespace();
+            namespace.instances?.delete(api);
+            if (namespace.active === api) clearActiveSketch(api);
+            editor.remove();
+            return true;
+        }
 
         const api = {
             root,
@@ -2829,7 +2981,7 @@
             imageCanvas: bgCanvas,
             maskCanvas,
             getValue() {
-                if (!hasImage) return null;
+                if (destroyed || !hasImage) return null;
                 if (valueDirty || !lastPayload) {
                     flush({ force: true });
                 }
@@ -2860,7 +3012,6 @@
                 }
                 const maskImg = await loadImage(mask);
                 drawMaskImage(maskImg);
-                currentHistoryState = currentMaskDataUrl();
                 serialize({ change: !!options.change });
                 refreshToolbarState();
                 return true;
@@ -2909,6 +3060,8 @@
             openFile,
             serialize,
             flush,
+            destroy,
+            isDestroyed: () => destroyed,
             isDirty: () => valueDirty
         };
         root.__simpaiSketch = api;
@@ -2931,6 +3084,7 @@
         window.SimpAISketch.setMaskEnabled = (target, enabled, options) => window.SimpAISketch.get(target)?.setMaskEnabled(enabled, options);
         window.SimpAISketch.setMaskDisabled = (target, disabled, options) => window.SimpAISketch.get(target)?.setMaskDisabled(disabled, options);
         window.SimpAISketch.clearImage = (target, options) => window.SimpAISketch.get(target)?.clearImage(options);
+        window.SimpAISketch.destroy = (target) => window.SimpAISketch.get(target)?.destroy();
         window.SimpAISketch.undo = (target) => window.SimpAISketch.get(target)?.undo();
         window.SimpAISketch.redo = (target) => window.SimpAISketch.get(target)?.redo();
         window.SimpAISketch.adjustBrushSize = (target, deltaY, percentage) => window.SimpAISketch.get(target)?.adjustBrushSize(deltaY, percentage);
@@ -2955,8 +3109,8 @@
             const pending = [];
             let instanceCount = 0;
             for (const sketch of Array.from(window.SimpAISketch.instances || [])) {
-                if (!sketch?.editor?.isConnected) {
-                    window.SimpAISketch.instances.delete(sketch);
+                if (!sketch?.root?.isConnected || !sketch?.editor?.isConnected) {
+                    sketch.destroy?.();
                     continue;
                 }
                 instanceCount += 1;
@@ -3034,11 +3188,14 @@
     }
 
     function handleRootMutations(mutations) {
+        let removed = false;
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes || []) {
                 scanNode(node);
             }
+            if (mutation.removedNodes?.length) removed = true;
         }
+        if (removed) releaseDetachedSketches();
     }
 
     function boot() {

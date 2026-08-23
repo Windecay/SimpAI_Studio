@@ -7,7 +7,12 @@
 
     function assetDisplaySrc(asset) {
         if (!asset) return '';
-        if (asset.kind === 'browser_upload' && asset.data_url) return asset.data_url;
+        if (asset.kind === 'browser_upload') {
+            const mime = String(asset.mime || '').toLowerCase();
+            const isImageUpload = mime.startsWith('image/') || (!mime && /^data:image\//i.test(String(asset.data_url || '')));
+            if (isImageUpload) return asset.thumb || asset.preview_url || asset.data_url || '';
+            if (asset.data_url) return asset.data_url;
+        }
         const hasProjectRelativePath = !!assetRelativePath(asset);
         const relativeUrl = projectRelativeFileUrl(asset);
         if (hasProjectRelativePath && !relativeUrl) return asset.preview_url || pathToFileUrl(asset.path || asset.output_path || asset.original_output_path) || asset.data_url || asset.thumb || '';
