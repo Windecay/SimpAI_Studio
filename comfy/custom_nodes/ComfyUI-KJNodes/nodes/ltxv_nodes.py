@@ -1919,12 +1919,22 @@ def _sageattn_int8_fp8_nhd(qkv, dtype):
         k.sub_(k.mean(dim=1, keepdim=True))
         q_int8, q_scale, k_int8, k_scale = _per_thread_int8_i64(q, k, tensor_layout=tensor_layout, BLKQ=64, WARPQ=16, BLKK=128, WARPK=128)
         del q, k
+        # sageattention sm90 kernel requires kv_len padded to CTA_K=128, but
+        # per_channel_fp8 only pads to 64 (upstream TODO in sageattention/quant.py).
+        # sageattention.core.sageattn_qk_int8_pv_fp8_cuda_sm90 handles this at the
+        # top-level API; mirror that pad here so kv_len%128 != 0 (e.g. MiniMax H3
+        # with long text prompts) does not trigger a C++ assertion abort.
+        seq_dim = 1  # NHD layout
+        kv_len = v.size(seq_dim)
+        v_pad_len = 128 - (kv_len % 128) if kv_len % 128 != 0 else 0
+        if v_pad_len > 0:
+            v = torch.cat([v, torch.zeros(v.size(0), v_pad_len, v.size(2), v.size(3), dtype=v.dtype, device=v.device)], dim=seq_dim)
         v_fp8, v_scale, _ = per_channel_fp8(v, tensor_layout=tensor_layout, smooth_v=False)
         del v
         o = torch.empty(q_int8.size(), dtype=dtype, device=q_int8.device)
         _qattn_sm90.qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf(q_int8, k_int8, v_fp8, o, q_scale, k_scale, v_scale, _tensor_layout, _is_caual, _qk_quant_gran, sm_scale, _return_lse)
         del v_fp8, v_scale
-    elif _cuda_archs[0] == "sm120":
+    elif _cuda_archs[0] in {"sm120", "sm121"}:
         if not sageplus_sm89_available:
             pv_accum_dtype = "fp32"
         else:
@@ -2067,27 +2077,45 @@ def wan_i2v_cross_sageattn_forward(self, x, context, context_img_len, transforme
 
 
 def minimax_sageattn_forward(self, x, rope_freqs=None, transformer_options={}):
-    # x: [S, hidden], unbatched packed sequence; q/k/v are NHD views into the fused qkv buffer
+    # x: [S, hidden], unbatched packed sequence; q/k/v are NHD views into the fused qkv buffer.
+    # A single-item list (MiniMaxLowVRAMAttention's block patch) hands over the sole reference
+    # to the block's normed h so it can be freed right after the qkv GEMM.
+    if isinstance(x, list):
+        x = x.pop()
     dtype = x.dtype
+    device = x.device
     s = x.shape[0]
     q, k, v = self.qkv_proj(x).split(self.heads * self.head_dim, dim=-1)
+    del x
     q = q.view(1, s, self.heads, self.head_dim)
     k = k.view(1, s, self.heads, self.head_dim)
     v = v.view(1, s, self.heads, self.head_dim)
     if rope_freqs is not None:
         # same fused per-head RMSNorm + partial split-half rope the stock forward uses, in place on the qkv buffer
-        qw = mm.cast_to(self.q_norm.weight, device=x.device)
-        kw = mm.cast_to(self.k_norm.weight, device=x.device)
+        qw = mm.cast_to(self.q_norm.weight, device=device)
+        kw = mm.cast_to(self.k_norm.weight, device=device)
         _ck.rms_rope_split_half_(q, k, rope_freqs, qw, kw, epsilon=self.q_norm.eps, rot_dim=rope_freqs.shape[-3] * 2)
     else:
         q = self.q_norm(q)
         k = self.k_norm(k)
 
-    qkv = [q, k, v]
-    del q, k, v
-    o = _sageattn_int8_fp8_nhd(qkv, dtype)
+    n = min(transformer_options.get("minimax_head_chunks", 1), self.heads) if isinstance(transformer_options, dict) else 1
+    if n <= 1:
+        qkv = [q, k, v]
+        del q, k, v
+        o = _sageattn_int8_fp8_nhd(qkv, dtype)
+        return self.out_proj(o.view(s, self.heads * self.head_dim))
 
-    return self.out_proj(o.view(s, self.heads * self.head_dim))
+    # head-group slicing from MiniMaxLowVRAMAttention: quantize and attend per group so the int8/fp8 working set shrinks by the group count
+    out = torch.empty((s, self.heads * self.head_dim), dtype=dtype, device=device)
+    out_nhd = out.view(1, s, self.heads, self.head_dim)
+    hs = 0
+    for i in range(n):
+        he = hs + self.heads // n + (1 if i < self.heads % n else 0)
+        out_nhd[:, :, hs:he] = _sageattn_int8_fp8_nhd([q[:, :, hs:he], k[:, :, hs:he], v[:, :, hs:he]], dtype)
+        hs = he
+    del q, k, v  # last references to the fused qkv buffer -> freed before out_proj
+    return self.out_proj(out)
 
 
 class WanVideoMemoryEfficientSageAttentionPatch(io.ComfyNode):
