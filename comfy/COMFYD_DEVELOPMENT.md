@@ -9,3 +9,15 @@
 - 同步 comfy-aimdo 的 NVML pressure 配置及 DETAIL 日志级别。
 - 将 RAM inactive cache 自动上限从 96GB 更新为 128GB。
 - 注册上游新增的 `datasets` 路径，同时保留 Comfyd 的可重置模型路径和私有模型目录。
+
+## 2026-08-22
+
+- 合并上游 `origin/master` 的最新 21 个提交至当前分支。
+- 同步 `main_comfyd.py` 的 Windows 多 GPU 可见性控制、`--cuda-device all` 和默认设备处理。
+- 将私有 `comfy_version.py` 更新为上游 commit `783545f6`。
+
+## 2026-08-23
+
+- 合并上游最新 2 个提交至当前分支。
+- 同步视频创建节点的颜色空间、位深选项和 Minimax-H3 特殊 token 支持。
+- 将私有 `comfy_version.py` 更新为上游 commit `9db05e0e`。

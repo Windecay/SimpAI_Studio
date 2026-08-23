@@ -490,7 +490,7 @@ assert cuda or xpu or mps
         run_pip(f"install {packaging_package}", "packaging")
 
     update_pkgs = [
-        ("comfy-kitchen", "0.2.30", None),
+        ("comfy-kitchen", "0.2.31", None),
     ]
     for update_pkg_name, update_pkg_version, update_pkg_specifier in update_pkgs:
         if not _package_requirement_met(update_pkg_name, update_pkg_version, update_pkg_specifier):
