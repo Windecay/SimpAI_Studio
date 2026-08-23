@@ -4088,7 +4088,7 @@ function sceneDirectorThemeValue(value, theme, fallback) {
 
 function sceneDirectorCapabilityCandidate(value, theme) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    const knownKeys = ["image_policy", "audio_policy", "video_policy", "max_images", "min_images", "image_modes", "video_modes", "chain_output", "requires_sequential", "mixed_segments", "director_supported", "segment_duration_param", "duration_strategy", "audio_output", "min_segment_duration", "max_segment_duration"];
+    const knownKeys = ["image_policy", "audio_policy", "video_policy", "max_images", "max_audios", "max_videos", "min_images", "image_modes", "video_modes", "chain_output", "requires_sequential", "mixed_segments", "director_supported", "segment_duration_param", "duration_strategy", "audio_output", "min_segment_duration", "max_segment_duration"];
     if (knownKeys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return value;
     if (theme && value[theme] && typeof value[theme] === "object") return value[theme];
     if (value.default && typeof value.default === "object") return value.default;
@@ -4151,7 +4151,7 @@ function sceneDirectorInferImagePolicy(systemParams) {
 function sceneDirectorVisibleImageSlotCount(systemParams) {
     const sceneFrontend = sceneDirectorSceneFrontend(systemParams);
     const hidden = new Set(Array.isArray(sceneFrontend.disvisible) ? sceneFrontend.disvisible.map(String) : []);
-    return ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4"]
+    return ["scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"]
         .filter((slot) => !hidden.has(slot)).length;
 }
 
@@ -4191,7 +4191,9 @@ function sceneDirectorCapabilityFromSystemParams(systemParams) {
     const audioPolicy = sceneDirectorPolicyValue(explicit.audio_policy, SCENE_DIRECTOR_MEDIA_POLICIES, "optional");
     const videoPolicy = sceneDirectorPolicyValue(explicit.video_policy, SCENE_DIRECTOR_MEDIA_POLICIES, "optional");
     const defaultMax = imagePolicy === "forbidden" ? 0 : Math.max(1, sceneDirectorVisibleImageSlotCount(systemParams) || 5);
-    const maxImages = imagePolicy === "forbidden" ? 0 : sceneDirectorIntValue(explicit.max_images, defaultMax, 0, 5);
+    const maxImages = imagePolicy === "forbidden" ? 0 : sceneDirectorIntValue(explicit.max_images, defaultMax, 0, 9);
+    const maxAudios = audioPolicy === "forbidden" ? 0 : sceneDirectorIntValue(explicit.max_audios, 1, 0, 3);
+    const maxVideos = videoPolicy === "forbidden" ? 0 : sceneDirectorIntValue(explicit.max_videos, 1, 0, 3);
     const minImages = sceneDirectorIntValue(explicit.min_images, imagePolicy === "required" ? 1 : 0, 0, Math.max(0, maxImages));
     const imageModes = Array.isArray(explicit.image_modes) && explicit.image_modes.length
         ? explicit.image_modes.map((item) => String(item))
@@ -4216,6 +4218,8 @@ function sceneDirectorCapabilityFromSystemParams(systemParams) {
         audio_policy: audioPolicy,
         video_policy: videoPolicy,
         max_images: maxImages,
+        max_audios: maxAudios,
+        max_videos: maxVideos,
         min_images: minImages,
         image_modes: imageModes,
         video_modes: videoModes,
@@ -4254,6 +4258,8 @@ function syncSceneDirectorPresetVisibility(systemParams, traceLabel) {
         root.dataset.simpaiSceneDirectorAudioPolicy = capability.audio_policy;
         root.dataset.simpaiSceneDirectorVideoPolicy = capability.video_policy;
         root.dataset.simpaiSceneDirectorMaxImages = String(capability.max_images);
+        root.dataset.simpaiSceneDirectorMaxAudios = String(capability.max_audios);
+        root.dataset.simpaiSceneDirectorMaxVideos = String(capability.max_videos);
         root.dataset.simpaiSceneDirectorMinImages = String(capability.min_images);
         root.dataset.simpaiSceneDirectorChainOutput = capability.chain_output || "timeline";
         root.dataset.simpaiSceneDirectorVideoModes = Array.isArray(capability.video_modes) ? capability.video_modes.join(",") : "explicit";
@@ -4276,6 +4282,8 @@ function syncSceneDirectorPresetVisibility(systemParams, traceLabel) {
             accordion.setAttribute("aria-hidden", isVideoPreset ? "false" : "true");
             accordion.dataset.simpaiSceneDirectorImagePolicy = capability.image_policy;
             accordion.dataset.simpaiSceneDirectorMaxImages = String(capability.max_images);
+            accordion.dataset.simpaiSceneDirectorMaxAudios = String(capability.max_audios);
+            accordion.dataset.simpaiSceneDirectorMaxVideos = String(capability.max_videos);
             accordion.dataset.simpaiSceneDirectorMinImages = String(capability.min_images);
             accordion.dataset.simpaiSceneDirectorSegmentDurationParam = capability.segment_duration_param || "scene_video_duration";
             accordion.dataset.simpaiSceneDirectorDurationStrategy = capability.duration_strategy || "shot";

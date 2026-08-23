@@ -12543,6 +12543,10 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     overflow: hidden !important;
 }
 
+#scene_director_editor .scene-director-shot-grid:where(.has-multi-media-refs) {
+    grid-template-columns: minmax(60px, 0.42fr) minmax(60px, 0.42fr) minmax(170px, 1.05fr) minmax(300px, 1.65fr) minmax(150px, 0.9fr) minmax(150px, 0.9fr) !important;
+}
+
 #scene_director_editor .scene-director-shot-grid > label:nth-child(1) {
     grid-area: start !important;
 }
@@ -12592,6 +12596,110 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
     resize: vertical !important;
     min-height: 36px !important;
     line-height: 1.35 !important;
+}
+
+#scene_director_editor .scene-director-media-refs-field input[type="hidden"] {
+    display: none !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-picker {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 4px !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary) 76%, transparent) !important;
+    border-radius: 6px !important;
+    background: var(--input-background-fill) !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice {
+    position: relative !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 2px !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary) 64%, transparent) !important;
+    border-radius: 5px !important;
+    background: color-mix(in srgb, var(--body-background-fill) 72%, transparent) !important;
+    color: var(--body-text-color-subdued) !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice.is-active {
+    border-color: var(--button-primary-background-fill) !important;
+    background: color-mix(in srgb, var(--button-primary-background-fill) 20%, var(--input-background-fill)) !important;
+    color: var(--body-text-color) !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice:disabled,
+#scene_director_editor .scene-director-compact-ref-choice[aria-disabled="true"] {
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice.is-active:disabled,
+#scene_director_editor .scene-director-compact-ref-choice.is-active[aria-disabled="true"] {
+    opacity: 1 !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice.is-limit-disabled:not(.is-active) {
+    border-style: dashed !important;
+    filter: grayscale(0.7) !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    border-radius: 4px !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice > span,
+#scene_director_editor .scene-director-compact-ref-choice > i {
+    font-size: 12px !important;
+    font-style: normal !important;
+    font-weight: 750 !important;
+}
+
+#scene_director_editor .scene-director-compact-ref-choice small {
+    position: absolute !important;
+    left: 2px !important;
+    right: 2px !important;
+    bottom: 1px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 8px !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    pointer-events: none !important;
+}
+
+#scene_director_editor .scene-director-media-ref-order {
+    position: absolute !important;
+    top: 2px !important;
+    right: 2px !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 15px !important;
+    height: 15px !important;
+    border-radius: 4px !important;
+    background: var(--button-primary-background-fill) !important;
+    color: var(--button-primary-text-color, #ffffff) !important;
+    font-size: 9px !important;
+    font-style: normal !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    pointer-events: none !important;
 }
 
 #scene_director_editor .scene-director-inherit-tail {

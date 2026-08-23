@@ -33,6 +33,8 @@ PROMPT_ACTION_CAPABILITY_KEYS = (
     "image_policy",
     "min_images",
     "max_images",
+    "max_audios",
+    "max_videos",
     "image_modes",
     "video_policy",
     "video_modes",
@@ -225,6 +227,10 @@ def _prompt_action_reconcile_h3_reference_capability(state, capability, declared
         return resolved
 
     declared = declared_capability if isinstance(declared_capability, dict) else {}
+    for key in PROMPT_ACTION_CAPABILITY_KEYS:
+        if key in declared:
+            resolved[key] = copy.deepcopy(declared.get(key))
+
     declared_policy = str(declared.get("image_policy") or "").strip().lower()
     if declared_policy in {"optional", "required"}:
         resolved["image_policy"] = declared_policy
@@ -252,6 +258,28 @@ def _prompt_action_reconcile_h3_reference_capability(state, capability, declared
     if "reference_set" not in {str(item or "").strip().lower() for item in modes}:
         modes.append("reference_set")
     resolved["image_modes"] = modes
+
+    for kind in ("audio", "video"):
+        policy_key = f"{kind}_policy"
+        max_key = f"max_{kind}s"
+        policy = str(resolved.get(policy_key) or "optional").strip().lower()
+        if policy not in {"optional", "required", "forbidden"}:
+            policy = "optional"
+        resolved[policy_key] = policy
+        if policy == "forbidden":
+            resolved[max_key] = 0
+            continue
+        if max_key in declared:
+            raw_max = declared.get(max_key)
+        elif policy_key in declared:
+            raw_max = 1
+        else:
+            raw_max = resolved.get(max_key, 1)
+        try:
+            max_refs = int(raw_max)
+        except Exception:
+            max_refs = 1
+        resolved[max_key] = max(0, min(3, max_refs))
     return resolved
 
 
@@ -548,12 +576,20 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         start = _prompt_action_duration(director_segment.get("start")) or 0.0
         end = _prompt_action_duration(director_segment.get("end"))
         segment_duration = round(max(0.0, (end if end is not None else start) - start), 3)
-        audio_ref = _prompt_action_media_ref(director_segment.get("audio"))
-        video_ref = _prompt_action_media_ref(director_segment.get("video"))
+        audio_refs = _prompt_action_media_refs(director_segment.get("audio"))
+        video_refs = _prompt_action_media_refs(director_segment.get("video"))
         if str(capability.get("audio_policy") or "").lower() == "forbidden":
-            audio_ref = ""
+            audio_refs = []
         if str(capability.get("video_policy") or "").lower() == "forbidden":
-            video_ref = ""
+            video_refs = []
+        try:
+            audio_refs = audio_refs[:max(0, min(3, int(capability.get("max_audios", 1))))]
+        except Exception:
+            audio_refs = audio_refs[:1]
+        try:
+            video_refs = video_refs[:max(0, min(3, int(capability.get("max_videos", 1))))]
+        except Exception:
+            video_refs = video_refs[:1]
         director_context = {
             "enabled": True,
             "segment_index": director_index,
@@ -563,8 +599,10 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
             "duration_seconds": segment_duration,
             "prompt": str(director_segment.get("prompt") or "").strip(),
             "image_refs": director_image_refs,
-            "audio_ref": audio_ref,
-            "video_ref": video_ref,
+            "audio_refs": audio_refs,
+            "video_refs": video_refs,
+            "audio_ref": audio_refs[0] if audio_refs else "",
+            "video_ref": video_refs[0] if video_refs else "",
         }
 
     entries, unresolved_image_slots = _prompt_action_normalize_image_entries(entries)
@@ -648,26 +686,45 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         item["slot"]: item
         for item in video_descriptors
     }
+    director_video_paths = []
     if director_segment is not None:
-        video_ref = director_context.get("video_ref") or ""
-        if video_ref == "previous_segment":
-            for key in ("previous_segment_path", "previous_video", "last_result_video"):
-                video_path = _prompt_action_existing_path(director_runtime.get(key))
-                if video_path:
-                    break
-            video_source = "director_previous_segment" if video_path else "director_previous_segment_pending"
-        elif video_ref:
-            video_path = _prompt_action_existing_path(_prompt_action_director_media_value(director_runtime, video_ref))
-            if not video_path and video_ref == "video_1":
-                video_path = original_video if video_component else ""
-            video_source = "director_explicit_video" if video_path else "director_video_unavailable"
+        fallback_video_paths = {
+            "video_1": original_video if video_component else "",
+            "video_2": reference_video_path,
+            "video_3": reference_video2_path,
+        }
+        for video_ref in director_context.get("video_refs") or []:
+            if video_ref == "previous_segment":
+                resolved_path = ""
+                for key in ("previous_segment_path", "previous_video", "last_result_video"):
+                    resolved_path = _prompt_action_existing_path(director_runtime.get(key))
+                    if resolved_path:
+                        break
+                source = "director_previous_segment" if resolved_path else "director_previous_segment_pending"
+            else:
+                resolved_path = _prompt_action_existing_path(_prompt_action_director_media_value(director_runtime, video_ref))
+                if not resolved_path:
+                    resolved_path = fallback_video_paths.get(video_ref, "")
+                source = "director_explicit_video" if resolved_path else "director_video_unavailable"
+            if resolved_path:
+                director_video_paths.append((video_ref, resolved_path, source))
+        if director_video_paths:
+            video_path = director_video_paths[0][1]
+            video_source = director_video_paths[0][2]
+            video_reference_index = 1
+            video_descriptors = [
+                {
+                    "slot": f"director_segment_video_{item_index}",
+                    "index": item_index,
+                    "role": "director segment video reference",
+                    "source_ref": video_ref,
+                }
+                for item_index, (video_ref, _path, _source) in enumerate(director_video_paths, start=1)
+            ]
+        elif director_context.get("video_refs"):
+            first_video_ref = director_context["video_refs"][0]
+            video_source = "director_previous_segment_pending" if first_video_ref == "previous_segment" else "director_video_unavailable"
         first_frame = ""
-        video_reference_index = 1 if video_path else 0
-        video_descriptors = ([{
-            "slot": "director_segment_video",
-            "index": 1,
-            "role": "director segment video reference",
-        }] if video_path else [])
     elif scene_mode:
         preferred_video_slot = str(opts.get("preferred_video_slot") or "").strip()
         if preferred_video_slot not in descriptor_by_slot:
@@ -750,9 +807,16 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         if (not scene_mode or slot not in hidden) and bool(resources.get(slot))
     ]
     audio_present = audio_allowed and bool(audio_slots)
-    if audio_allowed and director_context.get("audio_ref"):
-        audio_present = bool(_prompt_action_director_media_value(director_runtime, director_context["audio_ref"]))
-    reference_video_present = bool(reference_video_path or reference_video2_path)
+    audio_count = len(audio_slots)
+    if audio_allowed and director_context.get("audio_refs"):
+        available_audio_refs = [
+            ref
+            for ref in director_context["audio_refs"]
+            if _prompt_action_director_media_value(director_runtime, ref)
+        ]
+        audio_present = bool(available_audio_refs)
+        audio_count = len(available_audio_refs)
+    reference_video_present = bool(reference_video_path or reference_video2_path or director_video_paths)
 
     requested_motion_picture_index = 0
     try:
@@ -797,7 +861,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "motion_video_slot": selected_video_descriptor.get("slot") if selected_video_descriptor else "",
         "target_duration_seconds": target_duration,
         "audio_present": audio_present,
-        "audio_count": len(audio_slots),
+        "audio_count": audio_count,
         "audio_content_available": False,
         "reference_video_present": reference_video_present,
         "additional_prompts": additional_prompts,
@@ -1241,6 +1305,8 @@ def prompt_action_resource_contract_note(media_meta):
         "image_policy",
         "min_images",
         "max_images",
+        "max_audios",
+        "max_videos",
         "image_modes",
         "video_policy",
         "video_modes",
@@ -1280,6 +1346,8 @@ def prompt_action_resource_contract_note(media_meta):
             f"- director_current_segment: {int(director.get('segment_index') or 0) + 1}",
             f"- director_segment_id: {director.get('segment_id') or ''}",
             f"- director_segment_time: {director.get('start_seconds')} to {director.get('end_seconds')} seconds",
+            f"- director_audio_refs_in_order: {', '.join(director.get('audio_refs') or []) or 'none'}",
+            f"- director_video_refs_in_order: {', '.join(director.get('video_refs') or []) or 'none'}",
             f"- director_video_ref: {director.get('video_ref') or 'none'}",
         ])
         if str(meta.get("video_source") or "") == "director_previous_segment_pending":

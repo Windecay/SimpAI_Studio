@@ -50,6 +50,8 @@ const SCENE_DIRECTOR_TEXT = {
     "Clear": "清除",
     "Audio": "音频",
     "Video": "视频",
+    "Audio refs": "音频引用",
+    "Video refs": "视频引用",
     "Upload below": "在下方上传",
     "Previous shot result": "上一段结果",
     "Previous shot last frame": "上一段尾帧",
@@ -78,6 +80,9 @@ const SCENE_DIRECTOR_TEXT = {
     "Last frame": "尾帧",
     "Reference {index}": "参考 {index}",
     "Not selectable: current preset accepts up to {count} image(s)": "不可选：当前 preset 最多支持 {count} 张图",
+    "Not selectable: current preset accepts up to {count} audio reference(s)": "不可选：当前 preset 最多支持 {count} 个音频引用",
+    "Not selectable: current preset accepts up to {count} video reference(s)": "不可选：当前 preset 最多支持 {count} 个视频引用",
+    "Reference order {index}": "引用顺序 {index}",
     "Current preset requires a first-frame image": "当前 preset 需要首帧图片",
     "Current preset does not use image refs": "当前 preset 不使用图片引用",
     "Current preset accepts up to {count} image(s)": "当前 preset 最多支持 {count} 张图",
@@ -205,6 +210,8 @@ function sceneDirectorSetComponentLabel(selector, en) {
 }
 
 const SCENE_DIRECTOR_MAX_IMAGE_REFS = 9;
+const SCENE_DIRECTOR_MAX_AUDIO_REFS = 3;
+const SCENE_DIRECTOR_MAX_VIDEO_REFS = 3;
 const SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS = 5;
 const SCENE_DIRECTOR_IMAGE_START_INDEX = 3;
 const SCENE_DIRECTOR_AUDIO_INDEX = SCENE_DIRECTOR_IMAGE_START_INDEX + SCENE_DIRECTOR_MAX_IMAGE_REFS;
@@ -233,10 +240,10 @@ const SCENE_DIRECTOR_DRAFT_CONTROL_SELECTORS = [
     "#scene_director_duration",
 ];
 const SCENE_DIRECTOR_CAPABILITY_KEYS = [
-    "image_policy", "audio_policy", "video_policy", "max_images", "min_images", "image_modes", "video_modes",
+    "image_policy", "audio_policy", "video_policy", "max_images", "max_audios", "max_videos", "min_images", "image_modes", "video_modes",
     "timeline_format", "target_format", "chain_output", "requires_sequential", "mixed_segments", "director_supported", "segment_duration_param", "min_segment_duration", "max_segment_duration",
     "duration_strategy", "audio_output",
-    "imagePolicy", "audioPolicy", "videoPolicy", "maxImages", "minImages", "imageModes", "videoModes", "chainOutput",
+    "imagePolicy", "audioPolicy", "videoPolicy", "maxImages", "maxAudios", "maxVideos", "minImages", "imageModes", "videoModes", "chainOutput",
     "directorSupported", "segmentDurationParam", "durationStrategy", "audioOutput", "minSegmentDuration", "maxSegmentDuration",
 ];
 const SCENE_DIRECTOR_PRESET_CAPABILITY_CACHE = new Map();
@@ -396,7 +403,9 @@ function sceneDirectorDatasetCapability(withDefaults = false) {
         imagePolicy: datasetValue("simpaiSceneDirectorImagePolicy", withDefaults ? "optional" : ""),
         audioPolicy: datasetValue("simpaiSceneDirectorAudioPolicy", withDefaults ? "optional" : ""),
         videoPolicy: datasetValue("simpaiSceneDirectorVideoPolicy", withDefaults ? "optional" : ""),
-        maxImages: datasetValue("simpaiSceneDirectorMaxImages", withDefaults ? "5" : ""),
+        maxImages: datasetValue("simpaiSceneDirectorMaxImages", withDefaults ? "9" : ""),
+        maxAudios: datasetValue("simpaiSceneDirectorMaxAudios", withDefaults ? "1" : ""),
+        maxVideos: datasetValue("simpaiSceneDirectorMaxVideos", withDefaults ? "1" : ""),
         minImages: datasetValue("simpaiSceneDirectorMinImages", ""),
         segmentDurationParam: datasetValue("simpaiSceneDirectorSegmentDurationParam", withDefaults ? "scene_video_duration" : ""),
         durationStrategy: datasetValue("simpaiSceneDirectorDurationStrategy", withDefaults ? "shot" : ""),
@@ -979,6 +988,8 @@ function sceneDirectorApplyCapabilityDataset(capability) {
             simpaiSceneDirectorAudioPolicy: normalized.audioPolicy,
             simpaiSceneDirectorVideoPolicy: normalized.videoPolicy,
             simpaiSceneDirectorMaxImages: String(normalized.maxImages),
+            simpaiSceneDirectorMaxAudios: String(normalized.maxAudios),
+            simpaiSceneDirectorMaxVideos: String(normalized.maxVideos),
             simpaiSceneDirectorMinImages: String(normalized.minImages),
             simpaiSceneDirectorChainOutput: normalized.chainOutput,
             simpaiSceneDirectorVideoModes: normalized.videoModes.join(","),
@@ -1059,6 +1070,8 @@ function sceneDirectorNormalizeCapability(raw) {
     const audioPolicy = String(read("audioPolicy", "audio_policy", "optional")).trim().toLowerCase();
     const videoPolicy = String(read("videoPolicy", "video_policy", "optional")).trim().toLowerCase();
     const maxImages = Number(read("maxImages", "max_images", SCENE_DIRECTOR_MAX_IMAGE_REFS));
+    const maxAudios = Number(read("maxAudios", "max_audios", 1));
+    const maxVideos = Number(read("maxVideos", "max_videos", 1));
     const minImages = Number(read("minImages", "min_images", policy === "required" ? 1 : 0));
     const minSegmentDuration = Number(read("minSegmentDuration", "min_segment_duration", 0.1));
     const maxSegmentDuration = Number(read("maxSegmentDuration", "max_segment_duration", 10));
@@ -1084,6 +1097,8 @@ function sceneDirectorNormalizeCapability(raw) {
         audioPolicy: ["required", "forbidden", "optional"].includes(audioPolicy) ? audioPolicy : "optional",
         videoPolicy: ["required", "forbidden", "optional"].includes(videoPolicy) ? videoPolicy : "optional",
         maxImages: Number.isFinite(maxImages) ? Math.max(0, Math.min(SCENE_DIRECTOR_MAX_IMAGE_REFS, Math.round(maxImages))) : SCENE_DIRECTOR_MAX_IMAGE_REFS,
+        maxAudios: audioPolicy === "forbidden" ? 0 : (Number.isFinite(maxAudios) ? Math.max(0, Math.min(SCENE_DIRECTOR_MAX_AUDIO_REFS, Math.round(maxAudios))) : 1),
+        maxVideos: videoPolicy === "forbidden" ? 0 : (Number.isFinite(maxVideos) ? Math.max(0, Math.min(SCENE_DIRECTOR_MAX_VIDEO_REFS, Math.round(maxVideos))) : 1),
         minImages: Number.isFinite(minImages) ? Math.max(0, Math.min(SCENE_DIRECTOR_MAX_IMAGE_REFS, Math.round(minImages))) : 0,
         imageModes,
         segmentDurationParam: /^[A-Za-z_][A-Za-z0-9_]*$/.test(segmentDurationParam) ? segmentDurationParam : "scene_video_duration",
@@ -1099,7 +1114,7 @@ function sceneDirectorNormalizeCapability(raw) {
 
 function sceneDirectorCapabilitySignature() {
     const capability = sceneDirectorCapability();
-    return `${capability.imagePolicy}:${capability.minImages}:${capability.maxImages}:${capability.imageModes.join(",")}:${capability.audioPolicy}:${capability.videoPolicy}:${capability.videoModes.join(",")}:${capability.chainOutput}:${capability.segmentDurationParam}:${capability.durationStrategy}:${capability.audioOutput}:${capability.directorSupported}:${capability.minSegmentDuration}:${capability.maxSegmentDuration}`;
+    return `${capability.imagePolicy}:${capability.minImages}:${capability.maxImages}:${capability.imageModes.join(",")}:${capability.audioPolicy}:${capability.maxAudios}:${capability.videoPolicy}:${capability.maxVideos}:${capability.videoModes.join(",")}:${capability.chainOutput}:${capability.segmentDurationParam}:${capability.durationStrategy}:${capability.audioOutput}:${capability.directorSupported}:${capability.minSegmentDuration}:${capability.maxSegmentDuration}`;
 }
 
 function sceneDirectorEscapeHtml(value) {
@@ -1150,6 +1165,34 @@ function sceneDirectorWriteMediaState(media) {
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
     sceneDirectorScheduleDraftSave();
+}
+
+function sceneDirectorMediaRefsFromValue(value, kind) {
+    let items = value;
+    if (typeof items === "string") {
+        const text = items.trim();
+        if (!text) return [];
+        if (text.startsWith("[")) {
+            try { items = JSON.parse(text); } catch (e) { items = text.split(/[,;|\n]+/); }
+        } else {
+            items = text.split(/[,;|\n]+/);
+        }
+    }
+    if (!Array.isArray(items)) items = [items];
+    const allowed = new Set((kind === "audio" ? SCENE_DIRECTOR_AUDIO_OPTIONS : SCENE_DIRECTOR_VIDEO_OPTIONS).filter(Boolean));
+    if (kind === "video") allowed.add(SCENE_DIRECTOR_PREVIOUS_VIDEO_REF);
+    const refs = [];
+    items.forEach((item) => {
+        const ref = String(item && typeof item === "object" ? item.source_ref || item.source_node_id || "" : item || "").trim();
+        if (ref && allowed.has(ref) && !refs.includes(ref)) refs.push(ref);
+    });
+    return refs;
+}
+
+function sceneDirectorSerializeMediaRefs(refs) {
+    const values = Array.isArray(refs) ? refs.filter(Boolean) : [];
+    if (values.length <= 1) return values[0] || "";
+    return JSON.stringify(values);
 }
 
 function sceneDirectorCloneRows(rows) {
@@ -1211,17 +1254,16 @@ function sceneDirectorCloneRows(rows) {
             const imageRefs = Array.isArray(row.images)
                 ? row.images.map((item) => item && typeof item === "object" ? item.source_ref || "" : "").filter(Boolean)
                 : [];
-            const videoRefs = Array.isArray(row.video || row.videos)
-                ? (row.video || row.videos).map((item) => item && typeof item === "object" ? item.source_ref || "" : "").filter(Boolean)
-                : [];
+            const audioRefs = sceneDirectorMediaRefsFromValue(row.audio_refs ?? row.audios ?? row.audio ?? row.audio_ref, "audio");
+            const videoRefs = sceneDirectorMediaRefsFromValue(row.video_refs ?? row.videos ?? row.video ?? row.video_ref, "video");
             const imageValue = (n) => imageRefs[n - 1] || row[`image_ref_${n}`] || row[`image${n}`] || "";
             return [
                 row.start ?? (index * 5),
                 row.end ?? ((index + 1) * 5),
                 row.prompt ?? "",
                 ...Array.from({ length: SCENE_DIRECTOR_MAX_IMAGE_REFS }, (_, imageIndex) => imageValue(imageIndex + 1)),
-                row.audio_ref || row.audio || "",
-                videoRefs[0] || row.video_ref || row.video || "",
+                sceneDirectorSerializeMediaRefs(audioRefs),
+                sceneDirectorSerializeMediaRefs(videoRefs),
             ];
         }
         return [index * 5, (index + 1) * 5, "", ...Array(SCENE_DIRECTOR_MAX_IMAGE_REFS + 2).fill("")];
@@ -1309,6 +1351,25 @@ function sceneDirectorAudioOptions() {
     return capability.audioPolicy === "forbidden" ? [""] : SCENE_DIRECTOR_AUDIO_OPTIONS.slice();
 }
 
+function sceneDirectorMaxMediaRefsForCapability(kind, capability = sceneDirectorCapability()) {
+    const isAudio = kind === "audio";
+    const policy = isAudio ? capability.audioPolicy : capability.videoPolicy;
+    if (policy === "forbidden") return 0;
+    const hardLimit = isAudio ? SCENE_DIRECTOR_MAX_AUDIO_REFS : SCENE_DIRECTOR_MAX_VIDEO_REFS;
+    const declared = Number(isAudio ? capability.maxAudios : capability.maxVideos);
+    return Number.isFinite(declared) ? Math.max(0, Math.min(hardLimit, Math.round(declared))) : 1;
+}
+
+function sceneDirectorNormalizeMediaRefs(value, kind, capability = sceneDirectorCapability()) {
+    const maxRefs = sceneDirectorMaxMediaRefsForCapability(kind, capability);
+    if (maxRefs <= 0) return [];
+    const refs = sceneDirectorMediaRefsFromValue(value, kind);
+    if (kind === "video" && !capability.videoModes.includes(SCENE_DIRECTOR_PREVIOUS_VIDEO_REF)) {
+        return refs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_VIDEO_REF).slice(0, maxRefs);
+    }
+    return refs.slice(0, maxRefs);
+}
+
 function sceneDirectorMediaKindPolicy(kind, capability = sceneDirectorCapability()) {
     if (kind === "image") return capability.imagePolicy;
     if (kind === "audio") return capability.audioPolicy;
@@ -1386,6 +1447,31 @@ function sceneDirectorSelectedImageRefs(rowNode) {
     return refs;
 }
 
+function sceneDirectorSelectedMediaRefs(rowNode, kind, capability = sceneDirectorCapability()) {
+    if (!rowNode) return [];
+    const field = rowNode.querySelector(`[data-scene-director-field="${kind}_ref"]`);
+    return sceneDirectorNormalizeMediaRefs(field ? field.value : "", kind, capability);
+}
+
+function sceneDirectorSetSelectedMediaRefs(rowNode, kind, refs, capability = sceneDirectorCapability()) {
+    if (!rowNode) return false;
+    const field = rowNode.querySelector(`[data-scene-director-field="${kind}_ref"]`);
+    if (!field) return false;
+    const nextValue = sceneDirectorSerializeMediaRefs(sceneDirectorNormalizeMediaRefs(refs, kind, capability));
+    if (field.value === nextValue) return false;
+    field.value = nextValue;
+    return true;
+}
+
+function sceneDirectorNextMediaRefs(ref, selectedRefs, kind, capability = sceneDirectorCapability()) {
+    const refs = sceneDirectorNormalizeMediaRefs(selectedRefs, kind, capability);
+    const maxRefs = sceneDirectorMaxMediaRefsForCapability(kind, capability);
+    if (!ref) return [];
+    if (refs.includes(ref)) return refs.filter((item) => item !== ref);
+    if (refs.length >= maxRefs) return refs;
+    return refs.concat(ref);
+}
+
 function sceneDirectorMaxImagesForCapability(capability = sceneDirectorCapability()) {
     const maxImages = Math.max(0, Math.min(SCENE_DIRECTOR_MAX_IMAGE_REFS, Number(capability.maxImages || 0)));
     if (capability.imagePolicy === "forbidden") return 0;
@@ -1415,8 +1501,11 @@ function sceneDirectorNormalizeRowValues(row, capability = sceneDirectorCapabili
     for (let index = 0; index < SCENE_DIRECTOR_MAX_IMAGE_REFS; index += 1) {
         values[index + SCENE_DIRECTOR_IMAGE_START_INDEX] = refs[index] || "";
     }
-    if (capability.audioPolicy === "forbidden") values[SCENE_DIRECTOR_AUDIO_INDEX] = "";
-    if (capability.videoPolicy === "forbidden") values[SCENE_DIRECTOR_VIDEO_INDEX] = "";
+    const audioRefs = sceneDirectorNormalizeMediaRefs(values[SCENE_DIRECTOR_AUDIO_INDEX], "audio", capability);
+    let videoRefs = sceneDirectorNormalizeMediaRefs(values[SCENE_DIRECTOR_VIDEO_INDEX], "video", capability);
+    if (rowIndex !== null && Number(rowIndex) === 0) videoRefs = videoRefs.filter((ref) => ref !== SCENE_DIRECTOR_PREVIOUS_VIDEO_REF);
+    values[SCENE_DIRECTOR_AUDIO_INDEX] = sceneDirectorSerializeMediaRefs(audioRefs);
+    values[SCENE_DIRECTOR_VIDEO_INDEX] = sceneDirectorSerializeMediaRefs(videoRefs);
     return values;
 }
 
@@ -1522,6 +1611,85 @@ function sceneDirectorRenderImageRefPicker(rowNode, mediaMap = sceneDirectorMedi
     return changed;
 }
 
+function sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capability, rowIndex) {
+    const selectedIndex = selectedRefs.indexOf(ref);
+    const active = selectedIndex >= 0;
+    const maxRefs = sceneDirectorMaxMediaRefsForCapability(kind, capability);
+    const blockedByLimit = !active && selectedRefs.length >= maxRefs;
+    const previousBlocked = kind === "video" && ref === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF && rowIndex <= 0;
+    const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
+    const disabled = policy === "forbidden" || maxRefs <= 0 || blockedByLimit || previousBlocked;
+    const media = mediaMap.get(ref) || {};
+    const src = String(media.src || "");
+    const label = String(media.label || sceneDirectorMediaLabel(ref));
+    const limitKey = kind === "audio"
+        ? "Not selectable: current preset accepts up to {count} audio reference(s)"
+        : "Not selectable: current preset accepts up to {count} video reference(s)";
+    const title = blockedByLimit ? sceneDirectorText(limitKey).replace("{count}", String(maxRefs)) : label;
+    const number = (String(ref).match(/_(\d+)$/) || [])[1] || "";
+    const preview = kind === "video" && src
+        ? `<img src="${sceneDirectorEscapeHtml(src)}" alt="">`
+        : ref === SCENE_DIRECTOR_PREVIOUS_VIDEO_REF
+            ? '<i class="fa-solid fa-rotate-left"></i>'
+            : `<span>${sceneDirectorEscapeHtml(number)}</span>`;
+    const order = active
+        ? `<em class="scene-director-media-ref-order" title="${sceneDirectorEscapeHtml(sceneDirectorText("Reference order {index}").replace("{index}", String(selectedIndex + 1)))}">${selectedIndex + 1}</em>`
+        : "";
+    return `<button type="button" class="scene-director-compact-ref-choice ${active ? "is-active" : ""} ${blockedByLimit ? "is-limit-disabled" : ""} ${src ? "has-media" : "is-empty"}" data-scene-director-media-ref-choice="${sceneDirectorEscapeHtml(ref)}" data-scene-director-media-kind="${kind}" aria-pressed="${active ? "true" : "false"}" title="${sceneDirectorEscapeHtml(title)}" ${disabled ? 'disabled aria-disabled="true"' : ""}>${preview}${order}<small>${sceneDirectorEscapeHtml(ref)}</small></button>`;
+}
+
+function sceneDirectorMediaPickerSignature(kind, selectedRefs, mediaMap, capability, rowIndex) {
+    const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+    const mediaState = options.filter(Boolean).map((ref) => {
+        const media = mediaMap.get(ref) || {};
+        return [ref, media.src ? "1" : "0", String(media.label || "")].join(":");
+    }).join("|");
+    return [
+        sceneDirectorLanguageKey(),
+        kind,
+        kind === "audio" ? capability.audioPolicy : capability.videoPolicy,
+        sceneDirectorMaxMediaRefsForCapability(kind, capability),
+        rowIndex,
+        selectedRefs.join(","),
+        mediaState,
+    ].join("\n");
+}
+
+function sceneDirectorRenderMediaRefPicker(rowNode, kind, mediaMap = sceneDirectorMediaMap()) {
+    if (!rowNode) return false;
+    const picker = rowNode.querySelector(`[data-scene-director-media-ref-picker="${kind}"]`);
+    if (!picker) return false;
+    const capability = sceneDirectorCapability();
+    const selectedRefs = sceneDirectorSelectedMediaRefs(rowNode, kind, capability);
+    const changed = sceneDirectorSetSelectedMediaRefs(rowNode, kind, selectedRefs, capability);
+    const rowIndex = Number(rowNode.getAttribute("data-scene-director-index") || 0);
+    const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
+    const noneDisabled = policy === "required" || policy === "forbidden";
+    const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+    const nextHtml = [
+        `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${selectedRefs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${selectedRefs.length ? "false" : "true"}" ${noneDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`,
+        ...options.filter(Boolean).map((ref) => sceneDirectorMediaChoiceHtml(kind, ref, selectedRefs, mediaMap, capability, rowIndex)),
+    ].join("");
+    const signature = sceneDirectorMediaPickerSignature(kind, selectedRefs, mediaMap, capability, rowIndex);
+    if (picker.dataset.sceneDirectorMediaRefPickerSignature !== signature) {
+        picker.innerHTML = nextHtml;
+        picker.dataset.sceneDirectorMediaRefPickerSignature = signature;
+    }
+    return changed;
+}
+
+function sceneDirectorMediaFieldHtml(kind, value, capability, mediaMap, rowIndex) {
+    const maxRefs = sceneDirectorMaxMediaRefsForCapability(kind, capability);
+    const policy = kind === "audio" ? capability.audioPolicy : capability.videoPolicy;
+    const label = sceneDirectorText(kind === "audio" ? (maxRefs > 1 ? "Audio refs" : "Audio") : (maxRefs > 1 ? "Video refs" : "Video"));
+    const refs = sceneDirectorNormalizeMediaRefs(value, kind, capability);
+    if (maxRefs <= 1) {
+        const options = kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions();
+        return `<label class="scene-director-media-refs-field"><span>${sceneDirectorEscapeHtml(label)}</span><select data-scene-director-field="${kind}_ref" ${policy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(options, refs[0] || "")}</select></label>`;
+    }
+    return `<label class="scene-director-media-refs-field is-multi"><span>${sceneDirectorEscapeHtml(label)}</span><input type="hidden" data-scene-director-field="${kind}_ref" value="${sceneDirectorEscapeHtml(sceneDirectorSerializeMediaRefs(refs))}"><div class="scene-director-compact-ref-picker" data-scene-director-media-ref-picker="${kind}">${["", ...(kind === "audio" ? sceneDirectorAudioOptions() : sceneDirectorVideoOptions()).filter(Boolean)].map((ref) => ref ? sceneDirectorMediaChoiceHtml(kind, ref, refs, mediaMap, capability, rowIndex) : `<button type="button" class="scene-director-compact-ref-choice scene-director-compact-ref-none ${refs.length ? "" : "is-active"}" data-scene-director-media-ref-choice="" data-scene-director-media-kind="${kind}" aria-pressed="${refs.length ? "false" : "true"}"><span>${sceneDirectorEscapeHtml(sceneDirectorText("None"))}</span></button>`).join("")}</div></label>`;
+}
+
 function sceneDirectorNoneChoiceLabel(capability, selectedCount) {
     if (selectedCount > 0) return sceneDirectorText("None");
     if (capability.imagePolicy === "required") return sceneDirectorText("Missing first frame");
@@ -1536,6 +1704,8 @@ function sceneDirectorRefreshEditorPreviews(editor, options = {}) {
     let changed = false;
     root.querySelectorAll("[data-scene-director-shot]").forEach((rowNode) => {
         if (sceneDirectorRenderImageRefPicker(rowNode, mediaMap)) changed = true;
+        if (sceneDirectorRenderMediaRefPicker(rowNode, "audio", mediaMap)) changed = true;
+        if (sceneDirectorRenderMediaRefPicker(rowNode, "video", mediaMap)) changed = true;
         sceneDirectorUpdateRule(rowNode);
     });
     if (options.writeRows && changed) sceneDirectorWriteRows(sceneDirectorRowsFromEditor(root));
@@ -1845,6 +2015,7 @@ function sceneDirectorTimelineRoundSeconds(value) {
 }
 
 function sceneDirectorTimelineRows(rows) {
+    const capability = sceneDirectorCapability();
     return sceneDirectorCloneRows(Array.isArray(rows) ? rows : sceneDirectorReadRows())
         .map((row, index) => {
             const start = sceneDirectorTimelineNumber(row[0], index * 5, 0, 86400);
@@ -1855,11 +2026,11 @@ function sceneDirectorTimelineRows(rows) {
                 end,
                 prompt: String(row[2] || "").trim(),
                 imageRefs: row.slice(SCENE_DIRECTOR_IMAGE_START_INDEX, SCENE_DIRECTOR_AUDIO_INDEX).map((item) => String(item || "").trim()).filter(Boolean),
-                audioRef: String(row[SCENE_DIRECTOR_AUDIO_INDEX] || "").trim(),
-                videoRef: String(row[SCENE_DIRECTOR_VIDEO_INDEX] || "").trim(),
+                audioRefs: sceneDirectorNormalizeMediaRefs(row[SCENE_DIRECTOR_AUDIO_INDEX], "audio", capability),
+                videoRefs: sceneDirectorNormalizeMediaRefs(row[SCENE_DIRECTOR_VIDEO_INDEX], "video", capability),
             };
         })
-        .filter((row) => row.prompt || row.imageRefs.length || row.audioRef || row.videoRef);
+        .filter((row) => row.prompt || row.imageRefs.length || row.audioRefs.length || row.videoRefs.length);
 }
 
 function sceneDirectorTimelineTotalDuration(rows) {
@@ -1884,16 +2055,16 @@ function sceneDirectorTimelineClipHtml(row, totalDuration, mediaMap) {
     const left = Math.max(0, Math.min(100, row.start / totalDuration * 100));
     const right = Math.max(0, Math.min(100, (totalDuration - row.end) / totalDuration * 100));
     const duration = Math.max(0, row.end - row.start);
-    const refs = row.imageRefs.length ? row.imageRefs : (row.videoRef ? [row.videoRef] : []);
+    const refs = [...row.imageRefs, ...row.videoRefs];
     const badges = [
         ...row.imageRefs.map((ref) => `@${ref}`),
-        row.audioRef ? `@${row.audioRef}` : "",
-        row.videoRef ? `@${row.videoRef}` : "",
+        ...row.audioRefs.map((ref) => `@${ref}`),
+        ...row.videoRefs.map((ref) => `@${ref}`),
     ].filter(Boolean).join(" ");
     const title = `${sceneDirectorText("Shot")} ${row.index + 1} · ${sceneDirectorTimelineFormatSeconds(row.start)}-${sceneDirectorTimelineFormatSeconds(row.end)}`;
-    const prompt = row.prompt || sceneDirectorMediaLabel(row.videoRef) || sceneDirectorText("Text-to-Video");
+    const prompt = row.prompt || sceneDirectorMediaLabel(row.videoRefs[0]) || sceneDirectorText("Text-to-Video");
     return `
-<article class="scene-director-timeline-clip ${row.imageRefs.length ? "has-image" : ""} ${row.videoRef ? "has-video" : ""}" style="left:${left}%; right:${right}%;" title="${sceneDirectorEscapeHtml(prompt)}" data-scene-director-timeline-clip="${row.index}" data-scene-director-timeline-drag="move" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Move shot"))}">
+<article class="scene-director-timeline-clip ${row.imageRefs.length ? "has-image" : ""} ${row.videoRefs.length ? "has-video" : ""}" style="left:${left}%; right:${right}%;" title="${sceneDirectorEscapeHtml(prompt)}" data-scene-director-timeline-clip="${row.index}" data-scene-director-timeline-drag="move" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Move shot"))}">
   <button type="button" class="scene-director-timeline-handle is-start" data-scene-director-timeline-drag="start" title="${sceneDirectorEscapeHtml(sceneDirectorText("Adjust start"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Adjust start"))}"></button>
   <div class="scene-director-timeline-clip-media">${sceneDirectorTimelineRefChips(refs, mediaMap)}</div>
   <div class="scene-director-timeline-clip-body">
@@ -1906,10 +2077,10 @@ function sceneDirectorTimelineClipHtml(row, totalDuration, mediaMap) {
 }
 
 function sceneDirectorTimelineAudioHtml(row, totalDuration) {
-    if (!row.audioRef) return "";
+    if (!row.audioRefs.length) return "";
     const left = Math.max(0, Math.min(100, row.start / totalDuration * 100));
     const right = Math.max(0, Math.min(100, (totalDuration - row.end) / totalDuration * 100));
-    return `<span class="scene-director-timeline-audio-segment" data-scene-director-timeline-audio="${row.index}" style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(row.audioRef)}</span>`;
+    return `<span class="scene-director-timeline-audio-segment" data-scene-director-timeline-audio="${row.index}" style="left:${left}%; right:${right}%;">${sceneDirectorEscapeHtml(row.audioRefs.join(" + "))}</span>`;
 }
 
 function sceneDirectorTimelinePromptHtml(row, totalDuration) {
@@ -2254,6 +2425,9 @@ function sceneDirectorRenderShot(row, index, total) {
     const hiddenImageFields = Array.from({ length: SCENE_DIRECTOR_MAX_IMAGE_REFS }, (_, imageIndex) => imageIndex + 1).map((itemIndex) => (
         `<input type="hidden" data-scene-director-field="image_ref_${itemIndex}" value="${sceneDirectorEscapeHtml(imageRefs[itemIndex - 1] || "")}">`
     )).join("");
+    const hasMultiMediaRefs = capability.maxAudios > 1 || capability.maxVideos > 1;
+    const audioField = sceneDirectorMediaFieldHtml("audio", values[SCENE_DIRECTOR_AUDIO_INDEX], capability, mediaMap, index);
+    const videoField = sceneDirectorMediaFieldHtml("video", values[SCENE_DIRECTOR_VIDEO_INDEX], capability, mediaMap, index);
     return `
 <div class="scene-director-shot ${index === sceneDirectorActiveShotIndex ? "is-active-shot" : ""}" data-scene-director-shot data-scene-director-index="${index}" ${index === sceneDirectorActiveShotIndex ? 'aria-current="true"' : ""}>
   <div class="scene-director-shot-head">
@@ -2265,13 +2439,13 @@ function sceneDirectorRenderShot(row, index, total) {
       <button type="button" data-scene-director-action="delete" title="${sceneDirectorEscapeHtml(sceneDirectorText("Delete shot"))}" ${total <= 1 ? "disabled" : ""}>×</button>
     </div>
   </div>
-  <div class="scene-director-shot-grid">
+  <div class="scene-director-shot-grid ${hasMultiMediaRefs ? "has-multi-media-refs" : ""}">
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Start"))}</span><input type="number" min="0" max="86400" step="0.1" data-scene-director-field="start" value="${sceneDirectorEscapeHtml(values[0])}"></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("End"))}</span><input type="number" min="${sceneDirectorEscapeHtml(endMin)}" max="${sceneDirectorEscapeHtml(endMax)}" step="0.1" data-scene-director-field="end" value="${sceneDirectorEscapeHtml(values[1])}"></label>
     <label class="scene-director-shot-prompt"><span class="scene-director-shot-prompt-heading"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt"))}</span><button type="button" data-scene-director-action="prompt-tools" title="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" ${String(values[2] || "").trim() ? "" : "disabled"}><i class="fa-solid fa-wand-magic-sparkles"></i><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}</span></button></span><textarea rows="2" data-scene-director-field="prompt">${sceneDirectorEscapeHtml(values[2])}</textarea></label>
     <label class="scene-director-image-refs-field"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Image refs"))}</span>${hiddenImageFields}<span class="scene-director-inherit-tail"><input type="checkbox" data-scene-director-inherit-tail ${inheritPreviousTail ? "checked" : ""} ${inheritDisabled ? 'disabled aria-disabled="true"' : ""}><span>${sceneDirectorEscapeHtml(sceneDirectorText("Inherit previous shot last frame"))}</span></span><div class="scene-director-ref-picker" data-scene-director-ref-picker>${SCENE_DIRECTOR_IMAGE_OPTIONS.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, imageRefs, mediaMap, capability)).join("")}</div></label>
-    <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Audio"))}</span><select data-scene-director-field="audio_ref" ${capability.audioPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorAudioOptions(), values[SCENE_DIRECTOR_AUDIO_INDEX])}</select></label>
-    <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Video"))}</span><select data-scene-director-field="video_ref" ${capability.videoPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorVideoOptions(), values[SCENE_DIRECTOR_VIDEO_INDEX])}</select></label>
+    ${audioField}
+    ${videoField}
   </div>
 </div>`;
 }
@@ -2369,6 +2543,22 @@ function sceneDirectorBindEditor() {
             sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
             return;
         }
+        const mediaRefChoice = event.target.closest("[data-scene-director-media-ref-choice]");
+        if (mediaRefChoice) {
+            if (mediaRefChoice.disabled || mediaRefChoice.getAttribute("aria-disabled") === "true") return;
+            const rowNode = mediaRefChoice.closest("[data-scene-director-shot]");
+            const kind = String(mediaRefChoice.getAttribute("data-scene-director-media-kind") || "").trim();
+            if (!rowNode || !["audio", "video"].includes(kind)) return;
+            const ref = String(mediaRefChoice.getAttribute("data-scene-director-media-ref-choice") || "").trim();
+            const capability = sceneDirectorCapability();
+            const refs = sceneDirectorSelectedMediaRefs(rowNode, kind, capability);
+            const nextRefs = sceneDirectorNextMediaRefs(ref, refs, kind, capability);
+            sceneDirectorSetSelectedMediaRefs(rowNode, kind, nextRefs, capability);
+            sceneDirectorRenderMediaRefPicker(rowNode, kind);
+            sceneDirectorUpdateRule(rowNode);
+            sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
+            return;
+        }
         const actionNode = event.target.closest("[data-scene-director-action]");
         if (!actionNode) {
             if (activeChanged) sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
@@ -2385,10 +2575,10 @@ function sceneDirectorBindEditor() {
         }
         if (action === "add") {
             const rows = sceneDirectorRowsFromEditor(editor);
-            const last = rows[rows.length - 1] || [0, 5, "", "", "", "", "", "", "", ""];
+            const last = rows[rows.length - 1] || [0, 5, "", ...Array(SCENE_DIRECTOR_MAX_IMAGE_REFS + 2).fill("")];
             const start = Number(last[1] || last[0] || rows.length * 5);
             const end = Number.isFinite(start) ? start + 5 : (rows.length + 1) * 5;
-            rows.push([start, end, "", "", "", "", "", "", "", ""]);
+            rows.push([start, end, "", ...Array(SCENE_DIRECTOR_MAX_IMAGE_REFS + 2).fill("")]);
             sceneDirectorActiveShotIndex = rows.length - 1;
             sceneDirectorRenderEditor(rows);
             sceneDirectorWriteRows(rows);

@@ -89,23 +89,33 @@ def _first_ref(items):
 
 
 def _normalize_media_items(items, kind):
+    if isinstance(items, dict):
+        items = [items]
     if not isinstance(items, list):
         return []
     result = []
+    seen = set()
     for item in items:
-        if not isinstance(item, dict):
+        source_ref = _text(item.get("source_ref") or item.get("source_node_id")) if isinstance(item, dict) else _text(item)
+        if not source_ref or source_ref in seen:
             continue
-        source_ref = _text(item.get("source_ref") or item.get("source_node_id"))
-        if not source_ref:
-            continue
+        seen.add(source_ref)
         result.append(
             {
                 "source_ref": source_ref,
-                "source_node_id": _text(item.get("source_node_id")),
-                "role": _text(item.get("role")) or ("voice" if kind == "audio" else "reference" if kind == "video" else "first_frame"),
+                "source_node_id": _text(item.get("source_node_id")) if isinstance(item, dict) else "",
+                "role": (_text(item.get("role")) if isinstance(item, dict) else "") or ("voice" if kind == "audio" else "reference" if kind == "video" else "first_frame"),
             }
         )
     return result
+
+
+def _media_limit(capability, kind):
+    policy = _text(capability.get(f"{kind}_policy")).lower() if isinstance(capability, dict) else ""
+    if policy == "forbidden":
+        return 0
+    hard_limit = 3
+    return _int(capability.get(f"max_{kind}s") if isinstance(capability, dict) else None, 1, 0, hard_limit)
 
 
 def _image_role_for_type(shot_type, index, image_modes=None):
@@ -129,7 +139,7 @@ def _limit_segment_images(shot_type, images, image_modes=None):
     return result
 
 
-def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
+def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None, capability=None):
     raw = segment if isinstance(segment, dict) else {}
     start = _number(raw.get("start"), previous_end, 0, 86400)
     end = max(start, _number(raw.get("end"), start + 1, 0, 86400))
@@ -141,7 +151,16 @@ def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
             image_seen.add(source_ref)
             images.append({"source_ref": source_ref, "source_node_id": "", "role": "first_frame"})
     audio = _normalize_media_items(raw.get("audio"), "audio")
+    for audio_ref in _normalize_media_items(raw.get("audio_refs"), "audio"):
+        if not any(_text(item.get("source_ref")) == _text(audio_ref.get("source_ref")) for item in audio):
+            audio.append(audio_ref)
+    direct_audio_ref = _text(raw.get("audio_ref"))
+    if direct_audio_ref and not any(_text(item.get("source_ref")) == direct_audio_ref for item in audio):
+        audio.append({"source_ref": direct_audio_ref, "source_node_id": "", "role": "voice"})
     video = _normalize_media_items(raw.get("video") or raw.get("videos"), "video")
+    for extra_video in _normalize_media_items(raw.get("video_refs"), "video"):
+        if not any(_text(item.get("source_ref")) == _text(extra_video.get("source_ref")) for item in video):
+            video.append(extra_video)
     video_ref = _text(raw.get("video_ref") or raw.get("video1"))
     if video_ref and not any(_text(item.get("source_ref")) == video_ref for item in video):
         video.append({"source_ref": video_ref, "source_node_id": "", "role": "reference"})
@@ -155,6 +174,8 @@ def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
         else _segment_type_from_task_method(task_method, images, audio, video)
     )
     images = _limit_segment_images(shot_type, images, image_modes)
+    audio = audio[:_media_limit(capability or {}, "audio")]
+    video = video[:_media_limit(capability or {}, "video")]
     return {
         "id": _text(raw.get("id")) or f"shot_{index + 1}",
         "start": start,
@@ -165,7 +186,7 @@ def normalize_segment(segment, index=0, previous_end=0.0, image_modes=None):
         "prompt": str(raw.get("prompt") or "").strip(),
         "images": images,
         "audio": audio,
-        "video": video[:1],
+        "video": video,
     }
 
 
@@ -176,11 +197,11 @@ def normalize_director_payload(payload):
     segments = []
     previous_end = 0.0
     for index, segment in enumerate(raw.get("segments") if isinstance(raw.get("segments"), list) else []):
-        normalized = normalize_segment(segment, index, previous_end, image_modes)
+        normalized = normalize_segment(segment, index, previous_end, image_modes, capability)
         previous_end = normalized["end"]
         segments.append(normalized)
     if not segments:
-        segments = [normalize_segment({}, 0, 0, image_modes)]
+        segments = [normalize_segment({}, 0, 0, image_modes, capability)]
     return {
         "schema": SCHEMA,
         "width": _int(raw.get("width"), 1280, 64, 8192),
@@ -215,18 +236,18 @@ def build_prompt_override(payload):
     parts = []
     for segment in director["segments"]:
         tokens = []
-        audio_ref = _first_ref(segment.get("audio"))
-        video_ref = _first_ref(segment.get("video"))
         for item in segment.get("images") or []:
             image_token = _token_for_ref(_text(item.get("source_ref")), "image") if isinstance(item, dict) else ""
             if image_token:
                 tokens.append(image_token)
-        audio_token = _token_for_ref(audio_ref, "audio")
-        if audio_token:
-            tokens.append(audio_token)
-        video_token = _token_for_ref(video_ref, "video")
-        if video_token:
-            tokens.append(video_token)
+        for item in segment.get("audio") or []:
+            audio_token = _token_for_ref(_text(item.get("source_ref")) if isinstance(item, dict) else item, "audio")
+            if audio_token:
+                tokens.append(audio_token)
+        for item in segment.get("video") or []:
+            video_token = _token_for_ref(_text(item.get("source_ref")) if isinstance(item, dict) else item, "video")
+            if video_token:
+                tokens.append(video_token)
         prompt = _text(segment.get("prompt"))
         if prompt:
             tokens.append(prompt)

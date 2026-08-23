@@ -16325,7 +16325,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
 
     function directorCapabilityCandidate(value, node) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-        const knownKeys = ['image_policy', 'audio_policy', 'video_policy', 'max_images', 'min_images', 'image_modes', 'video_modes', 'chain_output', 'requires_sequential', 'mixed_segments', 'director_supported', 'segment_duration_param', 'duration_strategy', 'audio_output', 'min_segment_duration', 'max_segment_duration'];
+        const knownKeys = ['image_policy', 'audio_policy', 'video_policy', 'max_images', 'max_audios', 'max_videos', 'min_images', 'image_modes', 'video_modes', 'chain_output', 'requires_sequential', 'mixed_segments', 'director_supported', 'segment_duration_param', 'duration_strategy', 'audio_output', 'min_segment_duration', 'max_segment_duration'];
         if (knownKeys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) return value;
         const theme = getPresetTheme(node);
         if (theme && value[theme] && typeof value[theme] === 'object') return value[theme];
@@ -16417,6 +16417,8 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         const videoPolicy = directorPolicyValue(explicit.video_policy, DIRECTOR_CAPABILITY_MEDIA_POLICIES, 'optional');
         const defaultMaxImages = imagePolicy === 'forbidden' ? 0 : Math.max(1, directorVisibleImageSlotCountForPreset(node) || DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length);
         const maxImages = imagePolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_images, defaultMaxImages, 0, DIRECTOR_IMAGE_REF_UPLOAD_SLOTS.length);
+        const maxAudios = audioPolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_audios, 1, 0, 3);
+        const maxVideos = videoPolicy === 'forbidden' ? 0 : directorIntCapabilityValue(explicit.max_videos, 1, 0, 3);
         const minImages = directorIntCapabilityValue(explicit.min_images, imagePolicy === 'required' ? 1 : 0, 0, Math.max(0, maxImages));
         const imageModes = Array.isArray(explicit.image_modes) && explicit.image_modes.length
             ? explicit.image_modes.map((item) => String(item))
@@ -16441,6 +16443,8 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
             audio_policy: audioPolicy,
             video_policy: videoPolicy,
             max_images: maxImages,
+            max_audios: maxAudios,
+            max_videos: maxVideos,
             min_images: minImages,
             image_modes: imageModes,
             video_modes: videoModes,

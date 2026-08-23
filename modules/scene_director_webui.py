@@ -23,6 +23,8 @@ from ui.update_helpers import gr_update
 logger = logging.getLogger(__name__)
 
 SCENE_DIRECTOR_MAX_IMAGE_REFS = 9
+SCENE_DIRECTOR_MAX_AUDIO_REFS = 3
+SCENE_DIRECTOR_MAX_VIDEO_REFS = 3
 SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS = 5
 SCENE_DIRECTOR_TABLE_HEADERS = ["Start", "End", "Prompt"] + [f"Image ref {index}" for index in range(1, 10)] + ["Audio ref", "Video ref"]
 SCENE_DIRECTOR_DEFAULT_ROWS = [
@@ -73,6 +75,8 @@ SCENE_DIRECTOR_IMAGE_BACKEND_SLOTS = [
     "scene_input_image7",
     "scene_input_image8",
 ]
+SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS = ("audio", "audio2", "audio3")
+SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS = ("video", "reference_video", "reference_video2")
 SCENE_DIRECTOR_FORMATS = ["Wan", "LTXV", "Mochi", "Hunyuan", "Cosmos", "AnimateDiff", "None"]
 SCENE_DIRECTOR_FORMAT_ALIASES = {
     "": "",
@@ -114,6 +118,8 @@ SCENE_DIRECTOR_DEFAULT_CAPABILITY = {
     "video_policy": "optional",
     "timeline_format": "Wan",
     "max_images": SCENE_DIRECTOR_MAX_IMAGE_REFS,
+    "max_audios": 1,
+    "max_videos": 1,
     "min_images": 0,
     "image_modes": ["none", "first_frame", "first_last", "reference_set"],
     "video_modes": ["explicit"],
@@ -130,22 +136,63 @@ SCENE_DIRECTOR_DEFAULT_CAPABILITY = {
 }
 
 
-def _scene_director_rows(value):
-    def _first_media_ref(item, key, ref_key):
-        direct = item.get(ref_key)
-        if direct:
-            return direct
-        media = item.get(key)
-        if isinstance(media, list):
-            for media_item in media:
-                if isinstance(media_item, dict):
-                    ref = media_item.get("source_ref") or media_item.get("source_node_id")
-                    if ref:
-                        return ref
-        if isinstance(media, dict):
-            return media.get("source_ref") or media.get("source_node_id") or ""
-        return media or ""
+def _scene_director_ensure_backend_args():
+    backend_args = getattr(api_params, "backend_args", None)
+    if not isinstance(backend_args, list):
+        return
+    for key in (*SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS[1:], *SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS[1:]):
+        if key not in backend_args:
+            backend_args.append(key)
 
+
+_scene_director_ensure_backend_args()
+
+
+def _scene_director_ref_list(value, kind, limit=None):
+    items = value
+    if isinstance(items, str):
+        text = items.strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                items = json.loads(text)
+            except Exception:
+                items = re.split(r"[,;|\n]+", text)
+        else:
+            items = re.split(r"[,;|\n]+", text)
+    if isinstance(items, dict):
+        items = [items]
+    elif not isinstance(items, (list, tuple)):
+        items = [items]
+    refs = []
+    for item in items:
+        raw = item.get("source_ref") or item.get("source_node_id") if isinstance(item, dict) else item
+        ref = _scene_director_ref(raw, kind)
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs[:max(0, int(limit))] if limit is not None else refs
+
+
+def _scene_director_serialize_ref_list(refs):
+    values = [str(ref).strip() for ref in (refs or []) if str(ref).strip()]
+    if len(values) <= 1:
+        return values[0] if values else ""
+    return json.dumps(values, ensure_ascii=False)
+
+
+def _scene_director_segment_refs(segment, key, limit=None):
+    if not isinstance(segment, dict):
+        return []
+    refs = _scene_director_ref_list(segment.get(key), key, limit=None)
+    for legacy_key in (f"{key}_refs", f"{key}_ref"):
+        for ref in _scene_director_ref_list(segment.get(legacy_key), key, limit=None):
+            if ref not in refs:
+                refs.append(ref)
+    return refs[:max(0, int(limit))] if limit is not None else refs
+
+
+def _scene_director_rows(value):
     if isinstance(value, str):
         text = value.strip()
         if not text:
@@ -176,8 +223,8 @@ def _scene_director_rows(value):
                         item.get("end", 0),
                         item.get("prompt", ""),
                         *image_values,
-                        _first_media_ref(item, "audio", "audio_ref"),
-                        _first_media_ref(item, "video", "video_ref"),
+                        _scene_director_serialize_ref_list(_scene_director_segment_refs(item, "audio", SCENE_DIRECTOR_MAX_AUDIO_REFS)),
+                        _scene_director_serialize_ref_list(_scene_director_segment_refs(item, "video", SCENE_DIRECTOR_MAX_VIDEO_REFS)),
                     ])
                 else:
                     rows.append(item)
@@ -652,6 +699,20 @@ def _scene_director_image_ref_limit(capability=None):
     )
 
 
+def _scene_director_media_ref_limit(capability, kind):
+    capability = capability if isinstance(capability, dict) else {}
+    policy = str(capability.get(f"{kind}_policy") or "optional").lower()
+    if policy == "forbidden":
+        return 0
+    hard_limit = SCENE_DIRECTOR_MAX_AUDIO_REFS if kind == "audio" else SCENE_DIRECTOR_MAX_VIDEO_REFS
+    return _scene_director_int_capability_value(
+        capability.get(f"max_{kind}s"),
+        1,
+        0,
+        hard_limit,
+    )
+
+
 def _scene_director_previous_image_supported(capability=None):
     capability = capability if isinstance(capability, dict) else {}
     if str(capability.get("image_policy") or "optional").lower() == "forbidden":
@@ -847,6 +908,8 @@ def _scene_director_capability_candidate(value, theme=None):
         "audio_policy",
         "video_policy",
         "max_images",
+        "max_audios",
+        "max_videos",
         "min_images",
         "image_modes",
         "video_modes",
@@ -1010,6 +1073,22 @@ def _scene_director_capability_from_state(state_params=None, scene_theme=None):
         max_images = 0
     min_default = 1 if image_policy == "required" else 0
     min_images = _scene_director_int_capability_value(explicit.get("min_images"), min_default, 0, max(0, max_images))
+    max_audios = _scene_director_int_capability_value(
+        explicit.get("max_audios"),
+        0 if audio_policy == "forbidden" else 1,
+        0,
+        SCENE_DIRECTOR_MAX_AUDIO_REFS,
+    )
+    max_videos = _scene_director_int_capability_value(
+        explicit.get("max_videos"),
+        0 if video_policy == "forbidden" else 1,
+        0,
+        SCENE_DIRECTOR_MAX_VIDEO_REFS,
+    )
+    if audio_policy == "forbidden":
+        max_audios = 0
+    if video_policy == "forbidden":
+        max_videos = 0
     image_modes = explicit.get("image_modes")
     if not isinstance(image_modes, list) or not image_modes:
         if image_policy == "forbidden":
@@ -1085,6 +1164,8 @@ def _scene_director_capability_from_state(state_params=None, scene_theme=None):
         "audio_policy": audio_policy,
         "video_policy": video_policy,
         "max_images": max_images,
+        "max_audios": max_audios,
+        "max_videos": max_videos,
         "min_images": min_images,
         "image_modes": [str(item) for item in image_modes],
         "video_modes": [str(item) for item in video_modes],
@@ -1111,11 +1192,8 @@ def _scene_director_available_from_state(state_params=None, scene_theme=None, ca
 
 
 def _scene_director_first_segment_ref(segment, key):
-    items = segment.get(key) if isinstance(segment, dict) else []
-    if not isinstance(items, list) or not items:
-        return ""
-    first = items[0] if isinstance(items[0], dict) else {}
-    return str(first.get("source_ref") or "").strip()
+    refs = _scene_director_segment_refs(segment, key)
+    return refs[0] if refs else ""
 
 
 def _scene_director_segment_image_refs(segment):
@@ -1151,18 +1229,18 @@ def _scene_director_row_media_refs(row, cells, has_legacy_method_column):
         image_values = cells[image_start:image_start + image_count]
         audio_value = cells[image_start + image_count]
         video_value = cells[image_start + image_count + 1]
-        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), _scene_director_ref(video_value, "video")
+        return _scene_director_image_refs(*image_values), _scene_director_ref_list(audio_value, "audio", SCENE_DIRECTOR_MAX_AUDIO_REFS), _scene_director_ref_list(video_value, "video", SCENE_DIRECTOR_MAX_VIDEO_REFS)
     if len(row) >= legacy_row_width:
         image_count = SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS
         image_values = cells[image_start:image_start + image_count]
         audio_value = cells[image_start + image_count]
         video_value = cells[image_start + image_count + 1]
-        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), _scene_director_ref(video_value, "video")
+        return _scene_director_image_refs(*image_values), _scene_director_ref_list(audio_value, "audio", SCENE_DIRECTOR_MAX_AUDIO_REFS), _scene_director_ref_list(video_value, "video", SCENE_DIRECTOR_MAX_VIDEO_REFS)
     if len(row) >= legacy_audio_only_width:
         image_count = SCENE_DIRECTOR_LEGACY_MAX_IMAGE_REFS
         image_values = cells[image_start:image_start + image_count]
         audio_value = cells[image_start + image_count]
-        return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), ""
+        return _scene_director_image_refs(*image_values), _scene_director_ref_list(audio_value, "audio", SCENE_DIRECTOR_MAX_AUDIO_REFS), []
     if has_legacy_method_column:
         if len(row) <= 6:
             image_values = [cells[4]]
@@ -1180,7 +1258,7 @@ def _scene_director_row_media_refs(row, cells, has_legacy_method_column):
         image_values = [cells[3]]
         audio_value = cells[4]
         video_value = ""
-    return _scene_director_image_refs(*image_values), _scene_director_ref(audio_value, "audio"), _scene_director_ref(video_value, "video")
+    return _scene_director_image_refs(*image_values), _scene_director_ref_list(audio_value, "audio", SCENE_DIRECTOR_MAX_AUDIO_REFS), _scene_director_ref_list(video_value, "video", SCENE_DIRECTOR_MAX_VIDEO_REFS)
 
 
 def _scene_director_media_sources(media_state=None):
@@ -1404,6 +1482,8 @@ def _scene_director_apply_capability_to_payload(payload, capability):
     audio_policy = str(capability.get("audio_policy") or "").lower()
     video_policy = str(capability.get("video_policy") or "").lower()
     max_images = _scene_director_image_ref_limit(capability)
+    max_audios = _scene_director_media_ref_limit(capability, "audio")
+    max_videos = _scene_director_media_ref_limit(capability, "video")
     default_audio_ref = _scene_director_first_available_media_ref(next_payload, "audio") if audio_policy == "required" else ""
     for segment in next_payload.get("segments", []):
         if not isinstance(segment, dict):
@@ -1414,17 +1494,22 @@ def _scene_director_apply_capability_to_payload(payload, capability):
             segment["images"] = segment["images"][:max_images]
         if audio_policy == "forbidden":
             segment["audio"] = []
-        elif audio_policy == "required" and default_audio_ref and not _scene_director_first_segment_ref(segment, "audio"):
-            segment["audio"] = [{"source_ref": default_audio_ref, "role": "voice"}]
+        else:
+            if isinstance(segment.get("audio"), list):
+                segment["audio"] = segment["audio"][:max_audios]
+            if audio_policy == "required" and default_audio_ref and not _scene_director_first_segment_ref(segment, "audio"):
+                segment["audio"] = [{"source_ref": default_audio_ref, "role": "voice"}]
         if video_policy == "forbidden":
             segment["video"] = []
+        elif isinstance(segment.get("video"), list):
+            segment["video"] = segment["video"][:max_videos]
         image_refs = _scene_director_segment_image_refs(segment)
-        audio_ref = _scene_director_first_segment_ref(segment, "audio")
-        video_ref = _scene_director_first_segment_ref(segment, "video")
+        audio_refs = _scene_director_segment_refs(segment, "audio", max_audios)
+        video_refs = _scene_director_segment_refs(segment, "video", max_videos)
         if image_policy == "forbidden" and video_policy == "forbidden" and str(segment.get("type") or "").lower() in ("flf", "fmlf", "ref"):
             segment["type"] = "t2v"
         else:
-            segment["type"] = _scene_director_segment_type(segment.get("task_method"), image_refs, audio_ref, video_ref)
+            segment["type"] = _scene_director_segment_type(segment.get("task_method"), image_refs, audio_refs, video_refs)
     return next_payload
 
 
@@ -1466,6 +1551,14 @@ def _scene_director_validation_message(state_params, key, **kwargs):
         "too_many_images": (
             "Director shot {index} uses {count} images, but this preset accepts up to {max_images}.",
             "分镜 {index} 选择了 {count} 张图，当前 preset 最多支持 {max_images} 张。",
+        ),
+        "too_many_audios": (
+            "Director shot {index} uses {count} audio references, but this preset accepts up to {max_audios}.",
+            "分镜 {index} 选择了 {count} 个音频引用，当前 preset 最多支持 {max_audios} 个。",
+        ),
+        "too_many_videos": (
+            "Director shot {index} uses {count} video references, but this preset accepts up to {max_videos}.",
+            "分镜 {index} 选择了 {count} 个视频引用，当前 preset 最多支持 {max_videos} 个。",
         ),
         "images_ignored": (
             "Director shot {index} image refs are disabled for the current text-to-video preset.",
@@ -1550,6 +1643,8 @@ def _scene_director_validate_runtime(runtime, capability=None, state_params=None
         capability.get("max_images"),
         0 if image_policy == "forbidden" else SCENE_DIRECTOR_MAX_IMAGE_REFS,
     )
+    max_audios = _scene_director_media_ref_limit(capability, "audio")
+    max_videos = _scene_director_media_ref_limit(capability, "video")
     min_duration, max_duration = _scene_director_duration_bounds_from_capability(capability)
     errors = []
     warnings = []
@@ -1591,21 +1686,27 @@ def _scene_director_validate_runtime(runtime, capability=None, state_params=None
                     errors.append(_scene_director_validation_message(state_params, "previous_image_unsupported"))
             elif not _scene_director_media_available(runtime, ref, "image"):
                 errors.append(_scene_director_validation_message(state_params, "image_missing", index=index, ref=ref))
-        audio_ref = _scene_director_first_segment_ref(segment, "audio")
-        if audio_policy == "required" and not audio_ref:
+        audio_refs = _scene_director_segment_refs(segment, "audio")
+        if audio_policy == "required" and not audio_refs:
             errors.append(_scene_director_validation_message(state_params, "audio_required", index=index))
-        if audio_ref and not _scene_director_media_available(runtime, audio_ref, "audio"):
-            errors.append(_scene_director_validation_message(state_params, "audio_missing", index=index, ref=audio_ref))
-        video_ref = _scene_director_first_segment_ref(segment, "video")
-        if video_policy == "required" and not video_ref:
+        if len(audio_refs) > max_audios:
+            errors.append(_scene_director_validation_message(state_params, "too_many_audios", index=index, count=len(audio_refs), max_audios=max_audios))
+        for audio_ref in audio_refs:
+            if not _scene_director_media_available(runtime, audio_ref, "audio"):
+                errors.append(_scene_director_validation_message(state_params, "audio_missing", index=index, ref=audio_ref))
+        video_refs = _scene_director_segment_refs(segment, "video")
+        if video_policy == "required" and not video_refs:
             errors.append(_scene_director_validation_message(state_params, "video_required", index=index))
-        if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
-            if index == 1:
-                errors.append(_scene_director_validation_message(state_params, "previous_first"))
-            if SCENE_DIRECTOR_PREVIOUS_VIDEO_REF not in video_modes:
-                errors.append(_scene_director_validation_message(state_params, "previous_unsupported"))
-        elif video_ref and not _scene_director_media_available(runtime, video_ref, "video"):
-            errors.append(_scene_director_validation_message(state_params, "video_missing", index=index, ref=video_ref))
+        if len(video_refs) > max_videos:
+            errors.append(_scene_director_validation_message(state_params, "too_many_videos", index=index, count=len(video_refs), max_videos=max_videos))
+        for video_ref in video_refs:
+            if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
+                if index == 1:
+                    errors.append(_scene_director_validation_message(state_params, "previous_first"))
+                if SCENE_DIRECTOR_PREVIOUS_VIDEO_REF not in video_modes:
+                    errors.append(_scene_director_validation_message(state_params, "previous_unsupported"))
+            elif not _scene_director_media_available(runtime, video_ref, "video"):
+                errors.append(_scene_director_validation_message(state_params, "video_missing", index=index, ref=video_ref))
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
 
@@ -1658,10 +1759,10 @@ def _scene_director_apply_target_method(runtime, state_params=None, scene_theme=
         if not isinstance(segment, dict):
             continue
         image_refs = _scene_director_segment_image_refs(segment)
-        audio_ref = _scene_director_first_segment_ref(segment, "audio")
-        video_ref = _scene_director_first_segment_ref(segment, "video")
+        audio_refs = _scene_director_segment_refs(segment, "audio", _scene_director_media_ref_limit(capability, "audio"))
+        video_refs = _scene_director_segment_refs(segment, "video", _scene_director_media_ref_limit(capability, "video"))
         segment["task_method"] = task_method
-        segment["type"] = _scene_director_segment_type(task_method, image_refs, audio_ref, video_ref)
+        segment["type"] = _scene_director_segment_type(task_method, image_refs, audio_refs, video_refs)
     return _scene_director_runtime_with_capability(payload, capability, state_params)
 
 
@@ -1677,6 +1778,8 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
     capability = _scene_director_capability_from_state(state_params, scene_theme)
     timeline_format = _scene_director_timeline_format_from_state(state_params, scene_theme, target_format)
     max_image_refs = _scene_director_image_ref_limit(capability)
+    max_audio_refs = _scene_director_media_ref_limit(capability, "audio")
+    max_video_refs = _scene_director_media_ref_limit(capability, "video")
     capability_chain_output = str(capability.get("chain_output") or "timeline").strip().lower()
     can_compose_timeline = capability_chain_output == "timeline"
     compose_enabled = can_compose_timeline and _scene_director_bool(compose_timeline, False)
@@ -1687,15 +1790,17 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
         has_legacy_method_column = len(row) >= 6 and _scene_director_looks_like_method(cells[2])
         legacy_task_method = _scene_director_task_method(cells[2]) if has_legacy_method_column else ""
         prompt_text = str((cells[3] if has_legacy_method_column else cells[2]) or "").strip()
-        image_refs, audio_ref, video_ref = _scene_director_row_media_refs(row, cells, has_legacy_method_column)
+        image_refs, audio_refs, video_refs = _scene_director_row_media_refs(row, cells, has_legacy_method_column)
         image_refs = image_refs[:max_image_refs]
-        if not prompt_text and not image_refs and not audio_ref and not video_ref:
+        audio_refs = audio_refs[:max_audio_refs]
+        video_refs = video_refs[:max_video_refs]
+        if not prompt_text and not image_refs and not audio_refs and not video_refs:
             continue
         start = _scene_director_float(cells[0], previous_end, 0, 86400)
         end = max(start, _scene_director_float(cells[1], start + 1, 0, 86400))
         previous_end = end
         task_method = resolved_task_method or legacy_task_method or "wan2.2_t2v_cn"
-        shot_type = _scene_director_segment_type(task_method, image_refs, audio_ref, video_ref)
+        shot_type = _scene_director_segment_type(task_method, image_refs, audio_refs, video_refs)
         segment = {
             "id": f"shot_{len(segments) + 1}",
             "start": start,
@@ -1708,8 +1813,8 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
                 {"source_ref": ref, "role": _scene_director_image_role(shot_type, ref_index, capability)}
                 for ref_index, ref in enumerate(image_refs)
             ],
-            "audio": [{"source_ref": audio_ref, "role": "voice"}] if audio_ref else [],
-            "video": [{"source_ref": video_ref, "role": "reference"}] if video_ref else [],
+            "audio": [{"source_ref": ref, "role": "voice"} for ref in audio_refs],
+            "video": [{"source_ref": ref, "role": "reference"} for ref in video_refs],
         }
         segments.append(segment)
         segment_row_indices.append(index)
@@ -1841,8 +1946,14 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
     params_backend_index = api_params.all_args.index("params_backend")
     prompt_index = api_params.all_args.index("prompt")
     backend = _scene_director_backend_dict(base_args[params_backend_index] if len(base_args) > params_backend_index else {})
-    base_audio = backend.get("audio")
-    base_video = backend.get("video")
+    base_audio_by_ref = {
+        f"audio_{slot_index + 1}": backend.get(slot)
+        for slot_index, slot in enumerate(SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS)
+    }
+    base_video_by_ref = {
+        f"video_{slot_index + 1}": backend.get(slot)
+        for slot_index, slot in enumerate(SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS)
+    }
     next_backend = copy.deepcopy(backend)
     _scene_director_clear_segment_media_backend(next_backend)
 
@@ -1870,20 +1981,20 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         if value is not None:
             next_backend[slot] = value
 
-    audio_ref = _scene_director_first_segment_ref(segment, "audio")
-    audio_fallback = base_audio if audio_ref == "audio_1" else None
-    audio_value = _scene_director_media_file_value(runtime, audio_ref, "audio", audio_fallback)
-    if audio_value:
-        next_backend["audio"] = audio_value
+    audio_refs = _scene_director_segment_refs(segment, "audio", len(SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS))
+    for slot, audio_ref in zip(SCENE_DIRECTOR_AUDIO_BACKEND_SLOTS, audio_refs):
+        audio_value = _scene_director_media_file_value(runtime, audio_ref, "audio", base_audio_by_ref.get(audio_ref))
+        if audio_value:
+            next_backend[slot] = audio_value
 
-    video_ref = _scene_director_first_segment_ref(segment, "video")
-    if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
-        video_value = previous_video
-    else:
-        video_fallback = base_video if video_ref == "video_1" else None
-        video_value = _scene_director_media_file_value(runtime, video_ref, "video", video_fallback)
-    if video_value:
-        next_backend["video"] = video_value
+    video_refs = _scene_director_segment_refs(segment, "video", len(SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS))
+    for slot, video_ref in zip(SCENE_DIRECTOR_VIDEO_BACKEND_SLOTS, video_refs):
+        if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF:
+            video_value = previous_video
+        else:
+            video_value = _scene_director_media_file_value(runtime, video_ref, "video", base_video_by_ref.get(video_ref))
+        if video_value:
+            next_backend[slot] = video_value
 
     segment_prompt = str(segment.get("prompt") or "").strip()
     segment_duration = _scene_director_segment_generation_duration(runtime, segment, 1.0)
@@ -1911,9 +2022,11 @@ def _scene_director_build_segment_task(base_task, runtime, segment, index, previ
         "duration_param": segment_duration_param,
         "image_refs": image_refs,
         "previous_image": previous_video if SCENE_DIRECTOR_PREVIOUS_IMAGE_REF in image_refs else "",
-        "audio_ref": audio_ref,
-        "video_ref": video_ref,
-        "previous_video": previous_video if video_ref == SCENE_DIRECTOR_PREVIOUS_VIDEO_REF else "",
+        "audio_refs": audio_refs,
+        "video_refs": video_refs,
+        "audio_ref": audio_refs[0] if audio_refs else "",
+        "video_ref": video_refs[0] if video_refs else "",
+        "previous_video": previous_video if SCENE_DIRECTOR_PREVIOUS_VIDEO_REF in video_refs else "",
     }
 
     args_i = copy.deepcopy(base_args)

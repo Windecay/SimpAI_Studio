@@ -77,6 +77,21 @@ def _safe_duration(value):
     return round(duration, 3)
 
 
+def _director_ref_list(director, kind):
+    data = director if isinstance(director, dict) else {}
+    values = data.get(f"{kind}_refs")
+    if isinstance(values, str):
+        values = re.split(r"[,;|\n]+", values)
+    if not isinstance(values, (list, tuple)):
+        values = [data.get(f"{kind}_ref")]
+    refs = []
+    for item in values:
+        ref = _clean_text(item.get("source_ref") if isinstance(item, dict) else item)
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs[:3]
+
+
 def _is_video_continuation(context):
     data = context if isinstance(context, dict) else {}
     if "is_video_continuation" in data:
@@ -197,8 +212,8 @@ def normalize_context(context=None):
     else:
         audio_count = int(bool(data.get("audio_present")))
     if director.get("enabled"):
-        video_count = int(bool(director.get("video_ref")))
-        audio_count = int(bool(director.get("audio_ref")) and bool(data.get("audio_present")))
+        video_count = len(_director_ref_list(director, "video"))
+        audio_count = len(_director_ref_list(director, "audio")) if bool(data.get("audio_present")) else 0
     duration = _safe_duration(data.get("target_duration_seconds") or data.get("duration_seconds") or data.get("duration"))
     language = _clean_text(data.get("language") or data.get("lang") or data.get("__lang")).lower()
     if language.startswith("en"):
