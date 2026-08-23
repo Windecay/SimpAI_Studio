@@ -128,7 +128,7 @@
   "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
   "default_sample_sharpness": 2,
   "default_sampler": "er_sde",
-  "default_scheduler": "simple",
+  "default_scheduler": "beta57",
   "default_performance": "Speed",
   "default_styles": [],
   "default_aspect_ratio": "640*640",
