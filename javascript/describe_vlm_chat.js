@@ -27,6 +27,7 @@
     ) + 1024;
     const MAX_RUNTIME_IMAGE_THUMB_LENGTH = 512 * 1024;
     const MAX_ROLEPLAY_REFERENCE_IMAGES = 5;
+    const MAX_ROLEPLAY_FORM_REFERENCES = 8;
     const MAX_ROLEPLAY_STATE_IMAGE_HISTORY = 30;
     const MAX_ROLEPLAY_CHARACTERS = 20;
     const MAX_ROLEPLAY_STATE_TEXT = 4000;
@@ -88,6 +89,8 @@
     const USER_SYSTEM_PROMPT_TEMPLATE_DELETE_ENDPOINT = '/vlm-user-system-prompt-templates/delete';
     const USER_SYSTEM_PROMPT_SEPARATOR = '\n\n--- User-level system prompt / 用户级系统提示词 ---\n\n';
     const NO_SYSTEM_PROMPT_PICKER_VALUE = '__builtin_none__';
+    const roleplayCharacterMentionBindings = new WeakMap();
+    const roleplayCharacterMentionCardCache = new Map();
     const MAX_PERSISTED_MESSAGES = 80;
     const MAX_PERSISTED_TEXT = 12000;
     const MAX_PERSISTED_THUMB_LENGTH = 80000;
@@ -2027,10 +2030,28 @@
             : window.setTimeout(refresh, 0);
     }
 
-    function renderRoleplayParticipantChips(participants, emptyLabel) {
+    function renderRoleplayParticipantChips(participants, emptyLabel, options = {}) {
         const list = Array.isArray(participants) ? participants : [];
+        const activeSpeakerId = String(options.activeSpeakerId || '').trim();
+        const chooseLabel = roleplayDictionaryText('Choose as the next replying character');
         return list.length
-            ? list.map((participant) => `<span class="describe-vlm-chat-roleplay-participant-chip ${participant.is_present ? 'is-present' : 'is-absent'}" title="${escapeHtml(`${participant.name} · ${participant.status_label}`)}"><i class="fa-solid ${participant.entity_type === 'player' ? 'fa-user' : 'fa-user-astronaut'}" aria-hidden="true"></i><span>${escapeHtml(participant.name)}</span></span>`).join('')
+            ? list.map((participant) => {
+                const participantId = String(participant?.id || '').trim();
+                const selectable = participant?.entity_type === 'character' && participant?.is_present && participantId;
+                const selected = selectable && participantId === activeSpeakerId;
+                const className = [
+                    'describe-vlm-chat-roleplay-participant-chip',
+                    participant?.is_present ? 'is-present' : 'is-absent',
+                    selectable ? 'is-selectable' : '',
+                    selected ? 'is-selected' : ''
+                ].filter(Boolean).join(' ');
+                const iconClass = participant?.entity_type === 'player' ? 'fa-user' : 'fa-user-astronaut';
+                const content = `<i class="fa-solid ${iconClass}" aria-hidden="true"></i><span>${escapeHtml(participant?.name || '')}</span>`;
+                if (!selectable) {
+                    return `<span class="${className}" title="${escapeHtml(`${participant?.name || ''} · ${participant?.status_label || ''}`)}">${content}</span>`;
+                }
+                return `<button type="button" class="${className}" data-describe-vlm-chat-roleplay-select-speaker="${escapeHtml(participantId)}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(`${chooseLabel}: ${participant?.name || participantId}`)}" title="${escapeHtml(`${participant?.name || participantId} · ${chooseLabel}`)}">${content}</button>`;
+            }).join('')
             : `<span class="describe-vlm-chat-roleplay-participant-empty">${escapeHtml(emptyLabel)}</span>`;
     }
 
@@ -2040,15 +2061,17 @@
         const participants = roleplayParticipantEntries(session);
         const present = participants.filter((item) => item.is_present);
         const absent = participants.filter((item) => !item.is_present);
-        const currentSpeaker = roleplayCurrentSpeakerForMessages(session, target?.messages);
+        const nextSpeaker = participants.find((item) => item.entity_type === 'character' && item.id === session.active_character_id)
+            || participants.find((item) => item.entity_type === 'character')
+            || null;
         const player = participants.find((item) => item.entity_type === 'player');
         const playerNotice = player && !player.is_present
             ? `<span class="describe-vlm-chat-roleplay-player-control-notice"><i class="fa-solid fa-route" aria-hidden="true"></i>${escapeHtml(localText('Input only controls the story', '输入仅用于控制剧情'))}</span>`
             : '';
         return `<div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite">
-  <span class="describe-vlm-chat-roleplay-participant-group"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'))}</span></span>
-  <span class="describe-vlm-chat-roleplay-participant-group is-absent"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'))}</span></span>
-  <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(localText('Speaking', '当前发言'))}</b><span>${escapeHtml(currentSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-absent"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
+  <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(roleplayDictionaryText('Next reply'))}</b><span data-describe-vlm-chat-roleplay-next-speaker>${escapeHtml(nextSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
   ${playerNotice}
 </div>`;
     }
@@ -2999,6 +3022,13 @@
         return lang.startsWith('zh') || lang.startsWith('cn') ? cn : en;
     }
 
+    function roleplayDictionaryText(en) {
+        const lang = String(state.__lang || getUiLang?.(state) || '').toLowerCase();
+        if (!lang.startsWith('zh') && !lang.startsWith('cn')) return en;
+        const dictionary = window.localization && typeof window.localization === 'object' ? window.localization : {};
+        return String(dictionary[en] || en);
+    }
+
     function creativePreferenceLabel(preference = state.creativePreference) {
         const current = normalizeCreativePreference(preference);
         if (current.parameter_profile) {
@@ -3484,6 +3514,246 @@
         return state.roleplayCharacterLibraryPromise;
     }
 
+    function roleplayCharacterMentionMenu(input) {
+        return input?.closest?.('[data-roleplay-character-mention-wrap]')
+            ?.querySelector?.('[data-roleplay-character-mention-menu]') || null;
+    }
+
+    function roleplayCharacterMentionQuery(input) {
+        if (!input) return null;
+        const value = String(input.value || '');
+        const caret = Number.isInteger(input.selectionStart) ? input.selectionStart : value.length;
+        const prefix = value.slice(0, caret);
+        const start = prefix.lastIndexOf('@');
+        if (start < 0) return null;
+        const fragment = prefix.slice(start + 1);
+        if (fragment.length > 80 || /[\s\r\n，。！？；;：:,、()[\]{}<>《》“”"'`]/u.test(fragment)) return null;
+        return { start, end: caret, fragment };
+    }
+
+    function roleplayCharacterMentionCandidates(input, session = null) {
+        const runtime = currentConversationRuntime();
+        const normalized = normalizeRoleplaySession(
+            session || runtime?.roleplaySession || state.roleplaySession,
+            runtime?.conversationId || state.conversationId
+        );
+        const candidates = [];
+        Object.values(normalized.characters || {}).forEach((card) => {
+            const character = normalizeRoleplayCharacterLibraryCard(card);
+            const name = String(character.name || '').trim();
+            if (!name) return;
+            candidates.push({
+                key: `story:${character.id}`,
+                source: 'story',
+                id: character.id,
+                name,
+                card: character
+            });
+        });
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const currentLibraryId = input?.closest?.('#describe_vlm_chat_roleplay_character_library_modal')
+            ? String(workspace.draft?.id || '').trim()
+            : '';
+        state.roleplayCharacterLibrary.forEach((item) => {
+            const character = normalizeRoleplayCharacterLibraryCard(item?.character || item);
+            const name = String(character.name || '').trim();
+            if (!name || (currentLibraryId && character.id === currentLibraryId)) return;
+            candidates.push({
+                key: `library:${character.id}`,
+                source: 'library',
+                id: character.id,
+                name,
+                card: character
+            });
+        });
+        return candidates;
+    }
+
+    function hideRoleplayCharacterMentionMenu(input) {
+        const menu = roleplayCharacterMentionMenu(input);
+        if (!menu) return;
+        menu.hidden = true;
+        menu.innerHTML = '';
+        input?.setAttribute?.('aria-expanded', 'false');
+    }
+
+    function hideRoleplayCharacterMentionMenus(exceptInput = null) {
+        document.querySelectorAll('[data-roleplay-character-mention-input]').forEach((input) => {
+            if (input !== exceptInput) hideRoleplayCharacterMentionMenu(input);
+        });
+    }
+
+    function renderRoleplayCharacterMentionMenu(input, expectedQuery = null) {
+        const query = roleplayCharacterMentionQuery(input);
+        const menu = roleplayCharacterMentionMenu(input);
+        if (!menu || !query || (expectedQuery && (
+            expectedQuery.start !== query.start
+            || expectedQuery.end !== query.end
+            || expectedQuery.fragment !== query.fragment
+        ))) {
+            if (!query) hideRoleplayCharacterMentionMenu(input);
+            return false;
+        }
+        const needle = query.fragment.trim().toLocaleLowerCase();
+        const sourceLabels = {
+            story: roleplayDictionaryText('Current story'),
+            library: roleplayDictionaryText('Character library')
+        };
+        const candidates = roleplayCharacterMentionCandidates(input)
+            .filter((item) => !needle || item.name.toLocaleLowerCase().includes(needle))
+            .sort((left, right) => {
+                const leftStarts = needle && left.name.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
+                const rightStarts = needle && right.name.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
+                if (leftStarts !== rightStarts) return leftStarts - rightStarts;
+                if (left.source !== right.source) return left.source === 'story' ? -1 : 1;
+                return left.name.localeCompare(right.name);
+            })
+            .slice(0, 10);
+        menu.innerHTML = candidates.length
+            ? candidates.map((item, index) => `<button type="button" role="option" data-roleplay-character-mention-option data-mention-key="${escapeHtml(item.key)}" data-mention-source="${escapeHtml(item.source)}" data-mention-id="${escapeHtml(item.id)}" data-mention-name="${escapeHtml(item.name)}" data-active="${index === 0 ? 'true' : 'false'}"><b>@${escapeHtml(item.name)}</b><small>${escapeHtml(sourceLabels[item.source] || item.source)}</small></button>`).join('')
+            : `<span class="describe-vlm-chat-character-mention-empty">${escapeHtml(roleplayDictionaryText('No matching characters'))}</span>`;
+        menu.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        return true;
+    }
+
+    async function refreshRoleplayCharacterMentionMenu(input) {
+        const query = roleplayCharacterMentionQuery(input);
+        if (!query) {
+            hideRoleplayCharacterMentionMenu(input);
+            return false;
+        }
+        hideRoleplayCharacterMentionMenus(input);
+        renderRoleplayCharacterMentionMenu(input, query);
+        if (!state.roleplayCharacterLibraryLoaded) {
+            await ensureRoleplayCharacterLibrary(document.getElementById('describe_vlm_chat_modal')).catch(() => []);
+            renderRoleplayCharacterMentionMenu(input, query);
+        }
+        return true;
+    }
+
+    function insertRoleplayCharacterMention(input, option) {
+        const query = roleplayCharacterMentionQuery(input);
+        const name = String(option?.getAttribute?.('data-mention-name') || '').trim();
+        if (!query || !name) return false;
+        const value = String(input.value || '');
+        const mention = `@${name}`;
+        input.value = `${value.slice(0, query.start)}${mention} ${value.slice(query.end)}`;
+        const caret = query.start + mention.length + 1;
+        input.setSelectionRange?.(caret, caret);
+        const bindings = roleplayCharacterMentionBindings.get(input) || new Map();
+        bindings.set(name.toLocaleLowerCase(), {
+            key: String(option.getAttribute('data-mention-key') || ''),
+            source: String(option.getAttribute('data-mention-source') || ''),
+            id: String(option.getAttribute('data-mention-id') || ''),
+            name
+        });
+        roleplayCharacterMentionBindings.set(input, bindings);
+        hideRoleplayCharacterMentionMenu(input);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        return true;
+    }
+
+    function handleRoleplayCharacterMentionKeydown(evt, input) {
+        const menu = roleplayCharacterMentionMenu(input);
+        if (!menu || menu.hidden) return false;
+        const options = Array.from(menu.querySelectorAll('[data-roleplay-character-mention-option]'));
+        if (evt.key === 'Escape') {
+            hideRoleplayCharacterMentionMenu(input);
+            evt.preventDefault();
+            return true;
+        }
+        if (!options.length) return false;
+        let active = Math.max(0, options.findIndex((item) => item.getAttribute('data-active') === 'true'));
+        if (evt.key === 'ArrowDown' || evt.key === 'ArrowUp') {
+            active = (active + (evt.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+            options.forEach((item, index) => item.setAttribute('data-active', index === active ? 'true' : 'false'));
+            options[active].scrollIntoView({ block: 'nearest' });
+            evt.preventDefault();
+            return true;
+        }
+        if (evt.key === 'Enter' || evt.key === 'Tab') {
+            insertRoleplayCharacterMention(input, options[active]);
+            evt.preventDefault();
+            return true;
+        }
+        return false;
+    }
+
+    async function loadRoleplayCharacterMentionCard(candidate) {
+        if (!candidate || candidate.source !== 'library') return candidate?.card || null;
+        if (roleplayCharacterMentionCardCache.has(candidate.id)) {
+            return roleplayCharacterMentionCardCache.get(candidate.id);
+        }
+        try {
+            const userContext = creativeUserContext();
+            const response = await postJson('/describe-image/vlm-roleplay/characters/load', {
+                character_id: candidate.id,
+                user_did: userContext?.user_did || '',
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+            if (response?.ok && response.character) {
+                const card = normalizeRoleplayCharacterLibraryCard(response.character);
+                roleplayCharacterMentionCardCache.set(candidate.id, card);
+                return card;
+            }
+        } catch (error) {}
+        return candidate.card || null;
+    }
+
+    function roleplayCharacterMentionAppears(text, name) {
+        return String(text || '').includes(`@${String(name || '').trim()}`);
+    }
+
+    async function roleplayCharacterMentionReferences(input, text, session = null) {
+        const request = String(text || '');
+        if (!request.includes('@')) return [];
+        await ensureRoleplayCharacterLibrary(document.getElementById('describe_vlm_chat_modal')).catch(() => []);
+        const candidates = roleplayCharacterMentionCandidates(input, session);
+        const bindings = roleplayCharacterMentionBindings.get(input) || new Map();
+        const selected = [];
+        const selectedNames = new Set();
+        const byName = new Map();
+        candidates.forEach((candidate) => {
+            const key = candidate.name.toLocaleLowerCase();
+            if (!byName.has(key) || candidate.source === 'story') byName.set(key, candidate);
+        });
+        bindings.forEach((binding, key) => {
+            if (!roleplayCharacterMentionAppears(request, binding.name)) return;
+            const candidate = candidates.find((item) => item.key === binding.key)
+                || candidates.find((item) => item.source === binding.source && item.id === binding.id);
+            if (candidate) {
+                selected.push(candidate);
+                selectedNames.add(key);
+            }
+        });
+        Array.from(byName.entries())
+            .sort((left, right) => right[1].name.length - left[1].name.length)
+            .forEach(([key, candidate]) => {
+                if (selectedNames.has(key) || !roleplayCharacterMentionAppears(request, candidate.name)) return;
+                selected.push(candidate);
+                selectedNames.add(key);
+            });
+        const references = [];
+        for (const candidate of selected.slice(0, MAX_ROLEPLAY_FORM_REFERENCES)) {
+            const card = normalizeRoleplayCharacterLibraryCard(await loadRoleplayCharacterMentionCard(candidate));
+            if (!String(card.name || '').trim()) continue;
+            references.push({
+                source: candidate.source,
+                id: card.id,
+                name: card.name,
+                identity: card.identity,
+                background: card.background,
+                personality: card.personality,
+                speech_style: card.speech_style,
+                behavior_rules: Array.isArray(card.behavior_rules) ? card.behavior_rules : []
+            });
+        }
+        return references;
+    }
+
     function decodeTavernMetadataBase64(value) {
         const source = String(value || '').trim().replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
         if (!source) return '';
@@ -3664,6 +3934,8 @@
             }
             workspace.selectedId = '';
             workspace.draft = normalizeRoleplayCharacterLibraryCard(response.character);
+            workspace.savedDraftKey = '';
+            workspace.dirty = true;
             workspace.agentDraftUndo = null;
             workspace.imagePayload = null;
             workspace.imageAssetId = workspace.draft.avatar_asset_id || '';
@@ -3823,11 +4095,32 @@
 
     async function saveRoleplayCharacterToLibrary(runtime = currentConversationRuntime(), modal = document.getElementById('describe_vlm_chat_modal')) {
         const target = runtime || currentConversationRuntime();
-        const session = applyVisibleRoleplayCharacterFields(
+        let session = applyVisibleRoleplayCharacterFields(
             normalizeRoleplaySession(target.roleplaySession, target.conversationId),
-            modal
+            modal,
+            true
         );
-        const card = session.characters?.[session.active_character_id] || session.character;
+        await ensureRoleplayCharacterLibrary(modal).catch(() => []);
+        const sourceCard = session.characters?.[session.active_character_id] || session.character;
+        const card = normalizeRoleplayCharacterLibraryCard(sourceCard);
+        const libraryIds = new Set(state.roleplayCharacterLibrary.map((item) => String(item?.id || '').trim()).filter(Boolean));
+        if (/^character(?:_\d+)?$/.test(card.id) || libraryIds.has(card.id)) {
+            let nextId = uid('character');
+            while (libraryIds.has(nextId)) nextId = uid('character');
+            card.id = nextId;
+        }
+        const activeRuntime = session.story_state?.characters?.[session.active_character_id] || {};
+        const currentAppearanceIds = Array.isArray(activeRuntime.current_appearance_asset_ids)
+            ? activeRuntime.current_appearance_asset_ids
+            : [];
+        if (currentAppearanceIds.length) {
+            addRoleplayCharacterLibraryHistoryEntry(card, currentAppearanceIds, {
+                appearance: activeRuntime.appearance,
+                state_text: activeRuntime.state_text,
+                state_fields: activeRuntime.state_fields,
+                source: 'roleplay_current_story'
+            });
+        }
         if (!roleplayCharacterHasDetails(card) || !String(card.name || '').trim()) {
             setConversationStatus(target, localText('Give the character a name before saving it to the library.', '请先填写角色名称，再保存到角色库。'), true);
             return false;
@@ -3845,6 +4138,7 @@
             return false;
         }
         const saved = normalizeRoleplayCharacterLibraryCard(response.character);
+        roleplayCharacterMentionCardCache.set(saved.id, saved);
         state.roleplayCharacterLibrary = [
             saved,
             ...state.roleplayCharacterLibrary.filter((item) => String(item?.id || '') !== saved.id)
@@ -3865,6 +4159,11 @@
         const select = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-library-select]');
         const selectedId = String(select?.value || '').trim();
         if (!selectedId) return false;
+        const selectedName = String(select?.selectedOptions?.[0]?.textContent || selectedId).trim();
+        if (!window.confirm(localText(
+            `Delete ${selectedName} from the character library?`,
+            `确定从角色库删除“${selectedName}”吗？`
+        ))) return false;
         const userContext = creativeUserContext();
         const response = await postJson('/describe-image/vlm-roleplay/characters/delete', {
             character_id: selectedId,
@@ -3877,6 +4176,7 @@
             return false;
         }
         state.roleplayCharacterLibrary = state.roleplayCharacterLibrary.filter((item) => String(item?.id || '') !== selectedId);
+        roleplayCharacterMentionCardCache.delete(selectedId);
         syncRoleplayCharacterLibraryControls(modal);
         setConversationStatus(target, localText('Library character deleted.', '角色库角色已删除。'));
         return true;
@@ -3896,6 +4196,8 @@
         if (!Object.prototype.hasOwnProperty.call(workspace, 'generationTimer')) workspace.generationTimer = null;
         if (!Object.prototype.hasOwnProperty.call(workspace, 'busy')) workspace.busy = false;
         if (!Object.prototype.hasOwnProperty.call(workspace, 'agentDraftUndo')) workspace.agentDraftUndo = null;
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'savedDraftKey')) workspace.savedDraftKey = '';
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'dirty')) workspace.dirty = false;
         return workspace;
     }
 
@@ -4051,6 +4353,25 @@
         return String(modal?.querySelector(`[data-roleplay-character-library-${name}]`)?.value || '').trim();
     }
 
+    function parseRoleplayCharacterLibraryExampleDialogues(value) {
+        const source = String(value || '').trim();
+        if (!source) return [];
+        return source
+            .split(/(?:^|\n)\s*<START>\s*(?:\n|$)/i)
+            .map((item) => item.trim().slice(0, 4000))
+            .filter(Boolean)
+            .slice(0, 20);
+    }
+
+    function formatRoleplayCharacterLibraryExampleDialogues(value) {
+        return (Array.isArray(value) ? value : [])
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+            .slice(0, 20)
+            .map((item) => `<START>\n${item}`)
+            .join('\n\n');
+    }
+
     function readRoleplayCharacterLibraryForm(modal) {
         const workspace = roleplayCharacterLibraryWorkspaceState();
         if (!workspace.draft || !modal) return workspace.draft;
@@ -4062,9 +4383,303 @@
         draft.speech_style = roleplayCharacterLibraryFormValue(modal, 'speech-style').slice(0, MAX_PERSISTED_TEXT);
         draft.behavior_rules = roleplayCharacterLibraryFormValue(modal, 'behavior').split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 40);
         draft.first_message = roleplayCharacterLibraryFormValue(modal, 'first-message').slice(0, MAX_PERSISTED_TEXT);
+        draft.example_dialogues = parseRoleplayCharacterLibraryExampleDialogues(
+            roleplayCharacterLibraryFormValue(modal, 'example-dialogues')
+        );
         draft.image_prompt = roleplayCharacterLibraryFormValue(modal, 'image-prompt').slice(0, MAX_PERSISTED_TEXT);
         draft.negative_prompt = roleplayCharacterLibraryFormValue(modal, 'negative-prompt').slice(0, 4000);
         return draft;
+    }
+
+    function roleplayCharacterLibraryPersistedDraft(card) {
+        const source = normalizeRoleplayCharacterLibraryCard(card);
+        return {
+            schema: source.schema,
+            version: source.version,
+            id: source.id,
+            name: source.name,
+            avatar_asset_id: source.avatar_asset_id,
+            reference_asset_ids: Array.isArray(source.reference_asset_ids) ? source.reference_asset_ids : [],
+            identity: source.identity,
+            background: source.background,
+            personality: source.personality,
+            speech_style: source.speech_style,
+            image_prompt: source.image_prompt,
+            negative_prompt: source.negative_prompt,
+            world_book: source.world_book,
+            state_image_history: Array.isArray(source.state_image_history) ? source.state_image_history : [],
+            behavior_rules: Array.isArray(source.behavior_rules) ? source.behavior_rules : [],
+            first_message: source.first_message,
+            example_dialogues: Array.isArray(source.example_dialogues) ? source.example_dialogues : [],
+            locked_fields: Array.isArray(source.locked_fields) ? source.locked_fields : []
+        };
+    }
+
+    function roleplayCharacterLibraryDraftKey(card) {
+        return card ? JSON.stringify(roleplayCharacterLibraryPersistedDraft(card)) : '';
+    }
+
+    function setRoleplayCharacterLibrarySavedDraft(card = null) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        workspace.savedDraftKey = roleplayCharacterLibraryDraftKey(card);
+        workspace.dirty = false;
+    }
+
+    function roleplayCharacterLibraryEditableField(target) {
+        return !!target?.matches?.([
+            '[data-roleplay-character-library-name]',
+            '[data-roleplay-character-library-identity]',
+            '[data-roleplay-character-library-background]',
+            '[data-roleplay-character-library-personality]',
+            '[data-roleplay-character-library-speech-style]',
+            '[data-roleplay-character-library-behavior]',
+            '[data-roleplay-character-library-first-message]',
+            '[data-roleplay-character-library-example-dialogues]',
+            '[data-roleplay-character-library-image-prompt]',
+            '[data-roleplay-character-library-negative-prompt]'
+        ].join(','));
+    }
+
+    function syncRoleplayCharacterLibrarySaveState(modal, readForm = false) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (readForm && workspace.draft) readRoleplayCharacterLibraryForm(modal);
+        const hasDraft = !!workspace.draft;
+        workspace.dirty = hasDraft && (!workspace.savedDraftKey || roleplayCharacterLibraryDraftKey(workspace.draft) !== workspace.savedDraftKey);
+        const indicator = modal?.querySelector('[data-roleplay-character-library-save-state]');
+        if (indicator) {
+            indicator.hidden = !hasDraft;
+            indicator.dataset.state = workspace.dirty ? 'dirty' : 'saved';
+            indicator.innerHTML = workspace.dirty
+                ? `<i class="fa-solid fa-circle" aria-hidden="true"></i><span>${escapeHtml(localText('Unsaved', '未保存'))}</span>`
+                : `<i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>${escapeHtml(localText('Saved', '已保存'))}</span>`;
+        }
+        const jsonButton = modal?.querySelector('[data-roleplay-character-library-export-json]');
+        if (jsonButton) jsonButton.disabled = !hasDraft;
+        const pngButton = modal?.querySelector('[data-roleplay-character-library-export-png]');
+        if (pngButton) {
+            const mainAssetId = hasDraft ? roleplayCharacterLibraryMainAssetId(workspace.draft) : '';
+            const hasPngSource = !!(workspace.imagePayload?.data_url || roleplayCharacterLibraryPreview(mainAssetId));
+            pngButton.disabled = !hasPngSource;
+        }
+    }
+
+    function roleplayCharacterLibraryExportPayload(card, includeLocalAssets = true) {
+        const source = normalizeRoleplayCharacterLibraryCard(card);
+        const simpai = {
+            schema: source.schema,
+            version: source.version,
+            id: source.id,
+            speech_style: source.speech_style,
+            image_prompt: source.image_prompt,
+            negative_prompt: source.negative_prompt,
+            behavior_rules: source.behavior_rules,
+            first_message: source.first_message,
+            example_dialogues: source.example_dialogues,
+            locked_fields: source.locked_fields
+        };
+        if (includeLocalAssets) {
+            simpai.avatar_asset_id = source.avatar_asset_id;
+            simpai.reference_asset_ids = source.reference_asset_ids;
+            simpai.state_image_history = source.state_image_history;
+        }
+        const examples = (source.example_dialogues || []).map((item) => String(item || '').trim()).filter(Boolean);
+        return {
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            data: {
+                id: source.id,
+                name: source.name,
+                description: source.identity,
+                personality: source.personality,
+                scenario: source.background,
+                first_mes: source.first_message,
+                mes_example: examples.map((item) => `<START>\n${item}`).join('\n'),
+                example_dialogues: examples,
+                speech_style: source.speech_style,
+                behavior_rules: source.behavior_rules,
+                image_prompt: source.image_prompt,
+                negative_prompt: source.negative_prompt,
+                character_book: source.world_book,
+                extensions: {
+                    speech_style: source.speech_style,
+                    image_prompt: source.image_prompt,
+                    negative_prompt: source.negative_prompt,
+                    simpai
+                }
+            }
+        };
+    }
+
+    function roleplayCharacterLibraryExportName(card, extension) {
+        const source = normalizeRoleplayCharacterLibraryCard(card);
+        const base = String(source.name || source.id || 'character')
+            .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '_')
+            .replace(/[. ]+$/g, '')
+            .slice(0, 120) || 'character';
+        return `${base}.${extension}`;
+    }
+
+    function downloadRoleplayCharacterLibraryBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    function roleplayCharacterLibraryUtf8Base64(value) {
+        const bytes = new TextEncoder().encode(String(value || ''));
+        let binary = '';
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return btoa(binary);
+    }
+
+    let roleplayCharacterLibraryPngCrcTable = null;
+
+    function roleplayCharacterLibraryPngCrc32(bytes) {
+        if (!roleplayCharacterLibraryPngCrcTable) {
+            roleplayCharacterLibraryPngCrcTable = Array.from({ length: 256 }, (_, index) => {
+                let value = index;
+                for (let bit = 0; bit < 8; bit += 1) {
+                    value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+                }
+                return value >>> 0;
+            });
+        }
+        let crc = 0xffffffff;
+        bytes.forEach((value) => {
+            crc = roleplayCharacterLibraryPngCrcTable[(crc ^ value) & 0xff] ^ (crc >>> 8);
+        });
+        return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function roleplayCharacterLibraryPngChunk(type, data) {
+        const typeBytes = new TextEncoder().encode(type);
+        const payload = data instanceof Uint8Array ? data : new Uint8Array(data || []);
+        const chunk = new Uint8Array(12 + payload.length);
+        const view = new DataView(chunk.buffer);
+        view.setUint32(0, payload.length);
+        chunk.set(typeBytes, 4);
+        chunk.set(payload, 8);
+        const crcInput = new Uint8Array(typeBytes.length + payload.length);
+        crcInput.set(typeBytes, 0);
+        crcInput.set(payload, typeBytes.length);
+        view.setUint32(8 + payload.length, roleplayCharacterLibraryPngCrc32(crcInput));
+        return chunk;
+    }
+
+    function addRoleplayCharacterMetadataToPng(pngBytes, payload) {
+        const bytes = pngBytes instanceof Uint8Array ? pngBytes : new Uint8Array(pngBytes || []);
+        const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (bytes.length < 20 || !signature.every((value, index) => bytes[index] === value)) {
+            throw new Error(localText('The character image could not be converted to PNG.', '角色立绘无法转换为 PNG。'));
+        }
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        let offset = 8;
+        let iendOffset = -1;
+        while (offset + 12 <= bytes.length) {
+            const length = view.getUint32(offset);
+            const end = offset + 12 + length;
+            if (end > bytes.length) break;
+            const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+            if (type === 'IEND') {
+                iendOffset = offset;
+                break;
+            }
+            offset = end;
+        }
+        if (iendOffset < 0) throw new Error(localText('The PNG file is incomplete.', 'PNG 文件不完整。'));
+        const encoded = roleplayCharacterLibraryUtf8Base64(JSON.stringify(payload));
+        const metadata = new TextEncoder().encode(`chara\0${encoded}`);
+        const chunk = roleplayCharacterLibraryPngChunk('tEXt', metadata);
+        const result = new Uint8Array(bytes.length + chunk.length);
+        result.set(bytes.subarray(0, iendOffset), 0);
+        result.set(chunk, iendOffset);
+        result.set(bytes.subarray(iendOffset), iendOffset + chunk.length);
+        return result;
+    }
+
+    async function roleplayCharacterLibraryImageAsPngBytes(dataUrl) {
+        const response = await fetch(dataUrl, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(localText('The character image could not be read.', '无法读取角色立绘。'));
+        const blob = await response.blob();
+        const original = new Uint8Array(await blob.arrayBuffer());
+        const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (original.length >= 8 && signature.every((value, index) => original[index] === value)) return original;
+        const imageUrl = URL.createObjectURL(blob);
+        try {
+            const image = document.createElement('img');
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error(localText('The character image could not be decoded.', '无法解码角色立绘。')));
+                image.src = imageUrl;
+            });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, image.naturalWidth || image.width || 1);
+            canvas.height = Math.max(1, image.naturalHeight || image.height || 1);
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error(localText('PNG conversion is unavailable.', '当前环境无法转换 PNG。'));
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const pngBlob = await new Promise((resolve, reject) => canvas.toBlob(
+                (value) => value ? resolve(value) : reject(new Error(localText('PNG conversion failed.', 'PNG 转换失败。'))),
+                'image/png'
+            ));
+            return new Uint8Array(await pngBlob.arrayBuffer());
+        } finally {
+            URL.revokeObjectURL(imageUrl);
+        }
+    }
+
+    async function exportRoleplayCharacterLibraryWorkspace(modal, format = 'json') {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (!workspace.draft || workspace.busy) return false;
+        readRoleplayCharacterLibraryForm(modal);
+        syncRoleplayCharacterLibrarySaveState(modal);
+        const card = normalizeRoleplayCharacterLibraryCard(workspace.draft);
+        if (!String(card.name || '').trim()) {
+            roleplayCharacterLibraryFeedback(modal, localText('Give the character a name before exporting.', '导出前请先填写角色名称。'), true);
+            return false;
+        }
+        const kind = String(format || 'json').toLowerCase() === 'png' ? 'png' : 'json';
+        const selector = `[data-roleplay-character-library-export-${kind}]`;
+        workspace.busy = true;
+        setRoleplayActionBusy(modal, selector, true);
+        try {
+            if (kind === 'png') {
+                const image = await prepareRoleplayCharacterLibraryImage(modal);
+                if (!image?.data_url) throw new Error(localText('Add a character image before exporting PNG.', '请先添加角色立绘，再导出 PNG。'));
+                const png = await roleplayCharacterLibraryImageAsPngBytes(image.data_url);
+                const payload = roleplayCharacterLibraryExportPayload(card, false);
+                const result = addRoleplayCharacterMetadataToPng(png, payload);
+                downloadRoleplayCharacterLibraryBlob(new Blob([result], { type: 'image/png' }), roleplayCharacterLibraryExportName(card, 'png'));
+            } else {
+                const payload = roleplayCharacterLibraryExportPayload(card, true);
+                downloadRoleplayCharacterLibraryBlob(
+                    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+                    roleplayCharacterLibraryExportName(card, 'json')
+                );
+            }
+            const exported = kind === 'png'
+                ? localText('Character PNG exported.', '角色 PNG 已导出。')
+                : localText('Character JSON exported.', '角色 JSON 已导出。');
+            roleplayCharacterLibraryFeedback(modal, workspace.dirty
+                ? `${exported} ${localText('Current edits are still unsaved.', '当前修改仍未保存。')}`
+                : exported);
+            return true;
+        } catch (error) {
+            roleplayCharacterLibraryFeedback(modal, String(error?.message || localText('Character export failed.', '角色导出失败。')), true);
+            return false;
+        } finally {
+            workspace.busy = false;
+            setRoleplayActionBusy(modal, selector, false);
+            syncRoleplayCharacterLibrarySaveState(modal);
+        }
     }
 
     function renderRoleplayCharacterLibraryList(modal) {
@@ -4181,6 +4796,7 @@
         setValue('speech-style', card.speech_style);
         setValue('behavior', (card.behavior_rules || []).join('\n'));
         setValue('first-message', card.first_message);
+        setValue('example-dialogues', formatRoleplayCharacterLibraryExampleDialogues(card.example_dialogues));
         setValue('image-prompt', card.image_prompt);
         setValue('negative-prompt', card.negative_prompt);
         const mainPreview = modal.querySelector('[data-roleplay-character-library-main-preview]');
@@ -4233,6 +4849,7 @@
         renderRoleplayCharacterLibraryAgentReview(modal);
         const deleteButton = modal.querySelector('[data-roleplay-character-library-delete]');
         if (deleteButton) deleteButton.disabled = !roleplayCharacterLibraryWorkspaceState().selectedId;
+        syncRoleplayCharacterLibrarySaveState(modal);
     }
 
     function ensureRoleplayCharacterLibraryWorkspaceModal() {
@@ -4260,7 +4877,11 @@
         <div class="describe-vlm-chat-character-library-editor-head"><div><span>${escapeHtml(localText('Character card', '角色卡'))}</span><small>${escapeHtml(localText('Edit the identity and visual prompt independently.', '身份设定和视觉提示词可以分别编辑。'))}</small></div><button type="button" data-roleplay-character-library-delete title="${escapeHtml(localText('Delete character', '删除角色'))}" aria-label="${escapeHtml(localText('Delete character', '删除角色'))}"><i class="fa-solid fa-trash"></i></button></div>
         <section class="describe-vlm-chat-character-library-agent-section">
           <div class="describe-vlm-chat-character-library-section-head"><div><strong>${escapeHtml(localText('Character agent', '角色智能体'))}</strong><small>${escapeHtml(localText('Create a new card or improve the current card with the roleplay agent.', '让角色智能体生成新角色，或优化当前角色卡。'))}</small></div><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-          <textarea data-roleplay-character-library-agent-request rows="3" placeholder="${escapeHtml(localText('Describe the character you want, or tell the agent what to improve...', '描述你想要的角色，或告诉智能体需要优化什么……'))}"></textarea>
+          <div class="describe-vlm-chat-character-mention-wrap" data-roleplay-character-mention-wrap>
+            <textarea data-roleplay-character-library-agent-request data-roleplay-character-mention-input rows="3" aria-describedby="roleplay_character_library_mention_hint" aria-controls="roleplay_character_library_mention_menu" aria-expanded="false" placeholder="${escapeHtml(localText('Describe the character you want, or tell the agent what to improve...', '描述你想要的角色，或告诉智能体需要优化什么……'))}"></textarea>
+            <small id="roleplay_character_library_mention_hint" class="describe-vlm-chat-character-mention-hint">${escapeHtml(roleplayDictionaryText("Type @ to reference a character from the current story or character library, for example: Create @Mira's mother."))}</small>
+            <div id="roleplay_character_library_mention_menu" class="describe-vlm-chat-character-mention-menu" data-roleplay-character-mention-menu role="listbox" hidden></div>
+          </div>
           <div class="describe-vlm-chat-character-library-agent-actions"><button type="button" data-roleplay-character-library-agent-generate><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('AI create character', '智能生成角色'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize card', '智能优化角色卡'))}</span></button></div>
           <div class="describe-vlm-chat-character-library-agent-feedback" data-roleplay-character-library-agent-feedback hidden role="status" aria-live="polite"></div>
           <div class="describe-vlm-chat-agent-draft-review-mount" data-roleplay-character-library-agent-review hidden></div>
@@ -4274,7 +4895,8 @@
             <label><span>${escapeHtml(localText('Personality', '性格'))}</span><textarea data-roleplay-character-library-personality rows="3"></textarea></label>
             <label><span>${escapeHtml(localText('Speech style', '说话方式'))}</span><textarea data-roleplay-character-library-speech-style rows="3"></textarea></label>
             <label><span>${escapeHtml(localText('Behavior rules, one per line', '行为规则，每行一条'))}</span><textarea data-roleplay-character-library-behavior rows="3"></textarea></label>
-            <label><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label>
+            <label data-roleplay-character-library-wide><span>${escapeHtml(localText('First message', '开场白'))}</span><textarea data-roleplay-character-library-first-message rows="3"></textarea></label>
+            <label data-roleplay-character-library-wide><span>${escapeHtml(roleplayDictionaryText('Example dialogues; separate entries with <START>'))}</span><textarea data-roleplay-character-library-example-dialogues rows="6" placeholder="${escapeHtml(roleplayDictionaryText('Use <START> before each example, then write {{user}} and {{char}} dialogue.'))}"></textarea></label>
           </div>
         </section>
         <section class="describe-vlm-chat-character-library-visual-section">
@@ -4298,7 +4920,10 @@
             <div class="describe-vlm-chat-character-library-history" data-roleplay-character-library-history></div>
           </section>
         </section>
-        <div class="describe-vlm-chat-character-library-editor-actions"><span data-roleplay-character-library-feedback aria-live="polite"></span><button type="button" data-roleplay-character-library-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save character', '保存角色'))}</span></button></div>
+        <div class="describe-vlm-chat-character-library-editor-actions">
+          <div class="describe-vlm-chat-character-library-editor-status"><span data-roleplay-character-library-save-state role="status" aria-live="polite"></span><span data-roleplay-character-library-feedback aria-live="polite"></span></div>
+          <div class="describe-vlm-chat-character-library-editor-action-buttons"><button type="button" data-roleplay-character-library-export-json title="${escapeHtml(localText('Export character JSON', '导出角色 JSON'))}"><i class="fa-solid fa-file-code"></i><span>${escapeHtml(localText('Export JSON', '导出 JSON'))}</span></button><button type="button" data-roleplay-character-library-export-png title="${escapeHtml(localText('Export Tavern PNG with the current character image', '用当前角色立绘导出酒馆 PNG'))}"><i class="fa-solid fa-image"></i><span>${escapeHtml(localText('Export PNG', '导出 PNG'))}</span></button><button type="button" data-roleplay-character-library-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save character', '保存角色'))}</span></button></div>
+        </div>
       </div>
     </main>
   </div>
@@ -4452,6 +5077,14 @@
         roleplayCharacterLibraryFeedback(modal, progressMessage);
         try {
             const session = roleplayCharacterLibrarySession(card);
+            const mentionInput = modal.querySelector('[data-roleplay-character-library-agent-request]');
+            const references = mode === 'visual'
+                ? []
+                : await roleplayCharacterMentionReferences(
+                    mentionInput,
+                    request,
+                    currentConversationRuntime()?.roleplaySession || state.roleplaySession
+                );
             const version = readSelectedVlmVersion();
             const agentRouting = roleplayAgentRequestRouting(session);
             const response = await postJson('/describe-image/vlm-chat-run', {
@@ -4464,6 +5097,7 @@
                 roleplay_request_kind: 'form_draft',
                 roleplay_form_target: 'character',
                 roleplay_form_request: request,
+                roleplay_form_references: references,
                 roleplay_session: session,
                 ...agentRouting,
                 history: [],
@@ -4819,10 +5453,12 @@
             });
             if (!response?.ok || !response.character) throw new Error(localText('Character could not be saved.', '角色保存失败。'));
             const saved = normalizeRoleplayCharacterLibraryCard(response.character);
+            roleplayCharacterMentionCardCache.set(saved.id, saved);
             state.roleplayCharacterLibrary = [saved, ...state.roleplayCharacterLibrary.filter((item) => String(item?.id || '') !== saved.id)];
             state.roleplayCharacterLibraryLoaded = true;
             workspace.selectedId = saved.id;
             workspace.draft = saved;
+            setRoleplayCharacterLibrarySavedDraft(saved);
             workspace.agentDraftUndo = null;
             renderRoleplayCharacterLibraryWorkspace(modal);
             syncRoleplayCharacterLibraryControls(document.getElementById('describe_vlm_chat_modal'), saved.id);
@@ -4852,6 +5488,8 @@
             const workspace = roleplayCharacterLibraryWorkspaceState();
             workspace.selectedId = id;
             workspace.draft = normalizeRoleplayCharacterLibraryCard(response.character);
+            roleplayCharacterMentionCardCache.set(id, workspace.draft);
+            setRoleplayCharacterLibrarySavedDraft(workspace.draft);
             workspace.agentDraftUndo = null;
             workspace.imagePayload = null;
             workspace.imageAssetId = workspace.draft.avatar_asset_id || '';
@@ -4880,8 +5518,10 @@
             });
             if (!response?.ok) throw new Error(localText('Character could not be deleted.', '角色删除失败。'));
             state.roleplayCharacterLibrary = state.roleplayCharacterLibrary.filter((item) => String(item?.id || '') !== id);
+            roleplayCharacterMentionCardCache.delete(id);
             workspace.selectedId = '';
             workspace.draft = null;
+            setRoleplayCharacterLibrarySavedDraft(null);
             workspace.agentDraftUndo = null;
             workspace.imagePayload = null;
             workspace.imageAssetId = '';
@@ -4958,6 +5598,107 @@
         return modal?.querySelector(owner === 'player'
             ? '[data-describe-vlm-chat-roleplay-player-state-fields]'
             : '[data-describe-vlm-chat-roleplay-state-fields]');
+    }
+
+    function roleplayStateTemplateDefinitions() {
+        const text = roleplayDictionaryText;
+        const field = (label, value) => ({ label: text(label), value: text(value) });
+        return [
+            {
+                id: 'simple',
+                label: text('Simple general'),
+                fields: [
+                    field('Health', 'Normal'),
+                    field('Mood', 'Calm'),
+                    field('Current action', 'Undecided')
+                ]
+            },
+            {
+                id: 'adventure',
+                label: text('Adventure basics'),
+                fields: [
+                    field('Health', '100 / 100'),
+                    field('Mana', '100 / 100'),
+                    field('Stamina', '100 / 100'),
+                    field('Status effects', 'None')
+                ]
+            },
+            {
+                id: 'combat',
+                label: text('Combat status'),
+                fields: [
+                    field('Health', '100 / 100'),
+                    field('Armor', '0'),
+                    field('Action points', '100 / 100'),
+                    field('Status effects', 'None'),
+                    field('Battle readiness', 'Ready')
+                ]
+            },
+            {
+                id: 'survival',
+                label: text('Survival status'),
+                fields: [
+                    field('Health', '100 / 100'),
+                    field('Stamina', '100 / 100'),
+                    field('Hunger', '0 / 100'),
+                    field('Thirst', '0 / 100'),
+                    field('Body temperature', 'Normal')
+                ]
+            },
+            {
+                id: 'suspense',
+                label: text('Psychological suspense'),
+                fields: [
+                    field('Health', '100 / 100'),
+                    field('Sanity', '100 / 100'),
+                    field('Stress', '0 / 100'),
+                    field('Fear', '0 / 100'),
+                    field('Status effects', 'None')
+                ]
+            },
+            {
+                id: 'relationship',
+                label: text('Relationship interaction'),
+                fields: [
+                    field('Affinity', '0'),
+                    field('Trust', '0'),
+                    field('Wariness', '0'),
+                    field('Mood', 'Calm'),
+                    field('Current relationship', 'Acquaintance')
+                ]
+            }
+        ];
+    }
+
+    function renderRoleplayStateTemplateOptions() {
+        return [
+            `<option value="">${escapeHtml(roleplayDictionaryText('Quick state template'))}</option>`,
+            ...roleplayStateTemplateDefinitions().map((template) => (
+                `<option value="${escapeHtml(template.id)}">${escapeHtml(template.label)}</option>`
+            ))
+        ].join('');
+    }
+
+    function applyRoleplayStateTemplate(modal, owner = 'character', templateId = '') {
+        const normalizedOwner = owner === 'player' ? 'player' : 'character';
+        const select = modal?.querySelector(`[data-describe-vlm-chat-roleplay-state-template="${normalizedOwner}"]`);
+        const template = roleplayStateTemplateDefinitions().find((item) => item.id === String(templateId || '').trim());
+        if (!modal || !template) {
+            if (select) select.value = '';
+            return false;
+        }
+        const container = roleplayStateFieldsContainer(modal, normalizedOwner);
+        const hasExistingContent = Array.from(container?.querySelectorAll('input') || [])
+            .some((input) => String(input.value || '').trim());
+        if (hasExistingContent && !window.confirm(roleplayDictionaryText(
+            'Loading this template will replace existing structured state fields. Continue?'
+        ))) {
+            if (select) select.value = '';
+            return false;
+        }
+        renderRoleplayStateFields(modal, template.fields, normalizedOwner);
+        if (select) select.value = '';
+        return true;
     }
 
     function renderRoleplayStateFields(modal, fields = [], owner = 'character') {
@@ -5046,18 +5787,29 @@
         return merged.slice(0, MAX_ROLEPLAY_STATE_FIELDS);
     }
 
-    function applyVisibleRoleplayCharacterFields(session, modal) {
+    function applyVisibleRoleplayCharacterFields(session, modal, preserveEmpty = false) {
         const normalized = normalizeRoleplaySession(session);
         const activeId = normalized.active_character_id || normalized.character.id;
         const card = Object.assign({}, normalized.characters?.[activeId] || normalized.character);
-        const read = (selector) => String(modal?.querySelector(selector)?.value || '').trim();
+        const read = (selector) => {
+            const field = modal?.querySelector(selector);
+            return field ? String(field.value || '').trim() : null;
+        };
         const identity = read('[data-describe-vlm-chat-roleplay-character-identity]');
         const style = read('[data-describe-vlm-chat-roleplay-character-style]');
-        card.name = read('[data-describe-vlm-chat-roleplay-character-name]');
-        card.identity = identity.split(/\n\n+/)[0] || '';
-        card.background = identity.split(/\n\n+/).slice(1).join('\n\n');
-        card.personality = style.split(/\n\n+/)[0] || '';
-        card.speech_style = style.split(/\n\n+/).slice(1).join('\n\n');
+        const name = read('[data-describe-vlm-chat-roleplay-character-name]');
+        const hasVisibleValues = [name, identity, style].some((value) => value !== null && value !== '');
+        if (!preserveEmpty || hasVisibleValues) {
+            if (name !== null) card.name = name;
+            if (identity !== null) {
+                card.identity = identity.split(/\n\n+/)[0] || '';
+                card.background = identity.split(/\n\n+/).slice(1).join('\n\n');
+            }
+            if (style !== null) {
+                card.personality = style.split(/\n\n+/)[0] || '';
+                card.speech_style = style.split(/\n\n+/).slice(1).join('\n\n');
+            }
+        }
         normalized.characters[activeId] = card;
         normalized.character = card;
         return normalized;
@@ -5109,6 +5861,33 @@
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
         saveConversationSnapshot(target);
         syncRoleplayControls(modal, target);
+        return true;
+    }
+
+    function selectRoleplayReplyCharacter(runtime, modal, characterId) {
+        const target = runtime || currentConversationRuntime();
+        const autoplayState = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+        if (target.busy || autoplayState.phase === 'running') {
+            setConversationStatus(target, roleplayDictionaryText('Wait for the current reply before changing the replying character.'));
+            return false;
+        }
+        const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        const nextId = String(characterId || '').trim();
+        const presentIds = Array.isArray(session.story_state?.scene?.present_character_ids)
+            ? session.story_state.scene.present_character_ids.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        const isPresent = presentIds.length
+            ? presentIds.includes(nextId)
+            : nextId === session.active_character_id;
+        if (!nextId || !session.characters?.[nextId] || !isPresent) {
+            setConversationStatus(target, roleplayDictionaryText('Only characters present in the current scene can be selected for the next reply.'));
+            return false;
+        }
+        if (!switchRoleplayCharacter(target, modal, nextId)) return false;
+        const updated = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        const name = String(updated.characters?.[nextId]?.name || nextId).trim();
+        setConversationStatus(target, `${roleplayDictionaryText('Next reply')}: ${name}`);
+        modal?.querySelector('[data-describe-vlm-chat-input]')?.focus?.();
         return true;
     }
 
@@ -5200,10 +5979,13 @@
             turnIntent.value = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
         }
         if (turnIntent) {
+            const selectedIntent = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
             const effectiveIntent = effectiveRoleplayTurnIntent(runtime.roleplayTurnIntent, session);
-            turnIntent.title = effectiveIntent === 'story_control'
-                ? localText('This message will direct the story while the player remains present unless the story explicitly changes that state.', '本条消息将以剧情控制角度推进；除非剧情明确改变状态，玩家仍保持在场。')
-                : localText('This message will be treated as the player voice or action.', '本条消息将被视为玩家台词或行动。');
+            turnIntent.title = selectedIntent === 'auto'
+                ? roleplayDictionaryText('Input interpretation follows the current player state until you choose another mode.')
+                : effectiveIntent === 'story_control'
+                    ? roleplayDictionaryText('Story control remains active until you choose another input mode. The player stays present unless the story explicitly changes that state.')
+                    : roleplayDictionaryText('Player voice/action remains active until you choose another input mode.');
         }
         if (summary) summary.textContent = session.character.name
             ? `${session.character.name}${Object.keys(session.characters || {}).length > 1 ? ` · ${Object.keys(session.characters).length} ${localText('characters', '个角色')}` : ''}`
@@ -5854,6 +6636,12 @@
         ));
         let response;
         try {
+            const mentionInput = kind === 'character'
+                ? modal?.querySelector('[data-describe-vlm-chat-roleplay-character-draft-context]')
+                : null;
+            const references = kind === 'character'
+                ? await roleplayCharacterMentionReferences(mentionInput, requestText, session)
+                : [];
             response = await postJson('/describe-image/vlm-chat-run', {
                 request_kind: 'roleplay_form_draft',
                 request_id: uid('roleplay_form_draft'),
@@ -5870,6 +6658,7 @@
                 roleplay_request_kind: 'form_draft',
                 roleplay_form_target: kind,
                 roleplay_form_request: requestText,
+                roleplay_form_references: references,
                 roleplay_session: session,
                 ...agentRouting,
                 version,
@@ -8941,7 +9730,7 @@
         <label><span>${escapeHtml(localText('Name', '名称'))}</span><input data-describe-vlm-chat-roleplay-character-name type="text" maxlength="200"></label>
         <label><span>${escapeHtml(localText('Identity and background', '身份与背景'))}</span><textarea data-describe-vlm-chat-roleplay-character-identity rows="3"></textarea></label>
         <label><span>${escapeHtml(localText('Personality and speech', '性格与说话方式'))}</span><textarea data-describe-vlm-chat-roleplay-character-style rows="3"></textarea></label>
-        <label><span>${escapeHtml(localText('Character draft request', '角色生成要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-draft-context rows="2" placeholder="${escapeHtml(localText('Describe the character you want the assistant to create', '描述你希望助手生成的角色'))}"></textarea></label>
+        <label><span>${escapeHtml(localText('Character draft request', '角色生成要求'))}</span><div class="describe-vlm-chat-character-mention-wrap" data-roleplay-character-mention-wrap><textarea data-describe-vlm-chat-roleplay-character-draft-context data-roleplay-character-mention-input rows="2" aria-describedby="describe_vlm_chat_roleplay_character_mention_hint" aria-controls="describe_vlm_chat_roleplay_character_mention_menu" aria-expanded="false" placeholder="${escapeHtml(localText('Describe the character you want the assistant to create', '描述你希望助手生成的角色'))}"></textarea><small id="describe_vlm_chat_roleplay_character_mention_hint" class="describe-vlm-chat-character-mention-hint">${escapeHtml(roleplayDictionaryText("Type @ to reference a character from the current story or character library, for example: Create @Mira's mother."))}</small><div id="describe_vlm_chat_roleplay_character_mention_menu" class="describe-vlm-chat-character-mention-menu" data-roleplay-character-mention-menu role="listbox" hidden></div></div></label>
         <label><span>${escapeHtml(localText('Character image direction', '角色图要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-reference-request rows="2" placeholder="${escapeHtml(localText('Optional image direction, such as full body, white evening dress, neutral pose', '可选的角色图要求，例如全身、白色晚装、自然站姿'))}"></textarea></label>
         <div class="describe-vlm-chat-roleplay-current-appearance-editor">
           <div class="describe-vlm-chat-roleplay-reference-head"><span>${escapeHtml(localText('Current appearance image', '当前状态图'))}</span><b data-describe-vlm-chat-roleplay-current-appearance-revision>${escapeHtml(localText('Not adopted', '尚未采用'))}</b></div>
@@ -8956,7 +9745,7 @@
         <div class="describe-vlm-chat-roleplay-state-editor">
           <div class="describe-vlm-chat-roleplay-reference-head"><span>${escapeHtml(localText('Current character state', '角色当前状态'))}</span><button type="button" data-describe-vlm-chat-roleplay-draft="character_state" title="${escapeHtml(localText('Generate or supplement current character state', '生成或补充角色当前状态'))}" aria-label="${escapeHtml(localText('Generate or supplement current character state', '生成或补充角色当前状态'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></div>
           <textarea data-describe-vlm-chat-roleplay-character-state-text rows="3" maxlength="${MAX_ROLEPLAY_STATE_TEXT}" placeholder="${escapeHtml(localText('Describe the character\'s current condition, such as being knocked down and unable to move', '描述角色当前状态，例如被怪物击倒后无法动弹'))}"></textarea>
-          <div class="describe-vlm-chat-roleplay-state-fields-head"><span>${escapeHtml(localText('Structured state fields', '结构化状态'))}</span><button type="button" data-describe-vlm-chat-roleplay-state-field-add="character" title="${escapeHtml(localText('Add state field', '添加状态项'))}" aria-label="${escapeHtml(localText('Add state field', '添加状态项'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-state-fields-head"><span>${escapeHtml(localText('Structured state fields', '结构化状态'))}</span><div class="describe-vlm-chat-roleplay-state-field-controls"><select data-describe-vlm-chat-roleplay-state-template="character" aria-label="${escapeHtml(roleplayDictionaryText('Choose a quick state template'))}">${renderRoleplayStateTemplateOptions()}</select><button type="button" data-describe-vlm-chat-roleplay-state-field-add="character" title="${escapeHtml(localText('Add state field', '添加状态项'))}" aria-label="${escapeHtml(localText('Add state field', '添加状态项'))}"><i class="fa-solid fa-plus"></i></button></div></div>
           <div class="describe-vlm-chat-roleplay-state-fields" data-describe-vlm-chat-roleplay-state-fields data-describe-vlm-chat-roleplay-state-fields-owner="character"></div>
           <label><span>${escapeHtml(localText('State generation request', '状态生成要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-state-draft-context rows="2" placeholder="${escapeHtml(localText('Ask the assistant to fill or update a status from the current story', '告诉助手根据当前剧情补充或更新哪些状态'))}"></textarea></label>
         </div>
@@ -8984,7 +9773,7 @@
             <option value="absent">${escapeHtml(localText('Absent from scene', '离场'))}</option>
           </select></label>
           <label><span>${escapeHtml(localText('Current condition', '当前状态'))}</span><textarea data-describe-vlm-chat-roleplay-player-state-text rows="2" maxlength="${MAX_ROLEPLAY_STATE_TEXT}" placeholder="${escapeHtml(localText('Describe the player condition in natural language', '用自然语言描述玩家当前状态'))}"></textarea></label>
-          <div class="describe-vlm-chat-roleplay-state-fields-head"><span>${escapeHtml(localText('Structured state fields', '结构化状态'))}</span><button type="button" data-describe-vlm-chat-roleplay-state-field-add="player" title="${escapeHtml(localText('Add state field', '添加状态项'))}" aria-label="${escapeHtml(localText('Add state field', '添加状态项'))}"><i class="fa-solid fa-plus"></i></button></div>
+          <div class="describe-vlm-chat-roleplay-state-fields-head"><span>${escapeHtml(localText('Structured state fields', '结构化状态'))}</span><div class="describe-vlm-chat-roleplay-state-field-controls"><select data-describe-vlm-chat-roleplay-state-template="player" aria-label="${escapeHtml(roleplayDictionaryText('Choose a quick state template'))}">${renderRoleplayStateTemplateOptions()}</select><button type="button" data-describe-vlm-chat-roleplay-state-field-add="player" title="${escapeHtml(localText('Add state field', '添加状态项'))}" aria-label="${escapeHtml(localText('Add state field', '添加状态项'))}"><i class="fa-solid fa-plus"></i></button></div></div>
           <div class="describe-vlm-chat-roleplay-state-fields" data-describe-vlm-chat-roleplay-player-state-fields data-describe-vlm-chat-roleplay-state-fields-owner="player"></div>
         </div>
         <div class="describe-vlm-chat-roleplay-reference-editor" data-reference-owner="player">
@@ -9090,7 +9879,7 @@
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
-       <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(localText('Choose how this one message should drive the story. This does not change whether the player is present.', '选择本条消息如何推动剧情，不会改变玩家是否在场。'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(localText('Perspective', '本轮视角'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(localText('Roleplay turn perspective', '角色扮演本轮视角'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
+       <label class="describe-vlm-chat-roleplay-turn-intent" data-describe-vlm-chat-roleplay-turn-intent-wrap hidden title="${escapeHtml(roleplayDictionaryText('Choose how roleplay input is interpreted. This selection remains active until you change it.'))}"><i class="fa-solid fa-compass" aria-hidden="true"></i><span>${escapeHtml(roleplayDictionaryText('Input mode'))}</span><select data-describe-vlm-chat-roleplay-turn-intent aria-label="${escapeHtml(roleplayDictionaryText('Roleplay input mode'))}">${renderRoleplayTurnIntentOptions(state.roleplayTurnIntent)}</select></label>
        <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image><i class="fa-solid fa-image" aria-hidden="true"></i><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
        <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><i class="fa-solid fa-power-off" aria-hidden="true"></i><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
       <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image, video, or audio', '添加引用图片、视频或音频'))}" aria-label="${escapeHtml(t('Attach reference image, video, or audio', '添加引用图片、视频或音频'))}"><i class="fa-solid fa-photo-film"></i></button>
@@ -15369,13 +16158,6 @@
             parameter_profiles: selectedMode === 'creative' ? creativeParameterProfilesPayload() : [],
             lang: state.__lang
         };
-        if (selectedMode === 'roleplay' && roleplayTurnIntentSetting !== 'auto') {
-            runtime.roleplayTurnIntent = 'auto';
-            if (isCurrentConversationRuntime(runtime)) {
-                state.roleplayTurnIntent = 'auto';
-                syncRoleplayControls(modal, runtime);
-            }
-        }
         const streamEligible = (
             ['chat', 'creative', 'prompt', 'guide', 'raw'].includes(selectedMode)
             || roleplayTextStream
@@ -16064,6 +16846,13 @@
     }
 
     document.addEventListener('change', (evt) => {
+        const stateTemplate = evt.target.closest?.('[data-describe-vlm-chat-roleplay-state-template]');
+        if (stateTemplate) {
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const owner = String(stateTemplate.getAttribute('data-describe-vlm-chat-roleplay-state-template') || 'character').trim();
+            applyRoleplayStateTemplate(modal, owner, stateTemplate.value);
+            return;
+        }
         const resourceActive = evt.target.closest?.('[data-resource-active]');
         if (resourceActive) {
             const resources = resourceActive.closest('[data-describe-vlm-chat-roleplay-resources]');
@@ -16129,11 +16918,27 @@
     });
 
     document.addEventListener('input', (evt) => {
-        if (!evt.target.closest?.('[data-roleplay-character-library-search]')) return;
-        renderRoleplayCharacterLibraryList(document.getElementById('describe_vlm_chat_roleplay_character_library_modal'));
+        const mentionInput = evt.target.closest?.('[data-roleplay-character-mention-input]');
+        if (mentionInput) refreshRoleplayCharacterMentionMenu(mentionInput).catch(() => {});
+        const characterLibraryModal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
+        if (evt.target.closest?.('[data-roleplay-character-library-search]')) {
+            renderRoleplayCharacterLibraryList(characterLibraryModal);
+            return;
+        }
+        if (!characterLibraryModal || characterLibraryModal.hidden || !roleplayCharacterLibraryEditableField(evt.target)) return;
+        readRoleplayCharacterLibraryForm(characterLibraryModal);
+        syncRoleplayCharacterLibrarySaveState(characterLibraryModal);
     });
 
     document.addEventListener('click', (evt) => {
+        const mentionOption = evt.target.closest?.('[data-roleplay-character-mention-option]');
+        if (mentionOption) {
+            const mentionInput = mentionOption.closest('[data-roleplay-character-mention-wrap]')
+                ?.querySelector('[data-roleplay-character-mention-input]');
+            if (mentionInput) insertRoleplayCharacterMention(mentionInput, mentionOption);
+            return;
+        }
+        if (!evt.target.closest?.('[data-roleplay-character-mention-wrap]')) hideRoleplayCharacterMentionMenus();
         const openCharacterLibrary = evt.target.closest?.('[data-roleplay-character-library-open]');
         if (openCharacterLibrary) {
             evt.preventDefault();
@@ -16150,6 +16955,8 @@
                 const workspace = roleplayCharacterLibraryWorkspaceState();
                 workspace.selectedId = '';
                 workspace.draft = emptyRoleplayCharacterLibraryCard();
+                workspace.savedDraftKey = '';
+                workspace.dirty = true;
                 workspace.agentDraftUndo = null;
                 workspace.imagePayload = null;
                 workspace.imageAssetId = '';
@@ -16206,6 +17013,14 @@
                 generateRoleplayCharacterLibraryImage(characterLibraryModal);
                 return;
             }
+            if (evt.target.closest('[data-roleplay-character-library-export-json]')) {
+                exportRoleplayCharacterLibraryWorkspace(characterLibraryModal, 'json');
+                return;
+            }
+            if (evt.target.closest('[data-roleplay-character-library-export-png]')) {
+                exportRoleplayCharacterLibraryWorkspace(characterLibraryModal, 'png');
+                return;
+            }
             if (evt.target.closest('[data-roleplay-character-library-save]')) {
                 saveRoleplayCharacterLibraryWorkspace(characterLibraryModal);
                 return;
@@ -16248,6 +17063,16 @@
             return;
         }
         if (modal.hidden) return;
+        const replySpeaker = evt.target.closest?.('[data-describe-vlm-chat-roleplay-select-speaker]');
+        if (replySpeaker) {
+            evt.preventDefault();
+            selectRoleplayReplyCharacter(
+                syncCurrentRuntimeFromState(),
+                modal,
+                replySpeaker.getAttribute('data-describe-vlm-chat-roleplay-select-speaker')
+            );
+            return;
+        }
         const speakerTrigger = evt.target.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
         if (speakerTrigger) {
             const identity = speakerTrigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]');
@@ -17086,7 +17911,9 @@
         if (evt.target?.matches?.('[data-describe-vlm-chat-roleplay-turn-intent]')) {
             const runtime = syncCurrentRuntimeFromState();
             runtime.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(evt.target.value);
+            runtime.persistenceDirty = true;
             state.roleplayTurnIntent = runtime.roleplayTurnIntent;
+            saveConversationSnapshot(runtime);
             syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'), runtime);
             return;
         }
@@ -17241,6 +18068,8 @@
     });
 
     document.addEventListener('focusin', (evt) => {
+        const mentionInput = evt.target?.closest?.('[data-roleplay-character-mention-input]');
+        if (mentionInput) refreshRoleplayCharacterMentionMenu(mentionInput).catch(() => {});
         const trigger = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
         if (!trigger) return;
         positionRoleplaySpeakerStatusCard(trigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]'), trigger);
@@ -17253,6 +18082,8 @@
     window.addEventListener('resize', scheduleRoleplaySpeakerCardPositionRefresh, { passive: true });
 
     document.addEventListener('keydown', (evt) => {
+        const mentionInput = evt.target?.closest?.('[data-roleplay-character-mention-input]');
+        if (mentionInput && handleRoleplayCharacterMentionKeydown(evt, mentionInput)) return;
         const speakerTrigger = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-trigger]');
         if (speakerTrigger && evt.key === 'Escape') {
             const identity = speakerTrigger.closest('[data-describe-vlm-chat-roleplay-speaker-identity]');

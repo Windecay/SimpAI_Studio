@@ -7996,6 +7996,104 @@ html.describe-vlm-chat-resizing * {
   outline-offset: 0;
 }
 
+.describe-vlm-chat-character-mention-wrap {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.describe-vlm-chat-character-mention-hint {
+  color: #8fa2b7;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.describe-vlm-chat-character-mention-menu {
+  display: grid;
+  max-height: 178px;
+  overflow-y: auto;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  border-radius: 5px;
+  background: #11161d;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.describe-vlm-chat-character-mention-menu[hidden] {
+  display: none;
+}
+
+.describe-vlm-chat-character-mention-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0;
+  background: transparent;
+  color: #e5edf8;
+  text-align: left;
+}
+
+.describe-vlm-chat-character-mention-menu button:last-child {
+  border-bottom: 0;
+}
+
+.describe-vlm-chat-character-mention-menu button:hover,
+.describe-vlm-chat-character-mention-menu button[data-active="true"] {
+  background: rgba(14, 116, 144, 0.34);
+}
+
+.describe-vlm-chat-character-mention-menu button b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.describe-vlm-chat-roleplay-participant-chip {
+  appearance: none;
+  font: inherit;
+  line-height: inherit;
+}
+
+.describe-vlm-chat-roleplay-participant-chip.is-selectable {
+  cursor: pointer;
+}
+
+.describe-vlm-chat-roleplay-participant-chip.is-selectable:hover {
+  border-color: rgba(74, 222, 128, 0.7);
+  background: rgba(22, 101, 52, 0.34);
+  color: #dcfce7;
+}
+
+.describe-vlm-chat-roleplay-participant-chip.is-selectable:focus-visible {
+  outline: 2px solid rgba(251, 191, 36, 0.78);
+  outline-offset: 1px;
+}
+
+.describe-vlm-chat-roleplay-participant-chip.is-selected {
+  border-color: rgba(251, 191, 36, 0.78);
+  background: rgba(146, 64, 14, 0.32);
+  color: #fde68a;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.2);
+}
+
+.describe-vlm-chat-character-mention-menu button small {
+  color: #8fa2b7;
+  font-size: 10px;
+}
+
+.describe-vlm-chat-character-mention-empty {
+  padding: 8px;
+  color: #8fa2b7;
+  font-size: 10px;
+}
+
 .describe-vlm-chat-character-library-agent-actions,
 .describe-vlm-chat-character-library-generated-actions {
   display: flex;
@@ -8073,8 +8171,14 @@ html.describe-vlm-chat-resizing * {
   grid-column: span 1;
 }
 
-.describe-vlm-chat-character-library-fields label:nth-child(7) {
+.describe-vlm-chat-character-library-fields label[data-roleplay-character-library-wide] {
   grid-column: 1 / -1;
+}
+
+.describe-vlm-chat-character-library-fields textarea[data-roleplay-character-library-example-dialogues] {
+  min-height: 112px;
+  height: 112px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
 }
 
 .describe-vlm-chat-character-library-fields input,
@@ -8335,10 +8439,16 @@ html.describe-vlm-chat-resizing * {
 }
 
 .describe-vlm-chat-character-library-prompt-actions button:nth-child(2),
-.describe-vlm-chat-character-library-editor-actions button {
+.describe-vlm-chat-character-library-editor-action-buttons [data-roleplay-character-library-save] {
   border-color: rgba(74, 222, 128, 0.60);
   background: rgba(22, 101, 52, 0.38);
   color: #bbf7d0;
+}
+
+.describe-vlm-chat-character-library-editor-action-buttons [data-roleplay-character-library-export-png] {
+  border-color: rgba(245, 158, 11, 0.58);
+  background: rgba(120, 53, 15, 0.28);
+  color: #fde68a;
 }
 
 .describe-vlm-chat-character-library-assets {
@@ -8449,12 +8559,53 @@ html.describe-vlm-chat-resizing * {
   border-top: 1px solid rgba(148, 163, 184, 0.22);
 }
 
-.describe-vlm-chat-character-library-editor-actions > span {
+.describe-vlm-chat-character-library-editor-status {
+  display: grid;
+  gap: 3px;
   min-width: 0;
+}
+
+.describe-vlm-chat-character-library-editor-status > span {
   color: #aeb7c5;
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-character-library-editor-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.describe-vlm-chat-character-library-editor-action-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+[data-roleplay-character-library-save-state] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-weight: 700;
+}
+
+[data-roleplay-character-library-save-state][hidden] {
+  display: none;
+}
+
+[data-roleplay-character-library-save-state][data-state="saved"] {
+  color: #86efac;
+}
+
+[data-roleplay-character-library-save-state][data-state="dirty"] {
+  color: #fbbf24;
+}
+
+[data-roleplay-character-library-save-state] i {
+  font-size: 8px;
 }
 
 .describe-vlm-chat-character-library-visual-section textarea[data-roleplay-character-library-state-note],
@@ -8482,7 +8633,7 @@ html.describe-vlm-chat-resizing * {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .describe-vlm-chat-character-library-fields label:nth-child(7) {
+  .describe-vlm-chat-character-library-fields label[data-roleplay-character-library-wide] {
     grid-column: 1 / -1;
   }
 }
@@ -8555,6 +8706,19 @@ html.describe-vlm-chat-resizing * {
 
   .describe-vlm-chat-character-library-main-preview img {
     max-height: 280px;
+  }
+
+  .describe-vlm-chat-character-library-editor-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .describe-vlm-chat-character-library-editor-action-buttons {
+    justify-content: stretch;
+  }
+
+  .describe-vlm-chat-character-library-editor-action-buttons button {
+    flex: 1 1 96px;
   }
 
   .describe-vlm-chat-character-library-history-item {
@@ -8818,7 +8982,7 @@ html.describe-vlm-chat-resizing * {
   background: linear-gradient(to bottom, rgba(32, 36, 43, 0.84), #20242b 18px);
 }
 
-.describe-vlm-chat-character-library-editor-actions > button {
+.describe-vlm-chat-character-library-editor-action-buttons > button {
   min-width: 104px;
 }
 
@@ -8846,6 +9010,10 @@ html.describe-vlm-chat-resizing * {
 @media (max-width: 760px) {
   .describe-vlm-chat-character-library-main {
     padding: 14px 14px 22px;
+  }
+
+  .describe-vlm-chat-character-library-editor-actions {
+    bottom: -22px;
   }
 
   .describe-vlm-chat-character-library-editor {
@@ -23966,6 +24134,34 @@ button[aria-label="Edit"][title="Edit"] {
   min-width: 0;
   color: var(--describe-chat-muted, #a4a8b4);
   font-size: 11px;
+}
+
+.describe-vlm-chat-roleplay-state-field-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.describe-vlm-chat-roleplay-state-field-controls select {
+  width: min(142px, 40vw);
+  min-width: 0;
+  height: 28px;
+  padding: 0 24px 0 7px;
+  border: 1px solid var(--describe-chat-line, #494c56);
+  border-radius: 5px;
+  background: var(--describe-chat-panel, #242529);
+  color: var(--describe-chat-text, #f3f4f8);
+  font: inherit;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.describe-vlm-chat-roleplay-state-field-controls select:focus {
+  border-color: rgba(56, 189, 248, 0.72);
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.14);
 }
 
 .describe-vlm-chat-roleplay-state-fields-head button,

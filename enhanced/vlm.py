@@ -682,10 +682,19 @@ class VLM:
                     first_resolution = log_key not in _dynamic_fallback_log_keys
                     _dynamic_fallback_log_keys.add(log_key)
             else:
-                first_resolution = True
-            log_method = logger.info if first_resolution else logger.debug
+                # A deleted local model has no file signature to key the cache.
+                # Keep its diagnostic separate so status polling does not spam INFO logs.
+                log_key = ("missing", relative_path)
+                first_resolution = log_key not in _dynamic_fallback_log_keys
+                _dynamic_fallback_log_keys.add(log_key)
+            if model_path:
+                log_method = logger.info if first_resolution else logger.debug
+                log_message = "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s"
+            else:
+                log_method = logger.debug
+                log_message = "Dynamic llama.cpp VLM fallback unavailable: model=%s handler=%s mmproj=%s capabilities=%s"
             log_method(
-                "Dynamic llama.cpp VLM fallback resolved: model=%s handler=%s mmproj=%s capabilities=%s",
+                log_message,
                 relative_path,
                 handler or "",
                 mmproj_file or "",

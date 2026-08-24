@@ -1412,6 +1412,9 @@ def _prompt_options_from_payload(payload, lang):
         "roleplay_form_request": _clean_multiline_text(
             payload.get("roleplay_form_request") or payload.get("message") or ""
         ),
+        "roleplay_form_references": vlm_roleplay.normalize_roleplay_form_references(
+            payload.get("roleplay_form_references")
+        ),
         "roleplay_visual_request": _clean_multiline_text(
             payload.get("roleplay_visual_request") or payload.get("message") or ""
         ),
@@ -1717,6 +1720,7 @@ def _describe_chat_system_prompt(options, lang):
                     options.get("roleplay_form_target") or "character",
                     options.get("roleplay_form_request") or "",
                     lang,
+                    options.get("roleplay_form_references") or [],
                 )
             )
         elif roleplay_request_kind in {
@@ -2008,6 +2012,7 @@ def build_runtime_payload(payload):
         ),
         "roleplay_form_target": prompt_options["roleplay_form_target"],
         "roleplay_form_request": prompt_options["roleplay_form_request"],
+        "roleplay_form_references": prompt_options["roleplay_form_references"],
         "roleplay_speaker_mode": prompt_options["roleplay_speaker_mode"],
         "roleplay_speaker_id": prompt_options["roleplay_speaker_id"],
         "roleplay_last_speaker_id": prompt_options["roleplay_last_speaker_id"],
@@ -2132,7 +2137,8 @@ def _build_roleplay_director_runtime_payload(
         "prompt": prompt,
         "user_system_prompt": (
             "Return only the JSON object requested by the external director prompt. "
-            "Do not include markdown or commentary."
+            "Do not include markdown or commentary. Before returning, verify that every state patch targets "
+            "the entity whose state changed, not merely the character who spoke or caused the change."
         ),
         "describe_chat_mode": "raw",
         "describe_roleplay_director": True,

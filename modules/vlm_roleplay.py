@@ -36,6 +36,7 @@ MAX_AUTOPLAY_TURNS = 1000
 MAX_CURRENT_APPEARANCE_IMAGES = 3
 MAX_CHARACTER_STATE_IMAGE_HISTORY = 30
 MAX_ROLEPLAY_CHARACTERS = 20
+MAX_ROLEPLAY_FORM_REFERENCES = 8
 MAX_CHARACTER_STATE_FIELDS = 40
 MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
@@ -591,11 +592,40 @@ def build_character_draft_from_system_prompt(prompt: Any) -> dict[str, Any]:
     }
 
 
+def normalize_roleplay_form_references(value: Any) -> list[dict[str, Any]]:
+    references: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in _list(value, MAX_ROLEPLAY_FORM_REFERENCES):
+        if not isinstance(item, dict):
+            continue
+        source = _dict(item.get("character") or item)
+        card = default_character_card(source)
+        name = _text(card.get("name"), 200)
+        if not name:
+            continue
+        identity = f"{_text(item.get('source'), 40)}:{card['id']}"
+        if identity in seen:
+            continue
+        seen.add(identity)
+        references.append({
+            "source": _text(item.get("source"), 40) or "story",
+            "id": card["id"],
+            "name": name,
+            "identity": _text(card.get("identity"), 3000),
+            "background": _text(card.get("background"), 4000),
+            "personality": _text(card.get("personality"), 3000),
+            "speech_style": _text(card.get("speech_style"), 3000),
+            "behavior_rules": _clean_string_list(card.get("behavior_rules"), 40),
+        })
+    return references
+
+
 def build_roleplay_form_draft_prompt(
     session: Any,
     target: Any = "character",
     request_text: Any = "",
     lang: str = "cn",
+    referenced_characters: Any = None,
 ) -> str:
     """Build a strict JSON prompt for an assistant-generated roleplay form draft."""
     normalized = normalize_roleplay_session(session)
@@ -691,6 +721,21 @@ def build_roleplay_form_draft_prompt(
         }
         current = normalized.get("character", {})
         subject = "character"
+    references = normalize_roleplay_form_references(referenced_characters)
+    if target_key == "character":
+        referenced_ids = {item["id"] for item in references}
+        request_value = _text(request_text, 5000)
+        for card in normalized.get("characters", {}).values():
+            if len(references) >= MAX_ROLEPLAY_FORM_REFERENCES:
+                break
+            name = _text(card.get("name"), 200)
+            if not name or f"@{name}" not in request_value or card.get("id") in referenced_ids:
+                continue
+            references.extend(normalize_roleplay_form_references([{
+                "source": "story",
+                "character": card,
+            }]))
+            referenced_ids.add(card.get("id"))
     target_rule = (
         "For a player persona, treat explicit current form details as facts. Preserve them and enrich only missing or thin details; do not replace the player's identity with a different concept."
         if target_key == "persona"
@@ -711,8 +756,7 @@ def build_roleplay_form_draft_prompt(
             " the user explicitly asks for a permanently active rule. Use public visibility and no chapter restriction unless"
             " the request clearly requires another choice. Keep locked false for a newly generated entry."
         )
-    return "\n\n".join(
-        [
+    sections = [
             f"You are the roleplay form assistant. Create one reviewable {subject} draft.",
             f"Reply language: {reply_language}.",
             "Return JSON only. Do not include markdown, explanations, or fields outside the requested shape.",
@@ -725,8 +769,14 @@ def build_roleplay_form_draft_prompt(
             json.dumps(current, ensure_ascii=False, indent=2),
             "Player request for this draft:",
             _text(request_text, 5000),
-        ]
-    ).strip()
+    ]
+    if target_key == "character" and references:
+        sections.extend([
+            "Referenced existing character cards selected with @. Treat these cards as read-only facts. Use them only to create the requested relationship or maintain consistency. Do not rewrite or replace the referenced characters.",
+            json.dumps(references[:MAX_ROLEPLAY_FORM_REFERENCES], ensure_ascii=False, indent=2),
+            "Record the requested relationship in the new character's identity or background when appropriate.",
+        ])
+    return "\n\n".join(sections).strip()
 
 
 def build_visual_draft_prompt(
@@ -1730,6 +1780,7 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         return None
 
     extensions = _dict(source.get("extensions") or envelope.get("extensions"))
+    simpai_extension = _dict(extensions.get("simpai") or extensions.get("SimpAI"))
     depth_prompt = _dict(extensions.get("depth_prompt"))
     system_prompt = _text(first_value("system_prompt"), 16000)
     post_history_instructions = _text(first_value("post_history_instructions"), 16000)
@@ -1860,8 +1911,10 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
     }
     first_message = first_value("first_message", "first_mes") or (alternate_greetings[0] if alternate_greetings else "")
     card = default_character_card({
-        "id": _id(first_value("id") or name, "character"),
+        "id": _id(first_value("id") or simpai_extension.get("id") or name, "character"),
         "name": name,
+        "avatar_asset_id": first_value("avatar_asset_id") or simpai_extension.get("avatar_asset_id"),
+        "reference_asset_ids": first_value("reference_asset_ids") or simpai_extension.get("reference_asset_ids"),
         "identity": description,
         "background": scenario,
         "personality": first_value("personality"),
@@ -1869,8 +1922,15 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "image_prompt": image_prompt,
         "negative_prompt": negative_prompt,
         "first_message": first_message,
-        "example_dialogues": _import_example_dialogues(first_value("example_dialogues", "mes_example")),
-        "behavior_rules": _import_text_list(first_value("behavior_rules"), 40),
+        "example_dialogues": _import_example_dialogues(
+            first_value("example_dialogues", "mes_example") or simpai_extension.get("example_dialogues")
+        ),
+        "behavior_rules": _import_text_list(
+            first_value("behavior_rules") or simpai_extension.get("behavior_rules"),
+            40,
+        ),
+        "state_image_history": first_value("state_image_history") or simpai_extension.get("state_image_history"),
+        "locked_fields": first_value("locked_fields") or simpai_extension.get("locked_fields"),
         "world_book": character_book_result.get("world_book") if character_book_result and character_book_result.get("ok") else None,
         "import_metadata": metadata,
     })
@@ -2831,11 +2891,50 @@ def build_director_prompt(
     resolved_speaker_id = _id(speaker_id, "character") if _text(speaker_id, 160) else _id(
         normalized.get("active_character_id"), "character"
     )
+    speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized.get("character", {})
+    player_persona = normalized.get("persona", {})
+    entity_attribution = {
+        "player": {
+            "entity_type": "player",
+            "id": _text(player_persona.get("id"), 160),
+            "name": _text(player_persona.get("name"), 200),
+            "state_path_prefix": "player_state",
+            "allowed_runtime_fields": ["status", "state_text", "state_fields"],
+        },
+        "speaking_character": {
+            "entity_type": "character",
+            "id": resolved_speaker_id,
+            "name": _text(speaker_card.get("name"), 200),
+            "state_path_prefix": f"characters.{resolved_speaker_id}",
+        },
+        "other_characters": [
+            {
+                "id": character_id,
+                "name": _text(card.get("name"), 200),
+                "state_path_prefix": f"characters.{character_id}",
+            }
+            for character_id, card in normalized.get("characters", {}).items()
+            if character_id != resolved_speaker_id
+        ],
+    }
     summary_schedule = roleplay_summary_schedule(normalized)
     shape = {
         "patches": [
             {"op": "set", "path": "scene.location", "value": "", "evidence": ""},
             {"op": "set", "path": "player_state.status", "value": "present", "evidence": ""},
+            {"op": "set", "path": "player_state.state_text", "value": "", "evidence": ""},
+            {
+                "op": "set",
+                "path": "player_state.state_fields",
+                "value": [{"label": "", "value": ""}],
+                "evidence": "",
+            },
+            {
+                "op": "set",
+                "path": "characters.<affected_character_id>.state_text",
+                "value": "",
+                "evidence": "",
+            },
         ],
         "memories": [{"text": "", "importance": 0.0, "known_by": []}],
         "world_book_updates": [{"op": "add", "title": "", "content": "", "keys": []}],
@@ -2866,6 +2965,16 @@ def build_director_prompt(
             f"Return JSON only. Summaries use {reply_language}.",
             "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
             "Do not rewrite the full state. Return incremental patches.",
+            "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
+            "The speaking character is not the default state-update target. Never write a patch to characters.<speaker_id> merely because that character produced the visible reply.",
+            "In an in-character reply, second-person references such as you, your, 你, or 你的 normally refer to the player unless another addressee is explicitly named or the scene clearly establishes a different target.",
+            "The player runtime uses player_state and supports only status, state_text, and state_fields. Put the player's current action, emotion, body position, restraint, injury, equipment effects, buffs, debuffs, and ability restrictions into player_state.state_text and/or player_state.state_fields.",
+            "When a character grabs, restrains, embraces, moves, injures, heals, buffs, debuffs, or otherwise affects the player, update player_state for the effect on the player. Add a separate character patch only when that character's own state also changed.",
+            "Attribution example: if enemy_d says or does 'I seize your wrist and pull you into my arms', the player's restraint and position belong to player_state.state_text or player_state.state_fields, not characters.enemy_d. A characters.enemy_d.current_action patch is valid only when it describes enemy_d's own action, not the player's passive condition.",
+            "Reverse attribution example: if the player strikes enemy_d and the reply says enemy_d staggers or is injured, update characters.enemy_d rather than player_state.",
+            "One exchange may affect several entities. Emit separate patches for each affected entity and verify every path against the entity attribution map before returning JSON.",
+            "For a named multi-target effect, update exactly the named recipients. Do not broadcast healing, damage, buffs, debuffs, restraint, emotion, or position changes to every present entity.",
+            "Multi-target example: if speaking character C treats the player and character B, write the treatment results to player_state and characters.B only. Do not copy the treatment result to C unless the exchange explicitly says C also receives it. A current_action patch for C may describe C performing the treatment, but must never describe C as a patient.",
             "When the latest exchange clearly changes a character's current condition, update characters.<character_id>.state_text with a compact current snapshot of at most two short sentences.",
             "When numeric or named status values clearly change, update characters.<character_id>.state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
@@ -2889,6 +2998,8 @@ def build_director_prompt(
             "The visual candidate may contain only facts visible in the current scene.",
             "JSON shape:",
             json.dumps(shape, ensure_ascii=False),
+            "Entity attribution map:",
+            json.dumps(entity_attribution, ensure_ascii=False, indent=2),
             "Current normalized state:",
             json.dumps(normalized["story_state"], ensure_ascii=False, indent=2),
             "Current active chapter:",
@@ -5133,6 +5244,7 @@ __all__ = [
     "ROLEPLAY_SKILLS",
     "default_character_card",
     "build_character_draft_from_system_prompt",
+    "normalize_roleplay_form_references",
     "build_roleplay_form_draft_prompt",
     "build_character_image_analysis_prompt",
     "build_visual_draft_prompt",
