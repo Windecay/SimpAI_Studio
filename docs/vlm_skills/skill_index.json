@@ -250,7 +250,9 @@
       "manual_required": true,
       "auto_generated": false,
       "edit_target": "docs/vlm_skills/simpai_preset_guide.md",
-      "reason": "Preset family recommendations, workflow routing, and owner-specific tool meanings depend on the owner's product knowledge."
+      "route_manifest": "simpai_preset_guide_routes.json",
+      "routing": "hierarchical_section_selection",
+      "reason": "Preset family recommendations, workflow routing, and owner-specific tool meanings depend on the owner's product knowledge. Runtime consumers must select relevant sections through the route manifest instead of injecting the complete guide."
     },
     {
       "key": "image_editing",

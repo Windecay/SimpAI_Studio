@@ -16,6 +16,7 @@ from modules.llama_cpp_runtime import (
 import modules.vlm_api_profiles as vlm_api_profiles
 import modules.vlm_agent_router as vlm_agent_router
 import modules.vlm_roleplay as vlm_roleplay
+import modules.vlm_preset_guide_router as vlm_preset_guide_router
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 
 
@@ -130,9 +131,9 @@ GENERATION_TASK_ALIASES = {
 }
 PRESET_FAMILY_ALIASES = {
     "krea": ("Krea2-Turbo", "Krea2-ImageEdit"),
-    "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
-    "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
-    "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2I)"),
+    "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
+    "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
+    "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
 }
 CREATIVE_ASPECT_RATIOS = {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "7:4", "4:7"}
 CREATIVE_REFERENCE_MEDIA_LIMITS = {"image": 9, "video": 3, "audio": 3}
@@ -373,6 +374,9 @@ SimpAI UI guide skill:
   - When the user asks for image-to-video or wants to animate a still image, recommend Wan image-to-video as the general/default route.
   - For anime, illustration, 二次元, 动漫向, manhua, cel-shaded, or character-art image-to-video requests, recommend Dasiwa image-to-video first.
   - For text-to-video, recommend Wan(T2V); for image-to-video, recommend Wan(I2V); for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
+  - For MiniMax H3 native-audio video generation, recommend MiniMax-H3(T2V) for text-to-video, MiniMax-H3(I2V) for first-frame image-to-video with an optional last frame, and MiniMax-H3(R2V) for mixed image, video, and standalone audio references.
+  - For continuing a previous H3 clip, recommend MiniMax-H3(R2C) / MiniMax-H3续写. It requires the previous video, accepts up to nine optional ordered identity/appearance pictures, preserves scene, camera, motion, style, and audio continuity, and is not the R2V motion/reference-transfer route.
+  - For H3 model-based video detail restoration and resolution enlargement, recommend MiniMax-H3(Upscale) / MiniMax-H3视频放大. It requires one source video, processes the full duration in segments, preserves source timing, motion, composition, visible text, colors, and audio, and changes only detail and edge clarity. Use Nvidia-VSR when the user specifically wants conventional dedicated VSR.
   - For video object/person/face replacement with masks, recommend Wan-Animate with SAM3; for video removal/inpainting, recommend Wan-Remover with SAM3.
   - For video face swap, recommend ReActor-FaceSwap / ReActor Face Swap for a direct source-face-index workflow with a reference face image and source video. Offer Wan-Swap / Wan-Animate Face Swap when the user wants the Animate-style multimodal face-replacement route.
   - For motion transfer, character replacement, pose-following, or reusing a reference motion, recommend Wan-SCAIL2 or Wan-Swap motion transfer depending on whether identity/face replacement is involved. Wan-SCAIL2 separates the modes into two themes: Character Motion Transfer and Character Replacement; use Wan-Swap / Wan-Animate Motion Transfer as the Animate-style alternative.
@@ -404,6 +408,19 @@ SimpAI UI guide skill:
 
 SIMPAI_PRESET_GUIDE_SKILL_FILE = "simpai_preset_guide.md"
 ANIMA_PROMPT_SKILL_FILE = "anima_prompting.md"
+DESCRIBE_PRESET_GUIDE_ROUTE_MAX_CHARS = 3000
+H3_GUIDE_FALLBACK_RE = re.compile(r"(?<![a-z0-9])(?:minimax[\s_-]*)?h3(?![a-z0-9])|h3(?:预设|预置|文生|图生|多参|续写|图编|视频放大)", re.I)
+H3_GUIDE_FALLBACK = """
+MiniMax H3 Preset family:
+- MiniMax H3 in SimpAI is a native-audio video generation, reference-image editing, continuation, and video-upscale workflow family. It is not a portrait, fashion, lighting, still-image aesthetic, or generic image-style Preset.
+- MiniMax-H3(T2V) / MiniMax-H3文生: text-to-video with native generated audio.
+- MiniMax-H3(I2V) / MiniMax-H3图生: first-frame image-to-video with an optional last-frame image.
+- MiniMax-H3(R2V) / MiniMax-H3多参: up to nine ordered pictures, three videos, and three standalone audio references.
+- MiniMax-H3(R2C) / MiniMax-H3续写: continue the previous H3 clip, with up to nine optional identity/appearance pictures.
+- MiniMax-H3(R2I) / MiniMax-H3图编: still-image reference editing with one to nine ordered pictures.
+- MiniMax-H3(Upscale) / MiniMax-H3视频放大: process one source video's full duration in segments while preserving content, motion, timing, and audio.
+- Follow state.__lang for visible names and answer in the user's UI language.
+""".strip()
 
 
 def _cancel_key(conversation_id="", request_id=""):
@@ -592,6 +609,17 @@ def _normalize_lang(value):
     return "en" if text.startswith("en") else "cn"
 
 
+def _payload_lang(payload, default="cn"):
+    payload = payload if isinstance(payload, dict) else {}
+    state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+    return _normalize_lang(
+        state.get("__lang")
+        or payload.get("__lang")
+        or payload.get("lang")
+        or default
+    )
+
+
 def _requested_prompt_language(message, lang="cn"):
     text = str(message or "").strip()
     english_request = re.search(
@@ -638,8 +666,18 @@ def _describe_read_vlm_skill_file(filename, max_chars=30000):
     return content
 
 
-def _describe_preset_guide_skill():
-    return _describe_read_vlm_skill_file(SIMPAI_PRESET_GUIDE_SKILL_FILE) or GUIDE_MODE_SYSTEM.strip()
+def _describe_preset_guide_skill(query="", language="en"):
+    routed = vlm_preset_guide_router.build_preset_guide_context(
+        query,
+        language=language,
+        max_chars=DESCRIBE_PRESET_GUIDE_ROUTE_MAX_CHARS,
+    )
+    if routed:
+        return routed
+    fallback = H3_GUIDE_FALLBACK if H3_GUIDE_FALLBACK_RE.search(str(query or "")) else GUIDE_MODE_SYSTEM.strip()
+    if len(fallback) > DESCRIBE_PRESET_GUIDE_ROUTE_MAX_CHARS:
+        fallback = fallback[:DESCRIBE_PRESET_GUIDE_ROUTE_MAX_CHARS].rstrip() + "\n..."
+    return fallback
 
 
 def _describe_anima_prompt_skill(adapter=None):
@@ -1381,6 +1419,7 @@ def _prompt_options_from_payload(payload, lang):
         "user_system_prompt_content": user_system_prompt_content,
         "system_prompt_manual_override": system_prompt_manual_override,
         "prompt_intent": prompt_intent,
+        "message": message,
         "request_prompt_language": _requested_prompt_language(message, lang),
         "include_current_prompt": include_current_prompt,
         "enable_prompt_skills": chat_mode == "prompt" or (chat_mode == "chat" and prompt_intent),
@@ -1861,7 +1900,11 @@ def _describe_chat_system_prompt(options, lang):
             "Creative mode can run image Presets through Canvas Runner for text-to-image, single-image editing, and multi-image editing; "
             "recommend switching there when the user wants the chat to generate or edit images directly."
         )
-        sections.append(_describe_preset_guide_skill())
+        sections.append(
+            "[SimpAI routed Preset Guide begin]\n"
+            + _describe_preset_guide_skill(options.get("message"), lang)
+            + "\n[SimpAI routed Preset Guide end]"
+        )
     else:
         sections.append(
             "Prompt assistant mode: focus on turning the user's request and any attached image into a strong image-generation prompt, "
@@ -1941,7 +1984,7 @@ def build_runtime_payload(payload):
         return {"ok": False, "error": "Message is empty."}
 
     conversation_id = _clean_text(payload.get("conversation_id")) or f"describe_vlm_chat:{int(time.time() * 1000)}"
-    lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
+    lang = _payload_lang(payload)
     current_prompt = str(payload.get("current_prompt") or "")
     media_sources = _media_sources_from_payload(payload, conversation_id)
     prompt_options = _prompt_options_from_payload(payload, lang)
@@ -2117,7 +2160,7 @@ def _build_roleplay_director_runtime_payload(
     normalized_session = vlm_roleplay.normalize_roleplay_session(session)
     conversation_id = _clean_text(payload.get("conversation_id")) or session.get("conversation_id")
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
-    lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
+    lang = _payload_lang(payload)
     prompt = vlm_roleplay.build_director_prompt(
         session,
         user_message,
@@ -2204,7 +2247,7 @@ def _run_roleplay_director(
     target_turns = max(1, int(autoplay_state.get("target_turns") or normalized_session["autoplay_config"]["target_turns"]))
     continuous = bool(autoplay_state.get("continuous", normalized_session["autoplay_config"].get("continuous", False)))
     history = payload.get("history_full") or payload.get("history") or []
-    lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
+    lang = _payload_lang(payload)
     try:
         from modules import canvas_vlm_runtime
 
@@ -2389,7 +2432,7 @@ def build_creative_offer_runtime_payload(payload):
     payload = payload if isinstance(payload, dict) else {}
     conversation_id = _clean_text(payload.get("conversation_id")) or f"describe_vlm_chat:{int(time.time() * 1000)}"
     request_id = _clean_text(payload.get("request_id")) or f"director:{int(time.time() * 1000)}"
-    lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
+    lang = _payload_lang(payload)
     user_message = _clean_multiline_text(payload.get("message"), limit=3000)
     assistant_reply = _clean_multiline_text(payload.get("assistant_reply"), limit=5000)
     if not user_message or not assistant_reply:
@@ -4276,7 +4319,7 @@ def build_programmatic_creative_offer(payload):
     if _creative_director_information_size(scene_text) < 28:
         return {"offer": False}
     preference = _normalize_creative_preferences(payload.get("creative_preferences"))
-    prompt = _creative_director_prompt(scene_text, preference, payload.get("lang") or payload.get("__lang"))
+    prompt = _creative_director_prompt(scene_text, preference, _payload_lang(payload))
     normalized_scene = re.sub(r"\s+", " ", scene_text).strip().lower()
     digest = hashlib.sha1(normalized_scene.encode("utf-8", errors="ignore")).hexdigest()[:16]
     scene_key = f"rules:{reason}:{digest}"
@@ -4287,7 +4330,7 @@ def build_programmatic_creative_offer(payload):
         "score": score,
         "reason": reason,
         "scene_key": scene_key,
-        "offer_text": _creative_director_offer_text(reason, payload.get("lang") or payload.get("__lang")),
+        "offer_text": _creative_director_offer_text(reason, _payload_lang(payload)),
         "prompt": prompt,
         "preset": preference.get("preset") or "Z-imageT",
         "aspect_ratio": _creative_director_aspect_ratio(scene_text, reason),
@@ -5000,7 +5043,7 @@ def run_describe_vlm_chat(payload, stream_callback=None):
             session,
             candidate,
             turn_id=request_id,
-            lang=payload.get("lang") or payload.get("__lang") or "cn",
+            lang=_payload_lang(payload),
             manual=True,
         )
         if not visual_action:
@@ -5086,12 +5129,12 @@ def run_describe_vlm_chat(payload, stream_callback=None):
             runtime_payload.get("params", {}).get("describe_preset_capabilities"),
             request_prompt_language=_requested_prompt_language(
                 payload.get("message"),
-                payload.get("lang") or payload.get("__lang"),
+                _payload_lang(payload),
             ),
         )
         creative_reply = _localized_creative_generation_reply(
             parsed.get("actions"),
-            payload.get("lang") or payload.get("__lang"),
+            _payload_lang(payload),
             auto_generate=bool(params.get("describe_creative_auto_generate")),
         )
         if creative_reply:

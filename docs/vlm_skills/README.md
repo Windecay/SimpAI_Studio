@@ -45,6 +45,10 @@ Documents:
   knowledge for realistic/anime generation, editing, retouching, video, audio,
   Qwen free-viewpoint / pose / Gaussian repair presets, model readiness, and
   when to recommend main WebUI versus infinite canvas.
+- `simpai_preset_guide_routes.json`: hierarchical route manifest for the shared
+  Preset Guide. Describe Guide mode and Canvas Agent select one or two relevant
+  guide sections from the current request and `state.__lang`; they do not load
+  the complete guide into one model context.
 
 Related acceptance checklist:
 - `../vlm-agent-prompt-acceptance.md`: repeatable checks for prompt target

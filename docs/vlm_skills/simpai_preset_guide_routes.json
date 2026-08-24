@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "source": "simpai_preset_guide.md",
+  "purpose": "Route Preset Guide requests to a small set of relevant owner-authored Markdown sections instead of injecting the complete guide.",
+  "max_routes": 2,
+  "always_sections": [
+    "Describe Image Chat Modes",
+    "Answer Style"
+  ],
+  "default_routes": ["overview"],
+  "routes": [
+    {
+      "key": "h3",
+      "title": {"en": "MiniMax H3 Preset Family", "cn": "MiniMax H3 预设系列"},
+      "priority": 1000,
+      "exclusive": true,
+      "keywords": [
+        "h3", "minimax", "minimax h3", "minimax-h3", "r2v", "r2c", "r2i",
+        "h3预设", "h3预置", "h3文生", "h3图生", "h3多参", "h3续写", "h3图编", "h3视频放大"
+      ],
+      "sections": ["2026-08-24 MiniMax H3 Preset Family / H3 全系列"]
+    },
+    {
+      "key": "face_swap",
+      "title": {"en": "Face Swap", "cn": "换脸"},
+      "priority": 900,
+      "keywords": ["face swap", "faceswap", "换脸", "qwenfaceswap", "reactor", "swapface"],
+      "sections": ["2026-08-24 Face Swap And Motion Routed Leaf / 换脸与动作路由叶子"]
+    },
+    {
+      "key": "detail_enhance",
+      "title": {"en": "Detail Enhance", "cn": "细节增强"},
+      "priority": 880,
+      "keywords": ["enhance", "detail enhance", "增强修图", "修手", "修脸", "修眼", "手指", "面部修复"],
+      "sections": ["2026-07-30 Classic AIO Enhance Routing", "Image Editing / Retouching"]
+    },
+    {
+      "key": "private_profiles",
+      "title": {"en": "Private Parameter Profiles", "cn": "私人参数预设"},
+      "priority": 850,
+      "keywords": ["parameter profile", "private profile", "参数预设", "私人参数", "保存的参数"],
+      "sections": ["2026-07-30 Private Parameter Profiles"]
+    },
+    {
+      "key": "model_readiness",
+      "title": {"en": "Model Readiness", "cn": "模型就绪状态"},
+      "priority": 820,
+      "keywords": ["model readiness", "missing model", "download model", "模型缺失", "下载模型", "模型没装", "无法运行", "不能运行", "vram", "显存"],
+      "sections": ["Model Readiness"]
+    },
+    {
+      "key": "video",
+      "title": {"en": "Video Workflows", "cn": "视频工作流"},
+      "priority": 720,
+      "keywords": [
+        "video", "视频", "t2v", "i2v", "文生视频", "图生视频", "动起来", "动画化",
+        "dasiwa", "ltx", "bernini", "nvidia-vsr", "scail", "wan animate", "wan swap", "视频编辑", "视频超分", "视频放大", "视频续写"
+      ],
+      "sections": ["2026-08-24 Video Workflow Routed Leaf / 视频工作流叶子"]
+    },
+    {
+      "key": "pose_camera",
+      "title": {"en": "Pose And Camera", "cn": "姿势与视角"},
+      "priority": 700,
+      "keywords": ["pose", "姿势", "姿态", "camera angle", "viewpoint", "视角", "角度", "multiangle", "gaussian", "高斯", "expression", "表情", "liveportrait"],
+      "sections": ["Face, Body, Pose, And Camera"]
+    },
+    {
+      "key": "image_editing",
+      "title": {"en": "Image Editing", "cn": "图像编辑"},
+      "priority": 680,
+      "keywords": [
+        "image edit", "edit image", "图像编辑", "图片编辑", "修图", "改图", "qwenedit", "kleinedit",
+        "onekeykontext", "imagerepair", "removebg", "relight", "outpaint", "扩图", "擦除", "styletransfer", "object transfer", "物品迁移"
+      ],
+      "sections": ["Editing Model Boundaries", "Image Editing / Retouching"]
+    },
+    {
+      "key": "image_generation",
+      "title": {"en": "Image Generation", "cn": "图像生成"},
+      "priority": 660,
+      "keywords": [
+        "text to image", "text-to-image", "t2i", "文生图", "生图", "画图", "写实", "动漫", "二次元", "danbooru",
+        "z-image", "zimage", "krea2", "anima", "illustrious", "noobai", "sdxl", "chenkin", "qwen2512", "wan(t2i)", "flux"
+      ],
+      "sections": ["Text-To-Image / First Image", "Prompt Language / Model Routing"]
+    },
+    {
+      "key": "audio",
+      "title": {"en": "Audio And Talking Video", "cn": "音频与说话视频"},
+      "priority": 640,
+      "keywords": ["audio", "音频", "tts", "语音", "配音", "口型", "talking video", "infinitetalk", "foley", "音效", "声音"],
+      "sections": ["Audio, Speech, And Talking Video"]
+    },
+    {
+      "key": "canvas",
+      "title": {"en": "Infinite Canvas", "cn": "无限画布"},
+      "priority": 620,
+      "keywords": ["canvas", "画布", "节点", "workflow", "工作流", "timeline", "时间线", "队列", "模板", "result reuse", "结果复用"],
+      "sections": ["Infinite Canvas / Advanced Workflow"]
+    },
+    {
+      "key": "input_controls",
+      "title": {"en": "Input And Reference Controls", "cn": "输入与参考控制"},
+      "priority": 600,
+      "keywords": ["controlnet", "image prompt", "vary", "canny", "depth", "openpose", "参考图", "控制网", "重绘幅度"],
+      "sections": ["Input Image / Reference Controls"]
+    },
+    {
+      "key": "missing_media",
+      "title": {"en": "Missing Media Recovery", "cn": "缺少素材处理"},
+      "priority": 580,
+      "keywords": ["needs_media", "missing media", "缺少图片", "缺少视频", "缺少素材", "上传图片", "上传视频", "附件"],
+      "sections": ["2026-07-30 Missing-media Recovery"]
+    },
+    {
+      "key": "workflow_routing",
+      "title": {"en": "Preset Routing And Follow-ups", "cn": "Preset 路由与后续编辑"},
+      "priority": 560,
+      "keywords": ["another one", "follow-up", "继续编辑", "再来一个", "沿用", "preset family", "预设系列"],
+      "sections": ["2026-07-30 Preset Family Routing And Follow-up Edits"]
+    },
+    {
+      "key": "overview",
+      "title": {"en": "Preset Guide Overview", "cn": "Preset 向导概览"},
+      "priority": 0,
+      "keywords": [],
+      "sections": ["2026-08-24 Preset Guide Routed Overview / 分层路由索引"]
+    }
+  ]
+}

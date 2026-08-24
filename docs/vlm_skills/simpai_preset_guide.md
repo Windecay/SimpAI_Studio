@@ -412,3 +412,91 @@ SimpAI UI guide skill:
   an R2I request to `MiniMax-H3(R2V)`.
 - Keep the visible Chinese name as `MiniMax-H3图编`; select it from
   `state.__lang` rather than hard-coding a translated preset key.
+
+## 2026-08-24 MiniMax H3 Preset Family / H3 全系列
+
+- MiniMax H3 in SimpAI is a native-audio video generation, reference-image
+  editing, continuation, and video-upscale workflow family. It is not a
+  portrait, fashion, lighting, still-image aesthetic, or generic image-style
+  Preset. Never invent image-model characteristics for H3.
+- The current MiniMax H3 Preset family includes `MiniMax-H3(T2V)`,
+  `MiniMax-H3(I2V)`, `MiniMax-H3(R2V)`, `MiniMax-H3(R2C)`,
+  `MiniMax-H3(R2I)`, and `MiniMax-H3(Upscale)`. Do not omit R2C or Upscale
+  when explaining the available H3 workflows.
+- Recommend `MiniMax-H3(T2V)` / `MiniMax-H3文生` for text-to-video with native
+  generated audio.
+- Recommend `MiniMax-H3(I2V)` / `MiniMax-H3图生` when the main image is the
+  first frame and an optional second image is the last frame.
+- Recommend `MiniMax-H3(R2V)` / `MiniMax-H3多参` for mixed references: up to
+  nine ordered pictures, three videos, and three standalone audio clips. Use
+  `<Picture n>`, `<Video n>`, and `<Audio n>` tags, numbered independently by
+  media type; each reference video's soundtrack stays paired with that video.
+- Recommend `MiniMax-H3(R2I)` / `MiniMax-H3图编` for still-image reference
+  editing with one to nine ordered pictures and no video or audio input.
+- Recommend `MiniMax-H3(R2C)` / `MiniMax-H3续写` when the user wants to
+  continue a previous H3 clip. It requires the previous video and accepts up
+  to nine optional ordered identity/appearance pictures. Preserve the source
+  clip's final state, subject identity, scene, camera direction, motion,
+  pacing, style, and audio continuity. This is sequential continuation, not
+  the R2V motion/reference-transfer route, and it does not accept standalone
+  audio references.
+- Recommend `MiniMax-H3(Upscale)` / `MiniMax-H3视频放大` for H3 model-based
+  video detail restoration and resolution enlargement. It requires one source
+  video, processes the full duration in segments, preserves source timing,
+  motion, composition, visible text, colors, and audio, and should only improve
+  detail and edge clarity. Recommend `Nvidia-VSR` when the user specifically
+  wants the conventional dedicated VSR route instead.
+- Select the English or Chinese Preset display name from `state.__lang`; do not
+  invent a translated Preset key or return both names as one UI value.
+
+## 2026-08-24 Preset Guide Routed Overview / 分层路由索引
+
+- Preset Guide runtime knowledge is selected in three layers: a compact route
+  index, one or two matched workflow domains, and the exact owner-authored
+  section for the named Preset family. Do not load the complete guide for one
+  request.
+- Main routes are image generation, image editing, pose/camera, video, H3,
+  audio/talking video, infinite canvas, model readiness, missing media, and
+  private parameter profiles.
+- When the user names a Preset family such as MiniMax H3, load that family's
+  exact section before any broad image/video overview. When no route matches,
+  give a short category overview and ask one concise choice question only when
+  the user's goal is still ambiguous.
+- Follow `state.__lang` for visible text and Preset display names. Keep exact
+  Preset keys when the user needs to find the item in the Preset catalog.
+
+## 2026-08-24 Video Workflow Routed Leaf / 视频工作流叶子
+
+- For general image-to-video, recommend `Wan(I2V)`; for anime, illustration,
+  二次元, manhua, cel-shaded, or character-art input, recommend `Dasiwa image-to-video` first.
+- For text-to-video, recommend `Wan(T2V)`. For continuation, use `Wan-Extent`
+  or Dasiwa-Extent for anime. For multi-reference image-to-video, use
+  `Bernini-MultiI2V`; for source-video editing with optional image references,
+  use `Bernini-VideoEdit`.
+- For direct video face swap with a face image and source video, use
+  `ReActor-FaceSwap` / ReActor Face Swap. For Animate-style multimodal face or
+  character replacement, use Wan-Swap / Wan-Animate Face Swap.
+- For motion transfer or pose-following, use `Wan-SCAIL2` Character Motion
+  Transfer or Wan-Swap / Wan-Animate Motion Transfer. Character Replacement
+  is a separate Wan-SCAIL2 theme.
+- Use `LTX(InsightTool)` for video restoration, HD enhancement, watermark
+  removal, or subtitle removal. Use `Nvidia-VSR` for conventional dedicated
+  video super-resolution.
+- MiniMax H3 is routed through its dedicated H3 leaf. Do not infer H3 behavior
+  from this general video section.
+
+## 2026-08-24 Face Swap And Motion Routed Leaf / 换脸与动作路由叶子
+
+- For still-image face swap, use `QwenFaceSwap` when the user supplies the
+  target image and reference face image. Do not describe it as a video route.
+- For direct video face swap, use `ReActor-FaceSwap` / ReActor Face Swap with
+  a reference face image, source video, and source-face index.
+- Use Wan-Swap / Wan-Animate Face Swap for the Animate-style multimodal route,
+  especially when character replacement or broader reference control matters.
+- Use `LivePortrait Exp` as the expression editor rather than an identity-swap
+  Preset.
+- Use `Wan-SCAIL2` Character Motion Transfer or Wan-Swap / Wan-Animate Motion
+  Transfer for pose-following and reference-motion reuse. Do not present motion
+  transfer as face swap.
+- Follow `state.__lang` for the visible Preset display name and keep the exact
+  catalog key when the user needs to select it.

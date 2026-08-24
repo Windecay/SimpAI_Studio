@@ -9660,6 +9660,14 @@
     </div>
   </div>
   <div class="describe-vlm-chat-conversation-bar">
+    <label class="describe-vlm-chat-sidebar-mode"><span>${escapeHtml(t('Mode', '模式'))}</span><select data-describe-vlm-chat-mode aria-label="${escapeHtml(t('Chat Mode', '对话模式'))}">
+      <option value="chat" ${state.chatMode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Free Chat', '自由对话'))}</option>
+      <option value="roleplay" ${state.chatMode === 'roleplay' ? 'selected' : ''}>${escapeHtml(localText('Roleplay', '角色扮演'))}</option>
+      <option value="creative" ${state.chatMode === 'creative' ? 'selected' : ''}>${escapeHtml(localText('Creative', '创作模式'))}</option>
+      <option value="guide" ${state.chatMode === 'guide' ? 'selected' : ''}>${escapeHtml(t('Guide Mode', '向导模式'))}</option>
+      <option value="prompt" ${state.chatMode === 'prompt' ? 'selected' : ''}>${escapeHtml(t('Prompt Assistant', '提示词助手'))}</option>
+      <option value="raw" ${state.chatMode === 'raw' ? 'selected' : ''}>${escapeHtml(t('Raw Model', '原始模型'))}</option>
+    </select><div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(chatModeHint(state.chatMode))}</div></label>
     <div class="describe-vlm-chat-conversation-head">
       <span>${escapeHtml(t('Conversation', '对话'))}</span>
       <button type="button" data-describe-vlm-chat-new title="${escapeHtml(t('New conversation', '新建对话'))}" aria-label="${escapeHtml(t('New conversation', '新建对话'))}"><i class="fa-solid fa-plus"></i></button>
@@ -9668,19 +9676,10 @@
     <select class="describe-vlm-chat-conversation-native" data-describe-vlm-chat-conversation-select aria-label="${escapeHtml(t('Current conversation', '当前对话'))}">${renderConversationOptions()}</select>
   </div>
   <div class="describe-vlm-chat-controls">
-    <label><span>${escapeHtml(t('Mode', '模式'))}</span><select data-describe-vlm-chat-mode aria-label="${escapeHtml(t('Chat Mode', '对话模式'))}">
-      <option value="chat" ${state.chatMode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Free Chat', '自由对话'))}</option>
-      <option value="roleplay" ${state.chatMode === 'roleplay' ? 'selected' : ''}>${escapeHtml(localText('Roleplay', '角色扮演'))}</option>
-      <option value="creative" ${state.chatMode === 'creative' ? 'selected' : ''}>${escapeHtml(localText('Creative', '创作模式'))}</option>
-      <option value="guide" ${state.chatMode === 'guide' ? 'selected' : ''}>${escapeHtml(t('Guide Mode', '向导模式'))}</option>
-      <option value="prompt" ${state.chatMode === 'prompt' ? 'selected' : ''}>${escapeHtml(t('Prompt Assistant', '提示词助手'))}</option>
-      <option value="raw" ${state.chatMode === 'raw' ? 'selected' : ''}>${escapeHtml(t('Raw Model', '原始模型'))}</option>
-    </select></label>
     <label class="describe-vlm-chat-max-tokens-field" title="${escapeHtml(localText('Choose the output token budget.', '选择输出 Token 预算。'))}"><span>${escapeHtml(localText('Max output tokens', '最大输出 Token'))}</span><select data-describe-vlm-chat-max-tokens aria-label="${escapeHtml(localText('Max output tokens', '最大输出 Token'))}">${renderChatMaxTokenOptions()}</select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><div class="describe-vlm-chat-template-picker"><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select><button type="button" class="describe-vlm-chat-template-manage" data-describe-vlm-chat-user-template-open title="${escapeHtml(localText('Manage user documents', '管理用户项目'))}" aria-label="${escapeHtml(localText('Manage user documents', '管理用户项目'))}"><i class="fa-solid fa-folder-plus"></i></button></div></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
     <div class="describe-vlm-chat-runtime-status" data-describe-vlm-chat-runtime-status aria-live="polite"><i class="fa-solid fa-memory" aria-hidden="true"></i><select class="describe-vlm-chat-runtime-policy" data-describe-vlm-chat-vram-policy aria-label="${escapeHtml(t('VRAM policy', '显存策略'))}" title="${escapeHtml(t('Choose how much VRAM llama.cpp may use.', '选择 llama.cpp 使用的显存档位。'))}">${renderVlmVramPolicyOptions()}</select><select class="describe-vlm-chat-runtime-kv-cache" data-describe-vlm-chat-kv-cache-type aria-label="${escapeHtml(t('KV cache type', 'KV cache 类型'))}" title="${escapeHtml(t('Choose the llama.cpp KV cache precision.', '选择 llama.cpp KV cache 精度。'))}">${renderVlmKvCacheTypeOptions()}</select><label class="describe-vlm-chat-runtime-n-ctx-field" title="${escapeHtml(localText('Context length for local llama.cpp. Empty uses the model default.', '本地 llama.cpp 上下文长度。留空使用模型默认值。'))}"><span>${escapeHtml(localText('Context', '上下文'))}</span><input class="describe-vlm-chat-runtime-n-ctx" data-describe-vlm-chat-n-ctx type="number" min="${VLM_N_CTX_MIN}" max="${VLM_N_CTX_MAX}" step="${VLM_N_CTX_STEP}" inputmode="numeric" placeholder="${escapeHtml(localText('Auto', '自动'))}" value="" aria-label="${escapeHtml(localText('Context length', '上下文长度'))}"></label><span data-describe-vlm-chat-runtime-status-value>${escapeHtml(t('Waiting for model status', '等待模型状态'))}</span><button type="button" data-describe-vlm-chat-runtime-status-refresh title="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}" aria-label="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}"><i class="fa-solid fa-rotate"></i></button></div>
-    <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(chatModeHint(state.chatMode))}</div>
   </div>
   <div class="describe-vlm-chat-roleplay-strip" data-describe-vlm-chat-roleplay-strip hidden>
     <button type="button" class="describe-vlm-chat-roleplay-summary" data-describe-vlm-chat-roleplay-open title="${escapeHtml(localText('Open roleplay settings', '打开角色扮演设置'))}" aria-label="${escapeHtml(localText('Open roleplay settings', '打开角色扮演设置'))}">

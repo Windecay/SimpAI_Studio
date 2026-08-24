@@ -24771,3 +24771,184 @@ button[aria-label="Edit"][title="Edit"] {
     max-width: 100%;
   }
 }
+
+/* Keep the mode switch in the sidebar header, outside the collapsible settings. */
+.describe-vlm-chat-conversation-bar {
+  z-index: 2;
+}
+
+.describe-vlm-chat-sidebar-mode {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 0 0 auto;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 0 2px !important;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--describe-chat-line-soft, rgba(127, 127, 127, 0.28));
+}
+
+.describe-vlm-chat-sidebar-mode > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--describe-chat-muted, rgba(248, 250, 252, 0.78));
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.describe-vlm-chat-sidebar-mode select {
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.describe-vlm-chat-sidebar-mode .describe-vlm-chat-mode-hint {
+  grid-column: auto;
+  margin: 0;
+  max-height: 3.6em;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--body-text-color, #f8fafc) 62%, transparent);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+@media (min-width: 641px) {
+  .describe-vlm-chat-settings-summary {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-conversation-bar {
+    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    min-height: 82px;
+  }
+
+  .describe-vlm-chat-sidebar-mode {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 4px 6px;
+    width: 100%;
+    padding-bottom: 4px;
+  }
+
+  .describe-vlm-chat-sidebar-mode > span {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .describe-vlm-chat-sidebar-mode select {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .describe-vlm-chat-sidebar-mode .describe-vlm-chat-mode-hint {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-height: 2.5em;
+  }
+
+  .describe-vlm-chat-conversation-head {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .describe-vlm-chat-conversation-tabs {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .describe-vlm-chat-settings-summary {
+    grid-column: 1;
+  }
+}
+
+/* Keep the three primary settings controls on one row when the panel allows it. */
+.describe-vlm-chat-controls {
+  grid-template-columns:
+    140px
+    minmax(220px, 1.05fr)
+    minmax(240px, 1.23fr) !important;
+}
+
+.describe-vlm-chat-controls > .describe-vlm-chat-max-tokens-field {
+  grid-column: 1;
+  width: 100% !important;
+  max-width: 140px !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+}
+
+.describe-vlm-chat-controls > .describe-vlm-chat-template-field {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.describe-vlm-chat-controls > .describe-vlm-chat-system-field {
+  grid-column: 3;
+  min-width: 0;
+}
+
+.describe-vlm-chat-controls > .describe-vlm-chat-runtime-status {
+  grid-column: 1 / -1;
+}
+
+@container (min-width: 700px) {
+  .describe-vlm-chat-runtime-status {
+    flex-wrap: nowrap;
+  }
+
+  .describe-vlm-chat-runtime-status > span {
+    flex: 1 1 auto;
+  }
+}
+
+@container (max-width: 699px) {
+  .describe-vlm-chat-controls {
+    grid-template-columns: 140px minmax(220px, 1fr) !important;
+  }
+
+  .describe-vlm-chat-controls > .describe-vlm-chat-max-tokens-field {
+    grid-column: 1;
+    width: 100% !important;
+    max-width: 140px !important;
+  }
+
+  .describe-vlm-chat-controls > .describe-vlm-chat-template-field {
+    grid-column: 2;
+  }
+
+  .describe-vlm-chat-controls > .describe-vlm-chat-system-field,
+  .describe-vlm-chat-controls > .describe-vlm-chat-runtime-status {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 480px) {
+  .describe-vlm-chat-controls {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .describe-vlm-chat-controls > .describe-vlm-chat-max-tokens-field,
+  .describe-vlm-chat-controls > .describe-vlm-chat-template-field,
+  .describe-vlm-chat-controls > .describe-vlm-chat-system-field,
+  .describe-vlm-chat-controls > .describe-vlm-chat-runtime-status {
+    grid-column: 1;
+  }
+
+  .describe-vlm-chat-controls > .describe-vlm-chat-max-tokens-field {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}

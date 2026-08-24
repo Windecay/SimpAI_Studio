@@ -12,6 +12,7 @@ import modules.canvas_danbooru_prompt_review as canvas_danbooru_prompt_review
 import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_prompt_pipeline as canvas_vlm_prompt_pipeline
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
+import modules.vlm_preset_guide_router as vlm_preset_guide_router
 
 try:
     from enhanced.vlm import VLM
@@ -130,6 +131,7 @@ VLM_NATURAL_PROMPT_REFINE_SKILL_FILE = "natural_prompt_refine.md"
 VLM_AGENT_COMPANION_SKILL_FILE = "agent_companion.md"
 VLM_PRESET_TOOL_CALLING_SKILL_FILE = "preset_tool_calling.md"
 VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE = "simpai_preset_guide.md"
+VLM_PRESET_GUIDE_ROUTE_MAX_CHARS = 4200
 VLM_H3_PROMPT_WRITING_SKILL_FILES = {
     "en": "h3_prompt_writing_en.md",
     "cn": "h3_prompt_writing_cn.md",
@@ -204,13 +206,14 @@ def _canvas_vlm_skill_language(params=None, payload=None, target=None):
                 if value.get(key):
                     candidates.append(value.get(key))
 
-    # stage.__lang is the request-level language source. The other locations
-    # keep direct API calls and older canvas payloads compatible.
+    # state.__lang is the UI language source. stage and top-level values keep
+    # direct API calls and older canvas payloads compatible.
+    add_state(payload.get("state"))
+    add_state(params.get("state"))
     add_state(payload.get("stage"))
     add_state(params.get("stage"))
     add_state(params)
     add_state(payload)
-    add_state(payload.get("state"))
     add_state(payload.get("user_context"))
     add_state(payload.get("agent_context"))
     add_state(target)
@@ -905,6 +908,7 @@ def _canvas_vlm_preset_guide_intent(prompt):
         "流程",
         "工作流",
         "预设",
+        "预置",
         "模式",
         "路线",
         "主界面",
@@ -953,7 +957,65 @@ def _canvas_vlm_preset_guide_intent(prompt):
         "口型",
         "音效",
     )
-    return any(term in text for term in terms)
+    if any(term in text for term in terms):
+        return True
+    return bool(re.search(r"(?<![a-z0-9])(?:minimax[\s_-]*)?h3(?![a-z0-9])", text, re.I))
+
+
+def _canvas_vlm_explicit_preset_action_request(prompt):
+    text = str(prompt or "").strip().lower()
+    if not text:
+        return False
+    guide_terms = (
+        "which preset",
+        "what preset",
+        "which workflow",
+        "what workflow",
+        "recommend",
+        "familiar with",
+        "difference",
+        "how to choose",
+        "how do i use",
+        "用哪个",
+        "用哪种",
+        "用什么",
+        "推荐",
+        "熟悉",
+        "了解",
+        "介绍",
+        "区别",
+        "怎么选",
+        "如何选择",
+        "分别",
+        "适合吗",
+        "是什么",
+    )
+    if any(term in text for term in guide_terms):
+        return False
+    action_terms = (
+        "generate",
+        "create",
+        "make a",
+        "draw",
+        "edit this",
+        "apply",
+        "run ",
+        "start ",
+        "生成",
+        "制作",
+        "创建",
+        "画一",
+        "画张",
+        "绘制",
+        "编辑这",
+        "修改这",
+        "执行",
+        "运行",
+        "开始生成",
+        "帮我",
+        "给我",
+    )
+    return any(term in text for term in action_terms)
 
 
 def _canvas_vlm_persona_image_subject_intent(prompt):
@@ -2484,6 +2546,14 @@ def _canvas_read_vlm_skill_docs(query="", max_chars=9000, required_docs=None, re
             except Exception as exc:
                 logger.warning("VLM skill doc skipped: %s", exc)
                 continue
+            if rel == VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE:
+                routed = vlm_preset_guide_router.build_preset_guide_context(
+                    query,
+                    language=requested_language,
+                    max_chars=min(VLM_PRESET_GUIDE_ROUTE_MAX_CHARS, max(1200, int(max_chars or 0))),
+                )
+                if routed:
+                    content = routed
             if not content:
                 continue
             if required_only and required and rel not in required:
@@ -3586,6 +3656,46 @@ def _canvas_vlm_stateless_prompt_text(prompt, text_budget, *, preserve_contract=
     limit = max(800, budget // 3)
     return current[-limit:].lstrip()
 
+
+def _canvas_vlm_stateless_system_prompt_text(prompt, max_chars):
+    """Keep the runtime contract at the head and routed skills at the tail."""
+    current = str(prompt or "").strip()
+    if not current:
+        return ""
+    try:
+        limit = max(1200, int(max_chars or 3000))
+    except (TypeError, ValueError):
+        limit = 3000
+    if len(current) <= limit:
+        return current
+    marker = "\n\n[Middle of system prompt omitted for the local context window.]\n\n"
+    route_begin = "[SimpAI routed Preset Guide begin]"
+    route_end = "[SimpAI routed Preset Guide end]"
+    route_start = current.find(route_begin)
+    if route_start >= 0:
+        route_finish = current.find(route_end, route_start)
+        if route_finish >= 0:
+            route_finish += len(route_end)
+            routed = current[route_start:route_finish].strip()
+            if len(routed) >= limit:
+                return routed[:limit].rstrip()
+            head_budget = max(0, limit - len(routed) - len(marker))
+            if head_budget < 200:
+                return routed
+            return (
+                current[:head_budget].rstrip()
+                + marker
+                + routed
+            ).strip()
+    available = max(1, limit - len(marker))
+    head_chars = max(700, int(available * 0.42))
+    tail_chars = max(500, available - head_chars)
+    return (
+        current[:head_chars].rstrip()
+        + marker
+        + current[-tail_chars:].lstrip()
+    ).strip()
+
 def _canvas_vlm_message_text(message):
     if not isinstance(message, dict):
         return ""
@@ -4519,6 +4629,15 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
     image_request_mode = image_prompt_intent
     compact_prompt = True if prompt_rewrite_request else _canvas_compact_agent_prompt_enabled(params)
     prompt_skill_intent = bool(image_prompt_intent or prompt_rewrite_request)
+    preset_guide_required = bool(
+        not prompt_rewrite_request
+        and agent_mode == "canvas_agent"
+        and _canvas_vlm_preset_guide_intent(effective_prompt)
+    )
+    preset_guide_only = bool(
+        preset_guide_required
+        and not _canvas_vlm_explicit_preset_action_request(effective_prompt)
+    )
     minimal_image_prompt = (
         image_prompt_intent
         and target_requires_danbooru
@@ -4567,6 +4686,7 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
         return base
 
     sections = []
+    routed_preset_guide = ""
     lookup_elapsed = 0.0
     if agent_mode == "persona":
         sections.append(
@@ -4655,52 +4775,52 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
                 + _canvas_compact_agent_json(current_turn_locks, 1800 if compact_prompt else 3500)
             )
     if use_skills:
+        if preset_guide_required:
+            routed_preset_guide = vlm_preset_guide_router.build_preset_guide_context(
+                effective_prompt,
+                language=_canvas_vlm_skill_language(params=params, payload=payload, target=h3_target),
+                max_chars=VLM_PRESET_GUIDE_ROUTE_MAX_CHARS,
+            )
         skill_index = _canvas_read_vlm_skill_index()
-        if skill_index and not prompt_rewrite_request:
+        if skill_index and not prompt_rewrite_request and not preset_guide_only:
             sections.append(
                 "SimpAI VLM skill ownership index. Use this to distinguish user-authored knowledge from generated scaffolding:\n"
                 + _canvas_compact_agent_json(skill_index, 1200 if compact_prompt else 5000)
             )
-        preset_guide_required = bool(
-            not prompt_rewrite_request
-            and agent_mode == "canvas_agent"
-            and _canvas_vlm_preset_guide_intent(effective_prompt)
-        )
         required_docs = []
-        if h3_prompt_required:
+        if h3_prompt_required and not preset_guide_only:
             required_docs.extend(h3_skill_files)
-        elif anima_prompt_required:
+        elif anima_prompt_required and not preset_guide_only:
             required_docs.append(VLM_ANIMA_PROMPT_SKILL_FILE)
-        if image_edit_request:
+        if image_edit_request and not preset_guide_only:
             required_docs.append(VLM_IMAGE_EDIT_SKILL_FILE)
-        if preset_guide_required:
-            required_docs.append(VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE)
-        if not prompt_rewrite_request and (prompt_skill_intent or preset_guide_required):
+        if not prompt_rewrite_request and prompt_skill_intent and not preset_guide_only:
             required_docs.append(VLM_PRESET_TOOL_CALLING_SKILL_FILE)
-        if not prompt_rewrite_request and agent_mode == "canvas_agent":
+        if not prompt_rewrite_request and agent_mode == "canvas_agent" and not preset_guide_only:
             required_docs.append(VLM_AGENT_COMPANION_SKILL_FILE)
-        if not anima_prompt_required and danbooru_prompt_required:
-            required_docs.append(VLM_DANBOORU_TAG_PROMPT_SKILL_FILE)
-        elif not anima_prompt_required and prompt_skill_intent and _canvas_is_natural_prompt_target_key(target_key):
-            required_docs.append(VLM_NATURAL_PROMPT_ACTION_SKILL_FILE)
-        elif not anima_prompt_required and prompt_skill_intent:
-            required_docs.append(VLM_IMAGE_PROMPT_SKILL_FILE)
+        if not preset_guide_only:
+            if not anima_prompt_required and danbooru_prompt_required:
+                required_docs.append(VLM_DANBOORU_TAG_PROMPT_SKILL_FILE)
+            elif not anima_prompt_required and prompt_skill_intent and _canvas_is_natural_prompt_target_key(target_key):
+                required_docs.append(VLM_NATURAL_PROMPT_ACTION_SKILL_FILE)
+            elif not anima_prompt_required and prompt_skill_intent:
+                required_docs.append(VLM_IMAGE_PROMPT_SKILL_FILE)
         doc_budget = 1400 if prompt_rewrite_request else (2200 if compact_prompt else 9000)
         if h3_prompt_required:
             doc_budget = max(doc_budget, 7000 if compact_prompt else 10000)
         elif anima_prompt_required:
             doc_budget = max(doc_budget, 18000 if compact_prompt else 20000)
-        if preset_guide_required:
-            doc_budget = max(doc_budget, 30000 if compact_prompt else 32000)
-        elif not prompt_rewrite_request and VLM_PRESET_TOOL_CALLING_SKILL_FILE in required_docs:
+        if not prompt_rewrite_request and VLM_PRESET_TOOL_CALLING_SKILL_FILE in required_docs:
             doc_budget = max(doc_budget, 10000 if compact_prompt else 14000)
-        docs = _canvas_read_vlm_skill_docs(
-            effective_prompt,
-            doc_budget,
-            required_docs=required_docs,
-            required_only=bool(required_docs),
-            language=_canvas_vlm_skill_language(params=params, payload=payload, target=h3_target),
-        )
+        docs = []
+        if required_docs or not preset_guide_only:
+            docs = _canvas_read_vlm_skill_docs(
+                effective_prompt,
+                doc_budget,
+                required_docs=required_docs,
+                required_only=bool(required_docs),
+                language=_canvas_vlm_skill_language(params=params, payload=payload, target=h3_target),
+            )
         if docs:
             if compact_prompt:
                 skill_text = "\n\n".join(
@@ -4749,6 +4869,14 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
                 natural_adult_intent,
                 anima_prompt_required,
             )
+        )
+    if routed_preset_guide:
+        sections.append(
+            "[SimpAI routed Preset Guide begin]\n"
+            "High-priority routed SimpAI Preset Guide knowledge for the current request. "
+            "Use only these selected Preset domains; do not infer omitted Preset behavior:\n"
+            + routed_preset_guide
+            + "\n[SimpAI routed Preset Guide end]"
         )
     agent_prompt = "\n\n".join(sections).strip()
     if not agent_prompt:
