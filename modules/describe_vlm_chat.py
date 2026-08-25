@@ -2235,6 +2235,7 @@ def _run_roleplay_director(
     assistant_reply,
     speaker_id="",
     turn_intent="",
+    stream_callback=None,
 ):
     payload = payload if isinstance(payload, dict) else {}
     normalized_session = vlm_roleplay.normalize_roleplay_session(session)
@@ -2248,9 +2249,19 @@ def _run_roleplay_director(
     continuous = bool(autoplay_state.get("continuous", normalized_session["autoplay_config"].get("continuous", False)))
     history = payload.get("history_full") or payload.get("history") or []
     lang = _payload_lang(payload)
+
+    def emit_status(phase):
+        if not callable(stream_callback):
+            return
+        try:
+            stream_callback({"type": "status", "phase": phase})
+        except Exception:
+            pass
+
     try:
         from modules import canvas_vlm_runtime
 
+        emit_status("roleplay_director_started")
         runtime_payload = _build_roleplay_director_runtime_payload(
             payload,
             normalized_session,
@@ -2289,6 +2300,7 @@ def _run_roleplay_director(
         parsed = vlm_roleplay.parse_director_response(
             result.get("text") or result.get("raw_text") or ""
         )
+        emit_status("roleplay_state_commit_started")
         applied = vlm_roleplay.execute_roleplay_skill(
             normalized_session,
             {
@@ -5182,6 +5194,7 @@ def run_describe_vlm_chat(payload, stream_callback=None):
             parsed.get("reply") or original_text,
             speaker_id=params.get("roleplay_speaker_id") or "",
             turn_intent=params.get("roleplay_turn_intent") or payload.get("roleplay_turn_intent") or "",
+            stream_callback=stream_callback,
         )
     result["text"] = parsed.get("reply") or original_text
     if result["text"] != original_text and not result.get("raw_text"):

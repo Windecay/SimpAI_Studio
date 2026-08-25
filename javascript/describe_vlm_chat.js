@@ -1984,6 +1984,8 @@
         const card = identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
         const anchor = trigger || identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-trigger]');
         if (!card || !anchor) return;
+        const previousScrollTop = card.scrollTop;
+        const previousScrollLeft = card.scrollLeft;
         const log = identity.closest('[data-describe-vlm-chat-log]');
         const anchorRect = anchor.getBoundingClientRect();
         const logRect = log?.getBoundingClientRect?.() || {
@@ -2008,6 +2010,12 @@
         identity.classList.toggle('opens-upward', opensUpward);
         identity.classList.toggle('align-right', alignsRight);
         card.style.maxHeight = `${usableHeight}px`;
+        if (previousScrollTop || previousScrollLeft) {
+            const maxScrollTop = Math.max(0, card.scrollHeight - card.clientHeight);
+            const maxScrollLeft = Math.max(0, card.scrollWidth - card.clientWidth);
+            card.scrollTop = Math.min(previousScrollTop, maxScrollTop);
+            card.scrollLeft = Math.min(previousScrollLeft, maxScrollLeft);
+        }
     }
 
     let roleplaySpeakerCardRefreshFrame = 0;
@@ -2028,6 +2036,39 @@
         roleplaySpeakerCardRefreshFrame = window.requestAnimationFrame
             ? window.requestAnimationFrame(refresh)
             : window.setTimeout(refresh, 0);
+    }
+
+    function captureRoleplaySpeakerCardStates(log) {
+        const states = new Map();
+        if (!log) return states;
+        log.querySelectorAll('[data-describe-vlm-chat-roleplay-speaker-identity]').forEach((identity) => {
+            if (!identity.classList.contains('is-open')) return;
+            const card = identity.querySelector('[data-describe-vlm-chat-roleplay-speaker-status-card]');
+            if (!card?.id) return;
+            states.set(card.id, {
+                scrollTop: Number(card.scrollTop) || 0,
+                scrollLeft: Number(card.scrollLeft) || 0
+            });
+        });
+        return states;
+    }
+
+    function restoreRoleplaySpeakerCardStates(log, states) {
+        if (!log || !states?.size) return;
+        states.forEach((saved, cardId) => {
+            const card = document.getElementById(cardId);
+            if (!card || !log.contains(card)) return;
+            const identity = card.closest('[data-describe-vlm-chat-roleplay-speaker-identity]');
+            const trigger = identity?.querySelector('[data-describe-vlm-chat-roleplay-speaker-trigger]');
+            if (!identity || !trigger) return;
+            identity.classList.add('is-open');
+            trigger.setAttribute('aria-expanded', 'true');
+            positionRoleplaySpeakerStatusCard(identity, trigger);
+            const maxScrollTop = Math.max(0, card.scrollHeight - card.clientHeight);
+            const maxScrollLeft = Math.max(0, card.scrollWidth - card.clientWidth);
+            card.scrollTop = Math.min(Number(saved?.scrollTop) || 0, maxScrollTop);
+            card.scrollLeft = Math.min(Number(saved?.scrollLeft) || 0, maxScrollLeft);
+        });
     }
 
     function renderRoleplayParticipantChips(participants, emptyLabel, options = {}) {
@@ -2401,6 +2442,7 @@
         conversationRuntimes: new Map(),
         messages: [],
         busy: false,
+        busyStage: '',
         requestToken: 0,
         activeAbortController: null,
         activeRequestId: '',
@@ -2549,6 +2591,7 @@
             creativeInitiative: normalizeCreativeInitiative(source.creativeInitiative || source.creative_initiative),
             unloadAfterChat: !!source.unloadAfterChat,
             busy: !!source.busy,
+            busyStage: String(source.busyStage || source.busy_stage || ''),
             requestToken: Number(source.requestToken) || 0,
             activeAbortController: source.activeAbortController || null,
             activeRequestId: String(source.activeRequestId || ''),
@@ -2616,6 +2659,7 @@
             creativeInitiative: state.creativeInitiative,
             unloadAfterChat: state.unloadAfterChat,
             busy: state.busy,
+            busyStage: state.busyStage,
             requestToken: state.requestToken,
             activeAbortController: state.activeAbortController,
             activeRequestId: state.activeRequestId,
@@ -2650,6 +2694,7 @@
             creativePreferenceExpanded: normalizeChatMode(source.chatMode) === 'creative',
             creativeInitiative: normalizeCreativeInitiative(null),
             busy: false,
+            busyStage: '',
             requestToken: 0,
             activeAbortController: null,
             activeRequestId: '',
@@ -2698,6 +2743,7 @@
             creativeInitiative: state.creativeInitiative,
             unloadAfterChat: state.unloadAfterChat,
             busy: state.busy,
+            busyStage: state.busyStage,
             requestToken: state.requestToken,
             activeAbortController: state.activeAbortController,
             activeRequestId: state.activeRequestId,
@@ -2737,6 +2783,7 @@
         state.creativeInitiative = runtime.creativeInitiative;
         state.unloadAfterChat = runtime.unloadAfterChat;
         state.busy = runtime.busy;
+        state.busyStage = runtime.busyStage;
         state.requestToken = runtime.requestToken;
         state.activeAbortController = runtime.activeAbortController;
         state.activeRequestId = runtime.activeRequestId;
@@ -5783,14 +5830,50 @@
         return target;
     }
 
+    function roleplayStateFieldKey(value) {
+        return String(value || '').trim().toLocaleLowerCase().replace(/[\s_.:/-]+/g, '');
+    }
+
+    function roleplayStateFieldSemanticKey(value) {
+        const key = roleplayStateFieldKey(value);
+        const aliases = {
+            health: ['health', 'hp', 'hitpoint', 'hitpoints', 'life', 'lifepoint', 'lifepoints', '生命', '生命值', '血量'],
+            mana: ['mana', 'mp', 'magic', 'magicpoint', 'magicpoints', '法力', '法力值', '魔力', '魔力值'],
+            stamina: ['stamina', 'sp', 'energy', '耐力', '体力', '精力'],
+            sanity: ['sanity', 'mentalstate', 'mentalstatus', 'mind', '理智', '理智值', '精神状态', '心理状态'],
+            sensory: ['sensory', 'sensorystatus', 'sensitivity', '感度', '敏感度', '感知', '感官状态'],
+            physical_condition: ['condition', 'physicalcondition', 'physicalstatus', 'status', '当前状态', '状态', '状况', '身体状况', '身体状态'],
+            armor: ['armor', 'armour', '护甲', '护甲值', '防御', '防御力'],
+            stress: ['stress', '压力', '紧张'],
+            fear: ['fear', '恐惧'],
+            affinity: ['affinity', '好感', '好感度'],
+            trust: ['trust', '信任', '信任度'],
+            wariness: ['wariness', '警戒', '戒心'],
+            hunger: ['hunger', '饥饿', '饥饿度'],
+            thirst: ['thirst', '口渴', '口渴度']
+        };
+        return Object.keys(aliases).find((semantic) => aliases[semantic].some((alias) => roleplayStateFieldKey(alias) === key)) || '';
+    }
+
+    function roleplayStateFieldMatchIndex(fields, label, useAliases = false, used = new Set()) {
+        const key = roleplayStateFieldKey(label);
+        const exactIndex = fields.findIndex((field, index) => index >= 0 && !used.has(index) && roleplayStateFieldKey(field.label) === key);
+        if (exactIndex >= 0 || !useAliases) return exactIndex >= 0 ? exactIndex : -1;
+        const semantic = roleplayStateFieldSemanticKey(label);
+        if (!semantic) return -1;
+        return fields.findIndex((field, index) => !used.has(index) && roleplayStateFieldSemanticKey(field.label) === semantic);
+    }
+
     function mergeRoleplayStateFields(current, generated) {
         const merged = normalizeRoleplayStateFields(current);
-        const seen = new Set(merged.map((field) => field.label.toLocaleLowerCase()));
-        normalizeRoleplayStateFields(generated).forEach((field) => {
-            const key = field.label.toLocaleLowerCase();
-            if (seen.has(key)) return;
-            seen.add(key);
-            merged.push(field);
+        const incoming = normalizeRoleplayStateFields(generated);
+        if (!merged.length) return incoming.slice(0, MAX_ROLEPLAY_STATE_FIELDS);
+        const used = new Set();
+        incoming.forEach((field) => {
+            const index = roleplayStateFieldMatchIndex(merged, field.label, true, used);
+            if (index < 0) return;
+            used.add(index);
+            merged[index] = { label: merged[index].label, value: field.value };
         });
         return merged.slice(0, MAX_ROLEPLAY_STATE_FIELDS);
     }
@@ -7837,6 +7920,10 @@
                     return;
                 }
                 if (event?.type === 'reset') {
+                    try { onEvent?.(event); } catch (err) {}
+                    return;
+                }
+                if (event?.type === 'status' || event?.type === 'progress') {
                     try { onEvent?.(event); } catch (err) {}
                     return;
                 }
@@ -11677,15 +11764,52 @@
         if (!message) state.missingVlmModelRequest = null;
     }
 
-    function syncBusyControls(modal) {
+    function busyControlLabel(stage = '') {
+        const normalized = String(stage || '').trim().toLowerCase();
+        if (normalized === 'roleplay_director_started') {
+            return localText(
+                'Updating story state. New messages can be sent when this finishes.',
+                '正在计算剧情状态，完成后才能发送新消息。'
+            );
+        }
+        if (normalized === 'roleplay_state_commit_started') {
+            return localText(
+                'Writing story state. New messages can be sent when this finishes.',
+                '正在写入剧情状态，完成后才能发送新消息。'
+            );
+        }
+        return localText(
+            'Generating a reply. New messages can be sent when this finishes.',
+            '正在生成回复，完成后才能发送新消息。'
+        );
+    }
+
+    function setConversationBusyStage(runtime, stage = '') {
+        const target = runtime || currentConversationRuntime();
+        if (!target) return;
+        target.busyStage = String(stage || '').trim();
+        if (isCurrentConversationRuntime(target)) {
+            state.busyStage = target.busyStage;
+            syncBusyControls(document.getElementById('describe_vlm_chat_modal'), target);
+        }
+    }
+
+    function syncBusyControls(modal, runtime = null) {
         const targetModal = modal || document.getElementById('describe_vlm_chat_modal');
         if (!targetModal) return;
+        const busyStage = String(runtime?.busyStage || state.busyStage || '').trim();
+        const busyLabel = busyControlLabel(busyStage);
         const send = targetModal.querySelector('[data-describe-vlm-chat-send]');
         const stop = targetModal.querySelector('[data-describe-vlm-chat-stop]');
         if (send) {
             send.disabled = !!state.busy;
             send.classList.toggle('is-busy', !!state.busy);
             send.setAttribute('aria-disabled', state.busy ? 'true' : 'false');
+            send.setAttribute('aria-busy', state.busy ? 'true' : 'false');
+            send.setAttribute('aria-label', state.busy ? busyLabel : localText('Send', '发送'));
+            send.setAttribute('title', state.busy ? busyLabel : localText('Send', '发送'));
+            if (state.busy && busyStage) send.dataset.busyStage = busyStage;
+            else delete send.dataset.busyStage;
         }
         if (stop) {
             stop.hidden = !state.busy;
@@ -11715,10 +11839,27 @@
         return true;
     }
 
+    function updatePendingAssistantMessageDom(content, runtime, pendingIndex) {
+        if (!isCurrentConversationRuntime(runtime)) return false;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        const log = modal?.querySelector('[data-describe-vlm-chat-log]');
+        const message = log?.querySelector(`[data-describe-vlm-chat-message="${pendingIndex}"]`);
+        if (!log || !message) return false;
+        const paragraph = message.querySelector(':scope > p');
+        if (!paragraph) return false;
+        const previousScrollTop = log.scrollTop;
+        const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        const nextContent = String(content || '');
+        if (paragraph.textContent !== nextContent) paragraph.textContent = nextContent;
+        log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
+        return true;
+    }
+
     function updatePendingAssistantStream(content, runtime = currentConversationRuntime()) {
         const target = runtime || currentConversationRuntime();
         const messages = Array.isArray(target?.messages) ? target.messages : [];
-        const pending = messages.find((item) => item?.pending);
+        const pendingIndex = messages.findIndex((item) => item?.pending);
+        const pending = pendingIndex >= 0 ? messages[pendingIndex] : null;
         if (!pending) return false;
         pending.content = String(content || '');
         pending.streaming = true;
@@ -11726,7 +11867,7 @@
         if (isCurrentConversationRuntime(target)) {
             state.messages = target.messages;
             state.persistenceDirty = true;
-            renderMessages();
+            if (!updatePendingAssistantMessageDom(pending.content, target, pendingIndex)) renderMessages();
         }
         return true;
     }
@@ -11782,6 +11923,7 @@
         const requestId = runtime.activeRequestId;
         runtime.requestToken += 1;
         runtime.busy = false;
+        runtime.busyStage = '';
         abortActiveChatRequest(runtime);
         applyConversationRuntime(runtime);
         if (!options?.silent) {
@@ -15281,6 +15423,7 @@
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
+        const speakerCardStates = captureRoleplaySpeakerCardStates(log);
         renderCreativePreferenceMount(modal);
         const previousScrollTop = log.scrollTop;
         const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
@@ -15402,6 +15545,7 @@
         } else {
             log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
         }
+        restoreRoleplaySpeakerCardStates(log, speakerCardStates);
     }
 
     function historyTextForMessage(message) {
@@ -16017,8 +16161,10 @@
         }
 
         runtime.busy = true;
+        runtime.busyStage = 'reply';
         if (isCurrentConversationRuntime(runtime)) {
             state.busy = true;
+            state.busyStage = 'reply';
             syncBusyControls(modal);
             setStatus('');
         }
@@ -16233,6 +16379,22 @@
         let streamedReplyText = '';
         let streamRenderTimer = null;
         const onChatStreamEvent = (event) => {
+            if (event?.type === 'status') {
+                const phase = String(event.phase || '').trim();
+                if (phase === 'roleplay_director_started' || phase === 'roleplay_state_commit_started') {
+                    setConversationBusyStage(runtime, phase);
+                    setConversationStatus(runtime, phase === 'roleplay_director_started'
+                        ? localText(
+                            'Updating story state. New messages can be sent when this finishes.',
+                            '正在计算剧情状态，完成前暂时不能发送新消息。'
+                        )
+                        : localText(
+                            'Writing story state. New messages can be sent when this finishes.',
+                            '正在写入剧情状态，完成前暂时不能发送新消息。'
+                        ));
+                }
+                return;
+            }
             if (event?.type === 'reset') {
                 if (streamRenderTimer !== null) {
                     window.clearTimeout(streamRenderTimer);
@@ -16273,11 +16435,13 @@
         if (requestToken !== runtime.requestToken) return;
         if (response?.aborted) {
             runtime.busy = false;
+            runtime.busyStage = '';
             replacePendingAssistant(t('Stopped.', '已停止。'), messages);
             runtime.persistenceDirty = true;
             saveConversationSnapshot(runtime);
             if (isCurrentConversationRuntime(runtime)) {
                 state.busy = false;
+                state.busyStage = '';
                 renderMessages();
                 setStatus(t('Reply stopped.', '已停止当前回复。'));
             }
@@ -16419,6 +16583,7 @@
         if (pendingIndex >= 0) messages[pendingIndex] = assistant;
         else messages.push(assistant);
         runtime.busy = false;
+        runtime.busyStage = '';
         if (response?.ok && selectedMode === 'creative') {
             runtime.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, runtime.creativeInitiative, {
                 turn_index: Number(runtime.creativeInitiative.turn_index || 0) + 1
@@ -16428,6 +16593,7 @@
         saveConversationSnapshot(runtime);
         if (isCurrentConversationRuntime(runtime)) {
             state.busy = false;
+            state.busyStage = '';
             state.persistenceDirty = false;
             renderMessages();
             syncRoleplayControls(modal);
@@ -18190,6 +18356,8 @@
     document.addEventListener('pointerover', (evt) => {
         const identity = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-speaker-identity]');
         if (!identity) return;
+        const relatedTarget = evt.relatedTarget;
+        if (relatedTarget && identity.contains(relatedTarget)) return;
         positionRoleplaySpeakerStatusCard(identity);
     });
 

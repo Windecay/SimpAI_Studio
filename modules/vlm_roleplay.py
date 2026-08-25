@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import math
 import os
 import re
 import struct
@@ -260,15 +261,187 @@ def _clean_state_fields(value: Any, limit: int = MAX_CHARACTER_STATE_FIELDS) -> 
     return result
 
 
-def _merge_state_fields(existing: Any, incoming: Any) -> list[dict[str, str]]:
+_NUMERIC_STATE_RATIO_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*$")
+_NUMERIC_STATE_PERCENT_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*%\s*$")
+_NUMERIC_STATE_NUMBER_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*$")
+_STATE_FIELD_ALIAS_GROUPS = {
+    "health": {
+        "health", "hp", "hitpoint", "hitpoints", "life", "lifepoint", "lifepoints",
+        "生命", "生命值", "血量",
+    },
+    "mana": {
+        "mana", "mp", "magic", "magicpoint", "magicpoints", "法力", "法力值", "魔力", "魔力值",
+    },
+    "stamina": {
+        "stamina", "sp", "energy", "耐力", "体力", "精力",
+    },
+    "sanity": {
+        "sanity", "mentalstate", "mentalstatus", "mind", "理智", "理智值", "精神状态", "心理状态",
+    },
+    "sensory": {
+        "sensory", "sensorystatus", "sensitivity", "感度", "敏感度", "感知", "感官状态",
+    },
+    "physical_condition": {
+        "condition", "physicalcondition", "physicalstatus", "status", "当前状态", "状态", "状况",
+        "身体状况", "身体状态",
+    },
+    "armor": {"armor", "armour", "护甲", "护甲值", "防御", "防御力"},
+    "stress": {"stress", "压力", "紧张"},
+    "fear": {"fear", "恐惧"},
+    "affinity": {"affinity", "好感", "好感度"},
+    "trust": {"trust", "信任", "信任度"},
+    "wariness": {"wariness", "警戒", "戒心"},
+    "hunger": {"hunger", "饥饿", "饥饿度"},
+    "thirst": {"thirst", "口渴", "口渴度"},
+}
+_STATE_FIELD_ALIAS_LOOKUP = {
+    re.sub(r"[\s_\-./:]+", "", alias.casefold()): group
+    for group, aliases in _STATE_FIELD_ALIAS_GROUPS.items()
+    for alias in aliases
+}
+
+
+def _state_field_label_key(value: Any) -> str:
+    return re.sub(r"[\s_\-./:]+", "", _text(value, 120).casefold())
+
+
+def _state_field_semantic_key(value: Any) -> str:
+    label_key = _state_field_label_key(value)
+    return _STATE_FIELD_ALIAS_LOOKUP.get(label_key, "")
+
+
+def _state_field_match_index(
+    fields: list[dict[str, str]],
+    label: Any,
+    *,
+    use_aliases: bool = False,
+    used: set[int] | None = None,
+) -> int | None:
+    label_key = _state_field_label_key(label)
+    if not label_key:
+        return None
+    blocked = used or set()
+    for index, field in enumerate(fields):
+        if index not in blocked and _state_field_label_key(field.get("label")) == label_key:
+            return index
+    if not use_aliases:
+        return None
+    semantic_key = _state_field_semantic_key(label)
+    if not semantic_key:
+        return None
+    for index, field in enumerate(fields):
+        if index not in blocked and _state_field_semantic_key(field.get("label")) == semantic_key:
+            return index
+    return None
+
+
+def _numeric_delta(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _format_numeric_state_number(value: float) -> str:
+    if abs(value) < 1e-9:
+        value = 0.0
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _apply_numeric_delta(value: Any, delta: Any) -> str | None:
+    """Apply a signed delta while preserving common runtime field formats."""
+    amount = _numeric_delta(delta)
+    if amount is None:
+        return None
+    current_value = _text(value, 500)
+    ratio_match = _NUMERIC_STATE_RATIO_RE.fullmatch(current_value)
+    if ratio_match:
+        current = float(ratio_match.group(1))
+        maximum = float(ratio_match.group(2))
+        if not math.isfinite(current) or not math.isfinite(maximum) or maximum < 0:
+            return None
+        next_value = max(0.0, min(maximum, current + amount))
+        return f"{_format_numeric_state_number(next_value)}/{_format_numeric_state_number(maximum)}"
+    percent_match = _NUMERIC_STATE_PERCENT_RE.fullmatch(current_value)
+    if percent_match:
+        current = float(percent_match.group(1))
+        if not math.isfinite(current):
+            return None
+        next_value = max(0.0, min(100.0, current + amount))
+        return f"{_format_numeric_state_number(next_value)}%"
+    number_match = _NUMERIC_STATE_NUMBER_RE.fullmatch(current_value)
+    if number_match:
+        current = float(number_match.group(1))
+        if not math.isfinite(current):
+            return None
+        return _format_numeric_state_number(current + amount)
+    return None
+
+
+def _state_field_values_at_path(state: dict[str, Any], path: list[str]) -> list[dict[str, str]]:
+    target: Any = state
+    for part in path:
+        if not isinstance(target, dict):
+            return []
+        target = target.get(part)
+    return _clean_state_fields(target)
+
+
+def _resolve_numeric_state_deltas(
+    state: dict[str, Any],
+    path: list[str],
+    value: Any,
+) -> tuple[Any, list[str]]:
+    """Turn director numeric deltas into the stored field value before merging."""
+    if path[-1:] != ["state_fields"] or not isinstance(value, list):
+        return value, []
+    existing = _state_field_values_at_path(state, path)
+    resolved: list[Any] = []
+    warnings: list[str] = []
+    for item in value:
+        if not isinstance(item, dict) or "delta" not in item:
+            resolved.append(item)
+            continue
+        label = _text(item.get("label") or item.get("name") or item.get("key"), 120)
+        existing_index = _state_field_match_index(existing, label, use_aliases=True)
+        current = existing[existing_index]["value"] if existing_index is not None else None
+        next_value = _apply_numeric_delta(current, item.get("delta")) if current is not None else None
+        if next_value is None:
+            warnings.append("numeric_state_delta_unresolved")
+            if item.get("value") is not None:
+                resolved.append(item)
+            continue
+        normalized = dict(item)
+        normalized["value"] = next_value
+        normalized.pop("delta", None)
+        resolved.append(normalized)
+    return resolved, warnings
+
+
+def _merge_state_fields(
+    existing: Any,
+    incoming: Any,
+    *,
+    preserve_schema: bool = False,
+) -> list[dict[str, str]]:
     merged = _clean_state_fields(existing)
-    positions = {field["label"].casefold(): index for index, field in enumerate(merged)}
+    if preserve_schema and not merged:
+        return _clean_state_fields(incoming)[:MAX_CHARACTER_STATE_FIELDS]
+    used: set[int] = set()
     for field in _clean_state_fields(incoming):
-        key = field["label"].casefold()
-        if key in positions:
-            merged[positions[key]] = field
-        else:
-            positions[key] = len(merged)
+        index = _state_field_match_index(merged, field["label"], use_aliases=preserve_schema, used=used)
+        if index is not None:
+            used.add(index)
+            if preserve_schema:
+                merged[index] = {"label": merged[index]["label"], "value": field["value"]}
+            else:
+                merged[index] = field
+        elif not preserve_schema:
             merged.append(field)
     return merged[:MAX_CHARACTER_STATE_FIELDS]
 
@@ -2981,7 +3154,7 @@ def build_director_prompt(
                 "target_entity_type": "player",
                 "target_entity_id": _text(player_persona.get("id"), 160) or "player",
                 "field": "state_fields",
-                "value": [{"label": "", "value": ""}],
+                "value": [{"label": "", "value": "", "delta": 0}],
                 "evidence": "",
             },
             {
@@ -3037,7 +3210,12 @@ def build_director_prompt(
             "Multi-target example: if speaking character C treats the player and character B, write the treatment results to player_state and characters.B only. Do not copy the treatment result to C unless the exchange explicitly says C also receives it. A current_action patch for C may describe C performing the treatment, but must never describe C as a patient.",
             "For a multi-target effect, emit one patch per recipient with that recipient's exact target_entity_id. Do not combine A and B into one patch and do not put the recipients' condition into the healer's state_text.",
             "When the latest exchange clearly changes a character's current condition, emit a character target for state_text with a compact current snapshot of at most two short sentences.",
-            "When numeric or named status values clearly change, emit a character target for state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
+            "When numeric or named status values clearly change, emit a state_fields patch for the affected player or character. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
+            "The director runs after every turn. Do not wait for the player to request a status update. When the latest exchange explicitly describes a successful hit, injury, healing, spell or ability cost, stamina use, mental shock, or another clear effect on an entity, inspect that entity's existing numeric state fields and update the affected fields in the same turn.",
+            "Do not invent an effect that did not happen. You may infer a conservative magnitude for an explicitly described effect when the reply does not state an exact number: minor effect 1-5% of the field maximum, moderate effect 5-15%, severe effect 15-30%, rounded to at least 1 point when a maximum is known. A blocked, missed, harmless, or purely positional action does not change health or another resource.",
+            "For a numeric state field, preserve its label and format. You may return the complete value such as 92/100, or return a signed numeric delta such as {\"label\":\"生命值\",\"delta\":-8}; the runtime applies the delta to the current value and clamps ratio and percentage fields to their valid range. Use a separate numeric patch for each affected entity and each changed label.",
+            "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
+            "Existing state_fields are user-defined schema. Never rename, translate, replace, or add labels during a runtime update. Match an English or translated label such as health, mental_state, condition, or sensory_status to the existing field label and return the existing label; ignore an unknown label rather than appending it.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
             "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
             "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
@@ -3053,7 +3231,7 @@ def build_director_prompt(
             "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
             "To explicitly end or replace an ongoing state, use patch op 'replace' with the complete replacement value, or op 'remove' when the field should become empty. Do not use an ordinary set patch to clear a buff, injury, equipment effect, or action restriction.",
             "Do not rewrite or reset state when the latest exchange provides no new evidence.",
-            "Do not decide private thoughts or invent injury, death, resources, or numerical changes that did not happen in the exchange.",
+            "Do not decide private thoughts or invent injury, death, resources, or effects that did not happen in the exchange. Infer only the magnitude of an effect that the latest exchange clearly establishes.",
             "Do not modify locked character fields. Do not reveal hidden plans to the actor.",
             f"The visible reply was produced by character id {resolved_speaker_id}. Attribute its actions and dialogue to that character unless the text explicitly describes another character.",
             "The visual candidate may contain only facts visible in the current scene.",
@@ -3322,6 +3500,7 @@ def _set_path(
     *,
     incremental_runtime_state: bool = False,
     replace: bool = False,
+    preserve_state_field_schema: bool = False,
 ) -> bool:
     target: Any = state
     if not path:
@@ -3340,7 +3519,10 @@ def _set_path(
         value = _text(value, 1600)
     elif isinstance(value, list):
         if path[-1] == "state_fields":
-            value = _clean_state_fields(value) if replace else _merge_state_fields(target.get(path[-1]), value)
+            if preserve_state_field_schema:
+                value = _merge_state_fields(target.get(path[-1]), value, preserve_schema=True)
+            else:
+                value = _clean_state_fields(value) if replace else _merge_state_fields(target.get(path[-1]), value)
         else:
             value = _clean_string_list(value, 80)
     elif isinstance(value, dict):
@@ -3522,13 +3704,18 @@ def apply_director_result(
             or patch.get("replace") is True
             or _text(patch.get("mode"), 20).lower() in {"replace", "clear"}
         )
+        patch_value = copy.deepcopy(patch.get("value"))
+        if operation == "set" and not explicit_replace:
+            patch_value, delta_warnings = _resolve_numeric_state_deltas(state, path, patch_value)
+            warnings.extend(delta_warnings)
         changed = (
             _set_path(
                 state,
                 path,
-                patch.get("value"),
+                patch_value,
                 incremental_runtime_state=incremental_runtime_state,
                 replace=explicit_replace,
+                preserve_state_field_schema=incremental_runtime_state,
             )
             if operation in {"set", "replace"}
             else False
@@ -3550,7 +3737,7 @@ def apply_director_result(
             applied_patch = {
                 "op": operation,
                 "path": ".".join(path),
-                "value": copy.deepcopy(patch.get("value")),
+                "value": copy.deepcopy(patch_value),
                 "evidence": _text(patch.get("evidence"), 500),
             }
             if target:
