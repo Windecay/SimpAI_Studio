@@ -2307,6 +2307,18 @@ def _run_roleplay_director(
                     "chapter_summary": parsed.get("chapter_summary") or "",
                     "visual_candidate": parsed.get("visual_candidate") or {},
                     "_incremental_runtime_state": True,
+                    "_director_attribution": {
+                        "enabled": True,
+                        "speaker_id": _clean_text(speaker_id),
+                        "text": "\n\n".join(
+                            item
+                            for item in (
+                                _clean_text(user_message),
+                                _clean_text(assistant_reply),
+                            )
+                            if item
+                        ),
+                    },
                 },
                 "evidence_message_ids": [
                     _clean_text(payload.get("user_message_id")),

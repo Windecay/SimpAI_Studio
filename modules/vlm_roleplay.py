@@ -49,6 +49,38 @@ MAX_IMPORT_RAW_ITEMS = 512
 MAX_IMPORT_RAW_TEXT = 240000
 PLAYER_STATE_STATUSES = {"present", "absent"}
 ROLEPLAY_SPEAKER_MODES = {"auto", "current", "multi"}
+DIRECTOR_TARGET_TYPES = {"player", "character", "scene"}
+DIRECTOR_PLAYER_FIELDS = {"status", "state_text", "state_fields"}
+DIRECTOR_CHARACTER_FIELDS = {
+    "location",
+    "condition",
+    "appearance",
+    "state_text",
+    "state_fields",
+    "emotion",
+    "current_action",
+    "inventory",
+    "goals",
+}
+DIRECTOR_SCENE_FIELDS = {
+    "id",
+    "location",
+    "time",
+    "weather",
+    "present_character_ids",
+    "current_event",
+    "scene_goal",
+}
+DIRECTOR_CONDITION_FIELDS = {
+    "location",
+    "condition",
+    "appearance",
+    "state_text",
+    "state_fields",
+    "emotion",
+    "inventory",
+    "goals",
+}
 SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.:@-]+")
 AUTOPLAY_PHASES = {"idle", "running", "paused", "stopped", "completed", "error"}
 AUTOPLAY_EVENTS = {
@@ -2920,18 +2952,43 @@ def build_director_prompt(
     summary_schedule = roleplay_summary_schedule(normalized)
     shape = {
         "patches": [
-            {"op": "set", "path": "scene.location", "value": "", "evidence": ""},
-            {"op": "set", "path": "player_state.status", "value": "present", "evidence": ""},
-            {"op": "set", "path": "player_state.state_text", "value": "", "evidence": ""},
             {
                 "op": "set",
-                "path": "player_state.state_fields",
+                "target_entity_type": "scene",
+                "target_entity_id": "scene",
+                "field": "location",
+                "value": "",
+                "evidence": "",
+            },
+            {
+                "op": "set",
+                "target_entity_type": "player",
+                "target_entity_id": _text(player_persona.get("id"), 160) or "player",
+                "field": "status",
+                "value": "present",
+                "evidence": "",
+            },
+            {
+                "op": "set",
+                "target_entity_type": "player",
+                "target_entity_id": _text(player_persona.get("id"), 160) or "player",
+                "field": "state_text",
+                "value": "",
+                "evidence": "",
+            },
+            {
+                "op": "set",
+                "target_entity_type": "player",
+                "target_entity_id": _text(player_persona.get("id"), 160) or "player",
+                "field": "state_fields",
                 "value": [{"label": "", "value": ""}],
                 "evidence": "",
             },
             {
                 "op": "set",
-                "path": "characters.<affected_character_id>.state_text",
+                "target_entity_type": "character",
+                "target_entity_id": "<affected_character_id>",
+                "field": "state_text",
                 "value": "",
                 "evidence": "",
             },
@@ -2966,17 +3023,21 @@ def build_director_prompt(
             "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
             "Do not rewrite the full state. Return incremental patches.",
             "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
+            "Every state patch must use target_entity_type, target_entity_id, field, value, and evidence. Copy target_entity_id exactly from the entity attribution map. Do not use a guessed path, a character name in place of an id, or a generic current-character target.",
+            "Use target_entity_type=player with the exact player id for player_state changes, target_entity_type=character with the exact configured character id for character changes, and target_entity_type=scene with target_entity_id=scene for scene changes.",
+            "The state_path_prefix values in the attribution map are internal references for reasoning only. Never return them or construct a patch from them.",
             "The speaking character is not the default state-update target. Never write a patch to characters.<speaker_id> merely because that character produced the visible reply.",
             "In an in-character reply, second-person references such as you, your, 你, or 你的 normally refer to the player unless another addressee is explicitly named or the scene clearly establishes a different target.",
             "The player runtime uses player_state and supports only status, state_text, and state_fields. Put the player's current action, emotion, body position, restraint, injury, equipment effects, buffs, debuffs, and ability restrictions into player_state.state_text and/or player_state.state_fields.",
             "When a character grabs, restrains, embraces, moves, injures, heals, buffs, debuffs, or otherwise affects the player, update player_state for the effect on the player. Add a separate character patch only when that character's own state also changed.",
             "Attribution example: if enemy_d says or does 'I seize your wrist and pull you into my arms', the player's restraint and position belong to player_state.state_text or player_state.state_fields, not characters.enemy_d. A characters.enemy_d.current_action patch is valid only when it describes enemy_d's own action, not the player's passive condition.",
             "Reverse attribution example: if the player strikes enemy_d and the reply says enemy_d staggers or is injured, update characters.enemy_d rather than player_state.",
-            "One exchange may affect several entities. Emit separate patches for each affected entity and verify every path against the entity attribution map before returning JSON.",
+            "One exchange may affect several entities. Emit separate patches for each affected entity and verify every target against the entity attribution map before returning JSON.",
             "For a named multi-target effect, update exactly the named recipients. Do not broadcast healing, damage, buffs, debuffs, restraint, emotion, or position changes to every present entity.",
             "Multi-target example: if speaking character C treats the player and character B, write the treatment results to player_state and characters.B only. Do not copy the treatment result to C unless the exchange explicitly says C also receives it. A current_action patch for C may describe C performing the treatment, but must never describe C as a patient.",
-            "When the latest exchange clearly changes a character's current condition, update characters.<character_id>.state_text with a compact current snapshot of at most two short sentences.",
-            "When numeric or named status values clearly change, update characters.<character_id>.state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
+            "For a multi-target effect, emit one patch per recipient with that recipient's exact target_entity_id. Do not combine A and B into one patch and do not put the recipients' condition into the healer's state_text.",
+            "When the latest exchange clearly changes a character's current condition, emit a character target for state_text with a compact current snapshot of at most two short sentences.",
+            "When numeric or named status values clearly change, emit a character target for state_fields as a list of {label, value} objects. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
             "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
             "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
@@ -3076,6 +3137,182 @@ def _path_parts(path: Any) -> list[str]:
 def _locked_path(path: list[str], locked_fields: list[str]) -> bool:
     path_text = ".".join(path)
     return any(path_text == locked or path_text.startswith(f"{locked}.") for locked in locked_fields)
+
+
+def _director_target_type(value: Any) -> str:
+    target_type = _text(value, 40).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "npc": "character",
+        "角色": "character",
+        "人物": "character",
+        "player_character": "player",
+        "玩家": "player",
+        "场景": "scene",
+    }
+    return aliases.get(target_type, target_type)
+
+
+def _director_entity_mentions(session: dict[str, Any], value: Any) -> set[str]:
+    text = _text(value, 6000).casefold()
+    if not text:
+        return set()
+    normalized = normalize_roleplay_session(session)
+    mentions: set[str] = set()
+    persona = normalized.get("persona", {})
+    player_id = _text(persona.get("id"), 160)
+    player_name = _text(persona.get("name"), 200)
+    if any(alias and alias.casefold() in text for alias in (player_id, player_name)):
+        mentions.add(player_id or "player")
+    for character_id, card in normalized.get("characters", {}).items():
+        aliases = (character_id, _text(card.get("name"), 200))
+        if any(alias and alias.casefold() in text for alias in aliases):
+            mentions.add(character_id)
+    return mentions
+
+
+def _director_patch_value_text(patch: dict[str, Any]) -> str:
+    value = patch.get("value")
+    if isinstance(value, (dict, list)):
+        value_text = json.dumps(value, ensure_ascii=False)
+    else:
+        value_text = _text(value, 4000)
+    return "\n".join(
+        item
+        for item in (
+            _text(patch.get("evidence"), 1200),
+            value_text,
+        )
+        if item
+    )
+
+
+def _director_present_character_ids(normalized: dict[str, Any], speaker_id: str = "") -> set[str]:
+    scene = normalized.get("story_state", {}).get("scene", {})
+    present_ids = {
+        character_id
+        for character_id in _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
+        if character_id in normalized.get("characters", {})
+    }
+    if not present_ids:
+        active_id = _text(normalized.get("active_character_id"), 160)
+        if active_id in normalized.get("characters", {}):
+            present_ids.add(active_id)
+    if speaker_id in normalized.get("characters", {}):
+        present_ids.add(speaker_id)
+    return present_ids
+
+
+def _director_target_from_path(
+    normalized: dict[str, Any],
+    path: list[str],
+) -> tuple[str, str, str] | None:
+    if len(path) >= 2 and path[0] == "player_state":
+        return "player", _text(normalized.get("persona", {}).get("id"), 160) or "player", path[1]
+    if len(path) >= 3 and path[0] == "characters":
+        return "character", _text(path[1], 160), path[2]
+    if len(path) >= 2 and path[0] == "scene":
+        return "scene", "scene", path[1]
+    return None
+
+
+def _director_patch_target(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+    *,
+    speaker_id: Any = "",
+    attribution_text: Any = "",
+) -> tuple[list[str], dict[str, str], list[str]]:
+    """Resolve and validate a director patch before it can mutate runtime state."""
+    warnings: list[str] = []
+    requested_type = _director_target_type(patch.get("target_entity_type") or patch.get("entity_type"))
+    requested_id = _text(
+        patch.get("target_entity_id") or patch.get("entity_id") or patch.get("target_id"),
+        160,
+    )
+    requested_field = _text(patch.get("field") or patch.get("target_field"), 120)
+    path = _path_parts(patch.get("path"))
+    if not requested_type and path:
+        target = _director_target_from_path(normalized, path)
+        if target:
+            requested_type, requested_id, requested_field = target
+        else:
+            warnings.append("director_target_path_not_allowed")
+            return [], {}, warnings
+    if requested_type not in DIRECTOR_TARGET_TYPES:
+        warnings.append("director_target_type_invalid")
+        return [], {}, warnings
+
+    speaker = _text(speaker_id, 160)
+    if requested_type == "player":
+        player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+        if requested_id and requested_id != player_id:
+            warnings.append("director_player_target_id_mismatch")
+            return [], {}, warnings
+        requested_id = player_id
+        if requested_field not in DIRECTOR_PLAYER_FIELDS:
+            warnings.append("director_player_field_invalid")
+            return [], {}, warnings
+        path = ["player_state", requested_field]
+    elif requested_type == "scene":
+        if requested_id and requested_id != "scene":
+            warnings.append("director_scene_target_id_invalid")
+            return [], {}, warnings
+        requested_id = "scene"
+        if requested_field not in DIRECTOR_SCENE_FIELDS:
+            warnings.append("director_scene_field_invalid")
+            return [], {}, warnings
+        path = ["scene", requested_field]
+    else:
+        requested_id = _text(requested_id, 160)
+        if requested_id not in normalized.get("characters", {}):
+            warnings.append("director_character_target_unknown")
+            return [], {}, warnings
+        if requested_field not in DIRECTOR_CHARACTER_FIELDS:
+            warnings.append("director_character_field_invalid")
+            return [], {}, warnings
+        if requested_id not in _director_present_character_ids(normalized, speaker):
+            warnings.append("director_character_target_not_present")
+            return [], {}, warnings
+        path = ["characters", requested_id, requested_field]
+
+    target = {
+        "entity_type": requested_type,
+        "entity_id": requested_id,
+        "field": requested_field,
+    }
+    if requested_type != "character" or requested_id != speaker or requested_field not in DIRECTOR_CONDITION_FIELDS:
+        return path, target, warnings
+
+    patch_text = _director_patch_value_text(patch)
+    if not _text(patch.get("evidence"), 1200):
+        warnings.append("director_patch_evidence_missing")
+        return [], {}, warnings
+    if not patch_text:
+        patch_text = _text(attribution_text, 6000)
+    mentions = _director_entity_mentions(normalized, patch_text)
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    other_entity_ids = {
+        entity_id
+        for entity_id in mentions
+        if entity_id != requested_id
+        and (entity_id == player_id or entity_id in normalized.get("characters", {}))
+    }
+    has_second_person = bool(re.search(r"你|您|你的|你们|you(?:r|rs)?\b", patch_text, re.IGNORECASE))
+    if has_second_person:
+        other_entity_ids.add(player_id)
+    if len(other_entity_ids) > 1:
+        warnings.append("director_target_ambiguous_multiple_entities")
+        return [], {}, warnings
+    if len(other_entity_ids) == 1 and player_id in other_entity_ids and requested_field != "current_action":
+        warnings.append("director_target_reassigned_to_player")
+        target = {"entity_type": "player", "entity_id": player_id, "field": requested_field}
+        return ["player_state", requested_field], target, warnings
+    if len(other_entity_ids) == 1:
+        redirected_id = next(iter(other_entity_ids))
+        warnings.append("director_target_reassigned_to_named_character")
+        target = {"entity_type": "character", "entity_id": redirected_id, "field": requested_field}
+        return ["characters", redirected_id, requested_field], target, warnings
+    return path, target, warnings
 
 
 def _set_path(
@@ -3249,6 +3486,9 @@ def apply_director_result(
     turn_id: str = "",
     evidence_message_ids: Any = None,
     incremental_runtime_state: bool = False,
+    validate_attribution: bool = False,
+    speaker_id: Any = "",
+    attribution_text: Any = "",
 ) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     result = director_result if isinstance(director_result, dict) else {}
@@ -3261,7 +3501,18 @@ def apply_director_result(
         if not isinstance(patch, dict):
             warnings.append("invalid_patch")
             continue
-        path = _path_parts(patch.get("path"))
+        target = {}
+        target_warnings: list[str] = []
+        if validate_attribution:
+            path, target, target_warnings = _director_patch_target(
+                normalized,
+                patch,
+                speaker_id=speaker_id,
+                attribution_text=attribution_text,
+            )
+            warnings.extend(target_warnings)
+        else:
+            path = _path_parts(patch.get("path"))
         operation = _text(patch.get("op"), 20).lower() or "set"
         if not path or _locked_path(path, locked_fields):
             warnings.append("invalid_or_locked_patch")
@@ -3296,12 +3547,19 @@ def apply_director_result(
                     del values[MAX_LIST_ITEMS:]
                     changed = True
         if changed:
-            applied.append({
+            applied_patch = {
                 "op": operation,
                 "path": ".".join(path),
                 "value": copy.deepcopy(patch.get("value")),
                 "evidence": _text(patch.get("evidence"), 500),
-            })
+            }
+            if target:
+                applied_patch.update({
+                    "target_entity_type": target.get("entity_type", ""),
+                    "target_entity_id": target.get("entity_id", ""),
+                    "field": target.get("field", ""),
+                })
+            applied.append(applied_patch)
     resource_changes.extend(_apply_world_book_updates(normalized, result.get("world_book_updates")))
     memory_store = normalize_memory_store(normalized.get("memory_store"), state.get("memories"))
     memories = memory_store["items"]
@@ -3815,6 +4073,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
     else:
         return {"ok": False, "error": "skill_payload_not_supported", "action": action, "session": normalized}
 
+    director_attribution = _dict(payload.get("_director_attribution"))
     applied = apply_director_result(
         normalized,
         {
@@ -3829,6 +4088,9 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         turn_id=turn_id,
         evidence_message_ids=evidence_ids,
         incremental_runtime_state=bool(payload.get("_incremental_runtime_state")),
+        validate_attribution=bool(director_attribution.get("enabled")),
+        speaker_id=director_attribution.get("speaker_id"),
+        attribution_text=director_attribution.get("text"),
     )
     receipt = {
         "action_id": action_id,

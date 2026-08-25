@@ -2042,15 +2042,19 @@
                 const className = [
                     'describe-vlm-chat-roleplay-participant-chip',
                     participant?.is_present ? 'is-present' : 'is-absent',
+                    participantId ? 'is-draggable' : '',
                     selectable ? 'is-selectable' : '',
                     selected ? 'is-selected' : ''
                 ].filter(Boolean).join(' ');
                 const iconClass = participant?.entity_type === 'player' ? 'fa-user' : 'fa-user-astronaut';
                 const content = `<i class="fa-solid ${iconClass}" aria-hidden="true"></i><span>${escapeHtml(participant?.name || '')}</span>`;
+                const dragAttributes = participantId
+                    ? ` draggable="true" data-describe-vlm-chat-roleplay-participant-drag-id="${escapeHtml(participantId)}" data-describe-vlm-chat-roleplay-participant-drag-type="${escapeHtml(participant?.entity_type || 'character')}" aria-grabbed="false"`
+                    : '';
                 if (!selectable) {
-                    return `<span class="${className}" title="${escapeHtml(`${participant?.name || ''} · ${participant?.status_label || ''}`)}">${content}</span>`;
+                    return `<span class="${className}"${dragAttributes} title="${escapeHtml(`${participant?.name || ''} · ${participant?.status_label || ''} · ${localText('Drag to change scene presence', '拖动以改变入场状态')}`)}">${content}</span>`;
                 }
-                return `<button type="button" class="${className}" data-describe-vlm-chat-roleplay-select-speaker="${escapeHtml(participantId)}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(`${chooseLabel}: ${participant?.name || participantId}`)}" title="${escapeHtml(`${participant?.name || participantId} · ${chooseLabel}`)}">${content}</button>`;
+                return `<button type="button" class="${className}"${dragAttributes} data-describe-vlm-chat-roleplay-select-speaker="${escapeHtml(participantId)}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(`${chooseLabel}: ${participant?.name || participantId}`)}" title="${escapeHtml(`${participant?.name || participantId} · ${chooseLabel} · ${localText('Drag to change scene presence', '拖动以改变入场状态')}`)}">${content}</button>`;
             }).join('')
             : `<span class="describe-vlm-chat-roleplay-participant-empty">${escapeHtml(emptyLabel)}</span>`;
     }
@@ -2068,9 +2072,11 @@
         const playerNotice = player && !player.is_present
             ? `<span class="describe-vlm-chat-roleplay-player-control-notice"><i class="fa-solid fa-route" aria-hidden="true"></i>${escapeHtml(localText('Input only controls the story', '输入仅用于控制剧情'))}</span>`
             : '';
+        const presentZoneLabel = localText('Characters present in the scene. Drop a participant here.', '当前在场角色。将角色拖到这里入场。');
+        const absentZoneLabel = localText('Characters absent from the scene. Drop a participant here.', '当前离场角色。将角色拖到这里离场。');
         return `<div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite">
-  <span class="describe-vlm-chat-roleplay-participant-group"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
-  <span class="describe-vlm-chat-roleplay-participant-group is-absent"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="present" role="group" aria-label="${escapeHtml(presentZoneLabel)}" title="${escapeHtml(presentZoneLabel)}"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-absent is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="absent" role="group" aria-label="${escapeHtml(absentZoneLabel)}" title="${escapeHtml(absentZoneLabel)}"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
   <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(roleplayDictionaryText('Next reply'))}</b><span data-describe-vlm-chat-roleplay-next-speaker>${escapeHtml(nextSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
   ${playerNotice}
 </div>`;
@@ -2378,8 +2384,10 @@
     }
 
     const savedChatSettings = loadChatSettings();
+    const ROLEPLAY_PRESENCE_DRAG_TYPE = 'application/x-simpai-roleplay-participant';
     let modalBackdropPointerStarted = false;
     let modalTouchPoint = null;
+    let roleplayPresenceDrag = null;
     let describeViewportSyncFrame = 0;
     let describeKeyboardSyncFrame = 0;
 
@@ -5888,6 +5896,67 @@
         const name = String(updated.characters?.[nextId]?.name || nextId).trim();
         setConversationStatus(target, `${roleplayDictionaryText('Next reply')}: ${name}`);
         modal?.querySelector('[data-describe-vlm-chat-input]')?.focus?.();
+        return true;
+    }
+
+    function roleplayPresenceDragData(evt) {
+        const chip = evt?.target?.closest?.('[data-describe-vlm-chat-roleplay-participant-drag-id]');
+        if (!chip) return null;
+        return {
+            id: String(chip.getAttribute('data-describe-vlm-chat-roleplay-participant-drag-id') || '').trim(),
+            entityType: String(chip.getAttribute('data-describe-vlm-chat-roleplay-participant-drag-type') || 'character').trim()
+        };
+    }
+
+    function setRoleplayParticipantPresence(runtime, modal, participantId, status) {
+        const target = runtime || currentConversationRuntime();
+        const nextStatus = status === 'present' ? 'present' : 'absent';
+        const id = String(participantId || '').trim();
+        if (!target || !id) return false;
+        const autoplayState = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
+        if (target.busy || autoplayState.phase === 'running') {
+            setConversationStatus(target, roleplayDictionaryText('Wait for the current reply before changing scene presence.'));
+            return false;
+        }
+        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        session = applyVisibleRoleplayCharacterFields(session, modal);
+        session = applyVisibleRoleplayCharacterState(session, modal);
+        session = applyVisibleRoleplayPlayerState(session, modal);
+        const playerId = String(session.persona?.id || 'player').trim() || 'player';
+        let participantName = id;
+        if (id === playerId) {
+            participantName = String(session.persona?.name || localText('You', '你')).trim() || localText('You', '你');
+            session.story_state.player_state.status = nextStatus;
+            session.story_state.player_state.is_present = nextStatus === 'present';
+        } else {
+            const character = session.characters?.[id];
+            if (!character) return false;
+            participantName = String(character.name || id).trim() || id;
+            let presentIds = Array.isArray(session.story_state.scene.present_character_ids)
+                ? session.story_state.scene.present_character_ids.map((value) => String(value || '').trim()).filter(Boolean)
+                : [];
+            if (!presentIds.length && session.active_character_id) presentIds = [String(session.active_character_id).trim()];
+            const presentSet = new Set(presentIds);
+            if (nextStatus === 'present') {
+                presentSet.add(id);
+            } else {
+                if (presentSet.size <= 1 && presentSet.has(id)) {
+                    setConversationStatus(target, localText('At least one character must remain in the scene.', '场景中至少需要保留一个角色。'), true);
+                    return false;
+                }
+                presentSet.delete(id);
+            }
+            session.story_state.scene.present_character_ids = Array.from(presentSet).slice(0, MAX_ROLEPLAY_CHARACTERS);
+        }
+        target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
+        saveConversationSnapshot(target);
+        syncRoleplayControls(modal, target);
+        setConversationStatus(
+            target,
+            `${participantName}: ${nextStatus === 'present' ? localText('Present', '已入场') : localText('Absent', '已离场')}`
+        );
         return true;
     }
 
@@ -18039,7 +18108,41 @@
         addPendingImageFiles(files);
     });
 
+    document.addEventListener('dragstart', (evt) => {
+        if (!modalIsOpen() || !eventInsideModal(evt)) return;
+        const data = roleplayPresenceDragData(evt);
+        if (!data?.id) return;
+        roleplayPresenceDrag = data;
+        try {
+            evt.dataTransfer?.setData(ROLEPLAY_PRESENCE_DRAG_TYPE, JSON.stringify(data));
+            evt.dataTransfer?.setData('text/plain', data.id);
+            evt.dataTransfer.effectAllowed = 'move';
+        } catch (err) {}
+        const chip = evt.target.closest?.('[data-describe-vlm-chat-roleplay-participant-drag-id]');
+        chip?.classList.add('is-dragging');
+        document.getElementById('describe_vlm_chat_modal')?.classList.add('is-roleplay-presence-dragging');
+    });
+
+    document.addEventListener('dragend', (evt) => {
+        evt.target?.closest?.('[data-describe-vlm-chat-roleplay-participant-drag-id]')?.classList.remove('is-dragging');
+        document.querySelectorAll('[data-describe-vlm-chat-roleplay-presence-zone].is-drag-over').forEach((zone) => zone.classList.remove('is-drag-over'));
+        document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-roleplay-presence-dragging');
+        roleplayPresenceDrag = null;
+    });
+
     document.addEventListener('dragover', (evt) => {
+        const zone = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-presence-zone]');
+        const isRoleplayPresenceDrag = !!roleplayPresenceDrag
+            || Array.from(evt.dataTransfer?.types || []).includes(ROLEPLAY_PRESENCE_DRAG_TYPE);
+        if (zone && isRoleplayPresenceDrag) {
+            evt.preventDefault();
+            try { evt.dataTransfer.dropEffect = 'move'; } catch (err) {}
+            document.querySelectorAll('[data-describe-vlm-chat-roleplay-presence-zone].is-drag-over').forEach((item) => {
+                if (item !== zone) item.classList.remove('is-drag-over');
+            });
+            zone.classList.add('is-drag-over');
+            return;
+        }
         if (!modalIsOpen() || !eventInsideModal(evt)) return;
         const hasImage = collectClipboardImageFiles(evt.dataTransfer).length > 0 || !!firstImageDropUrl(evt.dataTransfer);
         if (!hasImage) return;
@@ -18052,6 +18155,30 @@
     });
 
     document.addEventListener('drop', async (evt) => {
+        const zone = evt.target?.closest?.('[data-describe-vlm-chat-roleplay-presence-zone]');
+        const isRoleplayPresenceDrag = !!roleplayPresenceDrag
+            || Array.from(evt.dataTransfer?.types || []).includes(ROLEPLAY_PRESENCE_DRAG_TYPE);
+        if (zone && isRoleplayPresenceDrag) {
+            evt.preventDefault();
+            const data = roleplayPresenceDrag || (() => {
+                try {
+                    return JSON.parse(evt.dataTransfer.getData(ROLEPLAY_PRESENCE_DRAG_TYPE) || '{}');
+                } catch (err) {
+                    return null;
+                }
+            })();
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const status = zone.getAttribute('data-describe-vlm-chat-roleplay-presence-zone') === 'present'
+                ? 'present'
+                : 'absent';
+            if (data?.id && modal && !modal.hidden) {
+                setRoleplayParticipantPresence(syncCurrentRuntimeFromState(), modal, data.id, status);
+            }
+            document.querySelectorAll('[data-describe-vlm-chat-roleplay-presence-zone].is-drag-over').forEach((item) => item.classList.remove('is-drag-over'));
+            document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-roleplay-presence-dragging');
+            roleplayPresenceDrag = null;
+            return;
+        }
         if (!modalIsOpen() || !eventInsideModal(evt)) return;
         const files = await collectDroppedImageFiles(evt.dataTransfer);
         if (!files.length) return;
