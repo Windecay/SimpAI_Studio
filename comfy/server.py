@@ -102,6 +102,7 @@ _COMFY_WS_SEND_TIMEOUT_SEC = _env_float("SIMPLEAI_COMFY_WS_SEND_TIMEOUT_SEC", 10
 if _COMFY_DEBUG and _COMFY_WS_SEND_TIMEOUT_SEC is None:
     _COMFY_WS_SEND_TIMEOUT_SEC = 5.0
 _COMFY_SEND_WARN_SEC = _env_float("SIMPLEAI_COMFY_SEND_WARN_SEC", 1.5) or 1.5
+_COMFY_WS_SEND_QUEUE_MAX = max(8, int(_env_float("SIMPLEAI_COMFY_WS_SEND_QUEUE_MAX", 64.0) or 64.0))
 
 _TARGETED_EXECUTION_EVENTS = {
     "execution_start",
@@ -300,6 +301,8 @@ class PromptServer():
         self.number = 0
         self._last_ws_rekey_ts = 0.0
         self._last_ws_missing_sid_ts = 0.0
+        self._object_info_snapshot = None
+        self._object_info_refresh_task = None
 
         middlewares = [cache_control, deprecation_warning]
         if args.enable_compress_response_body:
@@ -320,6 +323,7 @@ class PromptServer():
         self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
         self.sockets = dict()
         self.sockets_metadata = dict()
+        self.socket_send_states = dict()
         self.web_root = (
             FrontendManager.init_frontend(args.front_end_version)
             if args.front_end_root is None
@@ -353,12 +357,11 @@ class PromptServer():
                 )
             if sid:
                 # Reusing existing session, remove old
-                old_ws = self.sockets.pop(sid, None)
-                self.sockets_metadata.pop(sid, None)
+                old_ws = self.sockets.get(sid)
                 if old_ws is not None:
                     if _COMFY_DEBUG:
                         _dbg("ws reuse clientId={}, closing old ws".format(_mask_value(sid)))
-                    asyncio.create_task(old_ws.close())
+                    await self._close_ws(sid, old_ws, "replaced")
             else:
                 sid = uuid.uuid4().hex
 
@@ -366,6 +369,7 @@ class PromptServer():
             self.sockets[sid] = ws
             # Store metadata separately
             self.sockets_metadata[sid] = {"feature_flags": {}}
+            self._start_ws_sender(sid, ws)
 
             try:
                 if _COMFY_DEBUG:
@@ -960,9 +964,7 @@ class PromptServer():
 
             return info
 
-        @routes.get("/object_info")
-        async def get_object_info(request):
-            refresh_requested = str(request.query.get("refresh", "")).strip().lower() in {"1", "true", "yes"}
+        def build_object_info_snapshot(refresh_requested):
             if refresh_requested:
                 folder_paths.filename_list_cache.clear()
                 folder_paths.cache_helper.clear()
@@ -977,7 +979,32 @@ class PromptServer():
                     except Exception:
                         logging.error(f"[ERROR] An error occurred while retrieving information for the '{x}' node.")
                         logging.error(traceback.format_exc())
-                return web.json_response(out)
+                return out
+
+        async def rebuild_object_info_snapshot(refresh_requested):
+            snapshot = await asyncio.to_thread(build_object_info_snapshot, refresh_requested)
+            self._object_info_snapshot = snapshot
+            return snapshot
+
+        @routes.get("/object_info")
+        async def get_object_info(request):
+            refresh_requested = str(request.query.get("refresh", "")).strip().lower() in {"1", "true", "yes"}
+            if self._object_info_snapshot is not None and not refresh_requested:
+                return web.json_response(self._object_info_snapshot)
+
+            refresh_task = self._object_info_refresh_task
+            if refresh_requested and refresh_task is not None and not refresh_task.done():
+                await asyncio.shield(refresh_task)
+                refresh_task = None
+            if refresh_task is None or refresh_task.done():
+                refresh_task = asyncio.create_task(rebuild_object_info_snapshot(refresh_requested))
+                self._object_info_refresh_task = refresh_task
+            try:
+                out = await asyncio.shield(refresh_task)
+            finally:
+                if refresh_task.done() and self._object_info_refresh_task is refresh_task:
+                    self._object_info_refresh_task = None
+            return web.json_response(out)
 
         @routes.get("/object_info/{node_class}")
         async def get_object_info_node(request):
@@ -1278,6 +1305,23 @@ class PromptServer():
 
                 self.node_replace_manager.apply_replacements(prompt)
 
+                existing_prompt = self.prompt_queue.get_prompt_item(prompt_id)
+                if existing_prompt is not None:
+                    if existing_prompt[2] != prompt:
+                        error = {
+                            "type": "prompt_id_conflict",
+                            "message": "prompt_id is already associated with a different prompt",
+                            "details": prompt_id,
+                            "extra_info": {}
+                        }
+                        return web.json_response({"error": error, "node_errors": {}}, status=409)
+                    return web.json_response({
+                        "prompt_id": prompt_id,
+                        "number": existing_prompt[0],
+                        "node_errors": {},
+                        "duplicate": True,
+                    })
+
                 valid = await execution.validate_prompt(prompt_id, prompt, partial_execution_targets)
                 extra_data = {}
                 if "extra_data" in json_data:
@@ -1295,11 +1339,9 @@ class PromptServer():
                         )
                     if client_id not in self.sockets and len(self.sockets) == 1:
                         old_sid = next(iter(self.sockets.keys()))
-                        ws = self.sockets.pop(old_sid, None)
-                        meta = self.sockets_metadata.pop(old_sid, {"feature_flags": {}})
+                        ws = self.sockets.get(old_sid)
                         if ws is not None:
-                            self.sockets[client_id] = ws
-                            self.sockets_metadata[client_id] = meta
+                            self._rekey_ws(old_sid, client_id, ws)
                             if _COMFY_DEBUG:
                                 _dbg(
                                     "ws rekey old_sid={} -> client_id={} sockets={}".format(
@@ -1333,7 +1375,23 @@ class PromptServer():
                         if sensitive_val in extra_data:
                             sensitive[sensitive_val] = extra_data.pop(sensitive_val)
                     extra_data["create_time"] = int(time.time() * 1000)  # timestamp in milliseconds
-                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))
+                    queue_item = (number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive)
+                    existing_prompt = self.prompt_queue.put_if_absent(queue_item)
+                    if existing_prompt is not None:
+                        if existing_prompt[2] != prompt:
+                            error = {
+                                "type": "prompt_id_conflict",
+                                "message": "prompt_id is already associated with a different prompt",
+                                "details": prompt_id,
+                                "extra_info": {}
+                            }
+                            return web.json_response({"error": error, "node_errors": {}}, status=409)
+                        return web.json_response({
+                            "prompt_id": prompt_id,
+                            "number": existing_prompt[0],
+                            "node_errors": valid[3],
+                            "duplicate": True,
+                        })
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
                     return web.json_response(response)
                 else:
@@ -1604,12 +1662,75 @@ class PromptServer():
 
         await self.send_bytes(BinaryEventTypes.PREVIEW_IMAGE_WITH_METADATA, combined_data, sid=sid)
 
+    def _rekey_ws(self, old_sid, new_sid, ws) -> bool:
+        if old_sid == new_sid or self.sockets.get(old_sid) is not ws:
+            return False
+        metadata = self.sockets_metadata.pop(old_sid, {"feature_flags": {}})
+        self.sockets.pop(old_sid, None)
+        state = self.socket_send_states.pop(old_sid, None)
+        if state is not None and state["ws"] is ws:
+            state["task"].cancel()
+        self.sockets[new_sid] = ws
+        self.sockets_metadata[new_sid] = metadata
+        self._start_ws_sender(new_sid, ws)
+        return True
+
     async def _forget_ws_if_same(self, sid, ws) -> bool:
-        if self.sockets.get(sid) is ws:
-            self.sockets.pop(sid, None)
-            self.sockets_metadata.pop(sid, None)
-            return True
-        return False
+        active_sid = sid if self.sockets.get(sid) is ws else None
+        if active_sid is None:
+            active_sid = next(
+                (candidate_sid for candidate_sid, candidate_ws in self.sockets.items() if candidate_ws is ws),
+                None,
+            )
+        if active_sid is None:
+            return False
+
+        self.sockets.pop(active_sid, None)
+        self.sockets_metadata.pop(active_sid, None)
+        state = self.socket_send_states.pop(active_sid, None)
+        if state is not None and state["ws"] is ws:
+            task = state["task"]
+            if task is not asyncio.current_task():
+                task.cancel()
+        return True
+
+    def _start_ws_sender(self, sid, ws):
+        previous = self.socket_send_states.pop(sid, None)
+        if previous is not None:
+            previous["task"].cancel()
+        queue = asyncio.Queue(maxsize=_COMFY_WS_SEND_QUEUE_MAX)
+        task = asyncio.create_task(self._ws_sender_loop(sid, ws, queue))
+        self.socket_send_states[sid] = {"ws": ws, "queue": queue, "task": task}
+
+    async def _ws_sender_loop(self, sid, ws, queue):
+        try:
+            while self.sockets.get(sid) is ws:
+                kind, event, message = await queue.get()
+                try:
+                    if kind == "bytes":
+                        await self._send_ws_bytes(sid, ws, message, event)
+                    else:
+                        await self._send_ws_json(sid, ws, message, event)
+                finally:
+                    queue.task_done()
+                if self.sockets.get(sid) is not ws:
+                    return
+        except asyncio.CancelledError:
+            return
+
+    async def _enqueue_ws_message(self, sid, ws, kind, event, message):
+        state = self.socket_send_states.get(sid)
+        if state is None or state["ws"] is not ws:
+            return
+        try:
+            state["queue"].put_nowait((kind, event, message))
+        except asyncio.QueueFull:
+            logging.warning(
+                "[Prompt Server] websocket send queue full sid={} event={} max={}".format(
+                    _mask_value(sid), event, _COMFY_WS_SEND_QUEUE_MAX
+                )
+            )
+            await self._close_ws(sid, ws, "send_queue_full")
 
     async def _close_ws(self, sid, ws, reason: str):
         await self._forget_ws_if_same(sid, ws)
@@ -1691,37 +1812,29 @@ class PromptServer():
                 _dbg("ws drop event={} sid_missing={}".format(event, _mask_value(sid)))
             return []
 
-        sockets = list(self.sockets.items())
-        if not sockets:
-            if _COMFY_DEBUG:
-                _dbg("ws drop event={} sid_missing={} sockets=0".format(event, _mask_value(sid)))
-            return []
-
         now = time.monotonic()
         if now - self._last_ws_missing_sid_ts >= 10.0:
             self._last_ws_missing_sid_ts = now
             logging.warning(
-                "[Prompt Server] websocket target sid missing for event={}, broadcasting to {} active sockets".format(
-                    event, len(sockets)
-                )
+                "[Prompt Server] websocket target sid missing for event={}; event dropped for task isolation".format(event)
             )
         if _COMFY_DEBUG:
             _dbg(
-                "ws missing target sid event={} sid_missing={} broadcast_sockets={}".format(
-                    event, _mask_value(sid), len(sockets)
+                "ws missing target sid event={} sid_missing={} event_dropped=1".format(
+                    event, _mask_value(sid)
                 )
             )
-        return sockets
+        return []
 
     async def send_bytes(self, event, data, sid=None):
         message = self.encode_bytes(event, data)
         for socket_sid, ws in self._get_send_targets(sid, event):
-            await self._send_ws_bytes(socket_sid, ws, message, event)
+            await self._enqueue_ws_message(socket_sid, ws, "bytes", event, message)
 
     async def send_json(self, event, data, sid=None):
         message = {"type": event, "data": data}
         for socket_sid, ws in self._get_send_targets(sid, event):
-            await self._send_ws_json(socket_sid, ws, message, event)
+            await self._enqueue_ws_message(socket_sid, ws, "json", event, message)
 
     def send_sync(self, event, data, sid=None):
         self.loop.call_soon_threadsafe(

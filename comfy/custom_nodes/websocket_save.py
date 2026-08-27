@@ -1,7 +1,41 @@
 from PIL import Image
+import logging
 import numpy as np
 import comfy.utils
+import folder_paths
+import simpai_ws_recovery
 import time
+
+
+_RECOVERY_SUBFOLDER = simpai_ws_recovery.RECOVERY_SUBFOLDER
+
+
+def _save_recovery_image(image):
+    return simpai_ws_recovery.save_image(
+        folder_paths.get_temp_directory(),
+        image,
+    )
+
+
+def _save_recovery_video(data, extension):
+    return simpai_ws_recovery.save_bytes(
+        folder_paths.get_temp_directory(),
+        data,
+        extension,
+    )
+
+
+def _notify_websocket_result(pbar, value, total, preview):
+    try:
+        pbar.update_absolute(value, total, preview)
+    except Exception as exc:
+        logging.warning("WebSocket result notification failed; history output remains available: %s", exc)
+
+
+def _finalize_recovery_video(pbar, data, extension):
+    result = _save_recovery_video(data, extension)
+    _notify_websocket_result(pbar, 0, 1, (extension, data, None))
+    return result
 
 #You can use this node to save full size images through the websocket, the
 #images will be sent in exactly the same format as the image previews: as
@@ -30,13 +64,17 @@ class SaveImageWebsocket:
         format = 'png'
         pbar = comfy.utils.ProgressBar(images.shape[0])
         step = 0
+        results = []
         for image in images:
             i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            pbar.update_absolute(step, images.shape[0], (format, img, None))
+            result = _save_recovery_image(img)
+            if result is not None:
+                results.append(result)
+            _notify_websocket_result(pbar, step, images.shape[0], (format, img, None))
             step += 1
 
-        return {}
+        return {"ui": {"images": results}}
 
     @classmethod
     def IS_CHANGED(s, images): #, format):
@@ -64,13 +102,17 @@ class SaveImageWebsocketLazy:
         format = format.lower()
         pbar = comfy.utils.ProgressBar(images.shape[0])
         step = 0
+        results = []
         for image in images:
             i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            pbar.update_absolute(step, images.shape[0], (format, img, None))
+            result = _save_recovery_image(img)
+            if result is not None:
+                results.append(result)
+            _notify_websocket_result(pbar, step, images.shape[0], (format, img, None))
             step += 1
 
-        return (images,)
+        return {"ui": {"images": results}, "result": (images,)}
 
 class SaveVideoWebsocket:
     @classmethod
@@ -182,9 +224,8 @@ class SaveVideoWebsocket:
 
         video_data = buffer.getvalue()
 
-        pbar.update_absolute(0, 1, (format, video_data, None))
-
-        return (images, )
+        result = _finalize_recovery_video(pbar, video_data, format)
+        return {"ui": {"video": [result] if result is not None else []}, "result": (images, )}
 
     @classmethod
     def IS_CHANGED(s, images, format, codec, fps, crf, audio=None):

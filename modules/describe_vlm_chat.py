@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -18,6 +19,23 @@ import modules.vlm_agent_router as vlm_agent_router
 import modules.vlm_roleplay as vlm_roleplay
 import modules.vlm_preset_guide_router as vlm_preset_guide_router
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
+
+
+logger = logging.getLogger(__name__)
+_ROLEPLAY_TRACE_VALUES = {"1", "true", "yes", "on", "debug"}
+
+
+def _roleplay_trace_enabled():
+    return str(os.environ.get("SIMPAI_UI_TRACE", "")).strip().lower() in _ROLEPLAY_TRACE_VALUES
+
+
+def _roleplay_trace(*args, **kwargs):
+    if not _roleplay_trace_enabled():
+        return
+    try:
+        logger.info(*args, **kwargs)
+    except Exception:
+        pass
 
 
 ALLOWED_PROMPT_ACTIONS = {"set_prompt", "append_prompt", "refine_prompt", "describe_image_to_prompt", "text_to_prompt"}
@@ -2228,6 +2246,39 @@ def _build_roleplay_director_runtime_payload(
     }
 
 
+def _roleplay_log_value(value, limit=600):
+    if isinstance(value, (dict, list)):
+        try:
+            text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            text = str(value)
+    else:
+        text = str(value or "")
+    return text.replace("\r", " ").replace("\n", " ")[:limit]
+
+
+def _roleplay_patch_log_rows(patches):
+    rows = []
+    for patch in patches if isinstance(patches, list) else []:
+        if not isinstance(patch, dict):
+            rows.append({"invalid": _roleplay_log_value(patch, 240)})
+            continue
+        rows.append({
+            "target": ":".join(
+                part for part in (
+                    _roleplay_log_value(patch.get("target_entity_type"), 40),
+                    _roleplay_log_value(patch.get("target_entity_id"), 160),
+                )
+                if part
+            ),
+            "path": _roleplay_log_value(patch.get("path"), 240),
+            "field": _roleplay_log_value(patch.get("field") or patch.get("target_field"), 120),
+            "op": _roleplay_log_value(patch.get("op"), 20) or "set",
+            "value": _roleplay_log_value(patch.get("value"), 600),
+        })
+    return rows[:80]
+
+
 def _run_roleplay_director(
     payload,
     session,
@@ -2241,6 +2292,7 @@ def _run_roleplay_director(
     normalized_session = vlm_roleplay.normalize_roleplay_session(session)
     before_session = vlm_roleplay.normalize_roleplay_session(normalized_session)
     request_id = _clean_text(payload.get("request_id")) or f"roleplay:{int(time.time() * 1000)}"
+    conversation_id = _clean_text(payload.get("conversation_id"))
     user_did = _clean_text(payload.get("user_did") or payload.get("__user_did"))
     autoplay_enabled = _truthy(payload.get("roleplay_autoplay"), False)
     autoplay_state = payload.get("roleplay_autoplay_state") if isinstance(payload.get("roleplay_autoplay_state"), dict) else {}
@@ -2249,6 +2301,27 @@ def _run_roleplay_director(
     continuous = bool(autoplay_state.get("continuous", normalized_session["autoplay_config"].get("continuous", False)))
     history = payload.get("history_full") or payload.get("history") or []
     lang = _payload_lang(payload)
+    resolved_speaker_id = vlm_roleplay._director_resolve_speaker_id(
+        normalized_session,
+        speaker_id,
+    )
+    character_ids = list(normalized_session.get("characters", {}).keys())[:20]
+    player_id = _clean_text(normalized_session.get("persona", {}).get("id")) or "player"
+
+    _roleplay_trace(
+        "[RoleplayDirector] start request_id=%s conversation_id=%s speaker_id=%s "
+        "resolved_speaker_id=%s character_ids=%s player_id=%s state_version=%s "
+        "turn_intent=%s autoplay=%s",
+        request_id,
+        _roleplay_log_value(conversation_id, 180),
+        _roleplay_log_value(speaker_id, 160),
+        _roleplay_log_value(resolved_speaker_id, 160),
+        _roleplay_log_value(character_ids, 1200),
+        _roleplay_log_value(player_id, 160),
+        normalized_session.get("state_version", 0),
+        _roleplay_log_value(turn_intent or payload.get("roleplay_turn_intent"), 60),
+        autoplay_enabled,
+    )
 
     def emit_status(phase):
         if not callable(stream_callback):
@@ -2276,7 +2349,33 @@ def _run_roleplay_director(
             vlm_agent_router.ROLE_DIRECTOR_STATE,
             normalized_session,
         )
+        runtime_text = (
+            str(result.get("text") or result.get("raw_text") or "")
+            if isinstance(result, dict)
+            else ""
+        )
+        route = (
+            result.get("agent_route")
+            if isinstance(result, dict) and isinstance(result.get("agent_route"), dict)
+            else {}
+        )
+        _roleplay_trace(
+            "[RoleplayDirector] runtime request_id=%s ok=%s output_chars=%s error=%s "
+            "profile_id=%s profile_type=%s fallback_used=%s",
+            request_id,
+            bool(isinstance(result, dict) and result.get("ok")),
+            len(runtime_text),
+            _roleplay_log_value(result.get("error"), 240) if isinstance(result, dict) else "runtime_error",
+            _roleplay_log_value(route.get("profile_id"), 160),
+            _roleplay_log_value(route.get("profile_type"), 40),
+            bool(route.get("fallback_used")),
+        )
         if not isinstance(result, dict) or not result.get("ok"):
+            _roleplay_trace(
+                "[RoleplayDirector] runtime_failed request_id=%s error=%s",
+                request_id,
+                _roleplay_log_value(result.get("error"), 500) if isinstance(result, dict) else "runtime_error",
+            )
             failure = {
                 "ok": False,
                 "status": "state_update_pending",
@@ -2297,9 +2396,89 @@ def _run_roleplay_director(
                     director_error=failure["error"],
                 )
             return failure
-        parsed = vlm_roleplay.parse_director_response(
-            result.get("text") or result.get("raw_text") or ""
+        parsed = vlm_roleplay.parse_director_response(runtime_text, normalized_session)
+        _roleplay_trace(
+            "[RoleplayDirector] parsed request_id=%s json_ok=%s patches=%s memories=%s "
+            "world_book_updates=%s chapter_update=%s warnings=%s patch_rows=%s",
+            request_id,
+            bool(parsed.get("ok")),
+            len(parsed.get("patches") or []),
+            len(parsed.get("memories") or []),
+            len(parsed.get("world_book_updates") or []),
+            bool(parsed.get("chapter_update") or parsed.get("chapter_summary")),
+            _roleplay_log_value(parsed.get("warnings") or [], 800),
+            _roleplay_log_value(_roleplay_patch_log_rows(parsed.get("patches") or []), 4000),
         )
+        if not parsed.get("ok"):
+            _roleplay_trace(
+                "[RoleplayDirector] invalid_response request_id=%s preview=%s",
+                request_id,
+                _roleplay_log_value(runtime_text, 1000),
+            )
+        field_alignment = vlm_roleplay.inspect_director_state_fields(
+            normalized_session,
+            parsed,
+        )
+        if field_alignment.get("needs_repair") and parsed.get("ok"):
+            emit_status("roleplay_state_field_repair_started")
+            repair_payload = dict(runtime_payload)
+            repair_params = dict(runtime_payload.get("params") or {})
+            repair_params["prompt"] = vlm_roleplay.build_director_state_repair_prompt(
+                normalized_session,
+                user_message,
+                assistant_reply,
+                parsed,
+                field_alignment,
+                lang,
+                speaker_id=speaker_id,
+                turn_intent=turn_intent or payload.get("roleplay_turn_intent") or "",
+            )
+            repair_params["conversation_id"] = (
+                f"{repair_params.get('conversation_id') or conversation_id}:state_field_repair"
+            )
+            repair_params["temperature"] = 0.0
+            repair_params["top_p"] = 0.5
+            repair_params["top_k"] = 10
+            repair_params["max_tokens"] = max(1200, int(repair_params.get("max_tokens") or 1200))
+            repair_payload["params"] = repair_params
+            repair_result = _run_vlm_with_agent_router(
+                repair_payload,
+                payload,
+                vlm_agent_router.ROLE_DIRECTOR_STATE,
+                normalized_session,
+            )
+            repair_text = (
+                str(repair_result.get("text") or repair_result.get("raw_text") or "")
+                if isinstance(repair_result, dict)
+                else ""
+            )
+            repair_parsed = vlm_roleplay.parse_director_response(repair_text, normalized_session)
+            repair_alignment = vlm_roleplay.inspect_director_state_fields(
+                normalized_session,
+                repair_parsed,
+            )
+            _roleplay_trace(
+                "[RoleplayDirector] field_repair request_id=%s runtime_ok=%s "
+                "original=%s repaired=%s output_chars=%s",
+                request_id,
+                bool(isinstance(repair_result, dict) and repair_result.get("ok")),
+                _roleplay_log_value(field_alignment, 1800),
+                _roleplay_log_value(repair_alignment, 1800),
+                len(repair_text),
+            )
+            if (
+                repair_parsed.get("ok")
+                and repair_parsed.get("patches")
+                and repair_alignment.get("patch_count", 0) > 0
+                and repair_alignment.get("known_count", 0) > 0
+                and repair_alignment.get("unknown_count", 0) < field_alignment.get("unknown_count", 0)
+                and repair_alignment.get("known_count", 0) >= field_alignment.get("known_count", 0)
+            ):
+                parsed = repair_parsed
+                runtime_text = repair_text
+                parsed.setdefault("warnings", []).append("director_state_field_repair_applied")
+            else:
+                parsed.setdefault("warnings", []).append("director_state_field_repair_rejected")
         emit_status("roleplay_state_commit_started")
         applied = vlm_roleplay.execute_roleplay_skill(
             normalized_session,
@@ -2317,12 +2496,21 @@ def _run_roleplay_director(
                     "memory_deletions": parsed.get("memory_deletions") or [],
                     "chapter_update": parsed.get("chapter_update") or {},
                     "chapter_summary": parsed.get("chapter_summary") or "",
+                    "warnings": parsed.get("warnings") or [],
                     "visual_candidate": parsed.get("visual_candidate") or {},
                     "_incremental_runtime_state": True,
                     "_director_attribution": {
                         "enabled": True,
                         "speaker_id": _clean_text(speaker_id),
                         "text": "\n\n".join(
+                            item
+                            for item in (
+                                _clean_text(user_message),
+                                _clean_text(assistant_reply),
+                            )
+                            if item
+                        ),
+                        "assistant_reply": "\n\n".join(
                             item
                             for item in (
                                 _clean_text(user_message),
@@ -2338,6 +2526,18 @@ def _run_roleplay_director(
                 ],
                 "confidence": 1.0,
             },
+        )
+        _roleplay_trace(
+            "[RoleplayDirector] commit request_id=%s ok=%s state_version_before=%s "
+            "state_version_after=%s applied=%s resources=%s warnings=%s applied_rows=%s",
+            request_id,
+            bool(applied.get("ok")),
+            normalized_session.get("state_version", 0),
+            applied.get("state_version", normalized_session.get("state_version", 0)),
+            len(applied.get("applied") or []),
+            len(applied.get("resource_changes") or []),
+            _roleplay_log_value(applied.get("warnings") or [], 1200),
+            _roleplay_log_value(_roleplay_patch_log_rows(applied.get("applied") or []), 5000),
         )
         if not applied.get("ok"):
             applied.setdefault("session", normalized_session)
@@ -2389,8 +2589,19 @@ def _run_roleplay_director(
                 user_did,
                 root=payload.get("roleplay_storage_root"),
             )
+            _roleplay_trace(
+                "[RoleplayDirector] persisted request_id=%s session_id=%s state_version=%s",
+                request_id,
+                _roleplay_log_value(applied["session"].get("id"), 160),
+                applied.get("state_version"),
+            )
         except (OSError, ValueError) as exc:
             applied.setdefault("warnings", []).append(f"persistence:{exc}")
+            _roleplay_trace(
+                "[RoleplayDirector] persistence_failed request_id=%s error=%s",
+                request_id,
+                _roleplay_log_value(exc, 800),
+            )
         applied["ok"] = bool(parsed.get("ok"))
         applied["status"] = "committed" if parsed.get("ok") else "state_update_pending"
         applied["agent_route"] = result.get("agent_route") if isinstance(result, dict) else None
@@ -2398,6 +2609,16 @@ def _run_roleplay_director(
         applied["visual_action"] = visual_action
         applied["state_changes"] = state_changes
         applied["summary_schedule"] = vlm_roleplay.roleplay_summary_schedule(applied["session"])
+        _roleplay_trace(
+            "[RoleplayDirector] result request_id=%s status=%s state_version=%s "
+            "state_changes=%s resource_changes=%s changes_rows=%s",
+            request_id,
+            applied.get("status"),
+            applied.get("state_version"),
+            len(state_changes),
+            len(applied.get("resource_changes") or []),
+            _roleplay_log_value(state_changes, 6000),
+        )
         if autoplay_enabled:
             applied["autoplay_decision"] = vlm_roleplay.evaluate_autoplay_step(
                 applied["session"],
@@ -2412,6 +2633,12 @@ def _run_roleplay_director(
             )
         return applied
     except Exception as exc:
+        if _roleplay_trace_enabled():
+            logger.exception(
+                "[RoleplayDirector] exception request_id=%s conversation_id=%s",
+                request_id,
+                _roleplay_log_value(conversation_id, 180),
+            )
         failure = {
             "ok": False,
             "status": "state_update_pending",
@@ -5211,6 +5438,17 @@ def run_describe_vlm_chat(payload, stream_callback=None):
         result["roleplay_visual_action"] = roleplay_update.get("visual_action") or None
         result["roleplay_state_changes"] = roleplay_update.get("state_changes") or []
         result["roleplay_autoplay_decision"] = roleplay_update.get("autoplay_decision") or None
+        _roleplay_trace(
+            "[RoleplayDirector] response request_id=%s ok=%s status=%s state_version=%s "
+            "state_changes=%s resource_changes=%s session_returned=%s",
+            request_id,
+            bool(roleplay_update.get("ok")),
+            _roleplay_log_value(roleplay_update.get("status"), 60),
+            roleplay_update.get("state_version"),
+            len(roleplay_update.get("state_changes") or []),
+            len(roleplay_update.get("resource_changes") or []),
+            bool(result.get("roleplay_session")),
+        )
     result["response_source"] = _response_source_from_result(result)
     result["creative_director_suppressed"] = bool(
         params.get("describe_generation_actions_enabled")

@@ -6904,6 +6904,38 @@ function initResolutionControlWidget(widget, options = {}) {
         return { width: 1024, height: 1024, manual: false };
     };
 
+    const getProportionalManualRatio = () => {
+        const remembered = Number(widget.__rc_manual_ratio);
+        if (remembered > 0) return remembered;
+        const source = readImageSource(getSourceIds());
+        if (source && source.width > 0 && source.height > 0) {
+            return source.width / Math.max(1, source.height);
+        }
+        const dims = getCurrentDims();
+        if (dims && dims.width > 0 && dims.height > 0) {
+            return dims.width / Math.max(1, dims.height);
+        }
+        return null;
+    };
+    const rememberProportionalManualRatio = () => {
+        widget.__rc_manual_ratio = null;
+        widget.__rc_manual_ratio = getProportionalManualRatio();
+    };
+    const applyProportionalManualRatio = (width, height, prefer) => {
+        const ratio = getProportionalManualRatio();
+        let w = Number(width);
+        let h = Number(height);
+        if (!(ratio > 0) || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+            return { width, height };
+        }
+        if (prefer === 'height') {
+            w = h * ratio;
+        } else {
+            h = w / ratio;
+        }
+        return { width: w, height: h };
+    };
+
     const setHiddenOverride = (enabled, commit = true) => {
         _rc_setCheckboxValue(targetOverrideId, enabled, commit);
         _rc_setCheckboxValue('scene_use_resolution_override_checkbox', enabled, false);
@@ -7101,6 +7133,10 @@ function initResolutionControlWidget(widget, options = {}) {
             const locked = applyRatioLockToPair(width, height, prefer || (document.activeElement === hInput ? 'height' : 'width'));
             width = locked.width;
             height = locked.height;
+        } else if (mode === 'proportional' && prefer) {
+            const proportional = applyProportionalManualRatio(width, height, prefer);
+            width = proportional.width;
+            height = proportional.height;
         }
         const pair = clampDims(width, height, mode === 'proportional' || ratioLocked, quantize);
         if (!(pair.width > 0 && pair.height > 0)) return null;
@@ -7112,14 +7148,18 @@ function initResolutionControlWidget(widget, options = {}) {
         };
         return widget.__rc_manual_draft;
     };
-    const applyManual = (width, height, commit = true, quantize = true) => {
+    const applyManual = (width, height, commit = true, quantize = true, prefer = null) => {
         if (!controlsAreInteractive()) return;
         const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional');
         const ratioLocked = mode !== 'proportional' && !!getRatioLock();
         if (ratioLocked) {
-            const locked = applyRatioLockToPair(width, height, document.activeElement === hInput ? 'height' : 'width');
+            const locked = applyRatioLockToPair(width, height, prefer || (document.activeElement === hInput ? 'height' : 'width'));
             width = locked.width;
             height = locked.height;
+        } else if (mode === 'proportional' && prefer) {
+            const proportional = applyProportionalManualRatio(width, height, prefer);
+            width = proportional.width;
+            height = proportional.height;
         }
         const pair = clampDims(width, height, mode === 'proportional' || ratioLocked, quantize);
         const w = pair.width;
@@ -7137,15 +7177,17 @@ function initResolutionControlWidget(widget, options = {}) {
         populateRatios();
         render();
     };
-    const previewManualDraft = () => {
+    const previewManualDraft = (prefer = null) => {
         if (!controlsAreInteractive()) return;
-        if (!setManualDraft(wInput.value, hInput.value, false)) return;
+        if (!setManualDraft(wInput.value, hInput.value, false, prefer || widget.__rc_manual_input_axis)) return;
         render();
     };
     const commitManualDraft = () => {
         if (!widget.__rc_manual_editing && !widget.__rc_manual_draft) return;
-        const draft = widget.__rc_manual_draft || { width: wInput.value, height: hInput.value };
-        applyManual(draft.width, draft.height, true, true);
+        const axis = widget.__rc_manual_input_axis || (document.activeElement === hInput ? 'height' : 'width');
+        applyManual(wInput.value, hInput.value, true, true, axis);
+        widget.__rc_manual_input_axis = null;
+        widget.__rc_manual_ratio = null;
     };
     const stepDimensionInput = (input, direction) => {
         if (!controlsAreInteractive()) return;
@@ -7154,7 +7196,7 @@ function initResolutionControlWidget(widget, options = {}) {
         if (!(current > 0)) return;
         const next = Math.max(64, Math.min(2048, current + direction * step));
         input.value = String(next);
-        previewManualDraft();
+        previewManualDraft(input === hInput ? 'height' : 'width');
     };
     const previewManualDrag = (width, height) => {
         if (!controlsAreInteractive()) return;
@@ -7200,6 +7242,8 @@ function initResolutionControlWidget(widget, options = {}) {
             widget.__rc_force_projected_default = true;
             widget.__rc_manual_draft = null;
             widget.__rc_manual_editing = false;
+            widget.__rc_manual_input_axis = null;
+            widget.__rc_manual_ratio = null;
             if (profileUsesProjectedChoices(profile)) {
                 widget.__rc_projected_choice_key = defaultProjectedChoiceKey();
                 _rc_setTextValue(targetEditModeId, preprocessFitMode || 'proportional', true);
@@ -7365,10 +7409,19 @@ function initResolutionControlWidget(widget, options = {}) {
     for (const input of [wInput, hInput]) {
         input.addEventListener('focus', () => {
             widget.__rc_manual_editing = true;
-            previewManualDraft();
+            widget.__rc_manual_input_axis = input === hInput ? 'height' : 'width';
+            if (normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional') !== 'proportional') {
+                previewManualDraft();
+            } else {
+                rememberProportionalManualRatio();
+            }
         });
-        input.addEventListener('input', previewManualDraft);
-        input.addEventListener('change', previewManualDraft);
+        input.addEventListener('input', () => {
+            if (normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional') !== 'proportional') {
+                previewManualDraft();
+            }
+        });
+        input.addEventListener('change', commitManualDraft);
         input.addEventListener('keydown', (event) => {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                 stepDimensionInput(input, event.key === 'ArrowUp' ? 1 : -1);
@@ -7382,6 +7435,8 @@ function initResolutionControlWidget(widget, options = {}) {
             if (event.key === 'Escape') {
                 widget.__rc_manual_editing = false;
                 widget.__rc_manual_draft = null;
+                widget.__rc_manual_input_axis = null;
+                widget.__rc_manual_ratio = null;
                 render();
                 input.blur();
                 event.preventDefault();

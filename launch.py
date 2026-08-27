@@ -98,7 +98,7 @@ OPTIONAL_ACCEL_REQUIREMENTS_FILE = os.environ.get("OPTIONAL_ACCEL_REQUIREMENTS_F
 OBSOLETE_CUSTOM_NODE_FOLDERS = ()
 
 SIMPLEAI_BASE_WHEEL_SHA256 = {
-    "simpleai_base-0.3.50-cp313-cp313-win_amd64.whl": "cc9f4d0382d9acdd06dfb17283600fa7e718a463e79e39c6ea47b7597110ea93",
+    "simpleai_base-0.3.53-cp313-cp313-win_amd64.whl": "e181a55ff32a2f49115db1399762fee8d8f7ca2622f4ecfccf85097b182b15e9",
 }
 
 def cleanup_obsolete_custom_nodes():
@@ -644,7 +644,7 @@ def check_base_environment():
     print(f'{now_string()} ✦ | 兴趣使然的版本 | ✦ by冰華 ✦')
 
     base_pkg = "simpleai_base"
-    ver_required = "0.3.50"
+    ver_required = "0.3.53"
     REINSTALL_BASE = False
     base_branch = "studio"
     base_url = f"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/{base_branch}"

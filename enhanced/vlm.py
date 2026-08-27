@@ -29,6 +29,7 @@ from modules.vlm_model_catalog import (
     infer_gguf_handler,
     is_visual_component_filename,
     read_gguf_metadata,
+    runtime_chat_handler_name,
     select_mmproj_for_model,
 )
 import logging
@@ -660,8 +661,8 @@ class VLM:
                 except (OSError, ValueError):
                     mmproj_file = ""
 
-            handler = handler if mmproj_file else ""
-            capabilities = ["text", "image"] if handler and mmproj_file else ["text"]
+            handler = runtime_chat_handler_name(handler, bool(mmproj_file))
+            capabilities = ["text", "image"] if mmproj_file else ["text"]
             result = {
                 "model": model_dir,
                 "backend": "llamacpp",
@@ -1406,6 +1407,8 @@ class VLM:
                     callback(str(result))
                 return result
 
+            if image is not None and "image" not in VLM.capabilities:
+                raise RuntimeError(f"{VLM.current_version} supports text input only.")
             _safe_stop_comfyd_for_vlm()
             pipeline.free_everything()
             ldm_patched.modules.model_management.print_vram_info_by_nvml("before VLM streaming inference")
@@ -1504,6 +1507,8 @@ class VLM:
                     thinking=str(VLM.current_version).endswith("-Thinking"),
                 )
 
+            if VLM.is_llamacpp and image is not None and "image" not in VLM.capabilities:
+                raise RuntimeError(f"{VLM.current_version} supports text input only.")
             _safe_stop_comfyd_for_vlm()
             pipeline.free_everything()
             ldm_patched.modules.model_management.print_vram_info_by_nvml("before vlm chat inference")
@@ -1561,6 +1566,8 @@ class VLM:
                     thinking=str(VLM.current_version).endswith("-Thinking"),
                 )
 
+            if VLM.is_llamacpp and image is not None and "image" not in VLM.capabilities:
+                raise RuntimeError(f"{VLM.current_version} supports text input only.")
             _safe_stop_comfyd_for_vlm()
             pipeline.free_everything()
             ldm_patched.modules.model_management.print_vram_info_by_nvml("before vlm inference")

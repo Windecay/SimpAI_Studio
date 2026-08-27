@@ -55,6 +55,17 @@ LLAMA_CPP_VRAM_POLICIES = {
 }
 
 
+class FixedTemplateArgsChatFormatter:
+    def __init__(self, formatter, fixed_args):
+        self.formatter = formatter
+        self.fixed_args = dict(fixed_args or {})
+
+    def __call__(self, **kwargs):
+        template_args = dict(kwargs)
+        template_args.update(self.fixed_args)
+        return self.formatter(**template_args)
+
+
 def normalize_llama_cpp_vram_policy(policy):
     value = str(policy or "extreme").strip().lower().replace("-", "_")
     return value if value in LLAMA_CPP_VRAM_POLICIES else "extreme"

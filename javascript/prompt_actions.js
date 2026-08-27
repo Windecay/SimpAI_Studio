@@ -563,18 +563,29 @@
     }
 
     async function clickPromptActionTrigger(trigger) {
+        let flushOk = true;
         try {
             if (window.SimpAISketch?.flushAll) {
                 // Dirty canvases are serialized by flushAll itself. Avoid forcing
                 // unchanged high-resolution canvases through another input cycle.
-                await window.SimpAISketch.flushAll({
+                flushOk = await window.SimpAISketch.flushAll({
                     cache: true,
                     cacheWaitMs: 1500,
                     refreshCache: true
                 });
             }
         } catch (error) {
+            flushOk = false;
             console.warn("[UI-TRACE] prompt_action_sketch_flush_failed", error);
+        }
+        if (flushOk === false) {
+            const messageKey = "Canvas data could not be restored. Reload the source image and try again.";
+            const langState = window.simpleaiTopbarSystemParams || {};
+            const message = window.SimpAII18n?.localize
+                ? window.SimpAII18n.localize(messageKey, messageKey, langState)
+                : messageKey;
+            try { window.alert(message); } catch (error) {}
+            throw new Error(message);
         }
         trigger.click();
     }

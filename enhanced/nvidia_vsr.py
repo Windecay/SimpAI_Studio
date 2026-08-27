@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import shutil
@@ -17,6 +18,7 @@ from typing import Any, Callable, Iterator
 NVIDIA_VSR_METHOD = "nvidia_vsr"
 NATIVE_PROCESS = "studio"
 RIFE_MODEL_NAME = "flownet.pkl"
+logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, str], None]
 CancelCallback = Callable[[], bool]
@@ -359,8 +361,84 @@ def _ffmpeg_supports_encoder(ffmpeg: str, encoder: str) -> bool:
     return result.returncode == 0 and encoder in result.stdout
 
 
-def _select_encoder(ffmpeg: str) -> str:
-    return "h264_nvenc" if _ffmpeg_supports_encoder(ffmpeg, "h264_nvenc") else "libx264"
+_NVENC_PROBE_CACHE: dict[tuple[str, int, int, int], tuple[bool, str]] = {}
+
+
+def _probe_h264_nvenc(ffmpeg: str, width: int, height: int, crf: int) -> tuple[bool, str]:
+    cache_key = (os.path.abspath(ffmpeg), int(width), int(height), int(crf))
+    cached = _NVENC_PROBE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s={int(width)}x{int(height)}:r=1",
+        "-frames:v",
+        "1",
+        "-an",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p4",
+        "-rc",
+        "vbr",
+        "-cq",
+        str(int(crf)),
+        "-b:v",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception as exc:
+        probe_result = False, f"{type(exc).__name__}: {exc}"
+    else:
+        detail = " | ".join(
+            part.strip().replace("\r", " ").replace("\n", " ")
+            for part in (result.stderr, result.stdout)
+            if part and part.strip()
+        )
+        probe_result = result.returncode == 0, detail or f"ffmpeg exited with code {result.returncode}"
+    _NVENC_PROBE_CACHE[cache_key] = probe_result
+    return probe_result
+
+
+def _select_encoder(
+    ffmpeg: str,
+    width: int | None = None,
+    height: int | None = None,
+    crf: int = 19,
+) -> str:
+    if not _ffmpeg_supports_encoder(ffmpeg, "h264_nvenc"):
+        return "libx264"
+    if width is None or height is None:
+        return "h264_nvenc"
+    supported, detail = _probe_h264_nvenc(ffmpeg, width, height, crf)
+    if supported:
+        return "h264_nvenc"
+    logger.warning(
+        "NVIDIA VSR: h264_nvenc preflight failed for %sx%s; using libx264: %s",
+        int(width),
+        int(height),
+        detail[:500],
+    )
+    return "libx264"
 
 
 def _fps_arg(value: float) -> str:
@@ -371,16 +449,25 @@ def _fps_arg(value: float) -> str:
 class _RawVideoWriter:
     def __init__(self, output_path: str, width: int, height: int, fps: float, crf: int, ffmpeg: str, torch: Any):
         self.output_path = output_path
+        self.width = int(width)
+        self.height = int(height)
+        self.fps = float(fps)
+        self.crf = int(crf)
+        self.ffmpeg = ffmpeg
         self.torch = torch
         self.process = None
-        encoder = _select_encoder(ffmpeg)
+        self.encoder = _select_encoder(ffmpeg, self.width, self.height, self.crf)
+        self.frames_written = 0
+        self._start_process(self.encoder)
+
+    def _start_process(self, encoder: str) -> None:
         codec_args = ["-c:v", encoder]
         if encoder == "h264_nvenc":
-            codec_args.extend(["-preset", "p4", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"])
+            codec_args.extend(["-preset", "p4", "-rc", "vbr", "-cq", str(self.crf), "-b:v", "0"])
         else:
-            codec_args.extend(["-preset", "medium", "-crf", str(crf)])
+            codec_args.extend(["-preset", "medium", "-crf", str(self.crf)])
         command = [
-            ffmpeg,
+            self.ffmpeg,
             "-hide_banner",
             "-loglevel",
             "error",
@@ -390,9 +477,9 @@ class _RawVideoWriter:
             "-pix_fmt",
             "rgb24",
             "-s",
-            f"{int(width)}x{int(height)}",
+            f"{self.width}x{self.height}",
             "-r",
-            _fps_arg(fps),
+            _fps_arg(self.fps),
             "-i",
             "-",
             "-an",
@@ -401,7 +488,7 @@ class _RawVideoWriter:
             "yuv420p",
             "-movflags",
             "+faststart",
-            output_path,
+            self.output_path,
         ]
         self.process = subprocess.Popen(
             command,
@@ -411,17 +498,65 @@ class _RawVideoWriter:
         )
         self.encoder = encoder
 
+    def _process_error(self) -> str:
+        if self.process is None:
+            return ""
+        return_code = self.process.poll()
+        if return_code is None:
+            return ""
+        stderr = self.process.stderr.read() if self.process.stderr is not None else b""
+        detail = stderr.decode(errors="replace").strip()
+        return detail or f"ffmpeg exited with code {return_code}"
+
+    def _terminate_process(self) -> None:
+        if self.process is None:
+            return
+        try:
+            self.process.kill()
+            self.process.wait(timeout=5)
+        except Exception:
+            pass
+        finally:
+            self.process = None
+
+    def _restart_with_cpu_encoder(self, reason: str) -> None:
+        self._terminate_process()
+        logger.warning(
+            "NVIDIA VSR: h264_nvenc failed on the first frame at %sx%s; retrying with libx264: %s",
+            self.width,
+            self.height,
+            reason[:500],
+        )
+        self._start_process("libx264")
+
     def write(self, frame: Any) -> None:
         if self.process is None or self.process.stdin is None:
             raise RuntimeError("Video writer is not available.")
-        if self.process.poll() is not None:
-            stderr = self.process.stderr.read() if self.process.stderr is not None else b""
-            raise RuntimeError(f"ffmpeg exited early: {stderr.decode(errors='replace')}")
         if hasattr(frame, "detach"):
             image = frame.detach().clamp(0.0, 1.0).mul(255.0).byte().cpu().numpy()
         else:
             image = frame
-        self.process.stdin.write(image[..., :3].tobytes())
+        if getattr(image, "ndim", 0) != 3 or image.shape[0] != self.height or image.shape[1] != self.width or image.shape[2] < 3:
+            raise ValueError(
+                f"Video frame shape {getattr(image, 'shape', None)} does not match {self.height}x{self.width} RGB output."
+            )
+        payload = image[..., :3].tobytes()
+        try:
+            if self.process.poll() is not None:
+                raise RuntimeError(f"ffmpeg exited early: {self._process_error()}")
+            self.process.stdin.write(payload)
+            self.frames_written += 1
+        except (BrokenPipeError, OSError, RuntimeError) as exc:
+            if self.encoder == "h264_nvenc" and self.frames_written == 0:
+                self._restart_with_cpu_encoder(self._process_error() or str(exc))
+                if self.process is None or self.process.stdin is None:
+                    raise RuntimeError("CPU video writer could not be started.") from exc
+                self.process.stdin.write(payload)
+                self.frames_written += 1
+                return
+            detail = self._process_error()
+            suffix = f": {detail}" if detail else ""
+            raise RuntimeError(f"ffmpeg write failed{suffix}") from exc
 
     def close(self) -> None:
         if self.process is None:
@@ -437,15 +572,7 @@ class _RawVideoWriter:
             self.process = None
 
     def abort(self) -> None:
-        if self.process is None:
-            return
-        try:
-            self.process.kill()
-            self.process.wait(timeout=5)
-        except Exception:
-            pass
-        finally:
-            self.process = None
+        self._terminate_process()
 
 
 def _mux_source_audio(output_path: str, source_path: str, ffmpeg: str) -> bool:

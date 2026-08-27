@@ -133,6 +133,8 @@ LFM25VLChatHandler = None
 GraniteDoclingChatHandler = None
 PaddleOCRChatHandler = None
 Step3VLChatHandler = None
+Jinja2ChatFormatter = None
+chat_formatter_to_chat_completion_handler = None
 
 LLAMA_CPP_AVAILABLE = False
 # Avoid paying the reload cost for small, noisy GPU-layer estimates.
@@ -216,9 +218,19 @@ if LLAMA_CPP_AVAILABLE:
         Qwen3ASRChatHandler = None
         Step3VLChatHandler = None
 
+    try:
+        from llama_cpp.llama_chat_format import (
+            Jinja2ChatFormatter,
+            chat_formatter_to_chat_completion_handler,
+        )
+    except Exception:
+        Jinja2ChatFormatter = None
+        chat_formatter_to_chat_completion_handler = None
+
 import modules.config as config
 from modules.custom_llm_api import strip_reasoning_text
 from modules.llama_cpp_runtime import (
+    FixedTemplateArgsChatFormatter,
     estimate_llama_cpp_kv_cache_gb,
     is_llama_cpp_memory_error,
     llama_cpp_gpu_budget,
@@ -265,6 +277,7 @@ class LlamaCppVLM:
         self.conversation_messages = {}
         self.conversation_system_prompts = {}
         self.runtime_unhealthy = False
+        self._non_thinking_template_active = False
 
     def _record_completion_stats(self, output, elapsed_seconds):
         response = output if isinstance(output, dict) else {}
@@ -429,6 +442,81 @@ class LlamaCppVLM:
                 except TypeError:
                     continue
             raise
+
+    @staticmethod
+    def _is_qwen35_family_non_thinking(chat_handler_name, model_path):
+        handler_name = str(chat_handler_name or "").strip().lower()
+        model_name = os.path.basename(str(model_path or "")).lower()
+        if "thinking" in handler_name or "thinking" in model_name:
+            return False
+        if handler_name in {"qwen3.5", "qwen3.6", "qwen3.8"}:
+            return True
+        return any(
+            marker in model_name
+            for marker in (
+                "qwen3.5", "qwen35", "qwen-3.5",
+                "qwen3.6", "qwen36", "qwen-3.6",
+                "qwen3.8", "qwen38", "qwen-3.8",
+            )
+        )
+
+    def _create_text_only_qwen_chat_handler(self, llm, chat_handler_name, model_path):
+        if not self._is_qwen35_family_non_thinking(chat_handler_name, model_path):
+            return None
+        if Jinja2ChatFormatter is None or chat_formatter_to_chat_completion_handler is None:
+            return None
+
+        template = str(getattr(Qwen35ChatHandler, "CHAT_FORMAT", "") or "")
+        if not template:
+            metadata = getattr(llm, "metadata", {}) or {}
+            template = str(metadata.get("tokenizer.chat_template") or "")
+        if not template:
+            return None
+
+        try:
+            formatter = Jinja2ChatFormatter(
+                template=template,
+                eos_token="<|im_end|>",
+                bos_token="",
+            )
+            formatter = FixedTemplateArgsChatFormatter(
+                formatter,
+                {
+                    "enable_thinking": False,
+                    "preserve_thinking": False,
+                    "add_vision_id": False,
+                },
+            )
+            return chat_formatter_to_chat_completion_handler(formatter)
+        except Exception as exc:
+            logger.warning("Unable to configure text-only Qwen non-thinking template: %s", exc)
+            return None
+
+    def _configure_non_thinking_template(self, llm, chat_handler_name, model_path, mmproj_path):
+        self._non_thinking_template_active = False
+        if not self._is_qwen35_family_non_thinking(chat_handler_name, model_path):
+            return
+
+        if mmproj_path and getattr(self.chat_handler, "enable_thinking", None) is False:
+            self._non_thinking_template_active = True
+            return
+
+        if mmproj_path:
+            return
+
+        text_handler = self._create_text_only_qwen_chat_handler(
+            llm,
+            chat_handler_name,
+            model_path,
+        )
+        if text_handler is None:
+            logger.warning(
+                "Text-only Qwen model has no fixed non-thinking template; reasoning budget fallback remains active."
+            )
+            return
+        llm.chat_handler = text_handler
+        self._non_thinking_template_active = True
+        logger.info("Configured text-only Qwen model with enable_thinking=False.")
 
     def _get_layer_count(self, path):
         import struct
@@ -980,6 +1068,7 @@ class LlamaCppVLM:
 
             logger.info(f"Loading Main LLM from: {model_path}")
 
+            self._non_thinking_template_active = False
             self._prepare_chat_handler(
                 handler_class,
                 mmproj_path=mmproj_path,
@@ -1028,6 +1117,12 @@ class LlamaCppVLM:
                                 "type_v": kv_type_config["type_v"],
                             })
                         self.llm = Llama(**llama_kwargs)
+                        self._configure_non_thinking_template(
+                            self.llm,
+                            chat_handler_name,
+                            model_path,
+                            mmproj_path,
+                        )
                         loaded_layers = attempt_layers
                         loaded_offload_kqv = attempt_offload_kqv
                         loaded_kv_cache_type = attempt_kv_cache_type
@@ -1211,6 +1306,7 @@ class LlamaCppVLM:
             self.current_external_process_count = None
             self.current_vram_estimate = {}
             self.last_completion_stats = {}
+            self._non_thinking_template_active = False
             self.runtime_unhealthy = False
             if clear_conversations:
                 self.clear_conversation()
@@ -1484,9 +1580,13 @@ class LlamaCppVLM:
 
     def _with_non_thinking_guard(self, system_msg):
         handler_name = str(self.current_chat_handler_name or "")
-        if not handler_name or "Thinking" in handler_name:
+        model_name = os.path.basename(str(self.current_model_path or ""))
+        if "Thinking" in handler_name or "thinking" in model_name.lower():
             return system_msg
-        if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM", "Gemma")):
+        if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM", "Gemma")) and not any(
+            name in model_name.lower()
+            for name in ("qwen", "minicpm", "glm", "gemma")
+        ):
             return system_msg
         guard = (
             "Do not output thinking, reasoning traces, chain-of-thought, analysis notes, "
@@ -1503,6 +1603,8 @@ class LlamaCppVLM:
         if "thinking" in handler_name.lower():
             return {}
         if handler_name == "Qwen3.8" or "qwen3.8" in model_path or "qwen38" in model_path:
+            if self._non_thinking_template_active:
+                return {}
             return {
                 "reasoning_budget": 0,
                 "reasoning_start_in_prompt": True,

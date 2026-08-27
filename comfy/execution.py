@@ -20,6 +20,8 @@ import comfy.model_management
 import comfy.model_patcher
 import comfy.model_prefetch
 import comfy_aimdo.model_vbar
+import folder_paths
+import simpai_ws_recovery
 from comfy.internal_logging import detail
 
 from latent_preview import set_preview_method
@@ -1357,7 +1359,39 @@ async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[
 
     return (True, None, list(good_outputs), node_errors)
 
-MAXIMUM_HISTORY_SIZE = 10000
+def _maximum_history_size():
+    default = 100
+    raw = os.environ.get("SIMPLEAI_COMFY_HISTORY_SIZE")
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logging.warning("Invalid SIMPLEAI_COMFY_HISTORY_SIZE=%r; using %s", raw, default)
+        return default
+    return max(1, min(10000, value))
+
+
+MAXIMUM_HISTORY_SIZE = _maximum_history_size()
+
+
+def _delete_history_recovery_files(history_items):
+    if not history_items:
+        return
+    try:
+        temp_directory = folder_paths.get_temp_directory()
+        for history_item in history_items:
+            simpai_ws_recovery.delete_history_output_files(temp_directory, history_item)
+    except Exception as exc:
+        logging.warning("Failed to remove expired websocket recovery files: %s", exc)
+
+
+def _prune_history_recovery_files(current_history_item):
+    try:
+        temp_directory = folder_paths.get_temp_directory()
+        simpai_ws_recovery.finalize_history_output_files(temp_directory, current_history_item)
+    except Exception as exc:
+        logging.warning("Failed to prune websocket recovery files: %s", exc)
 
 class PromptQueue:
     def __init__(self, server):
@@ -1375,6 +1409,37 @@ class PromptQueue:
             heapq.heappush(self.queue, item)
             self.server.queue_updated()
             self.not_empty.notify()
+
+    def get_prompt_item(self, prompt_id):
+        with self.mutex:
+            for item in self.currently_running.values():
+                if item[1] == prompt_id:
+                    return copy.deepcopy(item)
+            for item in self.queue:
+                if item[1] == prompt_id:
+                    return copy.deepcopy(item)
+            history_item = self.history.get(prompt_id)
+            if history_item is not None:
+                return copy.deepcopy(history_item.get("prompt"))
+        return None
+
+    def put_if_absent(self, item):
+        with self.mutex:
+            prompt_id = item[1]
+            for running_item in self.currently_running.values():
+                if running_item[1] == prompt_id:
+                    return copy.deepcopy(running_item)
+            for queued_item in self.queue:
+                if queued_item[1] == prompt_id:
+                    return copy.deepcopy(queued_item)
+            history_item = self.history.get(prompt_id)
+            if history_item is not None:
+                return copy.deepcopy(history_item.get("prompt"))
+
+            heapq.heappush(self.queue, item)
+            self.server.queue_updated()
+            self.not_empty.notify()
+            return None
 
     def get(self, timeout=None):
         with self.not_empty:
@@ -1396,10 +1461,12 @@ class PromptQueue:
 
     def task_done(self, item_id, history_result,
                   status: Optional['PromptQueue.ExecutionStatus'], process_item=None):
+        expired_history_items = []
+        current_history_item = None
         with self.mutex:
             prompt = self.currently_running.pop(item_id)
-            if len(self.history) > MAXIMUM_HISTORY_SIZE:
-                self.history.pop(next(iter(self.history)))
+            while len(self.history) >= MAXIMUM_HISTORY_SIZE:
+                expired_history_items.append(self.history.pop(next(iter(self.history))))
 
             status_dict: Optional[dict] = None
             if status is not None:
@@ -1414,7 +1481,10 @@ class PromptQueue:
                 'status': status_dict,
             }
             self.history[prompt[1]].update(history_result)
+            current_history_item = self.history[prompt[1]]
             self.server.queue_updated()
+        _delete_history_recovery_files(expired_history_items)
+        _prune_history_recovery_files(current_history_item)
 
     # Note: slow
     def get_current_queue(self):
@@ -1501,11 +1571,14 @@ class PromptQueue:
 
     def wipe_history(self):
         with self.mutex:
+            history_items = list(self.history.values())
             self.history = {}
+        _delete_history_recovery_files(history_items)
 
     def delete_history_item(self, id_to_delete):
         with self.mutex:
-            self.history.pop(id_to_delete, None)
+            history_item = self.history.pop(id_to_delete, None)
+        _delete_history_recovery_files([history_item] if history_item is not None else [])
 
     def set_flag(self, name, data):
         with self.mutex:

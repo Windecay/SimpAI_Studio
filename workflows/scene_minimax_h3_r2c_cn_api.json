@@ -706,8 +706,8 @@
   "79": {
     "inputs": {
       "image": ["73", 0],
-      "width": ["1", 6],
-      "height": ["1", 7],
+      "width": ["77", 1],
+      "height": ["78", 1],
       "upscale_method": "lanczos",
       "keep_proportion": "crop",
       "pad_color": "0, 0, 0",

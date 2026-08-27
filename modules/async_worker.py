@@ -1185,11 +1185,12 @@ def worker():
                         total_steps=comfy_task.steps,
                         extra_data=extra_data,
                         prompt_accepted_callback=mark_comfy_prompt_accepted,
+                        process_alive_callback=comfyd.is_running,
                     )
                 
                 if inpaint_worker.current_task is not None:
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
-            except ValueError as e:
+            except (ValueError, comfypipeline.ComfyServerUnavailableError) as e:
                 logger.info(f"comfy_task_error: {e}")
                 current_progress = int(base_progress + (100 - preparation_steps) / float(all_steps) * steps)
                 if async_task.simpleai_comfy_prompt_accepted:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import math
 import os
@@ -230,7 +231,12 @@ def normalize_speaker_mode(value: Any) -> str:
     return mode if mode in ROLEPLAY_SPEAKER_MODES else "auto"
 
 
-def _clean_state_fields(value: Any, limit: int = MAX_CHARACTER_STATE_FIELDS) -> list[dict[str, str]]:
+def _clean_state_fields(
+    value: Any,
+    limit: int = MAX_CHARACTER_STATE_FIELDS,
+    *,
+    preserve_empty_values: bool = False,
+) -> list[dict[str, str]]:
     """Normalize user-defined character state fields while keeping values textual."""
     if isinstance(value, dict):
         if any(key in value for key in ("label", "name", "key")):
@@ -251,7 +257,7 @@ def _clean_state_fields(value: Any, limit: int = MAX_CHARACTER_STATE_FIELDS) -> 
         if isinstance(raw_value, (dict, list)):
             raw_value = json.dumps(raw_value, ensure_ascii=False)
         state_value = _text(str(raw_value), 500) if raw_value is not None else ""
-        if not label or not state_value:
+        if not label or (not state_value and not preserve_empty_values):
             continue
         label_key = label.casefold()
         if label_key in labels:
@@ -264,6 +270,7 @@ def _clean_state_fields(value: Any, limit: int = MAX_CHARACTER_STATE_FIELDS) -> 
 _NUMERIC_STATE_RATIO_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)\s*$")
 _NUMERIC_STATE_PERCENT_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*%\s*$")
 _NUMERIC_STATE_NUMBER_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*$")
+_STATE_FIELD_ID_RE = re.compile(r"^state_field_[0-9a-f]{12}$", re.IGNORECASE)
 _STATE_FIELD_ALIAS_GROUPS = {
     "health": {
         "health", "hp", "hitpoint", "hitpoints", "life", "lifepoint", "lifepoints",
@@ -305,6 +312,43 @@ def _state_field_label_key(value: Any) -> str:
     return re.sub(r"[\s_\-./:]+", "", _text(value, 120).casefold())
 
 
+def _state_field_id(value: Any) -> str:
+    """Return a stable, language-independent identifier for a user field label."""
+    label_key = _state_field_label_key(value)
+    if not label_key:
+        return ""
+    digest = hashlib.sha1(label_key.encode("utf-8")).hexdigest()[:12]
+    return f"state_field_{digest}"
+
+
+def _is_state_field_id(value: Any) -> bool:
+    return bool(_STATE_FIELD_ID_RE.fullmatch(_text(value, 160).strip()))
+
+
+def _state_field_value_type(value: Any) -> str:
+    current = _text(value, 500).strip()
+    if _NUMERIC_STATE_RATIO_RE.fullmatch(current):
+        return "ratio"
+    if _NUMERIC_STATE_PERCENT_RE.fullmatch(current):
+        return "percent"
+    if _NUMERIC_STATE_NUMBER_RE.fullmatch(current):
+        return "number"
+    return "text"
+
+
+def _state_field_catalog(value: Any) -> list[dict[str, str]]:
+    return [
+        {
+            "field_id": _state_field_id(item.get("label")),
+            "label": _text(item.get("label"), 120),
+            "current_value": _text(item.get("value"), 500),
+            "value_type": _state_field_value_type(item.get("value")),
+        }
+        for item in _clean_state_fields(value, preserve_empty_values=True)
+        if _state_field_id(item.get("label"))
+    ]
+
+
 def _state_field_semantic_key(value: Any) -> str:
     label_key = _state_field_label_key(value)
     return _STATE_FIELD_ALIAS_LOOKUP.get(label_key, "")
@@ -331,6 +375,24 @@ def _state_field_match_index(
         return None
     for index, field in enumerate(fields):
         if index not in blocked and _state_field_semantic_key(field.get("label")) == semantic_key:
+            return index
+    return None
+
+
+def _state_field_match_index_by_id(
+    fields: list[dict[str, str]],
+    field_id: Any,
+    *,
+    used: set[int] | None = None,
+) -> int | None:
+    requested = _text(field_id, 160).casefold()
+    if not requested:
+        return None
+    blocked = used or set()
+    for index, field in enumerate(fields):
+        if index in blocked:
+            continue
+        if _state_field_id(field.get("label")).casefold() == requested:
             return index
     return None
 
@@ -407,8 +469,11 @@ def _resolve_numeric_state_deltas(
         if not isinstance(item, dict) or "delta" not in item:
             resolved.append(item)
             continue
+        field_id = _text(item.get("field_id") or item.get("fieldId"), 160)
         label = _text(item.get("label") or item.get("name") or item.get("key"), 120)
-        existing_index = _state_field_match_index(existing, label, use_aliases=True)
+        existing_index = _state_field_match_index_by_id(existing, field_id)
+        if existing_index is None:
+            existing_index = _state_field_match_index(existing, label or field_id, use_aliases=True)
         current = existing[existing_index]["value"] if existing_index is not None else None
         next_value = _apply_numeric_delta(current, item.get("delta")) if current is not None else None
         if next_value is None:
@@ -423,17 +488,634 @@ def _resolve_numeric_state_deltas(
     return resolved, warnings
 
 
+def _coerce_numeric_state_value(current: Any, candidate: Any) -> str:
+    """Keep a numeric update compatible with the existing field format."""
+    candidate_text = _text(candidate, 500).strip()
+    if not candidate_text:
+        return ""
+    current_text = _text(current, 500).strip()
+    ratio_match = _NUMERIC_STATE_RATIO_RE.fullmatch(current_text)
+    if ratio_match:
+        maximum = float(ratio_match.group(2))
+        candidate_ratio = _NUMERIC_STATE_RATIO_RE.fullmatch(candidate_text)
+        candidate_number = _NUMERIC_STATE_NUMBER_RE.fullmatch(candidate_text)
+        if candidate_ratio:
+            value = float(candidate_ratio.group(1))
+        elif candidate_number:
+            value = float(candidate_number.group(1))
+        else:
+            return candidate_text
+        if not math.isfinite(value) or not math.isfinite(maximum):
+            return candidate_text
+        value = max(0.0, min(maximum, value))
+        return f"{_format_numeric_state_number(value)}/{_format_numeric_state_number(maximum)}"
+    percent_match = _NUMERIC_STATE_PERCENT_RE.fullmatch(current_text)
+    if percent_match:
+        candidate_percent = _NUMERIC_STATE_PERCENT_RE.fullmatch(candidate_text)
+        candidate_number = _NUMERIC_STATE_NUMBER_RE.fullmatch(candidate_text)
+        if candidate_percent:
+            value = float(candidate_percent.group(1))
+        elif candidate_number:
+            value = float(candidate_number.group(1))
+        else:
+            return candidate_text
+        if not math.isfinite(value):
+            return candidate_text
+        return f"{_format_numeric_state_number(max(0.0, min(100.0, value)))}%"
+    if _NUMERIC_STATE_NUMBER_RE.fullmatch(current_text):
+        if _NUMERIC_STATE_NUMBER_RE.fullmatch(candidate_text):
+            return _format_numeric_state_number(float(candidate_text))
+    return candidate_text
+
+
+def _state_field_schema_at_path(state: dict[str, Any], path: list[str]) -> list[dict[str, str]]:
+    target: Any = state
+    for part in path:
+        if not isinstance(target, dict):
+            return []
+        target = target.get(part)
+    return _clean_state_fields(target, preserve_empty_values=True)
+
+
+def _state_field_patch_entries(value: Any, field_hint: Any = "") -> list[dict[str, Any]]:
+    reserved = {
+        "field_id", "fieldId", "id", "label", "name", "key", "value", "text", "delta", "after", "to",
+        "new", "new_value", "next", "before", "from", "old", "current",
+    }
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        if any(key in value for key in reserved) or field_hint:
+            return [dict(value)]
+        return [
+            ({"field_id": key, "value": item} if _is_state_field_id(key) else {"label": key, "value": item})
+            for key, item in value.items()
+        ]
+    if isinstance(value, str):
+        source = value.strip()
+        if source.startswith(("{", "[")):
+            try:
+                decoded = json.loads(source)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                decoded = None
+            if isinstance(decoded, (dict, list)):
+                return _state_field_patch_entries(decoded, field_hint)
+    if field_hint:
+        return [{"label": field_hint, "value": value}]
+    return []
+
+
+def _normalize_state_field_patch_value(
+    state: dict[str, Any],
+    path: list[str],
+    value: Any,
+    *,
+    preserve_schema: bool = False,
+    field_hint: Any = "",
+) -> tuple[list[dict[str, str]], list[str]]:
+    """Normalize common model variants without replacing the user-defined schema."""
+    existing = _state_field_schema_at_path(state, path)
+    normalized: list[dict[str, str]] = []
+    warnings: list[str] = []
+    for raw in _state_field_patch_entries(value, field_hint):
+        raw_field_id = _text(raw.get("field_id") or raw.get("fieldId"), 160)
+        label = _text(raw.get("label") or raw.get("name") or raw.get("key") or field_hint, 120)
+        field_identifier = raw_field_id or (
+            _text(field_hint, 160) if _text(field_hint, 120) != "state_fields" else ""
+        )
+        if not label and not field_identifier:
+            continue
+        existing_index = _state_field_match_index_by_id(existing, field_identifier)
+        if existing_index is None:
+            existing_index = _state_field_match_index(
+                existing,
+                label or field_identifier,
+                use_aliases=bool(existing),
+            )
+        if preserve_schema and raw_field_id and existing_index is None:
+            # A stable ID has meaning only inside the target's own catalog.
+            # Never turn an unknown ID into a visible field name at runtime.
+            warnings.append("director_state_field_id_unknown")
+            continue
+        if raw_field_id and existing and existing_index is None:
+            warnings.append("director_state_field_id_unknown")
+        if preserve_schema and existing and existing_index is None:
+            warnings.append("director_state_field_unknown")
+            continue
+        canonical_label = existing[existing_index]["label"] if existing_index is not None else label or field_identifier
+        current_value = existing[existing_index]["value"] if existing_index is not None else ""
+        raw_value: Any = raw.get("value")
+        if raw_value is None:
+            raw_value = raw.get("after")
+        if raw_value is None:
+            raw_value = raw.get("to") or raw.get("new_value") or raw.get("new") or raw.get("next")
+        if raw_value is None:
+            raw_value = raw.get("text")
+        if isinstance(raw_value, dict):
+            nested_value = raw_value
+            if nested_value.get("delta") is not None:
+                raw_delta = _apply_numeric_delta(current_value, nested_value.get("delta"))
+                raw_value = raw_delta if raw_delta is not None else nested_value.get("value")
+            else:
+                raw_value = (
+                    nested_value.get("after")
+                    or nested_value.get("to")
+                    or nested_value.get("value")
+                )
+        if raw.get("delta") is not None:
+            raw_delta = _apply_numeric_delta(current_value, raw.get("delta"))
+            if raw_delta is not None:
+                raw_value = raw_delta
+        if raw_value is None:
+            continue
+        if isinstance(raw_value, (dict, list)):
+            raw_value = json.dumps(raw_value, ensure_ascii=False)
+        next_value = _coerce_numeric_state_value(current_value, raw_value)
+        if not next_value and not (preserve_schema and existing_index is not None):
+            continue
+        item = {"label": canonical_label, "value": next_value}
+        duplicate_index = next(
+            (index for index, existing_item in enumerate(normalized)
+             if _state_field_label_key(existing_item.get("label")) == _state_field_label_key(canonical_label)),
+            None,
+        )
+        if duplicate_index is None:
+            normalized.append(item)
+        else:
+            normalized[duplicate_index] = item
+    if isinstance(value, dict) and not any(key in value for key in {"label", "name", "key", "value"}):
+        warnings.append("director_state_fields_shape_normalized")
+    return normalized, warnings
+
+
+def _extract_numeric_state_field_updates(
+    text: Any,
+    current_fields: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Read explicit before/after or final numeric values from a roleplay reply."""
+    source = _text(text, 16000)
+    if not source:
+        return []
+    number = r"-?\d+(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?%?"
+    separator = r"(?:->|→|➡|⇒|\$[^。\n]{0,20}rightarrow[^。\n]{0,20}\$|变为|改为|恢复至|下降至|上升至|变成|到|至)"
+    updates: list[dict[str, str]] = []
+    for field in current_fields:
+        label = _text(field.get("label"), 120)
+        if not label:
+            continue
+        aliases = {label}
+        semantic_key = _state_field_semantic_key(label)
+        if semantic_key:
+            aliases.update(_STATE_FIELD_ALIAS_GROUPS.get(semantic_key, set()))
+        labels = "|".join(re.escape(item) for item in sorted(aliases, key=len, reverse=True) if item)
+        if not labels:
+            continue
+        pair_pattern = re.compile(
+            rf"(?:{labels})[^\n。！？!?]{{0,100}}?(?P<before>{number})\s*{separator}\s*(?P<after>{number})",
+            re.IGNORECASE,
+        )
+        final_pattern = re.compile(
+            rf"(?:{labels})[^\n。！？!?]{{0,100}}?(?:下降至|上升至|恢复至|变为|改为|应变为|变成|达到|为|是|[:：])\s*(?P<after>{number})",
+            re.IGNORECASE,
+        )
+        match = pair_pattern.search(source) or final_pattern.search(source)
+        if match:
+            candidate = match.group("after")
+            next_value = _coerce_numeric_state_value(field.get("value"), candidate)
+            if next_value and next_value != _text(field.get("value"), 500):
+                updates.append({"label": label, "value": next_value})
+            continue
+
+        delta_pattern = re.compile(
+            rf"(?:{labels})[^\n。！？!?；;]{{0,24}}?(?P<verb>下降|降低|减少|扣除|消耗|损失|恢复|回复|增加|上升|提升|补充|治疗)"
+            rf"\s*(?P<amount>-?\d+(?:\.\d+)?)\s*(?:点|分|％|%)?",
+            re.IGNORECASE,
+        )
+        delta_match = delta_pattern.search(source)
+        if delta_match:
+            amount = _numeric_delta(delta_match.group("amount"))
+            if amount is None:
+                continue
+            verb = delta_match.group("verb")
+            signed_amount = -abs(amount) if verb in {"下降", "降低", "减少", "扣除", "消耗", "损失"} else abs(amount)
+            next_value = _apply_numeric_delta(field.get("value"), signed_amount)
+            if next_value and next_value != _text(field.get("value"), 500):
+                updates.append({"label": label, "value": next_value})
+            continue
+
+        if semantic_key != "health":
+            continue
+        damage_match = re.search(
+            r"(?:造成|受到|承受|遭受|损失)\s*(?P<amount>-?\d+(?:\.\d+)?)\s*(?:点|分|％|%)?\s*(?:的)?\s*(?:伤害|损伤|伤害值)",
+            source,
+            re.IGNORECASE,
+        )
+        if not damage_match:
+            continue
+        amount = _numeric_delta(damage_match.group("amount"))
+        next_value = _apply_numeric_delta(field.get("value"), -abs(amount)) if amount is not None else None
+        if next_value and next_value != _text(field.get("value"), 500):
+            updates.append({"label": label, "value": next_value})
+    return updates
+
+
+_NUMERIC_EFFECT_VERBS = {
+    "恢复", "回复", "治疗", "补充", "增加", "上升", "提升", "回升", "再生",
+    "下降", "降低", "减少", "扣除", "消耗", "损失", "造成", "受到", "承受", "遭受",
+}
+_NUMERIC_EFFECT_POSITIVE_VERBS = {"恢复", "回复", "治疗", "补充", "增加", "上升", "提升", "回升", "再生"}
+_NUMERIC_EFFECT_NEGATIVE_VERBS = {"下降", "降低", "减少", "扣除", "消耗", "损失", "造成", "受到", "承受", "遭受"}
+
+
+def _director_entity_aliases(
+    normalized: dict[str, Any],
+    entity_type: str,
+    entity_id: str,
+) -> list[str]:
+    if entity_type == "player":
+        persona = normalized.get("persona", {})
+        return list(dict.fromkeys(
+            item
+            for item in (
+                _text(persona.get("id"), 160),
+                _text(persona.get("name"), 200),
+                "玩家",
+                "你",
+                "您",
+            )
+            if item
+        ))
+    card = normalized.get("characters", {}).get(entity_id, {})
+    return list(dict.fromkeys(
+        item
+        for item in (
+            _text(entity_id, 160),
+            _text(card.get("name"), 200) if isinstance(card, dict) else "",
+        )
+        if item
+    ))
+
+
+def _director_entity_ids_in_text(
+    normalized: dict[str, Any],
+    value: Any,
+) -> set[str]:
+    source = _text(value, 12000).casefold()
+    if not source:
+        return set()
+    mentions: set[str] = set()
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    player_aliases = _director_entity_aliases(normalized, "player", player_id)
+    if any(alias.casefold() in source for alias in player_aliases if alias):
+        mentions.add(player_id)
+    for character_id in normalized.get("characters", {}):
+        if any(alias.casefold() in source for alias in _director_entity_aliases(normalized, "character", character_id)):
+            mentions.add(character_id)
+    return mentions
+
+
+def _director_numeric_effect_target_ids(
+    normalized: dict[str, Any],
+    clause: str,
+    effect_start: int,
+    speaker_id: Any = "",
+) -> list[str]:
+    before_effect = clause[:effect_start]
+    target_phrase = ""
+    for marker in ("对", "向", "给", "为", "让", "使", "将", "把"):
+        marker_index = before_effect.rfind(marker)
+        if marker_index >= 0:
+            target_phrase = before_effect[marker_index + len(marker):]
+            break
+    if not target_phrase:
+        for marker in ("攻击", "击中", "命中", "袭击", "打中", "伤害"):
+            marker_index = before_effect.rfind(marker)
+            if marker_index >= 0:
+                target_phrase = before_effect[marker_index + len(marker):]
+                break
+    target_ids = _director_entity_ids_in_text(normalized, target_phrase)
+    if not target_ids:
+        target_ids = _director_entity_ids_in_text(normalized, clause)
+        speaker = _director_resolve_speaker_id(normalized, speaker_id)
+        if len(target_ids) > 1 and speaker in target_ids:
+            target_ids.discard(speaker)
+    return list(dict.fromkeys(target_ids))
+
+
+def _extract_numeric_effects(
+    normalized: dict[str, Any],
+    text: Any,
+    *,
+    speaker_id: Any = "",
+) -> list[dict[str, Any]]:
+    """Extract explicit target, field, and numeric delta statements from prose."""
+    source = _text(text, 16000)
+    if not source:
+        return []
+    field_aliases = sorted(
+        {
+            alias
+            for aliases in _STATE_FIELD_ALIAS_GROUPS.values()
+            for alias in aliases
+            if alias
+        },
+        key=len,
+        reverse=True,
+    )
+    field_pattern = "|".join(re.escape(alias) for alias in field_aliases)
+    verb_pattern = "|".join(re.escape(verb) for verb in sorted(_NUMERIC_EFFECT_VERBS, key=len, reverse=True))
+    amount_pattern = r"-?\d+(?:\.\d+)?"
+    effects: list[dict[str, Any]] = []
+    seen: set[tuple[tuple[str, ...], str, float]] = set()
+    for clause in re.split(r"[。！？!?；;\n]+", source):
+        clause = clause.strip()
+        if not clause:
+            continue
+        matches: list[re.Match[str]] = []
+        matches.extend(re.finditer(
+            rf"(?P<field>{field_pattern})[^，,。！？!?；;]{{0,24}}?(?P<verb>{verb_pattern})"
+            rf"\s*(?P<amount>{amount_pattern})\s*(?:点|分|％|%)?",
+            clause,
+            re.IGNORECASE,
+        ))
+        matches.extend(re.finditer(
+            rf"(?P<verb>{verb_pattern})\s*(?:了|各|各自|分别|同时|均|都)?\s*"
+            rf"(?P<amount>{amount_pattern})\s*(?:点|分|％|%)?\s*(?:的)?\s*(?P<field>{field_pattern})",
+            clause,
+            re.IGNORECASE,
+        ))
+        if re.search(r"(?:造成|受到|承受|遭受|损失)", clause, re.IGNORECASE):
+            matches.extend(re.finditer(
+                rf"(?P<verb>造成|受到|承受|遭受|损失)\s*(?P<amount>{amount_pattern})"
+                r"\s*(?:点|分|％|%)?\s*(?:的)?\s*(?:伤害|损伤|伤害值)",
+                clause,
+                re.IGNORECASE,
+            ))
+        for match in matches:
+            verb = _text(match.group("verb"), 40)
+            amount = _numeric_delta(match.group("amount"))
+            if amount is None or amount == 0:
+                continue
+            field = _text(match.groupdict().get("field"), 120)
+            semantic_key = _state_field_semantic_key(field) if field else "health"
+            if not semantic_key:
+                continue
+            signed_amount = abs(amount) if verb in _NUMERIC_EFFECT_POSITIVE_VERBS else -abs(amount)
+            target_ids = _director_numeric_effect_target_ids(
+                normalized,
+                clause,
+                match.start(),
+                speaker_id=speaker_id,
+            )
+            if not target_ids:
+                continue
+            key = (tuple(sorted(target_ids)), semantic_key, signed_amount)
+            if key in seen:
+                continue
+            seen.add(key)
+            effects.append({
+                "target_ids": target_ids,
+                "semantic_key": semantic_key,
+                "delta": signed_amount,
+                "evidence": clause,
+            })
+    group_effects = [
+        effect
+        for effect in effects
+        if len(effect.get("target_ids", [])) > 1
+        and re.search(r"各|分别|同时|全体|所有|群体|each|everyone|all|both", _text(effect.get("evidence"), 2000), re.IGNORECASE)
+    ]
+    if not group_effects:
+        return effects
+    deduplicated = []
+    for effect in effects:
+        target_set = set(effect.get("target_ids", []))
+        if any(
+            target_set
+            and target_set < set(group_effect.get("target_ids", []))
+            and effect.get("semantic_key") == group_effect.get("semantic_key")
+            and effect.get("delta") == group_effect.get("delta")
+            for group_effect in group_effects
+        ):
+            continue
+        deduplicated.append(effect)
+    return deduplicated
+
+
+_SEMANTIC_NUMERIC_STATE_PATTERNS = {
+    "sanity": (
+        re.compile(r"(?:失去(?:了)?理智|理智(?:彻底)?崩溃|理智归零|失去思考能力)", re.IGNORECASE),
+        re.compile(r"思考被[^。！？!?；;\n]{0,16}填满", re.IGNORECASE),
+    ),
+}
+
+
+def _semantic_state_target(
+    normalized: dict[str, Any],
+    text: Any,
+    speaker_id: Any = "",
+) -> tuple[list[str], dict[str, str]] | None:
+    """Choose one clearly named entity for a semantic terminal-state update."""
+    source = _text(text, 16000)
+    if not source:
+        return None
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    speaker = _director_resolve_speaker_id(normalized, speaker_id)
+    present_ids = _director_present_character_ids(normalized, speaker)
+    player_condition = _director_describes_player_condition(normalized, source)
+    player_mentioned = player_id.casefold() in source.casefold() or bool(
+        re.search(r"玩家|你的|你们|你|您", source, re.IGNORECASE)
+    )
+    named_subjects = {
+        character_id
+        for character_id in present_ids
+        if _director_character_is_named_subject(normalized, source, character_id)
+    }
+    if player_condition and player_mentioned:
+        return ["player_state", "state_fields"], {
+            "entity_type": "player",
+            "entity_id": player_id,
+            "field": "state_fields",
+        }
+    if len(named_subjects) == 1:
+        character_id = next(iter(named_subjects))
+        return ["characters", character_id, "state_fields"], {
+            "entity_type": "character",
+            "entity_id": character_id,
+            "field": "state_fields",
+        }
+    if len(present_ids) == 1 and not player_mentioned:
+        character_id = next(iter(present_ids))
+        return ["characters", character_id, "state_fields"], {
+            "entity_type": "character",
+            "entity_id": character_id,
+            "field": "state_fields",
+        }
+    return None
+
+
+def _pending_semantic_state_fields(
+    normalized: dict[str, Any],
+    patches: list[dict[str, Any]],
+) -> set[tuple[tuple[str, ...], str]]:
+    pending: set[tuple[tuple[str, ...], str]] = set()
+    for patch in patches:
+        if not isinstance(patch, dict):
+            continue
+        descriptor = _director_raw_patch_target(normalized, patch)
+        if not descriptor:
+            continue
+        path, _target = descriptor
+        if path[-1:] != ["state_fields"]:
+            continue
+        field_hint = _director_state_field_hint(patch.get("field") or patch.get("target_field"))
+        for item in _state_field_patch_entries(patch.get("value"), field_hint):
+            field_id = _text(item.get("field_id") or item.get("fieldId"), 160)
+            label = _text(item.get("label") or item.get("name") or item.get("key") or field_hint, 120)
+            schema = _state_field_schema_at_path(normalized["story_state"], path)
+            index = _state_field_match_index_by_id(schema, field_id)
+            if index is None:
+                index = _state_field_match_index(schema, label, use_aliases=True)
+            if index is not None:
+                label = schema[index].get("label") or label
+            semantic_key = _state_field_semantic_key(label)
+            if semantic_key:
+                pending.add((tuple(path), semantic_key))
+    return pending
+
+
+def _synthesize_semantic_numeric_state_patches(
+    normalized: dict[str, Any],
+    patches: list[dict[str, Any]],
+    *,
+    source_text: Any = "",
+    attribution_text: Any = "",
+    speaker_id: Any = "",
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Convert explicit terminal-state language into configured numeric values."""
+    source = _text(source_text, 16000)
+    attribution = _text(attribution_text, 16000)
+    texts = [item for item in (source, attribution) if item]
+    if not texts:
+        return patches, []
+    semantic_text = source
+    matched_key = next(
+        (
+            key
+            for key, patterns in _SEMANTIC_NUMERIC_STATE_PATTERNS.items()
+            if any(pattern.search(semantic_text) for pattern in patterns)
+        ),
+        None,
+    )
+    if matched_key is None:
+        matched_key = next(
+            (
+                key
+                for key, patterns in _SEMANTIC_NUMERIC_STATE_PATTERNS.items()
+                if any(pattern.search(attribution) for pattern in patterns)
+            ),
+            None,
+        )
+        semantic_text = attribution
+    if matched_key is None:
+        return patches, []
+    target_descriptor = _semantic_state_target(normalized, semantic_text, speaker_id=speaker_id)
+    if not target_descriptor:
+        return patches, ["director_semantic_numeric_target_ambiguous"]
+    path, target = target_descriptor
+    current_fields = _state_field_schema_at_path(normalized["story_state"], path)
+    updates: list[dict[str, str]] = []
+    for field in current_fields:
+        label = _text(field.get("label"), 120)
+        if _state_field_semantic_key(label) != matched_key:
+            continue
+        if _state_field_value_type(field.get("value")) not in {"ratio", "percent", "number"}:
+            continue
+        next_value = _coerce_numeric_state_value(field.get("value"), "0")
+        if not next_value or _text(next_value, 500) == _text(field.get("value"), 500):
+            continue
+        updates.append({"field_id": _state_field_id(label), "value": next_value})
+    if not updates:
+        return patches, []
+
+    pending = _pending_semantic_state_fields(normalized, patches)
+    if (tuple(path), matched_key) in pending:
+        result = [copy.deepcopy(item) for item in patches if isinstance(item, dict)]
+        corrected = False
+        update_by_id = {item["field_id"]: item for item in updates}
+        for patch in result:
+            descriptor = _director_raw_patch_target(normalized, patch)
+            if not descriptor:
+                continue
+            patch_path, _patch_target = descriptor
+            if tuple(patch_path) != tuple(path) or patch_path[-1:] != ["state_fields"]:
+                continue
+            field_hint = _director_state_field_hint(patch.get("field") or patch.get("target_field"))
+            entries = _state_field_patch_entries(patch.get("value"), field_hint)
+            if not entries:
+                continue
+            replaced_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                entry_copy = dict(entry)
+                raw_field_id = _text(entry_copy.get("field_id") or entry_copy.get("fieldId"), 160)
+                raw_label = _text(
+                    entry_copy.get("label")
+                    or entry_copy.get("name")
+                    or entry_copy.get("key")
+                    or field_hint,
+                    120,
+                )
+                index = _state_field_match_index_by_id(current_fields, raw_field_id)
+                if index is None:
+                    index = _state_field_match_index(current_fields, raw_label, use_aliases=True)
+                canonical_label = current_fields[index].get("label") if index is not None else raw_label
+                semantic_key = _state_field_semantic_key(canonical_label)
+                update = next(
+                    (
+                        item
+                        for item in updates
+                        if item["field_id"] == _state_field_id(canonical_label)
+                    ),
+                    None,
+                )
+                if semantic_key == matched_key and update:
+                    entry_copy["field_id"] = update["field_id"]
+                    entry_copy["value"] = update["value"]
+                    entry_copy.pop("delta", None)
+                    entry_copy["label"] = canonical_label
+                    corrected = True
+                replaced_entries.append(entry_copy)
+            if corrected:
+                patch["value"] = replaced_entries
+        if corrected:
+            return result, ["director_semantic_numeric_patch_corrected"]
+
+    result = [copy.deepcopy(item) for item in patches if isinstance(item, dict)]
+    result.append({
+        "op": "set",
+        "target_entity_type": target["entity_type"],
+        "target_entity_id": target["entity_id"],
+        "field": "state_fields",
+        "value": updates,
+        "evidence": _text(semantic_text, 1200),
+    })
+    return result, ["director_semantic_numeric_patch_synthesized"]
+
+
 def _merge_state_fields(
     existing: Any,
     incoming: Any,
     *,
     preserve_schema: bool = False,
 ) -> list[dict[str, str]]:
-    merged = _clean_state_fields(existing)
+    merged = _clean_state_fields(existing, preserve_empty_values=preserve_schema)
+    incoming_fields = _clean_state_fields(incoming, preserve_empty_values=preserve_schema)
     if preserve_schema and not merged:
-        return _clean_state_fields(incoming)[:MAX_CHARACTER_STATE_FIELDS]
+        # An empty schema has no user-defined labels to protect. Once labels
+        # exist, incremental runtime updates may only modify those labels.
+        return incoming_fields[:MAX_CHARACTER_STATE_FIELDS]
     used: set[int] = set()
-    for field in _clean_state_fields(incoming):
+    for field in incoming_fields:
         index = _state_field_match_index(merged, field["label"], use_aliases=preserve_schema, used=used)
         if index is not None:
             used.add(index)
@@ -599,7 +1281,7 @@ def _normalize_character_runtime(value: Any) -> dict[str, Any]:
         "condition": _clean_string_list(source.get("condition"), 20),
         "appearance": _text(source.get("appearance"), 1200),
         "state_text": _compact_state_text(source.get("state_text")),
-        "state_fields": _clean_state_fields(source.get("state_fields")),
+        "state_fields": _clean_state_fields(source.get("state_fields"), preserve_empty_values=True),
         "current_appearance_asset_ids": _clean_asset_ids(
             source.get("current_appearance_asset_ids") or source.get("current_appearance_asset_id"),
             MAX_CURRENT_APPEARANCE_IMAGES,
@@ -628,7 +1310,7 @@ def _normalize_player_state(value: Any = None) -> dict[str, Any]:
         "status": status,
         "is_present": status == "present",
         "state_text": _compact_state_text(source.get("state_text")),
-        "state_fields": _clean_state_fields(source.get("state_fields")),
+        "state_fields": _clean_state_fields(source.get("state_fields"), preserve_empty_values=True),
     }
 
 
@@ -2742,9 +3424,7 @@ def _visible_state(session: Any, knowledge_id: str = "", visual: bool = False) -
 
 def visible_state_for_actor(session: Any, character_id: Any = "") -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
-    requested_id = _id(character_id, "character") if _text(character_id, 160) else ""
-    active_id = _id(normalized.get("active_character_id"), "character")
-    speaker_id = requested_id if requested_id in normalized.get("characters", {}) else active_id
+    speaker_id = _director_resolve_speaker_id(normalized, character_id)
     return _visible_state(normalized, speaker_id)
 
 
@@ -2841,9 +3521,7 @@ def build_roleplay_system_prompt(
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
     effective_turn_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
-    active_id = _id(normalized.get("active_character_id"), "character")
-    requested_id = _id(speaker_id, "character") if _text(speaker_id, 160) else ""
-    resolved_speaker_id = requested_id if requested_id in normalized.get("characters", {}) else active_id
+    resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
     speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized["character"]
     present_ids = _clean_string_list(
         normalized["story_state"].get("scene", {}).get("present_character_ids"),
@@ -2960,9 +3638,7 @@ def build_speaker_plan_prompt(
     normalized = normalize_roleplay_session(session)
     mode = normalize_speaker_mode(speaker_mode)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
-    current_id = _id(current_speaker_id or normalized.get("active_character_id"), "character")
-    if current_id not in normalized.get("characters", {}):
-        current_id = _id(normalized.get("active_character_id"), "character")
+    current_id = _director_resolve_speaker_id(normalized, current_speaker_id)
     last_id = _id(last_speaker_id, "character") if _text(last_speaker_id, 160) else ""
     scene = normalized["story_state"].get("scene", {})
     present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
@@ -3024,9 +3700,7 @@ def parse_speaker_plan_response(
 ) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     mode = normalize_speaker_mode(speaker_mode)
-    current_id = _id(current_speaker_id or normalized.get("active_character_id"), "character")
-    if current_id not in normalized.get("characters", {}):
-        current_id = _id(normalized.get("active_character_id"), "character")
+    current_id = _director_resolve_speaker_id(normalized, current_speaker_id)
     scene = normalized["story_state"].get("scene", {})
     present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
     allowed_ids = [
@@ -3093,11 +3767,20 @@ def build_director_prompt(
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
     effective_turn_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
-    resolved_speaker_id = _id(speaker_id, "character") if _text(speaker_id, 160) else _id(
-        normalized.get("active_character_id"), "character"
-    )
+    resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
     speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized.get("character", {})
     player_persona = normalized.get("persona", {})
+    present_character_ids = _director_present_character_ids(normalized, resolved_speaker_id)
+    present_character_order = [
+        character_id
+        for character_id in _clean_string_list(
+            normalized.get("story_state", {}).get("scene", {}).get("present_character_ids"),
+            MAX_ROLEPLAY_CHARACTERS,
+        )
+        if character_id in present_character_ids
+    ]
+    if resolved_speaker_id in present_character_ids and resolved_speaker_id not in present_character_order:
+        present_character_order.append(resolved_speaker_id)
     entity_attribution = {
         "player": {
             "entity_type": "player",
@@ -3105,21 +3788,29 @@ def build_director_prompt(
             "name": _text(player_persona.get("name"), 200),
             "state_path_prefix": "player_state",
             "allowed_runtime_fields": ["status", "state_text", "state_fields"],
+            "state_fields": _state_field_catalog(player_state.get("state_fields")),
         },
         "speaking_character": {
             "entity_type": "character",
             "id": resolved_speaker_id,
             "name": _text(speaker_card.get("name"), 200),
             "state_path_prefix": f"characters.{resolved_speaker_id}",
+            "state_fields": _state_field_catalog(
+                normalized.get("story_state", {}).get("characters", {}).get(resolved_speaker_id, {}).get("state_fields", [])
+            ),
         },
         "other_characters": [
             {
                 "id": character_id,
                 "name": _text(card.get("name"), 200),
                 "state_path_prefix": f"characters.{character_id}",
+                "state_fields": _state_field_catalog(
+                    normalized.get("story_state", {}).get("characters", {}).get(character_id, {}).get("state_fields", [])
+                ),
             }
-            for character_id, card in normalized.get("characters", {}).items()
-            if character_id != resolved_speaker_id
+            for character_id in present_character_order
+            for card in [normalized.get("characters", {}).get(character_id, {})]
+            if character_id != resolved_speaker_id and card
         ],
     }
     summary_schedule = roleplay_summary_schedule(normalized)
@@ -3165,6 +3856,14 @@ def build_director_prompt(
                 "value": "",
                 "evidence": "",
             },
+            {
+                "op": "set",
+                "target_entity_type": "character",
+                "target_entity_id": "<affected_character_id>",
+                "field": "state_fields",
+                "value": [{"field_id": "<copy_exact_field_id>", "value": "92/100"}],
+                "evidence": "明确的数值变化证据",
+            },
         ],
         "memories": [{"text": "", "importance": 0.0, "known_by": []}],
         "world_book_updates": [{"op": "add", "title": "", "content": "", "keys": []}],
@@ -3192,7 +3891,7 @@ def build_director_prompt(
     return "\n\n".join(
         [
             "You are the hidden external director for SimpAI Studio Roleplay mode.",
-            f"Return JSON only. Summaries use {reply_language}.",
+            f"Return JSON only. Natural-language state_text and evidence use {reply_language}.",
             "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
             "Do not rewrite the full state. Return incremental patches.",
             "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
@@ -3211,11 +3910,15 @@ def build_director_prompt(
             "For a multi-target effect, emit one patch per recipient with that recipient's exact target_entity_id. Do not combine A and B into one patch and do not put the recipients' condition into the healer's state_text.",
             "When the latest exchange clearly changes a character's current condition, emit a character target for state_text with a compact current snapshot of at most two short sentences.",
             "When numeric or named status values clearly change, emit a state_fields patch for the affected player or character. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
-            "The director runs after every turn. Do not wait for the player to request a status update. When the latest exchange explicitly describes a successful hit, injury, healing, spell or ability cost, stamina use, mental shock, or another clear effect on an entity, inspect that entity's existing numeric state fields and update the affected fields in the same turn.",
-            "Do not invent an effect that did not happen. You may infer a conservative magnitude for an explicitly described effect when the reply does not state an exact number: minor effect 1-5% of the field maximum, moderate effect 5-15%, severe effect 15-30%, rounded to at least 1 point when a maximum is known. A blocked, missed, harmless, or purely positional action does not change health or another resource.",
-            "For a numeric state field, preserve its label and format. You may return the complete value such as 92/100, or return a signed numeric delta such as {\"label\":\"生命值\",\"delta\":-8}; the runtime applies the delta to the current value and clamps ratio and percentage fields to their valid range. Use a separate numeric patch for each affected entity and each changed label.",
+            "The director runs after every turn. Do not wait for the player to request a status update. When the latest exchange explicitly describes a successful hit, injury, healing, spell or ability cost, stamina use, mental shock, or another clear effect on an entity, inspect that entity's existing numeric state fields and update the affected fields in the same turn when the exchange provides an exact numeric amount or before/after value.",
+            "Do not invent an effect or numeric magnitude. If the exchange describes an effect without an exact number, update state_text or condition only and leave numeric fields unchanged. A blocked, missed, harmless, or purely positional action does not change health or another resource.",
+            "Terminal semantic state rule: when the latest exchange explicitly says that a named entity lost sanity, suffered a sanity collapse, lost the ability to think, or that its thoughts were completely filled by an overwhelming impulse, treat that entity's existing sanity field as zero. Emit its state_fields patch with value 0; the runtime preserves the field's existing ratio or percentage format. Apply this only to the named affected entity, never to the speaker or player by default.",
+            "For a numeric state field, preserve its label and format. Use a signed numeric delta such as {\"label\":\"生命值\",\"delta\":-8} only when the latest exchange states that amount, or use the exact before/after value when both are stated. The runtime applies the delta to the current value and clamps ratio and percentage fields to their valid range. Use a separate numeric patch for each affected entity and each changed label.",
+            "Every state_fields item must use field_id copied exactly from the state field catalog, plus value or delta. The field_id is the only writable field identifier; do not translate it, invent it, or replace it with a label. The label in the catalog is for reading only and may be omitted from the returned item.",
+            "The value of state_fields must always be an array of objects with field_id and value, or an array of objects with field_id and delta. Never return an object map such as {\"hp\":92} or {\"mana\":68}, and never put a concrete label in the patch field; use field=state_fields.",
+            "If the reply explicitly records a before/after value such as 100/100 -> 92/100, write the final value in the state_fields patch even when state_text also contains the same sentence. Do not rely on the UI text alone.",
             "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
-            "Existing state_fields are user-defined schema. Never rename, translate, replace, or add labels during a runtime update. Match an English or translated label such as health, mental_state, condition, or sensory_status to the existing field label and return the existing label; ignore an unknown label rather than appending it.",
+            "Existing state_fields are user-defined schema. Never rename, translate, replace, or add fields during a runtime update. Use only field_id values from the state field catalog for the selected target. If no catalog field matches the effect, update state_text instead and leave numeric fields unchanged.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
             "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
             "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
@@ -3231,7 +3934,7 @@ def build_director_prompt(
             "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
             "To explicitly end or replace an ongoing state, use patch op 'replace' with the complete replacement value, or op 'remove' when the field should become empty. Do not use an ordinary set patch to clear a buff, injury, equipment effect, or action restriction.",
             "Do not rewrite or reset state when the latest exchange provides no new evidence.",
-            "Do not decide private thoughts or invent injury, death, resources, or effects that did not happen in the exchange. Infer only the magnitude of an effect that the latest exchange clearly establishes.",
+            "Do not decide private thoughts or invent injury, death, resources, numeric changes, or effects that did not happen in the exchange.",
             "Do not modify locked character fields. Do not reveal hidden plans to the actor.",
             f"The visible reply was produced by character id {resolved_speaker_id}. Attribute its actions and dialogue to that character unless the text explicitly describes another character.",
             "The visual candidate may contain only facts visible in the current scene.",
@@ -3249,13 +3952,34 @@ def build_director_prompt(
             json.dumps(normalized["world_book"]["entries"], ensure_ascii=False, indent=2),
             "Current long-term memory store:",
             json.dumps(normalized["memory_store"]["items"], ensure_ascii=False, indent=2),
-            "Configured character cards:",
-            json.dumps(normalized.get("characters", {}), ensure_ascii=False, indent=2),
+            "Present character cards:",
+            json.dumps({
+                character_id: normalized.get("characters", {}).get(character_id, {})
+                for character_id in present_character_order
+                if character_id in normalized.get("characters", {})
+            }, ensure_ascii=False, indent=2),
+            "Characters outside the current scene (do not target them unless the latest exchange explicitly brings them into the scene):",
+            json.dumps([
+                character_id
+                for character_id in normalized.get("characters", {})
+                if character_id not in present_character_ids
+            ], ensure_ascii=False),
             "Locked character fields by character:",
             json.dumps({
                 character_id: card.get("locked_fields", [])
                 for character_id, card in normalized.get("characters", {}).items()
             }, ensure_ascii=False),
+            "State field catalog. Field IDs are scoped to their target entity and are the only valid identifiers for state_fields updates:",
+            json.dumps({
+                "player": entity_attribution["player"].get("state_fields", []),
+                **{
+                    character_id: item.get("state_fields", [])
+                    for item in entity_attribution["other_characters"]
+                    for character_id in [item.get("id")]
+                },
+                **({resolved_speaker_id: entity_attribution["speaking_character"].get("state_fields", [])}
+                   if resolved_speaker_id else {}),
+            }, ensure_ascii=False, indent=2),
             "Latest user or player message:",
             _text(user_message, 5000),
             "Latest in-character reply:",
@@ -3281,7 +4005,123 @@ def _extract_json_object(text: Any) -> Any:
     return None
 
 
-def parse_director_response(text: Any) -> dict[str, Any]:
+def _legacy_director_target(
+    normalized: dict[str, Any],
+    key: Any,
+) -> tuple[str, str] | None:
+    token = _text(key, 160)
+    token_key = token.casefold()
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    player_name = _text(normalized.get("persona", {}).get("name"), 200)
+    if token_key in {"player", "player_state", "persona", player_id.casefold(), player_name.casefold()}:
+        return "player", player_id
+    characters = normalized.get("characters", {})
+    if isinstance(characters, dict):
+        for character_id, card in characters.items():
+            if token_key == _text(character_id, 160).casefold() or token_key == _text(card.get("name"), 200).casefold():
+                return "character", character_id
+    if _director_is_generic_target_id(token, "character") or re.match(r"^(?:character|char|npc|role|person)[_.:-]", token, re.IGNORECASE):
+        return "character", token
+    return None
+
+
+def _legacy_director_state_fields(
+    normalized: dict[str, Any],
+    target_type: str,
+    target_id: str,
+    value: Any,
+) -> Any:
+    if target_type == "player":
+        path = ["player_state", "state_fields"]
+    else:
+        path = ["characters", target_id, "state_fields"]
+    existing = _state_field_schema_at_path(normalized["story_state"], path)
+    entries = _state_field_patch_entries(value)
+    converted: list[dict[str, Any]] = []
+    for entry in entries:
+        item = dict(entry)
+        raw_id = _text(item.get("field_id") or item.get("fieldId"), 160)
+        label = _text(item.get("label") or item.get("name") or item.get("key"), 120)
+        index = _state_field_match_index_by_id(existing, raw_id)
+        if index is None:
+            index = _state_field_match_index(existing, label, use_aliases=True)
+        raw_value = item.get("value")
+        current_value = existing[index].get("value") if index is not None else ""
+        if (
+            index is not None
+            and _state_field_value_type(current_value) in {"ratio", "percent", "number"}
+            and _NUMERIC_STATE_NUMBER_RE.fullmatch(_text(raw_value, 120))
+            and float(_text(raw_value, 120)) < 0
+        ):
+            item.pop("value", None)
+            item["delta"] = float(_text(raw_value, 120))
+        converted.append(item)
+    return converted
+
+
+def _legacy_director_patches(
+    data: dict[str, Any],
+    session: Any = None,
+) -> list[dict[str, Any]]:
+    normalized = normalize_roleplay_session(session or {})
+    metadata_keys = {
+        "action", "status", "ok", "reply", "reason", "warnings", "patches", "memories",
+        "world_book", "world_book_updates", "memory_deletions", "chapter", "chapter_update",
+        "chapter_summary", "visual_candidate", "state", "message", "text",
+    }
+    blocks: list[tuple[str, dict[str, Any]]] = []
+    player_block = data.get("player_state")
+    if not isinstance(player_block, dict):
+        player_block = data.get("player")
+    if isinstance(player_block, dict):
+        blocks.append(("player_state", player_block))
+    characters_block = data.get("characters")
+    if isinstance(characters_block, dict):
+        blocks.extend(
+            (str(key), value)
+            for key, value in characters_block.items()
+            if isinstance(value, dict)
+        )
+    for key, value in data.items():
+        if key in metadata_keys or key in {"player", "player_state", "characters"} or not isinstance(value, dict):
+            continue
+        blocks.append((str(key), value))
+    state_block = data.get("state")
+    if isinstance(state_block, dict) and any(key in state_block for key in {"state_text", "state_fields", "condition"}):
+        blocks.append(("character", state_block))
+
+    patches: list[dict[str, Any]] = []
+    seen_blocks: set[tuple[str, str]] = set()
+    player_fields = DIRECTOR_PLAYER_FIELDS
+    character_fields = DIRECTOR_CHARACTER_FIELDS
+    for key, runtime in blocks:
+        target = _legacy_director_target(normalized, key)
+        if not target:
+            continue
+        target_type, target_id = target
+        block_key = (target_type, target_id)
+        if block_key in seen_blocks:
+            continue
+        seen_blocks.add(block_key)
+        allowed_fields = player_fields if target_type == "player" else character_fields
+        for field in allowed_fields:
+            if field not in runtime:
+                continue
+            value = runtime.get(field)
+            if field == "state_fields":
+                value = _legacy_director_state_fields(normalized, target_type, target_id, value)
+            patches.append({
+                "op": "set",
+                "target_entity_type": target_type,
+                "target_entity_id": target_id,
+                "field": field,
+                "value": value,
+                "evidence": _text(runtime.get("state_text") or data.get("action"), 1200),
+            })
+    return patches[:80]
+
+
+def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
     data = _extract_json_object(text)
     if not isinstance(data, dict):
         return {
@@ -3295,17 +4135,146 @@ def parse_director_response(text: Any) -> dict[str, Any]:
             "chapter_summary": "",
             "warnings": ["director_response_not_json"],
         }
+    patches = _list(data.get("patches"), 80)
+    warnings = _clean_string_list(data.get("warnings"), 30)
+    if not patches:
+        legacy_patches = _legacy_director_patches(data, session)
+        if legacy_patches:
+            patches = legacy_patches
+            warnings.append("director_legacy_entity_state_converted")
     return {
         "ok": True,
-        "patches": _list(data.get("patches"), 80),
+        "patches": patches,
         "memories": _list(data.get("memories"), 20),
         "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
         "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
         "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
         "visual_candidate": _dict(data.get("visual_candidate")),
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
-        "warnings": _clean_string_list(data.get("warnings"), 30),
+        "warnings": warnings,
     }
+
+
+def inspect_director_state_fields(session: Any, director_result: Any) -> dict[str, Any]:
+    """Check state-field references without mutating the roleplay session."""
+    normalized = normalize_roleplay_session(session)
+    result = director_result if isinstance(director_result, dict) else {}
+    known_count = 0
+    unknown_fields: list[dict[str, str]] = []
+    invalid_fields: list[dict[str, str]] = []
+    invalid_count = 0
+    patch_count = 0
+    for patch in _list(result.get("patches"), 80):
+        if not isinstance(patch, dict):
+            continue
+        descriptor = _director_raw_patch_target(normalized, patch)
+        if not descriptor:
+            raw_field = _text(patch.get("field") or patch.get("target_field"), 160)
+            canonical_field, field_hint = _director_state_field_reference(raw_field)
+            if canonical_field == "state_fields" or _is_state_field_id(field_hint or canonical_field):
+                invalid_count += 1
+                invalid_fields.append({
+                    "target_entity_id": _text(
+                        patch.get("target_entity_id")
+                        or patch.get("entity_id")
+                        or patch.get("target_id"),
+                        160,
+                    ),
+                    "field_id": field_hint if _is_state_field_id(field_hint) else "",
+                    "label": field_hint or raw_field,
+                })
+            continue
+        path, _target = descriptor
+        if path[-1:] != ["state_fields"]:
+            continue
+        existing = _state_field_schema_at_path(normalized["story_state"], path)
+        if not existing:
+            continue
+        patch_count += 1
+        raw_field = _text(patch.get("field") or patch.get("target_field"), 160)
+        field_hint = _director_state_field_hint(raw_field)
+        entries = _state_field_patch_entries(patch.get("value"), field_hint)
+        if not entries:
+            if patch.get("value") not in (None, "", []):
+                invalid_count += 1
+                invalid_fields.append({
+                    "target_entity_id": _text(
+                        patch.get("target_entity_id")
+                        or patch.get("entity_id")
+                        or patch.get("target_id"),
+                        160,
+                    ),
+                    "field_id": field_hint if _is_state_field_id(field_hint) else "",
+                    "label": field_hint or raw_field or "state_fields",
+                })
+            continue
+        for raw in entries:
+            raw_field_id = _text(raw.get("field_id") or raw.get("fieldId"), 160)
+            label = _text(raw.get("label") or raw.get("name") or raw.get("key"), 120)
+            identifier = raw_field_id or field_hint
+            existing_index = _state_field_match_index_by_id(existing, identifier)
+            if existing_index is None:
+                existing_index = _state_field_match_index(existing, label or identifier, use_aliases=True)
+            if existing_index is None:
+                unknown_fields.append({
+                    "target_entity_id": _text(
+                        patch.get("target_entity_id")
+                        or patch.get("entity_id")
+                        or patch.get("target_id"),
+                        160,
+                    ),
+                    "field_id": raw_field_id,
+                    "label": label or identifier,
+                })
+            else:
+                known_count += 1
+    return {
+        "patch_count": patch_count,
+        "known_count": known_count,
+        "unknown_count": len(unknown_fields),
+        "invalid_count": invalid_count,
+        "unknown_fields": unknown_fields[:20],
+        "invalid_fields": invalid_fields[:20],
+        "needs_repair": bool(unknown_fields or invalid_count),
+    }
+
+
+def build_director_state_repair_prompt(
+    session: Any,
+    user_message: str,
+    assistant_reply: str,
+    previous_response: Any,
+    alignment: Any = None,
+    lang: str = "cn",
+    speaker_id: Any = "",
+    turn_intent: Any = "",
+) -> str:
+    """Build a one-shot correction prompt for invalid state-field references."""
+    base = build_director_prompt(
+        session,
+        user_message,
+        assistant_reply,
+        lang,
+        speaker_id=speaker_id,
+        turn_intent=turn_intent,
+    )
+    previous = previous_response if isinstance(previous_response, dict) else {}
+    report = alignment if isinstance(alignment, dict) else {}
+    return "\n\n".join(
+        [
+            base,
+            "The previous director JSON was parsed, but some state_fields references did not match the current user-defined schema.",
+            "Return the complete JSON object again. Keep valid targets and facts, and correct only the state_fields references.",
+            "Every state_fields item must contain field_id copied exactly from the state field catalog. Do not use translated labels, semantic guesses, or newly invented fields.",
+            "If an effect has no matching field in the catalog, omit that state_fields item and keep the effect in state_text.",
+            "Rejected state-field references:",
+            json.dumps(report.get("unknown_fields", []), ensure_ascii=False, indent=2),
+            "Invalid state-field references:",
+            json.dumps(report.get("invalid_fields", []), ensure_ascii=False, indent=2),
+            "Previous director JSON:",
+            json.dumps(previous, ensure_ascii=False, indent=2),
+        ]
+    ).strip()
 
 
 def _path_parts(path: Any) -> list[str]:
@@ -3348,6 +4317,129 @@ def _director_entity_mentions(session: dict[str, Any], value: Any) -> set[str]:
     return mentions
 
 
+def _director_identity_key(value: Any) -> str:
+    """Normalize an entity id or name for conservative director matching."""
+    return re.sub(r"[^0-9a-z\u3400-\u9fff]+", "", _text(value, 160).casefold())
+
+
+def _director_id_family(value: Any) -> str:
+    key = _director_identity_key(value)
+    for prefix in ("character", "char", "npc", "role", "person"):
+        if key.startswith(prefix) and len(key) > len(prefix):
+            return key[len(prefix):]
+    return key
+
+
+def _director_is_generic_target_id(value: Any, target_type: str) -> bool:
+    key = _director_identity_key(value)
+    if not key:
+        return False
+    if target_type == "player":
+        if key in {"player", "persona", "user", "playercharacter", "playerentity"}:
+            return True
+        return bool(re.fullmatch(r"(?:player|persona|user)\d+", key))
+    if target_type == "character":
+        if key in {"character", "char", "npc", "currentcharacter", "activecharacter", "roleplaycharacter"}:
+            return True
+        return bool(re.fullmatch(r"(?:character|char|npc)\d+", key))
+    return False
+
+
+def _director_resolve_speaker_id(normalized: dict[str, Any], speaker_id: Any = "") -> str:
+    characters = normalized.get("characters", {})
+    if not isinstance(characters, dict):
+        characters = {}
+    requested = _text(speaker_id, 160)
+    active_id = _text(normalized.get("active_character_id"), 160)
+    if active_id in characters:
+        if requested and requested in characters:
+            if not (_director_is_generic_target_id(requested, "character") and requested != active_id):
+                return requested
+        if requested:
+            requested_key = requested.casefold()
+            for character_id in characters:
+                if _text(character_id, 160).casefold() == requested_key:
+                    if not (_director_is_generic_target_id(character_id, "character") and character_id != active_id):
+                        return character_id
+        return active_id
+    if requested in characters:
+        return requested
+    return next(iter(characters), "")
+
+
+def _director_resolve_player_id(
+    normalized: dict[str, Any],
+    requested_id: Any,
+    *,
+    patch_text: Any = "",
+    attribution_text: Any = "",
+) -> tuple[str, str]:
+    actual_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    requested = _text(requested_id, 160)
+    if not requested or requested.casefold() == actual_id.casefold():
+        return actual_id, ""
+    actual_name = _text(normalized.get("persona", {}).get("name"), 200)
+    if requested.casefold() == actual_name.casefold() or _director_is_generic_target_id(requested, "player"):
+        return actual_id, "director_player_target_id_repaired"
+    return "", ""
+
+
+def _director_resolve_character_id(
+    normalized: dict[str, Any],
+    requested_id: Any,
+    *,
+    patch_text: Any = "",
+    attribution_text: Any = "",
+    speaker_id: Any = "",
+) -> tuple[str, str]:
+    characters = normalized.get("characters", {})
+    if not isinstance(characters, dict) or not characters:
+        return "", ""
+    requested = _text(requested_id, 160)
+    resolved_speaker = _director_resolve_speaker_id(normalized, speaker_id)
+    present_ids = _director_present_character_ids(normalized, resolved_speaker)
+
+    if _director_is_generic_target_id(requested, "character") and resolved_speaker in characters:
+        if requested.casefold() != resolved_speaker.casefold():
+            return resolved_speaker, "director_character_target_id_repaired"
+        return resolved_speaker, ""
+
+    requested_key = requested.casefold()
+    for character_id, card in characters.items():
+        if _text(character_id, 160).casefold() == requested_key:
+            return character_id, ""
+        if _text(card.get("name"), 200).casefold() == requested_key:
+            return character_id, "director_character_target_id_repaired"
+
+    family = _director_id_family(requested)
+    if family:
+        family_matches = [
+            character_id
+            for character_id in characters
+            if _director_id_family(character_id) == family
+        ]
+        if len(family_matches) == 1:
+            return family_matches[0], "director_character_target_id_repaired"
+
+    combined_text = "\n".join(
+        item for item in (
+            _text(patch_text, 8000),
+            _text(attribution_text, 8000),
+        ) if item
+    )
+    mentioned = _director_entity_mentions(normalized, combined_text)
+    mentioned_present = mentioned.intersection(present_ids)
+    mentioned_outside = mentioned.intersection(set(characters).difference(present_ids))
+    if len(mentioned_present) == 1 and not mentioned_outside:
+        return next(iter(mentioned_present)), "director_character_target_id_repaired"
+    if mentioned_outside and not mentioned_present:
+        return "", ""
+
+    if len(present_ids) == 1 and not mentioned_outside:
+        return next(iter(present_ids)), "director_character_target_id_repaired"
+    return "", ""
+
+
 def _director_patch_value_text(patch: dict[str, Any]) -> str:
     value = patch.get("value")
     if isinstance(value, (dict, list)):
@@ -3362,6 +4454,74 @@ def _director_patch_value_text(patch: dict[str, Any]) -> str:
         )
         if item
     )
+
+
+def _director_has_group_scope(value: Any) -> bool:
+    text = _text(value, 8000)
+    if not text:
+        return False
+    return bool(re.search(
+        r"所有在场|在场(?:的)?(?:所有|全体)|全体|全部|每个|每一名|众人|大家|群体|"
+        r"\b(?:all|everyone|each|party|group)\b",
+        text,
+        re.IGNORECASE,
+    ))
+
+
+def _director_describes_player_condition(normalized: dict[str, Any], value: Any) -> bool:
+    """Detect wording that assigns a condition to the player, not the actor."""
+    text = _text(value, 10000)
+    if not text:
+        return False
+    persona = normalized.get("persona", {}) if isinstance(normalized, dict) else {}
+    aliases = [
+        _text(persona.get("id"), 160),
+        _text(persona.get("name"), 200),
+        "你的",
+        "你们",
+        "你",
+        "您",
+        "玩家",
+    ]
+    aliases = sorted({item for item in aliases if item}, key=len, reverse=True)
+    player_ref = "(?:" + "|".join(re.escape(item) for item in aliases) + ")"
+    return bool(re.search(
+        rf"{player_ref}(?:的)?"
+        r"(?:无法|不能|不?能|受(?:了|到)?(?:轻|重|严重)?伤|负伤|被击中|被抓住|被束缚|被压制|被治疗|"
+        r"恢复|回复|治疗|增加|上升|提升|"
+        r"受到|陷入|处于|失去|倒下|昏迷|瘫软|无法动弹|无法行动|无法战斗|感到|"
+        r"(?:生命值|血量|魔力值|理智|状态|伤势)[^。！？!?；;\n]{0,12}(?:变为|下降|上升|恢复|降低|增加))"
+        rf"|(?:使|让|令|导致|迫使|将|把|给|为)\s*{player_ref}"
+        rf"|(?:对|向)\s*{player_ref}(?:施加|造成|进行治疗|治疗|攻击|恢复|回复|增加|提升|束缚|抓住|按住|抱住|拉住|造成伤害)"
+        rf"|{player_ref}[^。！？!?；;\n]{{0,30}}(?:生命值|血量|魔力值|理智|状态|伤势)?[^。！？!?；;\n]{{0,12}}(?:变为|下降|上升|恢复|回复|降低|增加|提升|治疗)"
+        rf"|(?:治疗|攻击|伤害|击中|命中|抓住|束缚|拉住|抚摸|施加|给予|救治|按住|抱住|搂住|推倒|恢复|回复)[^。！？!?；;\n]{{0,12}}{player_ref}",
+        text,
+        re.IGNORECASE,
+    ))
+
+
+def _director_character_is_named_subject(
+    normalized: dict[str, Any],
+    value: Any,
+    character_id: Any,
+) -> bool:
+    """Check whether a character name starts a clause describing that character."""
+    source = _text(value, 12000)
+    card = normalized.get("characters", {}).get(_text(character_id, 160), {})
+    aliases = sorted({
+        _text(character_id, 160),
+        _text(card.get("name"), 200) if isinstance(card, dict) else "",
+    } - {""}, key=len, reverse=True)
+    for alias in aliases:
+        for match in re.finditer(re.escape(alias), source, re.IGNORECASE):
+            prefix = source[:match.start()].rstrip()
+            if prefix and prefix[-1] not in "。！？!?；;\n":
+                continue
+            suffix = source[match.end():].lstrip()
+            if re.match(r"(?:和|与|及|以及|同)\s*(?:玩家|你|您)", suffix, re.IGNORECASE):
+                continue
+            return True
+    return False
 
 
 def _director_present_character_ids(normalized: dict[str, Any], speaker_id: str = "") -> set[str]:
@@ -3393,6 +4553,404 @@ def _director_target_from_path(
     return None
 
 
+def _director_state_field_reference(value: Any) -> tuple[str, str]:
+    """Return the canonical patch field and an optional concrete field hint."""
+    requested = _text(value, 160).strip()
+    if not requested:
+        return "", ""
+    parts = [part.strip() for part in requested.split(".") if part.strip()]
+    if parts and parts[0].casefold() in {"player_state", "story_state"}:
+        parts = parts[1:]
+    elif len(parts) >= 3 and parts[0].casefold() == "characters":
+        parts = parts[2:]
+    elif len(parts) >= 2 and parts[0].casefold() == "character":
+        parts = parts[1:]
+    requested = ".".join(parts)
+    if not requested:
+        return "", ""
+    if len(parts) == 2 and parts[0].casefold() == "state_fields":
+        return "state_fields", parts[1]
+    if requested.casefold() == "state_fields":
+        return "state_fields", ""
+    return requested, requested
+
+
+def _director_state_field_hint(value: Any) -> str:
+    canonical, hint = _director_state_field_reference(value)
+    return hint if canonical == "state_fields" else canonical
+
+
+def _director_state_field_target(
+    normalized: dict[str, Any],
+    target_type: str,
+    target_id: str,
+    requested_field: str,
+) -> str:
+    """Accept a field id or concrete label while keeping the patch path canonical."""
+    requested_field, field_hint = _director_state_field_reference(requested_field)
+    if requested_field == "state_fields":
+        return "state_fields"
+    allowed = DIRECTOR_PLAYER_FIELDS if target_type == "player" else DIRECTOR_CHARACTER_FIELDS
+    if requested_field in allowed:
+        return requested_field
+    if target_type == "player":
+        fields = normalized.get("story_state", {}).get("player_state", {}).get("state_fields", [])
+    else:
+        fields = normalized.get("story_state", {}).get("characters", {}).get(target_id, {}).get("state_fields", [])
+    identifier = field_hint or requested_field
+    if _is_state_field_id(identifier):
+        return "state_fields"
+    if _state_field_match_index_by_id(fields, identifier) is not None:
+        return "state_fields"
+    return "state_fields" if _state_field_match_index(fields, identifier, use_aliases=True) is not None else requested_field
+
+
+def _director_raw_patch_target(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+) -> tuple[list[str], dict[str, str]] | None:
+    requested_type = _director_target_type(patch.get("target_entity_type") or patch.get("entity_type"))
+    requested_id = _text(
+        patch.get("target_entity_id") or patch.get("entity_id") or patch.get("target_id"),
+        160,
+    )
+    requested_field = _text(patch.get("field") or patch.get("target_field"), 120)
+    path = _path_parts(patch.get("path"))
+    if not requested_type and path:
+        target = _director_target_from_path(normalized, path)
+        if target:
+            requested_type, requested_id, requested_field = target
+    if requested_type == "player":
+        player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+        requested_id = requested_id or player_id
+        requested_id, _ = _director_resolve_player_id(normalized, requested_id)
+        requested_field = _director_state_field_target(normalized, "player", requested_id, requested_field)
+        if requested_id == player_id and requested_field in DIRECTOR_PLAYER_FIELDS:
+            return ["player_state", requested_field], {
+                "entity_type": "player",
+                "entity_id": player_id,
+                "field": requested_field,
+            }
+    elif requested_type == "character":
+        requested_id, _ = _director_resolve_character_id(normalized, requested_id)
+        requested_field = _director_state_field_target(normalized, "character", requested_id, requested_field)
+        if requested_id in normalized.get("characters", {}) and requested_field in DIRECTOR_CHARACTER_FIELDS:
+            return ["characters", requested_id, requested_field], {
+                "entity_type": "character",
+                "entity_id": requested_id,
+                "field": requested_field,
+            }
+    return None
+
+
+def _director_explicit_target_from_text(
+    normalized: dict[str, Any],
+    text: Any,
+) -> tuple[list[str], dict[str, str]] | None:
+    source = _text(text, 16000)
+    match = re.search(
+        r"(?:目标实体|目标对象|affected\s+entity|target\s+entity)\s*(?:是|为|：|:)\s*([^\s，,。；;()（）]+)",
+        source,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    token = _text(match.group(1), 160).strip("。；;，,：:")
+    persona = normalized.get("persona", {})
+    player_id = _text(persona.get("id"), 160) or "player"
+    player_name = _text(persona.get("name"), 200)
+    if token and token.casefold() in {player_id.casefold(), player_name.casefold()}:
+        return ["player_state", "state_fields"], {
+            "entity_type": "player",
+            "entity_id": player_id,
+            "field": "state_fields",
+        }
+    for character_id, card in normalized.get("characters", {}).items():
+        name = _text(card.get("name"), 200)
+        if token and token.casefold() in {character_id.casefold(), name.casefold()}:
+            return ["characters", character_id, "state_fields"], {
+                "entity_type": "character",
+                "entity_id": character_id,
+                "field": "state_fields",
+            }
+    return None
+
+
+def _numeric_effect_state_updates(
+    normalized: dict[str, Any],
+    effects: list[dict[str, Any]],
+    *,
+    speaker_id: Any = "",
+) -> tuple[dict[tuple[str, ...], list[dict[str, str]]], dict[tuple[str, ...], set[str]]]:
+    updates_by_path: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    group_excluded_by_path: dict[tuple[str, ...], set[str]] = {}
+    current_values: dict[tuple[tuple[str, ...], str], str] = {}
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    speaker = _director_resolve_speaker_id(normalized, speaker_id)
+    present_ids = _director_present_character_ids(normalized, speaker)
+    for effect in effects:
+        target_ids = [
+            _text(item, 160)
+            for item in effect.get("target_ids", [])
+            if _text(item, 160)
+        ]
+        semantic_key = _text(effect.get("semantic_key"), 80)
+        delta = effect.get("delta")
+        if not target_ids or not semantic_key:
+            continue
+        for target_id in target_ids:
+            if target_id == player_id:
+                path = ("player_state", "state_fields")
+            elif target_id in normalized.get("characters", {}) and target_id in present_ids:
+                path = ("characters", target_id, "state_fields")
+            else:
+                continue
+            schema = _state_field_schema_at_path(normalized["story_state"], list(path))
+            field = next(
+                (
+                    item
+                    for item in schema
+                    if _state_field_semantic_key(item.get("label")) == semantic_key
+                    and _state_field_value_type(item.get("value")) in {"ratio", "percent", "number"}
+                ),
+                None,
+            )
+            if field is None:
+                continue
+            state_key = (path, semantic_key)
+            current_value = current_values.get(state_key, _text(field.get("value"), 500))
+            next_value = _apply_numeric_delta(current_value, delta)
+            if next_value is None or next_value == current_value:
+                continue
+            current_values[state_key] = next_value
+            updates = updates_by_path.setdefault(path, [])
+            update = {
+                "field_id": _state_field_id(field.get("label")),
+                "value": next_value,
+            }
+            existing_index = next(
+                (
+                    index
+                    for index, item in enumerate(updates)
+                    if item.get("field_id") == update["field_id"]
+                ),
+                None,
+            )
+            if existing_index is None:
+                updates.append(update)
+            else:
+                updates[existing_index] = update
+        if len(target_ids) > 1 and speaker and speaker not in target_ids:
+            excluded_path = ("characters", speaker, "state_fields")
+            group_excluded_by_path.setdefault(excluded_path, set()).add(semantic_key)
+    return updates_by_path, group_excluded_by_path
+
+
+def _merge_numeric_updates_into_patch(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+    path: list[str],
+    updates: list[dict[str, str]],
+) -> bool:
+    if path[-1:] != ["state_fields"] or not updates:
+        return False
+    field_hint = _director_state_field_hint(patch.get("field") or patch.get("target_field"))
+    entries = _state_field_patch_entries(patch.get("value"), field_hint)
+    existing = _state_field_schema_at_path(normalized["story_state"], path)
+    changed = False
+    for update in updates:
+        update_id = _text(update.get("field_id"), 160)
+        update_index = _state_field_match_index_by_id(existing, update_id)
+        if update_index is None:
+            continue
+        canonical_label = existing[update_index].get("label") or ""
+        entry_index = next(
+            (
+                index
+                for index, item in enumerate(entries)
+                if _state_field_match_index_by_id(existing, item.get("field_id") or "") == update_index
+                or _state_field_match_index(existing, item.get("label"), use_aliases=True) == update_index
+            ),
+            None,
+        )
+        replacement = {
+            "field_id": update_id,
+            "label": canonical_label,
+            "value": update.get("value", ""),
+        }
+        if entry_index is None:
+            entries.append(replacement)
+        elif entries[entry_index] != replacement:
+            entries[entry_index] = replacement
+        changed = True
+    if changed:
+        patch["value"] = entries
+    return changed
+
+
+def _synthesize_numeric_state_patches(
+    normalized: dict[str, Any],
+    patches: list[dict[str, Any]],
+    *,
+    source_text: Any = "",
+    attribution_text: Any = "",
+    speaker_id: Any = "",
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Recover explicit numeric changes when the director only returned prose."""
+    text_sources = [item for item in (_text(source_text, 16000), _text(attribution_text, 16000)) if item]
+    if not text_sources:
+        return patches, []
+    result = [copy.deepcopy(item) for item in patches if isinstance(item, dict)]
+    warnings: list[str] = []
+    effects = _extract_numeric_effects(
+        normalized,
+        "\n".join(text_sources),
+        speaker_id=speaker_id,
+    )
+    explicit_updates_by_path, group_excluded_by_path = _numeric_effect_state_updates(
+        normalized,
+        effects,
+        speaker_id=speaker_id,
+    )
+
+    filtered_result: list[dict[str, Any]] = []
+    for patch in result:
+        descriptor = _director_raw_patch_target(normalized, patch)
+        if descriptor:
+            path, _target = descriptor
+            path_tuple = tuple(path)
+            if path[-1:] == ["state_fields"]:
+                excluded_semantics = group_excluded_by_path.get(path_tuple, set())
+                if excluded_semantics:
+                    field_hint = _director_state_field_hint(patch.get("field") or patch.get("target_field"))
+                    entries = _state_field_patch_entries(patch.get("value"), field_hint)
+                    kept_entries: list[dict[str, Any]] = []
+                    removed = False
+                    existing = _state_field_schema_at_path(normalized["story_state"], path)
+                    for entry in entries:
+                        raw_label = _text(
+                            entry.get("label")
+                            or entry.get("name")
+                            or entry.get("key")
+                            or field_hint,
+                            120,
+                        )
+                        raw_id = _text(entry.get("field_id") or entry.get("fieldId"), 160)
+                        index = _state_field_match_index_by_id(existing, raw_id)
+                        if index is None:
+                            index = _state_field_match_index(existing, raw_label, use_aliases=True)
+                        canonical_label = existing[index].get("label") if index is not None else raw_label
+                        if _state_field_semantic_key(canonical_label) in excluded_semantics:
+                            removed = True
+                            continue
+                        kept_entries.append(entry)
+                    if removed:
+                        warnings.append("director_group_speaker_patch_removed")
+                        if not kept_entries:
+                            continue
+                        patch["value"] = kept_entries
+                explicit_updates = explicit_updates_by_path.get(path_tuple, [])
+                if explicit_updates and _merge_numeric_updates_into_patch(
+                    normalized,
+                    patch,
+                    path,
+                    explicit_updates,
+                ):
+                    warnings.append("director_numeric_patch_corrected")
+        filtered_result.append(patch)
+    result = filtered_result
+
+    state_field_targets: set[tuple[str, ...]] = set()
+    prose_targets: dict[tuple[str, ...], dict[str, str]] = {}
+    for patch in result:
+        descriptor = _director_raw_patch_target(normalized, patch)
+        if not descriptor:
+            continue
+        path, target = descriptor
+        if path[-1:] == ["state_fields"]:
+            state_field_targets.add(tuple(path))
+        elif path[-1:] == ["state_text"]:
+            prose_targets[tuple(path)] = target
+
+    def updates_for(path: list[str]) -> list[dict[str, str]]:
+        current = _state_field_schema_at_path(normalized["story_state"], path)
+        if not current:
+            return []
+        explicit_updates = explicit_updates_by_path.get(tuple(path))
+        if explicit_updates:
+            return explicit_updates
+        for text in text_sources:
+            updates = _extract_numeric_state_field_updates(text, current)
+            if updates:
+                return updates
+        return []
+
+    for path_tuple, updates in explicit_updates_by_path.items():
+        if path_tuple in state_field_targets or not updates:
+            continue
+        target_type = "player" if path_tuple[0] == "player_state" else "character"
+        target_id = (
+            _text(normalized.get("persona", {}).get("id"), 160) or "player"
+            if target_type == "player"
+            else path_tuple[1]
+        )
+        result.append({
+            "op": "set",
+            "target_entity_type": target_type,
+            "target_entity_id": target_id,
+            "field": "state_fields",
+            "value": updates,
+            "evidence": _text(
+                next(
+                    (
+                        effect.get("evidence")
+                        for effect in effects
+                        if target_id in effect.get("target_ids", [])
+                    ),
+                    text_sources[0],
+                ),
+                1200,
+            ),
+        })
+        state_field_targets.add(path_tuple)
+        warnings.append("director_numeric_patch_synthesized")
+
+    for path_tuple, target in prose_targets.items():
+        path = list(path_tuple[:-1]) + ["state_fields"]
+        if tuple(path) in state_field_targets:
+            continue
+        updates = updates_for(path)
+        if not updates:
+            continue
+        result.append({
+            "op": "set",
+            "target_entity_type": target["entity_type"],
+            "target_entity_id": target["entity_id"],
+            "field": "state_fields",
+            "value": updates,
+            "evidence": _text(text_sources[0], 1200),
+        })
+        state_field_targets.add(tuple(path))
+        warnings.append("director_numeric_patch_synthesized")
+
+    if not prose_targets and not state_field_targets:
+        descriptor = _director_explicit_target_from_text(normalized, "\n".join(text_sources))
+        if descriptor:
+            path, target = descriptor
+            updates = updates_for(path)
+            if updates:
+                result.append({
+                    "op": "set",
+                    "target_entity_type": target["entity_type"],
+                    "target_entity_id": target["entity_id"],
+                    "field": "state_fields",
+                    "value": updates,
+                    "evidence": _text(text_sources[0], 1200),
+                })
+                warnings.append("director_numeric_patch_synthesized")
+    return result, warnings
+
+
 def _director_patch_target(
     normalized: dict[str, Any],
     patch: dict[str, Any],
@@ -3420,16 +4978,81 @@ def _director_patch_target(
         warnings.append("director_target_type_invalid")
         return [], {}, warnings
 
-    speaker = _text(speaker_id, 160)
+    speaker = _director_resolve_speaker_id(normalized, speaker_id)
+    patch_text = _director_patch_value_text(patch)
     if requested_type == "player":
         player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
-        if requested_id and requested_id != player_id:
+        resolved_player_id, repair_warning = _director_resolve_player_id(
+            normalized,
+            requested_id,
+            patch_text=patch_text,
+            attribution_text=attribution_text,
+        )
+        if not resolved_player_id:
             warnings.append("director_player_target_id_mismatch")
             return [], {}, warnings
-        requested_id = player_id
+        if repair_warning:
+            warnings.append(repair_warning)
+        requested_id = resolved_player_id
+        requested_field = _director_state_field_target(normalized, "player", requested_id, requested_field)
         if requested_field not in DIRECTOR_PLAYER_FIELDS:
             warnings.append("director_player_field_invalid")
             return [], {}, warnings
+
+        # A model may label a character snapshot as player state because it
+        # sees second-person wording in the same sentence. Prefer a named
+        # present character when the text describes that character and does
+        # not describe a condition imposed on the player.
+        if requested_field in DIRECTOR_CHARACTER_FIELDS:
+            player_evidence = "\n".join(
+                item
+                for item in (
+                    patch_text,
+                    _text(attribution_text, 10000),
+                )
+                if item
+            )
+            player_condition = _director_describes_player_condition(
+                normalized,
+                player_evidence,
+            )
+            player_condition = player_condition or any(
+                _text(normalized.get("persona", {}).get("id"), 160) in effect.get("target_ids", [])
+                for effect in _extract_numeric_effects(
+                    normalized,
+                    player_evidence,
+                    speaker_id=speaker,
+                )
+            )
+            present_ids = _director_present_character_ids(normalized, speaker)
+            patch_character_ids = {
+                character_id
+                for character_id in _director_entity_mentions(normalized, patch_text).intersection(present_ids)
+                if _director_character_is_named_subject(normalized, patch_text, character_id)
+            }
+            attribution_character_ids = {
+                character_id
+                for character_id in _director_entity_mentions(normalized, attribution_text).intersection(present_ids)
+                if _director_character_is_named_subject(normalized, attribution_text, character_id)
+            }
+            inferred_character_id = ""
+            if len(patch_character_ids) == 1:
+                inferred_character_id = next(iter(patch_character_ids))
+            elif len(attribution_character_ids) == 1:
+                inferred_character_id = next(iter(attribution_character_ids))
+            elif len(present_ids) == 1 and not _director_entity_mentions(normalized, patch_text):
+                inferred_character_id = next(iter(present_ids))
+            if inferred_character_id and not player_condition:
+                requested_type = "character"
+                requested_id = inferred_character_id
+                target = {
+                    "entity_type": "character",
+                    "entity_id": requested_id,
+                    "field": requested_field,
+                }
+                path = ["characters", requested_id, requested_field]
+                warnings.append("director_target_reassigned_to_named_character")
+                return path, target, warnings
         path = ["player_state", requested_field]
     elif requested_type == "scene":
         if requested_id and requested_id != "scene":
@@ -3441,10 +5064,19 @@ def _director_patch_target(
             return [], {}, warnings
         path = ["scene", requested_field]
     else:
-        requested_id = _text(requested_id, 160)
-        if requested_id not in normalized.get("characters", {}):
+        requested_id, repair_warning = _director_resolve_character_id(
+            normalized,
+            requested_id,
+            patch_text=patch_text,
+            attribution_text=attribution_text,
+            speaker_id=speaker,
+        )
+        if repair_warning:
+            warnings.append(repair_warning)
+        if not requested_id or requested_id not in normalized.get("characters", {}):
             warnings.append("director_character_target_unknown")
             return [], {}, warnings
+        requested_field = _director_state_field_target(normalized, "character", requested_id, requested_field)
         if requested_field not in DIRECTOR_CHARACTER_FIELDS:
             warnings.append("director_character_field_invalid")
             return [], {}, warnings
@@ -3458,15 +5090,98 @@ def _director_patch_target(
         "entity_id": requested_id,
         "field": requested_field,
     }
+    explicit_target = _director_explicit_target_from_text(
+        normalized,
+        "\n".join(
+            item
+            for item in (
+                _director_patch_value_text(patch),
+                _text(attribution_text, 8000),
+            )
+            if item
+        ),
+    )
+    if explicit_target and requested_field in DIRECTOR_CONDITION_FIELDS:
+        explicit_path, explicit_descriptor = explicit_target
+        if explicit_path[-1:] in (["state_text"], ["state_fields"]):
+            if (
+                explicit_descriptor.get("entity_type") != requested_type
+                or explicit_descriptor.get("entity_id") != requested_id
+            ):
+                warnings.append("director_target_corrected_from_explicit_evidence")
+                return explicit_path, explicit_descriptor, warnings
+    requires_entity_evidence = (
+        requested_type == "player" and requested_field in DIRECTOR_PLAYER_FIELDS
+    ) or (
+        requested_type == "character" and requested_field in DIRECTOR_CHARACTER_FIELDS
+    )
+    if requires_entity_evidence:
+        evidence = _text(patch.get("evidence"), 1200)
+        if not evidence:
+            warnings.append("director_patch_evidence_missing")
+            return [], {}, warnings
+        patch_text = _director_patch_value_text(patch)
+        exchange_text = _text(attribution_text, 8000)
+        exchange_mentions = _director_entity_mentions(normalized, exchange_text)
+        patch_mentions = _director_entity_mentions(normalized, patch_text)
+        group_scope = _director_has_group_scope("\n".join((exchange_text, patch_text)))
+        player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+        if requested_type == "player":
+            player_referenced = (
+                player_id in exchange_mentions
+                or player_id in patch_mentions
+                or bool(re.search(r"你|您|你的|你们|玩家", patch_text, re.IGNORECASE))
+            )
+            if not player_referenced:
+                warnings.append("director_player_target_not_mentioned")
+                return [], {}, warnings
+        elif requested_id != speaker:
+            present_ids = _director_present_character_ids(normalized, speaker)
+            other_present_ids = present_ids - {speaker}
+            target_in_exchange = requested_id in exchange_mentions
+            target_in_patch = requested_id in patch_mentions
+            sole_other_target = len(other_present_ids) == 1 and requested_id in other_present_ids
+            unrelated_patch_mentions = {
+                entity_id
+                for entity_id in patch_mentions
+                if entity_id not in {requested_id, speaker, player_id}
+            }
+            if unrelated_patch_mentions and not group_scope:
+                warnings.append("director_target_ambiguous_multiple_entities")
+                return [], {}, warnings
+            if not group_scope and not (
+                target_in_exchange
+                and (target_in_patch or sole_other_target)
+            ):
+                warnings.append("director_character_target_not_mentioned")
+                return [], {}, warnings
+
     if requested_type != "character" or requested_id != speaker or requested_field not in DIRECTOR_CONDITION_FIELDS:
         return path, target, warnings
 
     patch_text = _director_patch_value_text(patch)
-    if not _text(patch.get("evidence"), 1200):
-        warnings.append("director_patch_evidence_missing")
+    group_effects = [
+        effect
+        for effect in _extract_numeric_effects(
+            normalized,
+            _text(attribution_text, 12000),
+            speaker_id=speaker,
+        )
+        if len(effect.get("target_ids", [])) > 1 and speaker not in effect.get("target_ids", [])
+    ]
+    if group_effects:
+        warnings.append("director_group_speaker_condition_rejected")
         return [], {}, warnings
     if not patch_text:
         patch_text = _text(attribution_text, 6000)
+    if explicit_target:
+        explicit_path, explicit_descriptor = explicit_target
+        if (
+            explicit_descriptor.get("entity_type") == requested_type
+            and explicit_descriptor.get("entity_id") == requested_id
+            and explicit_path[-1:] == [requested_field]
+        ):
+            return path, target, warnings
     mentions = _director_entity_mentions(normalized, patch_text)
     player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
     other_entity_ids = {
@@ -3476,16 +5191,21 @@ def _director_patch_target(
         and (entity_id == player_id or entity_id in normalized.get("characters", {}))
     }
     has_second_person = bool(re.search(r"你|您|你的|你们|you(?:r|rs)?\b", patch_text, re.IGNORECASE))
+    player_condition = _director_describes_player_condition(normalized, patch_text)
     if has_second_person:
         other_entity_ids.add(player_id)
     if len(other_entity_ids) > 1:
         warnings.append("director_target_ambiguous_multiple_entities")
         return [], {}, warnings
     if len(other_entity_ids) == 1 and player_id in other_entity_ids and requested_field != "current_action":
+        if requested_id in mentions and not player_condition:
+            return path, target, warnings
         warnings.append("director_target_reassigned_to_player")
         target = {"entity_type": "player", "entity_id": player_id, "field": requested_field}
         return ["player_state", requested_field], target, warnings
     if len(other_entity_ids) == 1:
+        if requested_id in mentions and not has_second_person:
+            return path, target, warnings
         redirected_id = next(iter(other_entity_ids))
         warnings.append("director_target_reassigned_to_named_character")
         target = {"entity_type": "character", "entity_id": redirected_id, "field": requested_field}
@@ -3511,6 +5231,7 @@ def _set_path(
         target = target.setdefault(part, {})
     if not isinstance(target, dict) or path[-1] in {"schema", "version", "state_version", "updated_at"}:
         return False
+    previous = copy.deepcopy(target.get(path[-1]))
     if path[-1] == "state_text" and incremental_runtime_state and not replace:
         value = _merge_state_text(target.get(path[-1]), value)
     elif path[-1] == "condition" and incremental_runtime_state and not replace:
@@ -3528,7 +5249,7 @@ def _set_path(
     elif isinstance(value, dict):
         value = _dict(value)
     target[path[-1]] = value
-    return True
+    return previous != value
 
 
 def _remove_path(state: dict[str, Any], path: list[str]) -> bool:
@@ -3671,6 +5392,7 @@ def apply_director_result(
     validate_attribution: bool = False,
     speaker_id: Any = "",
     attribution_text: Any = "",
+    numeric_source_text: Any = "",
 ) -> dict[str, Any]:
     normalized = normalize_roleplay_session(session)
     result = director_result if isinstance(director_result, dict) else {}
@@ -3679,7 +5401,25 @@ def apply_director_result(
     applied: list[dict[str, Any]] = []
     resource_changes: list[dict[str, Any]] = []
     warnings = _clean_string_list(result.get("warnings"), 30)
-    for patch in _list(result.get("patches"), 80):
+    patches = _list(result.get("patches"), 80)
+    if incremental_runtime_state:
+        patches, semantic_warnings = _synthesize_semantic_numeric_state_patches(
+            normalized,
+            patches,
+            source_text=numeric_source_text,
+            attribution_text=attribution_text,
+            speaker_id=speaker_id,
+        )
+        warnings.extend(semantic_warnings)
+        patches, synthesized_warnings = _synthesize_numeric_state_patches(
+            normalized,
+            patches,
+            source_text=numeric_source_text,
+            attribution_text=attribution_text,
+            speaker_id=speaker_id,
+        )
+        warnings.extend(synthesized_warnings)
+    for patch in patches:
         if not isinstance(patch, dict):
             warnings.append("invalid_patch")
             continue
@@ -3704,10 +5444,28 @@ def apply_director_result(
             or patch.get("replace") is True
             or _text(patch.get("mode"), 20).lower() in {"replace", "clear"}
         )
+        if (
+            incremental_runtime_state
+            and path[-1:] == ["state_fields"]
+            and operation in {"remove", "clear"}
+        ):
+            warnings.append("director_state_fields_clear_blocked")
+            continue
         patch_value = copy.deepcopy(patch.get("value"))
         if operation == "set" and not explicit_replace:
             patch_value, delta_warnings = _resolve_numeric_state_deltas(state, path, patch_value)
             warnings.extend(delta_warnings)
+        if path[-1:] == ["state_fields"]:
+            raw_field = _text(patch.get("field") or patch.get("target_field"), 120)
+            field_hint = _director_state_field_hint(raw_field)
+            patch_value, shape_warnings = _normalize_state_field_patch_value(
+                state,
+                path,
+                patch_value,
+                preserve_schema=incremental_runtime_state,
+                field_hint=field_hint,
+            )
+            warnings.extend(shape_warnings)
         changed = (
             _set_path(
                 state,
@@ -4270,7 +6028,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
             "memory_deletions": memory_deletions,
             "chapter_update": chapter_update,
             "chapter_summary": chapter_summary,
-            "warnings": [],
+            "warnings": _clean_string_list(payload.get("warnings"), 30),
         },
         turn_id=turn_id,
         evidence_message_ids=evidence_ids,
@@ -4278,6 +6036,7 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         validate_attribution=bool(director_attribution.get("enabled")),
         speaker_id=director_attribution.get("speaker_id"),
         attribution_text=director_attribution.get("text"),
+        numeric_source_text=director_attribution.get("assistant_reply") or director_attribution.get("reply"),
     )
     receipt = {
         "action_id": action_id,
@@ -5723,7 +7482,9 @@ __all__ = [
     "build_speaker_plan_prompt",
     "parse_speaker_plan_response",
     "build_director_prompt",
+    "build_director_state_repair_prompt",
     "parse_director_response",
+    "inspect_director_state_fields",
     "apply_director_result",
     "execute_roleplay_skill",
     "build_visual_snapshot",

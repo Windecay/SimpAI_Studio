@@ -1568,8 +1568,8 @@
   "86": {
     "inputs": {
       "image": ["14", 0],
-      "width": ["1", 6],
-      "height": ["1", 7],
+      "width": ["84", 1],
+      "height": ["85", 1],
       "upscale_method": "lanczos",
       "keep_proportion": "crop",
       "pad_color": "0, 0, 0",

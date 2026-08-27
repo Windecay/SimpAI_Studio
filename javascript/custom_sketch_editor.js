@@ -10,6 +10,7 @@
     const SKETCH_HISTORY_MEMORY_BUDGET = 64 * 1024 * 1024;
     const IMAGE_FILE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp|bmp|avif|tiff?|ico)$/i;
     const SKETCH_CACHE_ENDPOINT = "/simpai/sketch-cache";
+    const SKETCH_CACHE_RESOLVE_ENDPOINT = "/simpai/sketch-cache/resolve";
     let activeSketchApi = null;
     let fallbackSyncTimer = 0;
     let rootObserver = null;
@@ -780,6 +781,36 @@
                 status: responseStatus,
                 ok: succeeded
             });
+        }
+    }
+
+    async function resolveSketchCachePayload(payload) {
+        if (!payload || (!payload.image_ref && !payload.mask_ref)) return null;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 10000);
+        try {
+            const response = await fetch(SKETCH_CACHE_RESOLVE_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    image: isDataImageUrl(payload.image) ? payload.image : "",
+                    mask: isDataImageUrl(payload.mask) ? payload.mask : "",
+                    image_ref: payload.image_ref || "",
+                    mask_ref: payload.mask_ref || "",
+                    image_sha256: payload.image_sha256 || "",
+                    mask_sha256: payload.mask_sha256 || "",
+                    width: payload.width,
+                    height: payload.height
+                }),
+                signal: controller.signal
+            });
+            if (!response.ok) return null;
+            const result = await response.json();
+            return result && result.ok ? result : null;
+        } catch {
+            return null;
+        } finally {
+            window.clearTimeout(timeout);
         }
     }
 
@@ -2023,6 +2054,8 @@
         let payloadCacheSnapshot = null;
         let payloadCacheTask = null;
         let payloadCacheTaskKey = "";
+        let payloadLoadFailed = false;
+        let payloadLoadTask = null;
 
         function drawMaskImage(maskImage) {
             maskCtx.clearRect(0, 0, width, height);
@@ -2216,6 +2249,7 @@
         }
 
         function markDirty() {
+            payloadLoadFailed = false;
             valueDirty = true;
             lastPayload = null;
             if (serializeTimer) {
@@ -2224,7 +2258,11 @@
             }
         }
 
-        function flush(options = {}) {
+        async function flush(options = {}) {
+            if (payloadLoadTask) {
+                await payloadLoadTask;
+            }
+            if (payloadLoadFailed) return false;
             if (!valueDirty && !options.force) {
                 if (options.cache && lastPayload) {
                     return ensureCachedPayload(lastPayload, {
@@ -2274,7 +2312,7 @@
             refreshToolbarState();
         }
 
-        async function setPayload(text) {
+        async function applyPayload(text) {
             const sequence = ++payloadSequence;
             if (!text) {
                 if (!hasImage) {
@@ -2292,7 +2330,28 @@
             } catch (_) {
                 return false;
             }
-            if (!payload || (!payload.image && !payload.mask)) return false;
+            if (!payload || (!payload.image && !payload.mask && !payload.image_ref && !payload.mask_ref)) return false;
+
+            let cachedReference = null;
+            if (payload.image_ref || payload.mask_ref) {
+                cachedReference = {
+                    simpai_sketch_cached: true,
+                    width: payload.width,
+                    height: payload.height,
+                    image_ref: payload.image_ref || "",
+                    mask_ref: payload.mask_ref || "",
+                    image_sha256: payload.image_sha256 || "",
+                    mask_sha256: payload.mask_sha256 || ""
+                };
+                const resolved = await resolveSketchCachePayload(payload);
+                if (sequence !== payloadSequence) return false;
+                if (!resolved || (!resolved.image && !resolved.mask)) {
+                    payloadLoadFailed = true;
+                    console.warn("[SimpAI Sketch] Cached payload could not be restored");
+                    return false;
+                }
+                payload = Object.assign({}, payload, resolved);
+            }
 
             try {
                 const imageSource = payload.image || payload.mask;
@@ -2319,24 +2378,39 @@
                 }
             } catch (err) {
                 if (sequence === payloadSequence) {
+                    payloadLoadFailed = true;
                     console.warn("[SimpAI Sketch] Payload image load failed", err);
                 }
                 return false;
             }
             undoStack.length = 0;
             redoStack.length = 0;
-            payloadCacheSnapshot = null;
             lastPayload = {
                 image: payload.image || sourceImageDataUrl,
                 mask: payload.mask || "",
                 width,
                 height
             };
+            payloadCacheSnapshot = cachedReference ? {
+                payload: cloneSketchPayload(lastPayload),
+                reference: cachedReference
+            } : null;
+            payloadLoadFailed = false;
             valueDirty = false;
             empty.style.display = "none";
             updateStageDisplay();
             refreshToolbarState();
             return true;
+        }
+
+        function setPayload(text) {
+            const task = applyPayload(text);
+            payloadLoadTask = task;
+            const clearPayloadLoadTask = () => {
+                if (payloadLoadTask === task) payloadLoadTask = null;
+            };
+            task.then(clearPayloadLoadTask, clearPayloadLoadTask);
+            return task;
         }
 
         async function openImageDataUrl(dataUrl, options = {}) {
@@ -2356,6 +2430,7 @@
                 undoStack.length = 0;
                 redoStack.length = 0;
                 payloadCacheSnapshot = null;
+                payloadLoadFailed = false;
                 empty.style.display = "none";
                 updateStageDisplay();
                 serialize({ change: options.change !== false });
@@ -2953,6 +3028,7 @@
             sourceImageDataUrl = "";
             lastPayload = null;
             payloadCacheSnapshot = null;
+            payloadLoadFailed = false;
             payloadCacheTask = null;
             payloadCacheTaskKey = "";
             lastExternalValue = "";

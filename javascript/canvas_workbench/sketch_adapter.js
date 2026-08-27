@@ -96,7 +96,7 @@
                 const action = button.getAttribute('data-sketch-action');
                 button.disabled = true;
                 try {
-                    api.flush?.({ force: true });
+                    await api.flush?.({ force: true });
                     const value = api.getValue?.();
                     if (!value?.image) throw new Error('Sketch has no image.');
                     const imageData = String(value.image || '').startsWith('data:')

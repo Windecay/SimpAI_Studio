@@ -390,7 +390,7 @@
             const label = String(item.label ?? item.name ?? item.key ?? '').trim().slice(0, MAX_ROLEPLAY_STATE_FIELD_LABEL);
             const valueText = String(item.value ?? item.text ?? '').trim().slice(0, MAX_ROLEPLAY_STATE_FIELD_VALUE);
             const identity = label.toLocaleLowerCase();
-            if (!label || !valueText || seen.has(identity)) return null;
+            if (!label || seen.has(identity)) return null;
             seen.add(identity);
             return { label, value: valueText };
         }).filter(Boolean);
@@ -5796,36 +5796,49 @@
         return visibleRoleplayStateFields(modal, 'player');
     }
 
-    function applyVisibleRoleplayCharacterState(session, modal) {
+    function applyVisibleRoleplayCharacterState(session, modal, options = {}) {
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
         const activeId = target.active_character_id || target.character?.id;
         if (!activeId) return target;
         if (!target.story_state || typeof target.story_state !== 'object') target.story_state = {};
         if (!target.story_state.characters || typeof target.story_state.characters !== 'object') target.story_state.characters = {};
         const runtime = Object.assign({}, target.story_state.characters[activeId] || {});
-        const stateText = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-character-state-text]')?.value || '')
-            .trim()
-            .slice(0, MAX_ROLEPLAY_STATE_TEXT);
-        runtime.state_text = stateText;
-        runtime.state_fields = visibleRoleplayCharacterStateFields(modal);
+        const stateTextField = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-state-text]');
+        if (stateTextField) {
+            runtime.state_text = String(stateTextField.value || '')
+                .trim()
+                .slice(0, MAX_ROLEPLAY_STATE_TEXT);
+        }
+        const stateFieldsContainer = roleplayStateFieldsContainer(modal, 'character');
+        const hasStateFieldRows = !!stateFieldsContainer?.querySelector('[data-describe-vlm-chat-roleplay-state-field]');
+        const stateFieldsWereCleared = stateFieldsContainer?.dataset.roleplayStateFieldsCleared === 'true';
+        if (hasStateFieldRows || stateFieldsWereCleared || options.allowEmptyStateFields === true) {
+            runtime.state_fields = visibleRoleplayCharacterStateFields(modal);
+        }
         target.story_state.characters[activeId] = runtime;
         return target;
     }
 
-    function applyVisibleRoleplayPlayerState(session, modal) {
+    function applyVisibleRoleplayPlayerState(session, modal, options = {}) {
         const target = session && typeof session === 'object' ? session : normalizeRoleplaySession(null);
         if (!target.story_state || typeof target.story_state !== 'object') target.story_state = {};
         const current = normalizeRoleplayPlayerState(target.story_state.player_state);
-        const status = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-player-status]')?.value || current.status)
-            .trim()
-            .toLowerCase();
-        const next = normalizeRoleplayPlayerState({
-            status,
-            state_text: String(modal?.querySelector('[data-describe-vlm-chat-roleplay-player-state-text]')?.value || '')
-                .trim()
-                .slice(0, MAX_ROLEPLAY_STATE_TEXT),
-            state_fields: visibleRoleplayPlayerStateFields(modal)
-        });
+        const statusField = modal?.querySelector('[data-describe-vlm-chat-roleplay-player-status]');
+        const stateTextField = modal?.querySelector('[data-describe-vlm-chat-roleplay-player-state-text]');
+        const stateFieldsContainer = roleplayStateFieldsContainer(modal, 'player');
+        const hasStateFieldRows = !!stateFieldsContainer?.querySelector('[data-describe-vlm-chat-roleplay-state-field]');
+        const stateFieldsWereCleared = stateFieldsContainer?.dataset.roleplayStateFieldsCleared === 'true';
+        const next = normalizeRoleplayPlayerState(Object.assign({}, current, {
+            ...(statusField ? { status: String(statusField.value || current.status).trim().toLowerCase() } : {}),
+            ...(stateTextField ? {
+                state_text: String(stateTextField.value || '')
+                    .trim()
+                    .slice(0, MAX_ROLEPLAY_STATE_TEXT)
+            } : {}),
+            ...(hasStateFieldRows || stateFieldsWereCleared || options.allowEmptyStateFields === true
+                ? { state_fields: visibleRoleplayPlayerStateFields(modal) }
+                : {})
+        }));
         target.story_state.player_state = next;
         return target;
     }
@@ -6171,6 +6184,7 @@
         setValue('[data-describe-vlm-chat-roleplay-character-state-text]', activeCharacterRuntime.state_text);
         const stateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-state-fields]');
         if (stateFields && !stateFields.contains(document.activeElement)) {
+            delete stateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayCharacterStateFields(modal, activeCharacterRuntime.state_fields);
         }
         setValue('[data-describe-vlm-chat-roleplay-persona-name]', session.persona.name);
@@ -6181,6 +6195,7 @@
         setValue('[data-describe-vlm-chat-roleplay-player-state-text]', playerState.state_text);
         const playerStateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-player-state-fields]');
         if (playerStateFields && !playerStateFields.contains(document.activeElement)) {
+            delete playerStateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayPlayerStateFields(modal, playerState.state_fields);
         }
         setValue('[data-describe-vlm-chat-roleplay-scene-location]', session.story_state.scene.location);
@@ -6258,13 +6273,13 @@
         return target;
     }
 
-    function applyRoleplayForm(modal, runtime = null) {
+    function applyRoleplayForm(modal, runtime = null, options = {}) {
         if (!modal) return null;
         const target = runtime || currentConversationRuntime();
         let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
+        session = applyVisibleRoleplayCharacterState(session, modal, options);
+        session = applyVisibleRoleplayPlayerState(session, modal, options);
         session = applyVisibleRoleplayPersonaFields(session, modal, false);
         const read = (selector) => String(modal.querySelector(selector)?.value || '').trim();
         session.story_state.scene.location = read('[data-describe-vlm-chat-roleplay-scene-location]');
@@ -7599,6 +7614,8 @@
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         renderMessages();
+        syncRoleplayControls(modal, target);
+        persistRoleplayBranchRemote(target, selectedId).catch(() => {});
         setConversationStatus(target, target.messages.length
             ? localText(`Restored branch ${selectedId}.`, `已恢复剧情分支 ${selectedId}。`)
             : localText(`Restored branch ${selectedId}; no local messages were saved for it.`, `已恢复剧情分支 ${selectedId}，但本地没有保存该分支的聊天消息。`));
@@ -7690,6 +7707,7 @@
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
+        syncRoleplayControls(modal, nextRuntime);
         renderPendingImages();
         renderMessages();
         setStatus(localText(
@@ -12152,26 +12170,47 @@
         if (!Number.isInteger(index) || index < 0 || index >= messages.length) return null;
         const selected = messages[index];
         const conversationId = target.conversationId;
-        const direct = roleplaySessionBeforeMessage(selected, conversationId);
-        if (selected?.role === 'assistant' && direct) return direct;
+        const selectedId = String(selected?.id || '').trim();
+        const findSnapshot = (rows, fallbackIndex = index) => {
+            const list = Array.isArray(rows) ? rows : [];
+            let targetIndex = selectedId
+                ? list.findIndex((item) => String(item?.id || '').trim() === selectedId)
+                : -1;
+            if (targetIndex < 0 && list === messages) targetIndex = fallbackIndex;
+            if (targetIndex < 0 || targetIndex >= list.length) return null;
+            const targetMessage = list[targetIndex];
+            const direct = roleplaySessionBeforeMessage(targetMessage, conversationId);
+            if (targetMessage?.role === 'assistant' && direct) return direct;
 
-        if (selected?.role === 'user') {
-            for (let cursor = index + 1; cursor < messages.length; cursor += 1) {
-                const next = messages[cursor];
-                if (next?.pending || next?.role !== 'assistant') continue;
-                const before = roleplaySessionBeforeMessage(next, conversationId);
-                if (before) return before;
-                break;
+            if (targetMessage?.role === 'user') {
+                for (let cursor = targetIndex + 1; cursor < list.length; cursor += 1) {
+                    const next = list[cursor];
+                    if (next?.pending || next?.role !== 'assistant') continue;
+                    const before = roleplaySessionBeforeMessage(next, conversationId);
+                    if (before) return before;
+                    break;
+                }
             }
-        }
 
-        for (let cursor = Math.min(index - 1, messages.length - 1); cursor >= 0; cursor -= 1) {
-            const previous = messages[cursor];
-            if (previous?.pending || previous?.role !== 'assistant') continue;
-            const after = roleplaySessionAfterMessage(previous, conversationId);
-            if (after) return after;
+            for (let cursor = Math.min(targetIndex - 1, list.length - 1); cursor >= 0; cursor -= 1) {
+                const previous = list[cursor];
+                if (previous?.pending || previous?.role !== 'assistant') continue;
+                const after = roleplaySessionAfterMessage(previous, conversationId);
+                if (after) return after;
+            }
+            return direct;
+        };
+        const direct = findSnapshot(messages);
+        if (direct) return direct;
+
+        // Compacted conversations may have lost snapshots on the live messages,
+        // while an older local branch copy still contains the same turn.
+        const branches = normalizeRoleplayBranches(target.roleplayBranches, conversationId).slice().reverse();
+        for (const branch of branches) {
+            const snapshot = findSnapshot(branch.messages, -1);
+            if (snapshot) return snapshot;
         }
-        return direct;
+        return null;
     }
 
     function startRoleplayEditBranch(runtime = currentConversationRuntime(), turnId = '', options = {}) {
@@ -12199,12 +12238,25 @@
         });
         runtime.persistenceDirty = true;
         if (isCurrentConversationRuntime(runtime)) state.roleplaySession = runtime.roleplaySession;
-        persistRoleplayBranchRemote(runtime, nextBranch).catch(() => {});
         setConversationStatus(runtime, localText(
             `New story branch created from ${previousBranch}.`,
             `已从 ${previousBranch} 创建新的剧情分支。`
         ));
         return nextBranch;
+    }
+
+    function finalizeRoleplayContextEdit(runtime = currentConversationRuntime()) {
+        const target = runtime || currentConversationRuntime();
+        if (normalizeChatMode(target?.chatMode) !== 'roleplay') return false;
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (isCurrentConversationRuntime(target)) syncRoleplayControls(modal, target);
+        target.persistenceDirty = true;
+        saveConversationSnapshot(target);
+        persistRoleplayBranchRemote(
+            target,
+            target.roleplaySession?.active_branch_id || 'main'
+        ).catch(() => {});
+        return true;
     }
 
     async function writeClipboardText(value) {
@@ -12442,13 +12494,7 @@
         const roleplaySnapshot = roleplay
             ? roleplaySessionBeforeContextEdit(runtime, index)
             : null;
-        if (roleplay && message?.role === 'assistant' && !roleplaySnapshot) {
-            setStatus(t(
-                'This roleplay reply has no recoverable story state.',
-                '这条角色扮演回复没有可恢复的剧情状态。'
-            ), true);
-            return;
-        }
+        const roleplayStateRestored = !!roleplaySnapshot;
         if (roleplay) {
             startRoleplayEditBranch(runtime, message?.id || `message-${index}`, {
                 session_snapshot: roleplaySnapshot
@@ -12459,12 +12505,23 @@
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
         resetConversationAfterContextEdit();
-        setStatus(restoredImages.length
-            ? t('Message and images moved back to input.', '消息和图片已回到输入框。')
-            : t('Message moved back to input.', '消息已回到输入框。'));
+        setStatus(roleplay && !roleplayStateRestored
+            ? t(
+                restoredImages.length
+                    ? 'Message and images moved back to input. The story state was not rewound because this message has no saved snapshot.'
+                    : 'Message moved back to input. The story state was not rewound because this message has no saved snapshot.',
+                restoredImages.length
+                    ? '消息和图片已回到输入框，但这条消息没有保存历史快照，角色状态未回退。'
+                    : '消息已回到输入框，但这条消息没有保存历史快照，角色状态未回退。'
+            )
+            : restoredImages.length
+                ? t('Message and images moved back to input.', '消息和图片已回到输入框。')
+                : t('Message moved back to input.', '消息已回到输入框。'),
+            roleplay && !roleplayStateRestored);
         renderMessages();
         renderPendingImages();
-        saveConversationSnapshot(runtime);
+        if (roleplay) finalizeRoleplayContextEdit(runtime);
+        else saveConversationSnapshot(runtime);
         setChatInputValue(draft, true);
     }
 
@@ -12481,13 +12538,7 @@
         const roleplaySnapshot = roleplay
             ? roleplaySessionBeforeContextEdit(runtime, index)
             : null;
-        if (roleplay && message?.role === 'assistant' && !roleplaySnapshot) {
-            setStatus(t(
-                'This roleplay reply has no recoverable story state.',
-                '这条角色扮演回复没有可恢复的剧情状态。'
-            ), true);
-            return;
-        }
+        const roleplayStateRestored = !!roleplaySnapshot;
         if (roleplay) {
             startRoleplayEditBranch(runtime, message?.id || `message-${index}`, {
                 session_snapshot: roleplaySnapshot
@@ -12499,11 +12550,18 @@
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
         resetConversationAfterContextEdit();
-        setStatus(roleplay
-            ? t('Message and dependent story turns deleted from context.', '消息及依赖它的后续剧情已从当前分支删除。')
-            : t('Message deleted from context.', '消息已从上下文删除。'));
+        setStatus(roleplay && !roleplayStateRestored
+            ? t(
+                'Message and dependent story turns deleted from context. The story state was not rewound because this message has no saved snapshot.',
+                '消息及依赖它的后续剧情已从当前分支删除，但这条消息没有保存历史快照，角色状态未回退。'
+            )
+            : roleplay
+                ? t('Message and dependent story turns deleted from context.', '消息及依赖它的后续剧情已从当前分支删除。')
+                : t('Message deleted from context.', '消息已从上下文删除。'),
+            roleplay && !roleplayStateRestored);
         renderMessages();
-        saveConversationSnapshot(runtime);
+        if (roleplay) finalizeRoleplayContextEdit(runtime);
+        else saveConversationSnapshot(runtime);
     }
 
     function roleplayMessageVariants(message) {
@@ -12557,10 +12615,9 @@
         });
         runtime.messages = runtime.messages.slice(0, index);
         runtime.persistenceDirty = true;
-        persistRoleplayBranchRemote(runtime, nextBranch).catch(() => {});
         applyConversationRuntime(runtime);
         state.roleplaySession = runtime.roleplaySession;
-        saveConversationSnapshot(runtime);
+        finalizeRoleplayContextEdit(runtime);
         renderMessages();
         setConversationStatus(runtime, localText(
             'Generating another reply version...',
@@ -12631,7 +12688,7 @@
             });
         }
         applyConversationRuntime(runtime);
-        saveConversationSnapshot(runtime);
+        finalizeRoleplayContextEdit(runtime);
         renderMessages();
         setConversationStatus(runtime, localText(
             `Reply version ${nextIndex + 1} selected.`,
@@ -17438,6 +17495,7 @@
             const container = roleplayStateFieldsContainer(modal, owner);
             const currentRows = container ? container.querySelectorAll('[data-describe-vlm-chat-roleplay-state-field]').length : 0;
             if (!container || currentRows >= MAX_ROLEPLAY_STATE_FIELDS) return;
+            delete container.dataset.roleplayStateFieldsCleared;
             if (container.querySelector('.describe-vlm-chat-roleplay-state-fields-empty')) container.innerHTML = '';
             container.insertAdjacentHTML('beforeend', `<div class="describe-vlm-chat-roleplay-state-field" data-describe-vlm-chat-roleplay-state-field>
           <input type="text" maxlength="${MAX_ROLEPLAY_STATE_FIELD_LABEL}" data-describe-vlm-chat-roleplay-state-field-label placeholder="${escapeHtml(localText('Field name', '字段名'))}" aria-label="${escapeHtml(localText('State field name', '状态字段名'))}">
@@ -17455,6 +17513,7 @@
             if (container && !container.querySelector('[data-describe-vlm-chat-roleplay-state-field]')) {
                 const owner = String(container.getAttribute('data-describe-vlm-chat-roleplay-state-fields-owner') || 'character').trim() || 'character';
                 renderRoleplayStateFields(modal, [], owner);
+                container.dataset.roleplayStateFieldsCleared = 'true';
             }
             return;
         }
@@ -17565,7 +17624,7 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-save]')) {
             const runtime = syncCurrentRuntimeFromState();
-            applyRoleplayForm(modal, runtime);
+            applyRoleplayForm(modal, runtime, { allowEmptyStateFields: true });
             runtime.roleplayFormDraftUndo = null;
             runtime.roleplayPanelOpen = false;
             state.roleplayPanelOpen = false;

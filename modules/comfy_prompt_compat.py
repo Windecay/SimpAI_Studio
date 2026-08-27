@@ -35,14 +35,13 @@ def invalidate_comfy_object_info_cache():
     _clear_object_info_cache()
 
 
-def refresh_comfy_model_catalog(comfyclient_pipeline, ttl_seconds=30.0, timeout_seconds=5.0):
+def refresh_comfy_model_catalog(comfyclient_pipeline, ttl_seconds=3600.0, timeout_seconds=60.0):
     endpoint = _comfy_endpoint(comfyclient_pipeline)
     if not endpoint:
-        _clear_object_info_cache()
         return False
 
-    _clear_object_info_cache()
     now = time.monotonic()
+    previous = dict(_OBJECT_INFO_CACHE)
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             response = client.get(f"http://{endpoint}/object_info?refresh=1")
@@ -51,11 +50,8 @@ def refresh_comfy_model_catalog(comfyclient_pipeline, ttl_seconds=30.0, timeout_
         if not isinstance(data, dict):
             raise ValueError("Comfy object_info response is not an object")
     except Exception as exc:
-        _OBJECT_INFO_CACHE.update({
-            "endpoint": endpoint,
-            "expires_at": now + 5.0,
-            "data": None,
-        })
+        if previous.get("endpoint") == endpoint and isinstance(previous.get("data"), dict):
+            _OBJECT_INFO_CACHE.update(previous)
         logger.warning("Comfy model catalog refresh unavailable; Studio file refresh continues: %s", exc)
         return False
 
@@ -176,33 +172,10 @@ def get_comfy_object_info(comfyclient_pipeline, ttl_seconds=30.0):
     if not endpoint:
         return None
 
-    now = time.monotonic()
     cached = _OBJECT_INFO_CACHE
-    if cached.get("endpoint") == endpoint and now < float(cached.get("expires_at") or 0.0):
+    if cached.get("endpoint") == endpoint and isinstance(cached.get("data"), dict):
         return cached.get("data")
-
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            response = client.get(f"http://{endpoint}/object_info")
-            response.raise_for_status()
-            data = response.json()
-    except Exception as exc:
-        _OBJECT_INFO_CACHE.update({
-            "endpoint": endpoint,
-            "expires_at": now + 5.0,
-            "data": None,
-        })
-        logger.warning("Comfy object_info unavailable; model enum path normalization skipped: %s", exc)
-        return None
-
-    if not isinstance(data, dict):
-        return None
-    _OBJECT_INFO_CACHE.update({
-        "endpoint": endpoint,
-        "expires_at": now + float(ttl_seconds),
-        "data": data,
-    })
-    return data
+    return None
 
 
 def normalize_comfy_prompt_for_pipeline(prompt, comfyclient_pipeline):
@@ -217,7 +190,7 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
     if not callable(queue_prompt) or getattr(queue_prompt, "_simpai_enum_path_normalizer", False):
         return False
 
-    def queue_prompt_with_enum_path_normalization(user_did, prompt, user_cert, extra_data=None):
+    def queue_prompt_with_enum_path_normalization(user_did, prompt, user_cert, extra_data=None, *args, **kwargs):
         normalized_prompt, changes = normalize_comfy_prompt_for_pipeline(prompt, comfyclient_pipeline)
         if changes:
             preview = ", ".join(
@@ -225,7 +198,7 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
                 for item in changes[:8]
             )
             logger.info("Adjusted Comfy model enum paths for current backend: %s", preview)
-        return queue_prompt(user_did, normalized_prompt, user_cert, extra_data)
+        return queue_prompt(user_did, normalized_prompt, user_cert, extra_data, *args, **kwargs)
 
     queue_prompt_with_enum_path_normalization._simpai_enum_path_normalizer = True
     queue_prompt_with_enum_path_normalization._simpai_original_queue_prompt = queue_prompt

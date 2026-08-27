@@ -317,6 +317,16 @@ def infer_gguf_handler(metadata, filename):
     return None
 
 
+TEXT_ONLY_QWEN_CHAT_HANDLERS = frozenset({"Qwen3.5", "Qwen3.6", "Qwen3.8"})
+
+
+def runtime_chat_handler_name(handler, has_mmproj):
+    handler = str(handler or "")
+    if has_mmproj or handler in TEXT_ONLY_QWEN_CHAT_HANDLERS:
+        return handler
+    return ""
+
+
 def _gguf_context_window(metadata, default=8192):
     for key, value in (metadata or {}).items():
         if not str(key).lower().endswith(".context_length"):
@@ -626,7 +636,7 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "model": model_dir,
                 "backend": "llamacpp",
                 "is_llamacpp": True,
-                "chat_handler": detected["handler"] if mmproj_path else "",
+                "chat_handler": runtime_chat_handler_name(detected["handler"], bool(mmproj_path)),
                 "gguf_file": os.path.basename(relative_path),
                 "model_file": relative_path,
                 "mmproj_file": mmproj_relative,

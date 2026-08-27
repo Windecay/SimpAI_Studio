@@ -10368,12 +10368,29 @@ with shared.gradio_root:
                         force: true,
                         change: true,
                         cache: true,
-                        cacheWaitMs: 1500
+                        cacheWaitMs: 1500,
+                        refreshCache: true
                     });
                 }
             } catch (e) {
                 sketchFlushOk = false;
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
+            }
+            if (sketchFlushOk === false) {
+                const messageKey = "Canvas data could not be restored. Reload the source image and try again.";
+                const message = window.SimpAII18n?.localize
+                    ? window.SimpAII18n.localize(messageKey, messageKey, generationState || {})
+                    : messageKey;
+                try { window.alert(message); } catch (e) {}
+                try {
+                    setVisible("generate_button", true);
+                    setInteractive("generate_button", true);
+                    setInteractive("random_prompt_button", true);
+                    setInteractive("super_prompter_button", true);
+                    setVisible("stop_button", false);
+                    setVisible("skip_button", false);
+                } catch (e) {}
+                throw new Error(messageKey);
             }
             try {
                 if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
@@ -10408,9 +10425,21 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] preview_surface_prepare_failed", e);
             }
             try {
-                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
+                if (window.SimpAISketch?.flushAll) {
+                    const ok = await window.SimpAISketch.flushAll({ force: true, change: true, cache: true, refreshCache: true });
+                    if (ok === false) {
+                        const messageKey = "Canvas data could not be restored. Reload the source image and try again.";
+                        const langState = window.simpleaiTopbarSystemParams || {};
+                        const message = window.SimpAII18n?.localize
+                            ? window.SimpAII18n.localize(messageKey, messageKey, langState)
+                            : messageKey;
+                        try { window.alert(message); } catch (error) {}
+                        throw new Error(messageKey);
+                    }
+                }
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
+                throw e;
             }
             try {
                 if (typeof window.simpleaiSyncModelsJsPanelBridge === "function") window.simpleaiSyncModelsJsPanelBridge();
@@ -10425,9 +10454,21 @@ with shared.gradio_root:
         scene_batch_start_js = """async (...args) => {
             %s
             try {
-                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
+                if (window.SimpAISketch?.flushAll) {
+                    const ok = await window.SimpAISketch.flushAll({ force: true, change: true, cache: true, refreshCache: true });
+                    if (ok === false) {
+                        const messageKey = "Canvas data could not be restored. Reload the source image and try again.";
+                        const langState = args.find((value) => value && typeof value === "object" && value.__lang) || window.simpleaiTopbarSystemParams || {};
+                        const message = window.SimpAII18n?.localize
+                            ? window.SimpAII18n.localize(messageKey, messageKey, langState)
+                            : messageKey;
+                        try { window.alert(message); } catch (error) {}
+                        throw new Error(messageKey);
+                    }
+                }
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
+                throw e;
             }
             return args;
         }""" % _models_payload_submit_body([model_params_state, models_js_payload, params_backend, state_topbar])
@@ -13033,6 +13074,14 @@ async def simpai_sketch_cache_endpoint(payload: dict = Body(...)):
         return await run_in_threadpool(lambda: sketch_payload_cache.store_payload(payload))
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
+@app.post("/simpai/sketch-cache/resolve")
+async def simpai_sketch_cache_resolve_endpoint(payload: dict = Body(...)):
+    try:
+        return await run_in_threadpool(lambda: sketch_payload_cache.resolve_payload(payload))
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
 
 
 def _canvas_workbench_standalone_system_params(request: Request):
@@ -15987,6 +16036,10 @@ async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
             event_type = str(delta.get("type") or "").strip().lower()
             if event_type == "reset":
                 events.put({"type": "reset"})
+            elif event_type in {"status", "progress"}:
+                event = dict(delta)
+                event["type"] = event_type
+                events.put(event)
             return
         text = str(delta or "")
         if text:
