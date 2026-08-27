@@ -9600,7 +9600,7 @@ button.describe-vlm-chat-roleplay-participant-chip {
 }
 
 #describe_vlm_model_status .describe-vlm-model-state {
-  display: none !important;
+  display: flex !important;
   align-items: center !important;
   gap: 3px !important;
   white-space: nowrap !important;
@@ -9617,7 +9617,8 @@ button.describe-vlm-chat-roleplay-participant-chip {
   background: rgba(82, 210, 115, 0.1) !important;
 }
 
-#describe_vlm_model_status .describe-vlm-model-state.missing {
+#describe_vlm_model_status .describe-vlm-model-state.missing,
+#describe_vlm_model_status .describe-vlm-model-state.vision-missing {
   color: #f5b041 !important;
   border-color: rgba(245, 176, 65, 0.32) !important;
   background: rgba(245, 176, 65, 0.12) !important;
@@ -22507,6 +22508,10 @@ button[aria-label="Edit"][title="Edit"] {
 
 .describe-vlm-chat-runtime-status.is-error > i {
   color: #f87171;
+}
+
+.describe-vlm-chat-runtime-status.is-warning > i {
+  color: #f5b82e;
 }
 
 .describe-vlm-chat-runtime-status button {

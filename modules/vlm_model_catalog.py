@@ -16,6 +16,23 @@ GGUF_METADATA_KEYS = frozenset({
     "general.name",
     "general.basename",
 })
+GGUF_VISION_HANDLERS = frozenset({
+    "Qwen3.5",
+    "Qwen3.6",
+    "Qwen3.8",
+    "Qwen3-VL",
+    "Gemma3",
+    "Gemma4",
+    "MiniCPM-v4.5",
+    "MiniCPM-v4.6",
+    "GLM-4.6V",
+    "GLM-4.1V-Thinking",
+    "LFM2.5-VL",
+    "LFM2-VL",
+})
+VISION_STATUS_READY = "ready"
+VISION_STATUS_MISSING = "missing"
+VISION_STATUS_TEXT_ONLY = "text_only"
 GGUF_SCALAR_FORMATS = {
     0: ("B", 1),   # UINT8
     1: ("b", 1),   # INT8
@@ -327,6 +344,17 @@ def runtime_chat_handler_name(handler, has_mmproj):
     return ""
 
 
+def gguf_vision_expected(handler):
+    return str(handler or "").strip() in GGUF_VISION_HANDLERS
+
+
+def gguf_vision_status(handler, has_mmproj, vision_expected=None):
+    expected = gguf_vision_expected(handler) if vision_expected is None else bool(vision_expected)
+    if has_mmproj:
+        return VISION_STATUS_READY
+    return VISION_STATUS_MISSING if expected else VISION_STATUS_TEXT_ONLY
+
+
 def _gguf_context_window(metadata, default=8192):
     for key, value in (metadata or {}).items():
         if not str(key).lower().endswith(".context_length"):
@@ -536,6 +564,7 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
     capabilities = list(config.get("capabilities") or (["text", "image"] if backend == "llamacpp" else ["text"]))
     resolved_files = []
     expected_files = []
+    vision_available = False
     if backend == "llamacpp":
         model_name = str(config.get("model") or "")
         names = list((config.get("model_urls") or {}).keys())
@@ -543,12 +572,16 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
             names.append(config["gguf_file"])
         if config.get("mmproj_file") and config["mmproj_file"] not in names:
             names.append(config["mmproj_file"])
+        mmproj_name = str(config.get("mmproj_file") or "").replace("\\", "/")
         for name in names:
             relative_path = os.path.join(model_name, str(name)).replace("\\", "/")
             expected_files.append(relative_path)
             found = _find_file(llm_roots, relative_path)
             if found:
                 resolved_files.append(found)
+                normalized_name = str(name).replace("\\", "/")
+                if mmproj_name and (normalized_name == mmproj_name or normalized_name.endswith(f"/{mmproj_name}")):
+                    vision_available = True
     elif backend == "comfy_textgen":
         clip_name = str(config.get("clip_name") or config.get("model_file") or config.get("model") or "")
         expected_files.append(clip_name.replace("\\", "/"))
@@ -563,6 +596,26 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
     group = "推荐" if config.get("recommended", True) else ("LLM/GGUF" if backend == "llamacpp" else "Text Encoder")
     label = str(config.get("label") or version)
     urls = config.get("model_urls") or ({config.get("clip_name") or config.get("model_file"): config.get("model_url")} if config.get("model_url") else {})
+    if backend == "llamacpp":
+        handler = str(config.get("chat_handler") or config.get("architecture") or "")
+        vision_expected = bool(config["vision_expected"]) if "vision_expected" in config else bool(
+            config.get("mmproj_file") or "image" in capabilities or gguf_vision_expected(handler)
+        )
+        vision_status = gguf_vision_status(
+            handler,
+            vision_available,
+            vision_expected=vision_expected,
+        )
+    else:
+        vision_expected = "image" in capabilities
+        vision_available = vision_expected
+        vision_status = VISION_STATUS_READY if vision_available else VISION_STATUS_TEXT_ONLY
+    runtime_config = copy.deepcopy(config)
+    runtime_config.update({
+        "vision_expected": vision_expected,
+        "vision_available": vision_available,
+        "vision_status": vision_status,
+    })
     return {
         "id": version,
         "label": label,
@@ -576,8 +629,11 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
         "installed": installed,
         "downloadable": bool(urls),
         "recommended": bool(config.get("recommended", True)),
+        "vision_expected": vision_expected,
+        "vision_available": vision_available,
+        "vision_status": vision_status,
         "expected_files": expected_files,
-        "runtime_config": copy.deepcopy(config),
+        "runtime_config": runtime_config,
         "aliases": list(config.get("aliases") or []),
         "resolved_files": [os.path.normcase(path) for path in resolved_files],
     }
@@ -632,6 +688,13 @@ def _scan_gguf_items(llm_roots, claimed_paths):
             version_id = f"llamacpp:LLM:{relative_path}"
             capabilities = ["text", "image"] if mmproj_path else ["text"]
             group = "VLM/GGUF" if mmproj_path else "LLM/GGUF"
+            vision_expected = gguf_vision_expected(detected["handler"])
+            vision_available = bool(mmproj_path)
+            vision_status = gguf_vision_status(
+                detected["handler"],
+                vision_available,
+                vision_expected=vision_expected,
+            )
             config = {
                 "model": model_dir,
                 "backend": "llamacpp",
@@ -643,6 +706,9 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "n_ctx": context_window,
                 "source_catalog": "LLM",
                 "capabilities": capabilities,
+                "vision_expected": vision_expected,
+                "vision_available": vision_available,
+                "vision_status": vision_status,
                 "recommended": False,
             }
             label = f"{detected['family']} · {os.path.basename(relative_path)}"
@@ -659,6 +725,9 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "installed": True,
                 "downloadable": False,
                 "recommended": False,
+                "vision_expected": vision_expected,
+                "vision_available": vision_available,
+                "vision_status": vision_status,
                 "expected_files": [relative_path] + ([mmproj_relative] if mmproj_relative else []),
                 "runtime_config": config,
                 "aliases": [],
@@ -689,6 +758,9 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
             "source_catalog": "text_encoders",
             "architecture": recipe["architecture"],
             "capabilities": capabilities,
+            "vision_expected": "image" in capabilities,
+            "vision_available": "image" in capabilities,
+            "vision_status": VISION_STATUS_READY if "image" in capabilities else VISION_STATUS_TEXT_ONLY,
             "n_ctx": int(recipe["context_window"]),
             "recommended": False,
         }
@@ -706,6 +778,9 @@ def _scan_text_encoder_items(text_encoder_roots, claimed_paths):
             "installed": True,
             "downloadable": False,
             "recommended": False,
+            "vision_expected": "image" in capabilities,
+            "vision_available": "image" in capabilities,
+            "vision_status": VISION_STATUS_READY if "image" in capabilities else VISION_STATUS_TEXT_ONLY,
             "expected_files": [relative_path],
             "runtime_config": config,
             "aliases": [],
@@ -780,6 +855,9 @@ def build_model_catalog(
             "source_catalog": "custom",
             "architecture": "",
             "capabilities": ["text", "image"],
+            "vision_expected": True,
+            "vision_available": True,
+            "vision_status": VISION_STATUS_READY,
             "context_window": 32768,
             "installed": True,
             "downloadable": False,

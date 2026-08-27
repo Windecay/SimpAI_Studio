@@ -3128,7 +3128,8 @@ def process_after_generation(state_params, generation_task=None, gallery_output=
     # generate_button, stop_button, skip_button, state_is_generating
     results = [gr.update(visible=True, interactive=True)] + [gr.update(visible=False, interactive=False), gr.update(visible=False, interactive=False), False]
     # gallery_index, index_radio
-    catalog_visible = should_show_finished_catalog(engine_type, state_params["__output_list"])
+    # Completion must restore the catalog even when the output scan is still empty.
+    catalog_visible = True
     if has_generation_context:
         results += [gr.update(choices=state_params["__output_list"], value=None), gr.update(visible=catalog_visible, open=False)]
     else:

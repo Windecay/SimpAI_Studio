@@ -26,6 +26,8 @@ from modules.llama_cpp_runtime import (
     normalize_llama_cpp_vram_policy,
 )
 from modules.vlm_model_catalog import (
+    gguf_vision_expected,
+    gguf_vision_status,
     infer_gguf_handler,
     is_visual_component_filename,
     read_gguf_metadata,
@@ -661,8 +663,16 @@ class VLM:
                 except (OSError, ValueError):
                     mmproj_file = ""
 
+            detected_handler = handler
             handler = runtime_chat_handler_name(handler, bool(mmproj_file))
             capabilities = ["text", "image"] if mmproj_file else ["text"]
+            vision_expected = gguf_vision_expected(detected_handler or handler)
+            vision_available = bool(mmproj_file)
+            vision_status = gguf_vision_status(
+                handler,
+                vision_available,
+                vision_expected=vision_expected,
+            )
             result = {
                 "model": model_dir,
                 "backend": "llamacpp",
@@ -674,6 +684,9 @@ class VLM:
                 "n_ctx": 8192,
                 "source_catalog": "LLM",
                 "capabilities": capabilities,
+                "vision_expected": vision_expected,
+                "vision_available": vision_available,
+                "vision_status": vision_status,
                 "recommended": False,
             }
             if cache_key:
@@ -1013,6 +1026,41 @@ class VLM:
         return True
 
     @classmethod
+    def _version_vision_status(cls, config_data):
+        config_data = config_data if isinstance(config_data, dict) else {}
+        backend = str(config_data.get("backend") or ("llamacpp" if config_data.get("is_llamacpp") else "transformers"))
+        capabilities = list(config_data.get("capabilities") or ["text"])
+        if backend != "llamacpp":
+            available = "image" in capabilities
+            return {
+                "vision_expected": available,
+                "vision_available": available,
+                "vision_status": "ready" if available else "text_only",
+                "vision_file": "",
+            }
+
+        handler = str(config_data.get("chat_handler") or config_data.get("architecture") or "")
+        vision_expected = bool(config_data["vision_expected"]) if "vision_expected" in config_data else bool(
+            config_data.get("mmproj_file") or "image" in capabilities or gguf_vision_expected(handler)
+        )
+        mmproj_file = str(config_data.get("mmproj_file") or "").strip()
+        model_name = str(config_data.get("model") or "").strip()
+        mmproj_path = find_model_in_dirs(config.paths_LLM, mmproj_file) if mmproj_file else None
+        if not mmproj_path and model_name and mmproj_file:
+            mmproj_path = find_model_in_dirs(config.paths_LLM, os.path.join(model_name, mmproj_file))
+        vision_available = bool(mmproj_path)
+        return {
+            "vision_expected": vision_expected,
+            "vision_available": vision_available,
+            "vision_status": gguf_vision_status(
+                handler,
+                vision_available,
+                vision_expected=vision_expected,
+            ),
+            "vision_file": mmproj_file,
+        }
+
+    @classmethod
     def get_version_missing_files(cls, version, scan_catalog=True):
         original_version = str(version or "").strip()
         if original_version and original_version != cls.CUSTOM_VERSION and not cls.get_version_config(original_version, scan_catalog=scan_catalog):
@@ -1084,6 +1132,10 @@ class VLM:
                 "icon": "✓" if exists else "⚠",
                 "label": "Ready" if exists else "Missing",
                 "missing_files": missing,
+                "vision_expected": False,
+                "vision_available": bool(cls.custom_supports_images),
+                "vision_status": "ready" if cls.custom_supports_images else "text_only",
+                "vision_file": "",
             }
         config_data = cls.get_version_config(version, scan_catalog=scan_catalog)
         if not config_data:
@@ -1096,12 +1148,15 @@ class VLM:
             }
         missing_files = cls.get_version_missing_files(version, scan_catalog=scan_catalog)
         exists = len(missing_files) == 0
+        vision = cls._version_vision_status(config_data)
+        vision_missing = vision["vision_status"] == "missing"
         return {
             "version": version,
             "exists": exists,
-            "icon": "✓" if exists else "⚠",
-            "label": "Ready" if exists else "Missing",
+            "icon": "⚠" if (not exists or vision_missing) else "✓",
+            "label": "Missing vision model" if exists and vision_missing else ("Ready" if exists else "Missing"),
             "missing_files": missing_files,
+            **vision,
         }
 
     @classmethod

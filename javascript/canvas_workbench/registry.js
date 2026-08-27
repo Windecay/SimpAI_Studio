@@ -70,6 +70,17 @@
         return VLM_MODEL_LABELS[String(version || '')] || String(version || '');
     }
 
+    function vlmModelDisplayLabel(version, fallback = '', langSource = null) {
+        const value = String(version || '').trim();
+        let label = String(VLM_MODEL_LABELS[value] || fallback || value).trim() || value;
+        const item = VLM_MODEL_CATALOG.find((entry) => String(entry?.id || '').trim() === value);
+        if (item?.vision_status === 'missing') {
+            const notice = t('Missing vision model', '缺少视觉模型', langSource || window.simpleaiTopbarSystemParams || {});
+            if (!label.includes(notice)) label = `${label} · ${notice}`;
+        }
+        return label;
+    }
+
     function mergeVlmModelChoices(catalogChoices) {
         const merged = [];
         const seen = new Set();
@@ -101,7 +112,11 @@
             select.replaceChildren(...values.map((value) => {
                 const option = document.createElement('option');
                 option.value = value;
-                option.textContent = VLM_MODEL_LABELS[value] || (value === current && !VLM_VERSION_CHOICES.includes(value) ? `⚠ ${value}` : value);
+                option.textContent = vlmModelDisplayLabel(
+                    value,
+                    value === current && !VLM_VERSION_CHOICES.includes(value) ? `⚠ ${value}` : value,
+                    window.simpleaiTopbarSystemParams || {},
+                );
                 return option;
             }));
             if (current && values.includes(current)) select.value = current;

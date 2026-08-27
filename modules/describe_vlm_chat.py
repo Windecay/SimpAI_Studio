@@ -2510,6 +2510,7 @@ def _run_roleplay_director(
                             )
                             if item
                         ),
+                        "user_message": _clean_text(user_message),
                         "assistant_reply": "\n\n".join(
                             item
                             for item in (

@@ -355,9 +355,9 @@
                 const text = String(value || '').trim();
                 return text && text !== 'Custom' && !text.startsWith('custom_api:');
             })
-            .forEach((value) => add(value, state.vlmModelLabels?.[value] || value));
+            .forEach((value) => add(value, describeVlmModelDisplayLabel(value, state.vlmModelLabels?.[value] || value)));
         if (selected && !seen.has(selected)) {
-            add(selected, state.vlmModelLabels?.[selected] || selected);
+            add(selected, describeVlmModelDisplayLabel(selected, state.vlmModelLabels?.[selected] || selected));
         }
         if (!options.length) {
             options.push({ value: '', label: localText('No local VLM found', '尚未找到本地 VLM') });
@@ -416,6 +416,42 @@
         };
     }
 
+    function roleplayStateFieldDisplayCompareKey(value) {
+        const text = String(value ?? '').trim();
+        const ratio = text.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
+        if (ratio) return `ratio:${Number(ratio[1])}:${Number(ratio[2])}`;
+        const percent = text.match(/^(-?\d+(?:\.\d+)?)\s*%$/);
+        if (percent) return `percent:${Number(percent[1])}`;
+        const number = text.match(/^(-?\d+(?:\.\d+)?)$/);
+        if (number) return `number:${Number(number[1])}`;
+        return `text:${text.replace(/\s+/g, ' ').toLocaleLowerCase()}`;
+    }
+
+    function changedRoleplayStateFieldValues(before, after) {
+        const previous = normalizeRoleplayStateFields(before);
+        const next = normalizeRoleplayStateFields(after);
+        const fieldKey = (item) => String(item?.field_id || item?.fieldId || item?.label || '').trim()
+            .replace(/[\s_\-./:]+/g, '')
+            .toLocaleLowerCase();
+        const previousByKey = new Map(previous.map((item) => [fieldKey(item), item]));
+        const nextByKey = new Map(next.map((item) => [fieldKey(item), item]));
+        const keys = [...new Set([...previousByKey.keys(), ...nextByKey.keys()])];
+        const changedBefore = [];
+        const changedAfter = [];
+        keys.forEach((key) => {
+            const beforeItem = previousByKey.get(key);
+            const afterItem = nextByKey.get(key);
+            if (beforeItem && afterItem
+                && roleplayStateFieldDisplayCompareKey(beforeItem.value)
+                    === roleplayStateFieldDisplayCompareKey(afterItem.value)) return;
+            if (beforeItem) changedBefore.push(beforeItem);
+            if (afterItem) changedAfter.push(afterItem);
+        });
+        return changedBefore.length || changedAfter.length
+            ? { before: changedBefore, after: changedAfter }
+            : null;
+    }
+
     function normalizeRoleplayStateChanges(value) {
         const source = Array.isArray(value) ? value : [];
         return source.slice(0, 40).map((item) => {
@@ -430,7 +466,7 @@
                 if (raw && typeof raw === 'object') return Object.assign({}, raw);
                 return raw;
             };
-            return {
+            const normalized = {
                 entity_type: entityType,
                 entity_id: String(item.entity_id || '').trim().slice(0, 160),
                 entity_name: String(item.entity_name || '').trim().slice(0, 200),
@@ -439,6 +475,13 @@
                 before: copyValue(item.before),
                 after: copyValue(item.after)
             };
+            if (field === 'state_fields') {
+                const changed = changedRoleplayStateFieldValues(normalized.before, normalized.after);
+                if (!changed) return null;
+                normalized.before = changed.before;
+                normalized.after = changed.after;
+            }
+            return normalized;
         }).filter(Boolean);
     }
 
@@ -3389,7 +3432,9 @@
         summary.hidden = !!state.settingsPanelOpen;
         summary.setAttribute('aria-hidden', state.settingsPanelOpen ? 'true' : 'false');
         summary.classList.toggle('is-ready', !!state.vlmRuntimeStatus?.loaded && state.vlmRuntimeStatus.state === 'ready');
+        const visionMissing = state.vlmRuntimeStatusResponse?.vision_status === 'missing';
         summary.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
+        summary.classList.toggle('is-warning', visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing');
         summary.setAttribute('title', `${settingsText} · ${localText('Runtime', '运行状态')}: ${runtimeText}`);
     }
 
@@ -6253,6 +6298,7 @@
         renderRoleplayInlineGenerationResults(modal, runtime);
         syncRoleplayBranchControls(modal, runtime);
         renderRoleplayFormDraftReview(modal, runtime);
+        runtime.roleplayFormSnapshot = captureRoleplayFormSnapshot(modal, runtime, runtime.roleplayFormSnapshot);
     }
 
     function applyVisibleRoleplayPersonaFields(session, modal, preserveEmpty = true) {
@@ -8678,6 +8724,21 @@
         return Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
     }
 
+    function describeVlmModelDisplayLabel(version, fallback = '') {
+        const value = String(version || '').trim();
+        let label = String(vlmModelLabels()[value] || fallback || value).trim() || value;
+        const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
+        const catalog = Array.isArray(state.vlmModelCatalog) && state.vlmModelCatalog.length
+            ? state.vlmModelCatalog
+            : (Array.isArray(registry.VLM_MODEL_CATALOG) ? registry.VLM_MODEL_CATALOG : []);
+        const item = catalog.find((entry) => String(entry?.id || '').trim() === value);
+        if (item?.vision_status === 'missing') {
+            const notice = localText('Missing vision model', '缺少视觉模型');
+            if (!label.includes(notice)) label = `${label} · ${notice}`;
+        }
+        return label;
+    }
+
     function resolveVlmVersion(value) {
         const cleaned = cleanVlmVersion(value);
         if (!cleaned) return '';
@@ -8810,7 +8871,10 @@
             ? registry.VLM_VERSION_CHOICES
             : DESCRIBE_VLM_MODEL_CHOICES;
         const labels = Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
-        return choices.map((choice) => ({ value: resolveVlmVersion(choice), label: String(labels[choice] || choice || '').trim() }))
+        return choices.map((choice) => {
+            const value = resolveVlmVersion(choice);
+            return { value, label: describeVlmModelDisplayLabel(value, String(labels[choice] || choice || '').trim()) };
+        })
             .filter((choice) => choice.value);
     }
 
@@ -8971,6 +9035,200 @@
         return session;
     }
 
+    function syncRoleplaySessionFromVisibleFormForSend(modal, runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        if (!modal || !target?.roleplaySession) return null;
+        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
+        const read = (selector) => {
+            const field = modal.querySelector(selector);
+            return field ? String(field.value || '').trim() : null;
+        };
+        const snapshot = runtime?.roleplayFormSnapshot
+            && runtime.roleplayFormSnapshot.active_character_id === session.active_character_id
+            ? runtime.roleplayFormSnapshot
+            : null;
+        const snapshotValue = (path) => path.reduce(
+            (value, key) => value === undefined || value === null ? undefined : value[key],
+            snapshot
+        );
+        const changedSinceSnapshot = (path, value) => {
+            const previous = snapshotValue(path);
+            return !snapshot || previous === undefined || JSON.stringify(previous) !== JSON.stringify(value);
+        };
+        const activeId = session.active_character_id || session.character?.id;
+        const card = Object.assign({}, session.characters?.[activeId] || session.character || {});
+        const characterName = read('[data-describe-vlm-chat-roleplay-character-name]');
+        const characterIdentity = read('[data-describe-vlm-chat-roleplay-character-identity]');
+        const characterStyle = read('[data-describe-vlm-chat-roleplay-character-style]');
+        if (characterName !== null && changedSinceSnapshot(['character', 'name'], characterName)) {
+            card.name = characterName;
+        }
+        if (characterIdentity !== null && changedSinceSnapshot(['character', 'identity'], characterIdentity)) {
+            const parts = characterIdentity.split(/\n\n+/);
+            card.identity = parts.shift() || '';
+            card.background = parts.join('\n\n');
+        }
+        if (characterStyle !== null && changedSinceSnapshot(['character', 'style'], characterStyle)) {
+            const parts = characterStyle.split(/\n\n+/);
+            card.personality = parts.shift() || '';
+            card.speech_style = parts.join('\n\n');
+        }
+        if (activeId && (characterName !== null || characterIdentity !== null || characterStyle !== null)) {
+            session.characters[activeId] = card;
+            session.character = card;
+        }
+
+        const activeRuntime = Object.assign({}, session.story_state.characters?.[activeId] || {});
+        const characterStateText = read('[data-describe-vlm-chat-roleplay-character-state-text]');
+        if (characterStateText !== null && changedSinceSnapshot(['character_state', 'state_text'], characterStateText)) {
+            activeRuntime.state_text = characterStateText.slice(0, MAX_ROLEPLAY_STATE_TEXT);
+        }
+        const characterStateFieldsContainer = roleplayStateFieldsContainer(modal, 'character');
+        const characterFieldsWereEdited = !!characterStateFieldsContainer && (
+            !!characterStateFieldsContainer.querySelector('[data-describe-vlm-chat-roleplay-state-field]')
+            || characterStateFieldsContainer.dataset.roleplayStateFieldsCleared === 'true'
+        );
+        if (characterFieldsWereEdited) {
+            const fields = visibleRoleplayCharacterStateFields(modal);
+            if (changedSinceSnapshot(['character_state', 'state_fields'], fields)) {
+                activeRuntime.state_fields = fields;
+            }
+        }
+        if (activeId) session.story_state.characters[activeId] = activeRuntime;
+
+        const personaName = read('[data-describe-vlm-chat-roleplay-persona-name]');
+        const personaIdentity = read('[data-describe-vlm-chat-roleplay-persona-identity]');
+        if (personaName !== null && changedSinceSnapshot(['player', 'name'], personaName)) {
+            session.persona.name = personaName;
+        }
+        if (personaIdentity !== null && changedSinceSnapshot(['player', 'identity'], personaIdentity)) {
+            const lines = personaIdentity.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+            session.persona.identity = lines.shift() || '';
+            session.persona.goals = lines;
+        }
+        const playerStatus = modal.querySelector('[data-describe-vlm-chat-roleplay-player-status]');
+        const playerStateText = read('[data-describe-vlm-chat-roleplay-player-state-text]');
+        const currentPlayerState = normalizeRoleplayPlayerState(session.story_state.player_state);
+        const visiblePlayerStatus = playerStatus ? String(playerStatus.value || '').trim().toLowerCase() : null;
+        if (visiblePlayerStatus !== null && changedSinceSnapshot(['player', 'status'], visiblePlayerStatus)) {
+            currentPlayerState.status = visiblePlayerStatus;
+            currentPlayerState.is_present = visiblePlayerStatus === 'present';
+        }
+        if (playerStateText !== null && changedSinceSnapshot(['player', 'state_text'], playerStateText)) {
+            currentPlayerState.state_text = playerStateText.slice(0, MAX_ROLEPLAY_STATE_TEXT);
+        }
+        const playerStateFieldsContainer = roleplayStateFieldsContainer(modal, 'player');
+        const playerFieldsWereEdited = !!playerStateFieldsContainer && (
+            !!playerStateFieldsContainer.querySelector('[data-describe-vlm-chat-roleplay-state-field]')
+            || playerStateFieldsContainer.dataset.roleplayStateFieldsCleared === 'true'
+        );
+        if (playerFieldsWereEdited) {
+            const fields = visibleRoleplayPlayerStateFields(modal);
+            if (changedSinceSnapshot(['player', 'state_fields'], fields)) {
+                currentPlayerState.state_fields = fields;
+            }
+        }
+        session.story_state.player_state = normalizeRoleplayPlayerState(currentPlayerState);
+
+        const scene = session.story_state.scene;
+        const location = read('[data-describe-vlm-chat-roleplay-scene-location]');
+        const time = read('[data-describe-vlm-chat-roleplay-scene-time]');
+        const currentEvent = read('[data-describe-vlm-chat-roleplay-scene-event]');
+        if (location !== null && changedSinceSnapshot(['scene', 'location'], location)) scene.location = location;
+        if (time !== null && changedSinceSnapshot(['scene', 'time'], time)) scene.time = time;
+        if (currentEvent !== null && changedSinceSnapshot(['scene', 'current_event'], currentEvent)) scene.current_event = currentEvent;
+        const presenceInputs = Array.from(
+            modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]')
+        );
+        if (presenceInputs.length) {
+            const presentIds = presenceInputs
+                .filter((input) => input.checked)
+                .map((input) => String(input.value || '').trim())
+                .filter(Boolean)
+                .slice(0, MAX_ROLEPLAY_CHARACTERS);
+            if (changedSinceSnapshot(['scene', 'present_character_ids'], presentIds)) {
+                scene.present_character_ids = presentIds;
+            }
+        }
+
+        session.conversation_id = target.conversationId;
+        target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
+        target.persistenceDirty = true;
+        if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
+        target.roleplayFormSnapshot = captureRoleplayFormSnapshot(modal, target, target.roleplayFormSnapshot);
+        return target.roleplaySession;
+    }
+
+    function captureRoleplayFormSnapshot(modal, runtime, previous = null) {
+        if (!modal || !runtime?.roleplaySession) return previous || null;
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        const activeId = session.active_character_id || session.character?.id || '';
+        const previousSnapshot = previous?.active_character_id === activeId ? previous : null;
+        const read = (selector, fallback, path) => {
+            const field = modal.querySelector(selector);
+            const previousValue = previousSnapshot
+                ? path.reduce((value, key) => value?.[key], previousSnapshot)
+                : undefined;
+            if (!field || field === document.activeElement || previousValue === undefined) return fallback;
+            const visibleValue = String(field.value || '').trim();
+            return visibleValue === String(fallback || '') ? fallback : previousValue;
+        };
+        const readStateFields = (owner, fallback, path) => {
+            const container = roleplayStateFieldsContainer(modal, owner);
+            const previousValue = previousSnapshot
+                ? path.reduce((value, key) => value?.[key], previousSnapshot)
+                : undefined;
+            if (!container || container.contains(document.activeElement) || previousValue === undefined) return fallback;
+            const visibleValue = owner === 'player'
+                ? visibleRoleplayPlayerStateFields(modal)
+                : visibleRoleplayCharacterStateFields(modal);
+            return JSON.stringify(visibleValue) === JSON.stringify(fallback) ? fallback : previousValue;
+        };
+        const character = session.characters?.[activeId] || session.character || {};
+        const characterRuntime = session.story_state.characters?.[activeId] || {};
+        const playerState = normalizeRoleplayPlayerState(session.story_state.player_state);
+        const presenceInputs = Array.from(modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]'));
+        const sessionPresence = Array.isArray(session.story_state.scene.present_character_ids)
+            ? session.story_state.scene.present_character_ids.slice()
+            : [];
+        const visiblePresence = presenceInputs.length
+            ? presenceInputs.filter((input) => input.checked).map((input) => String(input.value || '').trim()).filter(Boolean).slice(0, MAX_ROLEPLAY_CHARACTERS)
+            : sessionPresence;
+        const previousPresence = previousSnapshot?.scene?.present_character_ids;
+        const presence = !presenceInputs.length || previousPresence === undefined
+            ? sessionPresence
+            : presenceInputs.some((input) => input === document.activeElement)
+                ? previousPresence
+                : JSON.stringify(visiblePresence) === JSON.stringify(sessionPresence)
+                    ? sessionPresence
+                    : previousPresence;
+        return {
+            active_character_id: activeId,
+            character: {
+                name: read('[data-describe-vlm-chat-roleplay-character-name]', character.name, ['character', 'name']),
+                identity: read('[data-describe-vlm-chat-roleplay-character-identity]', [character.identity, character.background].filter(Boolean).join('\n\n'), ['character', 'identity']),
+                style: read('[data-describe-vlm-chat-roleplay-character-style]', [character.personality, character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style'])
+            },
+            character_state: {
+                state_text: read('[data-describe-vlm-chat-roleplay-character-state-text]', characterRuntime.state_text, ['character_state', 'state_text']),
+                state_fields: readStateFields('character', characterRuntime.state_fields, ['character_state', 'state_fields'])
+            },
+            player: {
+                name: read('[data-describe-vlm-chat-roleplay-persona-name]', session.persona.name, ['player', 'name']),
+                identity: read('[data-describe-vlm-chat-roleplay-persona-identity]', [session.persona.identity, ...(session.persona.goals || [])].filter(Boolean).join('\n\n'), ['player', 'identity']),
+                status: read('[data-describe-vlm-chat-roleplay-player-status]', playerState.status, ['player', 'status']),
+                state_text: read('[data-describe-vlm-chat-roleplay-player-state-text]', playerState.state_text, ['player', 'state_text']),
+                state_fields: readStateFields('player', playerState.state_fields, ['player', 'state_fields'])
+            },
+            scene: {
+                location: read('[data-describe-vlm-chat-roleplay-scene-location]', session.story_state.scene.location, ['scene', 'location']),
+                time: read('[data-describe-vlm-chat-roleplay-scene-time]', session.story_state.scene.time, ['scene', 'time']),
+                current_event: read('[data-describe-vlm-chat-roleplay-scene-event]', session.story_state.scene.current_event, ['scene', 'current_event']),
+                present_character_ids: presence
+            }
+        };
+    }
+
     function buildVlmModelStatusPayload(version) {
         const cleanVersion = resolveVlmVersion(version);
         const customApi = readDescribeCustomApi(cleanVersion);
@@ -9088,6 +9346,9 @@
         if (response?.state === 'missing' || (response?.ready === false && response?.missing_count > 0)) {
             return t('Model files are missing', '模型文件缺失');
         }
+        if (response?.vision_status === 'missing') {
+            return t('Vision model missing (mmproj)', '缺少视觉模型（mmproj）');
+        }
         if (response?.backend && response.backend !== 'llamacpp' && response.backend !== 'custom_api') {
             return t('This model does not use llama.cpp', '当前模型不使用 llama.cpp');
         }
@@ -9182,7 +9443,9 @@
         if (titleParts.length) status.setAttribute('title', titleParts.join(localText('; ', '；')));
         else status.removeAttribute('title');
         status.classList.toggle('is-ready', !!runtime?.loaded && runtime.state === 'ready');
+        const visionMissing = state.vlmRuntimeStatusResponse?.vision_status === 'missing';
         status.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
+        status.classList.toggle('is-warning', visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing');
         syncChatSettingsSummary(modal);
     }
 
@@ -9236,7 +9499,7 @@
         }
         const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
         const labels = Object.assign({}, registry.VLM_MODEL_LABELS || {}, state.vlmModelLabels || {});
-        return labels[version] || version || t('No model selected', '未选择模型');
+        return describeVlmModelDisplayLabel(version, labels[version] || version || t('No model selected', '未选择模型'));
     }
 
     function updateAnswerModelIndicator(modal = document.getElementById('describe_vlm_chat_modal')) {
@@ -16152,6 +16415,7 @@
         runtime.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
         if (selectedMode === 'roleplay') {
             syncRoleplayAgentRoutingFromVisibleForm(modal, runtime);
+            syncRoleplaySessionFromVisibleFormForSend(modal, runtime);
         }
         applyConversationRuntime(runtime);
         saveChatSettings();

@@ -134,7 +134,7 @@
         }
       },
       "widgets_values": [
-        "wd-eva02-large-tagger-v3",
+        "wd-eva02-tagger-2026-canary-onnx-v2",
         0.35,
         0.85,
         false,
@@ -222,7 +222,7 @@
         "Node name for S&R": "GeneralModelDownloader"
       },
       "widgets_values": [
-        "[\n  {\n    \"name\": \"wd-eva02-large-tagger-v3.onnx\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.onnx\",\n    \"download_directory\": \"clip_vision\",\n    \"file_name\": \"wd-eva02-large-tagger-v3.onnx\",\n    \"overwrite_existing\": false,\n    \"size\": \"1260435999\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"wd-eva02-large-tagger-v3.csv\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.csv\",\n    \"download_directory\": \"clip_vision\",\n    \"file_name\": \"wd-eva02-large-tagger-v3.csv\",\n    \"overwrite_existing\": false,\n    \"size\": \"308468\",\n    \"description\": \"\"\n  }\n]\n",
+        "[\n  {\n    \"name\": \"wd-eva02-tagger-2026-canary-onnx-v2.onnx\",\n    \"url\": \"https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.onnx\",\n    \"download_directory\": \"clip_vision\",\n    \"file_name\": \"wd-eva02-tagger-2026-canary-onnx-v2.onnx\",\n    \"overwrite_existing\": false,\n    \"size\": \"1309248037\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"wd-eva02-tagger-2026-canary-onnx-v2.csv\",\n    \"url\": \"https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.csv\",\n    \"download_directory\": \"clip_vision\",\n    \"file_name\": \"wd-eva02-tagger-2026-canary-onnx-v2.csv\",\n    \"overwrite_existing\": false,\n    \"size\": \"467782\",\n    \"description\": \"\"\n  }\n]\n",
         true,
         false,
         true,

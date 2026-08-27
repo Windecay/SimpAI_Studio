@@ -13,13 +13,17 @@ from PIL import Image
 from server import PromptServer
 from aiohttp import web
 import folder_paths
+from .wd14_preprocess import (
+    needs_wd14_timm_normalization,
+    prepare_wd14_image,
+)
 from .pysssss import get_ext_dir, get_comfy_dir, download_to_file, update_node_status, wait_for_async, get_extension_config, log
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 
 config = get_extension_config()
 
 defaults = {
-    "model": "wd-eva02-large-tagger-v3",
+    "model": "wd-eva02-tagger-2026-canary-onnx-v2",
     "threshold": 0.35,
     "character_threshold": 0.85,
     "replace_underscore": False,
@@ -79,18 +83,11 @@ async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclu
     model = InferenceSession(model_path, providers=defaults["ortProviders"])
 
     input = model.get_inputs()[0]
-    height = input.shape[1]
-
-    # Reduce to max size and pad with white
-    ratio = float(height)/max(image.size)
-    new_size = tuple([int(x*ratio) for x in image.size])
-    image = image.resize(new_size, Image.LANCZOS)
-    square = Image.new("RGB", (height, height), (255, 255, 255))
-    square.paste(image, ((height-new_size[0])//2, (height-new_size[1])//2))
-
-    image = np.array(square).astype(np.float32)
-    image = image[:, :, ::-1]  # RGB -> BGR
-    image = np.expand_dims(image, 0)
+    image = prepare_wd14_image(
+        image,
+        input.shape,
+        normalize=needs_wd14_timm_normalization(model_name),
+    )
 
     # Read all tags from csv and locate start of each category
     tags = []
@@ -111,6 +108,10 @@ async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclu
 
     label_name = model.get_outputs()[0].name
     probs = model.run([label_name], {input.name: image})[0]
+    if probs.ndim != 2 or probs.shape[1] != len(tags):
+        raise RuntimeError(
+            f"WD14 model output {getattr(probs, 'shape', None)} does not match {len(tags)} tags"
+        )
 
     result = list(zip(tags, probs[0]))
 

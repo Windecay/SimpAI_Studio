@@ -342,6 +342,9 @@ def _vlm_model_choice_label(version, state=None, request=None, include_dynamic=T
     label = str(item.get("display_label") or item.get("label") or version) if item else version
     if version == VLM.CUSTOM_VERSION:
         label = _main_vlm_text(state, "API Settings", "API 设置")
+    vision_status = str((item or {}).get("vision_status") or status.get("vision_status") or "")
+    if vision_status == "missing":
+        label = f'{label} · {_main_vlm_text(state, "Missing vision model", "缺少视觉模型")}'
     return f'{status["icon"]} {label}'
 
 
@@ -357,7 +360,7 @@ def _vlm_model_choices(current=None, state=None, request=None, include_dynamic=T
     return choices
 
 
-def _vlm_model_status_html(version, scan_catalog=True):
+def _vlm_model_status_html(version, state=None, scan_catalog=True):
     version = _vlm_resolve_version(version)
     profile = vlm_api_profiles.profile_by_version(version)
     if profile:
@@ -371,23 +374,40 @@ def _vlm_model_status_html(version, scan_catalog=True):
             '</div>'
         )
     status = VLM.get_version_status(version, scan_catalog=scan_catalog)
-    state_class = "ready" if status["exists"] else "missing"
-    if version == VLM.CUSTOM_VERSION and status["exists"]:
+    vision_missing = status.get("vision_status") == "missing"
+    state_class = "vision-missing" if vision_missing else ("ready" if status["exists"] else "missing")
+    if vision_missing:
+        title = _main_vlm_text(
+            state,
+            "Missing vision model (mmproj); this model currently supports text only.",
+            "缺少视觉模型（mmproj），当前模型只能处理文本。",
+        )
+        if status.get("missing_files"):
+            missing = ", ".join(status["missing_files"][:3])
+            if len(status["missing_files"]) > 3:
+                missing += f', +{len(status["missing_files"]) - 3} more'
+            title = f'{title}{_main_vlm_text(state, " Missing model files: ", " 缺少模型文件：")}{missing}'
+        visible_label = _main_vlm_text(state, "Missing vision model", "缺少视觉模型")
+    elif version == VLM.CUSTOM_VERSION and status["exists"]:
         title = "API settings are ready."
+        visible_label = status["label"]
     elif version == VLM.CUSTOM_VERSION:
         missing = ", ".join(status["missing_files"][:3])
         title = f'API settings incomplete: {missing}'
+        visible_label = status["label"]
     elif status["exists"]:
         title = "All required model files exist."
+        visible_label = status["label"]
     else:
         missing = ", ".join(status["missing_files"][:3])
         if len(status["missing_files"]) > 3:
             missing += f', +{len(status["missing_files"]) - 3} more'
         title = f'Missing model files: {missing}'
+        visible_label = status["label"]
     return (
         f'<div class="describe-vlm-model-state {state_class}" title="{html.escape(title)}">'
         f'<span class="describe-vlm-model-state-icon">{status["icon"]}</span>'
-        f'<span>{html.escape(status["label"])}</span>'
+        f'<span>{html.escape(visible_label)}</span>'
         f'</div>'
     )
 
@@ -7693,7 +7713,7 @@ with shared.gradio_root:
                                             elem_id='describe_vlm_api_settings_btn',
                                             elem_classes=['describe-vlm-api-settings-button'],
                                         )
-                                        vlm_status_info = gr.HTML(value=_vlm_model_status_html(VLM.current_version, scan_catalog=False), visible=False, elem_id='describe_vlm_model_status')
+                                        vlm_status_info = gr.HTML(value=_vlm_model_status_html(VLM.current_version, _initial_main_vlm_lang_state, scan_catalog=False), visible=True, elem_id='describe_vlm_model_status')
                                     describe_vlm_api_settings_open_bridge = gr.Textbox(
                                         value='',
                                         visible='hidden',
@@ -9006,7 +9026,7 @@ with shared.gradio_root:
                     model_choices = [editor_settings["model"]] if editor_settings["model"] else []
                     return (
                         _describe_vlm_dropdown_update(version, state, request),
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         gr_update(visible=False),
                         gr_update(value=texts["settings_button"], visible=can_manage, interactive=can_manage),
                         gr_update(value=_main_vlm_custom_help_html(state)),
@@ -9040,7 +9060,7 @@ with shared.gradio_root:
                     _main_vlm_save_selected_version(version, state, request=request)
                     return (
                         _describe_vlm_dropdown_update(version, state, request),
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         gr_update(visible=False),
                         "",
                         _describe_vlm_dropdown_update(version, state, request),
@@ -9053,7 +9073,7 @@ with shared.gradio_root:
                     version, settings, profile = _activate_main_vlm_version(version, settings)
                     _main_vlm_save_selected_version(version, state, persist_admin=True, request=request)
                     return (
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         _describe_vlm_dropdown_update(version, state, request),
                         gr_update(visible=False),
                         "",
@@ -9063,13 +9083,13 @@ with shared.gradio_root:
                     state = _main_vlm_state_from_request(state, request)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
-                        return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), _main_vlm_custom_message_html(text, "missing")
+                        return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     _apply_main_vlm_custom_settings(settings)
                     version = _vlm_resolve_version(version)
                     if version == VLM.CUSTOM_VERSION:
                         vlm.set_version(version)
-                    return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else ""
+                    return _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else ""
 
                 def sync_main_vlm_custom_provider(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
@@ -9078,7 +9098,7 @@ with shared.gradio_root:
                         return (
                             gr_update(), dropdown_update(), gr_update(), gr_update(),
                             _describe_vlm_dropdown_update(version, state, request),
-                            _vlm_model_status_html(version),
+                            _vlm_model_status_html(version, state),
                             _main_vlm_custom_message_html(text, "missing"),
                         )
                     provider_data = _main_vlm_provider_by_key(provider)
@@ -9098,7 +9118,7 @@ with shared.gradio_root:
                         gr_update(value=settings["base_url"]),
                         gr_update(value=settings["supports_images"]),
                         _describe_vlm_dropdown_update(version, state, request),
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         _main_vlm_custom_hint(state) if version == VLM.CUSTOM_VERSION else "",
                     )
 
@@ -9107,7 +9127,7 @@ with shared.gradio_root:
                     version = _vlm_resolve_version(version)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
-                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), _main_vlm_custom_message_html(text, "missing")
+                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     result = VLM.list_custom_models(settings["base_url"], settings["api_key"])
                     if not result.get("ok"):
@@ -9116,7 +9136,7 @@ with shared.gradio_root:
                         return (
                             dropdown_update(choices=[settings["model"]] if settings["model"] else [], value=settings["model"] or None, allow_custom_value=True),
                             _describe_vlm_dropdown_update(version, state, request),
-                            _vlm_model_status_html(version),
+                            _vlm_model_status_html(version, state),
                             _main_vlm_custom_message_html(text, "missing"),
                         )
                     models = result.get("models") or []
@@ -9130,7 +9150,7 @@ with shared.gradio_root:
                     return (
                         dropdown_update(choices=models, value=selected or None, allow_custom_value=True),
                         _describe_vlm_dropdown_update(version, state, request),
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         _main_vlm_custom_message_html(message, "ready"),
                     )
 
@@ -9139,7 +9159,7 @@ with shared.gradio_root:
                     version = _vlm_resolve_version(version)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can edit shared VLM API configurations.", "只有管理员可以编辑共享 VLM API 配置。")
-                        return _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), _main_vlm_custom_message_html(text, "missing")
+                        return _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), _main_vlm_custom_message_html(text, "missing")
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     previous_custom_settings = VLM.get_custom_settings()
                     try:
@@ -9150,7 +9170,7 @@ with shared.gradio_root:
                             text = _main_vlm_text(state, f"API settings incomplete: {', '.join(missing)}", f"API 设置不完整：{', '.join(missing)}")
                             return (
                                 _describe_vlm_dropdown_update(version, state, request),
-                                _vlm_model_status_html(version),
+                                _vlm_model_status_html(version, state),
                                 _main_vlm_custom_message_html(text, "missing"),
                             )
                         response = vlm.inference(
@@ -9166,14 +9186,14 @@ with shared.gradio_root:
                         message = _main_vlm_text(state, f"API test succeeded: {text}", f"API 测试成功：{text}")
                         return (
                             _describe_vlm_dropdown_update(version, state, request),
-                            _vlm_model_status_html(version),
+                            _vlm_model_status_html(version, state),
                             _main_vlm_custom_message_html(message, "ready"),
                         )
                     except Exception as exc:
                         message = _main_vlm_text(state, f"API test failed: {exc}", f"API 测试失败：{exc}")
                         return (
                             _describe_vlm_dropdown_update(version, state, request),
-                            _vlm_model_status_html(version),
+                            _vlm_model_status_html(version, state),
                             _main_vlm_custom_message_html(message, "missing"),
                         )
                     finally:
@@ -9246,14 +9266,14 @@ with shared.gradio_root:
                     state = _main_vlm_state_from_request(state, request)
                     if not _main_vlm_can_manage_profiles(state, request):
                         text = _main_vlm_text(state, "Only the administrator can save shared VLM API configurations.", "只有管理员可以保存共享 VLM API 配置。")
-                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
+                        return dropdown_update(), _describe_vlm_dropdown_update(VLM.DEFAULT_VERSION, state, request), _vlm_model_status_html(VLM.DEFAULT_VERSION, state), gr_update(visible=False), _main_vlm_custom_message_html(text, "missing"), gr_update(value=VLM.DEFAULT_VERSION)
                     settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
                     _apply_main_vlm_custom_settings(settings)
                     missing = VLM.get_custom_missing_settings()
                     if missing:
                         version = _main_vlm_selected_version_from_state(state, request=request)
                         text = _main_vlm_text(state, f"Configuration is incomplete: {', '.join(missing)}", f"配置不完整：{', '.join(missing)}")
-                        return dropdown_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
+                        return dropdown_update(), _describe_vlm_dropdown_update(version, state, request), _vlm_model_status_html(version, state), gr_update(visible=True), _main_vlm_custom_message_html(text, "missing"), _describe_vlm_dropdown_update(version, state, request)
                     profile_id = "" if profile_id == MAIN_VLM_EMPTY_PROFILE_VALUE else profile_id
                     profile = vlm_api_profiles.upsert_profile(settings, profile_id=profile_id)
                     version = vlm_api_profiles.profile_version(profile["id"])
@@ -9263,7 +9283,7 @@ with shared.gradio_root:
                     return (
                         dropdown_update(choices=_main_vlm_profile_choices(state), value=profile["id"]),
                         _describe_vlm_dropdown_update(version, state, request),
-                        _vlm_model_status_html(version),
+                        _vlm_model_status_html(version, state),
                         gr_update(visible=False),
                         _main_vlm_custom_message_html(text, "ready"),
                         _describe_vlm_dropdown_update(version, state, request),

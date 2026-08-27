@@ -306,6 +306,10 @@ def canvas_vlm_model_status(payload):
                 if ready
                 else f"Custom API settings incomplete: {', '.join(missing)}."
             ),
+            "vision_expected": False,
+            "vision_available": bool(VLM.custom_supports_images),
+            "vision_status": "ready" if VLM.custom_supports_images else "text_only",
+            "vision_file": "",
         }
     config_data = VLM.get_version_config(version_name, scan_catalog=False)
     if not config_data:
@@ -363,6 +367,8 @@ def canvas_vlm_model_status(payload):
         if backend == "llamacpp" and mmproj_file and not find_model_in_dirs(search_dirs, mmproj_file):
             add_missing("LLM", mmproj_file.replace("\\", "/"))
 
+    vision = VLM._version_vision_status(config_data)
+
     user_did = user_context.get("user_did") or payload.get("user_did")
     can_download = (
         user_can_download_models(user_did)
@@ -389,12 +395,22 @@ def canvas_vlm_model_status(payload):
         "version": version_name,
         "backend": backend,
         "model": model_name,
+        "vision_expected": vision["vision_expected"],
+        "vision_available": vision["vision_available"],
+        "vision_status": vision["vision_status"],
+        "vision_file": vision["vision_file"],
         "missing_count": len(missing),
         "missing_models": missing,
         "can_download": bool(can_download),
         "download_disabled": not bool(can_download),
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "message": "VLM model files are ready." if ready else f"{len(missing)} VLM model file(s) are missing. Download before running.",
+        "message": (
+            "VLM model files are ready, but the vision model (mmproj) is missing; image input is unavailable."
+            if ready and vision["vision_status"] == "missing"
+            else "VLM model files are ready."
+            if ready
+            else f"{len(missing)} VLM model file(s) are missing. Download before running."
+        ),
         "vram_policy": (runtime_status or {}).get("policy") or str(params.get("vram_policy") or "extreme"),
         "kv_cache_type": (runtime_status or {}).get("kv_cache_type") or normalize_llama_cpp_kv_cache_type(params.get("kv_cache_type")),
         "n_ctx": (runtime_status or {}).get("n_ctx") or normalize_llama_cpp_n_ctx(

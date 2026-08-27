@@ -8,6 +8,10 @@ from onnxruntime import InferenceSession
 from modules.config import paths_clip_vision
 from modules.model_loader import load_file_from_url
 from modules.model_path_utils import find_model_in_dirs, find_dir_containing_model
+from modules.wd14_preprocess import (
+    needs_wd14_timm_normalization,
+    prepare_wd14_image,
+)
 import logging
 logger = logging.getLogger(__name__)
 
@@ -46,48 +50,56 @@ def free_model():
 def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclude_tags=""):
     global global_model, global_csv, current_model_name
 
-    new_model_name = "wd-eva02-large-tagger-v3"
-    new_model_onnx_url = f'https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/{new_model_name}.onnx'
-    new_model_csv_url = f'https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/{new_model_name}.csv'
-    new_model_onnx_path = find_model_in_dirs(paths_clip_vision, f"{new_model_name}.onnx") or ""
-    new_model_csv_path = find_model_in_dirs(paths_clip_vision, f"{new_model_name}.csv") or ""
+    model_specs = (
+        (
+            "wd-eva02-tagger-2026-canary-onnx-v2",
+            "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.onnx",
+            "https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.csv",
+        ),
+        (
+            "wd-eva02-large-tagger-v3",
+            "https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.onnx",
+            "https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.csv",
+        ),
+        (
+            "wd-v1-4-moat-tagger-v2",
+            "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/wd-v1-4-moat-tagger-v2.onnx",
+            "https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/wd-v1-4-moat-tagger-v2.csv",
+        ),
+    )
 
-    old_model_name = "wd-v1-4-moat-tagger-v2"
-    old_model_onnx_url = f'https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/{old_model_name}.onnx'
-    old_model_csv_url = f'https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/{old_model_name}.csv'
+    model_name = None
+    model_onnx_filename = None
+    model_csv_filename = None
+    for candidate_name, model_onnx_url, model_csv_url in model_specs:
+        model_dir = find_dir_containing_model(paths_clip_vision, f"{candidate_name}.onnx")
+        try:
+            candidate_onnx_filename = load_file_from_url(
+                url=model_onnx_url,
+                model_dir=model_dir,
+                file_name=f'{candidate_name}.onnx',
+            )
+            candidate_csv_filename = load_file_from_url(
+                url=model_csv_url,
+                model_dir=model_dir,
+                file_name=f'{candidate_name}.csv',
+            )
+        except Exception as exc:
+            logger.warning(f"[WD14 Tagger] 模型 {candidate_name} 不可用，将尝试兼容模型: {exc}")
+            continue
+        model_name = candidate_name
+        model_onnx_filename = candidate_onnx_filename
+        model_csv_filename = candidate_csv_filename
+        break
 
-    use_new_model = os.path.exists(new_model_onnx_path) and os.path.exists(new_model_csv_path)
+    if model_name is None:
+        raise RuntimeError("[WD14 Tagger] 没有可用的 ONNX 模型和标签表")
 
-    if current_model_name != (new_model_name if use_new_model else old_model_name):
+    if current_model_name != model_name:
         global_model = None
         global_csv = None
-
-    if use_new_model:
-        model_name = new_model_name
-        model_onnx_url = new_model_onnx_url
-        model_csv_url = new_model_csv_url
-        current_model_name = new_model_name
-        model_dir = find_dir_containing_model(paths_clip_vision, f"{new_model_name}.onnx")
-        logger.info(f"[WD14 Tagger] 当前使用模型: {model_name}")
-    else:
-        model_name = old_model_name
-        model_onnx_url = old_model_onnx_url
-        model_csv_url = old_model_csv_url
-        current_model_name = old_model_name
-        old_model_onnx_path = find_model_in_dirs(paths_clip_vision, f"{old_model_name}.onnx") or ""
-        model_dir = find_dir_containing_model(paths_clip_vision, f"{old_model_name}.onnx")
-        logger.info(f"[WD14 Tagger] 当前使用旧版模型: {model_name}，可运行模型检测更新。")
-    model_onnx_filename = load_file_from_url(
-        url=model_onnx_url,
-        model_dir=model_dir,
-        file_name=f'{model_name}.onnx',
-    )
-
-    model_csv_filename = load_file_from_url(
-        url=model_csv_url,
-        model_dir=model_dir,
-        file_name=f'{model_name}.csv',
-    )
+        current_model_name = model_name
+    logger.info(f"[WD14 Tagger] 当前使用模型: {model_name}")
 
     if global_model is not None:
         model = global_model
@@ -96,18 +108,11 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
         global_model = model
 
     input = model.get_inputs()[0]
-    height = input.shape[1]
-    if type(image) == np.ndarray:
-        image = Image.fromarray(image)
-    ratio = float(height)/max(image.size)
-    new_size = tuple([int(x*ratio) for x in image.size])
-    image = image.resize(new_size, Image.LANCZOS)
-    square = Image.new("RGB", (height, height), (255, 255, 255))
-    square.paste(image, ((height-new_size[0])//2, (height-new_size[1])//2))
-
-    image = np.array(square).astype(np.float32)
-    image = image[:, :, ::-1]  # RGB -> BGR
-    image = np.expand_dims(image, 0)
+    image = prepare_wd14_image(
+        image,
+        input.shape,
+        normalize=needs_wd14_timm_normalization(model_name),
+    )
 
     if global_csv is not None:
         csv_lines = global_csv
@@ -132,6 +137,10 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
 
     label_name = model.get_outputs()[0].name
     probs = model.run([label_name], {input.name: image})[0]
+    if probs.ndim != 2 or probs.shape[1] != len(tags):
+        raise RuntimeError(
+            f"[WD14 Tagger] 模型输出数量 {getattr(probs, 'shape', None)} 与标签数量 {len(tags)} 不一致"
+        )
 
     result = list(zip(tags, probs[0]))
 

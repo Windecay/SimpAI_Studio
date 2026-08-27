@@ -69,6 +69,7 @@
         'Custom'
     ];
     const VLM_MODEL_LABELS = WORKBENCH_VLM.VLM_MODEL_LABELS || WORKBENCH_REGISTRY.VLM_MODEL_LABELS || {};
+    const VLM_MODEL_CATALOG = WORKBENCH_VLM.VLM_MODEL_CATALOG || WORKBENCH_REGISTRY.VLM_MODEL_CATALOG || [];
     const VLM_IMAGE_SLOTS = WORKBENCH_VLM.VLM_IMAGE_SLOTS || WORKBENCH_REGISTRY.VLM_IMAGE_SLOTS || [
         { key: 'image_1', label: t('Image 1', '图像 1') },
         { key: 'image_2', label: t('Image 2', '图像 2') },
@@ -98,11 +99,22 @@
             : VLM_VERSION_CHOICES.slice();
     }
 
+    function vlmModelDisplayLabel(model, fallback = '') {
+        const value = String(model || '').trim();
+        let label = String(VLM_MODEL_LABELS[value] || fallback || value).trim() || value;
+        const item = VLM_MODEL_CATALOG.find((entry) => String(entry?.id || '').trim() === value);
+        if (item?.vision_status === 'missing') {
+            const notice = t('Missing vision model', '缺少视觉模型', window.simpleaiTopbarSystemParams || {});
+            if (!label.includes(notice)) label = `${label} · ${notice}`;
+        }
+        return label;
+    }
+
     function vlmModelOptionsHtml(current) {
         const selected = String(current || '').trim();
         return vlmModelChoicesFor(selected).map((model) => {
             const missing = model === selected && !VLM_VERSION_CHOICES.includes(model);
-            const label = VLM_MODEL_LABELS[model] || (missing ? `⚠ ${model}` : model);
+            const label = vlmModelDisplayLabel(model, missing ? `⚠ ${model}` : model);
             return `<option value="${escapeHtml(model)}" ${model === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
         }).join('');
     }
@@ -5606,7 +5618,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             };
         }
         const model = settings.rewriteModel || canvasAgentDefaultLocalRewriteModel();
-        const modelLabel = VLM_MODEL_LABELS[model] || vlmMissingModelLabel(model);
+        const modelLabel = vlmModelDisplayLabel(model, model);
         return {
             icon: 'fa-microchip',
             label: modelLabel,
@@ -5629,7 +5641,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         const provider = getVlmCustomProvider(settings.customProvider || 'openai');
         const modelChoices = Array.isArray(canvasAgentCustomModelChoices) ? canvasAgentCustomModelChoices : [];
         const localModelOptions = localModels.map(model => {
-            const label = VLM_MODEL_LABELS[model] || vlmMissingModelLabel(model);
+            const label = vlmModelDisplayLabel(model, model);
             return `<option value="${escapeHtml(model)}" ${model === selectedLocalModel ? 'selected' : ''}>${escapeHtml(label)}</option>`;
         }).join('');
         const providerOptions = VLM_CUSTOM_API_PROVIDERS.map(item => `<option value="${escapeHtml(item.key)}" ${item.key === (settings.customProvider || 'openai') ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
@@ -40564,16 +40576,26 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     function applyVlmModelStatus(node, response) {
         if (!node || node.type !== 'vlm') return;
         if (response?.ok) {
+            const visionMissingMessage = response.ready && response.vision_status === 'missing'
+                ? t(
+                    'VLM model files are ready, but the vision model (mmproj) is missing; image input is unavailable.',
+                    'VLM 模型文件已就绪，但缺少视觉模型（mmproj），当前无法输入图像。'
+                )
+                : '';
             node.vlm_model_status = {
                 state: response.state || (response.ready ? 'ready' : 'missing'),
                 ready: !!response.ready,
                 version: response.version || node.params?.version || '',
                 model: response.model || '',
+                vision_expected: !!response.vision_expected,
+                vision_available: !!response.vision_available,
+                vision_status: response.vision_status || 'text_only',
+                vision_file: response.vision_file || '',
                 missing_count: Number(response.missing_count || 0),
                 missing_models: cloneRunValue(response.missing_models || [], []),
                 can_download: response.can_download !== false,
                 checked_at: response.checked_at || nowIso(),
-                message: response.message || ''
+                message: visionMissingMessage || response.message || ''
             };
         } else {
             node.vlm_model_status = {
@@ -40689,7 +40711,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             return status;
         }
         if (status.ready) {
-            showToast(String(status.state || '').toLowerCase() === 'custom' ? (status.message || 'Custom API is ready.') : 'VLM model files are ready.');
+            showToast(String(status.state || '').toLowerCase() === 'custom'
+                ? (status.message || 'Custom API is ready.')
+                : (status.vision_status === 'missing'
+                    ? t('Vision model missing (mmproj); image input is unavailable.', '缺少视觉模型（mmproj），当前无法输入图像。')
+                    : 'VLM model files are ready.'));
             return status;
         }
         if (String(status.state || '').toLowerCase() === 'custom') {

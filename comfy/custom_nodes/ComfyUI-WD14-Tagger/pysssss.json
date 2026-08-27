@@ -2,7 +2,7 @@
 	"name": "WD14Tagger",
 	"logging": false,
 	"settings": {
-		"model": "wd-eva02-large-tagger-v3",
+		"model": "wd-eva02-tagger-2026-canary-onnx-v2",
 		"threshold": 0.35,
 		"character_threshold": 0.85,
 		"exclude_tags": "",
@@ -10,6 +10,7 @@
 		"HF_ENDPOINT": "https://hf-mirror.com"
 	},
 	"models": {
+		"wd-eva02-tagger-2026-canary-onnx-v2": "{HF_ENDPOINT}/Misaka41Z/wd-eva02-tagger-2026-canary-onnx-v2",
 		"wd-eva02-large-tagger-v3": "{HF_ENDPOINT}/SmilingWolf/wd-eva02-large-tagger-v3",
 		"wd-vit-tagger-v3": "{HF_ENDPOINT}/SmilingWolf/wd-vit-tagger-v3",
 		"wd-swinv2-tagger-v3": "{HF_ENDPOINT}/SmilingWolf/wd-swinv2-tagger-v3",
