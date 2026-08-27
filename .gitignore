@@ -12,6 +12,8 @@ __pycache__
 *.swp
 *.whl
 !/comfy/custom_nodes/ComfyUI-Marigold/empty_text_embed.pt
+!/comfy/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/pos_emb.pt
+!/comfy/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/neg_emb.pt
 !/enhanced/libs/rembg-2.0.57-py3-none-any.whl
 !/enhanced/libs/groundingdino_py-0.4.1-py2.py3-none-any.whl
 !/vendor/danbooru-tags/tags_lookup.bin

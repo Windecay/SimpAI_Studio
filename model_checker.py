@@ -699,7 +699,7 @@ def print_instructions():
     time.sleep(0.1)
     print(f"{Fore.GREEN}★{Style.RESET_ALL}打开默认浏览器设置，关闭GPU加速、或图形加速的选项。{Fore.GREEN}★{Style.RESET_ALL}大内存(64+)与固态硬盘存放模型有助于减少模型加载时间。{Fore.GREEN}★{Style.RESET_ALL}")
     time.sleep(0.1)
-    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.08.14{Fore.GREEN}★{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.08.28{Fore.GREEN}★{Style.RESET_ALL}")
     print()
     time.sleep(0.1)
 
@@ -2193,8 +2193,8 @@ packages = {'base_package': {'id': 1,
                             'controlnet,parsing_bisenet.pth,53289463,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/parsing_bisenet.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/parsing_bisenet.pth',
                             'controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt',
                             'clip_vision,clip_vision_h.safetensors,1264219396,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/clip_vision/clip_vision_h.safetensors,https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors',
-                            'clip_vision,wd-eva02-large-tagger-v3.onnx,1260435999,0,https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.onnx,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/wd-eva02-large-tagger-v3.onnx',
-                            'clip_vision,wd-eva02-large-tagger-v3.csv,308468,0,https://www.modelscope.cn/models/windecay/WD-tagger/resolve/master/wd-eva02-large-tagger-v3.csv,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/wd-eva02-large-tagger-v3.csv',
+                            'clip_vision,wd-eva02-tagger-2026-canary-onnx-v2.onnx,1309248037,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.onnx,https://huggingface.co/Misaka41Z/wd-eva02-tagger-2026-canary-onnx-v2/resolve/main/model.onnx',
+                            'clip_vision,wd-eva02-tagger-2026-canary-onnx-v2.csv,467782,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/clip_vision/wd-eva02-tagger-2026-canary-onnx-v2.csv,https://huggingface.co/Misaka41Z/wd-eva02-tagger-2026-canary-onnx-v2/resolve/main/selected_tags.csv',
                             'clip_vision,clip-vit-large-patch14/merges.txt,524619,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/clip-vit-large-patch14/merges.txt,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/clip-vit-large-patch14/merges.txt',
                             'clip_vision,clip-vit-large-patch14/special_tokens_map.json,389,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/clip-vit-large-patch14/special_tokens_map.json,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/clip-vit-large-patch14/special_tokens_map.json',
                             'clip_vision,clip-vit-large-patch14/tokenizer_config.json,905,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/clip-vit-large-patch14/tokenizer_config.json,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/clip-vit-large-patch14/tokenizer_config.json',
@@ -2969,7 +2969,7 @@ packages = {'base_package': {'id': 1,
                         'name': '[47]MiniMax H3文生、图生、多参考图原生音视频模型包',
                         'note': 'MiniMax H3文生视频、首尾帧图生视频、多参考图视频生成模型包，输出原生音频|显存需求：★★★★ 速度：★',
                         'files': ['diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
-                                  'loras,minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+                                  'loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
                                   'text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                                   'vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors',
                                   'vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors',
@@ -3010,7 +3010,8 @@ OBSOLETE_MODELS = [
     'wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors',
     'umt5-xxl-encoder-Q8_0.gguf',
     'nsfw_wan_umt5-xxl_bf16_fixed.safetensors',
-    'minimax_h3_video_vae_fp16.safetensors'
+    'minimax_h3_video_vae_fp16.safetensors',
+    'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
 ]
 
 MODELSCOPE_FILE_CACHE = {}

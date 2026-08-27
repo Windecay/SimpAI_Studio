@@ -31354,7 +31354,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, both H3 VAEs, and at least one image, video, or audio reference.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE，以及至少一个图片、视频或音频参考。'),
                     models: [
                         'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
-                        'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+                        'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                         'minimax_h3_video_vae_int8_convrot.safetensors',
                         'taeh3.safetensors',
