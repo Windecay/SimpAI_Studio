@@ -109,6 +109,10 @@ download_path_mapping = {}
 RESOURCE_BUNDLE_TYPE = "archive"
 RESOURCE_CACHE_DIR_NAME = ".simpleai-resource-cache"
 RESOURCE_DOWNLOADLIST_FILE = "resource_downloadlist.json"
+RESOURCE_PROGRESS_EVENT_PREFIX = "__SIMPLEAI_RESOURCE_PROGRESS__"
+RESOURCE_RENAME_RETRIES = 8
+RESOURCE_RENAME_RETRY_DELAY = 0.75
+RESOURCE_CLEANUP_RETRIES = 4
 simplemodels_root = ""
 
 MODEL_SCAN_CATEGORIES = [
@@ -540,9 +544,6 @@ def cleanup():
     if os.path.exists("downloadlist.txt"):
         os.remove("downloadlist.txt")
         print("已删除 'downloadlist.txt' 文件。", file=sys.stderr)
-    if os.path.exists(RESOURCE_DOWNLOADLIST_FILE):
-        os.remove(RESOURCE_DOWNLOADLIST_FILE)
-        print("已删除资源包下载列表 / Removed resource bundle download list。", file=sys.stderr)
     if os.path.exists("缺失模型下载链接.txt"):
         os.remove("缺失模型下载链接.txt")
         print("已删除 '缺失模型下载链接.txt' 文件。", file=sys.stderr)
@@ -1190,22 +1191,86 @@ def _find_existing_resource_archive(bundle, verify=True):
     return None
 
 
+def _cleanup_resource_archive_file(archive_path, bundle=None):
+    if not archive_path or not os.path.isfile(archive_path):
+        return None
+    try:
+        os.remove(archive_path)
+    except OSError as error:
+        return error
+
+    if bundle is None:
+        return None
+    _cleanup_empty_resource_cache_dirs(bundle)
+    return None
+
+
+def _cleanup_empty_resource_cache_dirs(bundle):
+    try:
+        canonical_path = _resource_archive_path(bundle)
+    except (OSError, ValueError, TypeError):
+        return
+    cache_root = os.path.dirname(os.path.dirname(canonical_path))
+    if not os.path.isdir(cache_root) or os.path.islink(cache_root):
+        return
+
+    # A previous interrupted install can leave empty resource-id directories
+    # beside the current one. Remove only empty directories so other caches
+    # remain untouched, and retry transient Windows handle/AV locks.
+    for _ in range(RESOURCE_CLEANUP_RETRIES):
+        retry_needed = False
+        try:
+            for current_root, directory_names, file_names in os.walk(cache_root, topdown=False):
+                for directory_name in directory_names:
+                    directory = os.path.join(current_root, directory_name)
+                    if os.path.islink(directory):
+                        continue
+                    try:
+                        with os.scandir(directory) as entries:
+                            if next(entries, None) is not None:
+                                continue
+                        os.rmdir(directory)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        retry_needed = True
+                if not file_names and not os.path.islink(current_root):
+                    try:
+                        with os.scandir(current_root) as entries:
+                            if next(entries, None) is None:
+                                os.rmdir(current_root)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        retry_needed = True
+        except OSError:
+            retry_needed = True
+
+        if not os.path.lexists(cache_root):
+            return
+        if not retry_needed:
+            return
+        if _ < RESOURCE_CLEANUP_RETRIES - 1:
+            time.sleep(RESOURCE_RENAME_RETRY_DELAY)
+
+
 def _cleanup_installed_resource_archives(bundle):
     expected_size = _normalize_expected_size(bundle.get("size"))
-    if expected_size <= 0:
-        return
-    for archive_path in _resource_archive_candidates(bundle):
-        if not os.path.isfile(archive_path):
-            continue
-        try:
-            if os.path.getsize(archive_path) != expected_size:
+    if expected_size > 0:
+        for archive_path in _resource_archive_candidates(bundle):
+            if not os.path.isfile(archive_path):
                 continue
-            os.remove(archive_path)
-        except OSError:
-            continue
+            try:
+                if os.path.getsize(archive_path) != expected_size:
+                    continue
+                _cleanup_resource_archive_file(archive_path, bundle)
+            except OSError:
+                continue
+    _cleanup_empty_resource_cache_dirs(bundle)
 
 
 def _resource_bundle_status(bundle):
+    _cleanup_resource_staging_directories(bundle)
     if is_resource_bundle_installed(bundle):
         _cleanup_installed_resource_archives(bundle)
         return "ok"
@@ -1235,11 +1300,13 @@ def _zip_entry_is_symlink(entry):
     return mode == stat.S_IFLNK
 
 
-def _extract_resource_archive(archive_path, staging_root, bundle):
+def _extract_resource_archive(archive_path, staging_root, bundle, progress_callback=None):
     archive_root = str(bundle.get("archive_root") or "").strip().replace("\\", "/").strip("/")
     prefix = f"{archive_root}/" if archive_root else ""
     found_entries = False
     with zipfile.ZipFile(archive_path, "r") as archive:
+        installable_entries = []
+        total_bytes = 0
         for entry in archive.infolist():
             member_path = _safe_archive_member_path(entry.filename)
             if not member_path:
@@ -1259,14 +1326,43 @@ def _extract_resource_archive(archive_path, staging_root, bundle):
                 raise ValueError(f"archive entry escapes staging directory: {entry.filename}")
             found_entries = True
             is_directory = entry.is_dir() or str(entry.filename).replace("\\", "/").endswith("/")
+            installable_entries.append((entry, member_path, destination, is_directory))
+            if not is_directory:
+                total_bytes += max(0, int(entry.file_size or 0))
+
+        if not found_entries:
+            raise ValueError("resource archive contains no installable entries")
+        if progress_callback:
+            progress_callback(0, total_bytes)
+
+        processed_bytes = 0
+        last_reported_bytes = 0
+        last_reported_at = time.monotonic()
+        report_step = max(16 * 1024 * 1024, total_bytes // 100) if total_bytes > 0 else 1
+        for entry, member_path, destination, is_directory in installable_entries:
             if is_directory:
                 os.makedirs(destination, exist_ok=True)
                 continue
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             with archive.open(entry, "r") as source, open(destination, "wb") as target:
-                shutil.copyfileobj(source, target, length=8 * 1024 * 1024)
-    if not found_entries:
-        raise ValueError("resource archive contains no installable entries")
+                while True:
+                    data = source.read(8 * 1024 * 1024)
+                    if not data:
+                        break
+                    target.write(data)
+                    processed_bytes += len(data)
+                    if progress_callback:
+                        now = time.monotonic()
+                        if (
+                            processed_bytes >= total_bytes
+                            or processed_bytes - last_reported_bytes >= report_step
+                            or now - last_reported_at >= 0.5
+                        ):
+                            progress_callback(processed_bytes, total_bytes)
+                            last_reported_bytes = processed_bytes
+                            last_reported_at = now
+        if progress_callback:
+            progress_callback(processed_bytes, total_bytes)
 
 
 def _validate_resource_bundle_directory(root_dir, bundle):
@@ -1282,9 +1378,100 @@ def _remove_resource_path(path):
     if not path or not os.path.lexists(path):
         return
     if os.path.isdir(path) and not os.path.islink(path):
-        shutil.rmtree(path)
+        shutil.rmtree(path, onerror=_resource_rmtree_onerror)
     else:
         os.remove(path)
+
+
+def _resource_rmtree_onerror(function, path, exc_info):
+    try:
+        os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+    except OSError:
+        pass
+    function(path)
+
+
+def _try_remove_resource_path(path, retries=RESOURCE_CLEANUP_RETRIES, delay=RESOURCE_RENAME_RETRY_DELAY):
+    if not path:
+        return None
+    try:
+        attempts = max(1, int(retries))
+    except (TypeError, ValueError):
+        attempts = 1
+    last_error = None
+    for attempt in range(attempts):
+        if not os.path.lexists(path):
+            return None
+        try:
+            _remove_resource_path(path)
+            return None
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            last_error = error
+            if attempt + 1 < attempts:
+                time.sleep(delay)
+    return last_error
+
+
+def _rename_resource_path_with_retry(source, destination):
+    last_error = None
+    for attempt in range(RESOURCE_RENAME_RETRIES):
+        if not os.path.lexists(source):
+            if os.path.lexists(destination):
+                return
+            raise FileNotFoundError(source)
+        try:
+            os.rename(source, destination)
+            return
+        except FileNotFoundError:
+            if not os.path.lexists(source) and os.path.lexists(destination):
+                return
+            raise
+        except PermissionError as error:
+            last_error = error
+            if attempt == 0:
+                print(
+                    f"{Fore.YELLOW}△资源包文件仍被 Windows 占用，正在等待后重试{Style.RESET_ALL}"
+                )
+            if attempt + 1 < RESOURCE_RENAME_RETRIES:
+                time.sleep(RESOURCE_RENAME_RETRY_DELAY)
+    if last_error is not None:
+        raise last_error
+    raise OSError(f"failed to rename resource path: {source} -> {destination}")
+
+
+def _resource_staging_candidates(bundle):
+    try:
+        target_root = _resource_install_root(bundle)
+    except (OSError, ValueError, TypeError):
+        return []
+    parent_dir = os.path.dirname(target_root)
+    prefix = f".{os.path.basename(target_root)}.staging-"
+    try:
+        names = os.listdir(parent_dir)
+    except OSError:
+        return []
+    candidates = []
+    for name in names:
+        if not name.startswith(prefix):
+            continue
+        candidate = os.path.join(parent_dir, name)
+        if os.path.isdir(candidate) and not os.path.islink(candidate):
+            candidates.append(candidate)
+    return sorted(candidates, key=lambda path: os.path.normcase(path))
+
+
+def _cleanup_resource_staging_directories(bundle, keep=None):
+    keep_key = _resource_path_key(keep) if keep else ""
+    for staging_root in _resource_staging_candidates(bundle):
+        if keep_key and _resource_path_key(staging_root) == keep_key:
+            continue
+        error = _try_remove_resource_path(staging_root)
+        if error is not None:
+            print(
+                f"{Fore.YELLOW}△临时资源目录清理失败: {staging_root} ({error}){Style.RESET_ALL}"
+            )
 
 
 def _path_size_bytes(path):
@@ -1333,6 +1520,25 @@ def _resource_delete_paths(bundle):
     return result
 
 
+def _emit_resource_progress(bundle, phase, current=0, total=0):
+    if not LAUNCHER_MODE:
+        return
+    resource_id = _clean_resource_id(bundle.get("id")) or "resource"
+    try:
+        current_value = max(0, int(current or 0))
+    except (TypeError, ValueError):
+        current_value = 0
+    try:
+        total_value = max(0, int(total or 0))
+    except (TypeError, ValueError):
+        total_value = 0
+    phase_value = str(phase or "").strip().lower() or "unknown"
+    print(
+        f"{RESOURCE_PROGRESS_EVENT_PREFIX} resource/{resource_id} {phase_value} {current_value} {total_value}",
+        flush=True,
+    )
+
+
 def _collapse_nested_resource_paths(paths):
     ordered = sorted(
         {os.path.abspath(path) for path in paths if path},
@@ -1370,11 +1576,22 @@ def install_resource_bundle(archive_path, bundle):
     target_root = _resource_install_root(bundle)
     parent_dir = os.path.dirname(target_root)
     os.makedirs(parent_dir, exist_ok=True)
+    _cleanup_resource_staging_directories(bundle)
     staging_root = tempfile.mkdtemp(prefix=f".{os.path.basename(target_root)}.staging-", dir=parent_dir)
     backup_root = f"{target_root}.backup-{time.time_ns()}"
     moved_existing = False
+    install_committed = False
     try:
-        _extract_resource_archive(archive_path, staging_root, bundle)
+        print(f"{Fore.CYAN}▶ 正在解压资源包: {bundle.get('file_name')}{Style.RESET_ALL}")
+        _emit_resource_progress(bundle, "extracting", 0, 0)
+        _extract_resource_archive(
+            archive_path,
+            staging_root,
+            bundle,
+            progress_callback=lambda current, total: _emit_resource_progress(
+                bundle, "extracting", current, total
+            ),
+        )
         _validate_resource_bundle_directory(staging_root, bundle)
         with open(os.path.join(staging_root, ".simpleai-resource.json"), "w", encoding="utf-8") as marker_file:
             json.dump(
@@ -1388,25 +1605,51 @@ def install_resource_bundle(archive_path, bundle):
                 ensure_ascii=False,
                 indent=2,
             )
+        print(f"{Fore.CYAN}▶ 正在安装资源包: {bundle.get('file_name')}{Style.RESET_ALL}")
+        _emit_resource_progress(bundle, "installing", 0, 0)
         if os.path.lexists(target_root):
-            os.rename(target_root, backup_root)
+            _rename_resource_path_with_retry(target_root, backup_root)
             moved_existing = True
-        os.rename(staging_root, target_root)
+        _rename_resource_path_with_retry(staging_root, target_root)
         staging_root = ""
+        install_committed = True
         if moved_existing:
-            _remove_resource_path(backup_root)
+            backup_error = _try_remove_resource_path(backup_root)
+            if backup_error is not None:
+                print(
+                    f"{Fore.YELLOW}△旧资源目录清理失败: {backup_root} ({backup_error}){Style.RESET_ALL}"
+                )
+        _cleanup_resource_staging_directories(bundle)
+        _emit_resource_progress(bundle, "complete", 1, 1)
         return target_root
     except Exception:
         if os.path.lexists(target_root) and moved_existing:
-            _remove_resource_path(target_root)
+            target_error = _try_remove_resource_path(target_root)
+            if target_error is not None:
+                print(
+                    f"{Fore.RED}△资源包安装回滚失败，正式目录仍被占用: {target_root} ({target_error}){Style.RESET_ALL}"
+                )
         if moved_existing and os.path.lexists(backup_root) and not os.path.lexists(target_root):
-            os.rename(backup_root, target_root)
+            try:
+                _rename_resource_path_with_retry(backup_root, target_root)
+            except Exception as restore_error:
+                print(
+                    f"{Fore.RED}△旧资源目录恢复失败，请保留该目录: {backup_root} ({restore_error}){Style.RESET_ALL}"
+                )
         raise
     finally:
         if staging_root:
-            _remove_resource_path(staging_root)
-        if os.path.lexists(backup_root):
-            _remove_resource_path(backup_root)
+            staging_error = _try_remove_resource_path(staging_root)
+            if staging_error is not None:
+                print(
+                    f"{Fore.YELLOW}△临时资源目录清理失败: {staging_root} ({staging_error}){Style.RESET_ALL}"
+                )
+        if install_committed and os.path.lexists(backup_root):
+            backup_error = _try_remove_resource_path(backup_root)
+            if backup_error is not None:
+                print(
+                    f"{Fore.YELLOW}△旧资源目录仍未清理: {backup_root} ({backup_error}){Style.RESET_ALL}"
+                )
 
 
 def _install_local_resource_bundle(bundle):
@@ -1415,6 +1658,7 @@ def _install_local_resource_bundle(bundle):
         return False
     if is_resource_bundle_installed(bundle):
         _cleanup_installed_resource_archives(bundle)
+        _cleanup_resource_staging_directories(bundle)
         return True
 
     archive_path = _find_existing_resource_archive(bundle, verify=True)
@@ -1423,8 +1667,11 @@ def _install_local_resource_bundle(bundle):
 
     try:
         install_resource_bundle(archive_path, bundle)
-        if os.path.isfile(archive_path):
-            os.remove(archive_path)
+        archive_error = _cleanup_resource_archive_file(archive_path, bundle)
+        if archive_error is not None:
+            print(
+                f"{Fore.YELLOW}△资源包已安装，但缓存压缩包清理失败: {archive_path} ({archive_error}){Style.RESET_ALL}"
+            )
         print(f"√已安装本地资源包: {_resource_install_root(bundle)}")
         return True
     except Exception as error:
@@ -1506,8 +1753,11 @@ def _download_resource_bundle(bundle, position=0):
 
     try:
         install_resource_bundle(archive_path, bundle)
-        if os.path.isfile(archive_path):
-            os.remove(archive_path)
+        archive_error = _cleanup_resource_archive_file(archive_path, bundle)
+        if archive_error is not None:
+            print(
+                f"{Fore.YELLOW}△资源包已安装，但缓存压缩包清理失败: {archive_path} ({archive_error}){Style.RESET_ALL}"
+            )
         print(f"{Fore.GREEN}√资源包已安装 / Resource bundle installed: {_resource_install_root(bundle)}{Style.RESET_ALL}")
         return True
     except Exception as error:
@@ -2585,7 +2835,7 @@ def auto_download_missing_files_with_retry(max_threads=5):
         if resource_success_count:
             print("√资源包处理完成 / Resource bundle processing completed")
         if resource_fail_count:
-            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+            print(f"△资源包处理失败：{resource_fail_count}个 / Resource bundle processing failed: {resource_fail_count}")
         if resource_deferred_count:
             print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
         if not resource_success_count and not resource_fail_count and not resource_deferred_count:
@@ -2601,7 +2851,7 @@ def auto_download_missing_files_with_retry(max_threads=5):
         if resource_success_count:
             print("√资源包处理完成 / Resource bundle processing completed")
         if resource_fail_count:
-            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+            print(f"△资源包处理失败：{resource_fail_count}个 / Resource bundle processing failed: {resource_fail_count}")
         if resource_deferred_count:
             print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
         if not resource_success_count and not resource_fail_count and not resource_deferred_count:
@@ -2751,7 +3001,7 @@ def auto_download_missing_files_with_retry(max_threads=5):
         if os.path.exists("downloadlist.txt"):
             os.remove("downloadlist.txt")
         if resource_fail_count:
-            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+            print(f"△资源包处理失败：{resource_fail_count}个 / Resource bundle processing failed: {resource_fail_count}")
         if resource_deferred_count:
             print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
         if remaining_resources:
