@@ -78,6 +78,31 @@ def _resolve_inpaint_cfg_scale(task_class, task_method, cfg_scale):
     return cfg_scale
 
 
+_NATIVE_METHOD_PRESET_NAMES = {
+    'nvidia_vsr': {'nvidia-vsr'},
+    'depth_anything_v2_video': {'depth-video', 'depth-anything-v2-video'},
+    'topaz_starlight': {'topaz-starlight', 'topaz-starlight-video'},
+}
+
+
+def _resolve_native_method(task_method, native_process, task_name):
+    normalized_method = str(task_method or '').strip().casefold().removeprefix('scene_')
+    if normalized_method not in _NATIVE_METHOD_PRESET_NAMES:
+        return None
+
+    normalized_process = str(native_process or '').strip().casefold()
+    normalized_name = (
+        str(task_name or '')
+        .strip()
+        .casefold()
+        .replace('_', '-')
+        .replace(' ', '-')
+    )
+    if normalized_process == 'studio' or normalized_name in _NATIVE_METHOD_PRESET_NAMES[normalized_method]:
+        return normalized_method
+    return None
+
+
 def _parse_resolution_pair(value):
     if value is None:
         return None
@@ -366,6 +391,7 @@ class AsyncTask:
 
         self.params_backend = args.pop().copy()
         self.params_backend = api_params.convert_dict(self.params_backend)
+        self.simpleai_lang = self.params_backend.pop('__lang', None)
         self.simpleai_regen_manifest = self.params_backend.pop(regen_manifest.KEY, None)
         if self.simpleai_regen_manifest:
             logger.info(
@@ -422,12 +448,9 @@ class AsyncTask:
         self.task_name = self.params_backend.pop('preset', 'default')
         default_task_method = 'text2image' if self.task_class == 'Fooocus' else 'z_image_turbo_aio_cn'
         self.task_method = self.params_backend.pop('task_method', default_task_method)
-        normalized_task_method = str(self.task_method or '').strip().casefold().removeprefix('scene_')
         native_process = str(self.params_backend.get('native_process', '') or '').strip().casefold()
-        normalized_task_name = str(self.task_name or '').strip().casefold().replace('_', '-')
-        self.simpleai_native_process = normalized_task_method == 'nvidia_vsr' and (
-            native_process == 'studio' or normalized_task_name == 'nvidia-vsr'
-        )
+        self.simpleai_native_method = _resolve_native_method(self.task_method, native_process, self.task_name)
+        self.simpleai_native_process = self.simpleai_native_method is not None
         self.task_class_full = task_class_mapping[self.task_class]
         self.clip_model_name = self.params_backend.get('clip_model', default_clip)
         if self.clip_model_name in (None, '', default_clip, default_vae, 'auto'):
@@ -639,6 +662,7 @@ def worker():
     from enhanced.comfy_task import get_comfy_task
     from enhanced.all_parameters import default as default_params
     from enhanced.vlm import VLM
+    from modules.native_video_preview import create_native_video_progress_callback
     import logging
     from enhanced.logger import format_name
     logger = logging.getLogger(format_name(__name__))
@@ -671,6 +695,16 @@ def worker():
 
         async_task.yields.append(['preview', (number, text, img)])
         async_task.lasttime = time.time()
+
+    def native_video_progress(async_task, source_path):
+        # AsyncTask copies this value from the request's state.__lang field.
+        language = getattr(async_task, 'simpleai_lang', None)
+        return create_native_video_progress_callback(
+            source_path,
+            language=language,
+            enabled=not bool(getattr(async_task, 'disable_preview', False)),
+            progress_sink=lambda number, text, img: progressbar(async_task, number, text, img),
+        )
 
     def clamp_progress_total(current_step, reported_total_steps):
         try:
@@ -777,6 +811,7 @@ def worker():
         from enhanced import nvidia_vsr
 
         output_path = None
+        preview_session = None
         status = "Finished"
         try:
             source_path = nvidia_vsr.resolve_input_video(async_task.params_backend)
@@ -784,8 +819,7 @@ def worker():
             _, output_path, _ = generate_temp_filename(folder=output_root, extension="mp4")
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            def report_progress(percentage, title):
-                progressbar(async_task, percentage, title)
+            report_progress, preview_session = native_video_progress(async_task, source_path)
 
             result = nvidia_vsr.run_nvidia_vsr(
                 source_path,
@@ -846,6 +880,162 @@ def worker():
             )
             progressbar(async_task, 100, title)
         finally:
+            if preview_session is not None:
+                preview_session.close()
+            stop_processing(async_task, processing_start_time, status)
+
+    def run_native_depth_anything_v2_video(async_task, processing_start_time):
+        from enhanced import depth_anything_v2_video, nvidia_vsr
+
+        output_path = None
+        preview_session = None
+        status = "Finished"
+        try:
+            source_path = nvidia_vsr.resolve_input_video(async_task.params_backend)
+            output_root = modules.config.get_user_path_outputs(async_task.user_did)
+            _, output_path, _ = generate_temp_filename(folder=output_root, extension="mp4")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            report_progress, preview_session = native_video_progress(async_task, source_path)
+
+            result = depth_anything_v2_video.run_depth_anything_v2_video(
+                source_path,
+                output_path,
+                async_task,
+                language=getattr(async_task, "simpleai_lang", None),
+                progress_callback=report_progress,
+                cancel_callback=lambda: async_task.last_stop in ("stop", "skip"),
+            )
+            async_task.results = []
+            yield_result(
+                async_task,
+                [result["output_path"]],
+                100,
+                getattr(async_task, "black_out_nsfw", False),
+                censor=False,
+                do_not_show_finished_images=bool(getattr(async_task, "disable_intermediate_results", False)),
+            )
+            try:
+                from modules.media_library import queue_media_file_index
+
+                queue_media_file_index(result["output_path"], user_did=async_task.user_did)
+            except Exception:
+                logger.debug("Native Depth Anything V2 media indexing was not queued", exc_info=True)
+            logger.info(
+                "Native Depth Anything V2 video finished: task_id=%s input=%s output=%s frames=%s "
+                "fps=%s size=%sx%s encoder=%s",
+                async_task.task_id,
+                source_path,
+                result["output_path"],
+                result["output_frames"],
+                result["output_fps"],
+                result["output_width"],
+                result["output_height"],
+                result["encoder"],
+            )
+        except depth_anything_v2_video.DepthAnythingV2VideoCancelled:
+            action = async_task.last_stop if async_task.last_stop in ("stop", "skip") else "stop"
+            async_task.user_cancel_action = action
+            status = "Skipped" if action == "skip" else "Stopped"
+            title = nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                "Depth Anything V2 video was stopped by the user.",
+                "Depth Anything V2 深度视频已由用户停止。",
+            )
+            progressbar(async_task, 100, title)
+        except Exception as exc:
+            status = "Failed"
+            logger.exception("Native Depth Anything V2 video failed: task_id=%s", async_task.task_id)
+            async_task.simpleai_native_error = str(exc)
+            title = nvidia_vsr.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                f"Depth Anything V2 video failed: {exc}",
+                f"Depth Anything V2 深度视频处理失败：{exc}",
+            )
+            progressbar(async_task, 100, title)
+        finally:
+            if preview_session is not None:
+                preview_session.close()
+            stop_processing(async_task, processing_start_time, status)
+
+    def run_native_topaz_starlight(async_task, processing_start_time):
+        from enhanced import topaz_starlight
+
+        output_path = None
+        preview_session = None
+        status = "Finished"
+        try:
+            source_path = topaz_starlight.resolve_input_video(async_task.params_backend)
+            output_root = modules.config.get_user_path_outputs(async_task.user_did)
+            _, output_path, _ = generate_temp_filename(folder=output_root, extension="mp4")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            report_progress, preview_session = native_video_progress(async_task, source_path)
+
+            result = topaz_starlight.run_topaz_starlight(
+                source_path,
+                output_path,
+                async_task,
+                language=getattr(async_task, "simpleai_lang", None),
+                progress_callback=report_progress,
+                cancel_callback=lambda: async_task.last_stop in ("stop", "skip"),
+            )
+            async_task.results = []
+            yield_result(
+                async_task,
+                [result["output_path"]],
+                100,
+                getattr(async_task, "black_out_nsfw", False),
+                censor=False,
+                do_not_show_finished_images=bool(getattr(async_task, "disable_intermediate_results", False)),
+            )
+            try:
+                from modules.media_library import queue_media_file_index
+
+                queue_media_file_index(result["output_path"], user_did=async_task.user_did)
+            except Exception:
+                logger.debug("Native Topaz Starlight media indexing was not queued", exc_info=True)
+            logger.info(
+                "Native Topaz Starlight finished: task_id=%s input=%s output=%s model=%s "
+                "source_frames=%s output_frames=%s source_fps=%s output_fps=%s size=%sx%s "
+                "audio_muxed=%s watermark_required=%s engine=%s",
+                async_task.task_id,
+                source_path,
+                result["output_path"],
+                result["model_id"],
+                result["source_frames"],
+                result["output_frames"],
+                result["source_fps"],
+                result["output_fps"],
+                result["output_width"],
+                result["output_height"],
+                result["audio_muxed"],
+                result["watermark_required"],
+                result["engine_path"],
+            )
+        except topaz_starlight.TopazStarlightCancelled:
+            action = async_task.last_stop if async_task.last_stop in ("stop", "skip") else "stop"
+            async_task.user_cancel_action = action
+            status = "Skipped" if action == "skip" else "Stopped"
+            title = topaz_starlight.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                "Topaz Starlight was stopped by the user.",
+                "Topaz 星光已由用户停止。",
+            )
+            progressbar(async_task, 100, title)
+        except Exception as exc:
+            status = "Failed"
+            logger.exception("Native Topaz Starlight failed: task_id=%s", async_task.task_id)
+            async_task.simpleai_native_error = str(exc)
+            title = topaz_starlight.localized_text(
+                getattr(async_task, "simpleai_lang", None),
+                f"Topaz Starlight failed: {exc}",
+                f"Topaz 星光处理失败：{exc}",
+            )
+            progressbar(async_task, 100, title)
+        finally:
+            if preview_session is not None:
+                preview_session.close()
             stop_processing(async_task, processing_start_time, status)
 
     def run_cloud_task(async_task: AsyncTask):
@@ -2227,7 +2417,12 @@ def worker():
         #     stop_processing(async_task, 0, "Model absent")
         #     return
         if getattr(async_task, 'simpleai_native_process', False):
-            run_native_nvidia_vsr(async_task, int(time.time() * 1000))
+            if getattr(async_task, 'simpleai_native_method', None) == 'depth_anything_v2_video':
+                run_native_depth_anything_v2_video(async_task, int(time.time() * 1000))
+            elif getattr(async_task, 'simpleai_native_method', None) == 'topaz_starlight':
+                run_native_topaz_starlight(async_task, int(time.time() * 1000))
+            else:
+                run_native_nvidia_vsr(async_task, int(time.time() * 1000))
             return
         ldm_patched.modules.model_management.print_memory_info("begin at handler")
         async_task.outpaint_selections = [o.lower() for o in async_task.outpaint_selections]

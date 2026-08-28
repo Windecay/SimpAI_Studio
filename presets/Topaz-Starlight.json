@@ -1,0 +1,210 @@
+{
+    "supported_tasks": ["video_upscale"],
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "native_process": "studio",
+        "engine_type": "video",
+        "disvisible": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection",
+            "scene_canvas_image",
+            "scene_input_image1",
+            "scene_input_image2",
+            "scene_input_image3",
+            "scene_input_image4",
+            "scene_input_image5",
+            "scene_input_image6",
+            "scene_input_image7",
+            "scene_input_image8",
+            "scene_reference_video",
+            "scene_reference_video2",
+            "scene_audio",
+            "scene_audio2",
+            "scene_audio3",
+            "scene_additional_prompt",
+            "scene_additional_prompt_2",
+            "scene_aspect_ratio",
+            "scene_image_number",
+            "scene_use_lora",
+            "scene_var_number2",
+            "scene_var_number4",
+            "scene_video_duration",
+            "scene_var_number5",
+            "scene_var_number6",
+            "scene_var_number7",
+            "scene_var_number8",
+            "scene_var_number9",
+            "scene_var_number10",
+            "scene_switch_option1",
+            "scene_switch_option2",
+            "scene_switch_option3",
+            "scene_switch_option4",
+            "scene_steps",
+            "scene_base_model",
+            "scene_refiner_model",
+            "sam3_input_video",
+            "sam3_mask_video"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "available_aspect_ratios_selection": "Flux",
+        "scene_frontend": {
+            "version": "v1.1",
+            "theme": [
+                "Topaz Starlight SLP-26"
+            ],
+            "theme_labels": {
+                "Topaz Starlight SLP-26": {
+                    "en": "Topaz Starlight SLP-26",
+                    "zh": "Topaz 星光 SLP-26"
+                }
+            },
+            "theme_title": "Topaz Starlight Video Upscale/Enhance",
+            "director_capability": {
+                "image_policy": "forbidden",
+                "audio_policy": "forbidden",
+                "video_policy": "required",
+                "max_images": 0,
+                "min_images": 0,
+                "image_modes": [
+                    "none"
+                ],
+                "video_modes": [
+                    "explicit"
+                ],
+                "chain_output": "last_result",
+                "requires_sequential": false,
+                "duration_strategy": "video_min",
+                "audio_output": "source_audio",
+                "mixed_segments": false
+            },
+            "disvisible": [
+                "scene_canvas_image",
+                "scene_input_image1",
+                "scene_input_image2",
+                "scene_input_image3",
+                "scene_input_image4",
+                "scene_input_image5",
+                "scene_input_image6",
+                "scene_input_image7",
+                "scene_input_image8",
+                "scene_reference_video",
+                "scene_reference_video2",
+                "scene_audio",
+                "scene_audio2",
+                "scene_audio3",
+                "scene_additional_prompt",
+                "scene_additional_prompt_2",
+                "scene_aspect_ratio",
+                "scene_image_number",
+                "scene_use_lora",
+                "scene_var_number2",
+                "scene_var_number4",
+                "scene_video_duration",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number7",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "scene_steps",
+                "scene_base_model",
+                "scene_refiner_model",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "task_method": {
+                "Topaz Starlight SLP-26": "topaz_starlight"
+            },
+            "video_duration_title": "Duration limit (seconds) [0 = no limit]",
+            "video_duration_min": 0,
+            "video_duration_max": 120,
+            "video_duration": {
+                "Topaz Starlight SLP-26": 0
+            },
+            "var_number_title": "Upscale factor",
+            "var_number": {
+                "Topaz Starlight SLP-26": 2.0
+            },
+            "var_number_min": 1.0,
+            "var_number_max": 4.0,
+            "var_number_step": 0.01,
+            "var_number3_title": "Enhancement strength",
+            "var_number3": {
+                "Topaz Starlight SLP-26": 1.0
+            },
+            "var_number3_min": 0.5,
+            "var_number3_max": 1.5,
+            "var_number3_step": 0.1,
+            "aspect_ratio": [
+                "origin|Original"
+            ],
+            "resolution_control": {
+                "mode": "input_passthrough",
+                "source": "scene_video",
+                "interactive": true,
+                "frontend_preprocess": false
+            }
+        }
+    },
+    "default_model": "None",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_clip_model": "Default (model)",
+    "default_loras": [
+        ["None", 1.0],
+        ["None", 1.0],
+        ["None", 1.0],
+        ["None", 1.0],
+        ["None", 1.0]
+    ],
+    "default_cfg_scale": 2.5,
+    "default_sample_sharpness": 2,
+    "default_sampler": "euler",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_image_number": 1,
+    "default_overwrite_step": 1,
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [],
+    "resource_bundles": [
+        {
+            "id": "topaz_engine_slp26",
+            "type": "archive",
+            "version": "neuroserver171-slp26",
+            "display_name": {
+                "en": "Topaz Starlight runtime + SLP-26 model",
+                "cn": "Topaz 星光运行环境与 SLP-26 模型"
+            },
+            "file_name": "topaz_engine.zip",
+            "url": "https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/topaz_engine.zip",
+            "size": 13372663393,
+            "sha256": "cc06eb17488c24f12171d6e6b67d8c75f43b0b2d983538ae7cbae3300636cb8c",
+            "install_base": "models_root",
+            "install_subdir": "topaz_engine",
+            "archive_root": "",
+            "required_paths": [
+                "neuroserver171/neuroserver.exe",
+                "bin171/ffmpeg.exe",
+                "bin171/ffprobe.exe",
+                "models/slp26/"
+            ]
+        }
+    ]
+}

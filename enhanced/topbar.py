@@ -350,6 +350,8 @@ PRESET_STORE_ORDER = [
     "ReActor-FaceSwap",
     "LivePortrait Exp",
     "LivePortrait Video",
+    "Topaz-Starlight",
+    "Depth Video",
     "GeneralAPIImage"
 ]
 
@@ -1149,6 +1151,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, dy
     state_params['__preset_supported_tasks'] = config.resolve_preset_supported_tasks(initial_config_preset, initial_preset)
     state_params['__preset_interaction_requirements'] = config.resolve_preset_interaction_requirements(initial_config_preset, initial_preset)
     state_params['__preset_model_list_raw'] = initial_config_preset.get('model_list', []) if isinstance(initial_config_preset, dict) else []
+    state_params['__preset_resource_bundles_raw'] = initial_config_preset.get('resource_bundles', []) if isinstance(initial_config_preset, dict) else []
     state_params['__preset_previous_default_model_info'] = {
         'default_model': initial_config_preset.get('default_model', '') if isinstance(initial_config_preset, dict) else '',
         'previous_default_models': initial_config_preset.get('previous_default_models', []) if isinstance(initial_config_preset, dict) else [],
@@ -1944,10 +1947,12 @@ def _build_preset_store_meta(state, copy_cached=True):
         default_prompt = ""
         default_prompt_negative = ""
         model_list_raw = []
+        resource_bundles_raw = []
         has_model_probe = False
         try:
             preset_content = _read_preset_content_silent(preset_name, user_did)
             model_list_raw = preset_content.get("model_list", []) if isinstance(preset_content, dict) else []
+            resource_bundles_raw = preset_content.get("resource_bundles", []) if isinstance(preset_content, dict) else []
             if isinstance(preset_content, dict):
                 preset_category = str(preset_content.get("preset_category") or "").strip()
                 raw_styles = preset_content.get("default_styles", [])
@@ -1964,7 +1969,7 @@ def _build_preset_store_meta(state, copy_cached=True):
                         default_styles = [item.strip().strip("[]'\"") for item in raw_styles.split(",") if item.strip().strip("[]'\"")]
                 default_prompt = str(preset_content.get("default_prompt") or preset_content.get("prompt") or "")
                 default_prompt_negative = str(preset_content.get("default_prompt_negative") or "")
-            has_model_probe = bool(model_list_raw) or _has_preset_model_probe(preset_name, user_did)
+            has_model_probe = bool(model_list_raw) or bool(resource_bundles_raw) or _has_preset_model_probe(preset_name, user_did)
             default_engine = preset_content.get("default_engine", {}) if isinstance(preset_content, dict) else {}
             if isinstance(default_engine, dict):
                 explicit_supported_tasks = (
@@ -2084,6 +2089,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             "default_prompt": default_prompt,
             "default_prompt_negative": default_prompt_negative,
             "model_list": copy.deepcopy(model_list_raw),
+            "resource_bundles": copy.deepcopy(resource_bundles_raw),
             "has_model_probe": bool(has_model_probe),
             "missing": display_name.endswith(PRESET_MISSING_MARKER),
             "order": order,
@@ -2440,6 +2446,20 @@ def _clean_scene_reference_video_path(value):
     return text
 
 
+def _forward_preset_native_process(state_params, backend_params):
+    if not isinstance(state_params, dict) or not isinstance(backend_params, dict):
+        return
+    preset_prepared = state_params.get("__preset_prepared")
+    if not isinstance(preset_prepared, dict):
+        return
+    preset_engine = preset_prepared.get("engine")
+    if not isinstance(preset_engine, dict):
+        return
+    native_process = preset_engine.get("native_process")
+    if native_process and not backend_params.get("native_process"):
+        backend_params["native_process"] = native_process
+
+
 def _resolve_scene_video_trim(component_path, original_path, trim_payload):
     from enhanced import sam3_video_mask as _sam3_video_mask
 
@@ -2498,8 +2518,10 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         nickname=_state_user_nickname(state_params),
         user_did=user_did,
         preset=state_params.get("__preset", ""),
+        __lang=state_params.get("__lang"),
         engine_type=state_params.get("engine_type", "image"),
         ))
+    _forward_preset_native_process(state_params, backend_params)
     state_upscale_model = str(state_params.get("upscale_model") or "").replace("\\", os.sep).replace("/", os.sep).lstrip(os.sep)
     if state_upscale_model:
         if state_upscale_model.lower() not in ("auto", "default") or "upscale_model" not in backend_params:
@@ -3368,6 +3390,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     state_params['__preset_supported_tasks'] = config.resolve_preset_supported_tasks(config_preset, resolved_preset)
     state_params['__preset_interaction_requirements'] = config.resolve_preset_interaction_requirements(config_preset, resolved_preset)
     state_params['__preset_model_list_raw'] = config_preset.get('model_list', []) if isinstance(config_preset, dict) else []
+    state_params['__preset_resource_bundles_raw'] = config_preset.get('resource_bundles', []) if isinstance(config_preset, dict) else []
     state_params['__preset_previous_default_model_info'] = {
         'default_model': config_preset.get('default_model', '') if isinstance(config_preset, dict) else '',
         'previous_default_models': config_preset.get('previous_default_models', []) if isinstance(config_preset, dict) else [],
@@ -4057,6 +4080,8 @@ def delete_user_preset_from_store(payload, state):
     try:
         model_loader.presets_model_list.pop(display_name, None)
         model_loader.presets_model_list.pop(display_name[:-1], None)
+        getattr(model_loader, "presets_resource_bundles", {}).pop(display_name, None)
+        getattr(model_loader, "presets_resource_bundles", {}).pop(display_name[:-1], None)
     except Exception:
         pass
 

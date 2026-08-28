@@ -7,6 +7,11 @@ import queue
 import json
 import ast
 import time
+import hashlib
+import shutil
+import stat
+import tempfile
+import zipfile
 import shared
 from urllib.parse import urlparse
 from typing import Optional
@@ -34,6 +39,9 @@ PREVIOUS_DEFAULT_MODEL_FIELDS = (
     ("default_model", "previous_default_models"),
     ("default_refiner", "previous_default_refiners"),
 )
+RESOURCE_BUNDLE_TYPE = "archive"
+RESOURCE_TASK_PREFIX = "resource/"
+RESOURCE_CACHE_DIR_NAME = ".resource_downloads"
 
 
 class DownloadCancelled(Exception):
@@ -71,7 +79,7 @@ def _mark_download_error(task_id, message, file_name=""):
     download_progress[task_id] = current
 
 
-def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size=0):
+def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size=0, kind="model", resource_id=""):
     if not task_id:
         return
     previous = download_task_metadata.get(task_id) or {}
@@ -81,6 +89,8 @@ def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size
         "model_dir": model_dir or "",
         "url": url or "",
         "size": _normalize_expected_size(size),
+        "kind": str(kind or previous.get("kind") or "model"),
+        "resource_id": str(resource_id or previous.get("resource_id") or ""),
         "created_at": float(previous.get("created_at") or time.time()),
     }
 
@@ -207,6 +217,8 @@ def get_download_queue_snapshot():
                 status = "error"
             elif cancelled:
                 status = "stopped"
+            elif active and str(progress.get("phase") or "").strip().lower() == "installing":
+                status = "installing"
             elif active and current <= 0:
                 status = "queued"
             elif active:
@@ -219,6 +231,9 @@ def get_download_queue_snapshot():
                     "file_name": progress.get("file_name") or meta.get("file_name") or os.path.basename(str(task_id)),
                     "model_dir": meta.get("model_dir", ""),
                     "url": meta.get("url", ""),
+                    "kind": meta.get("kind", "model"),
+                    "resource_id": meta.get("resource_id", ""),
+                    "phase": progress.get("phase", ""),
                     "current": current,
                     "total": total,
                     "percent": percent,
@@ -230,7 +245,13 @@ def get_download_queue_snapshot():
             )
     return sorted(rows, key=lambda item: (item.get("created_at", 0.0), item.get("task_id", "")))
 
-async def download_file_with_progress(url: str, file_path: str, size: int=0, task_id: Optional[str] = None):
+async def download_file_with_progress(
+        url: str,
+        file_path: str,
+        size: int = 0,
+        task_id: Optional[str] = None,
+        refresh_models_info: bool = True,
+):
     global download_progress
     file_name = os.path.basename(file_path)
     progress_key = task_id or file_name
@@ -315,9 +336,11 @@ async def download_file_with_progress(url: str, file_path: str, size: int=0, tas
                             }
 
             downloaded_size = os.path.getsize(partial_file_path)
-            if downloaded_size == total_size or downloaded_size == size:
+            expected_total = total_size or size
+            if expected_total <= 0 or downloaded_size == expected_total:
                 os.replace(partial_file_path, file_path)
-                shared.modelsinfo.refresh_file('add', file_path, url)
+                if refresh_models_info:
+                    shared.modelsinfo.refresh_file('add', file_path, url)
                 _clear_missing_model_list_cache()
                 logger.info(f"文件下载完成: {file_path}")
                 if progress_key in download_progress:
@@ -528,6 +551,7 @@ def load_file_from_url(
 
 
 presets_model_list = {}
+presets_resource_bundles = {}
 presets_previous_default_models = {}
 presets_mtime = {}
 missing_model_list_cache = {}
@@ -670,6 +694,652 @@ def _get_preset_file_for_missing_models(preset_name, user_did=None):
         if os.path.exists(preset_path_with_arch):
             return preset_path_with_arch
     return preset_path
+
+
+def _clean_resource_relative_path(value, *, allow_empty=False):
+    raw = str(value or "").strip().replace("\\", "/")
+    if not raw:
+        if allow_empty:
+            return ""
+        raise ValueError("resource path is empty")
+    if raw.startswith("/") or raw.startswith("\\") or (len(raw) >= 2 and raw[1] == ":"):
+        raise ValueError(f"absolute resource path is not allowed: {value}")
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise ValueError(f"resource path traversal is not allowed: {value}")
+        parts.append(part)
+    if not parts and not allow_empty:
+        raise ValueError("resource path is empty")
+    return "/".join(parts)
+
+
+def _clean_resource_id(value):
+    raw = str(value or "").strip()
+    cleaned = "".join(char if (char.isalnum() or char in "._-") else "_" for char in raw)
+    return cleaned.strip("._-")
+
+
+def _parse_resource_bundle_entries(raw_resource_bundles):
+    bundles = []
+    for raw_entry in raw_resource_bundles or []:
+        if not isinstance(raw_entry, dict):
+            continue
+        bundle_type = str(raw_entry.get("type") or RESOURCE_BUNDLE_TYPE).strip().lower()
+        if bundle_type != RESOURCE_BUNDLE_TYPE:
+            continue
+        resource_id = _clean_resource_id(raw_entry.get("id") or raw_entry.get("name"))
+        if not resource_id:
+            continue
+        file_name = str(raw_entry.get("file_name") or "").strip().replace("\\", "/")
+        file_name = os.path.basename(file_name)
+        if not file_name or file_name in {".", ".."}:
+            continue
+        required_raw = raw_entry.get("required_paths", [])
+        if isinstance(required_raw, str):
+            required_raw = [required_raw]
+        required_paths = []
+        for required_path in required_raw or []:
+            required_text = str(required_path or "").strip()
+            if not required_text:
+                continue
+            requires_directory = required_text.replace("\\", "/").endswith("/")
+            try:
+                normalized = _clean_resource_relative_path(required_text)
+            except ValueError:
+                continue
+            required_paths.append(f"{normalized}/" if requires_directory else normalized)
+        if not required_paths:
+            continue
+        try:
+            size = int(raw_entry.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        archive_root = raw_entry.get("archive_root", "")
+        try:
+            archive_root = _clean_resource_relative_path(archive_root, allow_empty=True)
+        except ValueError:
+            continue
+        install_subdir = raw_entry.get("install_subdir") or ""
+        try:
+            install_subdir = _clean_resource_relative_path(install_subdir)
+        except ValueError:
+            continue
+        url = raw_entry.get("url") or ""
+        if isinstance(url, (list, tuple)):
+            url = [str(item or "").strip() for item in url if str(item or "").strip()]
+        else:
+            url = str(url).strip()
+        bundles.append(
+            {
+                "id": resource_id,
+                "type": RESOURCE_BUNDLE_TYPE,
+                "version": str(raw_entry.get("version") or "").strip(),
+                "display_name": dict(raw_entry.get("display_name") or {}) if isinstance(raw_entry.get("display_name"), dict) else {},
+                "file_name": file_name,
+                "url": url,
+                "size": size,
+                "sha256": str(raw_entry.get("sha256") or "").strip().lower(),
+                "install_base": str(raw_entry.get("install_base") or "models_root").strip().lower(),
+                "install_subdir": install_subdir,
+                "archive_root": archive_root,
+                "required_paths": required_paths,
+            }
+        )
+    return bundles
+
+
+def _resource_task_id(resource_id):
+    cleaned = _clean_resource_id(resource_id)
+    return f"{RESOURCE_TASK_PREFIX}{cleaned}" if cleaned else ""
+
+
+def _get_cached_preset_resource_bundles(preset_name, user_did=None):
+    arch_str = get_gpu_arch_str_in_preset_name()
+    cache_names = []
+    if preset_name.endswith("."):
+        if user_did:
+            cache_names.append(f"{preset_name}{user_did[:7]}")
+    else:
+        if arch_str:
+            cache_names.append(f"{preset_name}{arch_str}")
+        cache_names.append(preset_name)
+
+    for cache_name in cache_names:
+        if cache_name in presets_resource_bundles:
+            return cache_name, presets_resource_bundles.get(cache_name) or [], presets_mtime.get(cache_name, 0)
+    return None, None, 0
+
+
+def _resource_install_root(bundle):
+    from modules.config import path_models_root
+
+    bundle = bundle if isinstance(bundle, dict) else {}
+    install_base = str(bundle.get("install_base") or "models_root").strip().lower()
+    if install_base == "models_root":
+        base_dir = os.path.abspath(str(path_models_root))
+    elif install_base == "app_root":
+        base_dir = os.path.abspath(os.getcwd())
+    else:
+        raise ValueError(f"Unsupported resource install base: {install_base}")
+
+    relative = _clean_resource_relative_path(bundle.get("install_subdir"))
+    target = os.path.abspath(os.path.join(base_dir, *relative.split("/")))
+    if os.path.commonpath([base_dir, target]) != base_dir:
+        raise ValueError("Resource install path escapes its base directory")
+    return target
+
+
+def _resource_archive_path(bundle):
+    target = _resource_install_root(bundle)
+    resource_id = _clean_resource_id(bundle.get("id")) or "resource"
+    return os.path.join(target, os.pardir, RESOURCE_CACHE_DIR_NAME, resource_id, str(bundle.get("file_name") or "resource.zip"))
+
+
+def _resource_archive_candidates(bundle):
+    file_name = os.path.basename(str(bundle.get("file_name") or "").strip().replace("\\", "/"))
+    if not file_name or file_name in {".", ".."}:
+        return []
+
+    candidates = []
+    try:
+        candidates.append(_resource_archive_path(bundle))
+    except (OSError, ValueError, TypeError):
+        pass
+
+    try:
+        target_root = _resource_install_root(bundle)
+    except (OSError, ValueError, TypeError):
+        target_root = ""
+
+    search_dirs = [target_root] if target_root else []
+    ancestor = target_root
+    for _ in range(4):
+        ancestor = os.path.dirname(ancestor) if ancestor else ""
+        if ancestor:
+            search_dirs.append(ancestor)
+    search_dirs.extend(
+        [
+            os.path.abspath(os.getcwd()),
+            os.path.dirname(os.path.abspath(__file__)),
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        ]
+    )
+    for directory in search_dirs:
+        if directory:
+            candidates.append(os.path.join(directory, file_name))
+
+    result = []
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.normpath(os.path.abspath(candidate))
+        key = os.path.normcase(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return result
+
+
+def _resource_bundle_required_path(root_dir, required_path):
+    requires_directory = str(required_path or "").endswith("/")
+    normalized = _clean_resource_relative_path(required_path)
+    candidate = os.path.abspath(os.path.join(root_dir, *normalized.split("/")))
+    if os.path.commonpath([os.path.abspath(root_dir), candidate]) != os.path.abspath(root_dir):
+        raise ValueError("Required resource path escapes the package root")
+    return candidate, requires_directory
+
+
+def is_resource_bundle_installed(bundle):
+    try:
+        target = _resource_install_root(bundle)
+        if not os.path.isdir(target):
+            return False
+        for required_path in bundle.get("required_paths", []) or []:
+            candidate, requires_directory = _resource_bundle_required_path(target, required_path)
+            if requires_directory:
+                if not os.path.isdir(candidate):
+                    return False
+            elif not os.path.isfile(candidate):
+                return False
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def get_resource_bundles(preset_name, user_did=None):
+    cached_name, bundles, _source_mtime = _get_cached_preset_resource_bundles(preset_name, user_did)
+    if cached_name is not None:
+        return list(bundles or [])
+    preset_path = _get_preset_file_for_missing_models(preset_name, user_did)
+    if not preset_path or not os.path.exists(preset_path):
+        return []
+    try:
+        with open(preset_path, "r", encoding="utf-8") as json_file:
+            config_preset = json.load(json_file)
+    except Exception:
+        return []
+    return _parse_resource_bundle_entries(config_preset.get("resource_bundles", [])) if isinstance(config_preset, dict) else []
+
+
+def get_missing_resource_bundles(preset_name, user_did=None, raw_resource_bundles=None):
+    if raw_resource_bundles is None:
+        bundles = get_resource_bundles(preset_name, user_did=user_did)
+    else:
+        bundles = _parse_resource_bundle_entries(raw_resource_bundles)
+    missing = []
+    for bundle in bundles:
+        if _install_local_resource_bundle(bundle):
+            continue
+        item = dict(bundle)
+        item["task_id"] = _resource_task_id(bundle.get("id"))
+        item["human_size"] = format_size(bundle.get("size", 0))
+        missing.append(item)
+    return missing
+
+
+def get_missing_resource_bundles_from_entries(preset_name, raw_resource_bundles, user_did=None):
+    return get_missing_resource_bundles(
+        preset_name,
+        user_did=user_did,
+        raw_resource_bundles=raw_resource_bundles,
+    )
+
+
+def _sha256_file(file_path, task_id=None):
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as file_handle:
+        while True:
+            if task_id and _is_download_cancelled(task_id):
+                raise DownloadCancelled(f"下载任务已停止: {task_id}")
+            chunk = file_handle.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_resource_archive(archive_path, bundle, task_id=None):
+    expected_size = _normalize_expected_size(bundle.get("size", 0))
+    if expected_size > 0 and os.path.getsize(archive_path) != expected_size:
+        raise ValueError(
+            f"Resource archive size mismatch: expected {expected_size}, got {os.path.getsize(archive_path)}"
+        )
+    expected_hash = str(bundle.get("sha256") or "").strip().lower()
+    if expected_hash:
+        actual_hash = _sha256_file(archive_path, task_id=task_id)
+        if actual_hash != expected_hash:
+            raise ValueError(f"Resource archive SHA-256 mismatch: expected {expected_hash}, got {actual_hash}")
+    with zipfile.ZipFile(archive_path, "r"):
+        pass
+    return True
+
+
+def _resource_archive_is_ready(archive_path, bundle):
+    if not os.path.isfile(archive_path):
+        return False
+    try:
+        return _verify_resource_archive(archive_path, bundle)
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False
+
+
+def _find_existing_resource_archive(bundle, verify=True):
+    for archive_path in _resource_archive_candidates(bundle):
+        if not os.path.isfile(archive_path):
+            continue
+        if verify:
+            if _resource_archive_is_ready(archive_path, bundle):
+                return archive_path
+            continue
+        expected_size = _normalize_expected_size(bundle.get("size", 0))
+        try:
+            if expected_size <= 0 or os.path.getsize(archive_path) == expected_size:
+                return archive_path
+        except OSError:
+            continue
+    return None
+
+
+def _cleanup_installed_resource_archives(bundle):
+    expected_size = _normalize_expected_size(bundle.get("size", 0))
+    if expected_size <= 0:
+        return
+    for archive_path in _resource_archive_candidates(bundle):
+        if not os.path.isfile(archive_path):
+            continue
+        try:
+            if os.path.getsize(archive_path) != expected_size:
+                continue
+            os.remove(archive_path)
+        except OSError:
+            continue
+
+
+def _safe_archive_member_path(member_name):
+    raw = str(member_name or "").replace("\\", "/")
+    if not raw:
+        return ""
+    if raw.startswith("/") or raw.startswith("\\") or (len(raw) >= 2 and raw[1] == ":"):
+        raise ValueError(f"Archive contains an absolute path: {member_name}")
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise ValueError(f"Archive contains a path traversal entry: {member_name}")
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _zip_entry_is_symlink(entry):
+    mode = (int(entry.external_attr) >> 16) & 0o170000
+    return mode == stat.S_IFLNK
+
+
+def _set_resource_progress(task_id, *, current, total, phase, file_name):
+    download_progress[task_id] = {
+        "percent": (float(current) / float(total) * 100.0) if total > 0 else 0.0,
+        "current": int(max(0, current)),
+        "total": int(max(0, total)),
+        "file_name": file_name,
+        "phase": phase,
+    }
+
+
+def _extract_resource_archive(archive_path, staging_root, bundle, task_id):
+    archive_root = str(bundle.get("archive_root") or "").strip().replace("\\", "/").strip("/")
+    prefix = f"{archive_root}/" if archive_root else ""
+    extracted_total = 0
+    extracted_current = 0
+    found_entries = False
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        entries = archive.infolist()
+        for entry in entries:
+            if not entry.is_dir() and not entry.filename.endswith("/"):
+                extracted_total += max(0, int(entry.file_size or 0))
+        _set_resource_progress(
+            task_id,
+            current=0,
+            total=extracted_total,
+            phase="installing",
+            file_name=str(bundle.get("file_name") or "resource.zip"),
+        )
+        for entry in entries:
+            if _is_download_cancelled(task_id):
+                raise DownloadCancelled(f"下载任务已停止: {task_id}")
+            member_path = _safe_archive_member_path(entry.filename)
+            if not member_path:
+                continue
+            if archive_root:
+                if member_path == archive_root:
+                    continue
+                if not member_path.startswith(prefix):
+                    raise ValueError(f"Archive entry is outside archive_root: {entry.filename}")
+                member_path = member_path[len(prefix):]
+            if not member_path:
+                continue
+            if _zip_entry_is_symlink(entry):
+                raise ValueError(f"Archive symlinks are not supported: {entry.filename}")
+            destination = os.path.abspath(os.path.join(staging_root, *member_path.split("/")))
+            if os.path.commonpath([os.path.abspath(staging_root), destination]) != os.path.abspath(staging_root):
+                raise ValueError(f"Archive entry escapes staging directory: {entry.filename}")
+            found_entries = True
+            if entry.is_dir() or entry.filename.endswith("/"):
+                os.makedirs(destination, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with archive.open(entry, "r") as source, open(destination, "wb") as target:
+                while True:
+                    if _is_download_cancelled(task_id):
+                        raise DownloadCancelled(f"下载任务已停止: {task_id}")
+                    chunk = source.read(8 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    extracted_current += len(chunk)
+                    _set_resource_progress(
+                        task_id,
+                        current=extracted_current,
+                        total=extracted_total,
+                        phase="installing",
+                        file_name=str(bundle.get("file_name") or "resource.zip"),
+                    )
+    if not found_entries:
+        raise ValueError("Resource archive contains no installable entries")
+
+
+def _validate_resource_bundle_directory(root_dir, bundle):
+    for required_path in bundle.get("required_paths", []) or []:
+        candidate, requires_directory = _resource_bundle_required_path(root_dir, required_path)
+        if requires_directory:
+            valid = os.path.isdir(candidate)
+        else:
+            valid = os.path.isfile(candidate)
+        if not valid:
+            raise ValueError(f"Required resource path is missing: {required_path}")
+    return True
+
+
+def _remove_path(path):
+    if not path or not os.path.lexists(path):
+        return
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
+
+
+def _install_resource_bundle(archive_path, bundle, task_id):
+    target_root = _resource_install_root(bundle)
+    parent_dir = os.path.dirname(target_root)
+    os.makedirs(parent_dir, exist_ok=True)
+    staging_root = tempfile.mkdtemp(
+        prefix=f".{os.path.basename(target_root)}.staging-",
+        dir=parent_dir,
+    )
+    backup_root = f"{target_root}.backup-{time.time_ns()}"
+    moved_existing = False
+    try:
+        _extract_resource_archive(archive_path, staging_root, bundle, task_id)
+        _validate_resource_bundle_directory(staging_root, bundle)
+        marker_path = os.path.join(staging_root, ".simpleai-resource.json")
+        with open(marker_path, "w", encoding="utf-8") as marker_file:
+            json.dump(
+                {
+                    "id": bundle.get("id", ""),
+                    "version": bundle.get("version", ""),
+                    "sha256": bundle.get("sha256", ""),
+                    "installed_at": time.time(),
+                },
+                marker_file,
+                ensure_ascii=False,
+                indent=2,
+            )
+        if os.path.lexists(target_root):
+            os.rename(target_root, backup_root)
+            moved_existing = True
+        os.rename(staging_root, target_root)
+        staging_root = ""
+        if moved_existing:
+            _remove_path(backup_root)
+        return target_root
+    except Exception:
+        if os.path.lexists(target_root) and moved_existing:
+            _remove_path(target_root)
+        if moved_existing and os.path.lexists(backup_root) and not os.path.lexists(target_root):
+            os.rename(backup_root, target_root)
+        raise
+    finally:
+        if staging_root:
+            _remove_path(staging_root)
+        if os.path.lexists(backup_root):
+            _remove_path(backup_root)
+
+
+def _install_local_resource_bundle(bundle):
+    if is_resource_bundle_installed(bundle):
+        _cleanup_installed_resource_archives(bundle)
+        return True
+
+    archive_path = _find_existing_resource_archive(bundle, verify=True)
+    if not archive_path:
+        return False
+
+    task_id = _resource_task_id(bundle.get("id"))
+    try:
+        _install_resource_bundle(archive_path, bundle, task_id)
+        if os.path.isfile(archive_path):
+            os.remove(archive_path)
+        if task_id not in download_tasks:
+            download_progress.pop(task_id, None)
+        logger.info("已安装用户放置的资源包: %s", _resource_install_root(bundle))
+        return True
+    except Exception as error:
+        logger.warning("用户放置的资源包安装失败: %s (%s)", archive_path, error)
+        return False
+
+
+def _download_resource_bundle_task(task_id, bundle):
+    local_archive_path = None
+    archive_path = None
+    file_name = str(bundle.get("file_name") or "resource.zip")
+    success = False
+    try:
+        local_archive_path = _find_existing_resource_archive(bundle, verify=True)
+        archive_path = local_archive_path or _resource_archive_path(bundle)
+        file_name = str(bundle.get("file_name") or os.path.basename(archive_path))
+        if not local_archive_path:
+            os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        if not local_archive_path and not _resource_archive_is_ready(archive_path, bundle):
+            if os.path.isfile(archive_path):
+                try:
+                    os.remove(archive_path)
+                except OSError:
+                    pass
+            urls = _split_download_urls(bundle.get("url"))
+            if not urls:
+                raise ValueError("Resource bundle has no download URL")
+            last_error = None
+            for candidate_url in urls:
+                try:
+                    anyio.run(
+                        download_file_with_progress,
+                        _apply_hf_mirror(candidate_url),
+                        archive_path,
+                        _normalize_expected_size(bundle.get("size", 0)),
+                        task_id,
+                        False,
+                    )
+                    last_error = None
+                    break
+                except DownloadCancelled:
+                    raise
+                except Exception as error:
+                    last_error = error
+                    logger.warning("资源包下载地址失败，准备尝试下一个地址: %s", candidate_url)
+            if last_error is not None:
+                raise last_error
+        if not local_archive_path:
+            try:
+                _verify_resource_archive(archive_path, bundle, task_id=task_id)
+            except (ValueError, zipfile.BadZipFile):
+                try:
+                    os.remove(archive_path)
+                except OSError:
+                    pass
+                raise
+        else:
+            logger.info("检测到用户放置的资源包，直接安装: %s", archive_path)
+        if _is_download_cancelled(task_id):
+            raise DownloadCancelled(f"下载任务已停止: {task_id}")
+        _install_resource_bundle(archive_path, bundle, task_id)
+        success = True
+        if os.path.isfile(archive_path):
+            try:
+                os.remove(archive_path)
+            except OSError as error:
+                logger.warning("资源包已安装，但清理下载缓存失败: %s (%s)", archive_path, error)
+        _clear_missing_model_list_cache()
+        logger.info("资源包安装完成: %s", _resource_install_root(bundle))
+    except DownloadCancelled:
+        logger.info("资源包下载任务已停止: %s", task_id)
+        _mark_download_cancelled(task_id, file_name)
+    except Exception as error:
+        logger.exception("资源包下载或安装失败: %s", task_id)
+        _mark_download_error(task_id, error, file_name)
+    finally:
+        with task_lock:
+            download_tasks.discard(task_id)
+            download_cancel_requests.discard(task_id)
+            if success:
+                download_progress.pop(task_id, None)
+                download_task_metadata.pop(task_id, None)
+            elif task_id not in download_progress:
+                _mark_download_error(task_id, "resource download failed", file_name)
+
+
+def download_resource_bundle(bundle, user_did=None, async_task=True):
+    if user_did is None:
+        logger.warning("download_resource_bundle skipped: user_did is None")
+        return False
+    if shared.args.disable_backend:
+        logger.warning("download_resource_bundle skipped: backend is disabled")
+        return False
+    parsed = _parse_resource_bundle_entries([bundle])
+    if not parsed:
+        return False
+    bundle = parsed[0]
+    if _install_local_resource_bundle(bundle):
+        return _resource_task_id(bundle.get("id"))
+    task_id = _resource_task_id(bundle.get("id"))
+    if not task_id:
+        return False
+    with task_lock:
+        if task_id in download_tasks:
+            return task_id
+        if task_id in download_progress:
+            download_progress.pop(task_id, None)
+        download_cancel_requests.discard(task_id)
+        _remember_download_task(
+            task_id,
+            file_name=bundle.get("file_name", "resource.zip"),
+            model_dir=os.path.dirname(_resource_archive_path(bundle)),
+            url=bundle.get("url", ""),
+            size=bundle.get("size", 0),
+            kind="resource",
+            resource_id=bundle.get("id", ""),
+        )
+        download_progress[task_id] = {
+            "percent": 0.0,
+            "current": 0,
+            "total": _normalize_expected_size(bundle.get("size", 0)),
+            "file_name": bundle.get("file_name", "resource.zip"),
+            "queued": True,
+        }
+        download_tasks.add(task_id)
+    if async_task:
+        thread_pool.submit(_download_resource_bundle_task, task_id, bundle)
+    else:
+        _download_resource_bundle_task(task_id, bundle)
+    return task_id
+
+
+def download_resource_bundles(preset, user_did=None, async_task=True, raw_resource_bundles=None):
+    if raw_resource_bundles is None:
+        bundles = get_resource_bundles(preset, user_did=user_did)
+    else:
+        bundles = _parse_resource_bundle_entries(raw_resource_bundles)
+    for bundle in bundles:
+        if not _install_local_resource_bundle(bundle):
+            download_resource_bundle(bundle, user_did=user_did, async_task=async_task)
+    return True
+
+
+def get_resource_download_status(resource_id):
+    return get_download_status(_resource_task_id(resource_id))
 
 def _parse_model_list_entries(raw_model_list):
     model_list = []
@@ -823,7 +1493,7 @@ def _resolve_model_filepath(cata: str, path_file: str) -> str:
 
 def refresh_model_list(presets, user_did=None):
     from enhanced.simpleai import get_path_in_user_dir
-    global presets_model_list, presets_mtime
+    global presets_model_list, presets_resource_bundles, presets_mtime
 
     path_preset = os.path.abspath(f'./presets/')
     if user_did:
@@ -845,9 +1515,17 @@ def refresh_model_list(presets, user_did=None):
                     presets_mtime[preset] = mtime
                     with open(preset_file, "r", encoding="utf-8") as json_file:
                         config_preset = json.load(json_file)
-                    if 'model_list' in config_preset:
-                        model_list = _parse_model_list_entries(config_preset.get('model_list', []))
-                        presets_model_list[preset] = model_list
+                    if isinstance(config_preset, dict):
+                        if "model_list" in config_preset:
+                            model_list = _parse_model_list_entries(config_preset.get("model_list", []))
+                            presets_model_list[preset] = model_list
+                        else:
+                            presets_model_list.pop(preset, None)
+                        resource_bundles = _parse_resource_bundle_entries(config_preset.get("resource_bundles", []))
+                        if resource_bundles:
+                            presets_resource_bundles[preset] = resource_bundles
+                        else:
+                            presets_resource_bundles.pop(preset, None)
                         presets_previous_default_models[preset] = _preset_previous_default_model_info(config_preset)
                         _clear_missing_model_list_cache()
             except Exception as e:
@@ -857,7 +1535,6 @@ def refresh_model_list(presets, user_did=None):
             
 
 def check_models_exists(preset, user_did=None):
-    from modules.config import path_models_root
     global presets_model_list
 
     if preset.endswith('.'):
@@ -866,7 +1543,7 @@ def check_models_exists(preset, user_did=None):
         preset = f'{preset}{user_did[:7]}'
     model_list = [] if preset not in presets_model_list else presets_model_list[preset]
     previous_default_info = presets_previous_default_models.get(preset, {})
-    if len(model_list)>0:
+    if len(model_list) > 0:
         for cata, path_file, size, hash10, url in model_list:
             if path_file[:1]=='[' and path_file[-1:]==']':
                 path_file = [f'{path_file[1:-1]}/']
@@ -882,8 +1559,10 @@ def check_models_exists(preset, user_did=None):
                         continue
                     logger.debug(f'Missing model file in preset({preset}): {cata}, {path_file}')
                     return False
-        return True
-    return False
+    resource_bundles = get_resource_bundles(preset, user_did=user_did)
+    if any(not is_resource_bundle_installed(bundle) for bundle in resource_bundles):
+        return False
+    return bool(model_list or resource_bundles)
 def get_gpu_arch_str_in_preset_name():
     if shared.gpu_arch:
         if shared.gpu_arch.lower() == 'sm120':
@@ -892,10 +1571,10 @@ def get_gpu_arch_str_in_preset_name():
             return '_int4'
     return ''
 def is_models_file_absent(preset_name, user_did=None):
-    global presets_model_list
+    global presets_model_list, presets_resource_bundles
     if shared.args.disable_backend:
         return False
-    if preset_name in presets_model_list:
+    if preset_name in presets_model_list or preset_name in presets_resource_bundles:
         if check_models_exists(preset_name, user_did):
             return False
         else:
@@ -947,6 +1626,11 @@ def is_models_file_absent(preset_name, user_did=None):
                             # 记录缺失的文件信息
                             logger.debug(f'Missing model file in preset({preset_name}): {cata}, {path_file}')
                             return True
+
+        resource_bundles = _parse_resource_bundle_entries(config_preset.get("resource_bundles", []))
+        if any(not is_resource_bundle_installed(bundle) for bundle in resource_bundles):
+            logger.debug("Missing resource bundle in preset(%s)", preset_name)
+            return True
 
     return False
 

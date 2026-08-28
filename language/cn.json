@@ -2056,5 +2056,10 @@
   "Input interpretation follows the current player state until you choose another mode.": "输入方式会根据玩家当前状态自动判断，并保持到你选择其他方式。",
   "Story control remains active until you choose another input mode. The player stays present unless the story explicitly changes that state.": "剧情控制会保持到你选择其他输入方式；除非剧情明确改变状态，玩家仍保持在场。",
   "Player voice/action remains active until you choose another input mode.": "玩家台词或行动会保持到你选择其他输入方式。",
-  "Canvas data could not be restored. Reload the source image and try again.": "画布数据无法恢复，请重新载入原图后再生成。"
+  "Canvas data could not be restored. Reload the source image and try again.": "画布数据无法恢复，请重新载入原图后再生成。",
+  "Depth Anything V2 Depth Video": "深度视频",
+  "Depth Video": "深度视频",
+  "Topaz-Starlight": "Topaz星光超分",
+  "Enhancement strength": "增强强度",
+  "Topaz Starlight Video Upscale/Enhance": "Topaz 星光视频超分/增强"
 }

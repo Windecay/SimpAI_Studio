@@ -3305,9 +3305,11 @@ with shared.gradio_root:
                         "downloading": "Downloading",
                         "download_queue": "Download queue",
                         "queued": "Queued",
+                        "installing": "Installing",
                         "queue_empty": "No active downloads.",
                         "stop": "Stop",
                         "stopped": "Stopped",
+                        "resource": "Resource package",
                         "compatibility": "Compatibility fallback",
                         "compatible": "Using legacy model",
                         "using_legacy": "Using legacy",
@@ -3329,9 +3331,11 @@ with shared.gradio_root:
                         "downloading": "正在下载",
                         "download_queue": "下载队列",
                         "queued": "等待中",
+                        "installing": "正在安装",
                         "queue_empty": "没有正在下载的任务。",
                         "stop": "停止",
                         "stopped": "已停止",
+                        "resource": "资源包",
                         "compatibility": "兼容模式",
                         "compatible": "正在使用旧版模型",
                         "using_legacy": "当前旧版",
@@ -3533,11 +3537,31 @@ with shared.gradio_root:
                             return variant_name, variant_missing, variant_fallback
                     return preset_name, [], []
 
+                def _get_missing_resources_for_preset(preset_name, user_did=None, state_params=None):
+                    raw_resource_bundles = []
+                    if isinstance(state_params, dict) and state_params.get("__preset") == preset_name:
+                        raw_resource_bundles = state_params.get("__preset_resource_bundles_raw") or []
+                    if raw_resource_bundles:
+                        return model_loader.get_missing_resource_bundles_from_entries(
+                            preset_name,
+                            raw_resource_bundles,
+                            user_did=user_did,
+                        )
+                    return model_loader.get_missing_resource_bundles(preset_name, user_did=user_did)
+
                 def _get_missing_model_status(cata, path_file):
                     status_key = (str(cata) + "/" + str(path_file)).replace("\\", "/").strip("/")
                     return status_key, model_loader.get_download_status(status_key)
 
+                def _get_missing_resource_status(resource_item):
+                    resource_item = resource_item if isinstance(resource_item, dict) else {}
+                    status_key = str(resource_item.get("task_id") or "").strip()
+                    return status_key, model_loader.get_download_status(status_key) if status_key else None
+
                 def _calculate_missing_model_progress(missing_models):
+                    return _calculate_missing_model_progress_with_resources(missing_models, [])
+
+                def _calculate_missing_model_progress_with_resources(missing_models, resource_bundles=None):
                     total_current = 0
                     total_size = 0
                     has_error = False
@@ -3565,6 +3589,34 @@ with shared.gradio_root:
                         if row_total > 0:
                             total_size += row_total
 
+                        if status:
+                            if "error" in status or status.get("cancelled"):
+                                has_error = True
+                            else:
+                                has_in_progress = True
+                            if row_total > 0:
+                                total_current += max(0, min(status_current, row_total))
+
+                    for resource_item in resource_bundles or []:
+                        status_key, status = _get_missing_resource_status(resource_item)
+                        try:
+                            declared_size = int(resource_item.get("size", 0) or 0)
+                        except Exception:
+                            declared_size = 0
+                        status_total = 0
+                        status_current = 0
+                        if status:
+                            try:
+                                status_total = int(status.get("total", 0) or 0)
+                            except Exception:
+                                status_total = 0
+                            try:
+                                status_current = int(status.get("current", 0) or 0)
+                            except Exception:
+                                status_current = 0
+                        row_total = status_total or declared_size
+                        if row_total > 0:
+                            total_size += row_total
                         if status:
                             if "error" in status or status.get("cancelled"):
                                 has_error = True
@@ -3613,7 +3665,7 @@ with shared.gradio_root:
                             percent = 0.0
                         percent = max(0.0, min(100.0, percent))
                         progress_html = ""
-                        if status in ("queued", "downloading") and int(item.get("total", 0) or 0) > 0:
+                        if status in ("queued", "downloading", "installing") and int(item.get("total", 0) or 0) > 0:
                             progress_html = f'<progress value="{int(percent)}" max="100"></progress>'
                         size_text = _format_missing_model_queue_size(item.get("current"), item.get("total"))
                         meta_parts = [part for part in [item.get("task_id"), size_text] if part]
@@ -3621,25 +3673,40 @@ with shared.gradio_root:
                         error_text = str(item.get("error") or "")
                         status_title = f' title="{html.escape(error_text)}"' if error_text else ""
                         task_id = str(item.get("task_id") or "")
-                        cata, path_file = ("", "")
-                        if "/" in task_id:
-                            cata, path_file = task_id.split("/", 1)
                         queue_action_html = ""
-                        if status in ("queued", "downloading") and cata and path_file:
-                            queue_payload = json.dumps(
-                                {
-                                    "kind": "queue",
-                                    "preset": "",
-                                    "cata": cata,
-                                    "path_file": path_file,
-                                },
-                                ensure_ascii=False,
-                            )
-                            queue_action_html = (
-                                '<button type="button" class="missing-model-cancel-one" '
-                                f'data-model-payload="{html.escape(queue_payload, quote=True)}">'
-                                f'{html.escape(_missing_model_text("stop", state_params))}</button>'
-                            )
+                        if status in ("queued", "downloading", "installing") and task_id:
+                            if str(item.get("kind") or "model") == "resource":
+                                queue_payload = json.dumps(
+                                    {
+                                        "kind": "queue",
+                                        "preset": "",
+                                        "task_id": task_id,
+                                        "resource_id": item.get("resource_id") or "",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            else:
+                                cata, path_file = ("", "")
+                                if "/" in task_id:
+                                    cata, path_file = task_id.split("/", 1)
+                                if not cata or not path_file:
+                                    queue_payload = ""
+                                else:
+                                    queue_payload = json.dumps(
+                                        {
+                                            "kind": "queue",
+                                            "preset": "",
+                                            "cata": cata,
+                                            "path_file": path_file,
+                                        },
+                                        ensure_ascii=False,
+                                    )
+                            if queue_payload:
+                                queue_action_html = (
+                                    '<button type="button" class="missing-model-cancel-one" '
+                                    f'data-model-payload="{html.escape(queue_payload, quote=True)}">'
+                                    f'{html.escape(_missing_model_text("stop", state_params))}</button>'
+                                )
                         rows.append(
                             '<div class="missing-model-queue-row">'
                             '<div class="mm-model-main">'
@@ -3647,7 +3714,7 @@ with shared.gradio_root:
                             f'<div class="mm-model-meta">{meta_html}</div>'
                             '</div>'
                             f'<div class="mm-model-status"><span class="mm-row-status {html.escape(status)}"{status_title}>{html.escape(status_text)}'
-                            f'{(" %.1f%%" % percent) if status == "downloading" else ""}</span>{progress_html}</div>'
+                            f'{(" %.1f%%" % percent) if status in ("downloading", "installing") else ""}</span>{progress_html}</div>'
                             f'<div class="mm-model-action">{queue_action_html}</div>'
                             '</div>'
                         )
@@ -3846,8 +3913,98 @@ with shared.gradio_root:
                         '</div></div>'
                     )
 
-                def _render_missing_model_list_html(preset_name, missing_models, fallback_models=None, state_params=None, payload_extra=None):
+                def _resource_bundle_display_name(resource_item, state_params=None):
+                    resource_item = resource_item if isinstance(resource_item, dict) else {}
+                    display_name = resource_item.get("display_name") if isinstance(resource_item.get("display_name"), dict) else {}
+                    lang = _missing_model_lang(state_params)
+                    localized = display_name.get("cn" if lang == "cn" else "en") or display_name.get("en") or display_name.get("cn")
+                    return str(localized or resource_item.get("file_name") or resource_item.get("id") or "resource")
+
+                def _render_missing_resource_html(preset_name, resource_bundles, state_params=None):
+                    if not resource_bundles:
+                        return ""
+                    rows = []
+                    for resource_item in resource_bundles:
+                        if not isinstance(resource_item, dict):
+                            continue
+                        resource_id = str(resource_item.get("id") or "").strip()
+                        task_id = str(resource_item.get("task_id") or "").strip()
+                        status_key = task_id or f"resource/{resource_id}"
+                        status = model_loader.get_download_status(status_key)
+                        status_html = '<span class="mm-row-status idle">{}</span>'.format(
+                            html.escape(_missing_model_text("missing", state_params))
+                        )
+                        button_text = _missing_model_text("download", state_params)
+                        button_class = "missing-model-download-one"
+                        if status:
+                            if status.get("cancelled"):
+                                status_html = f'<span class="mm-row-status cancelled">{html.escape(_missing_model_text("stopped", state_params))}</span>'
+                                button_text = _missing_model_text("retry", state_params)
+                            elif "error" in status:
+                                error_text = html.escape(str(status.get("error") or ""))
+                                status_html = f'<span class="mm-row-status error" title="{error_text}">{html.escape(_missing_model_text("error", state_params))}</span>'
+                                button_text = _missing_model_text("retry", state_params)
+                            else:
+                                try:
+                                    percent = float(status.get("percent", 0.0) or 0.0)
+                                except Exception:
+                                    percent = 0.0
+                                phase = str(status.get("phase") or "").strip().lower()
+                                status_label = _missing_model_text("installing", state_params) if phase == "installing" else _missing_model_text("downloading", state_params)
+                                status_html = (
+                                    f'<span class="mm-row-status downloading">{html.escape(status_label)} {percent:.1f}%</span>'
+                                    f'<progress value="{int(max(0, min(100, percent)))}" max="100"></progress>'
+                                )
+                                button_text = _missing_model_text("stop", state_params)
+                                button_class = "missing-model-cancel-one"
+                        payload = json.dumps(
+                            {
+                                "kind": "resource",
+                                "preset": preset_name,
+                                "resource_id": resource_id,
+                                "task_id": task_id,
+                            },
+                            ensure_ascii=False,
+                        )
+                        rows.append(
+                            '<div class="missing-model-row missing-resource-row" data-status-key="{status_key}">'
+                            '<div class="mm-model-main">'
+                            '<div class="mm-model-name" title="{full_name}">{model_name}</div>'
+                            '<div class="mm-model-meta"><span>{resource_label}</span><span>{human_size}</span></div>'
+                            '</div>'
+                            '<div class="mm-model-status">{status_html}</div>'
+                            '<button type="button" class="{button_class}" data-model-payload="{payload}">{button_text}</button>'
+                            '</div>'
+                            .format(
+                                status_key=html.escape(status_key),
+                                full_name=html.escape(str(resource_item.get("file_name") or resource_id)),
+                                model_name=html.escape(_resource_bundle_display_name(resource_item, state_params)),
+                                resource_label=html.escape(_missing_model_text("resource", state_params)),
+                                human_size=html.escape(str(resource_item.get("human_size") or "")),
+                                status_html=status_html,
+                                button_class=html.escape(button_class),
+                                payload=html.escape(payload, quote=True),
+                                button_text=html.escape(button_text),
+                            )
+                        )
+                    if not rows:
+                        return ""
+                    return (
+                        '<div class="missing-model-preset-section">'
+                        f'<div class="missing-model-section-title">{html.escape(_missing_model_text("resource", state_params))}</div>'
+                        '<div class="missing-model-html">'
+                        '<div class="missing-model-html-head">'
+                        f'<span>{html.escape(_missing_model_text("model", state_params))}</span>'
+                        f'<span>{html.escape(_missing_model_text("status", state_params))}</span>'
+                        f'<span>{html.escape(_missing_model_text("action", state_params))}</span>'
+                        '</div>'
+                        + "".join(rows)
+                        + '</div></div>'
+                    )
+
+                def _render_missing_model_list_html(preset_name, missing_models, fallback_models=None, state_params=None, payload_extra=None, resource_bundles=None):
                     fallback_models = fallback_models or []
+                    resource_bundles = resource_bundles or []
                     current_html = _render_missing_model_required_html(
                         preset_name,
                         missing_models,
@@ -3856,8 +4013,9 @@ with shared.gradio_root:
                         show_empty=(not fallback_models),
                     )
                     fallback_html = _render_missing_model_fallback_html(preset_name, fallback_models, state_params, payload_extra)
+                    resource_html = _render_missing_resource_html(preset_name, resource_bundles, state_params)
                     queue_html = _render_download_queue_html(state_params)
-                    body_html = current_html + fallback_html
+                    body_html = current_html + fallback_html + resource_html
                     if queue_html:
                         return '<div class="missing-model-panel">' + body_html + queue_html + '</div>'
                     return body_html
@@ -3936,6 +4094,7 @@ with shared.gradio_root:
                     user_did = _get_state_user_did(state_params)
                     start_perf = time.perf_counter()
                     preset_name, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                    resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     _set_missing_model_active_context(
                         state_params,
                         {"kind": "preset", "preset": preset_name},
@@ -3951,11 +4110,16 @@ with shared.gradio_root:
                         after_missing - start_perf,
                     )
 
-                    if missing_models or fallback_models:
+                    if missing_models or fallback_models or resource_bundles:
                         total_size = 0
                         for cata, path_file, human_size, url, size in list(missing_models or []) + _fallback_progress_rows(fallback_models):
                             try:
                                 total_size += int(size or 0)
+                            except Exception:
+                                pass
+                        for resource_item in resource_bundles:
+                            try:
+                                total_size += int(resource_item.get("size", 0) or 0)
                             except Exception:
                                 pass
 
@@ -3964,7 +4128,13 @@ with shared.gradio_root:
                         if total_size > 0:
                             progress_value = _make_missing_model_progress_html(0, state_params)
                             progress_visible = True
-                        html_value = _render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params)
+                        html_value = _render_missing_model_list_html(
+                            preset_name,
+                            missing_models,
+                            fallback_models,
+                            state_params,
+                            resource_bundles=resource_bundles,
+                        )
                         after_render = time.perf_counter()
                         util.log_ui_trace(
                             logger,
@@ -3981,7 +4151,13 @@ with shared.gradio_root:
                                 gr_update(visible=progress_visible, value=progress_value),
                                 gr_update(visible=True, value=_missing_model_text("download_all", state_params))]
                     else:
-                        html_value = _render_missing_model_list_html(preset_name, [], [], state_params)
+                        html_value = _render_missing_model_list_html(
+                            preset_name,
+                            [],
+                            [],
+                            state_params,
+                            resource_bundles=[],
+                        )
                         if _missing_model_panel_has_visible_rows(html_value):
                             return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=html_value), gr_update(visible=False, value=""), gr_update(visible=False)]
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value=""), gr_update(visible=False)]
@@ -3996,15 +4172,37 @@ with shared.gradio_root:
                     elif active_context.get("kind") == "preset":
                         preset_name = str(active_context.get("preset") or "").strip()
                         _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     else:
                         preset_name = str(state_params.get('__preset', '') or '').strip() if isinstance(state_params, dict) else ""
                         _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params) if preset_name else ("", [], [])
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params) if preset_name else []
 
-                    html_value = _render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)
+                    if active_context.get("kind") == "vlm":
+                        resource_bundles = []
+
+                    if not payload_extra and not resource_bundles:
+                        html_value = _render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params)
+                    else:
+                        html_value = _render_missing_model_list_html(
+                            preset_name,
+                            missing_models,
+                            fallback_models,
+                            state_params,
+                            payload_extra=payload_extra,
+                            resource_bundles=resource_bundles,
+                        )
                     if not _missing_model_panel_has_visible_rows(html_value):
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value="")]
 
-                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
+                    progress_rows = list(missing_models or []) + _fallback_progress_rows(fallback_models)
+                    if resource_bundles:
+                        percent_total, _has_error, has_in_progress = _calculate_missing_model_progress_with_resources(
+                            progress_rows,
+                            resource_bundles=resource_bundles,
+                        )
+                    else:
+                        percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
                     progress_visible = bool(has_in_progress)
                     progress_html = _make_missing_model_progress_html(percent_total, state_params) if progress_visible else ""
                     return [
@@ -4066,6 +4264,13 @@ with shared.gradio_root:
                         f"开始下载预设模型：{preset_name}。请稍候，可在控制台查看进度。",
                     ))
                     model_loader.download_model_files(preset_name, user_did=user_did, async_task=True)
+                    raw_resource_bundles = state_params.get("__preset_resource_bundles_raw") if isinstance(state_params, dict) else None
+                    model_loader.download_resource_bundles(
+                        preset_name,
+                        user_did=user_did,
+                        async_task=True,
+                        raw_resource_bundles=raw_resource_bundles if raw_resource_bundles else None,
+                    )
                     return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
                 def download_one_missing_model(request_payload, state_params):
@@ -4079,10 +4284,11 @@ with shared.gradio_root:
                     preset_name = str(payload.get("preset") or state_params.get('__preset', '') or '').strip()
                     cata = str(payload.get("cata") or "").strip()
                     path_file = str(payload.get("path_file") or "").strip()
+                    resource_id = str(payload.get("resource_id") or "").strip()
                     url = payload.get("url") or ""
                     size = payload.get("size") or 0
                     payload_kind = str(payload.get("kind") or "").strip().lower()
-                    if not preset_name or not cata or not path_file:
+                    if not preset_name or (payload_kind == "resource" and not resource_id) or (payload_kind != "resource" and (not cata or not path_file)):
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     user_did = _get_state_user_did(state_params)
@@ -4098,9 +4304,46 @@ with shared.gradio_root:
                     if payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
                         fallback_models = []
+                        resource_bundles = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or payload.get("version") or VLM.DEFAULT_VERSION)}
+                    elif payload_kind == "resource":
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     else:
                         _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
+
+                    if payload_kind == "resource":
+                        allowed_resource = next(
+                            (
+                                item
+                                for item in resource_bundles
+                                if str(item.get("id") or "") == resource_id
+                            ),
+                            None,
+                        )
+                        if allowed_resource is None:
+                            return [
+                                gr_update(visible=True),
+                                _missing_model_title_update(state_params),
+                                gr_update(value=_render_missing_model_list_html(
+                                    preset_name,
+                                    missing_models,
+                                    fallback_models,
+                                    state_params,
+                                    resource_bundles=resource_bundles,
+                                )),
+                                gr_update(visible=False, value=""),
+                            ] + empty_buttons_update + empty_system_update
+                        util.log_ui_trace(
+                            logger,
+                            "[UI-TRACE] missing_model_modal.download_resource | preset=%r, resource=%r",
+                            preset_name,
+                            resource_id,
+                        )
+                        model_loader.download_resource_bundle(allowed_resource, user_did=user_did, async_task=True)
+                        return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
+
                     allowed = None
                     cleanup_file_path = None
                     for item in missing_models:
@@ -4114,7 +4357,7 @@ with shared.gradio_root:
                                 cleanup_file_path = str(item.get("legacy_path") or "") if payload.get("delete_legacy") else None
                                 break
                     if allowed is None:
-                        return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
+                        return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra, resource_bundles=resource_bundles)), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     util.log_ui_trace(logger, "[UI-TRACE] missing_model_modal.download_one | preset=%r, cata=%r, path=%r", preset_name, cata, path_file)
                     model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True, cleanup_file_path=cleanup_file_path)
@@ -4132,11 +4375,25 @@ with shared.gradio_root:
                     preset_name = str(payload.get("preset") or state_params.get('__preset', '') or '').strip()
                     cata = str(payload.get("cata") or "").strip()
                     path_file = str(payload.get("path_file") or "").strip()
-                    if (not cata) or (not path_file) or ((not preset_name) and payload_kind != "queue"):
+                    resource_id = str(payload.get("resource_id") or "").strip()
+                    task_id = str(payload.get("task_id") or "").strip()
+                    queue_resource = payload_kind == "queue" and (
+                        bool(resource_id) or task_id.startswith("resource/")
+                    )
+                    if payload_kind == "resource":
+                        invalid_request = (not resource_id) or (not preset_name)
+                    elif queue_resource:
+                        invalid_request = not resource_id
+                    else:
+                        invalid_request = (not cata) or (not path_file) or ((not preset_name) and payload_kind != "queue")
+                    if invalid_request:
                         return [gr_update(visible=True), _missing_model_title_update(state_params), skip_component_update(), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     user_did = _get_state_user_did(state_params)
-                    task_id = (str(cata) + "/" + str(path_file)).replace("\\", "/").strip("/")
+                    if payload_kind != "resource" and not queue_resource:
+                        task_id = (str(cata) + "/" + str(path_file)).replace("\\", "/").strip("/")
+                    elif not task_id:
+                        task_id = f"resource/{resource_id}"
                     stopped = model_loader.cancel_download_task(task_id)
                     util.log_ui_trace(logger, "[UI-TRACE] missing_model_modal.cancel_one | preset=%r, task_id=%r, stopped=%s", preset_name, task_id, stopped)
 
@@ -4146,17 +4403,36 @@ with shared.gradio_root:
                     elif payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
                         fallback_models = []
+                        resource_bundles = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or payload.get("version") or VLM.DEFAULT_VERSION)}
+                    elif payload_kind == "resource":
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     else:
                         _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        resource_bundles = _get_missing_resources_for_preset(preset_name, user_did=user_did, state_params=state_params)
 
-                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
+                    progress_rows = list(missing_models or []) + _fallback_progress_rows(fallback_models)
+                    if resource_bundles:
+                        percent_total, _has_error, has_in_progress = _calculate_missing_model_progress_with_resources(
+                            progress_rows,
+                            resource_bundles=resource_bundles,
+                        )
+                    else:
+                        percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
                     progress_visible = bool(has_in_progress)
                     progress_html = _make_missing_model_progress_html(percent_total, state_params) if progress_visible else ""
                     return [
                         gr_update(visible=True),
                         _missing_model_title_update(state_params),
-                        gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)),
+                        gr_update(value=_render_missing_model_list_html(
+                            preset_name,
+                            missing_models,
+                            fallback_models,
+                            state_params,
+                            payload_extra=payload_extra,
+                            resource_bundles=resource_bundles,
+                        )),
                         gr_update(visible=progress_visible, value=progress_html),
                     ] + empty_buttons_update + empty_system_update
 

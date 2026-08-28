@@ -8,6 +8,10 @@ import platform
 import hashlib
 import csv
 import io
+import shutil
+import stat
+import tempfile
+import zipfile
 from contextlib import redirect_stdout
 from tqdm import tqdm
 from colorama import init, Fore, Style
@@ -101,6 +105,11 @@ def _config_paths(config, key, default_value=None):
     return paths
 
 download_path_mapping = {}
+
+RESOURCE_BUNDLE_TYPE = "archive"
+RESOURCE_CACHE_DIR_NAME = ".simpleai-resource-cache"
+RESOURCE_DOWNLOADLIST_FILE = "resource_downloadlist.json"
+simplemodels_root = ""
 
 MODEL_SCAN_CATEGORIES = [
     'checkpoints', 'loras', 'controlnet', 'embeddings', 'diffusion_models',
@@ -531,6 +540,9 @@ def cleanup():
     if os.path.exists("downloadlist.txt"):
         os.remove("downloadlist.txt")
         print("已删除 'downloadlist.txt' 文件。", file=sys.stderr)
+    if os.path.exists(RESOURCE_DOWNLOADLIST_FILE):
+        os.remove(RESOURCE_DOWNLOADLIST_FILE)
+        print("已删除资源包下载列表 / Removed resource bundle download list。", file=sys.stderr)
     if os.path.exists("缺失模型下载链接.txt"):
         os.remove("缺失模型下载链接.txt")
         print("已删除 '缺失模型下载链接.txt' 文件。", file=sys.stderr)
@@ -539,6 +551,77 @@ atexit.register(cleanup)
 init(autoreset=True, strip=False, convert=False)
 
 LAUNCHER_MODE = os.getenv("SIMPLEAI_LAUNCHER", "0") == "1"
+
+
+def _version_tuple(value):
+    text = str(value or "").strip()
+    if text[:1].lower() == "v":
+        text = text[1:].strip()
+    if not re.fullmatch(r"\d+(?:\.\d+)*", text):
+        return None
+    return tuple(int(part) for part in text.split("."))
+
+
+def _required_launcher_version(item):
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("min_launcher_version") or "").strip()
+
+
+def _launcher_supports_requirement(required_version):
+    if not LAUNCHER_MODE:
+        return True
+    required = _version_tuple(required_version)
+    if required is None:
+        return True
+    current = _version_tuple(os.getenv("SIMPLEAI_LAUNCHER_VERSION"))
+    return current is not None and current >= required
+
+
+def _package_supported_by_launcher(package_info):
+    return _launcher_supports_requirement(_required_launcher_version(package_info))
+
+
+def _resource_bundle_supported_by_launcher(bundle):
+    return _launcher_supports_requirement(_required_launcher_version(bundle))
+
+
+def _print_launcher_upgrade_required(item):
+    required_version = _required_launcher_version(item) or "4.0.8"
+    current_version = str(os.getenv("SIMPLEAI_LAUNCHER_VERSION") or "未提供").strip()
+    name = str(
+        (item or {}).get("name")
+        or (item or {}).get("file_name")
+        or (item or {}).get("id")
+        or "该资源"
+    )
+    print(
+        f"{Fore.YELLOW}△ 当前启动器版本为 {current_version}，{name} 需要启动器 {required_version} 或更高版本。请先升级启动器后再操作。{Style.RESET_ALL}"
+    )
+
+
+def filter_packages_by_launcher_version(packages, report_unsupported=False):
+    filtered = {}
+    for package_key, package_info in (packages or {}).items():
+        if _package_supported_by_launcher(package_info):
+            filtered[package_key] = package_info
+        elif report_unsupported:
+            _print_launcher_upgrade_required(package_info)
+    return filtered
+
+
+def _filter_requested_package_ids(package_ids, packages):
+    supported_ids = []
+    for package_id in package_ids or []:
+        package_info = next(
+            (info for info in (packages or {}).values() if info.get("id") == package_id),
+            None,
+        )
+        if package_info is None or _package_supported_by_launcher(package_info):
+            supported_ids.append(package_id)
+        else:
+            _print_launcher_upgrade_required(package_info)
+    return supported_ids
 
 class DownloadStatus:
     def __init__(self, filename, total_size):
@@ -845,6 +928,617 @@ def iter_package_file_entries(files_list):
     for file_entry in files_list:
         yield parse_package_file_entry(file_entry)
 
+
+def _clean_resource_relative_path(value, allow_empty=False):
+    raw = str(value or "").strip().replace("\\", "/")
+    if not raw:
+        if allow_empty:
+            return ""
+        raise ValueError("resource path is empty")
+    if raw.startswith("/") or raw.startswith("\\") or (len(raw) >= 2 and raw[1] == ":"):
+        raise ValueError(f"absolute resource path is not allowed: {value}")
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise ValueError(f"resource path traversal is not allowed: {value}")
+        parts.append(part)
+    if not parts and not allow_empty:
+        raise ValueError("resource path is empty")
+    return "/".join(parts)
+
+
+def _clean_resource_id(value):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
+    return cleaned.strip("._-")
+
+
+def _resource_url_values(value):
+    if isinstance(value, (list, tuple)):
+        return [str(item or "").strip() for item in value if str(item or "").strip()]
+    text = str(value or "").strip()
+    return [text] if text else []
+
+
+def parse_resource_bundle_entry(raw_entry):
+    if not isinstance(raw_entry, dict):
+        return None
+    bundle_type = str(raw_entry.get("type") or RESOURCE_BUNDLE_TYPE).strip().lower()
+    if bundle_type != RESOURCE_BUNDLE_TYPE:
+        return None
+
+    resource_id = _clean_resource_id(raw_entry.get("id") or raw_entry.get("name"))
+    file_name = os.path.basename(str(raw_entry.get("file_name") or "").strip().replace("\\", "/"))
+    if not resource_id or not file_name or file_name in {".", ".."}:
+        return None
+
+    required_raw = raw_entry.get("required_paths", [])
+    if isinstance(required_raw, str):
+        required_raw = [required_raw]
+    required_paths = []
+    try:
+        for required_path in required_raw or []:
+            required_text = str(required_path or "").strip()
+            if not required_text:
+                continue
+            requires_directory = required_text.replace("\\", "/").endswith("/")
+            normalized = _clean_resource_relative_path(required_text)
+            required_paths.append(f"{normalized}/" if requires_directory else normalized)
+    except ValueError:
+        return None
+    if not required_paths:
+        return None
+
+    try:
+        size = int(raw_entry.get("size") or 0)
+    except (TypeError, ValueError):
+        size = 0
+    try:
+        archive_root = _clean_resource_relative_path(raw_entry.get("archive_root", ""), allow_empty=True)
+        install_subdir = _clean_resource_relative_path(raw_entry.get("install_subdir"))
+    except ValueError:
+        return None
+
+    install_base = str(raw_entry.get("install_base") or "models_root").strip().lower()
+    if install_base not in {"models_root", "app_root"}:
+        return None
+
+    urls = _resource_url_values(
+        raw_entry.get("url") or raw_entry.get("modelscope_url") or raw_entry.get("download_url")
+    )
+    hf_urls = _resource_url_values(raw_entry.get("hf_url"))
+    return {
+        "id": resource_id,
+        "type": RESOURCE_BUNDLE_TYPE,
+        "version": str(raw_entry.get("version") or "").strip(),
+        "min_launcher_version": str(raw_entry.get("min_launcher_version") or "").strip(),
+        "display_name": dict(raw_entry.get("display_name") or {}) if isinstance(raw_entry.get("display_name"), dict) else {},
+        "file_name": file_name,
+        "url": urls if len(urls) != 1 else urls[0],
+        "hf_url": hf_urls if len(hf_urls) != 1 else (hf_urls[0] if hf_urls else ""),
+        "size": size,
+        "sha256": str(raw_entry.get("sha256") or "").strip().lower(),
+        "install_base": install_base,
+        "install_subdir": install_subdir,
+        "archive_root": archive_root,
+        "required_paths": required_paths,
+    }
+
+
+def iter_resource_bundle_entries(raw_bundles):
+    if isinstance(raw_bundles, dict):
+        raw_bundles = [raw_bundles]
+    for raw_entry in raw_bundles or []:
+        entry = parse_resource_bundle_entry(raw_entry)
+        if entry:
+            yield entry
+
+
+def select_resource_download_urls(bundle):
+    values = []
+    if CURRENT_DOWNLOAD_SOURCE == "huggingface":
+        values.extend(_resource_url_values(bundle.get("hf_url")))
+    values.extend(_resource_url_values(bundle.get("url")))
+    if CURRENT_DOWNLOAD_SOURCE != "huggingface":
+        values.extend(_resource_url_values(bundle.get("hf_url")))
+    return _dedupe_keep_order(values)
+
+
+def _resource_install_root(bundle):
+    install_base = str(bundle.get("install_base") or "models_root").strip().lower()
+    if install_base == "models_root":
+        base_dir = os.path.abspath(simplemodels_root)
+    elif install_base == "app_root":
+        base_dir = os.path.abspath(root_dir)
+    else:
+        raise ValueError(f"unsupported resource install base: {install_base}")
+    relative = _clean_resource_relative_path(bundle.get("install_subdir"))
+    target = os.path.abspath(os.path.join(base_dir, *relative.split("/")))
+    if os.path.commonpath([base_dir, target]) != base_dir:
+        raise ValueError("resource install path escapes its base directory")
+    return target
+
+
+def _resource_archive_path(bundle):
+    target_root = _resource_install_root(bundle)
+    resource_id = _clean_resource_id(bundle.get("id")) or "resource"
+    file_name = str(bundle.get("file_name") or "resource.zip")
+    return os.path.join(os.path.dirname(target_root), RESOURCE_CACHE_DIR_NAME, resource_id, file_name)
+
+
+def _resource_archive_candidates(bundle):
+    file_name = os.path.basename(str(bundle.get("file_name") or "").strip().replace("\\", "/"))
+    if not file_name or file_name in {".", ".."}:
+        return []
+
+    candidates = []
+    try:
+        candidates.append(_resource_archive_path(bundle))
+    except (OSError, ValueError, TypeError):
+        pass
+
+    try:
+        target_root = _resource_install_root(bundle)
+    except (OSError, ValueError, TypeError):
+        target_root = ""
+
+    install_base = str(bundle.get("install_base") or "models_root").strip().lower()
+    if install_base == "models_root":
+        install_base_dir = os.path.abspath(simplemodels_root)
+    elif install_base == "app_root":
+        install_base_dir = os.path.abspath(root_dir)
+    else:
+        install_base_dir = ""
+
+    search_dirs = [
+        target_root,
+        os.path.dirname(target_root) if target_root else "",
+        install_base_dir,
+        os.path.dirname(install_base_dir) if install_base_dir else "",
+        os.path.abspath(root_dir),
+        os.path.abspath(script_dir),
+    ]
+    for directory in search_dirs:
+        if directory:
+            candidates.append(os.path.join(directory, file_name))
+
+    result = []
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.normpath(os.path.abspath(candidate))
+        key = os.path.normcase(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return result
+
+
+def _resource_required_path(root_dir, required_path):
+    raw = str(required_path or "")
+    requires_directory = raw.replace("\\", "/").endswith("/")
+    normalized = _clean_resource_relative_path(raw)
+    candidate = os.path.abspath(os.path.join(root_dir, *normalized.split("/")))
+    if os.path.commonpath([os.path.abspath(root_dir), candidate]) != os.path.abspath(root_dir):
+        raise ValueError("required resource path escapes package root")
+    return candidate, requires_directory
+
+
+def is_resource_bundle_installed(bundle):
+    try:
+        target_root = _resource_install_root(bundle)
+        if not os.path.isdir(target_root):
+            return False
+        for required_path in bundle.get("required_paths", []) or []:
+            candidate, requires_directory = _resource_required_path(target_root, required_path)
+            if requires_directory:
+                if not os.path.isdir(candidate):
+                    return False
+            elif not os.path.isfile(candidate):
+                return False
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _normalize_expected_size(value):
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _verify_resource_archive(archive_path, bundle):
+    expected_size = _normalize_expected_size(bundle.get("size"))
+    actual_size = os.path.getsize(archive_path)
+    if expected_size > 0 and actual_size != expected_size:
+        raise ValueError(f"resource archive size mismatch: expected {expected_size}, got {actual_size}")
+    expected_hash = str(bundle.get("sha256") or "").strip().lower()
+    if expected_hash:
+        actual_hash = calculate_sha256(archive_path).lower()
+        if actual_hash != expected_hash:
+            raise ValueError(f"resource archive SHA-256 mismatch: expected {expected_hash}, got {actual_hash}")
+    with zipfile.ZipFile(archive_path, "r"):
+        pass
+    return True
+
+
+def _resource_archive_is_ready(archive_path, bundle):
+    if not os.path.isfile(archive_path):
+        return False
+    try:
+        return _verify_resource_archive(archive_path, bundle)
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False
+
+
+def _find_existing_resource_archive(bundle, verify=True):
+    for archive_path in _resource_archive_candidates(bundle):
+        if not os.path.isfile(archive_path):
+            continue
+        if verify:
+            if _resource_archive_is_ready(archive_path, bundle):
+                return archive_path
+            continue
+        expected_size = _normalize_expected_size(bundle.get("size"))
+        try:
+            if expected_size <= 0 or os.path.getsize(archive_path) == expected_size:
+                return archive_path
+        except OSError:
+            continue
+    return None
+
+
+def _cleanup_installed_resource_archives(bundle):
+    expected_size = _normalize_expected_size(bundle.get("size"))
+    if expected_size <= 0:
+        return
+    for archive_path in _resource_archive_candidates(bundle):
+        if not os.path.isfile(archive_path):
+            continue
+        try:
+            if os.path.getsize(archive_path) != expected_size:
+                continue
+            os.remove(archive_path)
+        except OSError:
+            continue
+
+
+def _resource_bundle_status(bundle):
+    if is_resource_bundle_installed(bundle):
+        _cleanup_installed_resource_archives(bundle)
+        return "ok"
+    if _find_existing_resource_archive(bundle, verify=False):
+        return "ready_to_install"
+    return "missing"
+
+
+def _safe_archive_member_path(member_name):
+    raw = str(member_name or "").replace("\\", "/")
+    if not raw:
+        return ""
+    if raw.startswith("/") or raw.startswith("\\") or (len(raw) >= 2 and raw[1] == ":"):
+        raise ValueError(f"archive contains an absolute path: {member_name}")
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            raise ValueError(f"archive contains path traversal entry: {member_name}")
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _zip_entry_is_symlink(entry):
+    mode = (int(entry.external_attr) >> 16) & 0o170000
+    return mode == stat.S_IFLNK
+
+
+def _extract_resource_archive(archive_path, staging_root, bundle):
+    archive_root = str(bundle.get("archive_root") or "").strip().replace("\\", "/").strip("/")
+    prefix = f"{archive_root}/" if archive_root else ""
+    found_entries = False
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for entry in archive.infolist():
+            member_path = _safe_archive_member_path(entry.filename)
+            if not member_path:
+                continue
+            if archive_root:
+                if member_path == archive_root:
+                    continue
+                if not member_path.startswith(prefix):
+                    raise ValueError(f"archive entry is outside archive_root: {entry.filename}")
+                member_path = member_path[len(prefix):]
+            if not member_path:
+                continue
+            if _zip_entry_is_symlink(entry):
+                raise ValueError(f"archive symlinks are not supported: {entry.filename}")
+            destination = os.path.abspath(os.path.join(staging_root, *member_path.split("/")))
+            if os.path.commonpath([os.path.abspath(staging_root), destination]) != os.path.abspath(staging_root):
+                raise ValueError(f"archive entry escapes staging directory: {entry.filename}")
+            found_entries = True
+            is_directory = entry.is_dir() or str(entry.filename).replace("\\", "/").endswith("/")
+            if is_directory:
+                os.makedirs(destination, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with archive.open(entry, "r") as source, open(destination, "wb") as target:
+                shutil.copyfileobj(source, target, length=8 * 1024 * 1024)
+    if not found_entries:
+        raise ValueError("resource archive contains no installable entries")
+
+
+def _validate_resource_bundle_directory(root_dir, bundle):
+    for required_path in bundle.get("required_paths", []) or []:
+        candidate, requires_directory = _resource_required_path(root_dir, required_path)
+        valid = os.path.isdir(candidate) if requires_directory else os.path.isfile(candidate)
+        if not valid:
+            raise ValueError(f"required resource path is missing: {required_path}")
+    return True
+
+
+def _remove_resource_path(path):
+    if not path or not os.path.lexists(path):
+        return
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
+
+
+def _path_size_bytes(path):
+    if not path or not os.path.lexists(path):
+        return 0
+    try:
+        if os.path.isfile(path):
+            return os.path.getsize(path)
+        total = 0
+        for walk_root, _, files in os.walk(path):
+            for filename in files:
+                try:
+                    total += os.path.getsize(os.path.join(walk_root, filename))
+                except OSError:
+                    continue
+        return total
+    except OSError:
+        return 0
+
+
+def _resource_path_key(path):
+    return os.path.normcase(os.path.normpath(os.path.abspath(str(path))))
+
+
+def _resource_delete_paths(bundle):
+    paths = []
+    try:
+        target_root = _resource_install_root(bundle)
+    except (OSError, ValueError, TypeError):
+        target_root = ""
+    if target_root and os.path.lexists(target_root):
+        paths.append(target_root)
+    for archive_path in _resource_archive_candidates(bundle):
+        if os.path.lexists(archive_path):
+            paths.append(archive_path)
+
+    result = []
+    seen = set()
+    for path in paths:
+        normalized = os.path.abspath(path)
+        key = _resource_path_key(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return result
+
+
+def _collapse_nested_resource_paths(paths):
+    ordered = sorted(
+        {os.path.abspath(path) for path in paths if path},
+        key=lambda path: (path.count(os.sep), _resource_path_key(path)),
+    )
+    result = []
+    for path in ordered:
+        if any(_is_under_dir(path, parent) for parent in result):
+            continue
+        result.append(path)
+    return result
+
+
+def _resource_delete_candidates(package_name, package, packages, force=False):
+    references = defaultdict(set)
+    for pkg_name, pkg_info in packages.items():
+        for bundle in iter_resource_bundle_entries((pkg_info or {}).get("resource_bundles", [])):
+            for path in _resource_delete_paths(bundle):
+                references[_resource_path_key(path)].add(pkg_name)
+
+    delete_candidates = []
+    shared_paths = set()
+    for bundle in iter_resource_bundle_entries((package or {}).get("resource_bundles", [])):
+        for path in _resource_delete_paths(bundle):
+            key = _resource_path_key(path)
+            if force or references.get(key) == {package_name}:
+                delete_candidates.append(path)
+            else:
+                shared_paths.add(path)
+
+    return _collapse_nested_resource_paths(delete_candidates), shared_paths
+
+
+def install_resource_bundle(archive_path, bundle):
+    target_root = _resource_install_root(bundle)
+    parent_dir = os.path.dirname(target_root)
+    os.makedirs(parent_dir, exist_ok=True)
+    staging_root = tempfile.mkdtemp(prefix=f".{os.path.basename(target_root)}.staging-", dir=parent_dir)
+    backup_root = f"{target_root}.backup-{time.time_ns()}"
+    moved_existing = False
+    try:
+        _extract_resource_archive(archive_path, staging_root, bundle)
+        _validate_resource_bundle_directory(staging_root, bundle)
+        with open(os.path.join(staging_root, ".simpleai-resource.json"), "w", encoding="utf-8") as marker_file:
+            json.dump(
+                {
+                    "id": bundle.get("id", ""),
+                    "version": bundle.get("version", ""),
+                    "sha256": bundle.get("sha256", ""),
+                    "installed_at": time.time(),
+                },
+                marker_file,
+                ensure_ascii=False,
+                indent=2,
+            )
+        if os.path.lexists(target_root):
+            os.rename(target_root, backup_root)
+            moved_existing = True
+        os.rename(staging_root, target_root)
+        staging_root = ""
+        if moved_existing:
+            _remove_resource_path(backup_root)
+        return target_root
+    except Exception:
+        if os.path.lexists(target_root) and moved_existing:
+            _remove_resource_path(target_root)
+        if moved_existing and os.path.lexists(backup_root) and not os.path.lexists(target_root):
+            os.rename(backup_root, target_root)
+        raise
+    finally:
+        if staging_root:
+            _remove_resource_path(staging_root)
+        if os.path.lexists(backup_root):
+            _remove_resource_path(backup_root)
+
+
+def _install_local_resource_bundle(bundle):
+    if not _resource_bundle_supported_by_launcher(bundle):
+        _print_launcher_upgrade_required(bundle)
+        return False
+    if is_resource_bundle_installed(bundle):
+        _cleanup_installed_resource_archives(bundle)
+        return True
+
+    archive_path = _find_existing_resource_archive(bundle, verify=True)
+    if not archive_path:
+        return False
+
+    try:
+        install_resource_bundle(archive_path, bundle)
+        if os.path.isfile(archive_path):
+            os.remove(archive_path)
+        print(f"√已安装本地资源包: {_resource_install_root(bundle)}")
+        return True
+    except Exception as error:
+        print(f"×本地资源包安装失败: {error}")
+        return False
+
+
+def _write_resource_download_list(bundles):
+    unique = {}
+    for bundle in iter_resource_bundle_entries(bundles):
+        unique[bundle["id"]] = bundle
+    if not unique:
+        if os.path.exists(RESOURCE_DOWNLOADLIST_FILE):
+            os.remove(RESOURCE_DOWNLOADLIST_FILE)
+        return
+    with open(RESOURCE_DOWNLOADLIST_FILE, "w", encoding="utf-8") as resource_file:
+        json.dump(list(unique.values()), resource_file, ensure_ascii=False, indent=2)
+
+
+def _load_resource_download_list():
+    if not os.path.isfile(RESOURCE_DOWNLOADLIST_FILE):
+        return []
+    try:
+        with open(RESOURCE_DOWNLOADLIST_FILE, "r", encoding="utf-8") as resource_file:
+            raw_bundles = json.load(resource_file)
+    except Exception:
+        return []
+    return list(iter_resource_bundle_entries(raw_bundles))
+
+
+def _download_resource_bundle(bundle, position=0):
+    if not _resource_bundle_supported_by_launcher(bundle):
+        _print_launcher_upgrade_required(bundle)
+        return False
+    if _install_local_resource_bundle(bundle):
+        return True
+
+    urls = select_resource_download_urls(bundle)
+    if not urls:
+        print(f"{Fore.RED}×资源包没有可用下载地址 / Resource bundle has no download URL: {bundle.get('id')}{Style.RESET_ALL}")
+        return False
+
+    archive_path = _resource_archive_path(bundle)
+    os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+    if os.path.isfile(archive_path) and not _resource_archive_is_ready(archive_path, bundle):
+        try:
+            os.remove(archive_path)
+        except OSError:
+            pass
+
+    downloaded = _resource_archive_is_ready(archive_path, bundle)
+    for url in urls:
+        if downloaded:
+            break
+        result_queue = queue.Queue()
+        print(f"{Fore.CYAN}▶ 下载资源包 / Downloading resource bundle: {bundle.get('file_name')} ({url}){Style.RESET_ALL}")
+        download_file_with_resume(
+            url,
+            archive_path,
+            position,
+            result_queue,
+            expected_path=f"resource/{bundle.get('id')}",
+            expected_total_size=_normalize_expected_size(bundle.get("size")),
+        )
+        downloaded = bool(not result_queue.empty() and result_queue.get())
+        if downloaded:
+            try:
+                _verify_resource_archive(archive_path, bundle)
+            except (OSError, ValueError, zipfile.BadZipFile) as error:
+                print(f"{Fore.RED}×资源包校验失败 / Resource archive verification failed: {error}{Style.RESET_ALL}")
+                downloaded = False
+                try:
+                    os.remove(archive_path)
+                except OSError:
+                    pass
+    if not downloaded:
+        print(f"{Fore.RED}×资源包下载失败 / Resource bundle download failed: {bundle.get('id')}{Style.RESET_ALL}")
+        return False
+
+    try:
+        install_resource_bundle(archive_path, bundle)
+        if os.path.isfile(archive_path):
+            os.remove(archive_path)
+        print(f"{Fore.GREEN}√资源包已安装 / Resource bundle installed: {_resource_install_root(bundle)}{Style.RESET_ALL}")
+        return True
+    except Exception as error:
+        print(f"{Fore.RED}×资源包解压安装失败 / Resource bundle installation failed: {error}{Style.RESET_ALL}")
+        return False
+
+
+def _download_pending_resource_bundles():
+    pending = _load_resource_download_list()
+    if not pending:
+        return 0, 0, 0
+    remaining = []
+    success_count = 0
+    failed_count = 0
+    deferred_count = 0
+    for index, bundle in enumerate(pending):
+        if not _resource_bundle_supported_by_launcher(bundle):
+            _print_launcher_upgrade_required(bundle)
+            remaining.append(bundle)
+            deferred_count += 1
+            continue
+        if _resource_bundle_status(bundle) == "ok":
+            continue
+        if _download_resource_bundle(bundle, position=index):
+            success_count += 1
+        else:
+            remaining.append(bundle)
+            failed_count += 1
+    _write_resource_download_list(remaining)
+    return success_count, failed_count, deferred_count
+
 def build_url_index(packages):
     url_index = {}
     for pkg in packages.values():
@@ -889,6 +1583,7 @@ def validate_files(packages):
     print_colored(f"当前GPU架构: {gpu_arch}, 已根据架构过滤预置包", Fore.CYAN)
 
     download_files = {}
+    resource_downloads = []
     missing_package_names = []
     package_percentages = {}
     package_sizes = {}
@@ -900,7 +1595,10 @@ def validate_files(packages):
         download_links = get_package_info_links(package_info)
 
         parsed_entries = list(iter_package_file_entries(files_and_sizes))
-        total_size = sum([e["size"] for e in parsed_entries])
+        resource_entries = list(iter_resource_bundle_entries(package_info.get("resource_bundles", [])))
+        total_size = sum(e["size"] for e in parsed_entries) + sum(
+            _normalize_expected_size(item.get("size")) for item in resource_entries
+        )
         total_size_gb = total_size / (1024 ** 3)
         non_missing_size = 0
 
@@ -968,6 +1666,28 @@ def validate_files(packages):
                     size_mismatch_files.append((entry["expected_path"], os.path.join(actual_dir, actual_filename), actual_size, expected_size))
                 else:
                     non_missing_size += expected_size
+
+        missing_resource_bundles = []
+        for resource in resource_entries:
+            resource_status = _resource_bundle_status(resource)
+            if resource_status != "ok" and _install_local_resource_bundle(resource):
+                resource_status = "ok"
+            if resource_status == "ok":
+                non_missing_size += _normalize_expected_size(resource.get("size"))
+                continue
+            missing_resource_bundles.append(resource)
+            resource_downloads.append(resource)
+
+        if missing_resource_bundles:
+            print(f"{Fore.RED}×{package_name}缺少资源包 / Resource bundle missing:{Style.RESET_ALL}")
+            for resource in missing_resource_bundles:
+                status = _resource_bundle_status(resource)
+                status_text = "等待安装 / ready to install" if status == "ready_to_install" else "缺失 / missing"
+                target_root = _resource_install_root(resource)
+                print(f"{normalize_path(target_root)} ({resource.get('file_name')}, {status_text})")
+            if package_name not in missing_package_names:
+                missing_package_names.append(package_name)
+
         obsolete_files = []
         obsolete_basenames, obsolete_relpaths = _split_obsolete_specs(OBSOLETE_MODELS)
         MODEL_PATHS_TO_SCAN = [
@@ -1057,7 +1777,7 @@ def validate_files(packages):
                 download_files[file] = expected_size
             if package_name not in missing_package_names:
                 missing_package_names.append(package_name)
-        if not missing_files and not size_mismatch_files and not case_mismatch_files:
+        if not missing_files and not size_mismatch_files and not case_mismatch_files and not missing_resource_bundles:
             print(f"{Fore.GREEN}√{package_name}文件全部验证通过{Style.RESET_ALL}")
 
         if download_links:
@@ -1087,6 +1807,10 @@ def validate_files(packages):
         # 新增空间显示
         print(f"{Fore.CYAN}※这些模型已被新版替代，可节省空间: {total_obsolete_size/1024/1024/1024:.2f}GB (按0+回车清理时选择删除){Style.RESET_ALL}")
 
+    _write_resource_download_list(resource_downloads)
+    if resource_downloads:
+        print(f"{Fore.YELLOW}>>>资源包下载列表已保存 / Resource bundle list: '{RESOURCE_DOWNLOADLIST_FILE}'。<<<{Style.RESET_ALL}")
+
     sorted_download_files = sorted(download_files.items(), key=lambda x: x[1])
 
     if sorted_download_files:
@@ -1108,6 +1832,11 @@ def validate_files(packages):
 
 def get_package_status(packages, package_ids=None):
     path_mapping = load_model_paths()
+    if package_ids is not None:
+        requested_ids = set(package_ids)
+        for package_info in (packages or {}).values():
+            if package_info.get("id") in requested_ids and not _package_supported_by_launcher(package_info):
+                _print_launcher_upgrade_required(package_info)
     filtered_packages = filter_packages_by_gpu_arch(packages)
     if package_ids is not None:
         id_set = set(package_ids)
@@ -1122,9 +1851,13 @@ def get_package_status(packages, package_ids=None):
         package_note = package_info.get("note", "")
         files_and_sizes = package_info.get("files", [])
         parsed_entries = list(iter_package_file_entries(files_and_sizes))
-        total_size = sum(e["size"] for e in parsed_entries)
+        resource_entries = list(iter_resource_bundle_entries(package_info.get("resource_bundles", [])))
+        total_size = sum(e["size"] for e in parsed_entries) + sum(
+            _normalize_expected_size(item.get("size")) for item in resource_entries
+        )
         non_missing_size = 0
         file_statuses = []
+        resource_statuses = []
         for entry in parsed_entries:
             expected_path = entry["expected_path"]
             expected_size = entry["size"]
@@ -1193,6 +1926,29 @@ def get_package_status(packages, package_ids=None):
                     "actual_size": actual_size,
                 }
             )
+        for resource in resource_entries:
+            if not is_resource_bundle_installed(resource):
+                _install_local_resource_bundle(resource)
+            status_name = _resource_bundle_status(resource)
+            target_root = _resource_install_root(resource)
+            resource_size = _normalize_expected_size(resource.get("size"))
+            if status_name == "ok":
+                non_missing_size += resource_size
+            actual_archive_path = _find_existing_resource_archive(resource, verify=False)
+            resource_statuses.append(
+                {
+                    "id": resource.get("id"),
+                    "type": resource.get("type"),
+                    "file_name": resource.get("file_name"),
+                    "size": resource_size,
+                    "sha256": resource.get("sha256"),
+                    "install_path": target_root,
+                    "status": status_name,
+                    "archive_path": _resource_archive_path(resource),
+                    "actual_archive_path": actual_archive_path or "",
+                    "required_paths": list(resource.get("required_paths", []) or []),
+                }
+            )
         completeness = 0.0
         if total_size > 0:
             completeness = (non_missing_size / total_size) * 100
@@ -1202,11 +1958,13 @@ def get_package_status(packages, package_ids=None):
                 "id": package_info.get("id"),
                 "name": package_name,
                 "note": package_note,
+                "min_launcher_version": package_info.get("min_launcher_version", ""),
                 "info_links": get_package_info_links(package_info),
                 "total_size": total_size,
                 "present_size": non_missing_size,
                 "completeness": completeness,
                 "files": file_statuses,
+                "resource_bundles": resource_statuses,
             }
         )
     return result
@@ -1222,7 +1980,9 @@ def _build_entry_index(packages):
     return entry_index
 
 
-def _write_and_start_download(entries):
+def _write_and_start_download(entries, resource_bundles=None):
+    if resource_bundles is not None:
+        _write_resource_download_list(resource_bundles)
     unique = {}
     for url, size in entries:
         if not url:
@@ -1230,7 +1990,11 @@ def _write_and_start_download(entries):
         if url not in unique or size < unique[url]:
             unique[url] = size
     if not unique:
-        print("没有缺失文件需要下载！")
+        if resource_bundles:
+            print("没有缺失单文件，开始处理资源包 / No missing files; processing resource bundles。")
+            auto_download_missing_files_with_retry(max_threads=5)
+        else:
+            print("没有缺失文件需要下载！")
         return
     with open("downloadlist.txt", "w", encoding="utf-8") as f:
         for url, size in sorted(unique.items(), key=lambda x: x[1]):
@@ -1240,9 +2004,14 @@ def _write_and_start_download(entries):
 
 
 def download_missing_for_packages(package_ids):
+    if package_ids is not None:
+        package_ids = _filter_requested_package_ids(package_ids, packages)
+        if not package_ids:
+            return
     status_list = get_package_status(packages, package_ids)
     entry_index = _build_entry_index(packages)
     download_entries = []
+    resource_downloads = []
     for pkg_status in status_list:
         for file_info in pkg_status.get("files", []):
             status_name = file_info.get("status")
@@ -1255,7 +2024,18 @@ def download_missing_for_packages(package_ids):
             url = select_download_url(entry)
             size = entry.get("size", 0) or 0
             download_entries.append((url, size))
-    _write_and_start_download(download_entries)
+        for resource_info in pkg_status.get("resource_bundles", []):
+            if resource_info.get("status") == "ok":
+                continue
+            for package_info in packages.values():
+                if package_info.get("id") != pkg_status.get("id"):
+                    continue
+                for resource in iter_resource_bundle_entries(package_info.get("resource_bundles", [])):
+                    if resource.get("id") == resource_info.get("id"):
+                        resource_downloads.append(resource)
+                        break
+                break
+    _write_and_start_download(download_entries, resource_downloads)
 
 
 def download_files_by_expected_paths(expected_paths):
@@ -1308,6 +2088,7 @@ def delete_partial_files():
     total_size = 0
     files_found = False
     files_to_delete = []
+    seen_files_to_delete = set()
     obsolete_files_found = []  # 新增废弃文件存储
     obsolete_basenames, obsolete_relpaths = _split_obsolete_specs(OBSOLETE_MODELS)
 
@@ -1322,19 +2103,43 @@ def delete_partial_files():
             for file in files:
                 if ".partial" in file or ".corrupted" in file:
                     file_path = os.path.join(root, file)
-                    files_found = True
-                    files_to_delete.append(file_path)
-                    try:
-                        total_size += os.path.getsize(file_path)
-                    except:
-                        pass
+                    key = os.path.normcase(os.path.normpath(file_path))
+                    if key not in seen_files_to_delete:
+                        seen_files_to_delete.add(key)
+                        files_found = True
+                        files_to_delete.append(file_path)
+                        try:
+                            total_size += os.path.getsize(file_path)
+                        except:
+                            pass
                 file_path = os.path.join(root, file)
                 if _matches_obsolete(file_path, file, obsolete_basenames, obsolete_relpaths, simplemodels_root):
                     obsolete_files_found.append(file_path)
                     files_found = True
+
+    for package_info in packages.values():
+        for resource in iter_resource_bundle_entries((package_info or {}).get("resource_bundles", [])):
+            if not _resource_bundle_supported_by_launcher(resource):
+                continue
+            for archive_path in _resource_archive_candidates(resource):
+                for suffix in (".partial", ".corrupted"):
+                    cache_path = f"{archive_path}{suffix}"
+                    if not os.path.isfile(cache_path):
+                        continue
+                    key = os.path.normcase(os.path.normpath(cache_path))
+                    if key in seen_files_to_delete:
+                        continue
+                    seen_files_to_delete.add(key)
+                    files_found = True
+                    files_to_delete.append(cache_path)
+                    try:
+                        total_size += os.path.getsize(cache_path)
+                    except OSError:
+                        pass
+
     if files_found:
         if files_to_delete:
-            print(f"{Fore.YELLOW}△以下未下载完或损坏的文件将被删除：{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}△以下未下载完或损坏的文件/资源包缓存将被删除：{Style.RESET_ALL}")
             for file_path in files_to_delete:
                 print(f"- {file_path}")
 
@@ -1440,7 +2245,7 @@ def delete_specific_image_files():
         print(f"{Fore.RED}△未找到 users 目录{Style.RESET_ALL}")
         return
     candidates = []
-    for workspace_name in ("Local", "guest_user"):
+    for workspace_name in ("Local",):
         comfyd_inputs_dir = os.path.join(users_dir, workspace_name, "comfyd_inputs")
         if os.path.isdir(comfyd_inputs_dir):
             candidates.append(comfyd_inputs_dir)
@@ -1775,15 +2580,34 @@ def trigger_manual_download():
         download_file_with_resume(link, save_path, 0, result_queue, expected_path=expected_path)
 
 def auto_download_missing_files_with_retry(max_threads=5):
+    resource_success_count, resource_fail_count, resource_deferred_count = _download_pending_resource_bundles()
     if not os.path.exists("downloadlist.txt"):
-        print("未找到 'downloadlist.txt' 文件。")
+        if resource_success_count:
+            print("√资源包处理完成 / Resource bundle processing completed")
+        if resource_fail_count:
+            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+        if resource_deferred_count:
+            print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
+        if not resource_success_count and not resource_fail_count and not resource_deferred_count:
+            print("未找到 'downloadlist.txt' 文件。")
+        elif resource_success_count and not resource_fail_count and not resource_deferred_count and not LAUNCHER_MODE:
+            validate_files(packages)
         return
 
     with open("downloadlist.txt", "r") as f:
         links = f.readlines()
 
     if not links:
-        print("没有缺失文件需要下载！")
+        if resource_success_count:
+            print("√资源包处理完成 / Resource bundle processing completed")
+        if resource_fail_count:
+            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+        if resource_deferred_count:
+            print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
+        if not resource_success_count and not resource_fail_count and not resource_deferred_count:
+            print("没有缺失文件需要下载！")
+        elif resource_success_count and not resource_fail_count and not resource_deferred_count and not LAUNCHER_MODE:
+            validate_files(packages)
         return
 
     path_mapping = load_model_paths()
@@ -1922,23 +2746,53 @@ def auto_download_missing_files_with_retry(max_threads=5):
     print(f"√下载成功：{success_count}个")
     print(f"×下载失败：{fail_count}个")
 
-    if fail_count == 0 and success_count > 0:
+    remaining_resources = _load_resource_download_list()
+    if fail_count == 0:
         if os.path.exists("downloadlist.txt"):
             os.remove("downloadlist.txt")
-            print("√下载完成")
+        if resource_fail_count:
+            print(f"△资源包下载失败：{resource_fail_count}个 / Resource bundle downloads failed: {resource_fail_count}")
+        if resource_deferred_count:
+            print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
+        if remaining_resources:
+            if success_count > 0:
+                print("√单文件下载完成，但仍有资源包等待后续处理")
+        elif success_count > 0 or resource_success_count > 0:
+            print("√下载与资源包安装完成 / Downloads and resource installation completed")
             if not LAUNCHER_MODE:
                 print("√下载完成，执行重新检测")
                 validate_files(packages)
     else:
-        print(f"△有{fail_count}个文件下载失败，请检查网络连接或手动下载文件。")
+        print(
+            f"△有{fail_count}个文件、{resource_fail_count}个资源包处理失败，"
+            "请检查网络连接或手动处理 / Please check the network or retry manually。"
+        )
+        if resource_deferred_count:
+            print(f"△有{resource_deferred_count}个资源包等待启动器升级后处理")
 
 def get_download_links_for_package(packages, download_list_path):
     """
     根据 packages 中的 files 列表生成路径，并与 downloadlist.txt 中的需求进行比对，
     更新 downloadlist.txt 中需要下载的文件，只保留 files 中有的文件链接。
     """
+    packages = filter_packages_by_launcher_version(packages, report_unsupported=True)
+    if not packages:
+        return []
+
+    resource_downloads = []
+    for package_info in packages.values():
+        for resource in iter_resource_bundle_entries(package_info.get("resource_bundles", [])):
+            if not is_resource_bundle_installed(resource):
+                _install_local_resource_bundle(resource)
+            if _resource_bundle_status(resource) != "ok":
+                resource_downloads.append(resource)
+    _write_resource_download_list(resource_downloads)
+
     if not os.path.exists(download_list_path):
-        print(f"{Fore.RED}>>>downloadlist.txt不存在，输入【R】重新检测<<<{Style.RESET_ALL}")
+        if resource_downloads:
+            print(f"{Fore.YELLOW}>>>没有单文件下载清单，已准备资源包下载 / Resource bundle list prepared。<<<{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}>>>downloadlist.txt不存在，输入【R】重新检测<<<{Style.RESET_ALL}")
         return []
 
     with open(download_list_path, "r") as f:
@@ -1985,7 +2839,15 @@ def delete_package(package_name, packages):
         return
 
     package = packages[package_name]
+    if not _package_supported_by_launcher(package):
+        _print_launcher_upgrade_required(package)
+        return
     print(f"\n{Fore.CYAN}△ 开始处理模型包：{package['name']}{Style.RESET_ALL}")
+    resource_delete_candidates, shared_resources = _resource_delete_candidates(
+        package_name,
+        package,
+        packages,
+    )
 
     file_refs = defaultdict(set)
     for pkg_name, pkg_info in packages.items():
@@ -2018,20 +2880,27 @@ def delete_package(package_name, packages):
             else:
                 shared_files.add(full_path)
 
+    delete_candidates.update(resource_delete_candidates)
+
     if shared_files:
         print(f"\n{Fore.YELLOW}△ 以下文件被其他模型包共享：{Style.RESET_ALL}")
         for path in sorted(shared_files):
             print(f"  {path}")
 
+    if shared_resources:
+        print(f"\n{Fore.YELLOW}△ 以下资源包目录或缓存被其他模型包共享：{Style.RESET_ALL}")
+        for path in sorted(shared_resources):
+            print(f"  {path}")
+
     if delete_candidates:
-        print(f"\n{Fore.YELLOW}△ 以下孤立文件将被删除：{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}△ 以下孤立文件或资源包目录将被删除：{Style.RESET_ALL}")
         total_size = 0
         for path in sorted(delete_candidates):
-            try:
-                size = os.path.getsize(path)
+            size = _path_size_bytes(path)
+            if size > 0:
                 print(f"  {path} ({size/1024/1024:.1f}MB)")
                 total_size += size
-            except:
+            else:
                 print(f"  {path} (大小未知)")
 
         print(f"{Fore.CYAN}△ 总计释放空间: {total_size/1024/1024/1024:.2f}GB{Style.RESET_ALL}")
@@ -2042,19 +2911,19 @@ def delete_package(package_name, packages):
             success = 0
             for path in sorted(delete_candidates):
                 try:
-                    os.remove(path)
+                    _remove_resource_path(path)
                     print(f"{Fore.GREEN}✓ 已删除: {path}{Style.RESET_ALL}")
                     success += 1
                 except Exception as e:
                     print(f"{Fore.RED}× 删除失败: {path} ({str(e)}){Style.RESET_ALL}")
 
-            print(f"\n{Fore.GREEN}✓ 模型包{package['name']}孤立文件已清除{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}✓ 模型包{package['name']}的孤立文件和资源包目录已清除{Style.RESET_ALL}")
             if not LAUNCHER_MODE:
                 validate_files(packages)
         else:
             print(f"{Fore.BLUE}× 操作已取消{Style.RESET_ALL}")
     else:
-        print(f"{Fore.BLUE}△ 未找到可安全删除的文件{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}△ 未找到可安全删除的文件或资源包目录{Style.RESET_ALL}")
 
 def delete_package_force(package_name, packages):
     """强制删除指定模型包文件（不检查关联性）"""
@@ -2069,8 +2938,17 @@ def delete_package_force(package_name, packages):
         return
 
     package = packages[package_name]
+    if not _package_supported_by_launcher(package):
+        _print_launcher_upgrade_required(package)
+        return
     print(f"\n{Fore.RED}!!! 正在执行强制删除操作 !!!{Style.RESET_ALL}")
     print(f"{Fore.CYAN}△ 开始处理模型包：{package['name']}{Style.RESET_ALL}")
+    resource_delete_candidates, _ = _resource_delete_candidates(
+        package_name,
+        package,
+        packages,
+        force=True,
+    )
 
     delete_candidates: set[str] = set()
 
@@ -2085,15 +2963,17 @@ def delete_package_force(package_name, packages):
             if os.path.exists(full_path):
                 delete_candidates.add(full_path)
 
+    delete_candidates.update(resource_delete_candidates)
+
     if delete_candidates:
-        print(f"\n{Fore.RED}△ 以下文件将被【强制删除】（不检查其他模型包依赖）：{Style.RESET_ALL}")
+        print(f"\n{Fore.RED}△ 以下文件或资源包目录将被【强制删除】（不检查其他模型包依赖）：{Style.RESET_ALL}")
         total_size = 0
         for path in sorted(delete_candidates):
-            try:
-                size = os.path.getsize(path)
+            size = _path_size_bytes(path)
+            if size > 0:
                 print(f"  {path} ({size/1024/1024:.1f}MB)")
                 total_size += size
-            except:
+            else:
                 print(f"  {path} (大小未知)")
 
         print(f"{Fore.CYAN}△ 总计释放空间: {total_size/1024/1024/1024:.2f}GB{Style.RESET_ALL}")
@@ -2104,13 +2984,13 @@ def delete_package_force(package_name, packages):
             success = 0
             for path in sorted(delete_candidates):
                 try:
-                    os.remove(path)
+                    _remove_resource_path(path)
                     print(f"{Fore.GREEN}✓ 已删除: {path}{Style.RESET_ALL}")
                     success += 1
                 except Exception as e:
                     print(f"{Fore.RED}× 删除失败: {path} ({str(e)}){Style.RESET_ALL}")
 
-            print(f"\n{Fore.GREEN}✓ 模型包{package['name']}文件已强制清除{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}✓ 模型包{package['name']}的文件和资源包目录已强制清除{Style.RESET_ALL}")
             if not LAUNCHER_MODE:
                 validate_files(packages)
         else:
@@ -2183,7 +3063,7 @@ def filter_packages_by_gpu_arch(packages):
                 if has_int4 or (not has_int4 and not has_fp4):
                     filtered_packages[package_key] = package_info
 
-    return filtered_packages
+    return filter_packages_by_launcher_version(filtered_packages)
 
 packages = {'base_package': {'id': 1,
                   'name': '[1]基础组件模型包[建议补全]',
@@ -2977,6 +3857,38 @@ packages = {'base_package': {'id': 1,
                                   'latent_upscale_models,minimax_h3_latent_upscaler_3d_bf16.safetensors,690592992,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/latent_upscale_models/minimax_h3_latent_upscaler_3d_bf16.safetensors,https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_bf16.safetensors'],
                         'info_links': ['https://modelscope.cn/models/Comfy-Org/MiniMax-H3'],
                         'preset_sample': []},
+ 'topaz_starlight_package': {'id': 48,
+                             'name': '[48]Topaz Starlight SLP-26视频超分/增强资源包',
+                             'note': 'Topaz星光模型视频超分/增强所需的后端、模型，仅供学习试用，喜欢请支持Topaz！',
+                             'min_launcher_version': '4.0.8',
+                             'files': [],
+                             'resource_bundles': [
+                                 {
+                                     'id': 'topaz_engine_slp26',
+                                     'type': 'archive',
+                                     'version': 'neuroserver171-slp26',
+                                     'min_launcher_version': '4.0.8',
+                                     'display_name': {
+                                         'en': 'Topaz Starlight runtime + SLP-26 model',
+                                         'cn': 'Topaz星光运行环境与SLP-26模型'
+                                     },
+                                     'file_name': 'topaz_engine.zip',
+                                     'url': 'https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/topaz_engine.zip',
+                                     'size': 13372663393,
+                                     'sha256': 'cc06eb17488c24f12171d6e6b67d8c75f43b0b2d983538ae7cbae3300636cb8c',
+                                     'install_base': 'models_root',
+                                     'install_subdir': 'topaz_engine',
+                                     'archive_root': '',
+                                     'required_paths': [
+                                         'neuroserver171/neuroserver.exe',
+                                         'bin171/ffmpeg.exe',
+                                         'bin171/ffprobe.exe',
+                                         'models/slp26/'
+                                     ]
+                                 }
+                             ],
+                             'info_links': ['https://www.topazlabs.com/'],
+                             'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
 }
@@ -3094,13 +4006,19 @@ def verify_package_strict(package_id, packages):
         print(f"{Fore.RED}△未找到ID为 {package_id} 的模型包{Style.RESET_ALL}")
         return
 
+    if not _package_supported_by_launcher(target_package):
+        _print_launcher_upgrade_required(target_package)
+        return
+
     print(f"{Fore.CYAN}正在严格校验模型包: {target_package['name']} (计算SHA256需要时间，请耐心等待)...{Style.RESET_ALL}")
 
     path_mapping = load_model_paths()
     root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
     entries = list(iter_package_file_entries(target_package.get("files", [])))
+    resource_entries = list(iter_resource_bundle_entries(target_package.get("resource_bundles", [])))
     corrupted_files = []
+    corrupted_resources = []
 
     for entry in entries:
         expected_path = entry["expected_path"]
@@ -3159,25 +4077,89 @@ def verify_package_strict(package_id, packages):
         else:
             print(f"{Fore.RED}×文件缺失: {expected_path}{Style.RESET_ALL}")
 
-    if corrupted_files:
-        print(f"\n{Fore.RED}发现 {len(corrupted_files)} 个文件的SHA256与官方不匹配：{Style.RESET_ALL}")
-        for path, _, _, local_sha256, official_sha256 in corrupted_files:
-            print(f"- {os.path.basename(path)}")
-            print(f"  路径: {path}")
-            print(f"  本地SHA256: {local_sha256}")
-            print(f"  官方SHA256: {official_sha256}")
+    for resource in resource_entries:
+        resource_id = str(resource.get("id") or resource.get("file_name") or "资源包")
+        resource_name = str(resource.get("file_name") or resource_id)
+        expected_hash = str(resource.get("sha256") or "").strip().lower()
+        try:
+            target_root = _resource_install_root(resource)
+        except (OSError, ValueError, TypeError):
+            target_root = ""
+
+        print(f"正在校验资源包: {resource_name} ...")
+        if is_resource_bundle_installed(resource):
+            _cleanup_installed_resource_archives(resource)
+            print(f"  路径: {target_root}")
+            if expected_hash:
+                print(f"  校验结果: {Fore.YELLOW}? 资源包已安装，原始压缩包已清理，无法重算 SHA256{Style.RESET_ALL}")
+            else:
+                print(f"  校验结果: {Fore.YELLOW}? 资源包已安装，但未提供 SHA256{Style.RESET_ALL}")
+            continue
+
+        archive_path = next(
+            (candidate for candidate in _resource_archive_candidates(resource) if os.path.isfile(candidate)),
+            None,
+        )
+        if not archive_path:
+            print(f"{Fore.RED}×资源包缺失: {resource_id}{Style.RESET_ALL}")
+            continue
+
+        actual_hash = calculate_sha256(archive_path)
+        try:
+            actual_size = os.path.getsize(archive_path)
+            _verify_resource_archive(archive_path, resource)
+        except Exception as error:
+            print(f"  路径: {archive_path}")
+            print(f"  本地SHA256: {actual_hash}")
+            print(f"  校验结果: {Fore.RED}× 失败 ({error}){Style.RESET_ALL}")
+            corrupted_resources.append((resource, archive_path, actual_hash, str(error)))
+            continue
+
+        print(f"  路径: {archive_path}")
+        print(f"  SHA256: {Fore.YELLOW}{actual_hash}{Style.RESET_ALL}")
+        print(f"  大小: {actual_size} bytes (预期: {_normalize_expected_size(resource.get('size'))})")
+        if expected_hash:
+            print(f"  校验结果: {Fore.GREEN}√ 通过 (资源包SHA256一致，尚未解压){Style.RESET_ALL}")
+        else:
+            print(f"  校验结果: {Fore.YELLOW}? 未提供资源包SHA256{Style.RESET_ALL}")
+
+    if corrupted_files or corrupted_resources:
+        if corrupted_files:
+            print(f"\n{Fore.RED}发现 {len(corrupted_files)} 个文件的SHA256与官方不匹配：{Style.RESET_ALL}")
+            for path, _, _, local_sha256, official_sha256 in corrupted_files:
+                print(f"- {os.path.basename(path)}")
+                print(f"  路径: {path}")
+                print(f"  本地SHA256: {local_sha256}")
+                print(f"  官方SHA256: {official_sha256}")
+
+        if corrupted_resources:
+            print(f"\n{Fore.RED}发现 {len(corrupted_resources)} 个资源包校验失败：{Style.RESET_ALL}")
+            for resource, path, local_sha256, error in corrupted_resources:
+                print(f"- {resource.get('file_name') or resource.get('id')}")
+                print(f"  路径: {path}")
+                print(f"  本地SHA256: {local_sha256}")
+                print(f"  失败原因: {error}")
 
         print(f"\n{Fore.YELLOW}是否删除这些受损文件并重新下载？(y/n): {Style.RESET_ALL}", end="")
         choice = input().strip().lower()
         if choice == 'y':
-            with open("downloadlist.txt", "w") as f1:
-                for path, url, size, _, _ in corrupted_files:
-                    try:
-                        os.remove(path)
-                        print(f"已删除: {path}")
-                        f1.write(f"{url},{size}\n")
-                    except Exception as e:
-                        print(f"删除失败 {path}: {e}")
+            if corrupted_files:
+                with open("downloadlist.txt", "w", encoding="utf-8") as f1:
+                    for path, url, size, _, _ in corrupted_files:
+                        try:
+                            os.remove(path)
+                            print(f"已删除: {path}")
+                            f1.write(f"{url},{size}\n")
+                        except Exception as e:
+                            print(f"删除失败 {path}: {e}")
+
+            for resource, path, _, _ in corrupted_resources:
+                try:
+                    _remove_resource_path(path)
+                    print(f"已删除资源包: {path}")
+                except Exception as e:
+                    print(f"删除失败 {path}: {e}")
+            _write_resource_download_list([resource for resource, _, _, _ in corrupted_resources])
 
             print("启动自动下载...")
             auto_download_missing_files_with_retry()
@@ -3208,8 +4190,10 @@ def run_cli_command(argv):
                 "id": pkg_info.get("id"),
                 "name": pkg_info.get("name"),
                 "note": pkg_info.get("note", ""),
+                "min_launcher_version": pkg_info.get("min_launcher_version", ""),
                 "info_links": get_package_info_links(pkg_info),
                 "files": list(iter_package_file_entries(pkg_info.get("files", []))),
+                "resource_bundles": list(iter_resource_bundle_entries(pkg_info.get("resource_bundles", []))),
             }
             output.append(pkg_entry)
         print(json.dumps(output, ensure_ascii=False, indent=2))

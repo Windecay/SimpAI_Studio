@@ -1,0 +1,162 @@
+{
+    "supported_tasks": ["video_edit"],
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "native_process": "studio",
+        "engine_type": "video",
+        "disvisible": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection"
+        ],
+        "available_aspect_ratios_selection": "Flux",
+        "scene_frontend": {
+            "version": "v1.1",
+            "theme": [
+                "Depth Anything V2 Depth Video"
+            ],
+            "theme_labels": {
+                "Depth Anything V2 Depth Video": {
+                    "en": "Depth Anything V2 Depth Video",
+                    "zh": "深度视频"
+                }
+            },
+            "theme_title": "Depth Anything V2 Depth Video",
+            "director_capability": {
+                "image_policy": "forbidden",
+                "audio_policy": "forbidden",
+                "video_policy": "required",
+                "max_images": 0,
+                "min_images": 0,
+                "image_modes": [
+                    "none"
+                ],
+                "video_modes": [
+                    "explicit"
+                ],
+                "chain_output": "last_result",
+                "requires_sequential": false,
+                "duration_strategy": "video_min",
+                "audio_output": "source_audio",
+                "mixed_segments": false
+            },
+            "disvisible": [
+                "scene_canvas_image",
+                "scene_additional_prompt",
+                "scene_additional_prompt_2",
+                "scene_aspect_ratio",
+                "scene_image_number",
+                "scene_use_lora",
+                "scene_audio",
+                "scene_input_image1",
+                "scene_input_image2",
+                "scene_input_image3",
+                "scene_input_image4",
+                "scene_input_image5",
+                "scene_input_image6",
+                "scene_input_image7",
+                "scene_input_image8",
+                "scene_reference_video",
+                "scene_reference_video2",
+                "scene_var_number",
+                "scene_var_number3",
+                "scene_var_number4",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number7",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "scene_steps",
+                "scene_base_model",
+                "scene_refiner_model",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "task_method": {
+                "Depth Anything V2 Depth Video": "depth_anything_v2_video"
+            },
+            "var_number_title": "Duration limit (seconds) [0 = no limit]",
+            "var_number": {
+                "Depth Anything V2 Depth Video": 0
+            },
+            "var_number_min": 0,
+            "var_number_max": 120,
+            "var_number2_title": "Save quality (lower = better, larger file size)",
+            "var_number2": {
+                "Depth Anything V2 Depth Video": 19
+            },
+            "var_number2_min": 5,
+            "var_number2_max": 45,
+            "aspect_ratio": [
+                "origin|Original"
+            ],
+            "resolution_control": {
+                "mode": "input_passthrough",
+                "source": "scene_video",
+                "interactive": true,
+                "frontend_preprocess": false
+            },
+            "video_duration_title": "Duration limit (seconds) [0 = no limit]",
+            "video_duration_min": 0,
+            "video_duration_max": 120,
+            "video_duration": {
+                "Depth Anything V2 Depth Video": 0
+            }
+        }
+    },
+    "default_model": "None",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_clip_model": "Default (model)",
+    "default_loras": [
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ]
+    ],
+    "default_cfg_scale": 2.5,
+    "default_sample_sharpness": 2,
+    "default_sampler": "euler",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_image_number": 1,
+    "default_overwrite_step": 1,
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "controlnet,depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth,1341395338,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth"
+    ]
+}

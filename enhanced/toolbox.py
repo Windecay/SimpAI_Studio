@@ -962,6 +962,7 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         state_params["__preset_supported_tasks"] = config.resolve_preset_supported_tasks(preset_json, preset_name)
         state_params["__preset_interaction_requirements"] = config.resolve_preset_interaction_requirements(preset_json, preset_name)
         state_params["__preset_model_list_raw"] = preset_json.get("model_list", [])
+        state_params["__preset_resource_bundles_raw"] = preset_json.get("resource_bundles", [])
         state_params["__preset_previous_default_model_info"] = {
             "default_model": preset_json.get("default_model", ""),
             "previous_default_models": preset_json.get("previous_default_models", []),
