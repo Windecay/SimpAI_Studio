@@ -35,6 +35,10 @@ TOPAZ_GPU_MEMORY_FRACTION = 0.9
 TOPAZ_GPU_MEMORY_FALLBACK_GIB = 14.0
 TOPAZ_GPU_MEMORY_MIN_GIB = 4.0
 TOPAZ_GPU_MEMORY_MAX_GIB = 64.0
+TOPAZ_ENGINE_PROGRESS_MAX = 93.0
+TOPAZ_ENGINE_FINALIZING_PROGRESS = 94.0
+TOPAZ_ENGINE_FINALIZING_THRESHOLD = 99.5
+TOPAZ_PROGRESS_HEARTBEAT_SECONDS = 2.0
 logger = logging.getLogger(__name__)
 _TOPAZ_EXECUTION_LOCK = threading.Lock()
 
@@ -787,11 +791,27 @@ def parse_neuroserver_progress(line: str, frame_count: int) -> tuple[float | Non
     return percentage, line.strip() or None
 
 
+def _display_neuroserver_progress(percentage: float) -> float:
+    if percentage >= TOPAZ_ENGINE_FINALIZING_THRESHOLD:
+        return TOPAZ_ENGINE_FINALIZING_PROGRESS
+    return max(0.0, min(TOPAZ_ENGINE_PROGRESS_MAX, float(percentage)))
+
+
 def _progress_title(language: Any, percentage: float, message: str | None) -> str:
-    del message
-    if localized_text(language, "en", "zh") == "zh":
-        return f"Topaz 星光处理中 {int(round(percentage))}%..."
-    return f"Topaz Starlight processing {int(round(percentage))}%..."
+    normalized_message = str(message or "").strip().casefold()
+    if percentage >= TOPAZ_ENGINE_FINALIZING_THRESHOLD:
+        return localized_text(language, "Finalizing Topaz output...", "正在整理 Topaz 输出...")
+    if any(
+        token in normalized_message
+        for token in ("encode", "encoding", "write output", "writing output", "output frame", "mux", "flush")
+    ):
+        return localized_text(language, "Topaz Starlight writing output...", "正在写入 Topaz 星光输出...")
+    if any(
+        token in normalized_message
+        for token in ("decode", "demux", "read input", "reading input", "input frame")
+    ):
+        return localized_text(language, "Topaz Starlight decoding source video...", "正在解码 Topaz 源视频...")
+    return localized_text(language, "Topaz Starlight processing...", "正在处理 Topaz 星光...")
 
 
 def _subprocess_environment(config: TopazEngineConfig) -> dict[str, str]:
@@ -852,7 +872,24 @@ def _run_neuroserver(
     reader = threading.Thread(target=read_output, name="topaz-neuroserver-output", daemon=True)
     reader.start()
     last_percentage = 0.0
+    last_message: str | None = None
+    last_emit_time = time.monotonic()
+    last_marker: tuple[int, str] | None = None
     watermark_required = False
+
+    def emit_engine_state(force: bool = False) -> None:
+        nonlocal last_emit_time, last_marker
+        if progress_callback is None:
+            return
+        display_percentage = _display_neuroserver_progress(last_percentage)
+        title = _progress_title(language, last_percentage, last_message)
+        marker = (int(round(display_percentage)), title)
+        if not force and marker == last_marker:
+            return
+        progress_callback(marker[0], title)
+        last_marker = marker
+        last_emit_time = time.monotonic()
+
     try:
         while True:
             if cancel_callback and cancel_callback():
@@ -863,9 +900,15 @@ def _run_neuroserver(
             except queue.Empty:
                 if process.poll() is not None and output_queue.empty():
                     break
+                if time.monotonic() - last_emit_time >= TOPAZ_PROGRESS_HEARTBEAT_SECONDS:
+                    emit_engine_state(force=True)
                 continue
             if line is None:
-                break
+                if process.poll() is not None:
+                    break
+                # Neuroserver can close stdout before its output container is finalized.
+                # Keep polling so the task remains visibly active during that interval.
+                continue
             clean_line = line.rstrip()
             if clean_line:
                 lines.append(clean_line)
@@ -874,15 +917,13 @@ def _run_neuroserver(
                 watermark_required = watermark_required or "watermark required" in lowered
                 watermark_required = watermark_required or "auth file does not exist" in lowered
                 percentage, _message = parse_neuroserver_progress(clean_line, frame_count)
+                if _message:
+                    last_message = _message
                 if percentage is not None:
                     last_percentage = max(last_percentage, percentage)
-                    _emit_progress(
-                        progress_callback,
-                        language,
-                        min(94.0, last_percentage),
-                        "Topaz Starlight processing...",
-                        "正在处理 Topaz 星光...",
-                    )
+                    emit_engine_state()
+                elif _message:
+                    emit_engine_state()
                 logger.debug("[Topaz] %s", clean_line)
         return_code = process.wait()
     finally:
@@ -1022,6 +1063,13 @@ def run_topaz_starlight(
             raise RuntimeError("neuroserver produced no output file")
         if cancel_callback and cancel_callback():
             raise TopazStarlightCancelled()
+        _emit_progress(
+            progress_callback,
+            language,
+            95,
+            "Checking Topaz output...",
+            "正在检查 Topaz 输出...",
+        )
         if info.has_audio:
             _emit_progress(
                 progress_callback,
@@ -1033,6 +1081,13 @@ def run_topaz_starlight(
             audio_muxed = _mux_source_audio(output_path, input_path, config.ffmpeg_path)
         if watermark_required:
             logger.warning("Topaz Neuroserver reported that a watermark is required.")
+        _emit_progress(
+            progress_callback,
+            language,
+            99,
+            "Verifying Topaz output...",
+            "正在验证 Topaz 输出...",
+        )
         output_info = _probe_video(output_path, config.ffprobe_path)
         success = True
         _emit_progress(

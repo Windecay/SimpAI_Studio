@@ -2049,6 +2049,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }, true);
 
     document.addEventListener('pointerdown', (event) => {
+        if (event.target?.closest?.('.sai-gradio-hidden-bridge')) return;
         const select = event.target?.closest?.('.simpai-models-js-select');
         if (!select) {
             if (!event.target?.closest?.('.simpai-models-js-select-menu')) closeModelsSelectMenu();
@@ -2114,6 +2115,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     window.visualViewport?.addEventListener('scroll', scheduleActiveModelsSelectMenuPosition, { passive: true });
 
     document.addEventListener('click', (event) => {
+        if (event.target?.closest?.('.sai-gradio-hidden-bridge')) return;
         if (suppressNextModelsSelectDocumentClick) {
             const menuState = activeModelsSelectMenu;
             clearModelsSelectOpeningGesture(menuState);

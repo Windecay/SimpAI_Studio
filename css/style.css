@@ -17515,6 +17515,9 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   max-width: calc(100vw - 48px) !important;
   height: auto !important;
   max-height: calc(100vh - 96px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
   border-radius: 10px !important;
   overflow: hidden !important;
   background: color-mix(in srgb, var(--background-fill-primary) 96%, #000 4%) !important;
@@ -17580,6 +17583,10 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 
 #identity_dialog_content .tabitem {
   padding: 22px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
   gap: 16px !important;
   max-height: calc(100vh - 142px) !important;
   overflow-y: auto !important;
@@ -17756,6 +17763,10 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 }
 
 #identity_dialog_content #identity_multi_user_activation_guard {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
   gap: 12px !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -17767,6 +17778,12 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   border-top: 1px solid color-mix(in srgb, #f59e0b 58%, var(--border-color-primary)) !important;
   border-bottom: 1px solid color-mix(in srgb, #f59e0b 42%, var(--border-color-primary)) !important;
   background: color-mix(in srgb, var(--background-fill-secondary) 86%, #f59e0b 14%) !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard > * {
+  flex: 0 0 auto !important;
+  align-self: stretch !important;
+  width: 100% !important;
 }
 
 #identity_dialog_content #identity_multi_user_activation_guard > *,
@@ -17786,12 +17803,67 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 #identity_dialog_content #identity_activation_mode .wrap,
 #identity_dialog_content #identity_activation_mode fieldset,
 #identity_dialog_content #identity_activation_mode [role="radiogroup"] {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
   overflow-x: hidden !important;
   flex-wrap: wrap !important;
   box-sizing: border-box !important;
+}
+
+#identity_dialog_content #identity_activation_mode [role="radiogroup"] > label,
+#identity_dialog_content #identity_activation_mode [role="radiogroup"] > [role="radio"] {
+  display: flex !important;
+  align-items: flex-start !important;
+  width: 100% !important;
+  min-height: 42px !important;
+  padding: 10px 12px !important;
+  box-sizing: border-box !important;
+  border: 1px solid color-mix(in srgb, var(--border-color-primary) 76%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in srgb, var(--background-fill-primary) 62%, transparent) !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard > :is(
+  #identity_activation_scope_confirm,
+  #identity_activation_permission_confirm,
+  #identity_activation_phrase_confirm
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard > :is(
+  #identity_activation_scope_confirm,
+  #identity_activation_permission_confirm,
+  #identity_activation_phrase_confirm
+) .wrap,
+#identity_dialog_content #identity_multi_user_activation_guard > :is(
+  #identity_activation_scope_confirm,
+  #identity_activation_permission_confirm,
+  #identity_activation_phrase_confirm
+) label {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+#identity_dialog_content #identity_multi_user_activation_guard > :is(
+  #identity_activation_scope_confirm,
+  #identity_activation_permission_confirm,
+  #identity_activation_phrase_confirm
+) label span {
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
 }
 
 #identity_dialog_content .identity-activation-note {
@@ -17834,6 +17906,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 
 #identity_dialog_content #identity_activation_apply_button {
   width: calc(100% - 28px) !important;
+  min-height: 44px !important;
   margin: 0 14px !important;
 }
 

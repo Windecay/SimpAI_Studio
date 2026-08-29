@@ -566,6 +566,40 @@ def _state_field_patch_entries(value: Any, field_hint: Any = "") -> list[dict[st
     return []
 
 
+def _director_value_has_state_field_shape(value: Any) -> bool:
+    """Recognize field payloads when a model omits the top-level field name."""
+    candidate = value
+    if isinstance(candidate, str):
+        source = candidate.strip()
+        if source.startswith(("{", "[")):
+            try:
+                candidate = json.loads(source)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return False
+        else:
+            return False
+    if isinstance(candidate, list):
+        entries = [item for item in candidate if isinstance(item, dict)]
+        if not entries or len(entries) != len(candidate):
+            return False
+        return all(
+            any(key in item for key in {"field_id", "fieldId", "label", "name", "key"})
+            for item in entries
+        )
+    if not isinstance(candidate, dict) or not candidate:
+        return False
+    if any(key in candidate for key in {"field_id", "fieldId", "label", "name", "key"}):
+        return True
+    return all(_is_state_field_id(key) for key in candidate)
+
+
+def _director_infer_patch_field(requested_field: Any, value: Any) -> str:
+    field = _text(requested_field, 120).strip()
+    if field or not _director_value_has_state_field_shape(value):
+        return field
+    return "state_fields"
+
+
 def _normalize_state_field_patch_value(
     state: dict[str, Any],
     path: list[str],
@@ -3984,6 +4018,7 @@ def build_director_prompt(
     resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
     speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized.get("character", {})
     player_persona = normalized.get("persona", {})
+    player_present = _director_player_is_present(normalized)
     present_character_ids = _director_present_character_ids(normalized, resolved_speaker_id)
     present_character_order = [
         character_id
@@ -4001,6 +4036,13 @@ def build_director_prompt(
             "id": _text(player_persona.get("id"), 160),
             "name": _text(player_persona.get("name"), 200),
             "state_path_prefix": "player_state",
+            "status": _text(player_state.get("status"), 40) or "present",
+            "is_present": player_present,
+            "state_update_policy": (
+                "explicit_user_control_only"
+                if not player_present
+                else "update_only_when_explicitly_affected"
+            ),
             "allowed_runtime_fields": ["status", "state_text", "state_fields"],
             "state_fields": _state_field_catalog(player_state.get("state_fields")),
         },
@@ -4134,6 +4176,7 @@ def build_director_prompt(
             "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
             "Existing state_fields are user-defined schema. Never rename, translate, replace, or add fields during a runtime update. Use only field_id values from the state field catalog for the selected target. If no catalog field matches the effect, update state_text instead and leave numeric fields unchanged.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
+            "Player presence is authoritative. If the current player status is absent, do not emit player_state status, state_text, or state_fields patches because a character acted, because second-person wording appeared, or because the player was mentioned as background context. Update an absent player's runtime only when the latest user instruction explicitly controls that player, such as an explicit return, departure, injury, or state assignment. Otherwise leave player_state unchanged.",
             "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
             "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
             (
@@ -4757,9 +4800,12 @@ def _director_resolve_character_id(
             for character_id in mentions
             if _director_character_is_named_subject(normalized, source, character_id)
         }
-        preferred = named_subjects if field_key in {"current_action", "action"} else affected
-        if not preferred:
-            preferred = affected if field_key in {"current_action", "action"} else named_subjects
+        if field_key in {"current_action", "action"}:
+            # An action field belongs to its grammatical actor. A name after
+            # "向"/"对" is usually the recipient, not the actor.
+            preferred = named_subjects
+        else:
+            preferred = affected or named_subjects
         return mentions, preferred
 
     local_ambiguous = False
@@ -4818,7 +4864,7 @@ def _director_resolve_character_id(
         mentions, preferred = text_candidates(source)
         if len(preferred) == 1:
             return next(iter(preferred)), "director_character_target_id_repaired"
-        if len(mentions) == 1:
+        if field_key not in {"current_action", "action"} and len(mentions) == 1:
             return next(iter(mentions)), "director_character_target_id_repaired"
         if mentions:
             local_ambiguous = True
@@ -4831,7 +4877,7 @@ def _director_resolve_character_id(
     mentioned, preferred = text_candidates(attribution_source)
     if len(preferred) == 1:
         return next(iter(preferred)), "director_character_target_id_repaired"
-    if len(mentioned) == 1:
+    if field_key not in {"current_action", "action"} and len(mentioned) == 1:
         return next(iter(mentioned)), "director_character_target_id_repaired"
     if local_ambiguous or mentioned:
         return "", "director_character_target_ambiguous"
@@ -4909,7 +4955,10 @@ def _director_reuse_character_target_ids(
                 requested_type, requested_id, _field = target
         if requested_type != "character" or not requested_id:
             continue
-        field = _text(patch.get("field") or patch.get("target_field"), 120)
+        field = _director_infer_patch_field(
+            patch.get("field") or patch.get("target_field"),
+            patch.get("value"),
+        )
         resolved, _warning = _director_resolve_character_id(
             normalized,
             requested_id,
@@ -4923,6 +4972,10 @@ def _director_reuse_character_target_ids(
         if resolved:
             candidates.setdefault(key, set()).add(resolved)
             evidence = _text(patch.get("evidence"), 1200)
+            if not evidence:
+                patch_value_text = _director_patch_value_text(patch)
+                if resolved in _director_entity_mentions(normalized, patch_value_text):
+                    evidence = patch_value_text
             if evidence and key not in evidence_by_key:
                 evidence_by_key[key] = evidence
 
@@ -4961,6 +5014,92 @@ def _director_reuse_character_target_ids(
             if len(path) >= 3 and path[0] == "characters" and path[1].casefold() == requested_id.casefold():
                 path[1] = resolved
                 patch["path"] = ".".join(path)
+    return rows
+
+
+def _director_reuse_misclassified_player_target_ids(
+    normalized: dict[str, Any],
+    patches: Any,
+    *,
+    speaker_id: Any = "",
+) -> list[dict[str, Any]]:
+    """Reuse a named character target when sibling patches share a player id by mistake."""
+    rows = [copy.deepcopy(item) for item in _list(patches, 80) if isinstance(item, dict)]
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    present_ids = _director_present_character_ids(normalized, speaker_id)
+    candidates: dict[str, set[str]] = {}
+    evidence_by_key: dict[str, str] = {}
+    references: list[tuple[dict[str, Any], str, str, str, set[str]]] = []
+
+    for patch in rows:
+        requested_type = _director_target_type(
+            patch.get("target_entity_type") or patch.get("entity_type")
+        )
+        requested_id = _text(
+            patch.get("target_entity_id") or patch.get("entity_id") or patch.get("target_id"),
+            160,
+        )
+        path = _path_parts(patch.get("path"))
+        if not requested_type and path:
+            target = _director_target_from_path(normalized, path)
+            if target:
+                requested_type, requested_id, _field = target
+        if requested_type != "player" or not requested_id:
+            continue
+        field = _director_infer_patch_field(
+            patch.get("field") or patch.get("target_field"),
+            patch.get("value"),
+        )
+        patch_text = _director_patch_value_text(patch)
+        mentions = _director_entity_mentions(normalized, patch_text)
+        character_mentions = mentions.intersection(present_ids)
+        references.append((patch, requested_id.casefold(), field, patch_text, character_mentions))
+        if not character_mentions or player_id in mentions:
+            continue
+        if _director_describes_player_condition(normalized, patch_text):
+            continue
+        affected = _director_affected_character_ids(normalized, patch_text).intersection(character_mentions)
+        named_subjects = {
+            character_id
+            for character_id in character_mentions
+            if _director_character_is_named_subject(normalized, patch_text, character_id)
+        }
+        preferred = affected or named_subjects
+        if len(preferred) != 1:
+            continue
+        resolved = next(iter(preferred))
+        key = requested_id.casefold()
+        candidates.setdefault(key, set()).add(resolved)
+        evidence = _text(patch.get("evidence"), 1200) or patch_text
+        if evidence and key not in evidence_by_key:
+            evidence_by_key[key] = evidence
+
+    stable = {
+        key: next(iter(values))
+        for key, values in candidates.items()
+        if len(values) == 1
+    }
+    if not stable:
+        return rows
+
+    for patch, key, field, patch_text, character_mentions in references:
+        resolved = stable.get(key)
+        if not resolved:
+            continue
+        mentions = _director_entity_mentions(normalized, patch_text)
+        if player_id in mentions or _director_describes_player_condition(normalized, patch_text):
+            continue
+        if character_mentions and resolved not in character_mentions:
+            continue
+        # A sibling state_fields patch commonly contains only a field id. It can
+        # safely inherit the uniquely identified character from the descriptive patch.
+        if not character_mentions and field != "state_fields":
+            continue
+        patch["target_entity_type"] = "character"
+        patch["target_entity_id"] = resolved
+        patch["_director_target_repair_warning"] = "director_target_reassigned_to_named_character"
+        if not _text(patch.get("evidence"), 1200) and evidence_by_key.get(key):
+            patch["_director_target_repair_evidence"] = evidence_by_key[key]
     return rows
 
 
@@ -5027,6 +5166,59 @@ def _director_describes_player_condition(normalized: dict[str, Any], value: Any)
         rf"|{player_ref}[^。！？!?；;\n]{{0,30}}(?:生命值|血量|魔力值|理智|状态|伤势)?[^。！？!?；;\n]{{0,12}}(?:变为|下降|上升|恢复|回复|降低|增加|提升|治疗)"
         rf"|(?:治疗|攻击|伤害|击中|命中|抓住|束缚|拉住|抚摸|施加|给予|救治|按住|抱住|搂住|推倒|恢复|回复)[^。！？!?；;\n]{{0,12}}{player_ref}",
         text,
+        re.IGNORECASE,
+    ))
+
+
+def _director_player_is_present(normalized: dict[str, Any]) -> bool:
+    player_state = normalized.get("story_state", {}).get("player_state", {})
+    status = _text(player_state.get("status"), 40).strip().casefold()
+    if status == "absent" or player_state.get("is_present") is False:
+        return False
+    return True
+
+
+def _director_player_update_is_explicit(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+    *,
+    field: Any,
+    instruction_text: Any = "",
+    trusted_control: bool = False,
+) -> bool:
+    if trusted_control:
+        return True
+    source = _text(instruction_text, 16000)
+    if not source:
+        return False
+    persona = normalized.get("persona", {})
+    aliases = [
+        _text(persona.get("id"), 160),
+        *_director_name_aliases(persona.get("name")),
+        "我", "我的", "我们", "玩家", "你", "你的", "你们", "您",
+    ]
+    aliases = sorted({item for item in aliases if item}, key=len, reverse=True)
+    player_ref = "(?:" + "|".join(re.escape(item) for item in aliases) + ")"
+    field_words = (
+        r"(?:当前)?(?:状态|生命值|血量|魔力值|理智|体力|伤势|位置|姿态|行动|"
+        r"装备|外观|效果|buff|debuff)"
+    )
+    field_key = _text(field, 120).strip().casefold()
+    if field_key == "status":
+        return bool(re.search(
+            rf"{player_ref}[^。！？!?；;\n]{{0,24}}"
+            r"(?:离场|不在场|不出场|在场|回到现场|回到场景|回到房间|回来|进入现场|加入现场)",
+            source,
+            re.IGNORECASE,
+        ))
+    if _director_describes_player_condition(normalized, source):
+        return True
+    return bool(re.search(
+        rf"(?:将|把|让|令|使|设置|修改|更新|恢复|记录|指定)\s*{player_ref}"
+        rf"[^。！？!?；;\n]{{0,30}}{field_words}"
+        rf"|{player_ref}(?:的)?{field_words}\s*(?:改成|改为|设为|设置为|调整为|变成|是|为|[:：])"
+        rf"|{player_ref}[^。！？!?；;\n]{{0,20}}(?:穿上|脱下|换上|装备|解除装备|更换装备)",
+        source,
         re.IGNORECASE,
     ))
 
@@ -5228,6 +5420,7 @@ def _director_raw_patch_target(
         target = _director_target_from_path(normalized, path)
         if target:
             requested_type, requested_id, requested_field = target
+    requested_field = _director_infer_patch_field(requested_field, patch.get("value"))
     if requested_type == "player":
         player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
         requested_id = requested_id or player_id
@@ -5785,6 +5978,7 @@ def _synthesize_director_control_updates(
                 "field": "status",
                 "value": "absent",
                 "evidence": source,
+                "_director_explicit_player_control": True,
             },
             {
                 "op": "replace",
@@ -5793,6 +5987,7 @@ def _synthesize_director_control_updates(
                 "field": "state_text",
                 "value": "玩家已暂时离开当前场景。",
                 "evidence": source,
+                "_director_explicit_player_control": True,
             },
         ])
         warnings.append("director_control_player_absent_synthesized")
@@ -5805,6 +6000,7 @@ def _synthesize_director_control_updates(
                 "field": "status",
                 "value": "present",
                 "evidence": source,
+                "_director_explicit_player_control": True,
             },
             {
                 "op": "replace",
@@ -5813,6 +6009,7 @@ def _synthesize_director_control_updates(
                 "field": "state_text",
                 "value": "玩家已回到当前场景。",
                 "evidence": source,
+                "_director_explicit_player_control": True,
             },
         ])
         warnings.append("director_control_player_present_synthesized")
@@ -6554,6 +6751,7 @@ def _director_patch_target(
     *,
     speaker_id: Any = "",
     attribution_text: Any = "",
+    instruction_text: Any = "",
 ) -> tuple[list[str], dict[str, str], list[str]]:
     """Resolve and validate a director patch before it can mutate runtime state."""
     warnings: list[str] = []
@@ -6571,6 +6769,7 @@ def _director_patch_target(
         else:
             warnings.append("director_target_path_not_allowed")
             return [], {}, warnings
+    requested_field = _director_infer_patch_field(requested_field, patch.get("value"))
     if requested_type not in DIRECTOR_TARGET_TYPES:
         warnings.append("director_target_type_invalid")
         return [], {}, warnings
@@ -6580,6 +6779,7 @@ def _director_patch_target(
     internal_repair_warning = _text(patch.pop("_director_target_repair_warning", ""), 120)
     internal_repair_evidence = _text(patch.pop("_director_target_repair_evidence", ""), 1200)
     authoritative_numeric = bool(patch.pop("_director_authoritative_numeric", False))
+    trusted_player_control = bool(patch.pop("_director_explicit_player_control", False))
     attribution_scope = "" if authoritative_numeric else attribution_text
     if internal_repair_warning:
         warnings.append(internal_repair_warning)
@@ -6642,14 +6842,17 @@ def _director_patch_target(
                 item
                 for item in (
                     patch_text,
-                    _text(attribution_scope, 10000),
+                    _text(instruction_text, 10000),
                 )
                 if item
             )
-            player_condition = _director_describes_player_condition(
-                normalized,
-                player_evidence,
-            )
+            patch_mentions = _director_entity_mentions(normalized, patch_text)
+            player_condition = _director_describes_player_condition(normalized, patch_text)
+            if not patch_mentions:
+                player_condition = player_condition or _director_describes_player_condition(
+                    normalized,
+                    instruction_text,
+                )
             player_condition = player_condition or any(
                 _text(normalized.get("persona", {}).get("id"), 160) in effect.get("target_ids", [])
                 for effect in _extract_numeric_effects(
@@ -6681,7 +6884,8 @@ def _director_patch_target(
                 inferred_character_id = next(iter(affected_attribution_character_ids))
             elif len(present_ids) == 1 and not _director_entity_mentions(normalized, patch_text):
                 inferred_character_id = next(iter(present_ids))
-            if inferred_character_id and not player_condition:
+            player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+            if inferred_character_id and not player_condition and player_id not in patch_mentions:
                 requested_type = "character"
                 requested_id = inferred_character_id
                 target = {
@@ -6692,6 +6896,15 @@ def _director_patch_target(
                 path = ["characters", requested_id, requested_field]
                 warnings.append("director_target_reassigned_to_named_character")
                 return path, target, warnings
+        if not _director_player_is_present(normalized) and not _director_player_update_is_explicit(
+            normalized,
+            patch,
+            field=requested_field,
+            instruction_text=instruction_text,
+            trusted_control=trusted_player_control,
+        ):
+            warnings.append("director_absent_player_target_rejected")
+            return [], {}, warnings
         path = ["player_state", requested_field]
     elif requested_type == "scene":
         if requested_id and requested_id != "scene":
@@ -6773,6 +6986,19 @@ def _director_patch_target(
         "entity_id": requested_id,
         "field": requested_field,
     }
+    if not _text(patch.get("evidence"), 1200) and not internal_repair_evidence:
+        attribution_evidence = _text(attribution_text, 8000)
+        if attribution_evidence:
+            attribution_mentions = _director_entity_mentions(normalized, attribution_evidence)
+            if requested_type == "player":
+                player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+                if player_id in attribution_mentions or re.search(r"你|您|你的|你们|玩家", attribution_evidence, re.IGNORECASE):
+                    patch["_director_target_repair_evidence"] = attribution_evidence
+            elif requested_type == "character" and requested_id in attribution_mentions:
+                patch["_director_target_repair_evidence"] = attribution_evidence
+        internal_repair_evidence = _text(patch.get("_director_target_repair_evidence"), 8000)
+    if internal_repair_evidence:
+        patch_text = "\n".join(item for item in (patch_text, internal_repair_evidence) if item)
     requires_entity_evidence = (
         requested_type == "player" and requested_field in DIRECTOR_PLAYER_FIELDS
     ) or (
@@ -7105,6 +7331,11 @@ def apply_director_result(
         patches,
         speaker_id=speaker_id,
     )
+    patches = _director_reuse_misclassified_player_target_ids(
+        normalized,
+        patches,
+        speaker_id=speaker_id,
+    )
     if incremental_runtime_state and not read_only_turn:
         (
             patches,
@@ -7185,6 +7416,7 @@ def apply_director_result(
                 patch,
                 speaker_id=speaker_id,
                 attribution_text=attribution_text,
+                instruction_text=instruction_text,
             )
             warnings.extend(target_warnings)
         else:

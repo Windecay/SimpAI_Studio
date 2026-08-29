@@ -206,12 +206,20 @@
     }
 
     function currentSceneFrontend(params = paramsSource()) {
-        const prepared = params?.__preset_prepared;
+        const data = params && typeof params === "object" ? params : {};
+        const prepared = data.__preset_prepared;
+        const preparedScene = prepared?.engine?.scene_frontend;
+        const currentPreset = String(data.__preset || data.preset || "").trim();
+        const preparedPreset = String(prepared?.preset || "").trim();
+        if (preparedScene && typeof preparedScene === "object"
+                && currentPreset && preparedPreset && currentPreset === preparedPreset) {
+            return preparedScene;
+        }
         const candidates = [
-            params?.scene_frontend,
-            prepared?.engine?.scene_frontend,
+            data.scene_frontend,
+            preparedScene,
             prepared?.default_engine?.scene_frontend,
-            params?.default_engine?.scene_frontend,
+            data.default_engine?.scene_frontend,
         ];
         return candidates.find((value) => value && typeof value === "object") || {};
     }

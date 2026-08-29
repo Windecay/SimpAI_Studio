@@ -56,7 +56,7 @@ def download_if_updated(url, save_path):
         local_mtime = None
         local_file_size = 0
     try:
-        response = requests.get(url, allow_redirects=True, stream=True)
+        response = requests.get(url, allow_redirects=True, stream=True, timeout=(5, 30))
         response.raise_for_status()  # 检查请求是否成功
     except requests.exceptions.RequestException as e:
         print(f"无法访问的 URL: {e}")

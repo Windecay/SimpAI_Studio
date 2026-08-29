@@ -14,6 +14,7 @@ import modules.config as config
 import modules.flags as flags
 import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 import modules.prompt_actions as prompt_actions
+import modules.util as util
 import enhanced.translator as translator
 import enhanced.superprompter as superprompter
 import ldm_patched.modules.model_management
@@ -197,10 +198,28 @@ def _superprompt_target_key(backend_engine, task_method, target_text):
 
 def _superprompt_target_from_state(state):
     state = state if isinstance(state, dict) else {}
-    scene_frontend = state.get("scene_frontend") if isinstance(state.get("scene_frontend"), dict) else {}
+    scene_frontend = prompt_actions.prompt_action_scene_frontend_from_state(state)
+    scene_state = dict(state)
+    scene_state["scene_frontend"] = scene_frontend
+    top_level_scene = state.get("scene_frontend") if isinstance(state.get("scene_frontend"), dict) else None
+    prepared = state.get("__preset_prepared") if isinstance(state.get("__preset_prepared"), dict) else {}
+    prepared_engine = prepared.get("engine") if isinstance(prepared.get("engine"), dict) else {}
+    prepared_scene = prepared_engine.get("scene_frontend") if isinstance(prepared_engine.get("scene_frontend"), dict) else None
+    current_preset = str(state.get("__preset") or state.get("preset") or "").strip()
+    prepared_preset = str(prepared.get("preset") or "").strip()
+    prepared_matches = bool(prepared_scene and current_preset and prepared_preset and current_preset == prepared_preset)
+    scene_source = (
+        "prepared"
+        if prepared_matches
+        else "top_level"
+        if top_level_scene is not None
+        else "prepared_fallback"
+        if prepared_scene is not None
+        else "none"
+    )
     theme = _superprompt_first_text(
-        state.get("scene_theme"),
-        state.get("__scene_theme"),
+        scene_state.get("scene_theme"),
+        scene_state.get("__scene_theme"),
         scene_frontend.get("theme", [""])[0] if isinstance(scene_frontend.get("theme"), list) and scene_frontend.get("theme") else "",
     )
     backend_engine = _superprompt_first_text(
@@ -210,8 +229,8 @@ def _superprompt_target_from_state(state):
         config.backend_engine,
     )
     task_method = _superprompt_first_text(
-        _superprompt_scene_value(state, theme, "task_method", "") if scene_frontend else "",
-        state.get("task_method"),
+        _superprompt_scene_value(scene_state, theme, "task_method", "") if scene_frontend else "",
+        scene_state.get("task_method"),
     )
     label = _superprompt_first_text(
         theme,
@@ -242,6 +261,20 @@ def _superprompt_target_from_state(state):
     )
     target_key = _superprompt_target_key(backend_engine, task_method, target_text)
     prompt_compiler = minimax_h3_prompt_compiler.scene_compiler(scene_frontend, theme)
+    top_level_compiler = minimax_h3_prompt_compiler.scene_compiler(top_level_scene, theme) if top_level_scene else None
+    prepared_compiler = minimax_h3_prompt_compiler.scene_compiler(prepared_scene, theme) if prepared_scene else None
+    util.log_ui_trace(
+        logger,
+        "[UI-TRACE] vlm.prompt_action.scene_source | preset=%r, prepared_preset=%r, source=%s, theme=%r, task_method=%r, selected_compiler=%r, top_level_compiler=%r, prepared_compiler=%r",
+        current_preset,
+        prepared_preset,
+        scene_source,
+        theme,
+        task_method,
+        prompt_compiler,
+        top_level_compiler,
+        prepared_compiler,
+    )
     if prompt_compiler:
         target_key = "minimax_h3"
     target = {
@@ -256,12 +289,12 @@ def _superprompt_target_from_state(state):
     }
     if prompt_compiler:
         target["prompt_compiler"] = prompt_compiler
-    capability = prompt_actions.prompt_action_capability_from_state(state)
+    capability = prompt_actions.prompt_action_capability_from_state(scene_state)
     if capability:
         target["director_capability"] = capability
     if model_hint:
         target["model_list"] = [model_hint]
-    agent_prompt = _superprompt_scene_value(state, theme, "agent_prompt", "") if scene_frontend else ""
+    agent_prompt = _superprompt_scene_value(scene_state, theme, "agent_prompt", "") if scene_frontend else ""
     return target, str(agent_prompt or "").strip()
 
 

@@ -145,10 +145,24 @@ def prompt_action_mode(state):
     return "scene" if isinstance(data.get("scene_frontend"), dict) else "classic"
 
 
-def _prompt_action_scene_frontend(state):
+def prompt_action_scene_frontend_from_state(state):
     data = state if isinstance(state, dict) else {}
     scene = data.get("scene_frontend")
-    return scene if isinstance(scene, dict) else {}
+    prepared = data.get("__preset_prepared")
+    prepared_engine = prepared.get("engine") if isinstance(prepared, dict) else None
+    prepared_scene = prepared_engine.get("scene_frontend") if isinstance(prepared_engine, dict) else None
+    if not isinstance(prepared_scene, dict):
+        return scene if isinstance(scene, dict) else {}
+
+    current_preset = str(data.get("__preset") or "").strip()
+    prepared_preset = str(prepared.get("preset") or "").strip() if isinstance(prepared, dict) else ""
+    if current_preset and prepared_preset and current_preset == prepared_preset:
+        return prepared_scene
+    return scene if isinstance(scene, dict) else prepared_scene
+
+
+def _prompt_action_scene_frontend(state):
+    return prompt_action_scene_frontend_from_state(state)
 
 
 def _prompt_action_scene_theme(state, scene_frontend=None):
