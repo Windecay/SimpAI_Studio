@@ -700,11 +700,11 @@ def check_base_environment():
     ensure_llama_cpp_runtime(runtime_profile)
 
     update_pkgs = [
-        ('comfyui-frontend-package', '1.49.6', None),
-        ('comfyui-workflow-templates', '0.11.44', None),
+        ('comfyui-frontend-package', '1.51.9', None),
+        ('comfyui-workflow-templates', '0.11.50', None),
         ('comfyui-embedded-docs', '0.5.10', None),
         ('comfy-kitchen', '0.2.31', None),
-        ('comfy-aimdo', '0.4.13', None),
+        ('comfy-aimdo', '0.4.15', None),
         ('av', '17.0.0', None),
         ('PyOpenGL', None, '>=3.1.8'),
         ('comfy-angle', None, None),
