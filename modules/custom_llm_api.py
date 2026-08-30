@@ -300,12 +300,23 @@ def strip_reasoning_text(text):
     if orphan_think_end and not re.search(r"(?is)<think\b[^>]*>", output[:orphan_think_end.start()]):
         output = output[orphan_think_end.end():]
 
+    thought_channel = re.search(
+        r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b",
+        output,
+    )
     final_channel = re.search(r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b", output)
     message_marker = re.search(r"(?is)<\|message\|>", output)
+    channel_end = None
+    if thought_channel:
+        channel_end_match = re.search(r"(?is)<(?:\|)?channel\|>", output[thought_channel.end():])
+        if channel_end_match:
+            channel_end = thought_channel.end() + channel_end_match.end()
     if final_channel:
         output = output[final_channel.end():]
-    elif message_marker and re.search(r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b", output[:message_marker.start()]):
+    elif message_marker and thought_channel and thought_channel.start() < message_marker.start():
         output = output[message_marker.end():]
+    elif channel_end is not None:
+        output = output[channel_end:]
     else:
         output = re.sub(
             r"(?is)<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning)\b.*?(?=<\|channel\|?>\s*(?:final|answer|response)\b|<\|message\|>|$)",

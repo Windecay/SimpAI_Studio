@@ -53,6 +53,20 @@ def messages_have_media(messages):
     return False
 
 
+def select_request_text_handler(
+    messages,
+    *,
+    enable_thinking=False,
+    text_handler=None,
+    thinking_handler=None,
+):
+    if messages_have_media(messages):
+        return None
+    if bool(enable_thinking):
+        return thinking_handler if callable(thinking_handler) else None
+    return text_handler if callable(text_handler) else None
+
+
 def metadata_text_chat_handler(llm):
     handlers = getattr(llm, "_chat_handlers", None)
     if not isinstance(handlers, dict):

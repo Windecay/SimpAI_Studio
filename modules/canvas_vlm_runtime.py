@@ -387,6 +387,7 @@ def canvas_vlm_model_status(payload):
             params.get("vram_policy"),
             params.get("kv_cache_type"),
             requested_n_ctx,
+            load_mtp=_runtime_mtp_requested(params),
         )
     return {
         "ok": True,
@@ -418,6 +419,13 @@ def canvas_vlm_model_status(payload):
             default=VLM.default_n_ctx_for_version(version_name),
             maximum=VLM.n_ctx_limit_for_version(version_name),
         ),
+        "mtp_requested": _runtime_mtp_requested(params),
+        "mtp_status": {
+            "active": bool((runtime_status or {}).get("mtp_active")),
+            "supported": (runtime_status or {}).get("mtp_supported"),
+            "pending": bool((runtime_status or {}).get("mtp_pending")),
+            "failure": str((runtime_status or {}).get("mtp_failure") or ""),
+        },
         "runtime_status": runtime_status,
     }
 
@@ -662,6 +670,14 @@ def _runtime_enable_thinking(params):
     if "disable_thinking" in params:
         return not bool(params.get("disable_thinking"))
     return None
+
+
+def _runtime_mtp_requested(params):
+    params = params if isinstance(params, dict) else {}
+    value = params.get("load_mtp", False)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def canvas_custom_llm_models(payload):
@@ -1069,6 +1085,7 @@ def canvas_vlm_run(payload, stream_callback=None):
     payload = payload if isinstance(payload, dict) else {}
     params = dict(payload.get("params") if isinstance(payload.get("params"), dict) else {})
     enable_thinking = _runtime_enable_thinking(params)
+    mtp_requested = _runtime_mtp_requested(params)
     project_id = str(payload.get("project_id") or "default").strip() or "default"
     node_id = str(payload.get("node_id") or params.get("node_id") or "vlm").strip() or "vlm"
     request_id = str(params.get("request_id") or payload.get("request_id") or "").strip()
@@ -1458,11 +1475,22 @@ def canvas_vlm_run(payload, stream_callback=None):
     params["n_ctx"] = VLM.set_n_ctx(params.get("n_ctx"))
     params["vram_policy"] = VLM.set_vram_policy(params.get("vram_policy"))
     params["kv_cache_type"] = VLM.set_kv_cache_type(params.get("kv_cache_type"))
-    _canvas_vlm_add_timing(params, "set_version", time.monotonic() - stage_started)
 
     image_input = None
     if images:
         image_input = images if (VLM.is_llamacpp or VLM.backend == "comfy_textgen") and len(images) > 1 else images[0]
+    mtp_effective = bool(VLM.is_llamacpp and mtp_requested and image_input is None)
+    mtp_disabled_reason = ""
+    if mtp_requested and not VLM.is_llamacpp:
+        mtp_disabled_reason = "backend_not_llamacpp"
+    elif mtp_requested and image_input is not None:
+        mtp_disabled_reason = "media_input"
+    params["load_mtp_requested"] = mtp_requested
+    params["load_mtp"] = mtp_effective
+    if mtp_disabled_reason:
+        params["mtp_disabled_reason"] = mtp_disabled_reason
+    VLM.set_mtp_enabled(mtp_effective)
+    _canvas_vlm_add_timing(params, "set_version", time.monotonic() - stage_started)
     version_runtime_config = VLM.get_version_config(version_name, scan_catalog=False) or {}
     logger.info(
         "Canvas VLM visual input: version=%s backend=%s handler=%s mmproj=%s supports_vision=%s "
@@ -1482,6 +1510,13 @@ def canvas_vlm_run(payload, stream_callback=None):
         video_frames,
         type(image_input).__name__ if image_input is not None else "None",
     )
+    if VLM.is_llamacpp:
+        logger.info(
+            "Canvas VLM llama.cpp MTP mode: requested=%s effective=%s disabled_reason=%s",
+            mtp_requested,
+            mtp_effective,
+            mtp_disabled_reason or "none",
+        )
 
     stage_started = time.monotonic()
     max_tokens = clamp_int(params.get("max_tokens", 1024), 1024, 64, 8192)
@@ -1878,7 +1913,17 @@ def canvas_vlm_run(payload, stream_callback=None):
             stateless_llamacpp_chat and stateless_prompt_includes_text_history
         ),
         "rolling_context": rolling_context_stats,
+        "mtp_requested": mtp_requested,
+        "mtp_effective": mtp_effective,
+        "mtp_disabled_reason": mtp_disabled_reason,
     }
+    if VLM.is_llamacpp:
+        response_params["mtp_runtime"] = llamacpp_vlm.get_runtime_status(
+            params.get("vram_policy"),
+            params.get("kv_cache_type"),
+            params.get("n_ctx"),
+            load_mtp=mtp_requested,
+        )
     if visual_reference_manifest:
         response_params["visual_reference_manifest"] = visual_reference_manifest
     if params.get("video_frame_budget"):

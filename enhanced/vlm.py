@@ -557,6 +557,7 @@ class VLM:
     custom_supports_images = True
     vram_policy = "extreme"
     kv_cache_type = "f16"
+    mtp_enabled = False
 
     remove_prefixs = [
         'A descriptive caption for this image could be: "',
@@ -863,6 +864,12 @@ class VLM:
         with cls.lock:
             cls.kv_cache_type = normalize_llama_cpp_kv_cache_type(value)
             return cls.kv_cache_type
+
+    @classmethod
+    def set_mtp_enabled(cls, value):
+        with cls.lock:
+            cls.mtp_enabled = bool(value)
+            return cls.mtp_enabled
 
     @classmethod
     def default_n_ctx_for_version(cls, version=None):
@@ -1321,6 +1328,7 @@ class VLM:
                 mmproj_name=VLM.mmproj_file or None,
                 vram_policy=VLM.vram_policy,
                 kv_cache_type=VLM.kv_cache_type,
+                load_mtp=VLM.mtp_enabled,
             )
             return
 

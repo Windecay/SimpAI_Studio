@@ -2027,6 +2027,7 @@ def build_runtime_payload(payload):
     vram_policy = normalize_llama_cpp_vram_policy(payload.get("vram_policy"))
     kv_cache_type = normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type"))
     n_ctx = _n_ctx_override(payload.get("n_ctx"))
+    load_mtp = _truthy(payload.get("load_mtp"), False)
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     roleplay_active = prompt_options.get("chat_mode") == "roleplay"
     roleplay_request_kind = str(prompt_options.get("roleplay_request_kind") or "character").strip().lower()
@@ -2145,6 +2146,7 @@ def build_runtime_payload(payload):
         "vram_policy": vram_policy,
         "kv_cache_type": kv_cache_type,
         "n_ctx": n_ctx,
+        "load_mtp": load_mtp,
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -2248,6 +2250,7 @@ def _build_roleplay_director_runtime_payload(
         "vram_policy": normalize_llama_cpp_vram_policy(payload.get("vram_policy")),
         "kv_cache_type": normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type")),
         "n_ctx": _n_ctx_override(payload.get("n_ctx")),
+        "load_mtp": _truthy(payload.get("load_mtp"), False),
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:
@@ -2744,6 +2747,7 @@ def build_creative_offer_runtime_payload(payload):
         "vram_policy": normalize_llama_cpp_vram_policy(payload.get("vram_policy")),
         "kv_cache_type": normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type")),
         "n_ctx": _n_ctx_override(payload.get("n_ctx")),
+        "load_mtp": _truthy(payload.get("load_mtp"), False),
     }
     version, custom_params = _custom_runtime_params(payload)
     if version:

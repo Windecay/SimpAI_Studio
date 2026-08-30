@@ -2448,6 +2448,7 @@
                     'systemPromptManualOverride', 'system_prompt_manual_override'
                 ]),
                 thinkingEnabled: storedBoolean(data, ['thinkingEnabled', 'enable_thinking']),
+                mtpEnabled: storedBoolean(data, ['mtpEnabled', 'load_mtp']),
                 unloadAfterChat: storedBoolean(data, ['unloadAfterChat', 'unload_after_chat']),
                 windowLayout: normalizeChatWindowLayout(data.windowLayout)
             };
@@ -2467,6 +2468,7 @@
                 userSystemPromptContent: '',
                 systemPromptManualOverride: false,
                 thinkingEnabled: false,
+                mtpEnabled: false,
                 unloadAfterChat: false,
                 windowLayout: null
             };
@@ -2565,6 +2567,7 @@
             busy: false
         },
         thinkingEnabled: !!savedChatSettings.thinkingEnabled,
+        mtpEnabled: !!savedChatSettings.mtpEnabled,
         unloadAfterChat: !!savedChatSettings.unloadAfterChat,
         windowLayout: savedChatSettings.windowLayout,
         persistenceRestored: false,
@@ -3241,6 +3244,7 @@
                 userSystemPromptContent: state.userSystemPromptContent,
                 systemPromptManualOverride: !!state.systemPromptManualOverride,
                 thinkingEnabled: !!state.thinkingEnabled,
+                mtpEnabled: !!state.mtpEnabled,
                 unloadAfterChat: !!state.unloadAfterChat,
                 windowLayout: state.windowLayout || null
             }));
@@ -3448,6 +3452,9 @@
             state.thinkingEnabled
                 ? localText('Thinking on', '思考模式开启')
                 : localText('Thinking off', '思考模式关闭'),
+            state.mtpEnabled
+                ? localText('MTP on', 'MTP 开启')
+                : localText('MTP off', 'MTP 关闭'),
             state.unloadAfterChat
                 ? localText('Unload after reply', '回复后卸载')
                 : localText('Keep model loaded', '保持模型加载'),
@@ -3463,7 +3470,8 @@
         summary.classList.toggle('is-ready', !!state.vlmRuntimeStatus?.loaded && state.vlmRuntimeStatus.state === 'ready');
         const visionMissing = state.vlmRuntimeStatusResponse?.vision_status === 'missing';
         summary.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
-        summary.classList.toggle('is-warning', visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing');
+        const mtpWarning = !!state.vlmRuntimeStatus?.mtp_failure;
+        summary.classList.toggle('is-warning', (visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing') || mtpWarning);
         summary.setAttribute('title', `${settingsText} · ${localText('Runtime', '运行状态')}: ${runtimeText}`);
     }
 
@@ -3475,6 +3483,7 @@
         const vramPolicy = modal.querySelector('[data-describe-vlm-chat-vram-policy]');
         const kvCacheType = modal.querySelector('[data-describe-vlm-chat-kv-cache-type]');
         const nCtx = modal.querySelector('[data-describe-vlm-chat-n-ctx]');
+        const mtp = modal.querySelector('[data-describe-vlm-chat-mtp]');
         const system = modal.querySelector('[data-describe-vlm-chat-system]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const thinking = modal.querySelector('[data-describe-vlm-chat-thinking]');
@@ -3519,6 +3528,21 @@
             nCtx.value = state.nCtx > 0 ? String(state.nCtx) : '';
             nCtx.placeholder = localText('Auto', '自动');
             nCtx.disabled = vlmBackendForVersion(version) !== 'llamacpp';
+        }
+        if (mtp) {
+            const version = resolveVlmVersion(readSelectedVlmVersion());
+            const llamaCpp = vlmBackendForVersion(version) === 'llamacpp';
+            mtp.checked = !!state.mtpEnabled;
+            mtp.disabled = !llamaCpp;
+            const label = llamaCpp
+                ? localText(
+                    'Use MTP speculative decoding for text-only requests. Image and video requests automatically use standard decoding.',
+                    '纯文本请求使用 MTP 推测解码；图片和视频请求会自动使用普通解码。'
+                )
+                : localText('MTP is available only for local llama.cpp models.', 'MTP 仅适用于本地 llama.cpp 模型。');
+            mtp.title = label;
+            mtp.setAttribute('aria-label', label);
+            if (mtp.parentElement) mtp.parentElement.title = label;
         }
         syncSystemPromptTemplateControls(modal);
         if (system && system.value !== state.customSystemPrompt) system.value = state.customSystemPrompt;
@@ -5247,6 +5271,7 @@
                 vram_policy: state.vramPolicy,
                 kv_cache_type: state.kvCacheType,
                 n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
                 enable_thinking: !!state.thinkingEnabled,
                 unload_after_chat: !!state.unloadAfterChat,
                 max_tokens: 2200,
@@ -5435,6 +5460,7 @@
                 vram_policy: state.vramPolicy,
                 kv_cache_type: state.kvCacheType,
                 n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
                 max_tokens: 2200,
                 __lang: state.__lang,
                 lang: state.__lang
@@ -6646,6 +6672,7 @@
                 vram_policy: state.vramPolicy,
                 kv_cache_type: state.kvCacheType,
                 n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
                 enable_thinking: !!state.thinkingEnabled,
                 unload_after_chat: !!target.unloadAfterChat,
                 user_did: userContext.user_did,
@@ -6767,6 +6794,7 @@
                 vram_policy: state.vramPolicy,
                 kv_cache_type: state.kvCacheType,
                 n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
                 enable_thinking: !!state.thinkingEnabled,
                 unload_after_chat: !!target.unloadAfterChat,
                 user_did: userContext.user_did,
@@ -6922,6 +6950,7 @@
                 vram_policy: state.vramPolicy,
                 kv_cache_type: state.kvCacheType,
                 n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
                 enable_thinking: !!state.thinkingEnabled,
                 unload_after_chat: !!target.unloadAfterChat,
                 max_tokens: 1800,
@@ -9280,7 +9309,8 @@
             version: cleanVersion,
             vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
             kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
-            n_ctx: currentVlmNctx(cleanVersion)
+            n_ctx: currentVlmNctx(cleanVersion),
+            load_mtp: !!state.mtpEnabled
         };
         if (customApi) {
             Object.assign(params, {
@@ -9426,17 +9456,33 @@
                 `当前使用${currentKvCacheType}；重新请求后使用${vlmKvCacheTypeLabel(runtime.requested_kv_cache_type)}`
             )
             : '';
+        const mtpRequested = runtime.mtp_requested !== undefined
+            ? !!runtime.mtp_requested
+            : !!state.mtpEnabled;
+        const mtpStatus = mtpRequested && runtime.mtp_disabled_reason === 'media_input'
+            ? localText('MTP paused for media', '媒体请求已暂停 MTP')
+            : runtime.mtp_pending
+            ? (mtpRequested
+                ? localText('Reload to enable MTP', '重新请求后开启 MTP')
+                : localText('Reload to disable MTP', '重新请求后关闭 MTP'))
+            : (mtpRequested
+                ? (runtime.mtp_active
+                    ? localText('MTP on', 'MTP 开启')
+                    : (runtime.mtp_failure || runtime.mtp_supported === false)
+                        ? localText('MTP unavailable; standard decoding', 'MTP 不可用，已使用普通解码')
+                        : localText('MTP requested', '已请求 MTP'))
+                : localText('MTP off', 'MTP 关闭'));
         if (runtime.loaded && runtime.state === 'ready') {
             const gpuLayers = `${Number(runtime.gpu_layers) || 0}/${Number(runtime.total_layers) || 0}`;
             const cpuLayers = `${Number(runtime.cpu_layers) || 0}`;
             return localText(
-                [policyPending, kvPending, nCtxStatus, `KV ${currentKvCacheType}`, `GPU layers ${gpuLayers}`, `CPU layers ${cpuLayers}`, memory].filter(Boolean).join(' · '),
-                [policyPending, kvPending, nCtxStatus, `KV ${currentKvCacheType}`, `GPU 层 ${gpuLayers}`, `CPU 层 ${cpuLayers}`, memory].filter(Boolean).join(' · ')
+                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU layers ${gpuLayers}`, `CPU layers ${cpuLayers}`, memory].filter(Boolean).join(' · '),
+                [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, `GPU 层 ${gpuLayers}`, `CPU 层 ${cpuLayers}`, memory].filter(Boolean).join(' · ')
             );
         }
         return localText(
-            [policyPending, kvPending, nCtxStatus, `KV ${currentKvCacheType}`, 'Model not loaded', memory].filter(Boolean).join(' · '),
-            [policyPending, kvPending, nCtxStatus, `KV ${currentKvCacheType}`, '模型未加载', memory].filter(Boolean).join(' · ')
+            [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, 'Model not loaded', memory].filter(Boolean).join(' · '),
+            [policyPending, kvPending, nCtxStatus, mtpStatus, `KV ${currentKvCacheType}`, '模型未加载', memory].filter(Boolean).join(' · ')
         );
     }
 
@@ -9450,6 +9496,7 @@
         if (!status || !value) return;
         const policy = status.querySelector('[data-describe-vlm-chat-vram-policy]');
         const kvCacheType = status.querySelector('[data-describe-vlm-chat-kv-cache-type]');
+        const mtp = status.querySelector('[data-describe-vlm-chat-mtp]');
         if (policy) {
             policy.innerHTML = renderVlmVramPolicyOptions();
             policy.value = normalizeVlmVramPolicy(state.vramPolicy);
@@ -9457,6 +9504,11 @@
         if (kvCacheType) {
             kvCacheType.innerHTML = renderVlmKvCacheTypeOptions();
             kvCacheType.value = normalizeVlmKvCacheType(state.kvCacheType);
+        }
+        if (mtp) {
+            const version = resolveVlmVersion(readSelectedVlmVersion());
+            mtp.checked = !!state.mtpEnabled;
+            mtp.disabled = vlmBackendForVersion(version) !== 'llamacpp';
         }
         const nCtx = status.querySelector('[data-describe-vlm-chat-n-ctx]');
         if (nCtx) {
@@ -9483,14 +9535,42 @@
             if (runtime.kv_cache_quantization_fallback) {
                 titleParts.push(localText('Q8 request fell back to FP16', 'Q8 请求已回退到 FP16'));
             }
+            if (runtime.mtp_failure) {
+                titleParts.push(localText(
+                    `MTP fallback: ${String(runtime.mtp_failure).slice(0, 240)}`,
+                    `MTP 已改用普通解码：${String(runtime.mtp_failure).slice(0, 240)}`
+                ));
+            }
+            if (runtime.mtp_disabled_reason === 'media_input') {
+                titleParts.push(localText(
+                    'This image or video request used standard decoding; MTP remains enabled for later text-only requests.',
+                    '本次图片或视频请求使用普通解码；后续纯文本请求仍会按设置启用 MTP。'
+                ));
+            }
         }
         if (titleParts.length) status.setAttribute('title', titleParts.join(localText('; ', '；')));
         else status.removeAttribute('title');
         status.classList.toggle('is-ready', !!runtime?.loaded && runtime.state === 'ready');
         const visionMissing = state.vlmRuntimeStatusResponse?.vision_status === 'missing';
         status.classList.toggle('is-error', state.vlmRuntimeStatusResponse?.state === 'missing');
-        status.classList.toggle('is-warning', visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing');
+        const mtpWarning = !!state.vlmRuntimeStatus?.mtp_failure;
+        status.classList.toggle('is-warning', (visionMissing && state.vlmRuntimeStatusResponse?.state !== 'missing') || mtpWarning);
         syncChatSettingsSummary(modal);
+    }
+
+    function applyVlmRunRuntimeStatus(response, modal = document.getElementById('describe_vlm_chat_modal')) {
+        const runtime = response?.params?.mtp_runtime;
+        if (!runtime || typeof runtime !== 'object') return;
+        const nextRuntime = Object.assign({}, runtime, {
+            mtp_disabled_reason: String(response?.params?.mtp_disabled_reason || '')
+        });
+        state.vlmRuntimeStatus = nextRuntime;
+        if (state.vlmRuntimeStatusResponse) {
+            state.vlmRuntimeStatusResponse = Object.assign({}, state.vlmRuntimeStatusResponse, {
+                runtime_status: nextRuntime
+            });
+        }
+        updateVlmRuntimeStatus(modal);
     }
 
     async function refreshVlmRuntimeStatus() {
@@ -10160,7 +10240,7 @@
     <label class="describe-vlm-chat-max-tokens-field" title="${escapeHtml(localText('Choose the output token budget.', '选择输出 Token 预算。'))}"><span>${escapeHtml(localText('Max output tokens', '最大输出 Token'))}</span><select data-describe-vlm-chat-max-tokens aria-label="${escapeHtml(localText('Max output tokens', '最大输出 Token'))}">${renderChatMaxTokenOptions()}</select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><div class="describe-vlm-chat-template-picker"><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select><button type="button" class="describe-vlm-chat-template-manage" data-describe-vlm-chat-user-template-open title="${escapeHtml(localText('Manage user documents', '管理用户项目'))}" aria-label="${escapeHtml(localText('Manage user documents', '管理用户项目'))}"><i class="fa-solid fa-folder-plus"></i></button></div></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
-    <div class="describe-vlm-chat-runtime-status" data-describe-vlm-chat-runtime-status aria-live="polite"><i class="fa-solid fa-memory" aria-hidden="true"></i><select class="describe-vlm-chat-runtime-policy" data-describe-vlm-chat-vram-policy aria-label="${escapeHtml(t('VRAM policy', '显存策略'))}" title="${escapeHtml(t('Choose how much VRAM llama.cpp may use.', '选择 llama.cpp 使用的显存档位。'))}">${renderVlmVramPolicyOptions()}</select><select class="describe-vlm-chat-runtime-kv-cache" data-describe-vlm-chat-kv-cache-type aria-label="${escapeHtml(t('KV cache type', 'KV cache 类型'))}" title="${escapeHtml(t('Choose the llama.cpp KV cache precision.', '选择 llama.cpp KV cache 精度。'))}">${renderVlmKvCacheTypeOptions()}</select><label class="describe-vlm-chat-runtime-n-ctx-field" title="${escapeHtml(localText('Context length for local llama.cpp. Empty uses the model default.', '本地 llama.cpp 上下文长度。留空使用模型默认值。'))}"><span>${escapeHtml(localText('Context', '上下文'))}</span><input class="describe-vlm-chat-runtime-n-ctx" data-describe-vlm-chat-n-ctx type="number" min="${VLM_N_CTX_MIN}" max="${VLM_N_CTX_MAX}" step="${VLM_N_CTX_STEP}" inputmode="numeric" placeholder="${escapeHtml(localText('Auto', '自动'))}" value="" aria-label="${escapeHtml(localText('Context length', '上下文长度'))}"></label><span data-describe-vlm-chat-runtime-status-value>${escapeHtml(t('Waiting for model status', '等待模型状态'))}</span><button type="button" data-describe-vlm-chat-runtime-status-refresh title="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}" aria-label="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}"><i class="fa-solid fa-rotate"></i></button></div>
+    <div class="describe-vlm-chat-runtime-status" data-describe-vlm-chat-runtime-status aria-live="polite"><i class="fa-solid fa-memory" aria-hidden="true"></i><select class="describe-vlm-chat-runtime-policy" data-describe-vlm-chat-vram-policy aria-label="${escapeHtml(t('VRAM policy', '显存策略'))}" title="${escapeHtml(t('Choose how much VRAM llama.cpp may use.', '选择 llama.cpp 使用的显存档位。'))}">${renderVlmVramPolicyOptions()}</select><select class="describe-vlm-chat-runtime-kv-cache" data-describe-vlm-chat-kv-cache-type aria-label="${escapeHtml(t('KV cache type', 'KV cache 类型'))}" title="${escapeHtml(t('Choose the llama.cpp KV cache precision.', '选择 llama.cpp KV cache 精度。'))}">${renderVlmKvCacheTypeOptions()}</select><label class="describe-vlm-chat-runtime-n-ctx-field" title="${escapeHtml(localText('Context length for local llama.cpp. Empty uses the model default.', '本地 llama.cpp 上下文长度。留空使用模型默认值。'))}"><span>${escapeHtml(localText('Context', '上下文'))}</span><input class="describe-vlm-chat-runtime-n-ctx" data-describe-vlm-chat-n-ctx type="number" min="${VLM_N_CTX_MIN}" max="${VLM_N_CTX_MAX}" step="${VLM_N_CTX_STEP}" inputmode="numeric" placeholder="${escapeHtml(localText('Auto', '自动'))}" value="" aria-label="${escapeHtml(localText('Context length', '上下文长度'))}"></label><label class="describe-vlm-chat-runtime-mtp" title="${escapeHtml(localText('Use MTP speculative decoding for text-only requests. Image and video requests automatically use standard decoding.', '纯文本请求使用 MTP 推测解码；图片和视频请求会自动使用普通解码。'))}"><input type="checkbox" data-describe-vlm-chat-mtp ${state.mtpEnabled ? 'checked' : ''} aria-label="${escapeHtml(localText('Enable MTP speculative decoding', '开启 MTP 推测解码'))}"><span>MTP</span></label><span data-describe-vlm-chat-runtime-status-value>${escapeHtml(t('Waiting for model status', '等待模型状态'))}</span><button type="button" data-describe-vlm-chat-runtime-status-refresh title="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}" aria-label="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}"><i class="fa-solid fa-rotate"></i></button></div>
   </div>
   <div class="describe-vlm-chat-roleplay-strip" data-describe-vlm-chat-roleplay-strip hidden>
     <button type="button" class="describe-vlm-chat-roleplay-summary" data-describe-vlm-chat-roleplay-open title="${escapeHtml(localText('Open roleplay settings', '打开角色扮演设置'))}" aria-label="${escapeHtml(localText('Open roleplay settings', '打开角色扮演设置'))}">
@@ -12895,13 +12975,22 @@
         return true;
     }
 
+    function cleanPendingAssistantStreamText(content) {
+        return String(content || '')
+            .replace(/<\|channel\|?>\s*(?:thought|analysis|thinking|reasoning|final|answer|response)\b[\t ]*\r?\n?/gi, '')
+            .replace(/<\|message\|>/gi, '')
+            .replace(/<(?:\|)?(?:channel|turn)\|?>/gi, '')
+            .replace(/<\/?(?:think|thinking|analysis|reasoning)\b[^>]*>/gi, '')
+            .replace(/<(?:(?:\|?channel)|(?:\|?message)|(?:\|?turn)|(?:\/?(?:think|thinking|analysis|reasoning)))[^>\n]*$/gi, '');
+    }
+
     function updatePendingAssistantStream(content, runtime = currentConversationRuntime()) {
         const target = runtime || currentConversationRuntime();
         const messages = Array.isArray(target?.messages) ? target.messages : [];
         const pendingIndex = messages.findIndex((item) => item?.pending);
         const pending = pendingIndex >= 0 ? messages[pendingIndex] : null;
         if (!pending) return false;
-        pending.content = String(content || '');
+        pending.content = cleanPendingAssistantStreamText(content);
         pending.streaming = true;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) {
@@ -17020,6 +17109,7 @@
              vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
              kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
              n_ctx: currentVlmNctx(options.version),
+             load_mtp: !!state.mtpEnabled,
             custom_api: options.custom_api,
             enable_thinking: !!state.thinkingEnabled,
             unload_after_chat: !!runtime.unloadAfterChat,
@@ -17408,6 +17498,7 @@
              vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
              kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
             n_ctx: currentVlmNctx(version),
+            load_mtp: !!state.mtpEnabled,
             custom_api: customApi,
             chat_mode: selectedMode,
             roleplay_request_kind: selectedMode === 'roleplay'
@@ -17529,6 +17620,7 @@
             }
         }
         if (requestToken !== runtime.requestToken) return;
+        applyVlmRunRuntimeStatus(response, modal);
         if (response?.aborted) {
             runtime.busy = false;
             runtime.busyStage = '';
@@ -17825,6 +17917,7 @@
              vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
              kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
             n_ctx: currentVlmNctx(version),
+            load_mtp: !!state.mtpEnabled,
             custom_api: customApi,
             chat_mode: 'roleplay',
             roleplay_session: session,
@@ -17923,6 +18016,7 @@
             vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
             kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
             n_ctx: currentVlmNctx(version),
+            load_mtp: !!state.mtpEnabled,
             custom_api: customApi,
             chat_mode: 'roleplay',
             roleplay_session: session,
@@ -19015,6 +19109,15 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-kv-cache-type]')) {
             state.kvCacheType = normalizeVlmKvCacheType(evt.target.value);
+            state.vlmRuntimeStatus = null;
+            state.vlmRuntimeStatusResponse = null;
+            saveChatSettings();
+            updateVlmRuntimeStatus(document.getElementById('describe_vlm_chat_modal'));
+            refreshVlmRuntimeStatus().catch(() => {});
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-mtp]')) {
+            state.mtpEnabled = !!evt.target.checked;
             state.vlmRuntimeStatus = null;
             state.vlmRuntimeStatusResponse = null;
             saveChatSettings();

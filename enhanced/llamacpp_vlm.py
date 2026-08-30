@@ -138,6 +138,8 @@ Jinja2ChatFormatter = None
 chat_formatter_to_chat_completion_handler = None
 
 LLAMA_CPP_AVAILABLE = False
+SpecConfig = None
+SpeculativeType = None
 # Avoid paying the reload cost for small, noisy GPU-layer estimates.
 LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_DELTA = 5
 LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_RATIO = 0.10
@@ -151,6 +153,12 @@ except Exception as e:
     logger.error("Please ensure CUDA libraries are correctly installed and in your library path.")
 
 if LLAMA_CPP_AVAILABLE:
+    try:
+        from llama_cpp.llama_speculative import SpecConfig, SpeculativeType
+    except Exception:
+        SpecConfig = None
+        SpeculativeType = None
+
     try:
         from llama_cpp.llama_chat_format import (
             Llava15ChatHandler, Llava16ChatHandler, MoondreamChatHandler,
@@ -248,6 +256,7 @@ from modules.llama_cpp_multimodal import (
     create_text_only_chat_completion,
     is_qwen_hybrid_vision_handler,
     messages_have_media,
+    select_request_text_handler,
     should_merge_qwen_hybrid_images,
 )
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
@@ -259,6 +268,7 @@ class LlamaCppVLM:
         self.llm = None
         self.chat_handler = None
         self.text_chat_handler = None
+        self.thinking_text_chat_handler = None
         self.lock = threading.RLock()
         self.current_model_path = None
         self.current_mmproj_path = None
@@ -270,6 +280,10 @@ class LlamaCppVLM:
         self.current_kv_cache_type = "f16"
         self.current_requested_kv_cache_type = "f16"
         self.current_kv_cache_type_supported = None
+        self.current_mtp_requested = False
+        self.current_mtp_enabled = False
+        self.current_mtp_supported = None
+        self.current_mtp_failure = ""
         self.current_ctx_checkpoints = None
         self.current_target_n_gpu_layers = None
         self.current_n_gpu_layers = None
@@ -332,6 +346,30 @@ class LlamaCppVLM:
             "elapsed_seconds": round(elapsed, 3) if elapsed else 0,
             "tokens_per_second": round(tokens_per_second, 2) if tokens_per_second else 0,
         }
+        if self.current_mtp_enabled:
+            speculative = getattr(self.llm, "last_speculative_stats", None)
+            speculative = speculative if isinstance(speculative, dict) else {}
+            mtp_stats = {
+                "active": True,
+                "drafted": int(speculative.get("drafted") or 0),
+                "verified": int(speculative.get("verified") or 0),
+                "accepted": int(speculative.get("accepted") or 0),
+                "accepted_draft_tokens": int(speculative.get("accepted_draft_tokens") or 0),
+                "draft_token_acceptance_rate": round(
+                    float(speculative.get("draft_token_acceptance_rate") or 0.0),
+                    4,
+                ),
+            }
+            self.last_completion_stats["mtp"] = mtp_stats
+            logger.info(
+                "llama.cpp MTP generation stats: drafted=%s, verified=%s, accepted=%s, "
+                "accepted_draft_tokens=%s, draft_token_acceptance_rate=%.2f%%",
+                mtp_stats["drafted"],
+                mtp_stats["verified"],
+                mtp_stats["accepted"],
+                mtp_stats["accepted_draft_tokens"],
+                mtp_stats["draft_token_acceptance_rate"] * 100.0,
+            )
 
     def _estimate_completion_tokens(self, text):
         """Count visible output tokens when a streaming chunk has no usage block."""
@@ -355,6 +393,20 @@ class LlamaCppVLM:
         try:
             parameters = inspect.signature(Llama).parameters
             return "type_k" in parameters and "type_v" in parameters
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _supports_mtp_speculative():
+        if (
+            not LLAMA_CPP_AVAILABLE
+            or Llama is None
+            or SpecConfig is None
+            or SpeculativeType is None
+        ):
+            return False
+        try:
+            return "speculative" in inspect.signature(Llama.__init__).parameters
         except (TypeError, ValueError):
             return False
 
@@ -504,6 +556,119 @@ class LlamaCppVLM:
         except Exception as exc:
             logger.warning("Unable to configure text-only Qwen non-thinking template: %s", exc)
             return None
+
+    @staticmethod
+    def _text_template_token_config(llm):
+        def token_id(method_name):
+            method = getattr(llm, method_name, None)
+            if not callable(method):
+                return -1
+            try:
+                return int(method())
+            except Exception:
+                return -1
+
+        def token_text(value):
+            if value < 0:
+                return ""
+            model = getattr(llm, "_model", None)
+            getter = getattr(model, "token_get_text", None)
+            if callable(getter):
+                try:
+                    text = getter(value)
+                    if isinstance(text, bytes):
+                        text = text.decode("utf-8", errors="replace")
+                    if isinstance(text, str):
+                        return text
+                except Exception:
+                    pass
+            detokenize = getattr(llm, "detokenize", None)
+            if callable(detokenize):
+                try:
+                    text = detokenize([value], special=True)
+                    if isinstance(text, bytes):
+                        text = text.decode("utf-8", errors="replace")
+                    return str(text or "")
+                except Exception:
+                    pass
+            return ""
+
+        token_ids = {
+            name: token_id(method_name)
+            for name, method_name in {
+                "bos_token": "token_bos",
+                "eos_token": "token_eos",
+                "eot_token": "token_eot",
+                "sep_token": "token_sep",
+                "nl_token": "token_nl",
+                "pad_token": "token_pad",
+                "mask_token": "token_mask",
+            }.items()
+        }
+        special_tokens_map = {
+            name: text
+            for name in ("eot_token", "sep_token", "nl_token", "pad_token", "mask_token")
+            if token_ids[name] >= 0 and (text := token_text(token_ids[name]))
+        }
+        stop_token_ids = []
+        for name in ("eos_token", "eot_token"):
+            value = token_ids[name]
+            if value >= 0 and value not in stop_token_ids:
+                stop_token_ids.append(value)
+        return {
+            "eos_token": token_text(token_ids["eos_token"]),
+            "bos_token": token_text(token_ids["bos_token"]),
+            "stop_token_ids": stop_token_ids or None,
+            "special_tokens_map": special_tokens_map,
+        }
+
+    def _create_text_only_thinking_chat_handler(self, llm):
+        handler = self.chat_handler
+        if handler is None or not self._chat_handler_controls_thinking():
+            return None
+        if Jinja2ChatFormatter is None or chat_formatter_to_chat_completion_handler is None:
+            return None
+
+        template = str(
+            getattr(handler, "chat_format", "")
+            or getattr(handler, "CHAT_FORMAT", "")
+            or (getattr(llm, "metadata", {}) or {}).get("tokenizer.chat_template")
+            or ""
+        )
+        if not template:
+            return None
+
+        template_args = dict(getattr(handler, "extra_template_arguments", {}) or {})
+        controls_thinking = False
+        for name in ("enable_thinking", "force_reasoning"):
+            if hasattr(handler, name) or name in template_args:
+                template_args[name] = True
+                controls_thinking = True
+        if not controls_thinking:
+            return None
+        if hasattr(handler, "preserve_thinking") or "preserve_thinking" in template_args:
+            template_args["preserve_thinking"] = False
+        if "add_vision_id" in template_args:
+            template_args["add_vision_id"] = False
+
+        try:
+            formatter = Jinja2ChatFormatter(
+                template=template,
+                **self._text_template_token_config(llm),
+            )
+            formatter = FixedTemplateArgsChatFormatter(formatter, template_args)
+            return chat_formatter_to_chat_completion_handler(formatter)
+        except Exception as exc:
+            logger.warning("Unable to configure text-only thinking template: %s", exc)
+            return None
+
+    def _configure_thinking_template(self, llm, chat_handler_name):
+        self.thinking_text_chat_handler = self._create_text_only_thinking_chat_handler(llm)
+        if self.thinking_text_chat_handler is not None:
+            logger.info(
+                "Configured %s text-only thinking request handler without MTMD preprocessing.",
+                chat_handler_name or "llama.cpp",
+            )
 
     def _configure_non_thinking_template(self, llm, chat_handler_name, model_path, mmproj_path):
         self.text_chat_handler = None
@@ -877,6 +1042,7 @@ class LlamaCppVLM:
         mmproj_name=None,
         vram_policy="extreme",
         kv_cache_type="f16",
+        load_mtp=False,
     ):
         if not LLAMA_CPP_AVAILABLE:
             logger.error("llama-cpp-python is not correctly installed or CUDA libraries are missing.")
@@ -886,6 +1052,16 @@ class LlamaCppVLM:
             n_ctx = normalize_llama_cpp_n_ctx(n_ctx, default=8192)
             vram_policy = normalize_llama_cpp_vram_policy(vram_policy)
             requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(kv_cache_type)
+            requested_mtp = bool(load_mtp)
+            mtp_binding_supported = self._supports_mtp_speculative()
+            mtp_attempt_allowed = requested_mtp and mtp_binding_supported
+            mtp_failure = ""
+            if requested_mtp and not mtp_binding_supported:
+                mtp_failure = "llama-cpp-python does not expose SpecConfig/DRAFT_MTP through Llama(speculative=...)."
+                logger.warning(
+                    "llama.cpp MTP requested but unavailable in the installed binding; using standard decoding. "
+                    "llama-cpp-python 0.3.48 or newer is required."
+                )
             kv_cache_quantization_supported = self._supports_kv_cache_quantization()
             effective_kv_cache_type = requested_kv_cache_type
             if requested_kv_cache_type != "f16" and not kv_cache_quantization_supported:
@@ -899,11 +1075,12 @@ class LlamaCppVLM:
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
             qwen_hybrid_vision = bool(mmproj_path) and is_qwen_hybrid_vision_handler(chat_handler_name)
             logger.info(
-                "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s",
+                "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s mtp_requested=%s",
                 chat_handler_name or "",
                 getattr(handler_class, "__name__", "") if handler_class else "",
                 mmproj_path or "",
                 bool(handler_class and mmproj_path),
+                requested_mtp,
             )
             same_model_identity = (
                 self.llm is not None
@@ -913,6 +1090,7 @@ class LlamaCppVLM:
                 and self.current_n_ctx == int(n_ctx)
                 and self.current_image_min_tokens == int(image_min_tokens or 0)
                 and self.current_image_max_tokens == int(image_max_tokens or 0)
+                and self.current_mtp_requested == requested_mtp
             )
             same_loaded_model = (
                 same_model_identity
@@ -1077,8 +1255,14 @@ class LlamaCppVLM:
             target_n_gpu_layers = n_gpu_layers
 
             logger.info(f"Loading Main LLM from: {model_path}")
+            if mtp_attempt_allowed:
+                logger.info(
+                    "llama.cpp MTP speculative decoding requested: model=%s, draft_n_max=2, draft_p_min=0.0",
+                    os.path.basename(model_path),
+                )
 
             self._non_thinking_template_active = False
+            self.thinking_text_chat_handler = None
             self._prepare_chat_handler(
                 handler_class,
                 mmproj_path=mmproj_path,
@@ -1104,6 +1288,7 @@ class LlamaCppVLM:
             loaded_layers = None
             loaded_offload_kqv = None
             loaded_kv_cache_type = None
+            loaded_mtp = False
             oom_type = getattr(ldm_patched.modules.model_management, "OOM_EXCEPTION", None)
             quantization_fallback = False
             kv_cache_load_types = [effective_kv_cache_type]
@@ -1113,6 +1298,7 @@ class LlamaCppVLM:
                 _, kv_type_config = llama_cpp_kv_cache_type_config(attempt_kv_cache_type)
                 for attempt_index, (attempt_layers, attempt_offload_kqv) in enumerate(load_attempts):
                     try:
+                        attempt_loaded_mtp = False
                         llama_kwargs = {
                             "model_path": model_path,
                             "chat_handler": self.chat_handler,
@@ -1128,16 +1314,40 @@ class LlamaCppVLM:
                                 "type_k": kv_type_config["type_k"],
                                 "type_v": kv_type_config["type_v"],
                             })
-                        self.llm = Llama(**llama_kwargs)
+                        if mtp_attempt_allowed:
+                            mtp_kwargs = dict(llama_kwargs)
+                            mtp_kwargs["speculative"] = SpecConfig(
+                                spec_type=SpeculativeType.DRAFT_MTP,
+                                draft_n_max=2,
+                                draft_p_min=0.0,
+                            )
+                            try:
+                                self.llm = Llama(**mtp_kwargs)
+                                attempt_loaded_mtp = True
+                            except Exception as mtp_error:
+                                self.llm = None
+                                mtp_attempt_allowed = False
+                                mtp_failure = str(mtp_error).strip()[:500] or type(mtp_error).__name__
+                                logger.warning(
+                                    "llama.cpp MTP initialization failed; retrying this load with standard decoding: %s",
+                                    mtp_failure,
+                                )
+                                gc.collect()
+                                ldm_patched.modules.model_management.soft_empty_cache(True)
+                                self.llm = Llama(**llama_kwargs)
+                        else:
+                            self.llm = Llama(**llama_kwargs)
                         self._configure_non_thinking_template(
                             self.llm,
                             chat_handler_name,
                             model_path,
                             mmproj_path,
                         )
+                        self._configure_thinking_template(self.llm, chat_handler_name)
                         loaded_layers = attempt_layers
                         loaded_offload_kqv = attempt_offload_kqv
                         loaded_kv_cache_type = attempt_kv_cache_type
+                        loaded_mtp = attempt_loaded_mtp
                         break
                     except Exception as e:
                         self.llm = None
@@ -1174,9 +1384,16 @@ class LlamaCppVLM:
             if self.llm is None or loaded_kv_cache_type is None:
                 raise RuntimeError("llama.cpp failed to load the selected VLM")
 
+            if loaded_mtp:
+                logger.info(
+                    "llama.cpp MTP speculative decoding enabled: model=%s, draft_n_max=2, draft_p_min=0.0",
+                    os.path.basename(model_path),
+                )
+
             logger.info(
                 "llama.cpp load result: target_gpu_layers=%s, loaded_gpu_layers=%s/%s, cpu_layers=%s, "
-                "offload_kqv=%s, kv_cache_type=%s, ctx_checkpoints=%s",
+                "offload_kqv=%s, kv_cache_type=%s, ctx_checkpoints=%s, mtp_requested=%s, "
+                "mtp_active=%s, mtp_supported=%s, mtp_failure=%s",
                 target_n_gpu_layers,
                 loaded_layers,
                 total_layers,
@@ -1184,6 +1401,10 @@ class LlamaCppVLM:
                 loaded_offload_kqv,
                 loaded_kv_cache_type,
                 QWEN_HYBRID_CTX_CHECKPOINTS if qwen_hybrid_vision else "default",
+                requested_mtp,
+                loaded_mtp,
+                bool(mtp_binding_supported and (not requested_mtp or loaded_mtp)),
+                mtp_failure or "none",
             )
             if auto_n_gpu_layers and int(loaded_layers or 0) == 0 and int(target_n_gpu_layers or 0) > 0:
                 logger.warning(
@@ -1227,6 +1448,12 @@ class LlamaCppVLM:
             self.current_kv_cache_type = loaded_kv_cache_type
             self.current_requested_kv_cache_type = requested_kv_cache_type
             self.current_kv_cache_type_supported = kv_cache_quantization_supported
+            self.current_mtp_requested = requested_mtp
+            self.current_mtp_enabled = bool(loaded_mtp)
+            self.current_mtp_supported = bool(
+                mtp_binding_supported and (not requested_mtp or loaded_mtp)
+            )
+            self.current_mtp_failure = mtp_failure
             self.current_ctx_checkpoints = (
                 QWEN_HYBRID_CTX_CHECKPOINTS if qwen_hybrid_vision else None
             )
@@ -1251,6 +1478,10 @@ class LlamaCppVLM:
             self.current_vram_estimate["loaded_kv_cache_type"] = loaded_kv_cache_type
             self.current_vram_estimate["kv_cache_quantization_supported"] = kv_cache_quantization_supported
             self.current_vram_estimate["kv_cache_quantization_fallback"] = quantization_fallback
+            self.current_vram_estimate["mtp_requested"] = requested_mtp
+            self.current_vram_estimate["mtp_active"] = bool(loaded_mtp)
+            self.current_vram_estimate["mtp_supported"] = self.current_mtp_supported
+            self.current_vram_estimate["mtp_failure"] = mtp_failure
             self.runtime_unhealthy = False
             ldm_patched.modules.model_management.print_memory_info("after load llama.cpp model")
 
@@ -1282,6 +1513,10 @@ class LlamaCppVLM:
             "prompt_chars": self._messages_text_length(messages) if messages else 0,
             "media": self._message_media_summary(messages or []),
             "vision_enabled": self._vision_runtime_enabled(),
+            "mtp_requested": self.current_mtp_requested,
+            "mtp_active": self.current_mtp_enabled,
+            "mtp_supported": self.current_mtp_supported,
+            "mtp_failure": self.current_mtp_failure,
         }
 
     def _invalidate_runtime_after_slot_error(self, operation, error, context):
@@ -1308,6 +1543,7 @@ class LlamaCppVLM:
                     pass
             self.chat_handler = None
             self.text_chat_handler = None
+            self.thinking_text_chat_handler = None
             self.current_model_path = None
             self.current_mmproj_path = None
             self.current_chat_handler_name = None
@@ -1317,6 +1553,10 @@ class LlamaCppVLM:
             self.current_kv_cache_type = "f16"
             self.current_requested_kv_cache_type = "f16"
             self.current_kv_cache_type_supported = None
+            self.current_mtp_requested = False
+            self.current_mtp_enabled = False
+            self.current_mtp_supported = None
+            self.current_mtp_failure = ""
             self.current_ctx_checkpoints = None
             self.current_n_gpu_layers = None
             self.current_total_layers = None
@@ -1340,15 +1580,15 @@ class LlamaCppVLM:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    def get_runtime_status(self, vram_policy=None, kv_cache_type=None, n_ctx=None):
+    def get_runtime_status(self, vram_policy=None, kv_cache_type=None, n_ctx=None, load_mtp=None):
         acquired = self.lock.acquire(blocking=False)
         try:
-            return self._runtime_status_snapshot(vram_policy, kv_cache_type, n_ctx)
+            return self._runtime_status_snapshot(vram_policy, kv_cache_type, n_ctx, load_mtp)
         finally:
             if acquired:
                 self.lock.release()
 
-    def _runtime_status_snapshot(self, vram_policy=None, kv_cache_type=None, n_ctx=None):
+    def _runtime_status_snapshot(self, vram_policy=None, kv_cache_type=None, n_ctx=None, load_mtp=None):
         requested_policy = normalize_llama_cpp_vram_policy(vram_policy or self.current_vram_policy)
         requested_kv_cache_type = normalize_llama_cpp_kv_cache_type(
             kv_cache_type or self.current_requested_kv_cache_type
@@ -1357,6 +1597,8 @@ class LlamaCppVLM:
             n_ctx,
             default=self.current_n_ctx or 8192,
         )
+        requested_mtp = self.current_mtp_requested if load_mtp is None else bool(load_mtp)
+        mtp_binding_supported = self._supports_mtp_speculative()
         memory_management = ldm_patched.modules.model_management
         gpu_total_gb = 0.0
         gpu_free_gb = 0.0
@@ -1410,6 +1652,15 @@ class LlamaCppVLM:
             "n_ctx": int(self.current_n_ctx or requested_n_ctx) if loaded else requested_n_ctx,
             "requested_n_ctx": requested_n_ctx,
             "n_ctx_pending": bool(loaded and int(self.current_n_ctx or 0) != requested_n_ctx),
+            "mtp_requested": requested_mtp,
+            "mtp_active": bool(loaded and self.current_mtp_enabled),
+            "mtp_supported": (
+                self.current_mtp_supported
+                if loaded and self.current_mtp_supported is not None
+                else mtp_binding_supported
+            ),
+            "mtp_pending": bool(loaded and self.current_mtp_requested != requested_mtp),
+            "mtp_failure": self.current_mtp_failure if loaded else "",
             "model": os.path.basename(self.current_model_path or ""),
             "model_path": self.current_model_path or "",
             "gpu_layers": gpu_layers if loaded else 0,
@@ -1687,9 +1938,12 @@ class LlamaCppVLM:
                         template_args.pop(name, None)
 
     def _text_handler_for_request(self, messages, enable_thinking):
-        if enable_thinking or messages_have_media(messages):
-            return None
-        return self.text_chat_handler if callable(self.text_chat_handler) else None
+        return select_request_text_handler(
+            messages,
+            enable_thinking=enable_thinking,
+            text_handler=self.text_chat_handler,
+            thinking_handler=self.thinking_text_chat_handler,
+        )
 
     def _with_non_thinking_guard(self, system_msg, enable_thinking=None):
         if self._thinking_mode_enabled(enable_thinking):
@@ -1726,9 +1980,27 @@ class LlamaCppVLM:
 
     def _create_request_chat_completion(self, messages, enable_thinking=None, **kwargs):
         thinking_enabled = self._thinking_mode_enabled(enable_thinking)
+        has_media = messages_have_media(messages)
         text_handler = self._text_handler_for_request(messages, thinking_enabled)
         template_controlled = bool(text_handler) or (
-            messages_have_media(messages) and self._chat_handler_controls_thinking()
+            has_media and self._chat_handler_controls_thinking()
+        )
+        if has_media:
+            text_route = "multimodal_handler"
+        elif text_handler is self.thinking_text_chat_handler:
+            text_route = "thinking_template"
+        elif text_handler is self.text_chat_handler:
+            text_route = "non_thinking_template"
+        elif thinking_enabled:
+            text_route = "metadata_template_without_thinking_override"
+        else:
+            text_route = "metadata_template"
+        logger.info(
+            "llama.cpp request routing: thinking=%s, media=%s, text_route=%s, thinking_template_available=%s",
+            thinking_enabled,
+            has_media,
+            text_route,
+            callable(self.thinking_text_chat_handler),
         )
         request_kwargs = dict(kwargs)
         for key, value in self._qwen38_non_thinking_kwargs(

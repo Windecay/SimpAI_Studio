@@ -22575,6 +22575,36 @@ button[aria-label="Edit"][title="Edit"] {
   color: color-mix(in srgb, var(--describe-chat-muted) 86%, transparent);
 }
 
+.describe-vlm-chat-runtime-mtp {
+  display: inline-flex !important;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--describe-chat-line-soft);
+  border-radius: 5px;
+  background: var(--describe-chat-panel-soft);
+  box-sizing: border-box;
+  color: var(--describe-chat-text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.describe-vlm-chat-runtime-mtp input {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  margin: 0 !important;
+  accent-color: #22c55e;
+}
+
+.describe-vlm-chat-runtime-mtp:has(input:disabled) {
+  opacity: 0.48;
+}
+
 .describe-vlm-chat-runtime-status.is-ready > i {
   color: #22c55e;
 }
