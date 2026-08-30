@@ -22,7 +22,7 @@ import comfy.utils
 import llama_cpp
 from llama_cpp import Llama
 
-from modules.llama_cpp_multimodal import (
+from .support.llama_cpp_multimodal import (
     create_text_only_chat_completion,
     messages_have_media,
 )
