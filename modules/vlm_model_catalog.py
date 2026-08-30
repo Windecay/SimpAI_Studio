@@ -6,9 +6,12 @@ import struct
 import threading
 import time
 
+from modules.llama_cpp_runtime import LLAMA_CPP_N_CTX_MAX
+
 
 CATALOG_SCHEMA = "simpai.vlm-model-catalog.v1"
-GGUF_RUNTIME_CONTEXT_MAX = 16384
+GGUF_RUNTIME_CONTEXT_DEFAULT = 8192
+GGUF_RUNTIME_CONTEXT_MAX = LLAMA_CPP_N_CTX_MAX
 CHAT_CATALOG_TEXT_ENCODER_ARCHITECTURES = frozenset({"qwen3vl_4b", "qwen3vl_8b"})
 GGUF_SUPPORTED_VERSIONS = frozenset({2, 3})
 GGUF_METADATA_KEYS = frozenset({
@@ -703,7 +706,8 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "gguf_file": os.path.basename(relative_path),
                 "model_file": relative_path,
                 "mmproj_file": mmproj_relative,
-                "n_ctx": context_window,
+                "n_ctx": min(context_window, GGUF_RUNTIME_CONTEXT_DEFAULT),
+                "context_window": context_window,
                 "source_catalog": "LLM",
                 "capabilities": capabilities,
                 "vision_expected": vision_expected,

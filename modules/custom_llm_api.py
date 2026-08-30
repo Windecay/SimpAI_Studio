@@ -296,6 +296,10 @@ def strip_reasoning_text(text):
     if not output:
         return ""
 
+    orphan_think_end = re.search(r"(?is)</think\s*>", output)
+    if orphan_think_end and not re.search(r"(?is)<think\b[^>]*>", output[:orphan_think_end.start()]):
+        output = output[orphan_think_end.end():]
+
     final_channel = re.search(r"(?is)<\|channel\|?>\s*(?:final|answer|response)\b", output)
     message_marker = re.search(r"(?is)<\|message\|>", output)
     if final_channel:

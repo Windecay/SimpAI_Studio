@@ -287,10 +287,21 @@ def _trim_latent(latent, amount):
     return trimmed
 
 
-def _decode(vae, latent):
+def _decode(vae, latent, use_tiled_vae_decode=True):
     import nodes
 
-    return nodes.VAEDecode().decode(vae, latent)[0].detach().cpu().contiguous().clamp(0, 1)
+    if bool(use_tiled_vae_decode):
+        images = nodes.VAEDecodeTiled().decode(
+            vae,
+            latent,
+            tile_size=512,
+            overlap=64,
+            temporal_size=4096,
+            temporal_overlap=16,
+        )[0]
+    else:
+        images = nodes.VAEDecode().decode(vae, latent)[0]
+    return images.detach().cpu().contiguous().clamp(0, 1)
 
 
 def _prepare_edit_mask(character_mask, start, count, frames):
@@ -2822,6 +2833,7 @@ class SimpAIWanAnimateLoop:
                 "enable_overlap_color_calibration": ("BOOLEAN", {"default": False}),
                 "calibration_debug": ("BOOLEAN", {"default": False}),
                 "preserve_input_frame_count": ("BOOLEAN", {"default": False}),
+                "use_tiled_vae_decode": ("BOOLEAN", {"default": True}),
                 "use_timeline_aligned_noise": ("BOOLEAN", {"default": True}),
             },
         }
@@ -2864,6 +2876,7 @@ class SimpAIWanAnimateLoop:
         enable_overlap_color_calibration=False,
         calibration_debug=False,
         preserve_input_frame_count=False,
+        use_tiled_vae_decode=True,
         use_timeline_aligned_noise=False,
     ):
         if not isinstance(driving_video, torch.Tensor) or driving_video.ndim != 4:
@@ -2871,6 +2884,7 @@ class SimpAIWanAnimateLoop:
         if not isinstance(reference_image, torch.Tensor) or reference_image.ndim != 4 or reference_image.shape[0] == 0:
             raise ValueError("reference_image must contain at least one image.")
 
+        use_tiled_vae_decode = bool(use_tiled_vae_decode)
         use_timeline_aligned_noise = bool(use_timeline_aligned_noise)
 
         from comfy_extras.nodes_wan import WanAnimateToVideo
@@ -3082,7 +3096,11 @@ class SimpAIWanAnimateLoop:
                 cfg,
                 noise=chunk_noise,
             )
-            decoded = _decode(vae, _trim_latent(sampled, trim_latent))
+            decoded = _decode(
+                vae,
+                _trim_latent(sampled, trim_latent),
+                use_tiled_vae_decode,
+            )
             required_frames = discard_head + keep_target + _TAIL_GUARD_FRAMES
             if int(decoded.shape[0]) < required_frames:
                 raise RuntimeError(
@@ -3555,6 +3573,7 @@ class SimpAIWanAnimateLoop:
                     else "SamplerCustom.execute_seeded"
                 ),
                 "timeline_aligned_noise_enabled": bool(use_timeline_aligned_noise),
+                "use_tiled_vae_decode": bool(use_tiled_vae_decode),
                 "continue_motion_strategy": (
                     "previous_generated_conditioning_normalized_rgb"
                     if enable_continuation_normalization

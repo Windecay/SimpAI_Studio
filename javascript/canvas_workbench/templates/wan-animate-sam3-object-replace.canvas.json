@@ -388,7 +388,6 @@
           "scene_var_number5",
           "scene_var_number6",
           "scene_var_number8",
-          "scene_switch_option1",
           "scene_switch_option2",
           "scene_input_image3",
           "scene_input_image4"
@@ -495,6 +494,14 @@
             "max": 50
           },
           {
+            "key": "scene_switch_option1",
+            "label": "Use Tiled VAE Decode",
+            "type": "checkbox",
+            "default": true,
+            "visible": true,
+            "interactive": true
+          },
+          {
             "key": "scene_switch_option3",
             "label": "Save comparison video to folder",
             "type": "checkbox",
@@ -536,6 +543,7 @@
               "scene_var_number2": 30,
               "scene_var_number3": 16,
               "scene_var_number7": 1,
+              "scene_switch_option1": true,
               "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
@@ -556,6 +564,7 @@
               "scene_var_number2": 30,
               "scene_var_number3": 16,
               "scene_var_number7": 5,
+              "scene_switch_option1": true,
               "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
@@ -576,6 +585,7 @@
               "scene_var_number2": 30,
               "scene_var_number3": 16,
               "scene_var_number7": 5,
+              "scene_switch_option1": true,
               "scene_switch_option3": false,
               "scene_switch_option4": false,
               "scene_aspect_ratio": "640|1:1",
@@ -755,6 +765,7 @@
         "scene_var_number2": 30,
         "scene_var_number3": 16,
         "scene_var_number7": 1,
+        "scene_switch_option1": true,
         "scene_switch_option3": false,
         "scene_switch_option4": false,
         "scene_video_duration": 0

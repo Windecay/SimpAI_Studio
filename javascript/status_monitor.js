@@ -45,6 +45,10 @@
 
     function getStatusMonitorLang() {
         const candidates = [];
+        const stageParams = window.stage && typeof window.stage === 'object'
+            ? window.stage
+            : {};
+        candidates.push(stageParams.__lang);
         try {
             const search = new URLSearchParams(window.location.search || '');
             candidates.push(search.get('__lang'));

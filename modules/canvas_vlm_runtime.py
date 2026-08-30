@@ -654,6 +654,16 @@ def _canvas_vlm_allocate_llama_video_frames(version_name, params, video_sources,
 def canvas_extract_openai_text(response):
     return extract_response_text(response)
 
+
+def _runtime_enable_thinking(params):
+    params = params if isinstance(params, dict) else {}
+    if "enable_thinking" in params:
+        return bool(params.get("enable_thinking"))
+    if "disable_thinking" in params:
+        return not bool(params.get("disable_thinking"))
+    return None
+
+
 def canvas_custom_llm_models(payload):
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     base_url = str(params.get("custom_base_url") or "").strip()
@@ -684,7 +694,8 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     model = str(params.get("custom_model") or "").strip()
     api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
     supports_images = bool(params.get("custom_supports_images", True))
-    disable_thinking = bool(params.get("disable_thinking"))
+    enable_thinking = _runtime_enable_thinking(params)
+    disable_thinking = enable_thinking is False
     try:
         h3_visual_reference_max_side = max(0, min(int(params.get("h3_visual_reference_max_side") or 0), 4096))
     except Exception:
@@ -1057,6 +1068,7 @@ def canvas_vlm_run(payload, stream_callback=None):
 
     payload = payload if isinstance(payload, dict) else {}
     params = dict(payload.get("params") if isinstance(payload.get("params"), dict) else {})
+    enable_thinking = _runtime_enable_thinking(params)
     project_id = str(payload.get("project_id") or "default").strip() or "default"
     node_id = str(payload.get("node_id") or params.get("node_id") or "vlm").strip() or "vlm"
     request_id = str(params.get("request_id") or payload.get("request_id") or "").strip()
@@ -1507,6 +1519,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 repetition_penalty=1.02,
                 seed=seed,
                 system_prompt="You extract concise image intent as JSON only. Do not write final prompts.",
+                enable_thinking=enable_thinking,
             )
             intent_text = str(intent_text or "").strip()
             for prefix in VLM.remove_prefixs:
@@ -1611,6 +1624,7 @@ def canvas_vlm_run(payload, stream_callback=None):
             top_k=top_k,
             repetition_penalty=repetition_penalty,
             seed=seed,
+            enable_thinking=enable_thinking,
         )
         completion_stats = _canvas_vlm_local_completion_stats()
     else:
@@ -1637,6 +1651,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 seed=seed,
                 system_prompt=stateless_system_prompt,
                 on_delta=stream_callback,
+                enable_thinking=enable_thinking,
             )
         else:
             text = vlm.inference(
@@ -1649,6 +1664,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 repetition_penalty=repetition_penalty,
                 seed=seed,
                 system_prompt=stateless_system_prompt if stateless_llamacpp_chat else None,
+                enable_thinking=enable_thinking,
             )
         completion_stats = _canvas_vlm_local_completion_stats()
         if (
@@ -1672,6 +1688,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     seed=seed,
                     system_prompt=stateless_system_prompt,
                     on_delta=stream_callback,
+                    enable_thinking=enable_thinking,
                 )
             else:
                 text = vlm.inference(
@@ -1684,6 +1701,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                     repetition_penalty=repetition_penalty,
                     seed=seed,
                     system_prompt=stateless_system_prompt,
+                    enable_thinking=enable_thinking,
                 )
             completion_stats = _canvas_vlm_local_completion_stats()
     if text is None:
@@ -1732,6 +1750,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 repetition_penalty=1.05,
                 seed=seed,
                 system_prompt=system_prompt,
+                enable_thinking=enable_thinking,
             )
             if isinstance(result, str) and ("Context Shift is explicitly disabled" in result or ("n_ctx" in result and "fit the dialogue" in result)):
                 raise RuntimeError(result.strip()[:500])
@@ -1779,6 +1798,7 @@ def canvas_vlm_run(payload, stream_callback=None):
                 repetition_penalty=repetition_penalty,
                 seed=(seed + 1 if seed >= 0 else seed),
                 system_prompt=str(params.get("system_prompt") or ""),
+                enable_thinking=enable_thinking,
             )
             retry_text = str(retry_text or "").strip()
             if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):

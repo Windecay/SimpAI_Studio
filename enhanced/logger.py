@@ -10,6 +10,14 @@ logs = None
 stdout_interceptor = None
 stderr_interceptor = None
 log_file = None
+_logs_lock = threading.RLock()
+_log_sequence = 0
+
+
+def _next_log_sequence():
+    global _log_sequence
+    _log_sequence += 1
+    return _log_sequence
 
 class MilliSecondsFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
@@ -31,15 +39,17 @@ class LogInterceptor(io.TextIOWrapper):
         self.log_file = log_file
 
     def write(self, data):
-        entry = {"t": datetime.now().isoformat(), "m": data}
         with self._lock:
-            self._logs_since_flush.append(entry)
+            with _logs_lock:
+                entry = {"i": _next_log_sequence(), "t": datetime.now().isoformat(), "m": data}
+                self._logs_since_flush.append(entry)
 
-            # Simple handling for cr to overwrite the last output if it isnt a full line
-            # else logs just get full of progress messages
-            if isinstance(data, str) and data.startswith("\r") and not logs[-1]["m"].endswith("\n"):
-                logs.pop()
-            logs.append(entry)
+                # Simple handling for cr to overwrite the last output if it isnt a full line
+                # else logs just get full of progress messages
+                if logs is not None:
+                    if isinstance(data, str) and data.startswith("\r") and logs and not logs[-1]["m"].endswith("\n"):
+                        logs.pop()
+                    logs.append(entry)
 
             with open(self.log_file, "a", encoding='utf-8') as f:
                 f.write(f"{entry['m']}")
@@ -79,6 +89,12 @@ def get_log_file():
 
 def get_logs():
     return logs
+
+
+def get_log_snapshot():
+    """Return a stable copy for read-only consumers such as the WebUI."""
+    with _logs_lock:
+        return [dict(entry) if isinstance(entry, dict) else {"t": "", "m": str(entry)} for entry in (logs or ())]
 
 def on_flush(callback):
     if stdout_interceptor is not None:

@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 import inspect
+from contextlib import contextmanager
 from PIL import Image
 
 from enhanced.logger import format_name
@@ -241,6 +242,14 @@ from modules.llama_cpp_runtime import (
     normalize_llama_cpp_kv_cache_type,
     is_llama_cpp_slot_error,
 )
+from modules.llama_cpp_multimodal import (
+    QWEN_HYBRID_CTX_CHECKPOINTS,
+    build_numbered_contact_sheet,
+    create_text_only_chat_completion,
+    is_qwen_hybrid_vision_handler,
+    messages_have_media,
+    should_merge_qwen_hybrid_images,
+)
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 from modules.vlm_model_catalog import gguf_int_values, is_visual_component_filename
 import ldm_patched.modules.model_management
@@ -249,6 +258,7 @@ class LlamaCppVLM:
     def __init__(self):
         self.llm = None
         self.chat_handler = None
+        self.text_chat_handler = None
         self.lock = threading.RLock()
         self.current_model_path = None
         self.current_mmproj_path = None
@@ -260,6 +270,7 @@ class LlamaCppVLM:
         self.current_kv_cache_type = "f16"
         self.current_requested_kv_cache_type = "f16"
         self.current_kv_cache_type_supported = None
+        self.current_ctx_checkpoints = None
         self.current_target_n_gpu_layers = None
         self.current_n_gpu_layers = None
         self.current_total_layers = None
@@ -444,12 +455,14 @@ class LlamaCppVLM:
             raise
 
     @staticmethod
-    def _is_qwen35_family_non_thinking(chat_handler_name, model_path):
+    def _is_qwen35_family(chat_handler_name, model_path):
         handler_name = str(chat_handler_name or "").strip().lower()
         model_name = os.path.basename(str(model_path or "")).lower()
-        if "thinking" in handler_name or "thinking" in model_name:
-            return False
-        if handler_name in {"qwen3.5", "qwen3.6", "qwen3.8"}:
+        if handler_name in {
+            "qwen3.5", "qwen3.5-thinking",
+            "qwen3.6", "qwen3.6-thinking",
+            "qwen3.8", "qwen3.8-thinking",
+        }:
             return True
         return any(
             marker in model_name
@@ -461,7 +474,7 @@ class LlamaCppVLM:
         )
 
     def _create_text_only_qwen_chat_handler(self, llm, chat_handler_name, model_path):
-        if not self._is_qwen35_family_non_thinking(chat_handler_name, model_path):
+        if not self._is_qwen35_family(chat_handler_name, model_path):
             return None
         if Jinja2ChatFormatter is None or chat_formatter_to_chat_completion_handler is None:
             return None
@@ -493,15 +506,9 @@ class LlamaCppVLM:
             return None
 
     def _configure_non_thinking_template(self, llm, chat_handler_name, model_path, mmproj_path):
+        self.text_chat_handler = None
         self._non_thinking_template_active = False
-        if not self._is_qwen35_family_non_thinking(chat_handler_name, model_path):
-            return
-
-        if mmproj_path and getattr(self.chat_handler, "enable_thinking", None) is False:
-            self._non_thinking_template_active = True
-            return
-
-        if mmproj_path:
+        if not self._is_qwen35_family(chat_handler_name, model_path):
             return
 
         text_handler = self._create_text_only_qwen_chat_handler(
@@ -514,9 +521,11 @@ class LlamaCppVLM:
                 "Text-only Qwen model has no fixed non-thinking template; reasoning budget fallback remains active."
             )
             return
-        llm.chat_handler = text_handler
+        self.text_chat_handler = text_handler
+        if not mmproj_path:
+            llm.chat_handler = text_handler
         self._non_thinking_template_active = True
-        logger.info("Configured text-only Qwen model with enable_thinking=False.")
+        logger.info("Configured Qwen text-only request handler with enable_thinking=False.")
 
     def _get_layer_count(self, path):
         import struct
@@ -888,6 +897,7 @@ class LlamaCppVLM:
             model_path = find_model_in_dirs(config.paths_LLM, model_name) or os.path.join(first_model_dir(config.paths_LLM), model_name)
             handler_class = self.get_chat_handler_class(chat_handler_name)
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
+            qwen_hybrid_vision = bool(mmproj_path) and is_qwen_hybrid_vision_handler(chat_handler_name)
             logger.info(
                 "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s",
                 chat_handler_name or "",
@@ -1111,6 +1121,8 @@ class LlamaCppVLM:
                             "offload_kqv": attempt_offload_kqv,
                             "verbose": False,
                         }
+                        if qwen_hybrid_vision:
+                            llama_kwargs["ctx_checkpoints"] = QWEN_HYBRID_CTX_CHECKPOINTS
                         if attempt_kv_cache_type != "f16":
                             llama_kwargs.update({
                                 "type_k": kv_type_config["type_k"],
@@ -1164,13 +1176,14 @@ class LlamaCppVLM:
 
             logger.info(
                 "llama.cpp load result: target_gpu_layers=%s, loaded_gpu_layers=%s/%s, cpu_layers=%s, "
-                "offload_kqv=%s, kv_cache_type=%s",
+                "offload_kqv=%s, kv_cache_type=%s, ctx_checkpoints=%s",
                 target_n_gpu_layers,
                 loaded_layers,
                 total_layers,
                 max(0, total_layers - int(loaded_layers or 0)),
                 loaded_offload_kqv,
                 loaded_kv_cache_type,
+                QWEN_HYBRID_CTX_CHECKPOINTS if qwen_hybrid_vision else "default",
             )
             if auto_n_gpu_layers and int(loaded_layers or 0) == 0 and int(target_n_gpu_layers or 0) > 0:
                 logger.warning(
@@ -1214,6 +1227,9 @@ class LlamaCppVLM:
             self.current_kv_cache_type = loaded_kv_cache_type
             self.current_requested_kv_cache_type = requested_kv_cache_type
             self.current_kv_cache_type_supported = kv_cache_quantization_supported
+            self.current_ctx_checkpoints = (
+                QWEN_HYBRID_CTX_CHECKPOINTS if qwen_hybrid_vision else None
+            )
             self.current_target_n_gpu_layers = target_n_gpu_layers
             self.current_n_gpu_layers = loaded_layers
             self.current_total_layers = total_layers
@@ -1254,6 +1270,14 @@ class LlamaCppVLM:
             "n_ctx": n_ctx,
             "n_tokens": int(getattr(llm, "n_tokens", 0) or 0) if llm is not None else 0,
             "n_batch": int(getattr(llm, "n_batch", 0) or 0) if llm is not None else 0,
+            "ctx_checkpoints": (
+                int(getattr(llm, "ctx_checkpoints", self.current_ctx_checkpoints) or 0)
+                if llm is not None and (
+                    getattr(llm, "ctx_checkpoints", None) is not None
+                    or self.current_ctx_checkpoints is not None
+                )
+                else None
+            ),
             "max_tokens": int(max_tokens or 0),
             "prompt_chars": self._messages_text_length(messages) if messages else 0,
             "media": self._message_media_summary(messages or []),
@@ -1283,6 +1307,7 @@ class LlamaCppVLM:
                 except:
                     pass
             self.chat_handler = None
+            self.text_chat_handler = None
             self.current_model_path = None
             self.current_mmproj_path = None
             self.current_chat_handler_name = None
@@ -1292,6 +1317,7 @@ class LlamaCppVLM:
             self.current_kv_cache_type = "f16"
             self.current_requested_kv_cache_type = "f16"
             self.current_kv_cache_type_supported = None
+            self.current_ctx_checkpoints = None
             self.current_n_gpu_layers = None
             self.current_total_layers = None
             self.current_target_n_gpu_layers = None
@@ -1492,7 +1518,34 @@ class LlamaCppVLM:
             return {"role": "user", "content": prompt}
 
         user_content = []
-        images = image if isinstance(image, (list, tuple)) else [image]
+        source_images = image if isinstance(image, (list, tuple)) else [image]
+        images = []
+        for source in source_images:
+            if isinstance(source, np.ndarray):
+                try:
+                    source = Image.fromarray(source)
+                except Exception:
+                    continue
+            if isinstance(source, Image.Image):
+                images.append(source)
+
+        merged_image_count = 0
+        if should_merge_qwen_hybrid_images(self.current_chat_handler_name, len(images)):
+            contact_sheet = build_numbered_contact_sheet(images, max_side=1024)
+            if contact_sheet is not None:
+                merged_image_count = len(images)
+                images = [contact_sheet]
+                prompt = (
+                    f"Visual input note: the numbered contact sheet contains {merged_image_count} "
+                    "separate reference images in left-to-right, top-to-bottom order. "
+                    "Treat each numbered tile as an independent input image.\n\n"
+                    f"{prompt}"
+                )
+                logger.warning(
+                    "Qwen hybrid multi-image compatibility mode: merged %s images into one numbered "
+                    "contact sheet before MTMD evaluation",
+                    merged_image_count,
+                )
         converted_lengths = []
         for img in images:
             base64_image = self._image_to_base64(img)
@@ -1504,10 +1557,13 @@ class LlamaCppVLM:
                 })
         user_content.append({"type": "text", "text": prompt})
         logger.info(
-            "LlamaCpp image payload: input_type=%s image_count=%s converted_images=%s base64_lengths=%s",
+            "LlamaCpp image payload: input_type=%s input_images=%s payload_images=%s "
+            "converted_images=%s merged_images=%s base64_lengths=%s",
             type(image).__name__,
+            len(source_images),
             len(images),
             len(converted_lengths),
+            merged_image_count,
             converted_lengths,
         )
         return {"role": "user", "content": user_content}
@@ -1578,11 +1634,68 @@ class LlamaCppVLM:
         except Exception:
             pass
 
-    def _with_non_thinking_guard(self, system_msg):
+    def _thinking_mode_enabled(self, enable_thinking):
+        if enable_thinking is not None:
+            return bool(enable_thinking)
+        handler_name = str(self.current_chat_handler_name or "").lower()
+        model_name = os.path.basename(str(self.current_model_path or "")).lower()
+        return "thinking" in handler_name or "thinking" in model_name
+
+    def _chat_handler_controls_thinking(self):
+        handler = self.chat_handler
+        if handler is None:
+            return False
+        if hasattr(handler, "enable_thinking") or hasattr(handler, "force_reasoning"):
+            return True
+        template_args = getattr(handler, "extra_template_arguments", None)
+        return isinstance(template_args, dict) and any(
+            key in template_args for key in ("enable_thinking", "force_reasoning")
+        )
+
+    @contextmanager
+    def _request_thinking_mode(self, enable_thinking):
+        handler = self.chat_handler
+        if handler is None:
+            yield
+            return
+
+        enabled = bool(enable_thinking)
+        previous_attributes = {}
+        for name in ("enable_thinking", "force_reasoning"):
+            if hasattr(handler, name):
+                previous_attributes[name] = getattr(handler, name)
+                setattr(handler, name, enabled)
+
+        template_args = getattr(handler, "extra_template_arguments", None)
+        previous_template_args = {}
+        if isinstance(template_args, dict):
+            for name in ("enable_thinking", "force_reasoning"):
+                if name in template_args or name in previous_attributes:
+                    previous_template_args[name] = (name in template_args, template_args.get(name))
+                    template_args[name] = enabled
+
+        try:
+            yield
+        finally:
+            for name, value in previous_attributes.items():
+                setattr(handler, name, value)
+            if isinstance(template_args, dict):
+                for name, (was_present, value) in previous_template_args.items():
+                    if was_present:
+                        template_args[name] = value
+                    else:
+                        template_args.pop(name, None)
+
+    def _text_handler_for_request(self, messages, enable_thinking):
+        if enable_thinking or messages_have_media(messages):
+            return None
+        return self.text_chat_handler if callable(self.text_chat_handler) else None
+
+    def _with_non_thinking_guard(self, system_msg, enable_thinking=None):
+        if self._thinking_mode_enabled(enable_thinking):
+            return system_msg
         handler_name = str(self.current_chat_handler_name or "")
         model_name = os.path.basename(str(self.current_model_path or ""))
-        if "Thinking" in handler_name or "thinking" in model_name.lower():
-            return system_msg
         if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM", "Gemma")) and not any(
             name in model_name.lower()
             for name in ("qwen", "minicpm", "glm", "gemma")
@@ -1597,13 +1710,13 @@ class LlamaCppVLM:
             return system_msg
         return (system_msg + "\n" + guard).strip() if system_msg else guard
 
-    def _qwen38_non_thinking_kwargs(self):
+    def _qwen38_non_thinking_kwargs(self, enable_thinking=None, template_controlled=False):
+        if self._thinking_mode_enabled(enable_thinking):
+            return {}
         handler_name = str(self.current_chat_handler_name or "")
         model_path = str(self.current_model_path or "").lower()
-        if "thinking" in handler_name.lower():
-            return {}
-        if handler_name == "Qwen3.8" or "qwen3.8" in model_path or "qwen38" in model_path:
-            if self._non_thinking_template_active:
+        if handler_name in ("Qwen3.8", "Qwen3.8-Thinking") or "qwen3.8" in model_path or "qwen38" in model_path:
+            if template_controlled:
                 return {}
             return {
                 "reasoning_budget": 0,
@@ -1611,8 +1724,29 @@ class LlamaCppVLM:
             }
         return {}
 
+    def _create_request_chat_completion(self, messages, enable_thinking=None, **kwargs):
+        thinking_enabled = self._thinking_mode_enabled(enable_thinking)
+        text_handler = self._text_handler_for_request(messages, thinking_enabled)
+        template_controlled = bool(text_handler) or (
+            messages_have_media(messages) and self._chat_handler_controls_thinking()
+        )
+        request_kwargs = dict(kwargs)
+        for key, value in self._qwen38_non_thinking_kwargs(
+            thinking_enabled,
+            template_controlled=template_controlled,
+        ).items():
+            request_kwargs.setdefault(key, value)
+        with self._request_thinking_mode(thinking_enabled):
+            return create_text_only_chat_completion(
+                self.llm,
+                messages=messages,
+                text_handler=text_handler,
+                **request_kwargs,
+            )
+
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
-             max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1):
+             max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1,
+             enable_thinking=None):
         with self.lock:
             self.last_completion_stats = {}
             if self.llm is None:
@@ -1621,7 +1755,7 @@ class LlamaCppVLM:
 
             conversation_key = str(conversation_id or "default")
             system_msg = self._default_system_prompt() if system_prompt is None else str(system_prompt)
-            system_msg = self._with_non_thinking_guard(system_msg)
+            system_msg = self._with_non_thinking_guard(system_msg, enable_thinking)
             cached_system = self.conversation_system_prompts.get(conversation_key)
             if save_state and cached_system == system_msg:
                 messages = self.conversation_messages.get(conversation_key, [])
@@ -1646,15 +1780,15 @@ class LlamaCppVLM:
 
             try:
                 started = time.monotonic()
-                output = self.llm.create_chat_completion(
+                output = self._create_request_chat_completion(
                     messages=messages,
+                    enable_thinking=enable_thinking,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
-                    **self._qwen38_non_thinking_kwargs(),
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
@@ -1681,7 +1815,7 @@ class LlamaCppVLM:
             finally:
                 self._clear_hybrid_cache_if_needed()
 
-    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None):
+    def inference(self, image, prompt, chat_handler_override=None, max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1, system_prompt=None, enable_thinking=None):
         with self.lock:
             self.last_completion_stats = {}
             if self.llm is None:
@@ -1694,7 +1828,7 @@ class LlamaCppVLM:
             messages = []
             default_system_msg = "You are a helpful assistant. Follow instructions precisely. For any task (captioning, translation, expansion), output ONLY the result. Do not include any preamble, introduction, explanation, or conversational filler."
             system_msg = default_system_msg if system_prompt is None else str(system_prompt or "").strip()
-            system_msg = self._with_non_thinking_guard(system_msg)
+            system_msg = self._with_non_thinking_guard(system_msg, enable_thinking)
             if system_msg:
                 messages.append({"role": "system", "content": system_msg})
 
@@ -1711,15 +1845,15 @@ class LlamaCppVLM:
             
             try:
                 started = time.monotonic()
-                output = self.llm.create_chat_completion(
+                output = self._create_request_chat_completion(
                     messages=messages,
+                    enable_thinking=enable_thinking,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
-                    **self._qwen38_non_thinking_kwargs(),
                 )
                 result = strip_reasoning_text(output['choices'][0]['message']['content'])
                 elapsed = time.monotonic() - started
@@ -1744,7 +1878,7 @@ class LlamaCppVLM:
 
     def inference_stream(self, image, prompt, chat_handler_override=None, max_tokens=1024,
                          temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1,
-                         seed=-1, system_prompt=None, on_delta=None):
+                         seed=-1, system_prompt=None, on_delta=None, enable_thinking=None):
         """Run one stateless llama.cpp completion and emit assistant text deltas."""
         callback = on_delta if callable(on_delta) else None
         with self.lock:
@@ -1759,7 +1893,7 @@ class LlamaCppVLM:
                 "output ONLY the result. Do not include any preamble, introduction, explanation, or conversational filler."
             )
             system_msg = default_system_msg if system_prompt is None else str(system_prompt or "").strip()
-            system_msg = self._with_non_thinking_guard(system_msg)
+            system_msg = self._with_non_thinking_guard(system_msg, enable_thinking)
             if system_msg:
                 messages.append({"role": "system", "content": system_msg})
             messages.append(self._build_user_message(image, prompt))
@@ -1774,8 +1908,9 @@ class LlamaCppVLM:
 
             try:
                 started = time.monotonic()
-                output = self.llm.create_chat_completion(
+                output = self._create_request_chat_completion(
                     messages=messages,
+                    enable_thinking=enable_thinking,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
@@ -1783,7 +1918,6 @@ class LlamaCppVLM:
                     repeat_penalty=repetition_penalty,
                     seed=seed if seed != -1 else None,
                     stream=True,
-                    **self._qwen38_non_thinking_kwargs(),
                 )
                 pieces = []
                 final_event = {}

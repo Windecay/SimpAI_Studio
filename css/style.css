@@ -25059,3 +25059,78 @@ button[aria-label="Edit"][title="Edit"] {
     max-width: none !important;
   }
 }
+
+/* Thinking is an icon toggle inside the input's lower-right corner. */
+.describe-vlm-chat-compose {
+  position: relative;
+}
+
+.describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
+  padding-right: 48px;
+}
+
+.describe-vlm-chat-thinking-toggle {
+  grid-column: 1 / 2;
+  grid-row: 3;
+  align-self: end;
+  justify-self: end;
+  position: relative;
+  z-index: 3;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  margin: 0 8px 8px 0;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--describe-chat-line-soft) 82%, transparent) !important;
+  border-radius: 7px !important;
+  background: color-mix(in srgb, var(--describe-chat-panel-deep) 90%, transparent) !important;
+  color: var(--describe-chat-muted) !important;
+  opacity: 0.62;
+  transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.describe-vlm-chat-thinking-toggle > i {
+  font-size: 15px;
+  line-height: 1;
+  transition: color 140ms ease, transform 140ms ease, text-shadow 140ms ease;
+}
+
+.describe-vlm-chat-compose:has(.describe-vlm-chat-attachments[hidden]) .describe-vlm-chat-thinking-toggle {
+  grid-row: 2;
+}
+
+.describe-vlm-chat-thinking-toggle:hover {
+  opacity: 0.9;
+  color: var(--describe-chat-text) !important;
+  border-color: color-mix(in srgb, var(--describe-chat-accent) 48%, var(--describe-chat-line-soft)) !important;
+}
+
+.describe-vlm-chat-thinking-toggle.is-active,
+.describe-vlm-chat-thinking-toggle[aria-pressed="true"] {
+  opacity: 1;
+  color: #ffd166 !important;
+  border-color: color-mix(in srgb, var(--describe-chat-accent) 74%, #ffffff 26%) !important;
+  background: color-mix(in srgb, var(--describe-chat-accent) 28%, var(--describe-chat-panel-deep)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--describe-chat-accent) 38%, transparent), 0 0 10px color-mix(in srgb, var(--describe-chat-accent) 34%, transparent);
+}
+
+.describe-vlm-chat-thinking-toggle.is-active > i,
+.describe-vlm-chat-thinking-toggle[aria-pressed="true"] > i {
+  transform: scale(1.08);
+  text-shadow: 0 0 7px color-mix(in srgb, #ffd166 70%, transparent);
+}
+
+@media (max-width: 640px) {
+  .describe-vlm-chat-thinking-toggle {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    margin: 0 6px 6px 0;
+  }
+
+  .describe-vlm-chat-compose textarea[data-describe-vlm-chat-input] {
+    padding-right: 42px;
+  }
+}

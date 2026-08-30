@@ -59,7 +59,6 @@
                 "scene_var_number5",
                 "scene_var_number6",
                 "scene_var_number8",
-                "scene_switch_option1",
                 "scene_switch_option2"
             ],
             "task_method": {
@@ -119,6 +118,11 @@
             "var_number7": {
                 "Wan-Animate Face Swap": 5,
                 "Wan-Animate Motion Transfer": 5
+            },
+            "switch_option1_title": "Use Tiled VAE Decode",
+            "switch_option1": {
+                "Wan-Animate Face Swap": true,
+                "Wan-Animate Motion Transfer": true
             },
             "switch_option3_title": "Save comparison video to folder",
             "switch_option3": {

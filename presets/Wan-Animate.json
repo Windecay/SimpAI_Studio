@@ -41,7 +41,6 @@
                 "scene_var_number5",
                 "scene_var_number6",
                 "scene_var_number8",
-                "scene_switch_option1",
                 "scene_switch_option2"
             ],
             "task_method": {
@@ -90,6 +89,12 @@
                 "Wan-Animate-SAM3 Object Replacement": 1,
                 "Wan-Animate-SAM3 Face Swap": 5,
                 "Wan-Animate-SAM3 Person Replacement": 5
+            },
+            "switch_option1_title": "Use Tiled VAE Decode",
+            "switch_option1": {
+                "Wan-Animate-SAM3 Object Replacement": true,
+                "Wan-Animate-SAM3 Face Swap": true,
+                "Wan-Animate-SAM3 Person Replacement": true
             },
             "switch_option3_title": "Save comparison video to folder",
             "switch_option3": {

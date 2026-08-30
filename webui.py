@@ -1,6 +1,7 @@
 import io
 import sys
 import base64
+import hashlib
 import html
 import numpy as np
 import gradio as gr
@@ -91,6 +92,7 @@ import simpleai_base.api_params as api_params
 import modules.regen_manifest as regen_manifest
 from enhanced.simpleai import comfyd 
 from enhanced.vlm import VLM, vlm
+import enhanced.logger as studio_logger
 from enhanced.inference_artist import get_artist_tags_string
 import modules.model_loader as model_loader
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
@@ -641,6 +643,8 @@ def _get_request_header(request, key, default=""):
 def _get_request_aitoken(request):
     try:
         sid = get_cookie_value(_get_request_header(request, "cookie", ""), "aitoken")
+        if not sid:
+            sid = _get_request_header(request, "x-simpai-session", "")
         return sid or ""
     except Exception:
         return ""
@@ -13362,6 +13366,120 @@ _openpose_lock = threading.Lock()
 _sam3_image_mask_lock = threading.Lock()
 _canvas_translate_lock = threading.Lock()
 _canvas_translate_jobs = {}
+
+_CONSOLE_LOG_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_CONSOLE_LOG_SECRET_RE = re.compile(
+    r"(?i)(?P<prefix>\b[\w.-]*(?:api[_-]?key|access[_-]?token|authorization|password|secret|token)\b['\"]?\s*[:=]\s*(?:bearer\s+)?)(?P<quote>['\"]?)(?P<value>[^'\"\s,;}\]]+)(?P=quote)"
+)
+
+
+def _redact_console_log_text(value):
+    text = _CONSOLE_LOG_ANSI_RE.sub("", str(value or ""))
+
+    def replace_secret(match):
+        return f"{match.group('prefix')}{match.group('quote')}[redacted]{match.group('quote')}"
+
+    return _CONSOLE_LOG_SECRET_RE.sub(replace_secret, text)
+
+
+def _console_log_entries(limit=300, after=None):
+    try:
+        snapshot_fn = getattr(studio_logger, "get_log_snapshot", None)
+        entries = snapshot_fn() if callable(snapshot_fn) else list(studio_logger.get_logs() or [])
+    except Exception:
+        entries = []
+
+    normalized = []
+    for entry in list(entries or []):
+        if isinstance(entry, dict):
+            try:
+                sequence = int(entry.get("i"))
+            except (TypeError, ValueError):
+                sequence = None
+            timestamp = str(entry.get("t") or "")
+            message = entry.get("m")
+        else:
+            sequence = None
+            timestamp = ""
+            message = entry
+        normalized.append({
+            "i": sequence,
+            "t": timestamp,
+            "m": _redact_console_log_text(message),
+        })
+
+    latest_cursor = max(
+        (entry["i"] for entry in normalized if isinstance(entry.get("i"), int) and entry["i"] > 0),
+        default=0,
+    )
+    current_entries = normalized[-limit:]
+
+    def public_entries(items):
+        return [{"t": entry["t"], "m": entry["m"]} for entry in items]
+
+    def full_snapshot():
+        return public_entries(current_entries), latest_cursor, True
+
+    if after is None or not str(after).strip():
+        return full_snapshot()
+    try:
+        after_cursor = int(after)
+    except (TypeError, ValueError):
+        return full_snapshot()
+    if after_cursor <= 0 or any(entry["i"] is None for entry in normalized):
+        return full_snapshot()
+
+    cursor_index = next(
+        (index for index, entry in enumerate(normalized) if entry["i"] == after_cursor),
+        -1,
+    )
+    if cursor_index < 0:
+        return full_snapshot()
+
+    delta_entries = normalized[cursor_index + 1:]
+    if len(delta_entries) > limit:
+        return full_snapshot()
+    if any(
+        entry["i"] != after_cursor + offset
+        for offset, entry in enumerate(delta_entries, start=1)
+    ):
+        return full_snapshot()
+    return public_entries(delta_entries), latest_cursor, False
+
+
+def _console_log_access_allowed(request):
+    if is_local_mode():
+        return True
+    user_did = _get_request_identity_did(request)
+    token = getattr(shared, "token", None)
+    try:
+        return bool(user_did and token is not None and token.is_admin(user_did))
+    except Exception:
+        return False
+
+
+@app.get("/simpai/logs/raw")
+async def simpai_logs_raw_endpoint(request: Request):
+    allowed = _console_log_access_allowed(request)
+    capability_requested = str(request.query_params.get("capability", "")).strip().lower() in {"1", "true", "yes"}
+    if capability_requested:
+        return JSONResponse({"ok": allowed, "allowed": allowed}, status_code=200 if allowed else 403)
+    if not allowed:
+        return JSONResponse({"ok": False, "allowed": False}, status_code=403)
+    try:
+        limit = int(request.query_params.get("limit", "300"))
+    except (TypeError, ValueError):
+        limit = 300
+    limit = max(1, min(500, limit))
+    entries, cursor, reset = _console_log_entries(limit, request.query_params.get("after"))
+    return JSONResponse({
+        "ok": True,
+        "allowed": True,
+        "entries": entries,
+        "count": len(entries),
+        "cursor": cursor,
+        "reset": reset,
+    })
 
 
 @app.post("/simpai/sketch-cache")

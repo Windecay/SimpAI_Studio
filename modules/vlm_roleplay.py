@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import modules.vlm_agent_router as vlm_agent_router
+from modules.custom_llm_api import strip_reasoning_text
 
 
 SESSION_SCHEMA = "simpai.vlm_roleplay.session"
@@ -4249,6 +4250,10 @@ def _extract_json_object(text: Any) -> Any:
     source = str(text or "").strip()
     if not source:
         return None
+    if not source.startswith("{"):
+        source = strip_reasoning_text(source)
+        if not source:
+            return None
     decoder = json.JSONDecoder()
     for index, char in enumerate(source):
         if char != "{":

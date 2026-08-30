@@ -21,6 +21,17 @@ import comfy.utils
 
 import llama_cpp
 from llama_cpp import Llama
+
+from modules.llama_cpp_multimodal import (
+    create_text_only_chat_completion,
+    messages_have_media,
+)
+
+try:
+    from llama_cpp.llama_speculative import SpecConfig, SpeculativeType
+except Exception:
+    SpecConfig = None
+    SpeculativeType = None
 from llama_cpp.llama_chat_format import (
     Llava15ChatHandler, Llava16ChatHandler, MoondreamChatHandler,
     NanoLlavaChatHandler, Llama3VisionAlphaChatHandler, MiniCPMv26ChatHandler
@@ -143,6 +154,18 @@ class LLAMA_CPP_STORAGE:
         """
         if not cls.llm or not hasattr(cls.llm, "_ctx") or cls.llm._ctx is None:
             return
+
+        if (
+            enable_embeddings
+            and cls.current_config
+            and bool(cls.current_config.get("load_mtp"))
+        ):
+            raise ValueError(
+                "MTP speculative decoding cannot be used by the Text Encoder embedding "
+                "context. Disable load_mtp and reload the model before encoding text. / "
+                "Text Encoder 的 embedding context 不能使用 MTP 推测解码。"
+                "请关闭 load_mtp 并重新加载模型后再进行文本编码。"
+            )
         
         # 如果当前模式已经符合要求，无需切换
         if getattr(cls, "current_embedding_mode", None) == enable_embeddings:
@@ -275,7 +298,8 @@ class LLAMA_CPP_STORAGE:
         vram_limit = config["vram_limit"]
         image_max_tokens = config["image_max_tokens"]
         image_min_tokens = config["image_min_tokens"]
-        load_mtp = config["load_mtp"]
+        load_mtp = bool(config["load_mtp"])
+        has_mmproj = bool(mmproj and mmproj != "None")
         n_gpu_layers = -1
         
         model_path = folder_paths.get_full_path("LLM", model)
@@ -288,7 +312,7 @@ class LLAMA_CPP_STORAGE:
             gguf_size = os.path.getsize(model_path) * 1.55 / (1024 ** 3)
             gguf_layer_size = gguf_size / gguf_layers
         
-        if mmproj and mmproj != "None":
+        if has_mmproj:
             mmproj_path = folder_paths.get_full_path("LLM", mmproj)
             if not mmproj_path:
                 raise FileNotFoundError(f"LLM mmproj not found in registered LLM paths: {mmproj}")
@@ -370,16 +394,37 @@ class LLAMA_CPP_STORAGE:
             "n_ctx": n_ctx,
             "verbose": False,
         }
-        if "load_mtp" in inspect.signature(Llama.__init__).parameters:
-            kwargs["load_mtp"] = load_mtp
-        else:
+        if load_mtp:
+            llama_parameters = inspect.signature(Llama.__init__).parameters
+            if (
+                SpecConfig is None
+                or SpeculativeType is None
+                or "speculative" not in llama_parameters
+            ):
+                raise RuntimeError(
+                    "MTP speculative decoding requires llama-cpp-python 0.3.48 or newer. / "
+                    "MTP 推测解码需要 llama-cpp-python 0.3.48 或更高版本。"
+                )
+            kwargs["speculative"] = SpecConfig(
+                spec_type=SpeculativeType.DRAFT_MTP,
+                draft_n_max=2,
+                draft_p_min=0.0,
+            )
+            print(
+                "[llama-cpp_vlm] MTP speculative decoding enabled for text-only inference. "
+                "/ 已为纯文本推理启用 MTP 推测解码。"
+            )
+
+        try:
+            cls.llm = Llama(**kwargs)
+        except Exception as e:
             if load_mtp:
                 raise RuntimeError(
-                    '"load_mtp" is unavailable. Please install llama-cpp-python 0.3.46.'
-                    " / 当前版本不支持 load_mtp，请安装 llama-cpp-python 0.3.46。"
-                )
-            
-        cls.llm = Llama(**kwargs)
+                    "MTP speculative decoding initialization failed. The selected model "
+                    "may not contain compatible NextN/MTP tensors. / MTP 推测解码初始化失败，"
+                    f"所选模型可能不含兼容的 NextN/MTP 张量。\n{e}"
+                ) from e
+            raise
         cls.current_embedding_mode = False
 
 any_type = AnyType("*")
@@ -557,7 +602,7 @@ class llama_cpp_model_loader:
             "image_max_tokens": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 32}),
             "load_mtp": ("BOOLEAN", {
                 "default": False,
-                "tooltip": "Load built-in MTP layers for compatible models. This loads weights only and does not enable speculative decoding by itself.\n为兼容模型加载内置 MTP 层。这里只加载权重，不会单独启用推测解码加速。",
+                "tooltip": "Enable built-in MTP speculative decoding for compatible text-only requests. A visual model may keep mmproj loaded, but image and video requests require MTP to be disabled.\n为兼容的纯文本请求启用内置 MTP 推测解码。视觉模型可以继续加载 mmproj，但图片和视频请求需要关闭 MTP。",
             }),
             }
         }
@@ -709,6 +754,18 @@ class llama_cpp_instruct_adv:
             
         # 过滤并按 list 里的每个 item 整理图片（保持 list 的每个 item 独立性）
         raw_image_list = [img for img in images if img is not None] if images is not None else []
+
+        if (
+            (raw_image_list or messages_have_media(messages))
+            and LLAMA_CPP_STORAGE.current_config
+            and bool(LLAMA_CPP_STORAGE.current_config.get("load_mtp"))
+        ):
+            raise ValueError(
+                "MTP speculative decoding cannot process image or video input in the current "
+                "model context. Disable load_mtp and reload the model for this media request. / "
+                "当前模型 context 已启用 MTP 推测解码，不能处理图片或视频输入。"
+                "请关闭 load_mtp 并重新加载模型后再执行媒体请求。"
+            )
         
         if raw_image_list:
             curr_mmproj = LLAMA_CPP_STORAGE.current_config.get("mmproj") if LLAMA_CPP_STORAGE.current_config else None
@@ -745,7 +802,12 @@ class llama_cpp_instruct_adv:
                         })
                         
                     curr_messages = messages + [{"role": "user", "content": curr_user_content}]
-                    output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=curr_messages, seed=seed, **_parameters)
+                    output = create_text_only_chat_completion(
+                        LLAMA_CPP_STORAGE.llm,
+                        messages=curr_messages,
+                        seed=seed,
+                        **_parameters,
+                    )
                     text = strip_reasoning_text(output['choices'][0]['message']['content'].removeprefix(": ").lstrip())
                     
                     out2.append(text)
@@ -772,7 +834,12 @@ class llama_cpp_instruct_adv:
                     })
                     
                 messages.append({"role": "user", "content": user_content})
-                output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=messages, seed=seed, **_parameters)
+                output = create_text_only_chat_completion(
+                    LLAMA_CPP_STORAGE.llm,
+                    messages=messages,
+                    seed=seed,
+                    **_parameters,
+                )
                 raw_text = output['choices'][0]['message']['content'].removeprefix(": ").lstrip()
                 out1 = strip_reasoning_text(raw_text)
                 out2 = [out1]
@@ -798,7 +865,12 @@ class llama_cpp_instruct_adv:
                         })
                         
                     curr_messages = messages + [{"role": "user", "content": curr_user_content}]
-                    output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=curr_messages, seed=seed, **_parameters)
+                    output = create_text_only_chat_completion(
+                        LLAMA_CPP_STORAGE.llm,
+                        messages=curr_messages,
+                        seed=seed,
+                        **_parameters,
+                    )
                     text = strip_reasoning_text(output['choices'][0]['message']['content'].removeprefix(": ").lstrip())
                     
                     out2.append(text)
@@ -812,7 +884,12 @@ class llama_cpp_instruct_adv:
             # 纯文本模式
             text_string = "".join([item["text"] for item in user_content if item.get("type") == "text"])
             messages.append({"role": "user", "content": text_string})
-            output = LLAMA_CPP_STORAGE.llm.create_chat_completion(messages=messages, seed=seed, **_parameters)
+            output = create_text_only_chat_completion(
+                LLAMA_CPP_STORAGE.llm,
+                messages=messages,
+                seed=seed,
+                **_parameters,
+            )
             raw_text = output['choices'][0]['message']['content'].removeprefix(": ").lstrip()
             out1 = strip_reasoning_text(raw_text)
             out2 = [out1]

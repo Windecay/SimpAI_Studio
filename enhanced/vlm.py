@@ -1384,7 +1384,8 @@ class VLM:
         except Exception as exc:
             return {"ok": False, "error": "Custom LLM model list failed", "details": str(exc)}
 
-    def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1, system_prompt=None):
+    def inference_custom(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, seed=-1,
+                         system_prompt=None, enable_thinking=None):
         missing = VLM.get_custom_missing_settings()
         if missing:
             raise RuntimeError(f"Custom VLM settings incomplete: {', '.join(missing)}")
@@ -1417,8 +1418,9 @@ class VLM:
             "top_p": float(top_p),
             "max_tokens": int(max_tokens),
             "stream": False,
-            "chat_template_kwargs": {"enable_thinking": False},
         }
+        if enable_thinking is False:
+            request_payload["chat_template_kwargs"] = {"enable_thinking": False}
         try:
             seed_value = int(seed)
         except Exception:
@@ -1439,7 +1441,8 @@ class VLM:
         )
         return _extract_openai_compatible_text(response).strip()
 
-    def inference(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1, system_prompt=None):
+    def inference(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
+                  repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None):
         # 设置为处理中状态
         VLM.set_processing_status(True)
         logger.debug("Starting VLM local inference...")
@@ -1453,6 +1456,7 @@ class VLM:
                     top_p=top_p,
                     seed=seed,
                     system_prompt=system_prompt,
+                    enable_thinking=enable_thinking,
                 )
             if system_prompt is None and ads.get_admin_default('p2p_active_checkbox') and ads.get_admin_default('p2p_remote_process').lower()=='out':
                 if isinstance(image, (list, tuple)):
@@ -1465,7 +1469,18 @@ class VLM:
                 result = task.wait(30)
                 return result[0]
             else:
-                return self.inference_local(image, prompt, max_tokens, temperature, top_p, top_k, repetition_penalty, seed, system_prompt=system_prompt)
+                return self.inference_local(
+                    image,
+                    prompt,
+                    max_tokens,
+                    temperature,
+                    top_p,
+                    top_k,
+                    repetition_penalty,
+                    seed,
+                    system_prompt=system_prompt,
+                    enable_thinking=enable_thinking,
+                )
         finally:
             # 无论成功还是失败，都设置为非处理中状态
             VLM.set_processing_status(False)
@@ -1473,7 +1488,7 @@ class VLM:
 
     def inference_stream(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8,
                          top_k=100, repetition_penalty=1.05, seed=-1, system_prompt=None,
-                         on_delta=None):
+                         on_delta=None, enable_thinking=None):
         """Stream text deltas for the llama.cpp backend, then return the full text."""
         callback = on_delta if callable(on_delta) else None
         VLM.set_processing_status(True)
@@ -1490,6 +1505,7 @@ class VLM:
                     repetition_penalty=repetition_penalty,
                     seed=seed,
                     system_prompt=system_prompt,
+                    enable_thinking=enable_thinking,
                 )
                 if callback and result:
                     callback(str(result))
@@ -1513,6 +1529,7 @@ class VLM:
                 seed=seed,
                 system_prompt=system_prompt,
                 on_delta=callback,
+                enable_thinking=enable_thinking,
             )
         finally:
             VLM.set_processing_status(False)
@@ -1529,7 +1546,8 @@ class VLM:
             llamacpp_vlm.reset_runtime_context()
 
     def chat(self, image, prompt, conversation_id="default", system_prompt="", save_state=True, max_history=24,
-             max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1):
+             max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1,
+             enable_thinking=None):
         if VLM.is_custom_version():
             return self.inference(
                 image,
@@ -1541,6 +1559,7 @@ class VLM:
                 repetition_penalty=repetition_penalty,
                 seed=seed,
                 system_prompt=system_prompt,
+                enable_thinking=enable_thinking,
             )
         VLM.set_processing_status(True)
         logger.debug("Starting VLM chat inference...")
@@ -1557,7 +1576,8 @@ class VLM:
                 top_p=top_p,
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
-                seed=seed
+                seed=seed,
+                enable_thinking=enable_thinking,
             )
         finally:
             VLM.set_processing_status(False)
@@ -1566,7 +1586,8 @@ class VLM:
     @torch.no_grad()
     @torch.inference_mode()
     def chat_local(self, image, prompt, conversation_id="default", system_prompt="", save_state=True, max_history=24,
-                   max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1):
+                   max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1,
+                   enable_thinking=None):
         try:
             self.set_processing_status(True)
             logger.debug("VLM chat_local started")
@@ -1592,7 +1613,11 @@ class VLM:
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
                     seed=seed,
-                    thinking=str(VLM.current_version).endswith("-Thinking"),
+                    thinking=(
+                        bool(enable_thinking)
+                        if enable_thinking is not None
+                        else str(VLM.current_version).endswith("-Thinking")
+                    ),
                 )
 
             if VLM.is_llamacpp and image is not None and "image" not in VLM.capabilities:
@@ -1616,18 +1641,31 @@ class VLM:
                     top_p=top_p,
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
-                    seed=seed
+                    seed=seed,
+                    enable_thinking=enable_thinking,
                 )
 
             logger.info("Current VLM backend does not support persistent chat; falling back to one-shot inference.")
-            return self.inference_local(image, prompt, max_tokens, temperature, top_p, top_k, repetition_penalty, seed, system_prompt=system_prompt)
+            return self.inference_local(
+                image,
+                prompt,
+                max_tokens,
+                temperature,
+                top_p,
+                top_k,
+                repetition_penalty,
+                seed,
+                system_prompt=system_prompt,
+                enable_thinking=enable_thinking,
+            )
         finally:
             self.set_processing_status(False)
             logger.debug("VLM chat_local finished")
 
     @torch.no_grad()
     @torch.inference_mode()
-    def inference_local(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100, repetition_penalty=1.05, seed=-1, system_prompt=None):
+    def inference_local(self, image, prompt, max_tokens=2048, temperature=0.7, top_p=0.8, top_k=100,
+                        repetition_penalty=1.05, seed=-1, system_prompt=None, enable_thinking=None):
         try:
             # 设置处理状态为True
             self.set_processing_status(True)
@@ -1651,7 +1689,11 @@ class VLM:
                     repetition_penalty=repetition_penalty,
                     seed=seed,
                     system_prompt=system_prompt,
-                    thinking=str(VLM.current_version).endswith("-Thinking"),
+                    thinking=(
+                        bool(enable_thinking)
+                        if enable_thinking is not None
+                        else str(VLM.current_version).endswith("-Thinking")
+                    ),
                 )
 
             if VLM.is_llamacpp and image is not None and "image" not in VLM.capabilities:
@@ -1672,7 +1714,8 @@ class VLM:
                     top_k=top_k,
                     repetition_penalty=repetition_penalty,
                     seed=seed,
-                    system_prompt=system_prompt
+                    system_prompt=system_prompt,
+                    enable_thinking=enable_thinking,
                 )
                 return res
 

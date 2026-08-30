@@ -1056,6 +1056,10 @@
       "enable_manual_segment_color": false,
       "enable_overlap_color_calibration": false,
       "preserve_input_frame_count": true,
+      "use_tiled_vae_decode": [
+        "748",
+        20
+      ],
       "model": [
         "901",
         0

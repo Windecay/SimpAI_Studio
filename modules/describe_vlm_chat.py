@@ -1981,6 +1981,24 @@ def _n_ctx_override(value):
     return normalize_llama_cpp_n_ctx(requested) if requested > 0 else 0
 
 
+def _thinking_runtime_params(payload, *, force_disabled=False):
+    payload = payload if isinstance(payload, dict) else {}
+    enabled = False if force_disabled else _truthy(payload.get("enable_thinking"), False)
+    return {
+        "enable_thinking": enabled,
+        "disable_thinking": not enabled,
+    }
+
+
+def _roleplay_request_allows_thinking(request_kind):
+    return str(request_kind or "").strip().lower() in {
+        "",
+        "character",
+        "character_reply",
+        "reply",
+    }
+
+
 def _prompt_for_runtime(message, current_prompt, include_current_prompt=False):
     message = str(message or "").strip()
     if not include_current_prompt:
@@ -2011,6 +2029,7 @@ def build_runtime_payload(payload):
     n_ctx = _n_ctx_override(payload.get("n_ctx"))
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     roleplay_active = prompt_options.get("chat_mode") == "roleplay"
+    roleplay_request_kind = str(prompt_options.get("roleplay_request_kind") or "character").strip().lower()
     prompt_actions_enabled = bool(
         prompt_options.get("enable_prompt_skills")
         and prompt_options.get("chat_mode") not in {"raw", "guide", "roleplay"}
@@ -2024,6 +2043,10 @@ def build_runtime_payload(payload):
         requested_max_tokens = default_max_tokens
     max_tokens = max(64, min(8192, requested_max_tokens))
     params = {
+        **_thinking_runtime_params(
+            payload,
+            force_disabled=roleplay_active and not _roleplay_request_allows_thinking(roleplay_request_kind),
+        ),
         "mode": "chat",
         "agent_mode": "raw",
         "agent_use_skills": False,
@@ -2040,7 +2063,7 @@ def build_runtime_payload(payload):
         "describe_generation_actions_enabled": generation_actions_enabled,
         "describe_actions_enabled": prompt_actions_enabled or generation_actions_enabled,
         "describe_roleplay_enabled": roleplay_active,
-        "roleplay_request_kind": prompt_options["roleplay_request_kind"],
+        "roleplay_request_kind": roleplay_request_kind,
         "roleplay_turn_intent": prompt_options["roleplay_turn_intent"],
         "roleplay_autoplay": prompt_options["roleplay_autoplay"],
         "roleplay_session": prompt_options["roleplay_session"],
@@ -2188,6 +2211,7 @@ def _build_roleplay_director_runtime_payload(
         turn_intent=turn_intent,
     )
     params = {
+        **_thinking_runtime_params(payload, force_disabled=True),
         "mode": "chat",
         "agent_mode": "raw",
         "agent_use_skills": False,
@@ -2695,6 +2719,7 @@ def build_creative_offer_runtime_payload(payload):
         f"Main assistant reply already shown:\n{assistant_reply}"
     )
     params = {
+        **_thinking_runtime_params(payload, force_disabled=True),
         "mode": "chat",
         "agent_mode": "raw",
         "agent_use_skills": False,
@@ -4890,6 +4915,16 @@ def _run_vlm_with_agent_router(runtime_payload, payload, role, session=None, str
     runtime_payload = runtime_payload if isinstance(runtime_payload, dict) else {}
     payload = payload if isinstance(payload, dict) else {}
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
+    request_kind = str(params.get("roleplay_request_kind") or "").strip().lower()
+    visible_character_reply = (
+        role == vlm_agent_router.ROLE_CHARACTER_REPLY
+        and _roleplay_request_allows_thinking(request_kind)
+    )
+    if not visible_character_reply:
+        runtime_payload = dict(runtime_payload)
+        params = dict(params)
+        params.update(_thinking_runtime_params({}, force_disabled=True))
+        runtime_payload["params"] = params
     raw_routing = params.get("roleplay_agent_routing")
     if not isinstance(raw_routing, dict):
         raw_routing = payload.get("agent_routing")

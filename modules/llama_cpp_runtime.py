@@ -2,7 +2,7 @@ import platform
 import sys
 
 
-LLAMA_CPP_RUNTIME_VERSION = "0.3.46"
+LLAMA_CPP_RUNTIME_VERSION = "0.3.48"
 # Keep a small Windows/allocator margin while allowing 24 GB cards to reach
 # roughly 22 GB of llama.cpp allocations when the rest of the GPU is free.
 LLAMA_CPP_GPU_USAGE_CAP = 0.99
@@ -113,14 +113,14 @@ LLAMA_CPP_MODELSCOPE_BASE = (
 
 
 _WHEEL_HASHES = {
-    ("Linux", 11): "e1a6c7b2085207bb2c6feae67b4c3a9d231ca4c6d31bee6ac874480705139cd8",
-    ("Linux", 12): "f037677db6f120e55d31e0a31a0fdaa6885406a06f0c3a9fd5cc5e79950642ec",
-    ("Linux", 13): "b4e9f923e6199a3ac61b129f5032c12b22b87bd20c2b3111669570702dbb5cfe",
-    ("Linux", 14): "c1fc35e0bf98ed2dc3938a5e605d4e46a95c13d39e87dd841ee8ac7083b86844",
-    ("Windows", 11): "8c5fc54ec3d4a44602fa5d4a9b19a3c971b02ac39b2993a4805adebee84fd07b",
-    ("Windows", 12): "3dbe2d390690e735588ded8f3629ce54489055d2767857f6823c19b42634b4a7",
-    ("Windows", 13): "46d9d7351b3af3ed798baa2eeef45fbfdf5ad1689df33867afe4bb9fd6854c7f",
-    ("Windows", 14): "17b52164d2e486587de8417b4134e00a6e167cb6e3f02579bcc2f72da13ed217",
+    ("Linux", 11): "82ac1a9a13e52dc248ad2ea9874bd671b38757773d881cf54cc0071dfd4db217",
+    ("Linux", 12): "8bc6610d7ac019c76a87073569982a3672ebff4b8d72a825d53bb620e1187df8",
+    ("Linux", 13): "ca362581e68432ce579c41da1dc46237adfcadba93ed5344acfcd79b96c54eb3",
+    ("Linux", 14): "4552899ba09479a7c8cb263c4b3b4acd902cccc047783cf6775b1cb53f5620b1",
+    ("Windows", 11): "b7595014dc1e9a4ebde53b1eacab191f7d716bb736e2ae428488dcb1b72737c5",
+    ("Windows", 12): "bac2025303766a5bcfff0153195d1360cf71a19862208d7c34906079e747f6e1",
+    ("Windows", 13): "8d137fcf4aa0fcdd5cdad5861a5abcecb9bda1e1201963d38af0c945fd0058a9",
+    ("Windows", 14): "5350360cc97a55327131c08bc91d316ba7598a184961750a4cad5138e5333e9a",
 }
 
 
