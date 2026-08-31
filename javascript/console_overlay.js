@@ -140,7 +140,7 @@
         #${ROOT_ID} {
             position: absolute;
             inset: 0;
-            z-index: 2147483647;
+            z-index: 20;
             pointer-events: none;
             font-family: Arial, sans-serif;
         }
