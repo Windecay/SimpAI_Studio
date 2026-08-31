@@ -283,6 +283,40 @@ def create_block_external_middleware():
     return block_external_middleware
 
 
+_COMFYD_WORKSPACE_RESET_SCRIPT = """<script data-simpai-comfyd-workspace-reset>
+;(function () {
+  var sessionKeys = [
+    'Comfy.Workspace.Current',
+    'Comfy.Workspace.Token',
+    'Comfy.Workspace.ExpiresAt',
+    'Comfy.Workspace.OwnerUid'
+  ]
+  try {
+    for (var i = 0; i < sessionKeys.length; i++) {
+      sessionStorage.removeItem(sessionKeys[i])
+    }
+  } catch (_) {}
+  try {
+    localStorage.removeItem('Comfy.Workspace.LastWorkspaceId')
+  } catch (_) {}
+})()
+</script>"""
+
+
+def _comfyd_index_response(web_root):
+    index_path = os.path.join(web_root, "index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    head_start = html.find("<head")
+    head_end = html.find(">", head_start)
+    if head_start < 0 or head_end < 0:
+        return web.FileResponse(index_path)
+
+    html = html[:head_end + 1] + _COMFYD_WORKSPACE_RESET_SCRIPT + html[head_end + 1:]
+    return web.Response(text=html, content_type="text/html")
+
+
 class PromptServer():
     def __init__(self, loop):
         PromptServer.instance = self
@@ -448,7 +482,7 @@ class PromptServer():
             if main_module and hasattr(main_module, '__file__'):
                 main_file = os.path.basename(main_module.__file__)
                 if main_file == 'main_comfyd.py':
-                    response = web.FileResponse(os.path.join(self.web_root, "index.html"))
+                    response = _comfyd_index_response(self.web_root)
                     response.set_cookie("sstoken", "bypass_auth", max_age=3600*24*30*6, httponly=True, secure=True)
                     response.headers['Cache-Control'] = 'no-cache'
                     response.headers["Pragma"] = "no-cache"
