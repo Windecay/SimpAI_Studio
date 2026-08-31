@@ -63,7 +63,7 @@
       "prompt": {"Basic": "", "2 pass": ""},
       "task_method": {"Basic": "minimax_h3_i2v_cn", "2 pass": "minimax_h3_i2v_2_pass_cn"},
       "prompt_compiler": {"Basic": "minimax_h3_frame_anchor", "2 pass": "minimax_h3_frame_anchor"},
-      "overwrite_step": {"Basic": 8, "2 pass": 12},
+      "overwrite_step": {"Basic": 8, "2 pass": 9},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
         "Basic": "Treat the main image as the exact first frame and the optional second image as the exact last frame. Preserve identity, composition, clothing, lighting, and scene continuity while describing an observable transition, camera movement, timing, and matching audio. Use the exact requested duration. For 10-30 second outputs, distribute the transition across the full timeline with intermediate actions and camera movement instead of jumping between still poses. Do not invent dialogue or reference media.",

@@ -61,7 +61,7 @@
       "prompt": {"Basic": "", "2 pass": ""},
       "task_method": {"Basic": "minimax_h3_r2c_cn", "2 pass": "minimax_h3_r2c_2_pass_cn"},
       "prompt_compiler": {"Basic": "minimax_h3_ref2va", "2 pass": "minimax_h3_ref2va"},
-      "overwrite_step": {"Basic": 8, "2 pass": 12},
+      "overwrite_step": {"Basic": 8, "2 pass": 9},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
         "Basic": "Write only what happens after the previous H3 clip ends. Use the uploaded previous video as the continuation source; optional uploaded pictures are identity and appearance references labeled <Picture 1>, <Picture 2>, and so on. Preserve the previous clip's subject identity, clothing, objects, background, lighting, camera direction, motion direction, pacing, and style. Use the exact requested continuation duration. For 10-30 second segments, begin from the previous clip's exact final state, develop through causal action stages, and end on a readable result without restarting. Continue the last action naturally without replacing the main subject, adding unrelated subjects, or inventing media. Keep the generated audio coherent with the previous clip.",

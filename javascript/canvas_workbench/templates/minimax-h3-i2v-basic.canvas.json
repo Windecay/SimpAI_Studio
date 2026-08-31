@@ -129,7 +129,7 @@
           "loras": [
             {
               "enabled": true,
-              "model": "None",
+              "model": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
               "weight": 1
             },
             {
@@ -162,7 +162,7 @@
           "loras": [
             {
               "enabled": true,
-              "model": "None",
+              "model": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
               "weight": 1
             },
             {
@@ -264,7 +264,7 @@
         "defaults": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 20,
+          "overwrite_step": 8,
           "sampler_name": "res_multistep",
           "scheduler_name": "simple",
           "performance_selection": "Speed",
@@ -274,7 +274,7 @@
         "values": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 20,
+          "overwrite_step": 8,
           "sampler_name": "res_multistep",
           "scheduler_name": "simple",
           "performance_selection": "Speed",
@@ -538,7 +538,7 @@
           "loras": [
             {
               "enabled": true,
-              "model": "None",
+              "model": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
               "weight": 1
             },
             {
@@ -571,7 +571,7 @@
           "loras": [
             {
               "enabled": true,
-              "model": "None",
+              "model": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
               "weight": 1
             },
             {
@@ -647,7 +647,7 @@
         "defaults": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 20,
+          "overwrite_step": 8,
           "sampler_name": "res_multistep",
           "scheduler_name": "simple",
           "performance_selection": "Speed",
@@ -657,7 +657,7 @@
         "overrides": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 20,
+          "overwrite_step": 8,
           "sampler_name": "res_multistep",
           "scheduler_name": "simple",
           "performance_selection": "Speed",
@@ -729,7 +729,7 @@
         "state": "placeholder",
         "queue_position": 0,
         "step": 0,
-        "total_steps": 20,
+        "total_steps": 8,
         "percent": 0,
         "message": "Replace the first frame, then run MiniMax-H3(I2V)."
       },

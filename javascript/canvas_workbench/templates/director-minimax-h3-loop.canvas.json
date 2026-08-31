@@ -374,7 +374,7 @@
           "loras": [
             {
               "enabled": true,
-              "model": "None",
+              "model": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
               "weight": 1
             },
             {
@@ -436,7 +436,7 @@
         "defaults": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 20,
+          "overwrite_step": 8,
           "sampler_name": "res_multistep",
           "scheduler_name": "simple",
           "performance_selection": "Speed",
