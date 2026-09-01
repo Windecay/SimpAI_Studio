@@ -30,6 +30,7 @@ PLAYER_STATE_SCHEMA = "simpai.vlm_roleplay.player_state"
 WORLD_BOOK_SCHEMA = "simpai.vlm_roleplay.world_book"
 MEMORY_SCHEMA = "simpai.vlm_roleplay.memory"
 CHAPTER_SCHEMA = "simpai.vlm_roleplay.chapter"
+CONTEXT_SCHEMA = "simpai.vlm_roleplay.context"
 
 MAX_TEXT = 12000
 MAX_LIST_ITEMS = 80
@@ -41,6 +42,8 @@ MAX_CHARACTER_STATE_IMAGE_HISTORY = 30
 MAX_ROLEPLAY_CHARACTERS = 20
 MAX_ROLEPLAY_FORM_REFERENCES = 8
 MAX_CHARACTER_STATE_FIELDS = 40
+MAX_RECENT_TURN_FACTS = 12
+MAX_CONTEXT_HISTORY_MESSAGES = 10
 MAX_RUNTIME_STATE_TEXT = 4000
 MAX_STATE_TEXT_SEGMENTS = 8
 MAX_STATE_TEXT_SEGMENT_LENGTH = 520
@@ -53,7 +56,7 @@ MAX_IMPORT_RAW_TEXT = 240000
 PLAYER_STATE_STATUSES = {"present", "absent"}
 ROLEPLAY_SPEAKER_MODES = {"auto", "current", "multi"}
 DIRECTOR_TARGET_TYPES = {"player", "character", "scene"}
-DIRECTOR_PLAYER_FIELDS = {"status", "state_text", "state_fields"}
+DIRECTOR_PLAYER_FIELDS = {"status", "appearance", "state_text", "state_fields"}
 DIRECTOR_CHARACTER_FIELDS = {
     "location",
     "condition",
@@ -328,7 +331,11 @@ def _is_state_field_id(value: Any) -> bool:
 
 
 def _state_field_value_type(value: Any) -> str:
-    current = _text(value, 500).strip()
+    current = (
+        str(value).strip()
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else _text(value, 500).strip()
+    )
     if _NUMERIC_STATE_RATIO_RE.fullmatch(current):
         return "ratio"
     if _NUMERIC_STATE_PERCENT_RE.fullmatch(current):
@@ -338,17 +345,53 @@ def _state_field_value_type(value: Any) -> str:
     return "text"
 
 
+def _state_field_semantic_hint(value: Any) -> str:
+    label_key = _state_field_label_key(value)
+    semantic_key = _STATE_FIELD_ALIAS_LOOKUP.get(label_key, "")
+    common = {
+        "health": "bodily vitality and injury; do not change it for emotion, allegiance, or harmless restraint",
+        "mana": "available magical energy or spell resource",
+        "stamina": "physical exertion resource and fatigue capacity",
+        "sanity": "capacity for coherent thought and mental stability",
+        "trust": "interpersonal trust and willingness to rely on the other party",
+        "affinity": "interpersonal fondness or affection",
+        "wariness": "caution, suspicion, and guardedness",
+        "armor": "protective integrity or defensive equipment strength",
+    }
+    if semantic_key in common:
+        return common[semantic_key]
+    if re.search(r"(?:行动能力|行动力|可行动|行动状态|mobility|actionability|abilitytoact)", label_key, re.IGNORECASE):
+        return "capacity to move, think, and perform actions; not obedience, loyalty, willingness, or who controls the decision"
+    if re.search(r"(?:意志.*(?:壁垒|防线|抵抗)|精神.*(?:壁垒|防线|抵抗)|willpower|mentalresistance)", label_key, re.IGNORECASE):
+        return "resistance to coercion, domination, mental pressure, or loss of self-directed will"
+    if re.search(r"(?:堕落|腐化|侵蚀|corruption|taint)", label_key, re.IGNORECASE):
+        return "degree of corruption, moral or mental erosion, or acceptance of the corrupting force"
+    if re.search(r"(?:忠诚|忠诚度|效忠|归属|loyalty|allegiance)", label_key, re.IGNORECASE):
+        return "allegiance, loyalty, and chosen commitment; not physical action capacity"
+    if re.search(r"(?:抗性|抵抗力|resistance)", label_key, re.IGNORECASE):
+        return "resistance to the effect named by this field"
+    if re.search(r"(?:装备|武器|衣着|服装|equipment|weapon|clothing)", label_key, re.IGNORECASE):
+        return "currently possessed, equipped, or worn item described by this field"
+    return ""
+
+
 def _state_field_catalog(value: Any) -> list[dict[str, str]]:
-    return [
-        {
-            "field_id": _state_field_id(item.get("label")),
+    result: list[dict[str, str]] = []
+    for item in _clean_state_fields(value, preserve_empty_values=True):
+        field_id = _state_field_id(item.get("label"))
+        if not field_id:
+            continue
+        row = {
+            "field_id": field_id,
             "label": _text(item.get("label"), 120),
             "current_value": _text(item.get("value"), 500),
             "value_type": _state_field_value_type(item.get("value")),
         }
-        for item in _clean_state_fields(value, preserve_empty_values=True)
-        if _state_field_id(item.get("label"))
-    ]
+        semantic_hint = _state_field_semantic_hint(item.get("label"))
+        if semantic_hint:
+            row["semantic_hint"] = semantic_hint
+        result.append(row)
+    return result
 
 
 def _state_field_semantic_key(value: Any) -> str:
@@ -492,7 +535,11 @@ def _resolve_numeric_state_deltas(
 
 def _coerce_numeric_state_value(current: Any, candidate: Any) -> str:
     """Keep a numeric update compatible with the existing field format."""
-    candidate_text = _text(candidate, 500).strip()
+    candidate_text = (
+        str(candidate).strip()
+        if isinstance(candidate, (int, float)) and not isinstance(candidate, bool)
+        else _text(candidate, 500).strip()
+    )
     if not candidate_text:
         return ""
     current_text = _text(current, 500).strip()
@@ -528,6 +575,84 @@ def _coerce_numeric_state_value(current: Any, candidate: Any) -> str:
         if _NUMERIC_STATE_NUMBER_RE.fullmatch(candidate_text):
             return _format_numeric_state_number(float(candidate_text))
     return candidate_text
+
+
+def _numeric_state_endpoint_value(current: Any, *, maximum: bool) -> str:
+    current_text = _text(current, 500).strip()
+    ratio_match = _NUMERIC_STATE_RATIO_RE.fullmatch(current_text)
+    if ratio_match:
+        upper = float(ratio_match.group(2))
+        value = upper if maximum else 0.0
+        return f"{_format_numeric_state_number(value)}/{_format_numeric_state_number(upper)}"
+    if _NUMERIC_STATE_PERCENT_RE.fullmatch(current_text):
+        return "100%" if maximum else "0%"
+    if _NUMERIC_STATE_NUMBER_RE.fullmatch(current_text) and not maximum:
+        return "0"
+    return ""
+
+
+def _semantic_terminal_numeric_value(label: Any, current: Any, candidate: Any) -> str:
+    if _state_field_value_type(current) not in {"ratio", "percent", "number"}:
+        return ""
+    label_key = _state_field_label_key(label)
+    candidate_text = _text(candidate, 500).casefold()
+    if not candidate_text:
+        return ""
+    if re.search(r"(?:归零|清零|降为零|变为零|zero(?:ed)?|empty|depleted)", candidate_text, re.IGNORECASE):
+        return _numeric_state_endpoint_value(current, maximum=False)
+    if re.search(r"(?:满值|最大值|全满|fully restored|maximum|maxed)", candidate_text, re.IGNORECASE):
+        return _numeric_state_endpoint_value(current, maximum=True)
+
+    depletion_dimension = bool(re.search(
+        r"(?:生命|血量|体力|精力|魔力|法力|理智|意志|壁垒|防线|抗性|抵抗|耐力|"
+        r"health|stamina|mana|sanity|will|barrier|resistance)",
+        label_key,
+        re.IGNORECASE,
+    ))
+    accumulation_dimension = bool(re.search(
+        r"(?:堕落|腐化|侵蚀|信任|好感|忠诚|效忠|归属|corruption|taint|trust|affinity|loyalty|allegiance)",
+        label_key,
+        re.IGNORECASE,
+    ))
+    collapsed = bool(re.search(
+        r"(?:崩塌|崩溃|瓦解|耗尽|枯竭|消失|破碎|失去|彻底失败|collapse|collapsed|broken|lost)",
+        candidate_text,
+        re.IGNORECASE,
+    ))
+    completed = bool(re.search(
+        r"(?:彻底|完全|毫无保留|不再排斥|fully|complete|completely|absolute)",
+        candidate_text,
+        re.IGNORECASE,
+    ))
+    if depletion_dimension and collapsed:
+        return _numeric_state_endpoint_value(current, maximum=False)
+    if accumulation_dimension and completed:
+        return _numeric_state_endpoint_value(current, maximum=True)
+    return ""
+
+
+def _state_field_value_matches_semantics(label: Any, candidate: Any) -> bool:
+    label_key = _state_field_label_key(label)
+    candidate_text = _text(candidate, 500)
+    if not re.search(
+        r"(?:行动能力|行动力|可行动|行动状态|mobility|actionability|abilitytoact)",
+        label_key,
+        re.IGNORECASE,
+    ):
+        return True
+    control_only = bool(re.search(
+        r"(?:受控|被控|控制|支配|服从|听命|臣服|忠诚|效忠|顺从|"
+        r"controlled|dominated|obedient|submissive|loyal)",
+        candidate_text,
+        re.IGNORECASE,
+    ))
+    actual_limitation = bool(re.search(
+        r"(?:无法|不能|受限|限制|动弹不得|瘫痪|麻痹|昏迷|失去意识|"
+        r"unable|cannot|limited|immobile|paraly|unconscious|restrain)",
+        candidate_text,
+        re.IGNORECASE,
+    ))
+    return not control_only or actual_limitation
 
 
 def _state_field_schema_at_path(state: dict[str, Any], path: list[str]) -> list[dict[str, str]]:
@@ -1525,6 +1650,7 @@ def _normalize_player_state(value: Any = None) -> dict[str, Any]:
         "version": 1,
         "status": status,
         "is_present": status == "present",
+        "appearance": _text(source.get("appearance"), 1200),
         "state_text": _compact_state_text(source.get("state_text")),
         "state_fields": _clean_state_fields(source.get("state_fields"), preserve_empty_values=True),
     }
@@ -1547,6 +1673,7 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
         "name": _text(source.get("name"), 200),
         "avatar_asset_id": _id(source.get("avatar_asset_id"), "asset") if source.get("avatar_asset_id") else "",
         "reference_asset_ids": _clean_asset_ids(source.get("reference_asset_ids")),
+        "appearance": _text(source.get("appearance")),
         "identity": _text(source.get("identity")),
         "background": _text(source.get("background")),
         "personality": _text(source.get("personality")),
@@ -1620,6 +1747,7 @@ def build_character_draft_from_system_prompt(prompt: Any) -> dict[str, Any]:
     lines = [line.strip() for line in source.split("\n") if line.strip()]
     labels = {
         "name": ("name", "character", "character name", "角色", "角色名", "姓名"),
+        "appearance": ("appearance", "looks", "visual traits", "外观", "外貌", "形象"),
         "identity": ("identity", "role", "身份", "设定"),
         "background": ("background", "backstory", "history", "背景", "经历"),
         "personality": ("personality", "traits", "性格", "个性", "特质"),
@@ -1674,6 +1802,7 @@ def build_character_draft_from_system_prompt(prompt: Any) -> dict[str, Any]:
 
     character = default_character_card({
         "name": extracted.get("name", ""),
+        "appearance": extracted.get("appearance", ""),
         "identity": extracted.get("identity", ""),
         "background": extracted.get("background", ""),
         "personality": extracted.get("personality", ""),
@@ -1714,6 +1843,7 @@ def normalize_roleplay_form_references(value: Any) -> list[dict[str, Any]]:
             "source": _text(item.get("source"), 40) or "story",
             "id": card["id"],
             "name": name,
+            "appearance": _text(card.get("appearance"), 3000),
             "identity": _text(card.get("identity"), 3000),
             "background": _text(card.get("background"), 4000),
             "personality": _text(card.get("personality"), 3000),
@@ -1800,6 +1930,7 @@ def build_roleplay_form_draft_prompt(
     elif target_key == "character_state":
         shape = {
             "character_state": {
+                "appearance": "",
                 "state_text": "",
                 "state_fields": [{"label": "", "value": ""}],
             }
@@ -1811,6 +1942,7 @@ def build_roleplay_form_draft_prompt(
         shape = {
             "character": {
                 "name": "",
+                "appearance": "",
                 "identity": "",
                 "background": "",
                 "personality": "",
@@ -1913,6 +2045,7 @@ def build_visual_draft_prompt(
                 "name": _text(persona.get("name") or subject.get("label") or "玩家", 200),
                 "identity": _text(persona.get("identity"), 800),
                 "appearance": _text(persona.get("appearance"), 800),
+                "current_appearance": _text(player_state.get("appearance"), 800),
                 "current_state": _text(player_state.get("state_text"), 800),
                 "state_fields": _clean_state_fields(player_state.get("state_fields"), 20),
             })
@@ -1926,6 +2059,7 @@ def build_visual_draft_prompt(
             "name": _text(card.get("name") or character_id, 200),
             "identity": _text(card.get("identity"), 800),
             "appearance": _text(card.get("appearance"), 800),
+            "current_appearance": _text(runtime.get("appearance"), 800),
             "current_state": _text(runtime.get("state_text"), 800),
             "state_fields": _clean_state_fields(runtime.get("state_fields"), 20),
         })
@@ -2115,6 +2249,7 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         }
     if target_key == "character_state":
         character_state = {
+            "appearance": _text(raw.get("appearance"), 1200),
             "state_text": _text(raw.get("state_text") or raw.get("text"), 4000),
             "state_fields": _clean_state_fields(raw.get("state_fields") or raw.get("fields")),
         }
@@ -2148,6 +2283,7 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         }
     character = default_character_card({
         "name": raw.get("name"),
+        "appearance": raw.get("appearance"),
         "identity": raw.get("identity"),
         "background": raw.get("background"),
         "personality": raw.get("personality"),
@@ -3018,6 +3154,7 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
         "name": name,
         "avatar_asset_id": first_value("avatar_asset_id") or simpai_extension.get("avatar_asset_id"),
         "reference_asset_ids": first_value("reference_asset_ids") or simpai_extension.get("reference_asset_ids"),
+        "appearance": first_value("appearance") or simpai_extension.get("appearance"),
         "identity": description,
         "background": scenario,
         "personality": first_value("personality"),
@@ -3206,6 +3343,11 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
         "world_facts": _clean_string_list(source.get("world_facts"), 80),
         "knowledge": _normalize_knowledge(source.get("knowledge")),
         "memories": _list(source.get("memories"), MAX_MEMORY_ITEMS),
+        "recent_turn_facts": [
+            normalize_turn_facts(item)
+            for item in _list(source.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
+            if isinstance(item, dict)
+        ][-MAX_RECENT_TURN_FACTS:],
         "open_threads": _clean_string_list(source.get("open_threads"), 40),
         "chapter_summary": _text(source.get("chapter_summary")),
         "long_summary": _text(source.get("long_summary")),
@@ -3742,12 +3884,680 @@ def _tavern_prompt_sections(value: Any) -> list[str]:
     return sections
 
 
+def roleplay_context_limits(n_ctx: Any = None, audience: Any = "character") -> dict[str, int]:
+    try:
+        context_window = int(n_ctx or 0)
+    except (TypeError, ValueError):
+        context_window = 0
+    if context_window <= 0:
+        context_window = 32768
+    if context_window <= 8192:
+        limits = {
+            "system_chars": 2200,
+            "history_chars": 900,
+            "history_messages": 3,
+            "turn_facts": 3,
+            "world_book": 1,
+            "memories": 1,
+            "card_text": 360,
+            "state_text": 850,
+        }
+    elif context_window <= 16384:
+        limits = {
+            "system_chars": 4500,
+            "history_chars": 2200,
+            "history_messages": 6,
+            "turn_facts": 6,
+            "world_book": 4,
+            "memories": 4,
+            "card_text": 720,
+            "state_text": 1500,
+        }
+    elif context_window <= 32768:
+        limits = {
+            "system_chars": 9000,
+            "history_chars": 4500,
+            "history_messages": 8,
+            "turn_facts": 10,
+            "world_book": 8,
+            "memories": 8,
+            "card_text": 1200,
+            "state_text": 2600,
+        }
+    else:
+        limits = {
+            "system_chars": 12000,
+            "history_chars": 7000,
+            "history_messages": MAX_CONTEXT_HISTORY_MESSAGES,
+            "turn_facts": MAX_RECENT_TURN_FACTS,
+            "world_book": 10,
+            "memories": 10,
+            "card_text": 1800,
+            "state_text": 3400,
+        }
+    audience_key = _text(audience, 40).lower() or "character"
+    if audience_key in {"director", "resource"}:
+        limits["history_chars"] = 0
+        limits["history_messages"] = 0
+    limits["n_ctx"] = context_window
+    return limits
+
+
+def _context_text(value: Any, limit: int) -> str:
+    current = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not current:
+        return ""
+    size = max(64, int(limit or 64))
+    if len(current) <= size:
+        return current
+    marker = "\n[…context shortened…]\n"
+    available = max(1, size - len(marker))
+    head = max(32, int(available * 0.62))
+    tail = max(16, available - head)
+    return (current[:head].rstrip() + marker + current[-tail:].lstrip()).strip()
+
+
+def _context_state_fields(value: Any) -> list[dict[str, str]]:
+    return [
+        {
+            "label": _context_text(item.get("label"), 120),
+            "value": _context_text(item.get("value"), 500),
+        }
+        for item in _clean_state_fields(value, preserve_empty_values=True)
+        if isinstance(item, dict) and _text(item.get("label"), 120)
+    ]
+
+
+def _context_runtime_state(value: Any, limits: dict[str, int], *, player: bool = False) -> dict[str, Any]:
+    source = _normalize_player_state(value) if player else _normalize_character_runtime(value)
+    result: dict[str, Any] = {}
+    if player:
+        result["status"] = source.get("status") or "present"
+        result["is_present"] = bool(source.get("is_present", True))
+    for key, limit in (
+        ("location", 500),
+        ("appearance", 1200),
+        ("state_text", limits["state_text"]),
+        ("emotion", 500),
+        ("current_action", 1000),
+    ):
+        text = _context_text(source.get(key), limit)
+        if text:
+            result[key] = text
+    fields = _context_state_fields(source.get("state_fields"))
+    if fields:
+        result["state_fields"] = fields
+    for key, item_limit in (("condition", 240), ("inventory", 300), ("goals", 300)):
+        rows = [
+            _context_text(item, item_limit)
+            for item in _clean_string_list(source.get(key), 40)
+            if _text(item, item_limit)
+        ]
+        if rows:
+            result[key] = rows
+    return result
+
+
+def _context_character_card(
+    value: Any,
+    limits: dict[str, int],
+    *,
+    detailed: bool = False,
+    include_locked: bool = False,
+) -> dict[str, Any]:
+    card = default_character_card(value)
+    text_limit = limits["card_text"]
+    result: dict[str, Any] = {
+        "id": card.get("id"),
+        "name": _context_text(card.get("name"), 200),
+    }
+    for key, multiplier in (
+        ("appearance", 1.0),
+        ("identity", 1.0),
+        ("personality", 0.75),
+        ("speech_style", 0.75),
+    ):
+        text = _context_text(card.get(key), max(240, int(text_limit * multiplier)))
+        if text:
+            result[key] = text
+    if detailed:
+        background = _context_text(card.get("background"), max(400, int(text_limit * 1.4)))
+        if background:
+            result["background"] = background
+        rules = [
+            _context_text(item, 320)
+            for item in _clean_string_list(card.get("behavior_rules"), 10)
+            if _text(item, 320)
+        ]
+        if rules:
+            result["behavior_rules"] = rules
+        examples = []
+        for item in _list(card.get("example_dialogues"), 4):
+            if isinstance(item, (dict, list)):
+                item = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+            text = _context_text(item, 420)
+            if text:
+                examples.append(text)
+        if examples:
+            result["example_dialogues"] = examples
+        tavern = _dict(_dict(_dict(card).get("import_metadata")).get("tavern"))
+        imported = {}
+        for key in ("system_prompt", "post_history_instructions"):
+            text = _context_text(tavern.get(key), max(400, text_limit))
+            if text:
+                imported[key] = text
+        if imported:
+            result["imported_instructions"] = imported
+    if include_locked:
+        locked = _clean_string_list(card.get("locked_fields"), 40)
+        if locked:
+            result["locked_fields"] = locked
+    return result
+
+
+def _context_persona(value: Any, limits: dict[str, int]) -> dict[str, Any]:
+    persona = default_persona(value)
+    text_limit = limits["card_text"]
+    result: dict[str, Any] = {
+        "id": persona.get("id"),
+        "name": _context_text(persona.get("name"), 200),
+    }
+    for key, multiplier in (
+        ("appearance", 1.0),
+        ("identity", 1.2),
+        ("personality", 0.8),
+        ("relationship_seed", 0.8),
+    ):
+        text = _context_text(persona.get(key), max(240, int(text_limit * multiplier)))
+        if text:
+            result[key] = text
+    goals = [_context_text(item, 320) for item in _clean_string_list(persona.get("goals"), 20)]
+    if goals:
+        result["goals"] = goals
+    policy = _dict(persona.get("proxy_policy"))
+    if policy:
+        result["proxy_policy"] = {
+            "initiative": _text(policy.get("initiative"), 40),
+            "reply_length": _text(policy.get("reply_length"), 40),
+            "forbidden_actions": _clean_string_list(policy.get("forbidden_actions"), 20),
+            "require_confirmation_for": _clean_string_list(policy.get("require_confirmation_for"), 20),
+        }
+    return result
+
+
+def _context_history(history: Any, limits: dict[str, int]) -> dict[str, Any]:
+    rows = history if isinstance(history, list) else []
+    message_limit = max(0, int(limits.get("history_messages") or 0))
+    budget = max(0, int(limits.get("history_chars") or 0))
+    if not message_limit or not budget:
+        return {"messages": [], "chars": 0, "budget": budget, "omitted": len(rows)}
+    selected: list[dict[str, str]] = []
+    used = 0
+    omitted = 0
+    for item in reversed(rows):
+        if not isinstance(item, dict) or item.get("pending"):
+            omitted += 1
+            continue
+        role = _text(item.get("role"), 40).lower()
+        if role not in {"user", "assistant", "system"}:
+            role = "user"
+        content = _context_text(item.get("content"), min(1600, max(600, budget // 2)))
+        if not content:
+            omitted += 1
+            continue
+        cost = len(role) + len(content) + 16
+        if len(selected) >= message_limit or (selected and used + cost > budget):
+            omitted += 1
+            continue
+        selected.append({"role": role, "content": content})
+        used += cost
+    selected.reverse()
+    return {
+        "messages": selected,
+        "chars": used,
+        "budget": budget,
+        "omitted": omitted,
+    }
+
+
+def _context_turn_fact(value: Any) -> dict[str, Any]:
+    fact = normalize_turn_facts(value)
+    result: dict[str, Any] = {
+        "turn_id": _text(fact.get("turn_id"), 200),
+        "summary": _context_text(fact.get("summary"), 700),
+    }
+    for key, limit in (
+        ("actions", 8),
+        ("state_changes", 8),
+        ("appearance_changes", 6),
+    ):
+        rows = []
+        for item in _list(fact.get(key), limit):
+            if not isinstance(item, dict):
+                continue
+            compact = {
+                field: _context_text(item.get(field), 320)
+                for field in (
+                    "actor_entity_type",
+                    "actor_entity_id",
+                    "target_entity_type",
+                    "target_entity_id",
+                    "action",
+                    "result",
+                    "summary",
+                    "description",
+                    "evidence",
+                )
+                if _text(item.get(field), 320)
+            }
+            if item.get("fields"):
+                compact["fields"] = _clean_string_list(item.get("fields"), 12)
+            if compact:
+                rows.append(compact)
+        if rows:
+            result[key] = rows
+    for key, limit in (("scene_changes", 8), ("durable_facts", 10), ("unchanged_entity_ids", 12)):
+        rows = [_context_text(item, 420) for item in _clean_string_list(fact.get(key), limit)]
+        if rows:
+            result[key] = rows
+    return {key: value for key, value in result.items() if value not in ("", [], {})}
+
+
+def _context_block(
+    block_id: str,
+    data: Any,
+    *,
+    items: int = 1,
+    omitted: int = 0,
+    transport: str = "system",
+) -> dict[str, Any]:
+    if isinstance(data, str):
+        content = data.strip()
+    else:
+        content = json.dumps(data, ensure_ascii=False, separators=(",", ": "))
+    return {
+        "id": block_id,
+        "transport": transport,
+        "content": content,
+        "chars": len(content),
+        "items": max(0, int(items or 0)),
+        "omitted": max(0, int(omitted or 0)),
+    }
+
+
+def _context_compact_runtime_lines(value: Any) -> list[str]:
+    source = _dict(value)
+    lines: list[str] = []
+    status = _text(source.get("status"), 40)
+    if status:
+        lines.append(f"status={status}")
+    fields = [
+        f"{_text(item.get('label'), 120)}={_context_text(item.get('value'), 240)}"
+        for item in _list(source.get("state_fields"), 40)
+        if isinstance(item, dict) and _text(item.get("label"), 120)
+    ]
+    if fields:
+        lines.append("state_fields: " + "; ".join(fields))
+    for key, label in (
+        ("state_text", "state"),
+        ("appearance", "appearance"),
+        ("current_action", "action"),
+        ("location", "location"),
+        ("emotion", "emotion"),
+    ):
+        text = _context_text(source.get(key), 520)
+        if text:
+            lines.append(f"{label}: {text}")
+    for key, label in (("condition", "conditions"), ("inventory", "inventory"), ("goals", "goals")):
+        rows = [_context_text(item, 220) for item in _list(source.get(key), 20) if _text(item, 220)]
+        if rows:
+            lines.append(f"{label}: " + "; ".join(rows))
+    return lines
+
+
+def _context_compact_entity_payload(value: Any, limit: int) -> str:
+    source = _dict(value)
+    card = _dict(source.get("card") or source.get("persona") or source.get("entity"))
+    lines = [
+        item
+        for item in (
+            f"id={_text(card.get('id'), 160)}" if _text(card.get("id"), 160) else "",
+            f"name={_text(card.get('name'), 200)}" if _text(card.get("name"), 200) else "",
+        )
+        if item
+    ]
+    lines.extend(_context_compact_runtime_lines(source.get("runtime")))
+    known_facts = [_context_text(item, 260) for item in _list(source.get("known_facts"), 20) if _text(item, 260)]
+    if known_facts:
+        lines.append("known_facts: " + "; ".join(known_facts))
+    for key, label in (
+        ("appearance", "card appearance"),
+        ("identity", "identity"),
+        ("personality", "personality"),
+        ("speech_style", "speech style"),
+        ("background", "background"),
+    ):
+        text = _context_text(card.get(key), 420)
+        if text:
+            lines.append(f"{label}: {text}")
+    return _context_text("\n".join(lines), limit)
+
+
+def _context_compact_required_block(block_id: str, data: Any, limit: int) -> str:
+    if block_id == "scene":
+        source = _dict(data)
+        scene = _dict(source.get("scene"))
+        lines = []
+        for key, label in (
+            ("location", "location"),
+            ("time", "time"),
+            ("weather", "weather"),
+            ("current_event", "event"),
+            ("scene_goal", "goal"),
+        ):
+            text = _context_text(scene.get(key), 520)
+            if text:
+                lines.append(f"{label}: {text}")
+        present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
+        if present_ids:
+            lines.append("present: " + ", ".join(present_ids))
+        threads = [_context_text(item, 220) for item in _list(source.get("open_threads"), 12) if _text(item, 220)]
+        if threads:
+            lines.append("open_threads: " + "; ".join(threads))
+        return _context_text("\n".join(lines), limit)
+    if block_id == "present_characters":
+        rows = _list(data, MAX_ROLEPLAY_CHARACTERS)
+        if not rows:
+            return ""
+        per_character = max(96, limit // max(1, len(rows)))
+        return _context_text(
+            "\n---\n".join(_context_compact_entity_payload(item, per_character) for item in rows),
+            limit,
+        )
+    return _context_compact_entity_payload(data, limit)
+
+
+def _fit_required_context_blocks(specs: list[tuple[str, Any, int]], budget: int) -> list[dict[str, Any]]:
+    blocks = [_context_block(block_id, data, items=items) for block_id, data, items in specs]
+    if sum(block["chars"] for block in blocks) <= budget:
+        return blocks
+    weights = {
+        "scene": 1.15,
+        "speaker": 1.85,
+        "player": 1.15,
+        "present_characters": 1.45,
+    }
+    count = max(1, len(specs))
+    base = min(96, max(64, budget // count // 3))
+    remaining = max(0, budget - base * count)
+    total_weight = sum(weights.get(block_id, 1.0) for block_id, _, _ in specs) or 1.0
+    allocations = [
+        base + int(remaining * weights.get(block_id, 1.0) / total_weight)
+        for block_id, _, _ in specs
+    ]
+    allocations[-1] += budget - sum(allocations)
+    return [
+        _context_block(
+            block_id,
+            _context_compact_required_block(block_id, data, allocation),
+            items=items,
+        )
+        for (block_id, data, items), allocation in zip(specs, allocations)
+    ]
+
+
+def build_roleplay_context(
+    session: Any,
+    history: Any = None,
+    query: Any = "",
+    speaker_id: Any = "",
+    *,
+    audience: Any = "character",
+    n_ctx: Any = None,
+) -> dict[str, Any]:
+    normalized = normalize_roleplay_session(session)
+    audience_key = _text(audience, 40).lower() or "character"
+    if audience_key not in {"character", "player_proxy", "director", "resource"}:
+        audience_key = "character"
+    limits = roleplay_context_limits(n_ctx, audience_key)
+    state = normalized.get("story_state", {})
+    scene = _dict(state.get("scene"))
+    resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
+    present_ids = [
+        character_id
+        for character_id in _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
+        if character_id in normalized.get("characters", {})
+    ]
+    if resolved_speaker_id in normalized.get("characters", {}) and resolved_speaker_id not in present_ids:
+        present_ids.append(resolved_speaker_id)
+    actor_id = normalized.get("persona", {}).get("id") if audience_key == "player_proxy" else resolved_speaker_id
+    resources = roleplay_context_resources(
+        normalized,
+        query,
+        actor_id,
+        world_limit=max(1, limits["world_book"]),
+        memory_limit=max(1, limits["memories"]),
+    )
+    history_pack = _context_history(history, limits)
+    scene_payload = {
+        "scene": {
+            "id": scene.get("id"),
+            "location": _context_text(scene.get("location"), 500),
+            "time": _context_text(scene.get("time"), 200),
+            "weather": _context_text(scene.get("weather"), 200),
+            "present_character_ids": present_ids,
+            "current_event": _context_text(scene.get("current_event"), 1000),
+            "scene_goal": _context_text(scene.get("scene_goal"), 1000),
+        },
+        "open_threads": [_context_text(item, 420) for item in _clean_string_list(state.get("open_threads"), 16)],
+    }
+    present_entities = set(present_ids)
+    present_entities.add(_text(normalized.get("persona", {}).get("id"), 160))
+    relationships = [
+        item
+        for item in _list(state.get("relationships"), 40)
+        if isinstance(item, dict)
+        and (
+            _text(item.get("from"), 160) in present_entities
+            or _text(item.get("to"), 160) in present_entities
+        )
+    ][:16]
+    if relationships:
+        scene_payload["relationships"] = relationships
+    required_specs: list[tuple[str, Any, int]] = [("scene", scene_payload, 1)]
+
+    player_state = _normalize_player_state(state.get("player_state"))
+    if audience_key == "player_proxy":
+        player_payload = {
+            "persona": _context_persona(normalized.get("persona"), limits),
+            "runtime": _context_runtime_state(player_state, limits, player=True),
+            "known_facts": _clean_string_list(
+                state.get("knowledge", {}).get(normalized.get("persona", {}).get("id"), []),
+                20,
+            ),
+        }
+        required_specs.append(("player", player_payload, 1))
+    else:
+        speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized.get("character", {})
+        speaker_payload = {
+            "card": _context_character_card(
+                speaker_card,
+                limits,
+                detailed=True,
+                include_locked=audience_key in {"director", "resource"},
+            ),
+            "runtime": _context_runtime_state(
+                state.get("characters", {}).get(resolved_speaker_id, {}),
+                limits,
+            ),
+            "known_facts": _clean_string_list(state.get("knowledge", {}).get(resolved_speaker_id, []), 20),
+        }
+        required_specs.append(("speaker", speaker_payload, 1))
+        player_payload: dict[str, Any] = {
+            "runtime": _context_runtime_state(player_state, limits, player=True),
+        }
+        if player_state.get("status") == "present" and audience_key == "character":
+            player_payload["persona"] = _context_persona(normalized.get("persona"), limits)
+        elif audience_key in {"director", "resource"}:
+            player_payload["entity"] = {
+                "id": _text(normalized.get("persona", {}).get("id"), 160),
+                "name": _text(normalized.get("persona", {}).get("name"), 200),
+            }
+        required_specs.append(("player", player_payload, 1))
+
+    character_rows = []
+    for character_id in present_ids:
+        if audience_key != "player_proxy" and character_id == resolved_speaker_id:
+            continue
+        card = normalized.get("characters", {}).get(character_id, {})
+        character_rows.append({
+            "card": _context_character_card(
+                card,
+                limits,
+                include_locked=audience_key in {"director", "resource"},
+            ),
+            "runtime": _context_runtime_state(state.get("characters", {}).get(character_id, {}), limits),
+        })
+    if character_rows:
+        required_specs.append(("present_characters", character_rows, len(character_rows)))
+
+    system_budget = limits["system_chars"]
+    blocks = _fit_required_context_blocks(required_specs, system_budget)
+    used_system_chars = sum(block["chars"] for block in blocks)
+
+    def add_optional_list(block_id: str, rows: list[Any], total_items: int, *, keep_tail: bool = False) -> None:
+        nonlocal used_system_chars
+        if not rows:
+            return
+        selected = list(rows)
+        while selected:
+            block = _context_block(
+                block_id,
+                selected,
+                items=len(selected),
+                omitted=max(0, total_items - len(selected)),
+            )
+            if used_system_chars + block["chars"] <= system_budget:
+                blocks.append(block)
+                used_system_chars += block["chars"]
+                return
+            if keep_tail:
+                selected.pop(0)
+            else:
+                selected.pop()
+
+    all_facts = [
+        _context_turn_fact(item)
+        for item in _list(state.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
+        if isinstance(item, dict)
+    ]
+    selected_facts = all_facts[-limits["turn_facts"]:]
+    add_optional_list("turn_facts", selected_facts, len(all_facts), keep_tail=True)
+
+    chapter = resources.get("chapter") if isinstance(resources.get("chapter"), dict) else {}
+    chapter_payload = {
+        "id": _text(chapter.get("id"), 160),
+        "title": _context_text(chapter.get("title"), 240),
+        "summary": _context_text(
+            chapter.get("summary") or state.get("chapter_summary"),
+            min(3200, max(900, limits["system_chars"] // 3)),
+        ),
+        "goal": _context_text(chapter.get("goal"), 1200),
+        "status": _text(chapter.get("status"), 40),
+        "open_threads": [_context_text(item, 420) for item in _clean_string_list(chapter.get("open_threads"), 16)],
+    }
+    chapter_payload = {key: value for key, value in chapter_payload.items() if value not in ("", [], {})}
+    if chapter_payload:
+        chapter_block = _context_block("chapter", chapter_payload)
+        if used_system_chars + chapter_block["chars"] <= system_budget:
+            blocks.append(chapter_block)
+            used_system_chars += chapter_block["chars"]
+
+    world_rows = [
+        {
+            "id": _text(item.get("id"), 160),
+            "title": _context_text(item.get("title"), 240),
+            "content": _context_text(item.get("content"), 900),
+            "keys": _clean_string_list(item.get("keys"), 12),
+        }
+        for item in _list(resources.get("world_book"), limits["world_book"])
+        if isinstance(item, dict)
+    ]
+    add_optional_list("world_book", world_rows, len(resources.get("world_book") or []))
+
+    memory_rows = [
+        {
+            "id": _text(item.get("id"), 160),
+            "text": _context_text(item.get("text"), 760),
+            "importance": _bounded_float(item.get("importance"), 0.5),
+            "keywords": _clean_string_list(item.get("keywords"), 12),
+        }
+        for item in _list(resources.get("memories"), limits["memories"])
+        if isinstance(item, dict)
+    ]
+    add_optional_list("memories", memory_rows, len(resources.get("memories") or []))
+
+    history_text = "\n".join(
+        f"{item.get('role')}: {item.get('content')}"
+        for item in history_pack["messages"]
+    )
+    blocks.append(_context_block(
+        "recent_dialogue",
+        history_text or "(no recent dialogue)",
+        items=len(history_pack["messages"]),
+        omitted=history_pack["omitted"],
+        transport="chat_messages",
+    ))
+    system_chars = sum(block["chars"] for block in blocks if block.get("transport") == "system")
+    return {
+        "schema": CONTEXT_SCHEMA,
+        "version": 1,
+        "audience": audience_key,
+        "speaker_id": resolved_speaker_id,
+        "n_ctx": limits["n_ctx"],
+        "budget_chars": system_budget,
+        "system_chars": system_chars,
+        "history_chars": history_pack["chars"],
+        "history_budget_chars": history_pack["budget"],
+        "history_omitted": history_pack["omitted"],
+        "blocks": blocks,
+        "history": history_pack,
+    }
+
+
+def roleplay_context_prompt_sections(context: Any) -> list[str]:
+    source = context if isinstance(context, dict) else {}
+    labels = {
+        "scene": "Current scene and continuity",
+        "speaker": "Character card:\nSpeaking character setup and authoritative runtime state",
+        "player": "Player persona and authoritative runtime state",
+        "present_characters": "Other present characters and authoritative runtime states",
+        "turn_facts": "Recent established turn facts",
+        "chapter": "Active chapter summary and unresolved goals",
+        "world_book": "Triggered world-book entries",
+        "memories": "Relevant long-term memories",
+    }
+    sections = []
+    for block in source.get("blocks", []):
+        if not isinstance(block, dict) or block.get("transport") != "system":
+            continue
+        block_id = _text(block.get("id"), 80)
+        content = str(block.get("content") or "").strip()
+        if not block_id or not content:
+            continue
+        sections.append(f"{labels.get(block_id, block_id)}:\n{content}")
+    return sections
+
+
 def build_roleplay_system_prompt(
     session: Any,
     lang: str = "cn",
     speaker_id: Any = "",
     turn_intent: Any = "",
     context_query: Any = "",
+    history: Any = None,
+    context: Any = None,
+    n_ctx: Any = None,
 ) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
@@ -3755,26 +4565,14 @@ def build_roleplay_system_prompt(
     effective_turn_intent = normalize_roleplay_turn_intent(turn_intent, player_state)
     resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
     speaker_card = _character_card_for_id(normalized, resolved_speaker_id) or normalized["character"]
-    present_ids = _clean_string_list(
-        normalized["story_state"].get("scene", {}).get("present_character_ids"),
-        MAX_ROLEPLAY_CHARACTERS,
+    built_context = context if isinstance(context, dict) and context.get("schema") == CONTEXT_SCHEMA else build_roleplay_context(
+        normalized,
+        history,
+        context_query,
+        resolved_speaker_id,
+        audience="character",
+        n_ctx=n_ctx,
     )
-    other_characters = [
-        _prompt_safe_character_card(card)
-        for character_id, card in normalized.get("characters", {}).items()
-        if character_id != resolved_speaker_id
-        and (not present_ids or character_id in present_ids)
-    ]
-    visible_story_state = visible_state_for_actor(normalized, resolved_speaker_id)
-    live_characters = visible_story_state.get("characters", {})
-    live_speaker_state = live_characters.get(resolved_speaker_id, {})
-    live_other_states = {
-        character_id: runtime
-        for character_id, runtime in live_characters.items()
-        if character_id != resolved_speaker_id
-    }
-    resources = roleplay_context_resources(normalized, context_query, resolved_speaker_id)
-    tavern_sections = _tavern_prompt_sections(speaker_card)
     sections = [
         "You are the in-character actor in SimpAI Studio Roleplay mode.",
         f"Reply language: {reply_language}.",
@@ -3786,39 +4584,16 @@ def build_roleplay_system_prompt(
         "REAL-TIME STATE OVERRIDE: the runtime state below is authoritative for this turn and overrides the character card's initial state, imported examples, and older dialogue.",
         "The character card is static setup only. Never treat its identity, background, examples, or other state-like wording as the character's current condition when it conflicts with the runtime state.",
         "Preserve every ongoing condition, buff, debuff, injury, equipment effect, restraint, position, and ability restriction unless the latest exchange explicitly ends or replaces it. Do not reset a runtime field to its initial value merely because the scene or location changed.",
-        "Current speaking character runtime state:",
-        json.dumps(live_speaker_state, ensure_ascii=False, indent=2),
-        "Other present characters' runtime states:",
-        json.dumps(live_other_states, ensure_ascii=False, indent=2),
-        "Player runtime state for this turn:",
-        json.dumps(visible_story_state.get("player_state", {}), ensure_ascii=False, indent=2),
         "Player participation rules:",
         _player_state_prompt(player_state, effective_turn_intent),
         f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
-        "Character card:",
-        json.dumps(_prompt_safe_character_card(speaker_card), ensure_ascii=False, indent=2),
-        "Imported Tavern card instructions:",
-        "\n\n".join(tavern_sections),
-        "Other configured characters visible in the current scene:",
-        json.dumps(other_characters, ensure_ascii=False, indent=2),
         (
             "Player persona is off-stage and should not be brought into the reply."
             if player_state.get("status") == "absent"
             else "Player persona:"
         ),
-        ""
-        if player_state.get("status") == "absent"
-        else json.dumps(normalized["persona"], ensure_ascii=False, indent=2),
-        "Player runtime state:",
-        json.dumps(player_state, ensure_ascii=False, indent=2),
-        "Current visible story state:",
-        json.dumps(visible_story_state, ensure_ascii=False, indent=2),
-        "Active chapter:",
-        json.dumps(resources.get("chapter", {}), ensure_ascii=False, indent=2),
-        "Triggered world book entries:",
-        json.dumps(resources.get("world_book", []), ensure_ascii=False, indent=2),
-        "Relevant long-term memories:",
-        json.dumps(resources.get("memories", []), ensure_ascii=False, indent=2),
+        "Context Builder blocks follow. Do not infer current state from omitted history or static setup text.",
+        *roleplay_context_prompt_sections(built_context),
     ]
     return "\n\n".join(part for part in sections if _text(part)).strip()
 
@@ -3835,7 +4610,14 @@ def _history_text(history: Any, limit: int = 14) -> str:
     return "\n".join(rows) or "(no previous messages)"
 
 
-def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn", context_query: Any = "") -> str:
+def build_player_proxy_prompt(
+    session: Any,
+    history: Any,
+    lang: str = "cn",
+    context_query: Any = "",
+    context: Any = None,
+    n_ctx: Any = None,
+) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     player_state = normalized["story_state"].get("player_state", _normalize_player_state())
@@ -3849,7 +4631,13 @@ def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn", cont
             "The player is present. Write one plausible player message for the next turn, following the player's "
             "natural-language current state and state fields."
         )
-    resources = roleplay_context_resources(normalized, context_query, normalized["persona"]["id"])
+    built_context = context if isinstance(context, dict) and context.get("schema") == CONTEXT_SCHEMA else build_roleplay_context(
+        normalized,
+        history,
+        context_query,
+        audience="player_proxy",
+        n_ctx=n_ctx,
+    )
     return "\n\n".join(
         [
             "You are the player proxy for SimpAI Studio Autoplay Story mode.",
@@ -3859,20 +4647,8 @@ def build_player_proxy_prompt(session: Any, history: Any, lang: str = "cn", cont
             "Do not mention that you are an AI, director, proxy, or simulation.",
             "Do not decide the character's private thoughts or actions.",
             "Do not make irreversible choices listed in proxy_policy.require_confirmation_for.",
-            "Player persona:",
-            json.dumps(normalized["persona"], ensure_ascii=False, indent=2),
-            "Player runtime state:",
-            json.dumps(player_state, ensure_ascii=False, indent=2),
-            "Visible story state:",
-            json.dumps(visible_state_for_player_proxy(normalized), ensure_ascii=False, indent=2),
-            "Active chapter:",
-            json.dumps(resources.get("chapter", {}), ensure_ascii=False, indent=2),
-            "Triggered world book entries:",
-            json.dumps(resources.get("world_book", []), ensure_ascii=False, indent=2),
-            "Relevant long-term memories:",
-            json.dumps(resources.get("memories", []), ensure_ascii=False, indent=2),
-            "Recent conversation:",
-            _history_text(history),
+            "Context Builder blocks follow. Current runtime state overrides older dialogue and static setup text.",
+            *roleplay_context_prompt_sections(built_context),
         ]
     ).strip()
 
@@ -4011,6 +4787,8 @@ def build_director_prompt(
     lang: str = "cn",
     speaker_id: Any = "",
     turn_intent: Any = "",
+    context: Any = None,
+    n_ctx: Any = None,
 ) -> str:
     normalized = normalize_roleplay_session(session)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
@@ -4031,6 +4809,14 @@ def build_director_prompt(
     ]
     if resolved_speaker_id in present_character_ids and resolved_speaker_id not in present_character_order:
         present_character_order.append(resolved_speaker_id)
+    built_context = context if isinstance(context, dict) and context.get("schema") == CONTEXT_SCHEMA else build_roleplay_context(
+        normalized,
+        [],
+        "\n\n".join(item for item in (_text(user_message, 5000), _text(assistant_reply, 7000)) if item),
+        resolved_speaker_id,
+        audience="director",
+        n_ctx=n_ctx,
+    )
     entity_attribution = {
         "player": {
             "entity_type": "player",
@@ -4044,7 +4830,7 @@ def build_director_prompt(
                 if not player_present
                 else "update_only_when_explicitly_affected"
             ),
-            "allowed_runtime_fields": ["status", "state_text", "state_fields"],
+            "allowed_runtime_fields": ["status", "appearance", "state_text", "state_fields"],
             "state_fields": _state_field_catalog(player_state.get("state_fields")),
         },
         "speaking_character": {
@@ -4070,7 +4856,6 @@ def build_director_prompt(
             if character_id != resolved_speaker_id and card
         ],
     }
-    summary_schedule = roleplay_summary_schedule(normalized)
     shape = {
         "patches": [
             {
@@ -4087,6 +4872,14 @@ def build_director_prompt(
                 "target_entity_id": _text(player_persona.get("id"), 160) or "player",
                 "field": "status",
                 "value": "present",
+                "evidence": "",
+            },
+            {
+                "op": "set",
+                "target_entity_type": "player",
+                "target_entity_id": _text(player_persona.get("id"), 160) or "player",
+                "field": "appearance",
+                "value": "",
                 "evidence": "",
             },
             {
@@ -4122,6 +4915,164 @@ def build_director_prompt(
                 "evidence": "明确的数值变化证据",
             },
         ],
+        "turn_facts": {
+            "summary": "",
+            "actions": [{
+                "actor_entity_type": "character",
+                "actor_entity_id": "",
+                "target_entity_type": "player",
+                "target_entity_id": "",
+                "action": "",
+                "result": "",
+                "evidence": "",
+            }],
+            "state_changes": [{
+                "target_entity_type": "character",
+                "target_entity_id": "",
+                "fields": ["appearance", "state_text", "state_fields"],
+                "summary": "",
+                "evidence": "",
+            }],
+            "appearance_changes": [{
+                "target_entity_type": "character",
+                "target_entity_id": "",
+                "description": "",
+                "evidence": "",
+            }],
+            "scene_changes": [],
+            "durable_facts": [],
+            "unchanged_entity_ids": [],
+        },
+        "resource_signals": {
+            "memory": False,
+            "world_book": False,
+            "chapter": False,
+            "visual": False,
+            "reasons": [],
+        },
+        "warnings": [],
+    }
+    return "\n\n".join(
+        [
+            "You are the hidden external director for SimpAI Studio Roleplay mode.",
+            f"Return JSON only. Natural-language state_text and evidence use {reply_language}.",
+            "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
+            "Do not rewrite the full state. Return incremental patches.",
+            "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
+            "Every state patch must use target_entity_type, target_entity_id, field, value, and evidence. Copy target_entity_id exactly from the entity attribution map. Do not use a guessed path, a character name in place of an id, or a generic current-character target.",
+            "Use target_entity_type=player with the exact player id for player_state changes, target_entity_type=character with the exact configured character id for character changes, and target_entity_type=scene with target_entity_id=scene for scene changes.",
+            "The state_path_prefix values in the attribution map are internal references for reasoning only. Never return them or construct a patch from them.",
+            "The speaking character is not the default state-update target. Never write a patch to characters.<speaker_id> merely because that character produced the visible reply.",
+            "In an in-character reply, second-person references such as you, your, 你, or 你的 normally refer to the player unless another addressee is explicitly named or the scene clearly establishes a different target.",
+            "The player runtime uses player_state and supports status, appearance, state_text, and state_fields. Put visible clothing, equipment, hairstyle, body markings, and visible injuries into player_state.appearance. Put the player's current action, emotion, body position, restraint, injury effects, buffs, debuffs, and ability restrictions into player_state.state_text and/or player_state.state_fields.",
+            "When a character grabs, restrains, embraces, moves, injures, heals, buffs, debuffs, or otherwise affects the player, update player_state for the effect on the player. Add a separate character patch only when that character's own state also changed.",
+            "Attribution example: if enemy_d says or does 'I seize your wrist and pull you into my arms', the player's restraint and position belong to player_state.state_text or player_state.state_fields, not characters.enemy_d. A characters.enemy_d.current_action patch is valid only when it describes enemy_d's own action, not the player's passive condition.",
+            "Reverse attribution example: if the player strikes enemy_d and the reply says enemy_d staggers or is injured, update characters.enemy_d rather than player_state.",
+            "One exchange may affect several entities. Emit separate patches for each affected entity and verify every target against the entity attribution map before returning JSON.",
+            "For a named multi-target effect, update exactly the named recipients. Do not broadcast healing, damage, buffs, debuffs, restraint, emotion, or position changes to every present entity.",
+            "Multi-target example: if speaking character C treats the player and character B, write the treatment results to player_state and characters.B only. Do not copy the treatment result to C unless the exchange explicitly says C also receives it. A current_action patch for C may describe C performing the treatment, but must never describe C as a patient.",
+            "For a multi-target effect, emit one patch per recipient with that recipient's exact target_entity_id. Do not combine A and B into one patch and do not put the recipients' condition into the healer's state_text.",
+            "When the latest exchange clearly changes a character's current condition, emit a character target for state_text with a compact current snapshot of at most two short sentences.",
+            "When the latest exchange visibly changes clothing, equipment worn on the body, hairstyle, body markings, transformation, or visible injury, emit an appearance patch for the affected entity in the same turn. Preserve unchanged identity traits and describe the complete current visible appearance in one compact sentence.",
+            "When numeric or named status values clearly change, emit a state_fields patch for the affected player or character. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
+            "The director runs after every turn. Do not wait for the player to request a status update. When the latest exchange explicitly describes a successful hit, injury, healing, spell or ability cost, stamina use, mental shock, or another clear effect on an entity, inspect that entity's existing numeric state fields and update the affected fields in the same turn when the exchange provides an exact numeric amount or before/after value.",
+            "Do not invent an effect or numeric magnitude. If the exchange describes an effect without an exact number, update state_text or condition only and leave numeric fields unchanged. A blocked, missed, harmless, or purely positional action does not change health or another resource.",
+            "Terminal semantic state rule: when the latest exchange explicitly says that a named entity lost sanity, suffered a sanity collapse, lost the ability to think, or that its thoughts were completely filled by an overwhelming impulse, treat that entity's existing sanity field as zero. Emit its state_fields patch with value 0; the runtime preserves the field's existing ratio or percentage format. Apply this only to the named affected entity, never to the speaker or player by default.",
+            "For a numeric state field, preserve its label and format. Use a signed numeric delta such as {\"label\":\"生命值\",\"delta\":-8} only when the latest exchange states that amount, or use the exact before/after value when both are stated. The runtime applies the delta to the current value and clamps ratio and percentage fields to their valid range. Use a separate numeric patch for each affected entity and each changed label.",
+            "Every state_fields item must use field_id copied exactly from the state field catalog, plus value or delta. The field_id is the only writable field identifier; do not translate it, invent it, or replace it with a label. The label in the catalog is for reading only and may be omitted from the returned item.",
+            "The value of state_fields must always be an array of objects with field_id and value, or an array of objects with field_id and delta. Never return an object map such as {\"hp\":92} or {\"mana\":68}, and never put a concrete label in the patch field; use field=state_fields.",
+            "If the reply explicitly records a before/after value such as 100/100 -> 92/100, write the final value in the state_fields patch even when state_text also contains the same sentence. Do not rely on the UI text alone.",
+            "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
+            "Existing state_fields are user-defined schema. Never rename, translate, replace, or add fields during a runtime update. Use only field_id values from the state field catalog for the selected target. If no catalog field matches the effect, update state_text instead and leave numeric fields unchanged.",
+            "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
+            "Player presence is authoritative. If the current player status is absent, do not emit player_state status, appearance, state_text, or state_fields patches because a character acted, because second-person wording appeared, or because the player was mentioned as background context. Update an absent player's runtime only when the latest user instruction explicitly controls that player, such as an explicit return, departure, injury, appearance change, or state assignment. Otherwise leave player_state unchanged.",
+            "Do not write memories, world-book entries, chapter text, or image prompts in this response. Set resource_signals only; a separate resource pass handles those stores when needed.",
+            "Set resource_signals.memory=true for a durable decision, promise, relationship shift, acquired or lost important item, lasting injury, quest result, or fact that later turns should remember.",
+            "Set resource_signals.world_book=true only for reusable lore such as a setting rule, location fact, faction, custom, magic rule, or named organization newly established by this exchange.",
+            "Set resource_signals.chapter=true for a clear chapter transition, chapter goal change, major resolution, or when the current chapter needs a cumulative summary refresh.",
+            "Set resource_signals.visual=true only for a visually distinct key moment worth proposing as an automatic story image. Do not set it for ordinary dialogue.",
+            "Always fill turn_facts as a compact machine-readable account of the latest exchange. Record the actual actor, every explicitly affected recipient, concrete results, visible appearance changes, scene changes, durable facts, and entities explicitly shown unchanged. Copy all entity IDs exactly from the attribution map.",
+            "turn_facts is hidden metadata. It must contain established facts only, must not include private reasoning, and must not repeat roleplay prose.",
+            f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
+            "When the current player status is absent, or when the effective narrative intent is story_control, treat the latest user message as a story-control instruction rather than player dialogue. Story-control intent does not by itself remove the player from the scene; change player_state.status only when the latest exchange explicitly establishes that presence change.",
+            "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
+            "To explicitly end or replace an ongoing state, use patch op 'replace' with the complete replacement value, or op 'remove' when the field should become empty. Do not use an ordinary set patch to clear a buff, injury, equipment effect, or action restriction.",
+            "Do not rewrite or reset state when the latest exchange provides no new evidence.",
+            "Do not decide private thoughts or invent injury, death, resources, numeric changes, or effects that did not happen in the exchange.",
+            "Do not modify locked character fields. Do not reveal hidden plans to the actor.",
+            f"The visible reply was produced by character id {resolved_speaker_id}. Attribute its actions and dialogue to that character unless the text explicitly describes another character.",
+            "JSON shape:",
+            json.dumps(shape, ensure_ascii=False),
+            "Entity attribution map:",
+            json.dumps(entity_attribution, ensure_ascii=False, indent=2),
+            "Context Builder blocks. These contain the authoritative current scene and runtime state:",
+            *roleplay_context_prompt_sections(built_context),
+            "Characters outside the current scene (do not target them unless the latest exchange explicitly brings them into the scene):",
+            json.dumps([
+                character_id
+                for character_id in normalized.get("characters", {})
+                if character_id not in present_character_ids
+            ], ensure_ascii=False),
+            "State field catalog. Field IDs are scoped to their target entity and are the only valid identifiers for state_fields updates:",
+            json.dumps({
+                "player": entity_attribution["player"].get("state_fields", []),
+                **{
+                    character_id: item.get("state_fields", [])
+                    for item in entity_attribution["other_characters"]
+                    for character_id in [item.get("id")]
+                },
+                **({resolved_speaker_id: entity_attribution["speaking_character"].get("state_fields", [])}
+                   if resolved_speaker_id else {}),
+            }, ensure_ascii=False, indent=2),
+            "Latest user or player message:",
+            _text(user_message, 5000),
+            "Latest in-character reply:",
+            _text(assistant_reply, 7000),
+            "Final state audit before returning JSON:",
+            "First extract the established plot facts from the latest user instruction and visible reply. Then identify every affected entity, compare those facts with its current runtime state, and only then decide the patches.",
+            "Interpret user-defined state field labels by meaning and narrative consequence, not only by literal wording. A field such as corruption, trust, loyalty, action ability, resistance, pregnancy, or another custom label may be affected by semantically equivalent narrative evidence. Always write the exact field_id from the catalog.",
+            "Most state changes are conveyed by events, outcomes, and terminal conditions rather than direct numeric assignments. Treat direct assignments as authoritative when present, but do not require one before recognizing a state change.",
+            "Evaluate each user-defined field on its own semantic dimension. Do not update a nearby but different field merely to echo the same event. In particular, action ability means the capacity to move, think, or perform actions; obedience, allegiance, willingness, or external control alone does not reduce action ability when the entity can still act.",
+            "Do not let a fluent reply hide an established injury, restraint, inability to act, mental change, relationship shift, allegiance shift, transformation, appearance change, condition change, scene change, or user-defined field change.",
+            "For bounded ratio or percentage fields, explicit endpoint language such as zeroed, completely depleted, fully restored, completely corrupted, or an equally unambiguous terminal state may map to zero or the existing maximum. Do not infer an intermediate number from prose.",
+            "If an established new fact contradicts the current state_text or condition, emit a separate replace patch with a concise current snapshot. Do not leave old prose saying that an entity still resists, remains healthy, or can act normally after the audited state says otherwise.",
+            "A terse story-control instruction that names an entity and an existing field or terminal state is authoritative evidence even when the visible character reply does not repeat it. The latest user message itself can require a patch.",
+            "Return patches=[] only after checking the user instruction, the visible reply, the state field catalog, appearance, state_text, player status, and scene fields and finding no established change.",
+        ]
+    ).strip()
+
+
+def build_director_resource_prompt(
+    session: Any,
+    user_message: str,
+    assistant_reply: str,
+    turn_facts: Any,
+    resource_signals: Any,
+    lang: str = "cn",
+    context: Any = None,
+    n_ctx: Any = None,
+) -> str:
+    normalized = normalize_roleplay_session(session)
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    facts = normalize_turn_facts(turn_facts)
+    signals = normalize_director_resource_signals(resource_signals, normalized)
+    active_chapter = next(
+        (
+            item
+            for item in normalized.get("chapters", {}).get("items", [])
+            if item.get("id") == normalized.get("active_chapter_id")
+        ),
+        {},
+    )
+    built_context = context if isinstance(context, dict) and context.get("schema") == CONTEXT_SCHEMA else build_roleplay_context(
+        normalized,
+        [],
+        "\n\n".join(item for item in (_text(user_message, 5000), _text(assistant_reply, 7000)) if item),
+        normalized.get("active_character_id"),
+        audience="resource",
+        n_ctx=n_ctx,
+    )
+    shape = {
         "memories": [{"text": "", "importance": 0.0, "known_by": []}],
         "world_book_updates": [{"op": "add", "title": "", "content": "", "keys": []}],
         "memory_deletions": [],
@@ -4142,102 +5093,27 @@ def build_director_prompt(
             "camera": "",
             "lighting": "",
         },
-        "chapter_summary": "",
         "warnings": [],
     }
     return "\n\n".join(
         [
-            "You are the hidden external director for SimpAI Studio Roleplay mode.",
-            f"Return JSON only. Natural-language state_text and evidence use {reply_language}.",
-            "Record only facts explicitly happening in the latest exchange or directly implied by an explicit action.",
-            "Do not rewrite the full state. Return incremental patches.",
-            "Patch target attribution is mandatory: choose the entity whose body, mind, position, action, inventory, or condition actually changed. The acting or speaking entity and the affected entity may be different.",
-            "Every state patch must use target_entity_type, target_entity_id, field, value, and evidence. Copy target_entity_id exactly from the entity attribution map. Do not use a guessed path, a character name in place of an id, or a generic current-character target.",
-            "Use target_entity_type=player with the exact player id for player_state changes, target_entity_type=character with the exact configured character id for character changes, and target_entity_type=scene with target_entity_id=scene for scene changes.",
-            "The state_path_prefix values in the attribution map are internal references for reasoning only. Never return them or construct a patch from them.",
-            "The speaking character is not the default state-update target. Never write a patch to characters.<speaker_id> merely because that character produced the visible reply.",
-            "In an in-character reply, second-person references such as you, your, 你, or 你的 normally refer to the player unless another addressee is explicitly named or the scene clearly establishes a different target.",
-            "The player runtime uses player_state and supports only status, state_text, and state_fields. Put the player's current action, emotion, body position, restraint, injury, equipment effects, buffs, debuffs, and ability restrictions into player_state.state_text and/or player_state.state_fields.",
-            "When a character grabs, restrains, embraces, moves, injures, heals, buffs, debuffs, or otherwise affects the player, update player_state for the effect on the player. Add a separate character patch only when that character's own state also changed.",
-            "Attribution example: if enemy_d says or does 'I seize your wrist and pull you into my arms', the player's restraint and position belong to player_state.state_text or player_state.state_fields, not characters.enemy_d. A characters.enemy_d.current_action patch is valid only when it describes enemy_d's own action, not the player's passive condition.",
-            "Reverse attribution example: if the player strikes enemy_d and the reply says enemy_d staggers or is injured, update characters.enemy_d rather than player_state.",
-            "One exchange may affect several entities. Emit separate patches for each affected entity and verify every target against the entity attribution map before returning JSON.",
-            "For a named multi-target effect, update exactly the named recipients. Do not broadcast healing, damage, buffs, debuffs, restraint, emotion, or position changes to every present entity.",
-            "Multi-target example: if speaking character C treats the player and character B, write the treatment results to player_state and characters.B only. Do not copy the treatment result to C unless the exchange explicitly says C also receives it. A current_action patch for C may describe C performing the treatment, but must never describe C as a patient.",
-            "For a multi-target effect, emit one patch per recipient with that recipient's exact target_entity_id. Do not combine A and B into one patch and do not put the recipients' condition into the healer's state_text.",
-            "When the latest exchange clearly changes a character's current condition, emit a character target for state_text with a compact current snapshot of at most two short sentences.",
-            "When numeric or named status values clearly change, emit a state_fields patch for the affected player or character. Send only the changed labels; do not omit a field update merely because state_text is also changing.",
-            "The director runs after every turn. Do not wait for the player to request a status update. When the latest exchange explicitly describes a successful hit, injury, healing, spell or ability cost, stamina use, mental shock, or another clear effect on an entity, inspect that entity's existing numeric state fields and update the affected fields in the same turn when the exchange provides an exact numeric amount or before/after value.",
-            "Do not invent an effect or numeric magnitude. If the exchange describes an effect without an exact number, update state_text or condition only and leave numeric fields unchanged. A blocked, missed, harmless, or purely positional action does not change health or another resource.",
-            "Terminal semantic state rule: when the latest exchange explicitly says that a named entity lost sanity, suffered a sanity collapse, lost the ability to think, or that its thoughts were completely filled by an overwhelming impulse, treat that entity's existing sanity field as zero. Emit its state_fields patch with value 0; the runtime preserves the field's existing ratio or percentage format. Apply this only to the named affected entity, never to the speaker or player by default.",
-            "For a numeric state field, preserve its label and format. Use a signed numeric delta such as {\"label\":\"生命值\",\"delta\":-8} only when the latest exchange states that amount, or use the exact before/after value when both are stated. The runtime applies the delta to the current value and clamps ratio and percentage fields to their valid range. Use a separate numeric patch for each affected entity and each changed label.",
-            "Every state_fields item must use field_id copied exactly from the state field catalog, plus value or delta. The field_id is the only writable field identifier; do not translate it, invent it, or replace it with a label. The label in the catalog is for reading only and may be omitted from the returned item.",
-            "The value of state_fields must always be an array of objects with field_id and value, or an array of objects with field_id and delta. Never return an object map such as {\"hp\":92} or {\"mana\":68}, and never put a concrete label in the patch field; use field=state_fields.",
-            "If the reply explicitly records a before/after value such as 100/100 -> 92/100, write the final value in the state_fields patch even when state_text also contains the same sentence. Do not rely on the UI text alone.",
-            "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
-            "Existing state_fields are user-defined schema. Never rename, translate, replace, or add fields during a runtime update. Use only field_id values from the state field catalog for the selected target. If no catalog field matches the effect, update state_text instead and leave numeric fields unchanged.",
-            "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
-            "Player presence is authoritative. If the current player status is absent, do not emit player_state status, state_text, or state_fields patches because a character acted, because second-person wording appeared, or because the player was mentioned as background context. Update an absent player's runtime only when the latest user instruction explicitly controls that player, such as an explicit return, departure, injury, or state assignment. Otherwise leave player_state unchanged.",
-            "Record a world_book_updates item only for a durable setting fact, location rule, organization, or other reusable lore established by the exchange. Do not copy temporary scene details into the world book.",
-            "Use chapter_update only when the current chapter summary, goal, status, or a clear chapter transition changes. Set new_chapter=true only when a new story chapter has clearly begun.",
-            (
-                "The chapter summary refresh is due on this turn. Set chapter_update.summary to a concise cumulative "
-                "summary of the current chapter, including only established events, and replace the old summary rather "
-                "than appending a duplicate fragment."
-                if summary_schedule.get("due")
-                else "The chapter summary refresh is not due on this turn. Do not rewrite it unless the exchange changes the chapter summary or goal."
-            ),
-            f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
-            "When the current player status is absent, or when the effective narrative intent is story_control, treat the latest user message as a story-control instruction rather than player dialogue. Story-control intent does not by itself remove the player from the scene; change player_state.status only when the latest exchange explicitly establishes that presence change.",
-            "Preserve ongoing facts, but do not repeat a sentence already present in state_text. Send only newly established state information; the runtime merges incremental state_text and condition patches and merges state_fields by label. If the current snapshot needs rewriting, use patch op 'replace' with the concise complete snapshot.",
-            "To explicitly end or replace an ongoing state, use patch op 'replace' with the complete replacement value, or op 'remove' when the field should become empty. Do not use an ordinary set patch to clear a buff, injury, equipment effect, or action restriction.",
-            "Do not rewrite or reset state when the latest exchange provides no new evidence.",
-            "Do not decide private thoughts or invent injury, death, resources, numeric changes, or effects that did not happen in the exchange.",
-            "Do not modify locked character fields. Do not reveal hidden plans to the actor.",
-            f"The visible reply was produced by character id {resolved_speaker_id}. Attribute its actions and dialogue to that character unless the text explicitly describes another character.",
-            "The visual candidate may contain only facts visible in the current scene.",
+            "You are the hidden resource director for SimpAI Studio Roleplay mode.",
+            f"Return JSON only. Resource text uses {reply_language}.",
+            "The state director has already extracted the latest turn facts. Do not create state patches and do not rewrite character runtime state.",
+            "Only fill categories whose resource signal is true. Leave every other category empty.",
+            "For memory, record only durable events, decisions, relationships, important possessions, lasting conditions, promises, discoveries, and unresolved obligations. Avoid duplicate or temporary details.",
+            "For world_book_updates, record only reusable setting lore. Never copy a transient scene action, outfit, injury, mood, or ordinary conversation into the world book.",
+            "For chapter_update, preserve the existing chapter unless a clear transition occurred. When summary_due is true, replace the active chapter summary with a concise cumulative summary that includes established events and current unresolved goals.",
+            "For visual_candidate, use only characters currently present and visible facts from the scene. Propose an image only when the visual signal is true and the moment is visually distinct.",
+            "Do not claim that resources or images were already saved or generated.",
             "JSON shape:",
-            json.dumps(shape, ensure_ascii=False),
-            "Entity attribution map:",
-            json.dumps(entity_attribution, ensure_ascii=False, indent=2),
-            "Current normalized state:",
-            json.dumps(normalized["story_state"], ensure_ascii=False, indent=2),
-            "Current active chapter:",
-            json.dumps(next((item for item in normalized["chapters"]["items"] if item["id"] == normalized["active_chapter_id"]), {}), ensure_ascii=False, indent=2),
-            "Chapter summary schedule:",
-            json.dumps(summary_schedule, ensure_ascii=False, indent=2),
-            "Current world book:",
-            json.dumps(normalized["world_book"]["entries"], ensure_ascii=False, indent=2),
-            "Current long-term memory store:",
-            json.dumps(normalized["memory_store"]["items"], ensure_ascii=False, indent=2),
-            "Present character cards:",
-            json.dumps({
-                character_id: normalized.get("characters", {}).get(character_id, {})
-                for character_id in present_character_order
-                if character_id in normalized.get("characters", {})
-            }, ensure_ascii=False, indent=2),
-            "Characters outside the current scene (do not target them unless the latest exchange explicitly brings them into the scene):",
-            json.dumps([
-                character_id
-                for character_id in normalized.get("characters", {})
-                if character_id not in present_character_ids
-            ], ensure_ascii=False),
-            "Locked character fields by character:",
-            json.dumps({
-                character_id: card.get("locked_fields", [])
-                for character_id, card in normalized.get("characters", {}).items()
-            }, ensure_ascii=False),
-            "State field catalog. Field IDs are scoped to their target entity and are the only valid identifiers for state_fields updates:",
-            json.dumps({
-                "player": entity_attribution["player"].get("state_fields", []),
-                **{
-                    character_id: item.get("state_fields", [])
-                    for item in entity_attribution["other_characters"]
-                    for character_id in [item.get("id")]
-                },
-                **({resolved_speaker_id: entity_attribution["speaking_character"].get("state_fields", [])}
-                   if resolved_speaker_id else {}),
-            }, ensure_ascii=False, indent=2),
+            json.dumps(shape, ensure_ascii=False, indent=2),
+            "Resource signals:",
+            json.dumps(signals, ensure_ascii=False, indent=2),
+            "Latest hidden turn facts:",
+            json.dumps(facts, ensure_ascii=False, indent=2),
+            "Context Builder blocks. Use the selected chapter, relevant resources, and authoritative runtime state for duplicate checks:",
+            *roleplay_context_prompt_sections(built_context),
             "Latest user or player message:",
             _text(user_message, 5000),
             "Latest in-character reply:",
@@ -4383,6 +5259,420 @@ def _legacy_director_patches(
     return patches[:80]
 
 
+def _normalize_turn_fact_entity_type(value: Any) -> str:
+    entity_type = _text(value, 40).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "npc": "character",
+        "role": "character",
+        "角色": "character",
+        "人物": "character",
+        "玩家": "player",
+        "player_character": "player",
+        "场景": "scene",
+    }
+    entity_type = aliases.get(entity_type, entity_type)
+    return entity_type if entity_type in DIRECTOR_TARGET_TYPES else ""
+
+
+def normalize_turn_facts(value: Any, *, turn_id: Any = "") -> dict[str, Any]:
+    source = _dict(value)
+    actions: list[dict[str, str]] = []
+    for item in _list(source.get("actions"), 24):
+        if not isinstance(item, dict):
+            continue
+        actor_type = _normalize_turn_fact_entity_type(
+            item.get("actor_entity_type") or item.get("actor_type")
+        )
+        target_type = _normalize_turn_fact_entity_type(
+            item.get("target_entity_type") or item.get("target_type")
+        )
+        action = _text(item.get("action"), 600)
+        result = _text(item.get("result"), 600)
+        if not action and not result:
+            continue
+        actions.append({
+            "actor_entity_type": actor_type,
+            "actor_entity_id": _text(item.get("actor_entity_id") or item.get("actor_id"), 160),
+            "target_entity_type": target_type,
+            "target_entity_id": _text(item.get("target_entity_id") or item.get("target_id"), 160),
+            "action": action,
+            "result": result,
+            "evidence": _text(item.get("evidence"), 600),
+        })
+
+    state_changes: list[dict[str, Any]] = []
+    for item in _list(source.get("state_changes"), 24):
+        if not isinstance(item, dict):
+            continue
+        target_type = _normalize_turn_fact_entity_type(
+            item.get("target_entity_type") or item.get("target_type")
+        )
+        target_id = _text(item.get("target_entity_id") or item.get("target_id"), 160)
+        summary = _text(item.get("summary") or item.get("result"), 800)
+        fields = [
+            field
+            for field in _clean_string_list(item.get("fields"), 12)
+            if field in DIRECTOR_PLAYER_FIELDS | DIRECTOR_CHARACTER_FIELDS | DIRECTOR_SCENE_FIELDS
+        ]
+        if not target_type or not target_id or (not summary and not fields):
+            continue
+        state_changes.append({
+            "target_entity_type": target_type,
+            "target_entity_id": target_id,
+            "fields": fields,
+            "summary": summary,
+            "evidence": _text(item.get("evidence"), 600),
+        })
+
+    appearance_changes: list[dict[str, str]] = []
+    for item in _list(source.get("appearance_changes"), 20):
+        if not isinstance(item, dict):
+            continue
+        target_type = _normalize_turn_fact_entity_type(
+            item.get("target_entity_type") or item.get("target_type")
+        )
+        target_id = _text(item.get("target_entity_id") or item.get("target_id"), 160)
+        description = _text(item.get("description") or item.get("appearance"), 1200)
+        if target_type not in {"player", "character"} or not target_id or not description:
+            continue
+        appearance_changes.append({
+            "target_entity_type": target_type,
+            "target_entity_id": target_id,
+            "description": description,
+            "evidence": _text(item.get("evidence"), 600),
+        })
+
+    return {
+        "turn_id": _text(turn_id or source.get("turn_id"), 200),
+        "summary": _text(source.get("summary"), 1200),
+        "actions": actions,
+        "state_changes": state_changes,
+        "appearance_changes": appearance_changes,
+        "scene_changes": _clean_string_list(source.get("scene_changes"), 20),
+        "durable_facts": _clean_string_list(source.get("durable_facts"), 20),
+        "unchanged_entity_ids": _clean_string_list(source.get("unchanged_entity_ids"), 20),
+    }
+
+
+def reconcile_turn_facts(
+    session: Any,
+    value: Any,
+    applied: Any,
+    *,
+    turn_id: Any = "",
+) -> dict[str, Any]:
+    normalized = normalize_roleplay_session(session)
+    facts = normalize_turn_facts(value, turn_id=turn_id)
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    character_ids = set(normalized.get("characters", {}))
+
+    def valid_entity(entity_type: str, entity_id: str, *, allow_empty: bool = False) -> bool:
+        if allow_empty and not entity_type and not entity_id:
+            return True
+        if entity_type == "player":
+            return entity_id == player_id
+        if entity_type == "character":
+            return entity_id in character_ids
+        if entity_type == "scene":
+            return entity_id == "scene"
+        return False
+
+    facts["actions"] = [
+        item
+        for item in facts.get("actions", [])
+        if valid_entity(item.get("actor_entity_type", ""), item.get("actor_entity_id", ""))
+        and valid_entity(
+            item.get("target_entity_type", ""),
+            item.get("target_entity_id", ""),
+            allow_empty=True,
+        )
+    ]
+
+    accepted: dict[tuple[str, str], dict[str, Any]] = {}
+    for patch in _list(applied, 80):
+        if not isinstance(patch, dict):
+            continue
+        entity_type = _normalize_turn_fact_entity_type(patch.get("target_entity_type"))
+        entity_id = _text(patch.get("target_entity_id"), 160)
+        field = _text(patch.get("field"), 120)
+        if not valid_entity(entity_type, entity_id) or not field:
+            continue
+        group = accepted.setdefault((entity_type, entity_id), {
+            "target_entity_type": entity_type,
+            "target_entity_id": entity_id,
+            "fields": [],
+            "evidence": [],
+            "appearance": "",
+        })
+        if field not in group["fields"]:
+            group["fields"].append(field)
+        evidence = _text(patch.get("evidence"), 600)
+        if evidence and evidence not in group["evidence"]:
+            group["evidence"].append(evidence)
+        if field == "appearance":
+            group["appearance"] = _text(patch.get("value"), 1200)
+
+    existing_changes = {
+        (item.get("target_entity_type"), item.get("target_entity_id")): item
+        for item in facts.get("state_changes", [])
+        if isinstance(item, dict)
+    }
+    facts["state_changes"] = []
+    facts["appearance_changes"] = []
+    for key, group in accepted.items():
+        previous = existing_changes.get(key, {})
+        evidence = _text(previous.get("evidence"), 600) or "；".join(group["evidence"])
+        summary = _text(previous.get("summary"), 800) or evidence
+        facts["state_changes"].append({
+            "target_entity_type": group["target_entity_type"],
+            "target_entity_id": group["target_entity_id"],
+            "fields": group["fields"],
+            "summary": summary,
+            "evidence": evidence,
+        })
+        if group["appearance"]:
+            facts["appearance_changes"].append({
+                "target_entity_type": group["target_entity_type"],
+                "target_entity_id": group["target_entity_id"],
+                "description": group["appearance"],
+                "evidence": evidence,
+            })
+
+    changed_ids = {entity_id for _, entity_id in accepted}
+    valid_ids = {player_id, *character_ids, "scene"}
+    facts["unchanged_entity_ids"] = [
+        entity_id
+        for entity_id in facts.get("unchanged_entity_ids", [])
+        if entity_id in valid_ids and entity_id not in changed_ids
+    ]
+    facts["scene_changes"] = [
+        _text(patch.get("evidence"), 600) or f"{_text(patch.get('field'), 120)}: {_text(patch.get('value'), 600)}"
+        for patch in _list(applied, 80)
+        if isinstance(patch, dict) and patch.get("target_entity_type") == "scene"
+    ][:20]
+    return facts
+
+
+def normalize_director_resource_signals(value: Any, session: Any = None) -> dict[str, Any]:
+    source = _dict(value)
+    normalized = normalize_roleplay_session(session or {})
+    summary_schedule = roleplay_summary_schedule(normalized)
+    visual_enabled = bool(normalized.get("visual_config", {}).get("enabled"))
+    summary_due = bool(summary_schedule.get("due"))
+    if summary_schedule.get("reason") == "missing_summary":
+        first_summary_turn = min(4, max(1, int(summary_schedule.get("interval") or 8)))
+        summary_due = int(summary_schedule.get("next_turn_count") or 0) >= first_summary_turn
+    return {
+        "memory": bool(source.get("memory")),
+        "world_book": bool(source.get("world_book")),
+        "chapter": bool(source.get("chapter")) or summary_due,
+        "visual": bool(source.get("visual")) and visual_enabled,
+        "reasons": _clean_string_list(source.get("reasons"), 12),
+        "summary_due": summary_due,
+    }
+
+
+def director_resource_update_needed(value: Any, session: Any = None) -> bool:
+    signals = normalize_director_resource_signals(value, session)
+    return any(signals.get(key) for key in ("memory", "world_book", "chapter", "visual"))
+
+
+def _director_turn_fact_state_text_patches(
+    value: Any,
+    session: Any = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    source = _dict(value)
+    normalized = normalize_roleplay_session(session or {})
+    persona_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    updates = _list(
+        source.get("state_text_updates")
+        or source.get("state_text_update")
+        or source.get("runtime_state_updates")
+        or source.get("state_updates"),
+        24,
+    )
+    for key, item in source.items():
+        match = re.fullmatch(r"(.+?)_state_text_update", _text(key, 200), re.IGNORECASE)
+        if not match or item in (None, "", [], {}):
+            continue
+        target_hint = _text(match.group(1), 160)
+        if isinstance(item, dict):
+            dynamic = dict(item)
+            dynamic.setdefault("target_entity_id", target_hint)
+        else:
+            dynamic = {
+                "target_entity_id": target_hint,
+                "new_state_text": item,
+            }
+        updates.append(dynamic)
+    for key, item in source.items():
+        if not isinstance(item, dict):
+            continue
+        nested_text = item.get("new_state_text") or item.get("state_text")
+        if nested_text in (None, ""):
+            continue
+        target_hint = _text(key, 160)
+        if target_hint.casefold() in {"player", "persona", "player_state"}:
+            target_hint = persona_id
+        if target_hint != persona_id and target_hint not in normalized.get("characters", {}):
+            continue
+        dynamic = dict(item)
+        dynamic.setdefault("target_entity_id", target_hint)
+        updates.append(dynamic)
+    patches: list[dict[str, Any]] = []
+    for item in updates:
+        if not isinstance(item, dict):
+            continue
+        target_id = _text(
+            item.get("target_entity_id")
+            or item.get("entity_id")
+            or item.get("character_id")
+            or item.get("target_id"),
+            160,
+        )
+        target_type = _normalize_turn_fact_entity_type(
+            item.get("target_entity_type") or item.get("entity_type") or item.get("target_type")
+        )
+        if not target_type:
+            if target_id == persona_id:
+                target_type = "player"
+            elif target_id in normalized.get("characters", {}):
+                target_type = "character"
+        if target_type == "player":
+            target_id = target_id or persona_id
+        elif target_type != "character" or target_id not in normalized.get("characters", {}):
+            continue
+        next_text = _text(
+            item.get("new_state_text")
+            or item.get("state_text")
+            or item.get("new_value")
+            or item.get("value")
+            or item.get("text"),
+            MAX_RUNTIME_STATE_TEXT,
+        )
+        if not next_text:
+            continue
+        patches.append({
+            "op": "replace",
+            "target_entity_type": target_type,
+            "target_entity_id": target_id,
+            "field": "state_text",
+            "value": next_text,
+            "evidence": _text(item.get("evidence") or item.get("reason"), 1200),
+        })
+    return patches, ["director_turn_fact_state_text_patch_normalized"] if patches else []
+
+
+def _normalize_director_patch_shapes(
+    value: Any,
+    session: Any = None,
+) -> tuple[list[Any], list[str]]:
+    normalized_session = normalize_roleplay_session(session or {})
+    patches: list[Any] = []
+    warnings: list[str] = []
+    for item in _list(value, 80):
+        if not isinstance(item, dict):
+            patches.append(item)
+            continue
+        patch = copy.deepcopy(item)
+        patch_action = _text(patch.get("action") or patch.get("op"), 40).lower().replace("-", "_")
+        if patch_action in {"keep", "unchanged", "no_change", "none", "skip", "ignore"}:
+            warnings.append("director_keep_patch_ignored")
+            continue
+        raw_field = _text(patch.get("field") or patch.get("target_field"), 160)
+        top_field_id = _text(patch.get("field_id") or patch.get("fieldId"), 160)
+        if not top_field_id and _is_state_field_id(raw_field):
+            top_field_id = raw_field
+        has_flat_value = any(
+            key in patch
+            for key in ("new_value", "newValue", "after", "to", "delta")
+        )
+        should_normalize = bool(top_field_id) and (
+            not raw_field
+            or raw_field == "state_fields"
+            or _is_state_field_id(raw_field)
+        ) and (has_flat_value or patch.get("value") not in (None, "", []))
+        if should_normalize:
+            if "delta" in patch and patch.get("delta") not in (None, ""):
+                entry = {"field_id": top_field_id, "delta": patch.get("delta")}
+            else:
+                flat_value = next(
+                    (
+                        patch.get(key)
+                        for key in ("new_value", "newValue", "after", "to", "value")
+                        if patch.get(key) not in (None, "")
+                    ),
+                    "",
+                )
+                entry = {"field_id": top_field_id, "value": flat_value}
+            label = _text(patch.get("label") or patch.get("name"), 120)
+            if label:
+                entry["label"] = label
+            patch["op"] = _text(patch.get("op") or patch.get("action"), 20) or "set"
+            patch["field"] = "state_fields"
+            patch["value"] = [entry]
+            patch["evidence"] = _text(
+                patch.get("evidence") or patch.get("reason") or patch.get("summary"),
+                1200,
+            )
+            for key in ("field_id", "fieldId", "new_value", "newValue", "after", "to", "delta", "action"):
+                patch.pop(key, None)
+            warnings.append("director_flat_state_field_patch_normalized")
+        descriptor = _director_raw_patch_target(normalized_session, patch)
+        if descriptor and descriptor[0][-1:] == ["state_fields"]:
+            path, _target = descriptor
+            schema = _state_field_schema_at_path(normalized_session["story_state"], path)
+            field_hint = _director_state_field_hint(patch.get("field") or patch.get("target_field"))
+            entries = _state_field_patch_entries(patch.get("value"), field_hint)
+            normalized_entries: list[dict[str, Any]] = []
+            for entry in entries:
+                field_id = _text(entry.get("field_id") or entry.get("fieldId"), 160)
+                label = _text(entry.get("label") or entry.get("name") or entry.get("key"), 120)
+                index = _state_field_match_index_by_id(schema, field_id)
+                if index is None:
+                    index = _state_field_match_index(schema, label or field_id, use_aliases=True)
+                if index is None:
+                    normalized_entries.append(entry)
+                    continue
+                existing = schema[index]
+                canonical_label = _text(existing.get("label"), 120)
+                normalized_entry = dict(entry)
+                normalized_entry["field_id"] = _state_field_id(canonical_label)
+                normalized_entry.pop("fieldId", None)
+                if label:
+                    normalized_entry["label"] = canonical_label
+                if "delta" not in normalized_entry:
+                    candidate = normalized_entry.get("value")
+                    if not _state_field_value_matches_semantics(canonical_label, candidate):
+                        warnings.append("director_state_field_semantic_mismatch_ignored")
+                        continue
+                    current_value = existing.get("value")
+                    current_type = _state_field_value_type(current_value)
+                    candidate_type = _state_field_value_type(candidate)
+                    if current_type in {"ratio", "percent", "number"} and candidate_type == "text":
+                        endpoint = _semantic_terminal_numeric_value(
+                            canonical_label,
+                            current_value,
+                            candidate,
+                        )
+                        if not endpoint:
+                            warnings.append("director_numeric_state_value_type_mismatch_ignored")
+                            continue
+                        normalized_entry["value"] = endpoint
+                        warnings.append("director_semantic_numeric_endpoint_normalized")
+                    elif current_type in {"ratio", "percent", "number"}:
+                        normalized_entry["value"] = _coerce_numeric_state_value(
+                            current_value,
+                            candidate,
+                        )
+                normalized_entries.append(normalized_entry)
+            if not normalized_entries:
+                continue
+            patch["value"] = normalized_entries
+        patches.append(patch)
+    return patches, list(dict.fromkeys(warnings))
+
+
 def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
     data = _extract_json_object(text)
     if not isinstance(data, dict):
@@ -4395,10 +5685,34 @@ def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
             "chapter_update": {},
             "visual_candidate": {},
             "chapter_summary": "",
+            "turn_facts": normalize_turn_facts({}),
+            "resource_signals": normalize_director_resource_signals({}, session),
             "warnings": ["director_response_not_json"],
         }
-    patches = _list(data.get("patches"), 80)
+    patches, patch_warnings = _normalize_director_patch_shapes(data.get("patches"), session)
+    state_text_patches, state_text_warnings = _director_turn_fact_state_text_patches(
+        data.get("turn_facts"),
+        session,
+    )
+    existing_state_text_targets = {
+        (
+            _text(item.get("target_entity_type"), 40),
+            _text(item.get("target_entity_id"), 160),
+        )
+        for item in patches
+        if isinstance(item, dict) and _text(item.get("field"), 160) == "state_text"
+    }
+    patches.extend(
+        item
+        for item in state_text_patches
+        if (
+            _text(item.get("target_entity_type"), 40),
+            _text(item.get("target_entity_id"), 160),
+        ) not in existing_state_text_targets
+    )
     warnings = _clean_string_list(data.get("warnings"), 30)
+    warnings.extend(patch_warnings)
+    warnings.extend(state_text_warnings)
     if not patches:
         legacy_patches = _legacy_director_patches(data, session)
         if legacy_patches:
@@ -4413,7 +5727,34 @@ def parse_director_response(text: Any, session: Any = None) -> dict[str, Any]:
         "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
         "visual_candidate": _dict(data.get("visual_candidate")),
         "chapter_summary": _text(data.get("chapter_summary"), 4000),
+        "turn_facts": normalize_turn_facts(data.get("turn_facts")),
+        "resource_signals": normalize_director_resource_signals(data.get("resource_signals"), session),
         "warnings": warnings,
+    }
+
+
+def parse_director_resource_response(text: Any) -> dict[str, Any]:
+    data = _extract_json_object(text)
+    if not isinstance(data, dict):
+        return {
+            "ok": False,
+            "memories": [],
+            "world_book_updates": [],
+            "memory_deletions": [],
+            "chapter_update": {},
+            "visual_candidate": {},
+            "chapter_summary": "",
+            "warnings": ["director_resource_response_not_json"],
+        }
+    return {
+        "ok": True,
+        "memories": _list(data.get("memories"), 20),
+        "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
+        "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
+        "chapter_update": _dict(data.get("chapter_update") or data.get("chapter")),
+        "visual_candidate": _dict(data.get("visual_candidate")),
+        "chapter_summary": _text(data.get("chapter_summary"), 4000),
+        "warnings": _clean_string_list(data.get("warnings"), 30),
     }
 
 
@@ -4539,6 +5880,375 @@ def build_director_state_repair_prompt(
             json.dumps(report.get("invalid_fields", []), ensure_ascii=False, indent=2),
             "Previous director JSON:",
             json.dumps(previous, ensure_ascii=False, indent=2),
+        ]
+    ).strip()
+
+
+_DIRECTOR_EMPTY_STATE_CHANGE_RE = re.compile(
+    r"(?:受伤|负伤|流血|出血|骨折|中毒|昏迷|晕倒|失去意识|失去知觉|死亡|死去|杀死|杀掉|复活|"
+    r"无法行动|不能行动|无法站立|无法站起|不能站立|不能站起|失去力量|被束缚|被限制|被按住|被压制|"
+    r"治疗|治愈|痊愈|恢复清醒|恢复意识|解除|破碎|碎裂|失效|消失|"
+    r"增加|减少|下降|上升|降低|提升|归零|清零|满值|最大值|变为|变成|成为|达到|"
+    r"穿上|脱下|换上|换成|衣物破损|外观改变|变身|变形|"
+    r"理智崩溃|精神崩溃|无法思考|失去理智|彻底堕落|完全堕落|臣服|失控|疯狂|"
+    r"麻痹|眩晕|虚弱|强化|削弱|怀孕|失明|失聪)",
+    re.IGNORECASE,
+)
+_DIRECTOR_EMPTY_STATE_EXPLICIT_VALUE_RE = re.compile(
+    r"(?:-?\d+(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?%?|归零|清零|满值|最大值)",
+    re.IGNORECASE,
+)
+_DIRECTOR_EMPTY_STATE_PLOT_EVENT_RE = re.compile(
+    r"(?:彻底|完全|终于|从此|再也|不再|放弃|屈服|服从|效忠|背叛|决裂|结盟|和解|"
+    r"交出|夺走|接过|丢弃|遗失|获得|装备|卸下|进入|离开|逃离|留下|"
+    r"瘫软|跪倒|倒下|僵住|沉睡|苏醒|遗忘|想起|被控制|摆脱控制|"
+    r"信任|怀疑|亲近|疏远|敌对|恐惧|憎恨|爱上|绝望|"
+    r"耗尽|枯竭|饱和|免疫|石化|冻结|燃烧|魅惑|沉默|禁魔|缴械)",
+    re.IGNORECASE,
+)
+_DIRECTOR_EMPTY_STATE_QUESTION_RE = re.compile(
+    r"(?:多少|几(?:点|级|次)|是不是|是否|当前是什么|现在是什么|吗|么|呢)\s*[？?]?\s*$|[？?]\s*$",
+    re.IGNORECASE,
+)
+
+
+def _director_state_review_field_catalog(session: Any) -> list[dict[str, str]]:
+    normalized = normalize_roleplay_session(session)
+    story_state = normalized.get("story_state", {})
+    player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
+    runtimes: list[tuple[str, str, dict[str, Any]]] = [
+        ("player", player_id, story_state.get("player_state", {})),
+    ]
+    runtimes.extend(
+        ("character", character_id, runtime)
+        for character_id, runtime in story_state.get("characters", {}).items()
+        if isinstance(runtime, dict)
+    )
+    catalog: list[dict[str, str]] = []
+    for entity_type, entity_id, runtime in runtimes:
+        for field in runtime.get("state_fields", []) if isinstance(runtime, dict) else []:
+            if not isinstance(field, dict):
+                continue
+            label = _text(field.get("label"), 120)
+            if not label:
+                continue
+            catalog.append({
+                "target_entity_type": entity_type,
+                "target_entity_id": entity_id,
+                "field_id": _state_field_id(label),
+                "label": label,
+                "current_value": _text(field.get("value"), 240),
+                "value_type": _state_field_value_type(field.get("value")),
+                "semantic_hint": _state_field_semantic_hint(label),
+            })
+    return catalog[:80]
+
+
+def _director_state_review_field_terms(session: Any) -> list[str]:
+    terms: list[str] = []
+    for field in _director_state_review_field_catalog(session):
+        label = field["label"]
+        terms.append(label)
+        stem = re.sub(r"(?:数值|点数|等级|状态|次数|百分比|值|度)$", "", label).strip()
+        if len(stem) >= 2:
+            terms.append(stem)
+    return list(dict.fromkeys(terms))
+
+
+def _director_state_review_snapshot(
+    session: Any,
+    source: Any = "",
+    speaker_id: Any = "",
+) -> dict[str, Any]:
+    normalized = normalize_roleplay_session(session)
+    story_state = normalized.get("story_state", {})
+    source_text = _text(source, 24000)
+    mentioned_ids = _director_entity_ids_in_text(normalized, source_text)
+    resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
+    present_ids = _clean_string_list(
+        story_state.get("scene", {}).get("present_character_ids"),
+        MAX_ROLEPLAY_CHARACTERS,
+    )
+    selected_character_ids: list[str] = []
+    for character_id in [*mentioned_ids, resolved_speaker_id, *present_ids]:
+        if (
+            character_id
+            and character_id in normalized.get("characters", {})
+            and character_id not in selected_character_ids
+        ):
+            selected_character_ids.append(character_id)
+        if len(selected_character_ids) >= 12:
+            break
+
+    def runtime_snapshot(runtime: Any) -> dict[str, Any]:
+        current = runtime if isinstance(runtime, dict) else {}
+        result: dict[str, Any] = {}
+        for field in (
+            "status",
+            "location",
+            "condition",
+            "appearance",
+            "state_text",
+            "emotion",
+            "current_action",
+            "inventory",
+            "goals",
+        ):
+            value = current.get(field)
+            if value in (None, "", [], {}):
+                continue
+            result[field] = _text(value, 1800 if field == "state_text" else 800)
+        result["state_fields"] = [
+            {
+                "field_id": _state_field_id(item.get("label")),
+                "label": _text(item.get("label"), 120),
+                "current_value": _text(item.get("value"), 240),
+                "value_type": _state_field_value_type(item.get("value")),
+                "semantic_hint": _state_field_semantic_hint(item.get("label")),
+            }
+            for item in _clean_state_fields(current.get("state_fields"))
+        ]
+        return result
+
+    persona = normalized.get("persona", {})
+    player_id = _text(persona.get("id"), 160) or "player"
+    characters = []
+    for character_id in selected_character_ids:
+        card = normalized.get("characters", {}).get(character_id, {})
+        characters.append({
+            "target_entity_type": "character",
+            "target_entity_id": character_id,
+            "name": _text(card.get("name"), 200) or character_id,
+            "runtime": runtime_snapshot(story_state.get("characters", {}).get(character_id, {})),
+        })
+
+    scene = story_state.get("scene", {})
+    return {
+        "player": {
+            "target_entity_type": "player",
+            "target_entity_id": player_id,
+            "name": _text(persona.get("name"), 200) or player_id,
+            "runtime": runtime_snapshot(story_state.get("player_state", {})),
+        },
+        "characters": characters,
+        "scene": {
+            "target_entity_type": "scene",
+            "target_entity_id": "scene",
+            "current": {
+                field: scene.get(field)
+                for field in DIRECTOR_SCENE_FIELDS
+                if scene.get(field) not in (None, "", [], {})
+            },
+        },
+    }
+
+
+def inspect_director_empty_state_result(
+    session: Any,
+    user_message: Any,
+    assistant_reply: Any,
+    director_result: Any,
+    *,
+    turn_intent: Any = "",
+    speaker_id: Any = "",
+) -> dict[str, Any]:
+    """Decide whether a valid empty director result deserves one semantic review."""
+    normalized = normalize_roleplay_session(session)
+    result = director_result if isinstance(director_result, dict) else {}
+    if not result.get("ok") or _list(result.get("patches"), 80):
+        return {"needs_review": False, "reasons": [], "mentioned_fields": []}
+    instruction = _text(user_message, 16000)
+    reply = _text(assistant_reply, 16000)
+    if _director_instruction_is_read_only(instruction) or _director_instruction_is_non_fact_command(instruction):
+        return {"needs_review": False, "reasons": [], "mentioned_fields": []}
+
+    reasons: list[str] = []
+    facts = normalize_turn_facts(result.get("turn_facts"))
+    if any(facts.get(key) for key in ("state_changes", "appearance_changes", "scene_changes")):
+        reasons.append("turn_facts_change_without_patch")
+    if any(
+        _text(item.get("result"), 600)
+        for item in facts.get("actions", [])
+        if isinstance(item, dict)
+    ):
+        reasons.append("turn_facts_action_result_without_patch")
+
+    source = "\n\n".join(item for item in (instruction, reply) if item)
+    source_folded = source.casefold()
+    reply_has_change_evidence = bool(
+        _DIRECTOR_EMPTY_STATE_CHANGE_RE.search(reply)
+        or _DIRECTOR_EMPTY_STATE_PLOT_EVENT_RE.search(reply)
+    )
+    if (
+        _DIRECTOR_EMPTY_STATE_QUESTION_RE.search(instruction)
+        and not _DIRECTOR_EMPTY_STATE_CHANGE_RE.search(instruction)
+        and not reply_has_change_evidence
+        and not reasons
+    ):
+        return {"needs_review": False, "reasons": [], "mentioned_fields": []}
+
+    field_catalog = _director_state_review_field_catalog(normalized)
+    mentioned_fields = [
+        term
+        for term in _director_state_review_field_terms(normalized)
+        if term.casefold() in source_folded
+    ]
+    if mentioned_fields and (
+        _DIRECTOR_EMPTY_STATE_EXPLICIT_VALUE_RE.search(source)
+        or _DIRECTOR_EMPTY_STATE_CHANGE_RE.search(source)
+    ):
+        reasons.append("existing_state_field_evidence")
+
+    effective_intent = normalize_roleplay_turn_intent(
+        turn_intent,
+        normalized.get("story_state", {}).get("player_state", {}),
+    )
+    entity_mentions = _director_entity_ids_in_text(normalized, source)
+    if _DIRECTOR_EMPTY_STATE_CHANGE_RE.search(source) and (
+        effective_intent == "story_control"
+        or bool(entity_mentions)
+        or bool(_director_resolve_speaker_id(normalized, speaker_id))
+    ):
+        reasons.append("semantic_state_change_evidence")
+    if field_catalog and effective_intent == "story_control" and (instruction or reply):
+        reasons.append("story_control_state_catalog_audit")
+    if field_catalog and _DIRECTOR_EMPTY_STATE_PLOT_EVENT_RE.search(source) and (
+        bool(entity_mentions)
+        or bool(_director_resolve_speaker_id(normalized, speaker_id))
+    ):
+        reasons.append("plot_event_state_catalog_audit")
+
+    return {
+        "needs_review": bool(reasons),
+        "reasons": list(dict.fromkeys(reasons)),
+        "mentioned_fields": mentioned_fields[:20],
+        "state_field_catalog": field_catalog[:30],
+    }
+
+
+def build_director_empty_state_review_prompt(
+    session: Any,
+    user_message: str,
+    assistant_reply: str,
+    previous_response: Any,
+    review: Any = None,
+    lang: str = "cn",
+    speaker_id: Any = "",
+    turn_intent: Any = "",
+) -> str:
+    """Build a second-pass semantic audit when the first director result was empty."""
+    normalized = normalize_roleplay_session(session)
+    previous = previous_response if isinstance(previous_response, dict) else {}
+    report = review if isinstance(review, dict) else {}
+    source = "\n\n".join(
+        item for item in (_text(user_message, 5000), _text(assistant_reply, 7000)) if item
+    )
+    snapshot = _director_state_review_snapshot(normalized, source, speaker_id)
+    field_catalog = report.get("state_field_catalog")
+    if not isinstance(field_catalog, list):
+        field_catalog = _director_state_review_field_catalog(normalized)
+    effective_intent = normalize_roleplay_turn_intent(
+        turn_intent,
+        normalized.get("story_state", {}).get("player_state", {}),
+    )
+    reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
+    shape = {
+        "patches": [{
+            "op": "set",
+            "target_entity_type": "character",
+            "target_entity_id": "<copy_exact_id>",
+            "field": "state_fields",
+            "value": [{"field_id": "<copy_exact_field_id>", "value": "<grounded_value>"}],
+            "evidence": "<latest exchange evidence>",
+        }, {
+            "op": "replace",
+            "target_entity_type": "character",
+            "target_entity_id": "<same_affected_entity_id>",
+            "field": "state_text",
+            "value": "<concise current snapshot when old state_text contradicts the new facts>",
+            "evidence": "<latest exchange evidence>",
+        }],
+        "turn_facts": {
+            "summary": "",
+            "actions": [],
+            "state_changes": [],
+            "appearance_changes": [],
+            "scene_changes": [],
+            "durable_facts": [],
+            "unchanged_entity_ids": [],
+        },
+        "resource_signals": {
+            "memory": False,
+            "world_book": False,
+            "chapter": False,
+            "visual": False,
+            "reasons": [],
+        },
+        "warnings": [],
+    }
+    critical_semantics = [
+        {
+            "target_entity_type": item.get("target_entity_type"),
+            "target_entity_id": item.get("target_entity_id"),
+            "field_id": item.get("field_id"),
+            "label": item.get("label"),
+            "semantic_hint": item.get("semantic_hint"),
+        }
+        for item in field_catalog[:40]
+        if isinstance(item, dict) and item.get("semantic_hint")
+    ]
+    contradiction_texts = [
+        {
+            "target_entity_type": item.get("target_entity_type"),
+            "target_entity_id": item.get("target_entity_id"),
+            "current_state_text": item.get("runtime", {}).get("state_text", ""),
+        }
+        for item in [snapshot.get("player", {}), *snapshot.get("characters", [])]
+        if isinstance(item, dict) and item.get("runtime", {}).get("state_text")
+    ]
+    return "\n\n".join(
+        [
+            "You are the focused second-pass state auditor for SimpAI Studio Roleplay mode.",
+            f"Return JSON only. Natural-language values and evidence use {reply_language}.",
+            "The previous director JSON was valid but contained no state patches. Perform one fresh semantic state audit.",
+            "An empty result may still be correct. Do not invent changes merely because this is a review.",
+            "Audit in this order: extract the established plot facts, identify each affected entity, compare those facts with its current runtime state, then map meaningful differences to state_text, appearance, scene fields, or an existing user-defined state field.",
+            "Interpret existing field labels by meaning and narrative consequence, not only by literal word overlap. Physical, mental, positional, action-capability, relationship, allegiance, appearance, condition, and other custom fields can change through semantically equivalent events.",
+            "Most state changes are expressed through story events rather than direct numeric assignments. A direct assignment is authoritative when present, but it is not required for a semantic state update.",
+            f"Effective narrative intent: {effective_intent}.",
+            "For story-control intent, treat the latest user instruction itself as authoritative evidence; it does not need to be repeated in the character reply.",
+            "If a bounded field reaches an explicitly stated terminal endpoint, use zero or the existing maximum as appropriate. If the amount is not explicit and no terminal endpoint is established, update state_text rather than inventing a number.",
+            "Text-valued state fields such as action ability, equipment, condition, allegiance, or position may be updated with a concise value directly established by the plot. Do not require a number for those fields.",
+            "For state_fields, copy field_id exactly from the catalog and send only changed entries. Never create, rename, or translate a field. Preserve an unchanged health or resource field.",
+            "Evaluate each field independently. Action ability means the capacity to move, think, or perform actions; do not write values such as controlled, obedient, loyal, or submissive into that field when the entity remains capable of acting.",
+            "If a changed field or plot fact contradicts the current state_text or condition, add a separate op=replace patch for state_text with a concise current snapshot. Do not preserve prose that says the entity still resists or can act normally after the new facts establish the opposite.",
+            "Use state_text when the plot establishes a meaningful current condition but no existing field is a valid semantic match. Use patches=[] only when this focused audit confirms no established state change.",
+            "Required JSON shape:",
+            json.dumps(shape, ensure_ascii=False),
+            "Relevant current runtime snapshot and exact target IDs:",
+            json.dumps(snapshot, ensure_ascii=False, indent=2),
+            "Writable state field catalog:",
+            json.dumps(field_catalog[:40], ensure_ascii=False, indent=2),
+            "Latest user or player message:",
+            _text(user_message, 5000),
+            "Latest in-character reply:",
+            _text(assistant_reply, 7000),
+            "Review triggers:",
+            json.dumps({
+                "reasons": _clean_string_list(report.get("reasons"), 20),
+                "mentioned_fields": _clean_string_list(report.get("mentioned_fields"), 20),
+            }, ensure_ascii=False, indent=2),
+            "Previous director JSON:",
+            json.dumps(previous, ensure_ascii=False, indent=2),
+            "Critical field semantics for the final validation:",
+            json.dumps(critical_semantics, ensure_ascii=False),
+            "Current state_text values that must be checked against the latest facts:",
+            json.dumps(contradiction_texts, ensure_ascii=False),
+            "Final validation before returning JSON:",
+            "1. Every patch targets the affected entity and an exact writable field.",
+            "2. Every changed custom field matches its own semantic dimension; unrelated fields remain unchanged.",
+            "3. Any current state_text that contradicts the new established facts is replaced in the same response. A response that changes a field while leaving opposite old prose untouched is invalid.",
+            "4. Direct numeric assignment is not required; plot consequences and unambiguous terminal states are valid evidence.",
         ]
     ).strip()
 
@@ -5069,7 +6779,10 @@ def _director_reuse_misclassified_player_target_ids(
             for character_id in character_mentions
             if _director_character_is_named_subject(normalized, patch_text, character_id)
         }
-        preferred = affected or named_subjects
+        # State text belongs to the entity experiencing it. A named character may
+        # only be the actor in wording such as "正被苏禾涂药". Named-subject
+        # fallback is reserved for current_action, where the actor is the target.
+        preferred = affected or (named_subjects if field == "current_action" else set())
         if len(preferred) != 1:
             continue
         resolved = next(iter(preferred))
@@ -5639,6 +7352,49 @@ _DIRECTOR_STATUS_CLEAR_RULES = (
 )
 
 
+def _director_condition_is_explicitly_ongoing(
+    value: Any,
+    keywords: tuple[str, ...],
+) -> bool:
+    source = _text(value, 4000)
+    if not source or not keywords:
+        return False
+    terms = "|".join(re.escape(item) for item in sorted(keywords, key=len, reverse=True))
+    clear_terms = r"(?:碎裂|破碎|打破|解除|清除|消失|失效|消散|结束|解毒|清醒|恢复)"
+    return bool(
+        re.search(
+            rf"(?:{terms})[^。！？!?；;\n]{{0,20}}"
+            rf"(?:并未|没有|没|未曾|尚未|还没|未)(?:被)?\s*{clear_terms}",
+            source,
+            re.IGNORECASE,
+        )
+        or re.search(
+            rf"(?:{terms})[^。！？!?；;\n]{{0,24}}"
+            r"(?:仍在|仍然|依然|依旧|继续|还在)[^。！？!?；;\n]{0,8}"
+            r"(?:持续|存在|生效|维持|保留)",
+            source,
+            re.IGNORECASE,
+        )
+        or re.search(
+            rf"(?:持续效果|当前状态|状态)[^。！？!?；;\n]{{0,16}}(?:仍为|仍是|依然是)"
+            rf"[^。！？!?；;\n]{{0,12}}(?:{terms})[^。！？!?；;\n]{{0,8}}(?:持续|存在|生效)",
+            source,
+            re.IGNORECASE,
+        )
+        or re.search(
+            rf"(?:{terms})[^.?!;\n]{{0,24}}(?:was\s+not|is\s+not|has\s+not\s+been)\s*"
+            r"(?:broken|removed|cleared|dispelled|ended)",
+            source,
+            re.IGNORECASE,
+        )
+        or re.search(
+            rf"(?:{terms})[^.?!;\n]{{0,24}}(?:remains?|continues?)\s+(?:active|present|in\s+effect)",
+            source,
+            re.IGNORECASE,
+        )
+    )
+
+
 def _director_control_target(
     normalized: dict[str, Any],
     source: str,
@@ -5800,9 +7556,33 @@ def _synthesize_director_control_updates(
     )
     if not location_match and not player_leave_request:
         location_match = re.search(
-            r"(?:直接|马上|立刻|一起|我们)?\s*(?:前往|赶往|赶到|回到|来到|移到|转到|直奔|进入|"
-            r"(?<!出)(?<!进)(?<!找)(?<!记)(?<!写)(?<!存)(?<!加)去|"
-            r"(?<!找)(?<!记)(?<!写)(?<!存)(?<!加)(?<!达)到)\s*"
+            r"(?:直接|马上|立刻|一起|我们)?\s*"
+            r"(?:前往|赶往|赶到|回到|来到|移到|转到|直奔|进入)\s*"
+            r"(?P<location>[^，,。！？!?；;\n]+)",
+            source,
+            re.IGNORECASE,
+        )
+    if not location_match and not player_leave_request:
+        movement_subject_aliases = {
+            "我", "我们", "你", "你们", "他", "他们", "她", "她们",
+            "玩家", "大家", "队伍", "众人",
+            _text(normalized.get("persona", {}).get("id"), 160),
+            *_director_name_aliases(normalized.get("persona", {}).get("name")),
+        }
+        for character_id, card in normalized.get("characters", {}).items():
+            movement_subject_aliases.update(_director_character_aliases(character_id, card))
+        movement_subject_pattern = "|".join(
+            re.escape(alias)
+            for alias in sorted(
+                {alias for alias in movement_subject_aliases if alias},
+                key=len,
+                reverse=True,
+            )
+        )
+        location_match = re.search(
+            rf"(?:^|[，,。！？!?；;\n])\s*"
+            rf"(?:(?:{movement_subject_pattern})\s*)?"
+            r"(?:直接|马上|立刻|一起)?\s*(?:去|到)\s*"
             r"(?P<location>[^，,。！？!?；;\n]+)",
             source,
             re.IGNORECASE,
@@ -5841,12 +7621,31 @@ def _synthesize_director_control_updates(
             default=-1,
         )
     )
-    if location_match and not location_delete_context and not re.search(r"(?:下一章|新章节|开新章)[^，,。！？!?；;\n]{0,8}$", source[:location_match.start()]):
+    location_future_context = False
+    if location_match:
+        clause_start = max(
+            source.rfind(token, 0, location_match.start())
+            for token in "。！？!?；;\n"
+        )
+        location_prefix = source[clause_start + 1:location_match.start()]
+        location_future_context = bool(re.search(
+            r"(?:下周(?:末)?|下个月|明天|后天|改天|以后|将来|未来|本周末|周末|"
+            r"星期[一二三四五六日天]|礼拜[一二三四五六日天]|计划|打算|约定|约好|答应|准备|想)",
+            location_prefix,
+            re.IGNORECASE,
+        ))
+    if (
+        location_match
+        and not location_delete_context
+        and not location_future_context
+        and not re.search(r"(?:下一章|新章节|开新章)[^，,。！？!?；;\n]{0,8}$", source[:location_match.start()])
+    ):
         location = re.sub(r"^(?:外面|里面|前面|后面|门外|门内|到|了)(?:的)?\s*", "", location_match.group("location"))
         location = re.sub(r"(?:看看|看一看|看一下|找[^，,。！？!?；;\n]*|检查[^，,。！？!?；;\n]*|"
                           r"排[^，,。！？!?；;\n]*的队|见面|集合|碰面|排队|等消息|等医生|值班|"
                           r"躲一会儿|守夜|吧|了|呢|上)$", "", location).strip()
-        add_scene_patch("location", location)
+        if not re.search(r"(?:哪里|哪儿|何处|什么地方|哪个地方|where)", location, re.IGNORECASE):
+            add_scene_patch("location", location)
 
     time_match = re.search(r"(?:把|将)?时间\s*(?:改成|改为|设为|设置为|调整为|变成)\s*([^，,。！？!?；;\n]+)", source, re.IGNORECASE)
     time_value = time_match.group(1).strip() if time_match else ""
@@ -6020,7 +7819,18 @@ def _synthesize_director_control_updates(
         warnings.append("director_control_player_present_synthesized")
 
     for rule in _DIRECTOR_STATUS_CLEAR_RULES:
-        if not rule["pattern"].search(source):
+        clear_matches = list(rule["pattern"].finditer(source))
+        if not clear_matches:
+            continue
+        clear_match = clear_matches[-1]
+        delimiters = "，,。！？!?；;\n"
+        left = max(source.rfind(token, 0, clear_match.start()) for token in delimiters)
+        right_candidates = [source.find(token, clear_match.end()) for token in delimiters]
+        right = min((item for item in right_candidates if item >= 0), default=len(source))
+        if _director_condition_is_explicitly_ongoing(
+            source[left + 1:right],
+            tuple(rule["keywords"]),
+        ):
             continue
         target = _director_control_target(normalized, source, speaker_id, tuple(rule["keywords"]))
         if not target:
@@ -6179,7 +7989,13 @@ def _synthesize_director_control_updates(
     return result, memories, world_updates, memory_deletions, warnings, chapter_update
 
 
-def _director_numeric_field_is_forbidden(value: Any, semantic_key: Any) -> bool:
+def _director_numeric_field_is_forbidden(
+    value: Any,
+    semantic_key: Any,
+    *,
+    normalized: dict[str, Any] | None = None,
+    target_id: Any = "",
+) -> bool:
     source = _text(value, 16000)
     semantic = _text(semantic_key, 80).casefold()
     aliases = _STATE_FIELD_ALIAS_GROUPS.get(semantic, set())
@@ -6188,18 +8004,60 @@ def _director_numeric_field_is_forbidden(value: Any, semantic_key: Any) -> bool:
     labels = "|".join(re.escape(item) for item in sorted(aliases, key=len, reverse=True) if item)
     if not labels:
         return False
-    return bool(
-        re.search(
-            rf"(?:{labels})[^。！？!?；;\n]{{0,18}}(?:不变|不要改|别改|不改|不重置|不猜|没有(?:说|提到|明确)|未(?:说|提到|明确))",
-            source,
-            re.IGNORECASE,
-        )
-        or re.search(
-            rf"(?:没有(?:说|提到|明确)|未(?:说|提到|明确)|别猜|不要猜|不猜|不要修改|不直接修改)[^。！？!?；;\n]{{0,18}}(?:{labels})",
-            source,
-            re.IGNORECASE,
-        )
+    no_change_pattern = re.compile(
+        r"(?:不变|不要改|别改|不改|不重置|不猜|别猜|不要猜|不要修改|不直接修改|"
+        r"没有(?:说|提到|明确)|未(?:说|提到|明确))",
+        re.IGNORECASE,
     )
+    target_key = _text(target_id, 160)
+
+    def restriction_targets(match: re.Match[str]) -> set[str]:
+        if not isinstance(normalized, dict) or not target_key:
+            return set()
+        no_change = no_change_pattern.search(match.group(0))
+        if not no_change:
+            return set()
+        position = match.start() + no_change.start()
+        delimiters = "，,。！？!?；;\n"
+        left = max(source.rfind(token, 0, position) for token in delimiters)
+        right_candidates = [source.find(token, position) for token in delimiters]
+        right = min((item for item in right_candidates if item >= 0), default=len(source))
+        segment = source[left + 1:right]
+        mentions = _director_entity_ids_in_text(normalized, segment)
+        if mentions or left < 0:
+            return mentions
+        previous_left = max(source.rfind(token, 0, left) for token in delimiters)
+        return _director_entity_ids_in_text(normalized, source[previous_left + 1:right])
+
+    patterns = (
+        re.compile(
+            rf"(?:{labels})[^。！？!?；;\n]{{0,18}}"
+            r"(?:不变|不要改|别改|不改|不重置|不猜|没有(?:说|提到|明确)|未(?:说|提到|明确))",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"(?:没有(?:说|提到|明确)|未(?:说|提到|明确)|别猜|不要猜|不猜|不要修改|不直接修改)"
+            rf"[^。！？!?；;\n]{{0,18}}(?:{labels})",
+            re.IGNORECASE,
+        ),
+    )
+    for pattern in patterns:
+        for match in pattern.finditer(source):
+            restricted_ids = restriction_targets(match)
+            if restricted_ids and target_key not in restricted_ids:
+                continue
+            return True
+
+    if isinstance(normalized, dict) and target_key:
+        for clause in re.split(r"[。！？!?；;\n]+", source):
+            if not no_change_pattern.search(clause):
+                continue
+            for segment in re.split(r"[，,]+", clause):
+                if not no_change_pattern.search(segment):
+                    continue
+                if target_key in _director_entity_ids_in_text(normalized, segment):
+                    return True
+    return False
 
 
 def _synthesize_director_condition_patches(
@@ -6239,6 +8097,7 @@ def _synthesize_director_condition_patches(
             condition_matches = list(re.finditer(term_pattern, clause, re.IGNORECASE))
             if not condition_matches:
                 continue
+            explicitly_ongoing = _director_condition_is_explicitly_ongoing(clause, tuple(terms))
             if re.search(
                 r"(?:解除|清除|消失|失效|破|碎|不再|没有|没了|无|未|不要|别|不加|不套|不受)",
                 clause,
@@ -6247,7 +8106,7 @@ def _synthesize_director_condition_patches(
                 r"(?:开始|出现|套|加|施加|附上|开启|生效|被|受到|陷入|变得|发生)",
                 clause,
                 re.IGNORECASE,
-            ):
+            ) and not explicitly_ongoing:
                 continue
             targets: set[str] = set()
             for condition_match in condition_matches:
@@ -6266,6 +8125,16 @@ def _synthesize_director_condition_patches(
             mentioned = _director_entity_ids_in_text(normalized, clause)
             if not targets and len(mentioned) == 1:
                 targets.update(mentioned)
+            if not targets and explicitly_ongoing:
+                existing_target = _director_control_target(
+                    normalized,
+                    source,
+                    speaker_id,
+                    tuple(terms),
+                )
+                if existing_target:
+                    _entity_type, entity_id, _runtime = existing_target
+                    targets.add(entity_id)
             targets.intersection_update({player_id, *present_ids})
             if targets:
                 allowed_by_key.setdefault(key, set()).update(targets)
@@ -6377,6 +8246,27 @@ def _director_instruction_is_read_only(value: Any) -> bool:
         return False
     if re.search(r"(?:\bOOC\b|（\s*OOC\s*）|\(\s*OOC\s*\))", source, re.IGNORECASE):
         return not re.search(r"(?:更新|修改|改变|设置|记录|删除|增加|减少|消耗|受伤|治疗)", source, re.IGNORECASE)
+    if re.search(
+        r"(?:只|仅)(?:引用|根据|使用|读取)[^。！？!?；;\n]{0,48}"
+        r"(?:刚才|之前|已经)?[^。！？!?；;\n]{0,24}(?:记下|记录|记忆|内容|世界书|设定|资料)",
+        source,
+        re.IGNORECASE,
+    ):
+        return True
+    resource_query = bool(re.search(
+        r"(?:查询|查一下|检索|读取|查看|回忆|还记得|记得吗|之前记下|刚才记下|根据记忆|"
+        r"根据世界书|根据设定)[^。！？!?；;\n]{0,48}(?:记忆|记录|约定|内容|世界书|设定|资料)?",
+        source,
+        re.IGNORECASE,
+    ))
+    resource_mutation = bool(re.search(
+        r"(?:写入|存入|加入|新增|删除|清除|移除|修改|更新)(?:长期)?(?:记忆|记录|世界书|设定|资料)"
+        r"|(?:记住|记下来|记录下来)\s*[:：]",
+        source,
+        re.IGNORECASE,
+    ))
+    if resource_query and not resource_mutation:
+        return True
     return bool(re.search(
         r"(?:只(?:聊|写(?:对话|回应)|回答)|不推进(?:剧情)?|不要推进(?:剧情)?|停在这里|到这里就好|"
         r"保持(?:当前|现在)(?:场景|状态|位置|关系)|不改(?:任何)?(?:状态|数值)|state\s+unchanged)",
@@ -6514,6 +8404,7 @@ def _synthesize_numeric_state_patches(
     )
     for path_tuple, updates in list(explicit_updates_by_path.items()):
         schema = _state_field_schema_at_path(normalized["story_state"], list(path_tuple))
+        path_target_id = player_id if path_tuple[0] == "player_state" else path_tuple[1]
         explicit_updates_by_path[path_tuple] = [
             update
             for update in updates
@@ -6522,6 +8413,8 @@ def _synthesize_numeric_state_patches(
                 or not _director_numeric_field_is_forbidden(
                     primary_text,
                     _state_field_semantic_key(schema[field_index].get("label")),
+                    normalized=normalized,
+                    target_id=path_target_id,
                 )
             )
         ]
@@ -6561,7 +8454,12 @@ def _synthesize_numeric_state_patches(
                     if authoritative_targets and path_target_id not in authoritative_targets:
                         removed_conflicting_numeric = True
                         continue
-                    if semantic_key and _director_numeric_field_is_forbidden(primary_text, semantic_key):
+                    if semantic_key and _director_numeric_field_is_forbidden(
+                        primary_text,
+                        semantic_key,
+                        normalized=normalized,
+                        target_id=path_target_id,
+                    ):
                         removed_forbidden_numeric = True
                         continue
                     kept_numeric_entries.append(entry)
@@ -6651,6 +8549,8 @@ def _synthesize_numeric_state_patches(
                         and not _director_numeric_field_is_forbidden(
                             primary_text,
                             _state_field_semantic_key(update.get("label")),
+                            normalized=normalized,
+                            target_id=path_target_id,
                         )
                     )
                 ]
@@ -7091,6 +8991,8 @@ def _director_patch_target(
             and explicit_path[-1:] == [requested_field]
         ):
             return path, target, warnings
+    if requested_id == speaker and re.search(r"(?:自己|本人|自身)", patch_text, re.IGNORECASE):
+        return path, target, warnings
     mentions = _director_entity_mentions(normalized, patch_text)
     player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
     other_entity_ids = {
@@ -7532,6 +9434,28 @@ def apply_director_result(
                     "field": target.get("field", ""),
                 })
             applied.append(applied_patch)
+    turn_facts = reconcile_turn_facts(
+        normalized,
+        result.get("turn_facts"),
+        applied,
+        turn_id=turn_id,
+    )
+    if any(
+        turn_facts.get(key)
+        for key in (
+            "summary",
+            "actions",
+            "state_changes",
+            "appearance_changes",
+            "scene_changes",
+            "durable_facts",
+            "unchanged_entity_ids",
+        )
+    ):
+        state["recent_turn_facts"] = [
+            *[item for item in _list(state.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS) if isinstance(item, dict)],
+            turn_facts,
+        ][-MAX_RECENT_TURN_FACTS:]
     resource_changes.extend(_apply_world_book_updates(normalized, result.get("world_book_updates")))
     memory_store = normalize_memory_store(normalized.get("memory_store"), state.get("memories"))
     memories = memory_store["items"]
@@ -7613,6 +9537,11 @@ def apply_director_result(
             "state_version_after": state["state_version"],
             "patches": applied,
             "resource_changes": resource_changes,
+            "turn_facts": turn_facts,
+            "resource_signals": normalize_director_resource_signals(
+                result.get("resource_signals"),
+                normalized,
+            ),
             "evidence_message_ids": _clean_string_list(evidence_message_ids, 20),
             "created_at": _now(),
         },
@@ -7834,7 +9763,7 @@ def _skill_character_patches(session: dict[str, Any], payload: dict[str, Any]) -
 
 def _skill_player_state_patches(payload: dict[str, Any]) -> list[dict[str, Any]]:
     runtime = payload.get("state") if isinstance(payload.get("state"), dict) else payload
-    allowed = {"status", "state_text", "state_fields"}
+    allowed = {"status", "appearance", "state_text", "state_fields"}
     return [
         {"op": "set", "path": f"player_state.{key}", "value": runtime.get(key)}
         for key in allowed
@@ -8045,6 +9974,8 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
     memory_deletions: list[str] = []
     chapter_summary = ""
     chapter_update: dict[str, Any] = {}
+    turn_facts: dict[str, Any] = {}
+    resource_signals: dict[str, Any] = {}
     if action == "create_scene":
         patches = _skill_scene_patches(payload, replace_id=True)
     elif action in {"transition_scene", "update_scene"}:
@@ -8057,6 +9988,8 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
         memory_deletions = _clean_string_list(payload.get("memory_deletions"), MAX_MEMORY_ITEMS)
         chapter_update = _dict(payload.get("chapter_update"))
         chapter_summary = _text(payload.get("chapter_summary"), 4000)
+        turn_facts = _dict(payload.get("turn_facts"))
+        resource_signals = _dict(payload.get("resource_signals"))
     elif action == "advance_time":
         if "time" in payload or "to" in payload:
             patches = [{"op": "set", "path": "scene.time", "value": payload.get("time", payload.get("to"))}]
@@ -8130,6 +10063,8 @@ def execute_roleplay_skill(session: Any, request: Any) -> dict[str, Any]:
             "memory_deletions": memory_deletions,
             "chapter_update": chapter_update,
             "chapter_summary": chapter_summary,
+            "turn_facts": turn_facts,
+            "resource_signals": resource_signals,
             "warnings": _clean_string_list(payload.get("warnings"), 30),
         },
         turn_id=turn_id,
@@ -9011,6 +10946,7 @@ def build_character_appearance_generation_action(
         "image_number": 1,
         "roleplay_state_image": True,
         "appearance_character_id": target_id,
+        "appearance_request": request,
         "session_id": normalized["id"],
         "branch_id": normalized["active_branch_id"],
         "state_version": normalized["state_version"],
@@ -9217,6 +11153,7 @@ def apply_current_appearance_assets(
     character_id: Any,
     asset_ids: Any,
     *,
+    appearance: Any = "",
     turn_id: str = "",
     expected_state_version: Any = None,
 ) -> dict[str, Any]:
@@ -9247,6 +11184,9 @@ def apply_current_appearance_assets(
         _normalize_character_runtime(None),
     )
     runtime["current_appearance_asset_ids"] = ids
+    appearance_text = _text(appearance, 1200)
+    if appearance_text:
+        runtime["appearance"] = appearance_text
     runtime["appearance_revision"] = max(0, int(runtime.get("appearance_revision") or 0)) + 1
     runtime["appearance_updated_turn_id"] = _text(turn_id, 200)
     normalized["story_state"]["state_version"] = normalized["state_version"] + 1
@@ -9575,6 +11515,9 @@ __all__ = [
     "normalize_chapter_store",
     "query_roleplay_memories",
     "roleplay_context_resources",
+    "roleplay_context_limits",
+    "build_roleplay_context",
+    "roleplay_context_prompt_sections",
     "normalize_speaker_mode",
     "state_summary",
     "visible_state_for_actor",
@@ -9585,9 +11528,17 @@ __all__ = [
     "build_speaker_plan_prompt",
     "parse_speaker_plan_response",
     "build_director_prompt",
+    "build_director_resource_prompt",
     "build_director_state_repair_prompt",
+    "build_director_empty_state_review_prompt",
     "parse_director_response",
+    "parse_director_resource_response",
+    "normalize_turn_facts",
+    "reconcile_turn_facts",
+    "normalize_director_resource_signals",
+    "director_resource_update_needed",
     "inspect_director_state_fields",
+    "inspect_director_empty_state_result",
     "apply_director_result",
     "execute_roleplay_skill",
     "build_visual_snapshot",

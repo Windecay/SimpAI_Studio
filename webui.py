@@ -16444,6 +16444,19 @@ async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
 
     payload = payload if isinstance(payload, dict) else {}
     events = _queue.Queue()
+    stream_id = f"vlm-chat-stream-{uuid.uuid4().hex[:10]}"
+    stream_started = time.monotonic()
+    conversation_id = str(payload.get("conversation_id") or "").strip()[:160]
+    request_id = str(payload.get("request_id") or "").strip()[:160]
+    request_kind = str(payload.get("request_kind") or payload.get("roleplay_request_kind") or "").strip()[:80]
+    heartbeat_seconds = 15.0
+    logger.info(
+        "Describe Image VLM chat stream request received: stream_id=%s conversation_id=%s request_id=%s request_kind=%s",
+        stream_id,
+        conversation_id,
+        request_id,
+        request_kind,
+    )
 
     def emit_delta(delta):
         if isinstance(delta, dict):
@@ -16469,6 +16482,13 @@ async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
                     "failure_stage": "vlm_runtime",
                 }
             events.put({"type": "result", "result": result})
+            logger.info(
+                "Describe Image VLM chat stream result ready: stream_id=%s elapsed=%.3fs ok=%s actions=%s",
+                stream_id,
+                time.monotonic() - stream_started,
+                result.get("ok"),
+                len(result.get("limited_actions") or []),
+            )
         except Exception as exc:
             logger.exception("Describe Image VLM chat streaming exception")
             events.put({
@@ -16484,9 +16504,38 @@ async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
     threading.Thread(target=worker, name="describe-vlm-chat-stream", daemon=True).start()
 
     async def event_stream():
+        yield ": connected\n\n"
         while True:
-            event = await run_in_threadpool(events.get)
-            yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n"
+            try:
+                event = await run_in_threadpool(events.get, True, heartbeat_seconds)
+            except _queue.Empty:
+                yield ": heartbeat\n\n"
+                continue
+            try:
+                serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+            except Exception as exc:
+                logger.exception(
+                    "Describe Image VLM chat stream serialization failed: stream_id=%s",
+                    stream_id,
+                )
+                event = {
+                    "type": "result",
+                    "result": {
+                        "ok": False,
+                        "error": "Describe Image VLM streaming serialization error",
+                        "details": str(exc),
+                        "failure_stage": "response_serialization",
+                    },
+                }
+                serialized = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+            if event.get("type") == "result":
+                logger.info(
+                    "Describe Image VLM chat stream completed: stream_id=%s elapsed=%.3fs response_chars=%s",
+                    stream_id,
+                    time.monotonic() - stream_started,
+                    len(serialized),
+                )
+            yield f"data: {serialized}\n\n"
             if event.get("type") == "result":
                 break
 
@@ -16628,6 +16677,7 @@ async def describe_image_vlm_roleplay_character_reference_apply_endpoint(payload
             session,
             payload.get("character_id"),
             payload.get("asset_ids") or payload.get("asset_id"),
+            appearance=payload.get("appearance") or payload.get("appearance_request"),
             turn_id=payload.get("turn_id") or "",
             expected_state_version=payload.get("expected_state_version"),
         )

@@ -1610,8 +1610,11 @@ def canvas_vlm_run(payload, stream_callback=None):
         system_prompt = params.get("system_prompt")
         if system_prompt is not None and str(system_prompt).strip():
             system_text = str(system_prompt).strip()
-            system_ratio = 0.75 if str(params.get("describe_chat_mode") or "").strip().lower() == "guide" else 0.5
-            max_system = max(1200, min(5000, int(text_budget * system_ratio)))
+            chat_mode_key = str(params.get("describe_chat_mode") or "").strip().lower()
+            roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
+            system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
+            system_cap = 16000 if roleplay_system else 5000
+            max_system = max(1200, min(system_cap, int(text_budget * system_ratio)))
             system_text = canvas_vlm_agent._canvas_vlm_stateless_system_prompt_text(system_text, max_system)
         if isolate_history:
             sections.append(
