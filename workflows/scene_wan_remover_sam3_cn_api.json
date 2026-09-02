@@ -988,16 +988,19 @@
   },
   "252": {
     "inputs": {
-      "value": "max(1, round(a*b))",
+      "value": "max(1, round(a*b/c))",
       "a": [
         "218",
-        7
+        6
       ],
       "b": [
         "226",
         0
       ],
-      "c": 0
+      "c": [
+        "218",
+        5
+      ]
     },
     "class_type": "SimpleMath+",
     "_meta": {
@@ -1030,15 +1033,12 @@
   },
   "254": {
     "inputs": {
-      "value": "max(1, round(a*b))",
+      "value": "max(1, round(a))",
       "a": [
         "218",
-        7
+        6
       ],
-      "b": [
-        "218",
-        5
-      ],
+      "b": 0,
       "c": 0
     },
     "class_type": "SimpleMath+",
@@ -1086,7 +1086,7 @@
   "257": {
     "inputs": {
       "images": [
-        "98",
+        "259",
         0
       ],
       "time_scale_factor": 4
@@ -1107,6 +1107,30 @@
     "class_type": "SimpleMath+",
     "_meta": {
       "title": "Remover Sampling Frame Count"
+    }
+  },
+  "259": {
+    "inputs": {
+      "images": [
+        "98",
+        0
+      ],
+      "target_frame_count": [
+        "65",
+        1
+      ],
+      "source_fps": [
+        "218",
+        5
+      ],
+      "target_fps": [
+        "218",
+        5
+      ]
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {
+      "title": "Remover Mask Source Frame Align"
     }
   }
 }

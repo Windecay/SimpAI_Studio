@@ -12,6 +12,7 @@ from starlette.responses import Response
 
 _APP_TREE_PATCHED_SENTINEL = "simpleai_node_index_cache"
 _IMAGE_DROP_CUSTOM_URL_SENTINEL = "simpleai_image_drop_custom_url"
+_GRADIO_CONNECTION_RELOAD_PATCHED_SENTINEL = "simpleai_gradio_connection_recovered"
 _APP_TREE_CHILDREN_ASSIGNMENT = "\t\tn.children = subtree.children;\n"
 _APP_TREE_ORIGINAL_LOOKUP = """function find_node_by_id(tree, id) {
 \tif (tree.id === id) {
@@ -66,9 +67,37 @@ _IMAGE_UPLOAD_CLEAR_ORIGINAL_HANDLER = """    if ($$self.$$.dirty[0] & /*uploadi
 _IMAGE_UPLOAD_CLEAR_ORIGINAL_HANDLER_SVELTE5 = """\tlegacy_pre_effect(() => (deep_read_state(uploading()), get(active_streaming)), () => {
 \t\tif (uploading() && !get(active_streaming)) value(null);
 \t});"""
+_GRADIO_CONNECTION_RELOAD_ORIGINAL = """\t\t\t\t\tif (status === "connected" || status === "changed") {
+\t\t\t\t\t\tclearInterval(reconnect_interval);
+\t\t\t\t\t\treconnect_interval = null;
+\t\t\t\t\t\twindow.location.reload();
+\t\t\t\t\t}"""
+_GRADIO_CONNECTION_RELOAD_PATCHED = """\t\t\t\t\tif (status === "connected" || status === "changed") {
+\t\t\t\t\t\tclearInterval(reconnect_interval);
+\t\t\t\t\t\treconnect_interval = null;
+\t\t\t\t\t\tconst simpleai_gradio_connection_recovered = {
+\t\t\t\t\t\t\tstatus,
+\t\t\t\t\t\t\tvisibility: document.visibilityState,
+\t\t\t\t\t\t\trecovered_at: Date.now(),
+\t\t\t\t\t\t\tauto_reload: false
+\t\t\t\t\t\t};
+\t\t\t\t\t\ttry {
+\t\t\t\t\t\t\tglobalThis.SimpAIStudioPerformance?.mark?.(
+\t\t\t\t\t\t\t\t"gradio.connection_recovered",
+\t\t\t\t\t\t\t\tsimpleai_gradio_connection_recovered,
+\t\t\t\t\t\t\t\t{ urgent: true }
+\t\t\t\t\t\t\t);
+\t\t\t\t\t\t} catch (_) {}
+\t\t\t\t\t\ttry {
+\t\t\t\t\t\t\twindow.dispatchEvent(new CustomEvent("simpai:gradio-reconnect-required", {
+\t\t\t\t\t\t\t\tdetail: simpleai_gradio_connection_recovered
+\t\t\t\t\t\t\t}));
+\t\t\t\t\t\t} catch (_) {}
+\t\t\t\t\t}"""
 _APP_TREE_PATCH_CACHE: dict[tuple[str, int, int], str] = {}
 _IMAGE_DROP_PATCH_CACHE: dict[tuple[str, int, int], str] = {}
-_GRADIO_JS_PATCH_CACHE: dict[tuple[str, int, int], str] = {}
+_GRADIO_CONNECTION_RELOAD_PATCH_CACHE: dict[tuple[str, int, int], str] = {}
+_GRADIO_JS_PATCH_CACHE: dict[tuple[object, ...], str] = {}
 _GRADIO_JS_PATCH_READER_CACHE: dict[str, Callable[[Path], str | None]] | None = None
 _BLOCK_GET_CONFIG_COMPAT_SENTINEL = "_simpai_gradio6_block_get_config_compat"
 
@@ -85,6 +114,12 @@ def _app_tree_patch_disabled() -> bool:
 
 def _image_drop_patch_disabled() -> bool:
     return _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
+
+
+def _connection_reload_patch_disabled() -> bool:
+    return _env_flag_enabled("SIMPAI_DISABLE_GRADIO_CONNECTION_RELOAD_PATCH") or _env_flag_enabled(
+        "SIMPAI_DISABLE_GRADIO_ASSET_PATCHES"
+    )
 
 
 def _asset_needs_app_tree_patch(text: str) -> bool:
@@ -112,6 +147,13 @@ def _asset_needs_image_drop_patch(text: str) -> bool:
             )
             and _IMAGE_UPLOAD_KEEP_SENTINEL not in text
         )
+    )
+
+
+def _asset_needs_connection_reload_patch(text: str) -> bool:
+    return (
+        _GRADIO_CONNECTION_RELOAD_ORIGINAL in text
+        and _GRADIO_CONNECTION_RELOAD_PATCHED_SENTINEL not in text
     )
 
 
@@ -485,6 +527,17 @@ def _patch_image_drop_asset(text: str) -> str:
     return text
 
 
+def _patch_connection_reload_asset(text: str) -> str:
+    """Require an explicit reconnect action after Gradio loses its queue stream."""
+    if not _asset_needs_connection_reload_patch(text):
+        return text
+    return text.replace(
+        _GRADIO_CONNECTION_RELOAD_ORIGINAL,
+        _GRADIO_CONNECTION_RELOAD_PATCHED,
+        1,
+    )
+
+
 def _read_patched_app_tree_asset(path: Path) -> str | None:
     try:
         stat = path.stat()
@@ -521,15 +574,49 @@ def _read_patched_image_drop_asset(path: Path) -> str | None:
         return None
 
 
-def _read_patched_gradio_js_asset(path: Path) -> str | None:
+def _read_patched_connection_reload_asset(path: Path) -> str | None:
     try:
         stat = path.stat()
         cache_key = (str(path), int(stat.st_mtime_ns), int(stat.st_size))
+        cached = _GRADIO_CONNECTION_RELOAD_PATCH_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        text = path.read_text(encoding="utf-8")
+        patched = _patch_connection_reload_asset(text)
+        if patched == text:
+            return None
+        _GRADIO_CONNECTION_RELOAD_PATCH_CACHE.clear()
+        _GRADIO_CONNECTION_RELOAD_PATCH_CACHE[cache_key] = patched
+        return patched
+    except Exception:
+        return None
+
+
+def _read_patched_gradio_js_asset(path: Path) -> str | None:
+    try:
+        stat = path.stat()
+        app_tree_disabled = _app_tree_patch_disabled()
+        image_drop_disabled = _image_drop_patch_disabled()
+        connection_reload_disabled = _connection_reload_patch_disabled()
+        cache_key = (
+            str(path),
+            int(stat.st_mtime_ns),
+            int(stat.st_size),
+            app_tree_disabled,
+            image_drop_disabled,
+            connection_reload_disabled,
+        )
         cached = _GRADIO_JS_PATCH_CACHE.get(cache_key)
         if cached is not None:
             return cached
         text = path.read_text(encoding="utf-8")
-        patched = _patch_image_drop_asset(_patch_app_tree_asset(text))
+        patched = text
+        if not app_tree_disabled:
+            patched = _patch_app_tree_asset(patched)
+        if not image_drop_disabled:
+            patched = _patch_image_drop_asset(patched)
+        if not connection_reload_disabled:
+            patched = _patch_connection_reload_asset(patched)
         if patched == text:
             return None
         _GRADIO_JS_PATCH_CACHE.clear()
@@ -542,7 +629,8 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
 def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None]]:
     app_tree_disabled = _app_tree_patch_disabled()
     image_drop_disabled = _image_drop_patch_disabled()
-    if app_tree_disabled and image_drop_disabled:
+    connection_reload_disabled = _connection_reload_patch_disabled()
+    if app_tree_disabled and image_drop_disabled and connection_reload_disabled:
         return {}
 
     try:
@@ -560,12 +648,18 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
             continue
         needs_app_tree = not app_tree_disabled and _asset_needs_app_tree_patch(text)
         needs_image_drop = not image_drop_disabled and _asset_needs_image_drop_patch(text)
-        if needs_app_tree and needs_image_drop:
+        needs_connection_reload = (
+            not connection_reload_disabled and _asset_needs_connection_reload_patch(text)
+        )
+        patch_count = sum((needs_app_tree, needs_image_drop, needs_connection_reload))
+        if patch_count > 1:
             readers[path.name] = _read_patched_gradio_js_asset
         elif needs_app_tree:
             readers[path.name] = _read_patched_app_tree_asset
         elif needs_image_drop:
             readers[path.name] = _read_patched_image_drop_asset
+        elif needs_connection_reload:
+            readers[path.name] = _read_patched_connection_reload_asset
     return readers
 
 
@@ -630,8 +724,10 @@ def describe_gradio_runtime_patches() -> dict:
             patch_name = "app_tree"
         elif reader is _read_patched_image_drop_asset:
             patch_name = "image_drop_replace"
+        elif reader is _read_patched_connection_reload_asset:
+            patch_name = "connection_reload"
         elif reader is _read_patched_gradio_js_asset:
-            patch_name = "app_tree+image_drop_replace"
+            patch_name = "combined"
         else:
             patch_name = getattr(reader, "__name__", "unknown")
         entries.append({"asset": asset_name, "patch": patch_name, "reader": getattr(reader, "__name__", "")})
@@ -642,6 +738,7 @@ def describe_gradio_runtime_patches() -> dict:
             "all": _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES"),
             "app_tree": _app_tree_patch_disabled(),
             "image_drop_replace": _image_drop_patch_disabled(),
+            "connection_reload": _connection_reload_patch_disabled(),
         },
         "patch_count": len(entries),
         "patches": entries,

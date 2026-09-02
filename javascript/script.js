@@ -46,6 +46,44 @@ function simpaiUiTrace(level, ...args) {
     } catch (e) {}
 }
 
+(function initSimpleAISam3EmptyUploadClickBridge() {
+    if (window.__simpleaiSam3EmptyUploadClickBridge) return;
+    window.__simpleaiSam3EmptyUploadClickBridge = true;
+
+    const handleSam3EmptyUploadClick = (event) => {
+        if (!event.isTrusted || event.defaultPrevented || event.button !== 0) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const root = target.closest("#sam3_input_video, #sam3_output_mask_video");
+        if (!root) return;
+        const button = target.closest("button");
+        const uploadContainer = button?.closest(".upload-container");
+        if (!button || button.disabled || !uploadContainer || !root.contains(uploadContainer)) return;
+
+        const input = uploadContainer.querySelector('input[type="file"]');
+        if (!input || input.disabled || !input.isConnected || target === input || input.contains(target)) return;
+
+        try {
+            input.click();
+        } catch (error) {
+            simpaiUiTrace("warn", "[UI-TRACE] sam3.empty_upload_click_bridge.failed", {
+                component: root.id || "",
+                error: String(error || ""),
+            });
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        simpaiUiTrace("log", "[UI-TRACE] sam3.empty_upload_click_bridge.opened", {
+            component: root.id || "",
+        });
+    };
+
+    window.addEventListener("click", handleSam3EmptyUploadClick, true);
+})();
+
 function simpleaiDisableHoverPreviewsForInput() {
     try {
         const coarsePrimary = !!window.matchMedia?.('(pointer: coarse)')?.matches;
@@ -3747,10 +3785,6 @@ document.addEventListener("DOMContentLoaded", function() {
         return normalized.length > 0 && normalized.every((value) => value.includes('sam3'));
     }
 
-    function sceneFrontendHasSam3Option(sceneFrontend) {
-        return sceneFrontendSam3Values(sceneFrontend).some((value) => value.includes('sam3'));
-    }
-
     function sceneTaskMethodNeedsThemeMatch(sceneFrontend) {
         const raw = sceneFrontend?.task_method;
         return Array.isArray(raw) || !!(raw && typeof raw === 'object');
@@ -3777,14 +3811,14 @@ document.addEventListener("DOMContentLoaded", function() {
         const rawEnabled = sceneFrontend?.divisible;
         const enabled = new Set(Array.isArray(rawEnabled) ? rawEnabled.map(String) : []);
         const inputsExplicitlyEnabled = ['sam3_input_video', 'sam3_mask_video'].some((key) => enabled.has(key));
-        const byTheme = sceneTaskMethodForTheme(sceneFrontend, theme);
-        if (byTheme.known) return byTheme.value.toLowerCase().includes('sam3') || inputsExplicitlyEnabled;
         const selected = sceneSelectedThemeValue();
-        if (sceneFrontendAllThemesSam3(sceneFrontend || {})) return true;
-        const hasSam3Option = sceneFrontendHasSam3Option(sceneFrontend || {});
-        if (selected && hasSam3Option && !sceneThemeBelongsToFrontend(sceneFrontend, selected)) {
+        // The selected radio already belongs to the new preset when an older state callback arrives late.
+        if (selected && !sceneThemeBelongsToFrontend(sceneFrontend, selected)) {
             return selected.toLowerCase().includes('sam3');
         }
+        const byTheme = sceneTaskMethodForTheme(sceneFrontend, theme);
+        if (byTheme.known) return byTheme.value.toLowerCase().includes('sam3') || inputsExplicitlyEnabled;
+        if (sceneFrontendAllThemesSam3(sceneFrontend || {})) return true;
         const fallbackTask = sceneTaskMethodNeedsThemeMatch(sceneFrontend || {})
             ? ''
             : sceneTaskMethodValue(sceneFrontend, theme, params).toLowerCase();

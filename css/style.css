@@ -23180,7 +23180,9 @@ button[aria-label="Edit"][title="Edit"] {
   padding: 0;
 }
 
-.describe-vlm-chat-roleplay-context-toggle {
+.describe-vlm-chat-roleplay-context-viewer > button.describe-vlm-chat-roleplay-context-toggle {
+  -webkit-appearance: none;
+  appearance: none;
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
   align-items: center;
@@ -23189,13 +23191,28 @@ button[aria-label="Edit"][title="Edit"] {
   min-height: 38px;
   padding: 7px 9px;
   cursor: pointer;
-  border: 0;
+  border: 0 !important;
   border-radius: 0;
-  background: transparent;
-  color: inherit;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
   font: inherit;
   letter-spacing: 0;
   text-align: left;
+}
+
+.describe-vlm-chat-roleplay-context-viewer[data-roleplay-context-empty="true"] > .describe-vlm-chat-roleplay-context-toggle {
+  min-height: 34px;
+  cursor: default;
+  opacity: 1;
+}
+
+.describe-vlm-chat-roleplay-context-viewer[data-roleplay-context-empty="true"] > .describe-vlm-chat-roleplay-context-toggle:hover {
+  background: transparent !important;
+}
+
+.describe-vlm-chat-roleplay-context-viewer[data-roleplay-context-empty="true"] .describe-vlm-chat-roleplay-context-chevron {
+  display: none;
 }
 
 .describe-vlm-chat-roleplay-context-viewer[data-roleplay-context-expanded="true"] > .describe-vlm-chat-roleplay-context-toggle {
@@ -23980,6 +23997,12 @@ button[aria-label="Edit"][title="Edit"] {
     grid-column: 1 / -1;
     grid-row: 2;
     text-align: left;
+  }
+
+  .describe-vlm-chat-roleplay-context-viewer[data-roleplay-context-empty="true"] .describe-vlm-chat-roleplay-context-toggle > small {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
   }
 
   .describe-vlm-chat-roleplay-context-chevron {

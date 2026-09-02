@@ -4774,6 +4774,7 @@ with shared.gradio_root:
                         with gr.Accordion("🎞️ SAM3 Video Mask (Double Click to Open Frames Editor)", open=False, visible=True, elem_id="sam3_video_mask_accordion", elem_classes=['simpai-mounted-hidden']) as sam3_video_mask_accordion:
                             gr.HTML(value=sam3_video_mask.get_viewer_html(), elem_id="sam3_video_mask_html")
                             sam3_original_video_path = gr.State(None)
+                            sam3_original_mask_path = gr.State(None)
                             with gr.Row():
                                 sam3_input_video = gr.Video(label="Video (Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_input_video")
                                 sam3_mask_video = gr.Video(label="Mask Video (Preview / Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_output_mask_video")
@@ -5401,7 +5402,8 @@ with shared.gradio_root:
 
                         def on_sam3_mask_upload(mask_path, original_video_path, video_path, trim_payload, state_params):
                             if mask_path is None:
-                                return None
+                                return None, None
+                            original_mask_path = str(mask_path)
                             source_path = sam3_video_mask.resolve_sam3_backend_video_path(video_path, original_video_path, trim_payload)
                             if not source_path or not isinstance(source_path, str) or not os.path.exists(source_path):
                                 gr.Warning(_studio_text(
@@ -5409,12 +5411,12 @@ with shared.gradio_root:
                                     "Upload a SAM3 source video first to auto-match mask frames.",
                                     "请先上传 SAM3 源视频，再自动匹配蒙版帧。",
                                 ))
-                                return mask_path
+                                return mask_path, original_mask_path
                             try:
-                                mask_mime = mimetypes.guess_type(str(mask_path))[0] or "video/mp4"
+                                mask_mime = mimetypes.guess_type(original_mask_path)[0] or "video/mp4"
                                 out_dir = sam3_video_mask.sam3_mask_output_dir("ui_uploads")
                                 out_path = sam3_video_mask.normalize_mask_media_to_source_video(
-                                    str(mask_path),
+                                    original_mask_path,
                                     mask_mime,
                                     str(source_path),
                                     out_dir,
@@ -5425,7 +5427,7 @@ with shared.gradio_root:
                                     "SAM3 mask matched to source video frames.",
                                     "SAM3 蒙版已匹配源视频帧。",
                                 ))
-                                return out_path
+                                return out_path, original_mask_path
                             except Exception as e:
                                 logger.exception("SAM3 mask upload normalization failed")
                                 gr.Warning(_studio_text(
@@ -5433,7 +5435,43 @@ with shared.gradio_root:
                                     f"SAM3 mask normalization failed: {e}",
                                     f"SAM3 蒙版处理失败：{e}",
                                 ))
-                                return mask_path
+                                return mask_path, original_mask_path
+
+                        def rematch_sam3_mask_to_source(source_path, current_mask_path, original_mask_path, state_params):
+                            if not current_mask_path:
+                                return current_mask_path, None
+                            if not source_path:
+                                return current_mask_path, original_mask_path
+                            source_path = str(source_path)
+                            mask_candidates = [original_mask_path, current_mask_path]
+                            mask_source_path = next(
+                                (
+                                    str(candidate)
+                                    for candidate in mask_candidates
+                                    if candidate and os.path.exists(str(candidate))
+                                ),
+                                None,
+                            )
+                            if not os.path.exists(source_path) or not mask_source_path:
+                                return current_mask_path, original_mask_path
+                            try:
+                                mask_mime = mimetypes.guess_type(mask_source_path)[0] or "video/mp4"
+                                out_path = sam3_video_mask.normalize_mask_media_to_source_video(
+                                    mask_source_path,
+                                    mask_mime,
+                                    source_path,
+                                    sam3_video_mask.sam3_mask_output_dir("ui_uploads"),
+                                    node_id="webui",
+                                )
+                                return out_path, mask_source_path
+                            except Exception as e:
+                                logger.exception("SAM3 mask rematch after source video change failed")
+                                gr.Warning(_studio_text(
+                                    state_params,
+                                    f"SAM3 mask normalization failed: {e}",
+                                    f"SAM3 蒙版处理失败：{e}",
+                                ))
+                                return current_mask_path, original_mask_path
 
                         def sam3_generation_start_updates():
                             sam3_video_mask.reset_sam3_cancel("webui")
@@ -5455,6 +5493,7 @@ with shared.gradio_root:
                                 sam3_video_mask.clear_sam3_cancel("webui")
 
                         scene_video.upload(on_video_upload, inputs=[scene_video, state_topbar], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path, scene_video_trim_payload], show_progress=True, queue=False) \
+                            .then(rematch_sam3_mask_to_source, inputs=[scene_original_video_path, sam3_mask_video, sam3_original_mask_path, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "upload");}')
                         scene_video.clear(
                             lambda: (None, None, "{}", "", ""),
@@ -5653,9 +5692,11 @@ with shared.gradio_root:
                         )
                         
                         sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video, state_topbar], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload], show_progress=True) \
+                            .then(rematch_sam3_mask_to_source, inputs=[sam3_original_video_path, sam3_mask_video, sam3_original_mask_path, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("sam3_input_video", "upload");}')
-                        sam3_mask_video.upload(on_sam3_mask_upload, inputs=[sam3_mask_video, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video], show_progress=True)
-                        sam3_mask_upload_file.upload(on_sam3_mask_upload, inputs=[sam3_mask_upload_file, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video], show_progress=True)
+                        sam3_mask_video.upload(on_sam3_mask_upload, inputs=[sam3_mask_video, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True)
+                        sam3_mask_video.clear(lambda: None, outputs=[sam3_original_mask_path], queue=False, show_progress=False)
+                        sam3_mask_upload_file.upload(on_sam3_mask_upload, inputs=[sam3_mask_upload_file, sam3_original_video_path, sam3_input_video, sam3_trim_payload, state_topbar], outputs=[sam3_mask_video, sam3_original_mask_path], show_progress=True)
                         sam3_points_evt = sam3_points_generate_btn.click(sam3_generation_start_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False) \
                             .then(
                                 sam3_points_generate_wrapper,
@@ -10009,6 +10050,10 @@ with shared.gradio_root:
                 original_video_path,
                 video_first_frame_path,
                 scene_video_value,
+                sam3_input_video_value,
+                sam3_original_video_path_value,
+                sam3_mask_video_value,
+                sam3_trim_payload_value,
                 video_duration,
                 additional_prompt,
                 additional_prompt_2,
@@ -10033,6 +10078,11 @@ with shared.gradio_root:
                         "error": "Generation is active.",
                     }, ensure_ascii=False)
                 try:
+                    sam3_source_video_path = sam3_video_mask.resolve_sam3_backend_video_path(
+                        sam3_input_video_value,
+                        sam3_original_video_path_value,
+                        sam3_trim_payload_value,
+                    )
                     result = vlm.run_prompt_action(
                         action_id,
                         original_text,
@@ -10055,6 +10105,8 @@ with shared.gradio_root:
                             "scene_video": scene_video_value,
                             "scene_original_video_path": original_video_path,
                             "video_first_frame_path": video_first_frame_path,
+                            "sam3_source_video": sam3_source_video_path,
+                            "sam3_mask_video": sam3_mask_video_value,
                             "scene_video_duration": video_duration,
                             "scene_additional_prompt": additional_prompt,
                             "scene_additional_prompt_2": additional_prompt_2,
@@ -10104,6 +10156,10 @@ with shared.gradio_root:
                     scene_original_video_path,
                     scene_video_first_frame_path,
                     scene_video,
+                    sam3_input_video,
+                    sam3_original_video_path,
+                    sam3_mask_video,
+                    sam3_trim_payload,
                     scene_video_duration,
                     scene_additional_prompt,
                     scene_additional_prompt_2,

@@ -61,6 +61,7 @@ def _browser_dark_url(url: str) -> str:
 
 
 def _launch() -> tuple[object, str, str | None]:
+    print(f"[Forge Neo]: initializing UI pid={os.getpid()}", flush=True)
     import args_manager
 
     _ensure_forge_neo_userhome_path(args_manager)

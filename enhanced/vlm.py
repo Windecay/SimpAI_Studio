@@ -1922,11 +1922,13 @@ class VLM:
                 user_prompt = "\n\n".join(part for part in compiler_parts if str(part or "").strip())
             compiler_mode = minimax_h3_prompt_compiler.resolve_mode(compiler, media_context) if compiler else ""
             logger.info(
-                "Using VLM prompt action: action=%s target=%s task_method=%s video_frames=%s",
+                "Using VLM prompt action: action=%s target=%s task_method=%s video_frames=%s mask_overlay=%s duration=%s",
                 action_id,
                 target.get("key") if isinstance(target, dict) else "",
                 target.get("task_method") if isinstance(target, dict) else "",
                 int((media_context or {}).get("sampled_frames") or 0) if isinstance(media_context, dict) else 0,
+                bool((media_context or {}).get("mask_overlay_used")) if isinstance(media_context, dict) else False,
+                (media_context or {}).get("duration_seconds") if isinstance(media_context, dict) else None,
             )
             result = self.inference(
                 _superprompt_image_input(input_images),
@@ -2279,6 +2281,10 @@ class VLM:
                 "video_visual_start_index",
                 "video_frame_mode",
                 "video_role",
+                "mask_overlay_used",
+                "mask_sampled_frames",
+                "masked_source_video_present",
+                "temporal_mask_present",
                 "video_count",
                 "video_descriptors",
                 "video_reference_index",

@@ -1,0 +1,653 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 640,
+      "height": 640,
+      "cfg": 1,
+      "steps": 8,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 12.0,
+      "var_number4": 3.0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 16,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "er_sde",
+      "scheduler": "beta57",
+      "video_duration": 0,
+      "ip_image4": "None",
+      "ip_image5": "None",
+      "ip_image6": "None",
+      "ip_image7": "None"
+    },
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"}
+  },
+  "2": {
+    "inputs": {"seed": 0},
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"}
+  },
+  "3": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "base_model"}
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "clip_model"}
+  },
+  "5": {
+    "inputs": {"vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "vae_model"}
+  },
+  "6": {
+    "inputs": {"vae_name": "minimax_h3_audio_vae_fp32.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "MiniMax H3 Audio VAE"}
+  },
+  "7": {
+    "inputs": {
+      "expression": "max(5, a) + (5 - (max(5, a) % 17)) % 17",
+      "values.a": ["86", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Frames to Model Grid"}
+  },
+  "8": {
+    "inputs": {"sampler_name": ["1", 30]},
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "H3 Sampler"}
+  },
+  "9": {
+    "inputs": {
+      "scheduler": ["1", 31],
+      "steps": ["1", 9],
+      "denoise": 1,
+      "model": ["69", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "H3 Scheduler"}
+  },
+  "10": {
+    "inputs": {"noise_seed": ["2", 0]},
+    "class_type": "RandomNoise",
+    "_meta": {"title": "H3 Noise"}
+  },
+  "11": {
+    "inputs": {
+      "clip": ["48", 0],
+      "vae": ["5", 0],
+      "audio_vae": ["6", 0],
+      "prompt": ["1", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "length": ["7", 1],
+      "ref_image_size": "auto",
+      "reference_token_budget": 0,
+      "max_image_long_edge": 2048,
+      "ref_images.ref_image_0": ["21", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3AdaptiveReference",
+    "_meta": {"title": "MiniMax H3 Masked Video Edit Conditioning"}
+  },
+  "12": {
+    "inputs": {
+      "model": ["69", 0],
+      "conditioning": ["11", 0]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {"title": "H3 Guider"}
+  },
+  "13": {
+    "inputs": {
+      "noise": ["10", 0],
+      "guider": ["12", 0],
+      "sampler": ["8", 0],
+      "sigmas": ["9", 0],
+      "latent_image": ["83", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "H3 Masked Sampler"}
+  },
+  "14": {
+    "inputs": {
+      "samples": ["13", 0],
+      "vae": ["5", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {"title": "H3 Video Decode"}
+  },
+  "15": {
+    "inputs": {
+      "images": ["74", 0],
+      "target_frame_count": ["86", 1],
+      "source_fps": 24.0,
+      "target_fps": 24.0
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Restore Source Video Frame Count"}
+  },
+  "16": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": ["49", 3],
+      "crf": 18,
+      "images": ["95", 0],
+      "audio": ["85", 0]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {"title": "SaveVideoWebsocket"}
+  },
+  "17": {
+    "inputs": {},
+    "class_type": "noneNode",
+    "_meta": {"title": "None"}
+  },
+  "18": {
+    "inputs": {
+      "image_name": ["1", 4],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "H3 Replacement Reference"}
+  },
+  "19": {
+    "inputs": {"value": "None"},
+    "class_type": "easy string",
+    "_meta": {"title": "H3 Empty Replacement Reference Path"}
+  },
+  "20": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 4],
+      "b": ["19", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Replacement Reference Empty"}
+  },
+  "21": {
+    "inputs": {
+      "boolean": ["20", 0],
+      "on_true": ["17", 0],
+      "on_false": ["18", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Optional Replacement Reference"}
+  },
+  "40": {
+    "inputs": {"unet_name": "placeholder.gguf"},
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "base_model_gguf"}
+  },
+  "41": {
+    "inputs": {"value": 1},
+    "class_type": "easy int",
+    "_meta": {"title": "Safetensors Type"}
+  },
+  "42": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 24],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Model Type"}
+  },
+  "43": {
+    "inputs": {
+      "boolean": ["42", 0],
+      "on_true": ["3", 0],
+      "on_false": ["40", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Model Loader"}
+  },
+  "44": {
+    "inputs": {"model": ["43", 0]},
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {"title": "MiniMax H3 Memory Efficient Sage Attention Patch"}
+  },
+  "45": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": ["44", 0]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {"title": "H3 FP16 Accumulation"}
+  },
+  "46": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {"title": "clip_model"}
+  },
+  "47": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 26],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 CLIP Type"}
+  },
+  "48": {
+    "inputs": {
+      "boolean": ["47", 0],
+      "on_true": ["4", 0],
+      "on_false": ["46", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 CLIP Loader"}
+  },
+  "49": {
+    "inputs": {
+      "video": "",
+      "force_rate": ["91", 0],
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "duration": 0,
+      "load_audio": true
+    },
+    "class_type": "SimpAIOptionalVideoPath",
+    "_meta": {"title": "SimpAIOptionalVideoPath"}
+  },
+  "50": {
+    "inputs": {
+      "video": "",
+      "force_rate": ["49", 3],
+      "frame_load_cap": ["49", 1],
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "duration": 0,
+      "load_audio": false
+    },
+    "class_type": "SimpAIOptionalVideoPath",
+    "_meta": {"title": "SimpAIOptionalMaskVideoPath"}
+  },
+  "59": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["45", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_1"}
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["59", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_2"}
+  },
+  "61": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["60", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_3"}
+  },
+  "62": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["61", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_4"}
+  },
+  "63": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["62", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_5"}
+  },
+  "64": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["63", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_6"}
+  },
+  "65": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["64", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_7"}
+  },
+  "66": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["65", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_8"}
+  },
+  "67": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["66", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_9"}
+  },
+  "68": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["67", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_10"}
+  },
+  "69": {
+    "inputs": {
+      "shift_video": ["1", 12],
+      "shift_audio": ["1", 13],
+      "model": ["68", 0]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {"title": "ModelSamplingMiniMaxH3"}
+  },
+  "70": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 6]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Width"}
+  },
+  "71": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["1", 7]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Internal Height"}
+  },
+  "72": {
+    "inputs": {
+      "image": ["14", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "H3 Restore Original Size"}
+  },
+  "73": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["1", 6],
+      "values.b": ["70", 1],
+      "values.c": ["1", 7],
+      "values.d": ["71", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Resize Needed"}
+  },
+  "74": {
+    "inputs": {
+      "boolean": ["73", 2],
+      "on_true": ["72", 0],
+      "on_false": ["14", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Output Image"}
+  },
+  "75": {
+    "inputs": {
+      "vae": ["5", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "length": ["7", 1],
+      "source_video": ["87", 0],
+      "audio_vae": ["6", 0],
+      "source_audio": ["85", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
+    "_meta": {"title": "H3 Source Video AV Latent"}
+  },
+  "76": {
+    "inputs": {"av_latent": ["75", 0]},
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {"title": "Separate H3 Video and Audio Latents"}
+  },
+  "77": {
+    "inputs": {
+      "image": ["89", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "resize",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "Resize SAM3 Mask to H3 Canvas"}
+  },
+  "78": {
+    "inputs": {
+      "image": ["77", 0],
+      "channel": "red"
+    },
+    "class_type": "ImageToMask",
+    "_meta": {"title": "SAM3 Video to Noise Mask"}
+  },
+  "79": {
+    "inputs": {
+      "mask": ["78", 0],
+      "expand": ["1", 16],
+      "tapered_corners": true
+    },
+    "class_type": "GrowMask",
+    "_meta": {"title": "H3 Mask Expansion"}
+  },
+  "80": {
+    "inputs": {
+      "samples": ["76", 0],
+      "mask": ["79", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply SAM3 Mask to H3 Video Latent"}
+  },
+  "81": {
+    "inputs": {
+      "value": 0.0,
+      "width": 32,
+      "height": 32
+    },
+    "class_type": "SolidMask",
+    "_meta": {"title": "Preserve H3 Source Audio"}
+  },
+  "82": {
+    "inputs": {
+      "samples": ["76", 1],
+      "mask": ["81", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply Zero Mask to H3 Audio Latent"}
+  },
+  "83": {
+    "inputs": {
+      "video_latent": ["80", 0],
+      "audio_latent": ["82", 0]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {"title": "Merge Masked H3 AV Latent"}
+  },
+  "84": {
+    "inputs": {
+      "expression": "a / max(0.001, b)",
+      "values.a": ["49", 1],
+      "values.b": ["49", 3]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Audio Duration"}
+  },
+  "85": {
+    "inputs": {
+      "audio": ["49", 2],
+      "start_index": 0,
+      "duration": ["84", 0]
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {"title": "Trim H3 Source Audio to Loaded Frames"}
+  },
+  "86": {
+    "inputs": {
+      "expression": "max(5, round(a * 24 / max(0.001, b)))",
+      "values.a": ["49", 1],
+      "values.b": ["49", 3]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Frames at 24 FPS"}
+  },
+  "87": {
+    "inputs": {
+      "images": ["49", 0],
+      "target_frame_count": ["86", 1],
+      "source_fps": ["49", 3],
+      "target_fps": 24.0,
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Resample H3 Source Video to 24 FPS"}
+  },
+  "88": {
+    "inputs": {
+      "images": ["50", 0],
+      "target_frame_count": ["86", 1],
+      "source_fps": ["49", 3],
+      "target_fps": 24.0,
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Resample H3 Mask Video to 24 FPS"}
+  },
+  "89": {
+    "inputs": {
+      "images": ["88", 0],
+      "target_frame_count": ["7", 1],
+      "source_fps": 24.0,
+      "target_fps": 24.0
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Pad H3 Mask to Model Frame Grid"}
+  },
+  "90": {
+    "inputs": {
+      "images": ["15", 0],
+      "target_frame_count": ["49", 1],
+      "source_fps": 24.0,
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Restore H3 Output FPS and Frame Count"}
+  },
+  "91": {
+    "inputs": {
+      "expression": "a",
+      "values.a": ["1", 17]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "Load FPS Override as Float"}
+  },
+  "92": {
+    "inputs": {
+      "image": ["49", 0]
+    },
+    "class_type": "GetImageSize+",
+    "_meta": {"title": "Source Video Size"}
+  },
+  "93": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": ["92", 0],
+      "values.b": ["70", 1],
+      "values.c": ["92", 1],
+      "values.d": ["71", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "Source Video Resize Needed"}
+  },
+  "94": {
+    "inputs": {
+      "image": ["90", 0],
+      "width": ["92", 0],
+      "height": ["92", 1],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "Restore Source Video Size"}
+  },
+  "95": {
+    "inputs": {
+      "boolean": ["93", 2],
+      "on_true": ["94", 0],
+      "on_false": ["90", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Source-sized H3 Output"}
+  }
+}

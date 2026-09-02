@@ -518,9 +518,25 @@ def control_visibility(theme, state=None):
 
     task_method_l = ""
     all_sam3_scene = False
+    inputs_explicitly_enabled = False
+    inputs_explicitly_hidden = False
     if isinstance(state, dict):
         scenes = state.get("scene_frontend", {})
         all_sam3_scene = _scene_frontend_all_sam3_themes(scenes)
+        if isinstance(scenes, dict):
+            raw_hidden = scenes.get("disvisible", [])
+            if isinstance(raw_hidden, str):
+                raw_hidden = [item.strip() for item in raw_hidden.split(",") if item.strip()]
+            hidden = set(str(item).strip() for item in raw_hidden) if isinstance(raw_hidden, (list, tuple, set)) else set()
+            inputs_explicitly_hidden = any(
+                key in hidden for key in ("sam3_video_mask_accordion", "sam3_input_video", "sam3_mask_video")
+            )
+
+            raw_enabled = scenes.get("divisible", [])
+            enabled = set(str(item).strip() for item in raw_enabled) if isinstance(raw_enabled, (list, tuple, set)) else set()
+            inputs_explicitly_enabled = any(
+                key in enabled for key in ("sam3_video_mask_accordion", "sam3_input_video", "sam3_mask_video")
+            )
         task_method = scenes.get("task_method", "") if isinstance(scenes, dict) else ""
         resolved_theme = theme or state.get("scene_theme", None)
         if isinstance(task_method, dict):
@@ -540,7 +556,10 @@ def control_visibility(theme, state=None):
     show_camera = bool(theme_l and "multiangle" in theme_l)
     show_light = bool(theme_l and ("anglelight" in theme_l or "lightning" in theme_l))
     show_style_transfer = bool(theme_l and "flux2_styletransfer" in theme_l)
-    show_sam3 = bool("sam3" in theme_l or "sam3" in task_method_l or all_sam3_scene)
+    show_sam3 = bool(
+        not inputs_explicitly_hidden
+        and ("sam3" in theme_l or "sam3" in task_method_l or all_sam3_scene or inputs_explicitly_enabled)
+    )
     return (
         gr_update(visible=show_camera, open=show_camera),
         gr_update(visible=show_light, open=show_light),

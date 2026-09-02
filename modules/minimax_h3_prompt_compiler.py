@@ -106,6 +106,69 @@ def _is_video_continuation(context):
     return bool(re.search(r"(?:^|[_\s/-])(?:r2c|video_extend|video_continuation)(?:$|[_\s/-])", haystack))
 
 
+def _is_automatic_face_mask(context):
+    data = context if isinstance(context, dict) else {}
+    if "automatic_face_mask" in data:
+        return bool(data.get("automatic_face_mask"))
+    haystack = " ".join(
+        _clean_text(data.get(key))
+        for key in ("task_method", "task_name", "task_type", "video_mode")
+    ).lower()
+    return "minimax_h3_face_swap_r2v" in haystack or "h3_auto_face_swap" in haystack
+
+
+def _is_masked_video_edit(context):
+    data = context if isinstance(context, dict) else {}
+    if "is_masked_video_edit" in data:
+        return bool(data.get("is_masked_video_edit"))
+    haystack = " ".join(
+        _clean_text(data.get(key))
+        for key in ("task_method", "task_name", "task_type", "video_mode")
+    ).lower()
+    return (
+        "minimax_h3_mask_r2v" in haystack
+        or "h3_masked_video_edit" in haystack
+        or _is_automatic_face_mask(data)
+    )
+
+
+def _canvas_mask_present(value):
+    try:
+        from modules.util import normalize_gradio_sketch_value
+
+        sketch = normalize_gradio_sketch_value(
+            value,
+            image_mode="RGB",
+            preserve_mask_color=True,
+        )
+    except Exception:
+        sketch = value if isinstance(value, dict) else None
+    if not isinstance(sketch, dict):
+        return False
+    mask = sketch.get("mask")
+    if mask is None:
+        return False
+    try:
+        import numpy as np
+
+        values = np.asarray(mask)
+        if values.ndim == 3 and values.shape[2] >= 3:
+            values = values[:, :, :3]
+        return bool(values.size and np.any(values > 0))
+    except Exception:
+        return False
+
+
+def _is_masked_image_edit(context):
+    data = context if isinstance(context, dict) else {}
+    if "is_masked_image_edit" in data:
+        return bool(data.get("is_masked_image_edit"))
+    return bool(
+        data.get("masked_source_image_present")
+        and data.get("spatial_mask_present")
+    )
+
+
 def normalize_compiler(value):
     if isinstance(value, dict):
         compiler_id = _clean_text(value.get("id") or value.get("compiler") or value.get("name"))
@@ -182,6 +245,8 @@ def target_compiler(target):
 
 def normalize_context(context=None):
     data = context if isinstance(context, dict) else {}
+    automatic_face_mask = _is_automatic_face_mask(data)
+    masked_image_edit = _is_masked_image_edit(data)
     descriptors = data.get("image_descriptors") if isinstance(data.get("image_descriptors"), list) else []
     video_descriptors = data.get("video_descriptors") if isinstance(data.get("video_descriptors"), list) else []
     director = data.get("director") if isinstance(data.get("director"), dict) else {}
@@ -237,6 +302,14 @@ def normalize_context(context=None):
         "continuation_source": _clean_text(data.get("continuation_source"))
         or ("previous_segment" if _is_video_continuation(data) else ""),
         "is_video_continuation": _is_video_continuation(data),
+        "is_masked_video_edit": _is_masked_video_edit(data),
+        "automatic_face_mask": automatic_face_mask,
+        "masked_source_video_present": bool(data.get("masked_source_video_present")),
+        "temporal_mask_present": bool(data.get("temporal_mask_present")) or automatic_face_mask,
+        "mask_overlay_used": bool(data.get("mask_overlay_used")),
+        "is_masked_image_edit": masked_image_edit,
+        "masked_source_image_present": bool(data.get("masked_source_image_present")),
+        "spatial_mask_present": bool(data.get("spatial_mask_present")),
         "task_method": _clean_text(data.get("task_method")),
         "task_name": _clean_text(data.get("task_name")),
         "video_visual_count": _safe_count(data.get("video_visual_count")),
@@ -314,6 +387,30 @@ def context_note(context=None):
             f"- Analysis-only {analysis_label} images: {media['analysis_only_image_count']}. "
             "Read them for shot planning, but never name them as <Picture N> or treat them as H3 generation media."
         )
+    if media.get("is_masked_video_edit"):
+        lines.append(
+            "- Masked video edit mode: the source video is supplied only as the initial AV latent and is not a numbered <Video N> reference."
+        )
+        if media.get("automatic_face_mask"):
+            lines.append(
+                "- The per-frame face-detection mask, crop coordinates, and stitch data are execution data, not reference media. Never name them as <Picture N>, <Video N>, <Audio N>, or <Subject N>."
+            )
+        else:
+            lines.append(
+                "- The SAM3 temporal mask is execution data, not reference media. Never name it as <Picture N>, <Video N>, <Audio N>, or <Subject N>."
+            )
+        if media.get("video_used"):
+            if media.get("automatic_face_mask"):
+                lines.append(
+                    "- Chronological source-video visuals are attached for analysis only. Use them for facial performance, timing, camera, lighting, occlusion, and continuity without assigning a <Video N> token."
+                )
+            elif media.get("mask_overlay_used"):
+                lines.append(
+                    "- Chronological source-video visuals include a translucent red SAM3 overlay. Use the marked region to identify the exact user-selected target and follow it across time; never describe the overlay as generated content or assign it a media token."
+                )
+        lines.append(
+            "- Only content inside the temporal mask may change. Preserve every unmasked pixel relationship, source motion and timing, camera, lighting, occlusion, and the complete source soundtrack."
+        )
     lines.extend(_reference_inventory_lines(media))
     if media.get("is_video_continuation"):
         selected_video = media.get("video_reference_index") or 1
@@ -363,6 +460,12 @@ def _r2i_context_note(context=None):
         lines.append("- Editable prompt content language: Simplified Chinese.")
     elif media["language"] == "en":
         lines.append("- Editable prompt content language: English.")
+    if media.get("is_masked_image_edit"):
+        lines.extend([
+            "- Masked still-image edit mode: the canvas source image remains <Picture 1>.",
+            "- The spatial mask is execution data, not reference media. Only the painted mask region may change; preserve all source content outside it.",
+            "- Painting a mask never changes picture order or numbering; additional images continue as <Picture 2>, <Picture 3>, and so on in upload order.",
+        ])
     for index in range(media["image_count"]):
         descriptor = (
             media["image_descriptors"][index]
@@ -385,6 +488,26 @@ def _r2i_context_note(context=None):
 
 def _ref2va_subject_binding_rules(context=None):
     media = normalize_context(context)
+    if media.get("is_masked_video_edit"):
+        if not media["image_count"]:
+            return (
+                "No runtime replacement picture is available. Do not invent <Picture N> or <Subject N>; describe the "
+                "requested masked change directly from the user's text."
+            )
+        subject_map = ", ".join(
+            f"<Picture {index}> defines <Subject {index}>"
+            for index in range(1, media["image_count"] + 1)
+        )
+        return (
+            "Treat each runtime picture as an independent replacement subject. "
+            f"For this runtime inventory: {subject_map}. In subject_definitions, define each <Subject N> on its own line "
+            "and cite the matching <Picture N> as its source. Describe only visible traits relevant to the requested "
+            "replacement, including identity, face, hair, clothing, shape, color, material, texture, proportions, or "
+            "distinctive structure as applicable. A replacement subject may be a person, face, garment, object, material, "
+            "or visible attribute; do not force every picture into a person description. Do not use the picture background, "
+            "pose, camera, or lighting as replacement content unless the user explicitly requests it. The picture is a "
+            "reference source, not a keyframe."
+        )
     subject_map = ", ".join(
         f"<Subject {index}> (<Picture {index}>)"
         for index in range(1, media["image_count"] + 1)
@@ -435,7 +558,12 @@ def _ref2va_subject_binding_rules(context=None):
 
 def _ref2va_motion_transfer_rules(context=None):
     media = normalize_context(context)
-    if media["is_video_continuation"] or media["image_count"] < 1 or media["video_count"] < 1:
+    if (
+        media["is_video_continuation"]
+        or media.get("is_masked_video_edit")
+        or media["image_count"] < 1
+        or media["video_count"] < 1
+    ):
         return ""
     selected_video = media.get("video_reference_index") or 1
     selected_video = min(max(1, selected_video), media["video_count"])
@@ -470,6 +598,47 @@ def _ref2va_motion_transfer_rules(context=None):
         f"input pose when the video shows a different action. {example} The selected motion video must be declared in retention_analysis as attribute_transfer with motion "
         f"or timing content, not as a fully preserved video actor identity. {picture_binding} do not describe the picture-defined subject standing or the picture "
         "subject standing when the video shows sleeping, and do not replace the picture subject with the video actor. "
+    )
+
+
+def _ref2va_masked_edit_rules(context=None):
+    media = normalize_context(context)
+    if not media.get("is_masked_video_edit"):
+        return ""
+    if media.get("automatic_face_mask"):
+        mask_rule = (
+            "The per-frame face-detection mask, crop coordinates, and stitch data are execution data and must never "
+            "receive any numbered media or subject label. The detected source face provides expression timing, gaze, "
+            "blinking, lip motion, head pose, scale, spatial path, contact, and occlusion only; it does not define the "
+            "replacement facial identity or appearance. "
+        )
+    else:
+        mask_rule = (
+            "The SAM3 temporal mask is execution data and must never receive any numbered media or subject label. "
+            "When analysis-only source visuals contain a translucent red overlay, identify the exact source target inside "
+            "that marked region and follow it across time; never describe the overlay in the final prompt. For a "
+            "same-category replacement, preserve compatible source pose, size, motion, spatial path, support, contact, "
+            "occlusion, and interaction timing closely. For a cross-category replacement, preserve action intent, temporal "
+            "rhythm, spatial path, support, contact, and occlusion while adapting anatomy, gait, pose, and scene-relative "
+            "scale naturally to the replacement subject. Never force incompatible source anatomy or absolute scale onto "
+            "the replacement, and do not use the source target to define replacement identity or appearance. "
+        )
+    picture_rule = (
+        "Use the supplied <Picture N> only to define the requested replacement subject or visible attribute. "
+        "In retention_analysis, mark the applied replacement subject as attribute_transfer into the masked source target. "
+        if media["image_count"]
+        else "No numbered picture reference is available; do not invent one. "
+    )
+    return (
+        "This is temporal-mask video editing. The source video is encoded directly into the initial AV latent and must "
+        "never be named as <Video N>. "
+        f"{mask_rule}"
+        "Only the masked region may change. Preserve all unmasked content, shot order, motion, timing, camera movement, "
+        "composition, background, lighting, shadows, reflections, contact, occlusion, and the complete source soundtrack. "
+        f"{picture_rule}"
+        "In summary, state that the target is a masked edit of the source video without assigning the source a media token. "
+        "In retention_analysis and detailed_description, explicitly state that unmasked source content remains unchanged. "
+        "Follow the source video's existing timeline and cuts; do not invent new shots, dialogue, visible text, props, or sounds."
     )
 
 
@@ -524,13 +693,21 @@ def build_system_instructions(target_or_compiler, context=None):
             language_rule = (
                 "Write the single editable prompt in the user's language; use Simplified Chinese when the request contains Chinese."
             )
+        masked_edit_rule = (
+            "The attached masked source image remains <Picture 1>. Only the painted mask "
+            "region may change; preserve the source identity, subject count, composition, pose, camera, lighting, "
+            "shadows, reflections, geometry, and background outside the mask. Painting the mask does not change picture "
+            "order or numbering, and additional reference images continue from <Picture 2> in upload order. "
+            if media.get("is_masked_image_edit")
+            else "With no spatial mask, the canvas and additional uploaded images are numbered <Picture N> in upload order. "
+        )
         return (
             "MiniMax H3 prompt compiler mode: R2I.\n"
             "Output exactly one self-contained, generator-ready still-image generation or editing prompt, with no "
             "Markdown fence, explanation, JSON, headings, metadata, or completion claim. "
             f"{language_rule} Preserve the user's requested identity, subject count, composition, pose, lighting, "
             "style, text, and unchanged content. Describe the requested visible result directly and keep edits limited "
-            "to the user's intent. Use exact runtime picture labels <Picture N>, such as <Picture 1>, only when they exist; explain "
+            f"to the user's intent. {masked_edit_rule}Use exact runtime picture labels <Picture N>, such as <Picture 1>, only when they exist; explain "
             "what each supplied picture contributes when more than one picture is present. Never invent, reorder, "
             "renumber, translate, or replace picture labels.\n"
             "R2I is a still-image route. Do not output subject_definitions, summary, retention_analysis, "
@@ -540,7 +717,14 @@ def build_system_instructions(target_or_compiler, context=None):
             "shot list, camera movement, dialogue, soundtrack, or video action.\n"
             f"Runtime picture inventory:\n{_r2i_context_note(target_context)}"
         )
-    if media["language"] == "cn":
+    if media.get("is_masked_video_edit"):
+        language_rule = (
+            "Write all six required sections and all editable field content in fluent English. "
+            "Preserve dialogue, lyrics, and visible text in their original language."
+        )
+        empty_dialogue = "None"
+        empty_sound = "Silence"
+    elif media["language"] == "cn":
         language_rule = (
             "Keep required H3 section names, shot markers, timestamps, media tokens, and the field labels Camera, "
             "Dialogue and visible text, and Synchronized sound in English, but write all editable field content in "
@@ -594,6 +778,7 @@ def build_system_instructions(target_or_compiler, context=None):
             "detailed_description, then write an explicit chronological plan with enough detail for the existing shots. "
             "Do not add filler, new shots, or unrelated events. "
             f"{_ref2va_subject_binding_rules(target_context)}"
+            f"{_ref2va_masked_edit_rules(target_context)}"
             f"{_ref2va_continuation_rules(target_context)}"
             f"{_ref2va_motion_transfer_rules(target_context)}"
         )
@@ -735,6 +920,33 @@ def _continuation_validation_warnings(values, timeline, media):
     return list(dict.fromkeys(warnings))
 
 
+def _masked_edit_validation_warnings(values, timeline, media):
+    if not media.get("is_masked_video_edit"):
+        return []
+    warnings = []
+    summary = values.get("summary", [""])[0] if values.get("summary") else ""
+    retention = values.get("retention_analysis", [""])[0] if values.get("retention_analysis") else ""
+    if summary and not re.search(r"video\s+editing|masked\s+(?:video\s+)?edit|temporal\s+mask", summary, re.IGNORECASE):
+        warnings.append("Masked H3 edit summary should identify video editing as the primary task type.")
+    if re.search(r"<Video\s+\d+>", "\n".join((summary, retention, timeline)), re.IGNORECASE):
+        warnings.append("The masked source video is execution latent data and must not be named as <Video N>.")
+    if media.get("image_count"):
+        for number in range(1, media["image_count"] + 1):
+            subject_token = f"<Subject {number}>"
+            if subject_token not in retention:
+                warnings.append(f"Masked edit retention_analysis is missing {subject_token}.")
+        if not re.search(r"attribute[_\s-]*transfer", retention, re.IGNORECASE):
+            warnings.append("Masked edit retention_analysis should mark the applied replacement subject as attribute_transfer.")
+    preservation_text = "\n".join((retention, timeline))
+    if not re.search(
+        r"unmasked|outside\s+the\s+(?:temporal\s+)?mask|outside\s+the\s+masked\s+region|遮罩外|蒙版外",
+        preservation_text,
+        re.IGNORECASE,
+    ):
+        warnings.append("Masked edit prompt should state that content outside the mask remains unchanged.")
+    return list(dict.fromkeys(warnings))
+
+
 def build_rewrite_request(prompt, target_or_compiler, context=None):
     target = target_or_compiler if isinstance(target_or_compiler, dict) else {"prompt_compiler": target_or_compiler}
     compiler = target_compiler(target) or normalize_compiler(target_or_compiler)
@@ -750,6 +962,7 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
         "current preset contract, and explicit user instructions.)"
     )
     if mode == MODE_R2I:
+        media = normalize_context(target_context)
         protected_references = protected_reference_tokens(source_prompt, compiler, target_context)
         reference_lock = ""
         if protected_references:
@@ -759,13 +972,23 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
                 + ", ".join(protected_references)
                 + ". Use only these picture labels and never add video or audio labels."
             )
+        if media.get("is_masked_image_edit"):
+            source_rule = (
+                "- Keep the attached masked source image as <Picture 1>.\n"
+                "- Restrict the requested change to the painted mask region and explicitly preserve all source content outside it.\n"
+                "- Keep picture order unchanged; number additional reference images from <Picture 2> in upload order and state what each one contributes.\n"
+            )
+        else:
+            source_rule = (
+                "- Preserve the source image, identity, composition, pose, lighting, and all unrequested content when "
+                "the user supplies a picture; when multiple pictures are supplied, state the role of each one.\n"
+            )
         return (
             "Compile this rough request into one complete MiniMax H3 R2I still-image prompt.\n\n"
             f"Runtime picture context:\n{_r2i_context_note(target_context)}\n\n"
             "Rewrite rules:\n"
             "- Return one self-contained positive image generation or editing instruction.\n"
-            "- Preserve the source image, identity, composition, pose, lighting, and all unrequested content when "
-            "the user supplies a picture; when multiple pictures are supplied, state the role of each one.\n"
+            f"{source_rule}"
             "- Keep the requested change concrete, localized, and visually verifiable.\n"
             "- If the rough request contains H3 video sections, [Shot N], timestamps, Camera:, dialogue, sound, "
             "video, or audio material, convert only the still-image intent and remove that video structure.\n"
@@ -773,7 +996,11 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             "other than existing <Picture N> tokens.\n"
             f"User intent:\n{user_intent}{reference_lock}"
         )
-    if mode == MODE_REF2VA and isinstance(target_context, dict):
+    if (
+        mode == MODE_REF2VA
+        and isinstance(target_context, dict)
+        and not normalize_context(target_context).get("is_masked_video_edit")
+    ):
         target_context = dict(target_context)
         if not _safe_count(target_context.get("motion_picture_index")):
             target_context["motion_picture_index"] = _infer_motion_picture_index(
@@ -820,6 +1047,7 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             + ". Never delete, translate, renumber, retype, or replace them with synonyms."
         )
     subject_binding_lock = ""
+    masked_edit_lock = ""
     continuation_lock = ""
     motion_transfer_lock = ""
     if mode == MODE_REF2VA:
@@ -827,6 +1055,9 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             "\n\nRef2VA subject definitions and picture references:\n"
             + _ref2va_subject_binding_rules(target_context)
         )
+        masked_edit_rules = _ref2va_masked_edit_rules(target_context)
+        if masked_edit_rules:
+            masked_edit_lock = "\n\nRef2VA temporal-mask editing contract:\n" + masked_edit_rules
         continuation_rules = _ref2va_continuation_rules(target_context)
         if continuation_rules:
             continuation_lock = "\n\nRef2VA continuation source and identity binding:\n" + continuation_rules
@@ -836,7 +1067,7 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
     return (
         f"Compile this rough request into the required MiniMax H3 {mode} structure.\n\n"
         f"Runtime context:\n{context_note(target_context)}\n\n"
-        f"User intent:\n{user_intent}{storyboard_lock}{reference_lock}{subject_binding_lock}{continuation_lock}{motion_transfer_lock}"
+        f"User intent:\n{user_intent}{storyboard_lock}{reference_lock}{subject_binding_lock}{masked_edit_lock}{continuation_lock}{motion_transfer_lock}"
     )
 
 
@@ -1136,6 +1367,13 @@ def _validate_r2i_prompt(text, media):
         if unused:
             labels = ", ".join(f"<Picture {index}>" for index in unused)
             warnings.append(f"Uploaded picture references not mentioned in the R2I prompt: {labels}.")
+    if media.get("is_masked_image_edit") and not re.search(
+        r"outside\s+(?:the\s+)?(?:painted\s+)?mask|outside\s+(?:the\s+)?masked\s+region|"
+        r"unmasked|遮罩外|蒙版外",
+        text,
+        re.IGNORECASE,
+    ):
+        warnings.append("Masked R2I prompt should state that content outside the painted mask remains unchanged.")
     errors = list(dict.fromkeys(errors))
     warnings = list(dict.fromkeys(warnings))
     return {
@@ -1170,7 +1408,12 @@ def validate_prompt(prompt, target_or_compiler, context=None):
         return {"ok": False, "mode": mode, "errors": ["Prompt is empty."], "warnings": [], "references": {}}
     if mode == MODE_R2I:
         return _validate_r2i_prompt(text, media)
-    if mode == MODE_REF2VA and not media.get("motion_picture_index") and not media.get("is_video_continuation"):
+    if (
+        mode == MODE_REF2VA
+        and not media.get("motion_picture_index")
+        and not media.get("is_video_continuation")
+        and not media.get("is_masked_video_edit")
+    ):
         media["motion_picture_index"] = _infer_motion_picture_index(
             text,
             media.get("video_reference_index"),
@@ -1247,10 +1490,13 @@ def validate_prompt(prompt, target_or_compiler, context=None):
         detail_words = re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", timeline)
         if len(detail_words) < 180:
             warnings.append("Ref2VA detailed_description is shorter than the recommended production detail level.")
+        if media.get("is_masked_video_edit"):
+            warnings.extend(_masked_edit_validation_warnings(values, timeline, media))
         if media.get("is_video_continuation"):
             warnings.extend(_continuation_validation_warnings(values, timeline, media))
         if (
             not media.get("is_video_continuation")
+            and not media.get("is_masked_video_edit")
             and media.get("video_requested")
             and media.get("video_source") == "reference_video"
             and media.get("reference_video_present")
@@ -1262,6 +1508,7 @@ def validate_prompt(prompt, target_or_compiler, context=None):
         selected_video = media.get("video_reference_index") or 0
         if (
             not media.get("is_video_continuation")
+            and not media.get("is_masked_video_edit")
             and (media.get("video_requested") or media.get("video_used"))
             and selected_video
             and media.get("image_count")
@@ -1373,14 +1620,16 @@ def context_from_task(task):
         "continuation_source": _clean_text(params.get("continuation_source")),
     }
     is_video_continuation = _is_video_continuation(task_context)
+    is_masked_video_edit = _is_masked_video_edit(task_context)
+    automatic_face_mask = _is_automatic_face_mask(task_context)
     language = getattr(task, "simpleai_lang", None) or params.get("__lang")
     state = getattr(task, "state", None)
     if not language and isinstance(state, dict):
         language = state.get("__lang")
-    images = [
+    canvas_image = getattr(task, "scene_canvas_image", None)
+    reference_images = [
         getattr(task, key, None)
         for key in (
-            "scene_canvas_image",
             "scene_input_image1",
             "scene_input_image2",
             "scene_input_image3",
@@ -1391,11 +1640,17 @@ def context_from_task(task):
             "scene_input_image8",
         )
     ]
+    compiler = target_compiler(task_context)
+    is_r2i = bool(compiler and compiler.get("route") == "image_reference")
+    spatial_mask_present = bool(is_r2i and _canvas_mask_present(canvas_image))
+    masked_source_image_present = bool(spatial_mask_present and canvas_image is not None)
+    is_masked_image_edit = bool(masked_source_image_present and spatial_mask_present)
+    images = [canvas_image, *reference_images]
     main_video = params.get("video")
     reference_video = params.get("reference_video")
     reference_video2 = params.get("reference_video2")
     video_descriptors = []
-    if main_video:
+    if main_video and not is_masked_video_edit:
         if is_video_continuation:
             main_video_role = "previous H3 clip continuation source"
         elif reference_video or reference_video2:
@@ -1419,7 +1674,11 @@ def context_from_task(task):
             "index": len(video_descriptors) + 1,
             "role": "motion/timing reference video",
         })
-    selected_video_index = len(video_descriptors) if reference_video or reference_video2 else (1 if main_video else 0)
+    selected_video_index = (
+        len(video_descriptors)
+        if reference_video or reference_video2
+        else (1 if main_video and not is_masked_video_edit else 0)
+    )
     return {
         "duration_seconds": getattr(task, "scene_video_duration", None) or params.get("video_duration"),
         "image_count": sum(value is not None for value in images),
@@ -1428,10 +1687,23 @@ def context_from_task(task):
         "video_reference_index": selected_video_index,
         "video_requested": bool(video_descriptors),
         "video_used": bool(video_descriptors),
-        "video_source": "reference_video2" if reference_video2 else ("reference_video" if reference_video else ("main_video" if main_video else "")),
+        "video_source": "reference_video2" if reference_video2 else ("reference_video" if reference_video else ("main_video" if main_video and not is_masked_video_edit else "")),
         "continuation_source": _clean_text(params.get("continuation_source"))
         or ("previous_segment" if is_video_continuation else ""),
         "is_video_continuation": is_video_continuation,
+        "is_masked_video_edit": is_masked_video_edit,
+        "automatic_face_mask": automatic_face_mask,
+        "masked_source_video_present": bool(main_video) if is_masked_video_edit else False,
+        "temporal_mask_present": (
+            bool(params.get("mask_video")) or automatic_face_mask
+            if is_masked_video_edit
+            else False
+        ),
+        "is_masked_image_edit": is_masked_image_edit,
+        "masked_source_image_present": masked_source_image_present,
+        "spatial_mask_present": spatial_mask_present,
+        "analysis_only_image_count": 0,
+        "visual_analysis_intent": "",
         "task_method": task_method,
         "task_name": task_name,
         "language": language,

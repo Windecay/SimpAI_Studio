@@ -1,0 +1,685 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 640,
+      "height": 640,
+      "cfg": 1,
+      "steps": 8,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 12.0,
+      "var_number4": 3.0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 5,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "er_sde",
+      "scheduler": "beta57",
+      "video_duration": 0,
+      "ip_image4": "None",
+      "ip_image5": "None",
+      "ip_image6": "None",
+      "ip_image7": "None"
+    },
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"}
+  },
+  "2": {
+    "inputs": {"seed": 0},
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"}
+  },
+  "3": {
+    "inputs": {
+      "unet_name": "placeholder.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "base_model"}
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "clip_model"}
+  },
+  "5": {
+    "inputs": {"vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "vae_model"}
+  },
+  "6": {
+    "inputs": {"vae_name": "minimax_h3_audio_vae_fp32.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "MiniMax H3 Audio VAE"}
+  },
+  "7": {
+    "inputs": {
+      "expression": "max(5, a) + (5 - (max(5, a) % 17)) % 17",
+      "values.a": ["96", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Frames to Model Grid"}
+  },
+  "8": {
+    "inputs": {"sampler_name": ["1", 30]},
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "H3 Sampler"}
+  },
+  "9": {
+    "inputs": {
+      "scheduler": ["1", 31],
+      "steps": ["1", 9],
+      "denoise": 1,
+      "model": ["69", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "H3 Scheduler"}
+  },
+  "10": {
+    "inputs": {"noise_seed": ["2", 0]},
+    "class_type": "RandomNoise",
+    "_meta": {"title": "H3 Noise"}
+  },
+  "11": {
+    "inputs": {
+      "clip": ["48", 0],
+      "vae": ["5", 0],
+      "audio_vae": ["6", 0],
+      "prompt": ["1", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "length": ["7", 1],
+      "ref_image_size": "auto",
+      "reference_token_budget": 0,
+      "max_image_long_edge": 2048,
+      "ref_images.ref_image_0": ["21", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3AdaptiveReference",
+    "_meta": {"title": "MiniMax H3 Automatic Face Swap Conditioning"}
+  },
+  "12": {
+    "inputs": {
+      "model": ["69", 0],
+      "conditioning": ["11", 0]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {"title": "H3 Guider"}
+  },
+  "13": {
+    "inputs": {
+      "noise": ["10", 0],
+      "guider": ["12", 0],
+      "sampler": ["8", 0],
+      "sigmas": ["9", 0],
+      "latent_image": ["83", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "H3 Automatic Face Swap Sampler"}
+  },
+  "14": {
+    "inputs": {
+      "samples": ["13", 0],
+      "vae": ["5", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {"title": "H3 Face Crop Decode"}
+  },
+  "15": {
+    "inputs": {
+      "images": ["14", 0],
+      "target_frame_count": ["96", 1],
+      "source_fps": 24.0,
+      "target_fps": 24.0
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Restore Source Face Crop Frame Count"}
+  },
+  "16": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": ["49", 3],
+      "crf": 18,
+      "images": ["73", 0],
+      "audio": ["95", 0]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {"title": "SaveVideoWebsocket"}
+  },
+  "17": {
+    "inputs": {},
+    "class_type": "noneNode",
+    "_meta": {"title": "None"}
+  },
+  "18": {
+    "inputs": {
+      "image_name": ["1", 4],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "H3 Face Identity Reference"}
+  },
+  "19": {
+    "inputs": {"value": "None"},
+    "class_type": "easy string",
+    "_meta": {"title": "H3 Empty Face Reference Path"}
+  },
+  "20": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 4],
+      "b": ["19", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Face Reference Empty"}
+  },
+  "21": {
+    "inputs": {
+      "boolean": ["20", 0],
+      "on_true": ["17", 0],
+      "on_false": ["18", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Required Face Reference"}
+  },
+  "40": {
+    "inputs": {"unet_name": "placeholder.gguf"},
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "base_model_gguf"}
+  },
+  "41": {
+    "inputs": {"value": 1},
+    "class_type": "easy int",
+    "_meta": {"title": "Safetensors Type"}
+  },
+  "42": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 24],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Model Type"}
+  },
+  "43": {
+    "inputs": {
+      "boolean": ["42", 0],
+      "on_true": ["3", 0],
+      "on_false": ["40", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Model Loader"}
+  },
+  "44": {
+    "inputs": {"model": ["43", 0]},
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {"title": "MiniMax H3 Memory Efficient Sage Attention Patch"}
+  },
+  "45": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": ["44", 0]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {"title": "H3 FP16 Accumulation"}
+  },
+  "46": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "minimax"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {"title": "clip_model"}
+  },
+  "47": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 26],
+      "b": ["41", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 CLIP Type"}
+  },
+  "48": {
+    "inputs": {
+      "boolean": ["47", 0],
+      "on_true": ["4", 0],
+      "on_false": ["46", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 CLIP Loader"}
+  },
+  "49": {
+    "inputs": {
+      "video": "",
+      "force_rate": ["103", 0],
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "duration": 0,
+      "load_audio": true
+    },
+    "class_type": "SimpAIOptionalVideoPath",
+    "_meta": {"title": "SimpAIOptionalVideoPath"}
+  },
+  "59": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["45", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_1"}
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["59", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_2"}
+  },
+  "61": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["60", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_3"}
+  },
+  "62": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["61", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_4"}
+  },
+  "63": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["62", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_5"}
+  },
+  "64": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["63", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_6"}
+  },
+  "65": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["64", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_7"}
+  },
+  "66": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["65", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_8"}
+  },
+  "67": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["66", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_9"}
+  },
+  "68": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": ["67", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "lora_10"}
+  },
+  "69": {
+    "inputs": {
+      "shift_video": ["1", 12],
+      "shift_audio": ["1", 13],
+      "model": ["68", 0]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {"title": "ModelSamplingMiniMaxH3"}
+  },
+  "70": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["90", 1]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Face Crop Internal Width"}
+  },
+  "71": {
+    "inputs": {
+      "expression": "ceil(a / 32) * 32",
+      "values.a": ["90", 2]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Face Crop Internal Height"}
+  },
+  "72": {
+    "inputs": {
+      "image": ["100", 0],
+      "width": ["91", 0],
+      "height": ["91", 1],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {"title": "Restore Detected Face Crop Size"}
+  },
+  "73": {
+    "inputs": {
+      "stitcher": ["89", 0],
+      "inpainted_image": ["72", 0]
+    },
+    "class_type": "InpaintStitchImproved",
+    "_meta": {"title": "Stitch H3 Face Back to Source Video"}
+  },
+  "75": {
+    "inputs": {
+      "vae": ["5", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "length": ["7", 1],
+      "source_video": ["97", 0],
+      "audio_vae": ["6", 0],
+      "source_audio": ["95", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
+    "_meta": {"title": "H3 Detected Face Crop AV Latent"}
+  },
+  "76": {
+    "inputs": {"av_latent": ["75", 0]},
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {"title": "Separate H3 Video and Audio Latents"}
+  },
+  "77": {
+    "inputs": {
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "keep_proportions": false,
+      "upscale_method": "nearest-exact",
+      "crop": "disabled",
+      "mask": ["102", 0]
+    },
+    "class_type": "ResizeMask",
+    "_meta": {"title": "Resize Automatic Face Mask to H3 Canvas"}
+  },
+  "80": {
+    "inputs": {
+      "samples": ["76", 0],
+      "mask": ["77", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply Automatic Face Mask to H3 Video Latent"}
+  },
+  "81": {
+    "inputs": {
+      "value": 0.0,
+      "width": 32,
+      "height": 32
+    },
+    "class_type": "SolidMask",
+    "_meta": {"title": "Preserve H3 Source Audio"}
+  },
+  "82": {
+    "inputs": {
+      "samples": ["76", 1],
+      "mask": ["81", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply Zero Mask to H3 Audio Latent"}
+  },
+  "83": {
+    "inputs": {
+      "video_latent": ["80", 0],
+      "audio_latent": ["82", 0]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {"title": "Merge Automatic Face Swap H3 AV Latent"}
+  },
+  "84": {
+    "inputs": {
+      "vitpose_model": "vitpose_h_wholebody_model.onnx",
+      "yolo_model": "yolov10m.onnx",
+      "onnx_device": "CUDAExecutionProvider"
+    },
+    "class_type": "OnnxDetectionModelLoader",
+    "_meta": {"title": "H3 Face Detection Models"}
+  },
+  "85": {
+    "inputs": {
+      "width": ["1", 6],
+      "height": ["1", 7],
+      "model": ["84", 0],
+      "images": ["49", 0]
+    },
+    "class_type": "PoseAndFaceDetection",
+    "_meta": {"title": "Detect Source Face Per Frame"}
+  },
+  "86": {
+    "inputs": {
+      "dilation": 0,
+      "feather": 0,
+      "bboxes": ["85", 4],
+      "image": ["49", 0]
+    },
+    "class_type": "bbox_to_segs",
+    "_meta": {"title": "Automatic Face BBoxes to SEGS"}
+  },
+  "87": {
+    "inputs": {"segs": ["86", 0]},
+    "class_type": "ImpactSEGSToMaskList",
+    "_meta": {"title": "Automatic Face SEGS to Mask List"}
+  },
+  "88": {
+    "inputs": {"mask": ["87", 0]},
+    "class_type": "MaskListToMaskBatch",
+    "_meta": {"title": "Automatic Face Mask Batch"}
+  },
+  "89": {
+    "inputs": {
+      "downscale_algorithm": "bicubic",
+      "upscale_algorithm": "bicubic",
+      "preresize": false,
+      "preresize_mode": "ensure minimum resolution",
+      "preresize_min_width": 1024,
+      "preresize_min_height": 1024,
+      "preresize_max_width": 16384,
+      "preresize_max_height": 16384,
+      "mask_fill_holes": false,
+      "mask_expand_pixels": ["92", 0],
+      "mask_invert": false,
+      "mask_blend_pixels": 64,
+      "mask_hipass_filter": 0,
+      "extend_for_outpainting": false,
+      "extend_up_factor": 1,
+      "extend_down_factor": 1,
+      "extend_left_factor": 1,
+      "extend_right_factor": 1,
+      "context_from_mask_extend_factor": 1,
+      "output_resize_to_target_size": true,
+      "output_target_width": 1024,
+      "output_target_height": 1024,
+      "output_padding": "0",
+      "image": ["49", 0],
+      "mask": ["88", 0]
+    },
+    "class_type": "InpaintCropImproved",
+    "_meta": {"title": "Crop Detected Face Sequence"}
+  },
+  "90": {
+    "inputs": {
+      "generation_width": ["1", 6],
+      "generation_height": ["1", 7],
+      "aspect_ratio_preservation": "keep_input",
+      "image": ["89", 1]
+    },
+    "class_type": "WanVideoImageResizeToClosest",
+    "_meta": {"title": "Preserve Detected Face Crop Aspect Ratio"}
+  },
+  "91": {
+    "inputs": {"image": ["89", 1]},
+    "class_type": "GetImageSize+",
+    "_meta": {"title": "Detected Face Crop Size"}
+  },
+  "92": {
+    "inputs": {
+      "value": "a+256",
+      "a": ["1", 16]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {"title": "Automatic Face Crop Expansion"}
+  },
+  "93": {
+    "inputs": {
+      "expand_by": -196,
+      "tapered_corners": false,
+      "batch_size": 5,
+      "device": "cuda:0",
+      "mask": ["89", 2]
+    },
+    "class_type": "Grow_Mask_Ultra_Fast",
+    "_meta": {"title": "Automatic Face Generation Mask"}
+  },
+  "94": {
+    "inputs": {
+      "expression": "a / max(0.001, b)",
+      "values.a": ["49", 1],
+      "values.b": ["49", 3]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Audio Duration"}
+  },
+  "95": {
+    "inputs": {
+      "audio": ["49", 2],
+      "start_index": 0,
+      "duration": ["94", 0]
+    },
+    "class_type": "SimpAIOptionalTrimAudioDuration",
+    "_meta": {"title": "Trim H3 Source Audio to Loaded Frames"}
+  },
+  "96": {
+    "inputs": {
+      "expression": "max(5, round(a * 24 / max(0.001, b)))",
+      "values.a": ["49", 1],
+      "values.b": ["49", 3]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "H3 Source Frames at 24 FPS"}
+  },
+  "97": {
+    "inputs": {
+      "images": ["90", 0],
+      "target_frame_count": ["96", 1],
+      "source_fps": ["49", 3],
+      "target_fps": 24.0,
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Resample Detected Face Crop to 24 FPS"}
+  },
+  "98": {
+    "inputs": {
+      "images": ["101", 0],
+      "target_frame_count": ["96", 1],
+      "source_fps": ["49", 3],
+      "target_fps": 24.0,
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Resample Automatic Face Mask to 24 FPS"}
+  },
+  "99": {
+    "inputs": {
+      "images": ["98", 0],
+      "target_frame_count": ["7", 1],
+      "source_fps": 24.0,
+      "target_fps": 24.0
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Pad Automatic Face Mask to Model Frame Grid"}
+  },
+  "100": {
+    "inputs": {
+      "images": ["15", 0],
+      "target_frame_count": ["49", 1],
+      "source_fps": 24.0,
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": true
+    },
+    "class_type": "SimpAIVideoFrameAlign",
+    "_meta": {"title": "Restore Detected Face Crop FPS and Frame Count"}
+  },
+  "101": {
+    "inputs": {
+      "mask": ["93", 0]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {"title": "Convert Automatic Face Mask to Image"}
+  },
+  "102": {
+    "inputs": {
+      "image": ["99", 0],
+      "channel": "red"
+    },
+    "class_type": "ImageToMask",
+    "_meta": {"title": "Restore Automatic Face Mask"}
+  },
+  "103": {
+    "inputs": {
+      "expression": "a",
+      "values.a": ["1", 17]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {"title": "Load FPS Override as Float"}
+  }
+}

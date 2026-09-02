@@ -235,6 +235,49 @@ def _prompt_action_h3_reference_mode(state):
     )
 
 
+def _prompt_action_automatic_face_mask(task_method):
+    value = str(task_method or "").strip().lower()
+    return "minimax_h3_face_swap_r2v" in value or "h3_auto_face_swap" in value
+
+
+def _prompt_action_masked_video_edit(task_method):
+    value = str(task_method or "").strip().lower()
+    return (
+        "minimax_h3_mask_r2v" in value
+        or "h3_masked_video_edit" in value
+        or _prompt_action_automatic_face_mask(value)
+    )
+
+
+def _prompt_action_h3_r2i(task_method):
+    return "minimax_h3_r2i" in str(task_method or "").strip().lower()
+
+
+def _prompt_action_canvas_mask_present(value):
+    try:
+        from modules.util import normalize_gradio_sketch_value
+
+        sketch = normalize_gradio_sketch_value(
+            value,
+            image_mode="RGB",
+            preserve_mask_color=True,
+        )
+    except Exception:
+        sketch = None
+    if not isinstance(sketch, dict):
+        return False
+    mask = sketch.get("mask")
+    if mask is None:
+        return False
+    try:
+        mask = np.asarray(mask)
+        if mask.ndim == 3 and mask.shape[2] >= 3:
+            mask = mask[:, :, :3]
+        return bool(mask.size and np.any(mask > 0))
+    except Exception:
+        return False
+
+
 def _prompt_action_reconcile_h3_reference_capability(state, capability, declared_capability=None):
     resolved = copy.deepcopy(capability if isinstance(capability, dict) else {})
     if not _prompt_action_h3_reference_mode(state):
@@ -535,11 +578,28 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     resources = dict(scene_resources or {})
     opts = normalize_prompt_action_options(options)
     scene_mode = prompt_action_mode(data) == "scene"
+    scene = _prompt_action_scene_frontend(data) if scene_mode else {}
+    theme = _prompt_action_scene_theme(data, scene) if scene_mode else ""
+    task_method = str(
+        _prompt_action_theme_value(scene.get("task_method"), theme)
+        or data.get("task_method")
+        or ""
+    ).strip()
+    masked_video_edit = _prompt_action_masked_video_edit(task_method)
+    automatic_face_mask = _prompt_action_automatic_face_mask(task_method)
     declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
     capability = copy.deepcopy(declared_capability)
     media_profile = _prompt_action_media_profile(data) if scene_mode else {}
     hidden = _prompt_action_hidden_scene_slots(data) if scene_mode else set()
     image_map = _prompt_action_image_map(input_images)
+    masked_image_edit = (
+        scene_mode
+        and _prompt_action_h3_r2i(task_method)
+        and _prompt_action_canvas_mask_present(image_map.get("scene_canvas_image"))
+    )
+    masked_source_present = bool(
+        masked_image_edit and image_map.get("scene_canvas_image") is not None
+    )
     raw_entries = [
         (slot, image_map.get(slot))
         for slot in PROMPT_ACTION_SCENE_IMAGE_SLOTS
@@ -548,7 +608,8 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     visible_entries = [
         (slot, image_map.get(slot))
         for slot in PROMPT_ACTION_SCENE_IMAGE_SLOTS
-        if image_map.get(slot) is not None and (not scene_mode or slot not in hidden)
+        if image_map.get(slot) is not None
+        and (not scene_mode or slot not in hidden)
     ]
 
     director_runtime = resources.get("director_state") if isinstance(resources.get("director_state"), dict) else {}
@@ -649,6 +710,12 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     )
     original_video = _prompt_action_existing_path(resources.get("scene_original_video_path") or resources.get("video_path"))
     first_frame = _prompt_action_existing_path(resources.get("video_first_frame_path"))
+    sam3_source_video = _prompt_action_existing_path(
+        resources.get("sam3_source_video")
+        or resources.get("sam3_input_video")
+        or resources.get("sam3_original_video_path")
+    )
+    sam3_mask_video = _prompt_action_existing_path(resources.get("sam3_mask_video"))
     video_path = ""
     video_source = ""
     video_reference_index = 0
@@ -787,6 +854,13 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
                 "role": "video reference",
             }]
 
+    if masked_video_edit and not automatic_face_mask and sam3_source_video:
+        video_path = sam3_source_video
+        video_source = "masked_source_video"
+        video_reference_index = 0
+        video_descriptors = []
+        first_frame = ""
+
     selected_video_descriptor = next(
         (
             item for item in video_descriptors
@@ -844,13 +918,23 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
 
     context = {
         "scene_mode": scene_mode,
-        "theme": _prompt_action_scene_theme(data),
+        "theme": theme,
+        "task_method": task_method,
+        "task_name": str(data.get("__preset") or data.get("preset") or theme or "").strip(),
         "capability": capability,
         "image_descriptors": image_descriptors,
         "unresolved_image_slots": unresolved_image_slots,
         "generation_image_count": 0 if analysis_only_images else len(entries),
         "analysis_only_image_count": len(entries) if analysis_only_images else 0,
-        "visual_analysis_intent": visual_analysis_intent if analysis_only_images else "",
+        "visual_analysis_intent": (
+            visual_analysis_intent
+            if analysis_only_images
+            else ""
+        ),
+        "is_masked_image_edit": masked_image_edit,
+        "masked_source_image_present": masked_source_present,
+        "spatial_mask_present": masked_image_edit,
+        "masked_source_visual_index": 1 if masked_source_present else 0,
         "video_path": video_path,
         "video_first_frame_path": first_frame,
         "video_source": video_source,
@@ -881,6 +965,20 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         "additional_prompts": additional_prompts,
         "director": director_context,
     }
+    if masked_video_edit:
+        context.update({
+            "automatic_face_mask": automatic_face_mask,
+            "masked_source_video_present": bool(video_path),
+            "temporal_mask_present": automatic_face_mask or bool(sam3_mask_video),
+            "temporal_mask_path": sam3_mask_video,
+            "video_count": 0,
+            "video_descriptors": [],
+            "video_reference_index": 0,
+            "motion_picture_index": 0,
+            "reference_video_present": False,
+        })
+        if video_path:
+            context["video_source"] = "masked_source_video"
     return images, context
 
 
@@ -971,6 +1069,24 @@ def _frame_to_pil(frame):
     if array.ndim == 3 and array.shape[2] >= 3:
         return Image.fromarray(array[:, :, :3].astype(np.uint8, copy=False)).convert("RGB")
     raise ValueError("Unsupported video frame")
+
+
+def _overlay_temporal_mask(frame, mask_frame):
+    source = np.asarray(_frame_to_pil(frame), dtype=np.float32)
+    mask_array = np.asarray(mask_frame)
+    if mask_array.ndim == 3:
+        mask_array = np.max(mask_array[:, :, :3], axis=2)
+    elif mask_array.ndim != 2:
+        raise ValueError("Unsupported temporal mask frame")
+    mask_image = Image.fromarray(mask_array.astype(np.uint8, copy=False))
+    if mask_image.size != (source.shape[1], source.shape[0]):
+        resampling = getattr(Image, "Resampling", Image).BILINEAR
+        mask_image = mask_image.resize((source.shape[1], source.shape[0]), resampling)
+    strength = np.asarray(mask_image, dtype=np.float32) / 255.0
+    alpha = np.clip(strength, 0.0, 1.0)[:, :, None] * 0.58
+    marker = np.array([255.0, 48.0, 64.0], dtype=np.float32)
+    marked = source * (1.0 - alpha) + marker * alpha
+    return np.clip(marked, 0, 255).astype(np.uint8)
 
 
 def _contact_sheet_font():
@@ -1073,7 +1189,7 @@ def _read_video_frames(video_path, first_frame_path, max_frames):
                         frames.append(rgb)
                         timestamps.append(float(frame_index) / fps if fps > 0 else float(len(frames) - 1))
                     if fps > 0:
-                        meta["duration_seconds"] = max(0.0, float(frame_count - 1) / fps)
+                        meta["duration_seconds"] = max(0.0, float(frame_count) / fps)
                 else:
                     for index in range(max_frames):
                         ok, frame = capture.read()
@@ -1154,6 +1270,46 @@ def build_video_contact_sheet(video_path, first_frame_path="", max_frames=PROMPT
     return sheet, meta
 
 
+def build_masked_video_contact_sheet(
+    video_path,
+    mask_path,
+    first_frame_path="",
+    max_frames=PROMPT_ACTION_VIDEO_FRAMES,
+):
+    source = normalize_media_path(video_path)
+    mask_source = normalize_media_path(mask_path)
+    max_frames = max(1, min(int(max_frames or PROMPT_ACTION_VIDEO_FRAMES), 16))
+    source_key = _video_cache_key(source, max_frames, "masked_contact_sheet") if source and os.path.exists(source) else None
+    mask_key = _video_cache_key(mask_source, max_frames, "mask_overlay") if mask_source and os.path.exists(mask_source) else None
+    cache_key = ("masked_contact_sheet", source_key, mask_key) if source_key and mask_key else None
+    cached = _video_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    frames, timestamps, meta = _read_video_frames(source, first_frame_path, max_frames)
+    mask_frames, _mask_timestamps, mask_meta = _read_video_frames(mask_source, "", max_frames)
+    marked_frames = []
+    if frames and mask_frames:
+        source_last = max(1, len(frames) - 1)
+        mask_last = max(0, len(mask_frames) - 1)
+        for index, frame in enumerate(frames):
+            mask_index = int(round((index / source_last) * mask_last)) if len(frames) > 1 else 0
+            marked_frames.append(_overlay_temporal_mask(frame, mask_frames[mask_index]))
+
+    sheet = _build_contact_sheet(marked_frames or frames, timestamps)
+    if sheet is None:
+        return None, meta
+
+    meta.update({
+        "video_visual_mode": "contact_sheet",
+        "video_visual_count": 1,
+        "mask_overlay_used": bool(marked_frames),
+        "mask_sampled_frames": int(mask_meta.get("sampled_frames") or 0),
+    })
+    _video_cache_put(cache_key, sheet, meta)
+    return sheet, meta
+
+
 def prepare_prompt_action_media(
     action_id,
     input_images,
@@ -1178,12 +1334,28 @@ def prepare_prompt_action_media(
         return images, media_meta
 
     visual_mode = str(opts.get("video_frame_mode") or media_meta.get("video_frame_mode") or "contact_sheet").strip().lower()
-    if visual_mode == "multi_frame":
+    video_role = str(media_meta.get("video_role") or "").strip().lower()
+    mask_path = normalize_media_path(media_meta.get("temporal_mask_path"))
+    use_mask_overlay = (
+        video_role == "masked_source_mask"
+        and mask_path
+        and os.path.exists(mask_path)
+    )
+    if use_mask_overlay:
+        sheet, video_meta = build_masked_video_contact_sheet(
+            video_path,
+            mask_path,
+            first_frame_path,
+        )
+        video_visuals = [sheet] if sheet is not None else []
+    elif visual_mode == "multi_frame":
         video_visuals, video_meta = build_video_frame_sequence(video_path, first_frame_path)
     else:
         sheet, video_meta = build_video_contact_sheet(video_path, first_frame_path)
         video_visuals = [sheet] if sheet is not None else []
     media_meta.update(video_meta or {})
+    if media_meta.get("target_duration_seconds") is None and media_meta.get("duration_seconds"):
+        media_meta["target_duration_seconds"] = media_meta.get("duration_seconds")
     media_meta["video_used"] = bool(video_visuals)
     media_meta["reference_video_content_available"] = bool(
         video_visuals and media_meta.get("video_source") == "reference_video"
@@ -1237,6 +1409,8 @@ def prompt_action_media_note(media_meta):
         elif video_source == "reference_video":
             reference_index = int(meta.get("video_reference_index") or 0)
             source_label = f"reference video <Video {reference_index}>" if reference_index > 0 else "reference video"
+        elif video_source == "masked_source_video":
+            source_label = "masked source video"
         else:
             source_label = "main input video"
         if meta.get("used_first_frame_only") or frame_count <= 1:
@@ -1272,15 +1446,48 @@ def prompt_action_media_note(media_meta):
                 "Use visible changes as evidence for subject motion, scene development, and camera movement; "
                 "do not invent audio, dialogue, or events between sampled frames."
             )
-        if str(meta.get("video_role") or "").strip().lower() == "motion_only":
+        video_role = str(meta.get("video_role") or "").strip().lower()
+        if video_role == "motion_only":
             video_parts.append(
                 "The video visuals are motion-only evidence. Extract the chronological action, pose changes, limb and "
                 "torso movement, body orientation, timing, camera movement, and scene motion. Ignore the video person's "
                 "identity, face, hair, skin tone, body shape, clothing, accessories, and visual style; none of those "
                 "appearance traits may enter the final prompt."
             )
+        elif video_role == "masked_source":
+            video_parts.append(
+                "The main input video visuals are analysis-only evidence for the existing facial performance, expression "
+                "timing, gaze, blinking, lip motion, head pose, camera, lighting, occlusion, and continuity. They are not an "
+                "H3 numbered video reference: never label them as <Video N>. Ignore the source person's facial identity and "
+                "appearance when defining the replacement <Subject 1>."
+            )
+        elif video_role == "masked_source_mask":
+            if meta.get("mask_overlay_used"):
+                video_parts.append(
+                    "The translucent red overlay marks the exact SAM3 region selected by the user in each sampled frame. "
+                    "Identify what occupies that marked region, follow it across time, and use the surrounding unmarked "
+                    "pixels only for scene, motion, contact, lighting, and occlusion context. Do not describe the red overlay "
+                    "as part of the generated result. These visuals are analysis-only evidence and are never an H3 numbered "
+                    "video reference, so never label them as <Video N>."
+                )
+            else:
+                video_parts.append(
+                    "The source-video visuals are analysis-only evidence, but no decoded SAM3 overlay reached the agent. "
+                    "Do not claim that the exact masked target was visually identified, and never label these visuals as <Video N>."
+                )
     image_offset = 0 if video_after_images else video_visual_count
+    masked_source_count = int(
+        bool(meta.get("is_masked_image_edit") and meta.get("masked_source_image_present"))
+    )
     analysis_only_count = int(meta.get("analysis_only_image_count") or 0)
+    if masked_source_count:
+        masked_source_index = image_offset + max(1, int(meta.get("masked_source_visual_index") or 1))
+        image_parts.append(
+            f"Visual input {masked_source_index} is <Picture 1> and the source image for the current masked still-image edit. "
+            "Use it to read the existing subject, composition, geometry, pose, camera, lighting, shadows, reflections, "
+            "and background continuity. Painting a mask does not change picture order or numbering. Only the painted "
+            "mask region may change, and all content outside the mask must remain unchanged."
+        )
     if analysis_only_count and meta.get("visual_analysis_intent") == "storyboard":
         first_index = image_offset + 1
         last_index = image_offset + analysis_only_count
@@ -1340,7 +1547,15 @@ def prompt_action_resource_contract_note(media_meta):
     if duration is not None:
         lines.append(f"- target_duration_seconds: {duration}")
     analysis_only_count = int(meta.get("analysis_only_image_count") or 0)
-    if analysis_only_count:
+    masked_image_edit = bool(meta.get("is_masked_image_edit"))
+    if masked_image_edit:
+        lines.extend([
+            f"- masked_source_image_present: {str(bool(meta.get('masked_source_image_present'))).lower()}",
+            f"- spatial_mask_present: {str(bool(meta.get('spatial_mask_present'))).lower()}",
+            "- The source image remains <Picture 1>; painting a mask does not change picture order or numbering.",
+            "- Only the painted mask region may change; preserve all content outside the mask.",
+        ])
+    elif analysis_only_count:
         lines.append(f"- analysis_only_storyboard_images: {analysis_only_count}")
         lines.append(
             "- The storyboard visuals may be read to design shots, but they are not generation images, endpoint frames, "
@@ -1366,7 +1581,9 @@ def prompt_action_resource_contract_note(media_meta):
         ])
         if str(meta.get("video_source") or "") == "director_previous_segment_pending":
             lines.append("- previous_segment_visual_status: unavailable before the previous shot has generated")
-    if analysis_only_count:
+    if masked_image_edit:
+        lines.append("Do not use hidden, stale, unavailable, or role-incompatible media beyond the declared masked source image.")
+    elif analysis_only_count:
         lines.append("Do not use hidden, stale, unavailable, or role-incompatible media beyond the declared storyboard analysis visuals.")
     else:
         lines.append("Do not use hidden, stale, unavailable, or role-incompatible media.")

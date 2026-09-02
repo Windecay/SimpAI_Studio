@@ -318,7 +318,7 @@
       ],
       "crf": 19,
       "images": [
-        "919",
+        "933",
         0
       ],
       "audio": [
@@ -1147,6 +1147,89 @@
     "class_type": "SimpAIVideoFrameAlign",
     "_meta": {
       "title": "SimpAI Comparison Video Frame Align"
+    }
+  },
+  "930": {
+    "inputs": {
+      "width": [
+        "751",
+        3
+      ],
+      "height": [
+        "751",
+        4
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu",
+      "image": [
+        "919",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Restore source video resolution"
+    }
+  },
+  "931": {
+    "inputs": {
+      "image": [
+        "919",
+        0
+      ]
+    },
+    "class_type": "GetImageSize+",
+    "_meta": {
+      "title": "Animate Output Size"
+    }
+  },
+  "932": {
+    "inputs": {
+      "expression": "a != b or c != d",
+      "values.a": [
+        "931",
+        0
+      ],
+      "values.b": [
+        "751",
+        3
+      ],
+      "values.c": [
+        "931",
+        1
+      ],
+      "values.d": [
+        "751",
+        4
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Source Resolution Restore Needed"
+    }
+  },
+  "933": {
+    "inputs": {
+      "boolean": [
+        "932",
+        2
+      ],
+      "on_true": [
+        "930",
+        0
+      ],
+      "on_false": [
+        "919",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Source-sized Animate Output"
     }
   }
 }

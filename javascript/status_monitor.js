@@ -21,7 +21,9 @@
         statusEdgeDockSide: '',
         isReconnectVisible: false,   // 是否显示重连按钮
         reloadScheduled: false,
-        restartDetectedTimestamp: null
+        restartDetectedTimestamp: null,
+        gradioReconnectRequired: false,
+        gradioReconnectStatus: ''
     };
 
     function readCookie(name) {
@@ -2114,6 +2116,20 @@
         window.location.reload();
     }
 
+    window.addEventListener('simpai:gradio-reconnect-required', (event) => {
+        const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
+        state.gradioReconnectRequired = true;
+        state.gradioReconnectStatus = String(detail.status || 'connected');
+        try {
+            window.SimpAIStudioPerformance?.mark?.('workspace.gradio_reconnect_required', {
+                status: state.gradioReconnectStatus,
+                visibility: document.visibilityState,
+                auto_reload: false,
+            }, { urgent: true });
+        } catch (error) {}
+        updateStatusUI('exception');
+    });
+
     async function performHealthCheck() {
         checkAdminAPIAvailability();
         const statusData = await fetchAppStatus();
@@ -2136,7 +2152,7 @@
         if (statusData.timestamp === state.initialTimestamp) {
             state.restartDetectedTimestamp = null;
             updateStatusUI(
-                'connected',
+                state.gradioReconnectRequired ? 'exception' : 'connected',
                 statusData.queueSize,
                 statusData.ramUsed,
                 statusData.ramTotal,

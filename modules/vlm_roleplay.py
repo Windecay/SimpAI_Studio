@@ -3957,18 +3957,123 @@ def _context_text(value: Any, limit: int) -> str:
     return (current[:head].rstrip() + marker + current[-tail:].lstrip()).strip()
 
 
-def _context_state_fields(value: Any) -> list[dict[str, str]]:
-    return [
-        {
+_CONTEXT_EXACT_STATE_PANEL_RE = re.compile(
+    r"^(?:请\s*)?(?:(?:显示|查看|打开|列出|报告|汇报|show|display|report|open)\s*)?"
+    r"(?:状态栏|属性栏|状态面板|属性面板|数值面板|角色面板|"
+    r"character\s*sheet|stats?\s*(?:panel|screen|sheet)|status\s*(?:bar|panel|screen))"
+    r"(?:\s*(?:给我看|一下|呢))?\s*[?？]?$",
+    re.IGNORECASE,
+)
+_CONTEXT_STATE_VALUE_TERM = (
+    r"(?:\b(?:hp|mp|sp|sanity|health|mana|stamina)\b|"
+    r"生命值|血量|血条|魔力值|法力值|理智值|理智|体力值|耐力值|属性值|数值)"
+)
+_CONTEXT_EXACT_STATE_QUERY_RE = re.compile(
+    rf"(?:{_CONTEXT_STATE_VALUE_TERM}).{{0,24}}"
+    r"(?:是多少|为多少|有多少|多少|几(?:点|成)?|还剩|剩余|具体(?:值|数值)|"
+    r"精确(?:值|数值)|准确(?:值|数值)|how\s+much|remaining|exact\s+value|current\s+value)",
+    re.IGNORECASE,
+)
+_CONTEXT_EXACT_STATE_REQUEST_RE = re.compile(
+    rf"(?:显示|查看|打开|列出|报告|汇报|告诉我|告知我|报(?:一下|下)?|"
+    rf"show|display|report|list|tell\s+me|check|what(?:'s|\s+is)|how\s+much)"
+    rf".{{0,24}}(?:{_CONTEXT_STATE_VALUE_TERM}|状态|属性)",
+    re.IGNORECASE,
+)
+_CONTEXT_EXACT_STATE_SHORT_QUESTION_RE = re.compile(
+    rf"(?:{_CONTEXT_STATE_VALUE_TERM})(?:现在|当前|呢|是)?\s*[?？]$",
+    re.IGNORECASE,
+)
+_CONTEXT_EXACT_STATE_FOLLOWUP_RE = re.compile(
+    r"^(?:(?:现在|当前)\s*)?(?:(?:还剩|剩余)\s*)?"
+    r"(?:多少|几(?:点|成)?)(?:了|呢)?\s*[?？]?$",
+    re.IGNORECASE,
+)
+
+
+def _context_query_requests_exact_state(query: Any) -> bool:
+    current = re.sub(r"\s+", " ", _text(query, 4000)).strip()
+    if not current:
+        return False
+    return any(
+        pattern.search(current)
+        for pattern in (
+            _CONTEXT_EXACT_STATE_PANEL_RE,
+            _CONTEXT_EXACT_STATE_QUERY_RE,
+            _CONTEXT_EXACT_STATE_REQUEST_RE,
+            _CONTEXT_EXACT_STATE_SHORT_QUESTION_RE,
+            _CONTEXT_EXACT_STATE_FOLLOWUP_RE,
+        )
+    )
+
+
+def _context_numeric_state_semantic(value: Any) -> str:
+    current = _context_text(value, 500)
+    normalized = current.replace("／", "/").replace("％", "%")
+    ratio_match = _NUMERIC_STATE_RATIO_RE.fullmatch(normalized)
+    percent_match = _NUMERIC_STATE_PERCENT_RE.fullmatch(normalized)
+    number_match = _NUMERIC_STATE_NUMBER_RE.fullmatch(normalized)
+    if ratio_match:
+        amount = float(ratio_match.group(1))
+        maximum = float(ratio_match.group(2))
+        if maximum > 0:
+            ratio = amount / maximum
+            if ratio <= 0:
+                return "depleted"
+            if ratio <= 0.15:
+                return "critical"
+            if ratio <= 0.35:
+                return "low"
+            if ratio <= 0.70:
+                return "moderate"
+            if ratio < 1:
+                return "high"
+            return "full"
+        number_match = _NUMERIC_STATE_NUMBER_RE.fullmatch(str(amount))
+    elif percent_match:
+        ratio = float(percent_match.group(1)) / 100.0
+        if ratio <= 0:
+            return "depleted"
+        if ratio <= 0.15:
+            return "critical"
+        if ratio <= 0.35:
+            return "low"
+        if ratio <= 0.70:
+            return "moderate"
+        if ratio < 1:
+            return "high"
+        return "full"
+    if number_match:
+        amount = float(number_match.group(1))
+        if amount < 0:
+            return "negative"
+        if amount == 0:
+            return "zero"
+        return "nonzero"
+    return current
+
+
+def _context_state_fields(value: Any, *, mode: str = "exact") -> list[dict[str, str]]:
+    semantic = _text(mode, 40).lower() == "semantic"
+    result = []
+    for item in _clean_state_fields(value, preserve_empty_values=True):
+        if not isinstance(item, dict) or not _text(item.get("label"), 120):
+            continue
+        field_value = _context_text(item.get("value"), 500)
+        result.append({
             "label": _context_text(item.get("label"), 120),
-            "value": _context_text(item.get("value"), 500),
-        }
-        for item in _clean_state_fields(value, preserve_empty_values=True)
-        if isinstance(item, dict) and _text(item.get("label"), 120)
-    ]
+            "value": _context_numeric_state_semantic(field_value) if semantic else field_value,
+        })
+    return result
 
 
-def _context_runtime_state(value: Any, limits: dict[str, int], *, player: bool = False) -> dict[str, Any]:
+def _context_runtime_state(
+    value: Any,
+    limits: dict[str, int],
+    *,
+    player: bool = False,
+    state_field_mode: str = "exact",
+) -> dict[str, Any]:
     source = _normalize_player_state(value) if player else _normalize_character_runtime(value)
     result: dict[str, Any] = {}
     if player:
@@ -3984,7 +4089,7 @@ def _context_runtime_state(value: Any, limits: dict[str, int], *, player: bool =
         text = _context_text(source.get(key), limit)
         if text:
             result[key] = text
-    fields = _context_state_fields(source.get("state_fields"))
+    fields = _context_state_fields(source.get("state_fields"), mode=state_field_mode)
     if fields:
         result["state_fields"] = fields
     for key, item_limit in (("condition", 240), ("inventory", 300), ("goals", 300)):
@@ -4320,6 +4425,11 @@ def build_roleplay_context(
     if audience_key not in {"character", "player_proxy", "director", "resource"}:
         audience_key = "character"
     limits = roleplay_context_limits(n_ctx, audience_key)
+    state_field_mode = (
+        "exact"
+        if audience_key in {"director", "resource"} or _context_query_requests_exact_state(query)
+        else "semantic"
+    )
     state = normalized.get("story_state", {})
     scene = _dict(state.get("scene"))
     resolved_speaker_id = _director_resolve_speaker_id(normalized, speaker_id)
@@ -4370,7 +4480,12 @@ def build_roleplay_context(
     if audience_key == "player_proxy":
         player_payload = {
             "persona": _context_persona(normalized.get("persona"), limits),
-            "runtime": _context_runtime_state(player_state, limits, player=True),
+            "runtime": _context_runtime_state(
+                player_state,
+                limits,
+                player=True,
+                state_field_mode=state_field_mode,
+            ),
             "known_facts": _clean_string_list(
                 state.get("knowledge", {}).get(normalized.get("persona", {}).get("id"), []),
                 20,
@@ -4389,12 +4504,18 @@ def build_roleplay_context(
             "runtime": _context_runtime_state(
                 state.get("characters", {}).get(resolved_speaker_id, {}),
                 limits,
+                state_field_mode=state_field_mode,
             ),
             "known_facts": _clean_string_list(state.get("knowledge", {}).get(resolved_speaker_id, []), 20),
         }
         required_specs.append(("speaker", speaker_payload, 1))
         player_payload: dict[str, Any] = {
-            "runtime": _context_runtime_state(player_state, limits, player=True),
+            "runtime": _context_runtime_state(
+                player_state,
+                limits,
+                player=True,
+                state_field_mode=state_field_mode,
+            ),
         }
         if player_state.get("status") == "present" and audience_key == "character":
             player_payload["persona"] = _context_persona(normalized.get("persona"), limits)
@@ -4416,7 +4537,11 @@ def build_roleplay_context(
                 limits,
                 include_locked=audience_key in {"director", "resource"},
             ),
-            "runtime": _context_runtime_state(state.get("characters", {}).get(character_id, {}), limits),
+            "runtime": _context_runtime_state(
+                state.get("characters", {}).get(character_id, {}),
+                limits,
+                state_field_mode=state_field_mode,
+            ),
         })
     if character_rows:
         required_specs.append(("present_characters", character_rows, len(character_rows)))
@@ -4514,6 +4639,7 @@ def build_roleplay_context(
         "version": 1,
         "audience": audience_key,
         "speaker_id": resolved_speaker_id,
+        "state_field_mode": state_field_mode,
         "n_ctx": limits["n_ctx"],
         "budget_chars": system_budget,
         "system_chars": system_chars,
@@ -4584,6 +4710,8 @@ def build_roleplay_system_prompt(
         "REAL-TIME STATE OVERRIDE: the runtime state below is authoritative for this turn and overrides the character card's initial state, imported examples, and older dialogue.",
         "The character card is static setup only. Never treat its identity, background, examples, or other state-like wording as the character's current condition when it conflicts with the runtime state.",
         "Preserve every ongoing condition, buff, debuff, injury, equipment effect, restraint, position, and ability restriction unless the latest exchange explicitly ends or replaces it. Do not reset a runtime field to its initial value merely because the scene or location changed.",
+        "Semantic state levels are acting guidance, not text to quote.",
+        "Unless the latest user message explicitly asks for exact values, express state through dialogue, action, reaction, and narration. Do not copy state-field labels, ratios, percentages, parenthesized numbers, or add a status/stat panel; if asked, answer only the requested values naturally.",
         "Player participation rules:",
         _player_state_prompt(player_state, effective_turn_intent),
         f"Effective narrative intent for the latest user message: {effective_turn_intent}.",
@@ -4647,6 +4775,7 @@ def build_player_proxy_prompt(
             "Do not mention that you are an AI, director, proxy, or simulation.",
             "Do not decide the character's private thoughts or actions.",
             "Do not make irreversible choices listed in proxy_policy.require_confirmation_for.",
+            "Semantic state levels guide behavior, not wording. Do not write state-field labels, ratios, percentages, or a status/stat panel unless exact values were requested.",
             "Context Builder blocks follow. Current runtime state overrides older dialogue and static setup text.",
             *roleplay_context_prompt_sections(built_context),
         ]
@@ -4963,6 +5092,7 @@ def build_director_prompt(
             "Use target_entity_type=player with the exact player id for player_state changes, target_entity_type=character with the exact configured character id for character changes, and target_entity_type=scene with target_entity_id=scene for scene changes.",
             "The state_path_prefix values in the attribution map are internal references for reasoning only. Never return them or construct a patch from them.",
             "The speaking character is not the default state-update target. Never write a patch to characters.<speaker_id> merely because that character produced the visible reply.",
+            "For current_action, the value must describe the target character's own action. Omit the subject or use that character's configured name. Never introduce an unregistered person name, and never write the player's or another character's action into the target character.",
             "In an in-character reply, second-person references such as you, your, 你, or 你的 normally refer to the player unless another addressee is explicitly named or the scene clearly establishes a different target.",
             "The player runtime uses player_state and supports status, appearance, state_text, and state_fields. Put visible clothing, equipment, hairstyle, body markings, and visible injuries into player_state.appearance. Put the player's current action, emotion, body position, restraint, injury effects, buffs, debuffs, and ability restrictions into player_state.state_text and/or player_state.state_fields.",
             "When a character grabs, restrains, embraces, moves, injures, heals, buffs, debuffs, or otherwise affects the player, update player_state for the effect on the player. Add a separate character patch only when that character's own state also changed.",
@@ -6966,6 +7096,70 @@ def _director_character_is_named_subject(
     return False
 
 
+_DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE = re.compile(
+    r"^([\u3400-\u9fff]{2,10}?)(?=(?:正(?:在)?|仍(?:然)?|已经|已然|最终|终于|随后|随即|"
+    r"突然|缓缓|慢慢|开始|继续))",
+    re.IGNORECASE,
+)
+_DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS = {
+    "此时", "此刻", "这时", "现在", "少女", "女孩", "女人", "男子", "男人", "角色", "对方",
+    "双手", "左手", "右手", "手中", "身体", "身躯", "目光", "眼神", "眼睛", "嘴角", "唇角",
+    "呼吸", "胸口", "心跳", "脸上", "脸颊", "头发", "衣角", "脚步", "声音", "表情", "神情",
+    "动作", "姿态",
+}
+
+
+def _director_current_action_actor(
+    normalized: dict[str, Any],
+    value: Any,
+) -> dict[str, str]:
+    """Identify an explicit clause-leading actor in a current_action value."""
+    source = _text(value, 12000).lstrip(" \t\r\n'\"“”‘’（(【[")
+    if not source:
+        return {}
+
+    candidates: list[dict[str, str]] = []
+    player = normalized.get("persona", {})
+    player_id = _text(player.get("id"), 160) or "player"
+    player_aliases = [
+        player_id,
+        *_director_name_aliases(player.get("name")),
+        "玩家",
+    ]
+    for alias in sorted({item for item in player_aliases if item}, key=len, reverse=True):
+        match = next(_director_alias_spans(source, alias), None)
+        if match and match.start() == 0:
+            candidates.append({"entity_type": "player", "entity_id": player_id, "name": alias})
+            break
+
+    for character_id, card in normalized.get("characters", {}).items():
+        for alias in sorted(_director_character_aliases(character_id, card), key=len, reverse=True):
+            match = next(_director_alias_spans(source, alias), None)
+            if match and match.start() == 0:
+                candidates.append({
+                    "entity_type": "character",
+                    "entity_id": character_id,
+                    "name": alias,
+                })
+                break
+
+    distinct = {
+        (item["entity_type"], item["entity_id"]): item
+        for item in candidates
+    }
+    if len(distinct) == 1:
+        return next(iter(distinct.values()))
+    if len(distinct) > 1:
+        return {"entity_type": "ambiguous", "entity_id": "", "name": ""}
+
+    match = _DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE.match(source)
+    if match:
+        subject = _text(match.group(1), 80)
+        if subject and subject not in _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS:
+            return {"entity_type": "unknown", "entity_id": "", "name": subject}
+    return {}
+
+
 def _director_character_is_affected_subject(
     normalized: dict[str, Any],
     value: Any,
@@ -8848,6 +9042,33 @@ def _director_patch_target(
         if requested_id not in _director_present_character_ids(normalized, speaker):
             warnings.append("director_character_target_not_present")
             return [], {}, warnings
+        if requested_field == "current_action":
+            action_actor = _director_current_action_actor(
+                normalized,
+                _director_patch_raw_value_text(patch),
+            )
+            if not action_actor:
+                action_actor = _director_current_action_actor(
+                    normalized,
+                    patch.get("evidence"),
+                )
+            actor_type = action_actor.get("entity_type")
+            actor_id = _text(action_actor.get("entity_id"), 160)
+            if actor_type == "unknown":
+                warnings.append("director_current_action_unknown_actor")
+                return [], {}, warnings
+            if actor_type == "ambiguous":
+                warnings.append("director_current_action_actor_ambiguous")
+                return [], {}, warnings
+            if actor_type == "player":
+                warnings.append("director_current_action_player_actor_rejected")
+                return [], {}, warnings
+            if actor_type == "character" and actor_id != requested_id:
+                if actor_id not in _director_present_character_ids(normalized, speaker):
+                    warnings.append("director_character_target_not_present")
+                    return [], {}, warnings
+                requested_id = actor_id
+                warnings.append("director_target_corrected_from_explicit_evidence")
         if requested_id == speaker:
             attribution_source = "\n".join(
                 item

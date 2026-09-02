@@ -4841,6 +4841,28 @@ function applyScenePresetControlProps(input, props) {
     return changed;
 }
 
+function syncScenePresetRangeEndpointLabels(root, props) {
+    if (!root || !props || typeof props !== "object") return 0;
+    const endpoints = [
+        ["minimum", ".min_value"],
+        ["maximum", ".max_value"],
+    ];
+    let changed = 0;
+    for (const [key, selector] of endpoints) {
+        if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+        const rawValue = props[key];
+        if (rawValue == null || rawValue === "") continue;
+        const label = root.querySelector(selector);
+        if (!label) continue;
+        const nextValue = String(rawValue);
+        if (String(label.textContent || "").trim() !== nextValue) {
+            label.textContent = nextValue;
+            changed += 1;
+        }
+    }
+    return changed;
+}
+
 function scenePresetDefaultInputSelector(controlId) {
     const isCheckbox = controlId.indexOf("scene_switch_option") === 0;
     if (isCheckbox) return 'input[type="checkbox"]';
@@ -4930,6 +4952,7 @@ function applyScenePresetDefaultValue(controlId, value, props) {
             changed += 1;
         }
     }
+    changed += syncScenePresetRangeEndpointLabels(root, props);
     return changed;
 }
 
@@ -6304,10 +6327,6 @@ function sceneFrontendAllThemesSam3(sceneFrontend) {
     return normalized.length > 0 && normalized.every((value) => value.includes("sam3"));
 }
 
-function sceneFrontendHasSam3Option(sceneFrontend) {
-    return sceneFrontendSam3Values(sceneFrontend).some((value) => value.includes("sam3"));
-}
-
 function sceneTaskMethodNeedsThemeMatch(sceneFrontend) {
     const raw = sceneFrontend && sceneFrontend.task_method;
     return Array.isArray(raw) || !!(raw && typeof raw === "object");
@@ -6366,14 +6385,14 @@ function sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod) {
     const enabled = new Set(Array.isArray(rawEnabled) ? rawEnabled.map(String) : []);
     const inputsExplicitlyEnabled = ["sam3_input_video", "sam3_mask_video"].some((key) => enabled.has(key));
     const selected = sceneSelectedThemeValue();
+    // The selected radio already belongs to the new preset when an older state callback arrives late.
+    if (selected && !sceneThemeBelongsToFrontend(sceneFrontend, selected)) {
+        return selected.toLowerCase().includes("sam3");
+    }
     const currentTheme = selected && sceneThemeBelongsToFrontend(sceneFrontend, selected) ? selected : theme;
     const byTheme = sceneTaskMethodForTheme(sceneFrontend, currentTheme);
     if (byTheme.known) return byTheme.value.toLowerCase().includes("sam3") || inputsExplicitlyEnabled;
     if (sceneFrontendAllThemesSam3(sceneFrontend || {})) return true;
-    const hasSam3Option = sceneFrontendHasSam3Option(sceneFrontend || {});
-    if (selected && hasSam3Option && !sceneThemeBelongsToFrontend(sceneFrontend, selected)) {
-        return selected.toLowerCase().includes("sam3");
-    }
     const taskText = sceneTaskMethodNeedsThemeMatch(sceneFrontend || {}) ? "" : String(taskMethod || "").toLowerCase();
     if (taskText) return taskText.includes("sam3") || inputsExplicitlyEnabled;
     const themeText = String(currentTheme || selected || "").toLowerCase();

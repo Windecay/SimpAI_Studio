@@ -100,15 +100,15 @@
       "ref_image_size": "auto",
       "reference_token_budget": 0,
       "max_image_long_edge": 2048,
-      "ref_images.ref_image_0": ["21", 0],
-      "ref_images.ref_image_1": ["25", 0],
-      "ref_images.ref_image_2": ["29", 0],
-      "ref_images.ref_image_3": ["33", 0],
-      "ref_images.ref_image_4": ["37", 0],
-      "ref_images.ref_image_5": ["103", 0],
-      "ref_images.ref_image_6": ["107", 0],
-      "ref_images.ref_image_7": ["111", 0],
-      "ref_images.ref_image_8": ["115", 0]
+      "ref_images.ref_image_0": ["130", 0],
+      "ref_images.ref_image_1": ["131", 0],
+      "ref_images.ref_image_2": ["132", 0],
+      "ref_images.ref_image_3": ["133", 0],
+      "ref_images.ref_image_4": ["134", 0],
+      "ref_images.ref_image_5": ["135", 0],
+      "ref_images.ref_image_6": ["136", 0],
+      "ref_images.ref_image_7": ["137", 0],
+      "ref_images.ref_image_8": ["138", 0]
     },
     "class_type": "SimpAIMiniMaxH3AdaptiveReference",
     "_meta": {"title": "MiniMax H3 Reference to Image"}
@@ -127,7 +127,7 @@
       "guider": ["12", 0],
       "sampler": ["8", 0],
       "sigmas": ["9", 0],
-      "latent_image": ["11", 1]
+      "latent_image": ["129", 0]
     },
     "class_type": "SamplerCustomAdvanced",
     "_meta": {"title": "H3 Sampler Advanced"}
@@ -559,5 +559,211 @@
     },
     "class_type": "easy ifElse",
     "_meta": {"title": "H3 Output Image"}
+  },
+  "116": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": ["1", 5],
+      "b": ["19", 0]
+    },
+    "class_type": "easy compare",
+    "_meta": {"title": "H3 Canvas Mask Missing"}
+  },
+  "117": {
+    "inputs": {
+      "image_name": ["1", 5],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {"title": "H3 Canvas Mask"}
+  },
+  "118": {
+    "inputs": {
+      "image": ["117", 0],
+      "channel": "red"
+    },
+    "class_type": "ImageToMask",
+    "_meta": {"title": "H3 Canvas Image to Mask"}
+  },
+  "119": {
+    "inputs": {
+      "value": 0.0,
+      "width": 64,
+      "height": 64
+    },
+    "class_type": "SolidMask",
+    "_meta": {"title": "H3 Empty Canvas Mask"}
+  },
+  "120": {
+    "inputs": {
+      "boolean": ["116", 0],
+      "on_true": ["119", 0],
+      "on_false": ["118", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Resolved Canvas Mask"}
+  },
+  "121": {
+    "inputs": {
+      "mask": ["120", 0]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {"title": "H3 Is Canvas Mask Empty"}
+  },
+  "122": {
+    "inputs": {
+      "expand": 20,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 10,
+      "lerp_alpha": 1,
+      "decay_factor": 1,
+      "fill_holes": false,
+      "mask": ["120", 0]
+    },
+    "class_type": "GrowMaskWithBlur",
+    "_meta": {"title": "H3 Grow and Blur Canvas Mask"}
+  },
+  "123": {
+    "inputs": {
+      "vae": ["5", 0],
+      "width": ["70", 1],
+      "height": ["71", 1],
+      "length": 5,
+      "source_video": ["18", 0]
+    },
+    "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
+    "_meta": {"title": "H3 Canvas Source AV Latent"}
+  },
+  "124": {
+    "inputs": {
+      "av_latent": ["123", 0]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {"title": "Separate H3 Canvas AV Latent"}
+  },
+  "125": {
+    "inputs": {
+      "samples": ["124", 0],
+      "mask": ["122", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply H3 Canvas Video Mask"}
+  },
+  "126": {
+    "inputs": {
+      "value": 0.0,
+      "width": 32,
+      "height": 32
+    },
+    "class_type": "SolidMask",
+    "_meta": {"title": "Preserve H3 Canvas Audio"}
+  },
+  "127": {
+    "inputs": {
+      "samples": ["124", 1],
+      "mask": ["126", 0]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {"title": "Apply Zero Mask to H3 Canvas Audio"}
+  },
+  "128": {
+    "inputs": {
+      "video_latent": ["125", 0],
+      "audio_latent": ["127", 0]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {"title": "Merge Masked H3 Canvas AV Latent"}
+  },
+  "129": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["11", 1],
+      "on_false": ["128", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Canvas Mask Latent Branch"}
+  },
+  "130": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["21", 0],
+      "on_false": ["21", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 1"}
+  },
+  "131": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["25", 0],
+      "on_false": ["25", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 2"}
+  },
+  "132": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["29", 0],
+      "on_false": ["29", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 3"}
+  },
+  "133": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["33", 0],
+      "on_false": ["33", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 4"}
+  },
+  "134": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["37", 0],
+      "on_false": ["37", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 5"}
+  },
+  "135": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["103", 0],
+      "on_false": ["103", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 6"}
+  },
+  "136": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["107", 0],
+      "on_false": ["107", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 7"}
+  },
+  "137": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["111", 0],
+      "on_false": ["111", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 8"}
+  },
+  "138": {
+    "inputs": {
+      "boolean": ["121", 0],
+      "on_true": ["115", 0],
+      "on_false": ["115", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Runtime Picture 9"}
   }
 }

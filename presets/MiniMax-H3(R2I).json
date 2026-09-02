@@ -22,7 +22,7 @@
         "Basic": {"en": "Basic", "zh": "\u57fa\u7840"},
         "2 pass": {"en": "2 pass", "zh": "\u53cc\u91c7\u6837"}
       },
-      "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional up to 9 reference images]",
+      "theme_title": "MiniMax H3 Text/Reference-to-Image [Optional mask, up to 9 images]",
       "director_capability": {
         "image_policy": "optional",
         "audio_policy": "forbidden",
@@ -34,7 +34,6 @@
         "audio_output": "silent",
         "mixed_segments": false
       },
-      "disable_canvas_mask": true,
       "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "minimax_h3_storyboard_control"],
       "disvisible": [
         "scene_additional_prompt",
@@ -66,8 +65,8 @@
       "overwrite_step": {"Basic": 10, "2 pass": 15},
       "multimodal_prompt": {"Basic": ""},
       "agent_prompt": {
-        "Basic": "Reference images are optional. When images are uploaded, refer to them only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When no image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media.",
-        "2 pass": "Reference images are optional. When images are uploaded, refer to them only as <Picture 1>, <Picture 2>, and so on, numbered in upload order, and use only labels that exist. State which subject, identity, object, style, or visual attribute comes from each reference image. When no image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."
+        "Basic": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media.",
+        "2 pass": "The canvas mask is optional and selects the route automatically without changing picture order or numbering. The canvas is always <Picture 1> when present, followed by additional images as <Picture 2>, <Picture 3>, and so on in upload order. With a non-empty painted mask, <Picture 1> is also the source image being edited. Treat the mask as execution data, never as a picture. Describe only the requested change inside the mask and explicitly preserve all content outside it. Use only runtime labels that exist. When no canvas or reference image is uploaded, generate the still image from the complete textual description. Do not invent dialogue, audio, video, or reference media."
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,

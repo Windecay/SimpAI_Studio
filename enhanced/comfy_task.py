@@ -133,6 +133,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("i2i_ip_image7", "SceneInput:SceneInput:ip_image6")
         comfy_params.update_mapping_rule("i2i_ip_image8", "SceneInput:SceneInput:ip_image7")
         comfy_params.update_mapping_rule("video", "SimpAIOptionalVideoPath:SimpAIOptionalVideoPath:video")
+        comfy_params.update_mapping_rule("mask_video", "SimpAIOptionalVideoPath:SimpAIOptionalMaskVideoPath:video")
         comfy_params.update_mapping_rule("video", "SimpAIH3UpscaleLoop:H3 Upscale Loop:source_video")
         comfy_params.update_mapping_rule("reference_video", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath:reference_video")
         comfy_params.update_mapping_rule("reference_video2", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath2:reference_video")

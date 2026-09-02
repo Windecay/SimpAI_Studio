@@ -2811,6 +2811,48 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                 mask_path,
                 os.path.getsize(mask_path),
             )
+        if scene_task_method_value == "minimax_h3_mask_r2v_cn":
+            lang = normalize_ui_lang(state_params.get("__lang"))
+            source_path = _clean_scene_reference_video_path(video_effective)
+            if not source_path or not os.path.isfile(source_path):
+                if lang == "cn":
+                    raise gr.Error("SAM3 源视频无效，请重新上传后再生成。")
+                raise gr.Error("The SAM3 source video is missing or invalid. Please upload it again.")
+            mask_path = _clean_scene_reference_video_path(sam3_mask_video)
+            if not mask_path or not os.path.isfile(mask_path):
+                if lang == "cn":
+                    raise gr.Error("SAM3 蒙版视频无效，请重新生成或上传后再生成。")
+                raise gr.Error("The SAM3 mask video is missing or invalid. Please regenerate or upload it again.")
+            logger.info(
+                "[Generate][H3MaskEdit] source_ready=%s source_size=%s mask_ready=%s mask_size=%s",
+                source_path,
+                os.path.getsize(source_path),
+                mask_path,
+                os.path.getsize(mask_path),
+            )
+        if scene_task_method_value == "minimax_h3_face_swap_r2v_cn":
+            lang = normalize_ui_lang(state_params.get("__lang"))
+            video_effective = scene_video_effective
+            source_path = _clean_scene_reference_video_path(scene_video_effective)
+            if not source_path or not os.path.isfile(source_path):
+                if lang == "cn":
+                    raise gr.Error("自动换脸原视频无效，请重新上传后再生成。")
+                raise gr.Error("The automatic face-swap source video is missing or invalid. Please upload it again.")
+            replacement_image = (
+                scene_canvas_image.get("image")
+                if isinstance(scene_canvas_image, dict)
+                else scene_canvas_image
+            )
+            if replacement_image is None:
+                if lang == "cn":
+                    raise gr.Error("自动换脸需要一张人脸参考图，请上传后再生成。")
+                raise gr.Error("Automatic face swap requires one face reference image. Please upload it before generating.")
+            logger.info(
+                "[Generate][H3AutoFaceSwap] source_ready=%s source_size=%s reference_shape=%s",
+                source_path,
+                os.path.getsize(source_path),
+                getattr(replacement_image, "shape", None),
+            )
         try:
             import modules.scene_director_webui as scene_director_webui
             scene_director_capability = scene_director_webui._scene_director_capability_from_state(state_params, scene_theme)

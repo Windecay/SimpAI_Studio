@@ -40,7 +40,8 @@ in English and Chinese stages.
   palette, texture, and depth across the new border.
 - For object or clothing transfer, keep the target image as picture 1 and the
   source object or clothing as the next picture, unless the runtime inventory
-  explicitly states another order.
+  explicitly states another order or marks a masked canvas as an unnumbered
+  source image.
 
 ## Prompt Output / 提示词输出
 
@@ -56,8 +57,16 @@ in English and Chinese stages.
 
 ## R2I / 图编路线
 
-- `MiniMax-H3(R2I)` is a still-image editing route. It accepts one to nine
-  ordered image references and emits an image result.
+- Contract reviewed: 2026-09-01.
+- `MiniMax-H3(R2I)` is a still-image generation and editing route. With no
+  painted mask, the canvas and additional images are numbered `<Picture N>` in
+  upload order. With a non-empty painted mask, the canvas becomes the
+  unnumbered source image and additional references begin at `<Picture 1>`.
+- The painted mask selects the edit branch automatically. Do not add a separate
+  mask-mode option, and never describe the mask itself as a picture reference.
+- In masked editing, describe only the requested change inside the mask and
+  preserve all source content outside it. The workflow applies the mask to the
+  initial H3 latent rather than compositing decoded output pixels.
 - This route does not use video or audio references.
 - Use the H3 R2I still-image compiler with `<Picture N>` labels, but do not
   create H3 storyboard sections, video shots, dialogue, synchronized sound,
