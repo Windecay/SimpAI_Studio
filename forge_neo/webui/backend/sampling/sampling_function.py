@@ -5,6 +5,7 @@
 
 import collections
 import math
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,6 +19,11 @@ from backend.sampling.condition import (
     Condition,
     compile_conditions,
     compile_weighted_conditions,
+)
+from modules.source_backend_timing import (
+    log_source_stage,
+    log_source_stage_marker,
+    stage_logs_enabled,
 )
 
 
@@ -230,11 +236,14 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
                 logger.warning('You can add "--reserve-vram 2" to keep a larger headroom')
                 logger.warning('You can also (not recommended) add "--disable-gpu-warning" to remove this warning')
 
+        required_memory = None
         for i in range(1, len(to_batch_temp) + 1):
             batch_amount = to_batch_temp[: len(to_batch_temp) // i]
             input_shape = [len(batch_amount) * first_shape[0]] + list(first_shape)[1:]
-            if model.memory_required(input_shape) < free_memory:
+            candidate_required_memory = model.memory_required(input_shape)
+            if candidate_required_memory < free_memory:
                 to_batch = batch_amount
+                required_memory = candidate_required_memory
                 break
 
         input_x = []
@@ -259,6 +268,8 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
         input_x = torch.cat(input_x)
         c = cond_cat(c)
         timestep_ = torch.cat([timestep] * batch_chunks)
+        if required_memory is None:
+            required_memory = model.memory_required([len(to_batch) * first_shape[0]] + list(first_shape)[1:])
 
         transformer_options = {}
         if "transformer_options" in model_options:
@@ -292,10 +303,30 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
             c["control"] = control.get_control(input_x, timestep_, control_cond, len(cond_or_uncond))
             c["control_model"] = control
 
-        if "model_function_wrapper" in model_options:
-            output = model_options["model_function_wrapper"](model.apply_model, {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond}).chunk(batch_chunks)
-        else:
-            output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
+        log_source_stage_marker(
+            "calc_cond_uncond.apply_model",
+            batch_chunks=batch_chunks,
+            cond_or_uncond=tuple(cond_or_uncond),
+            input_shape=tuple(input_x.shape),
+            free_memory=free_memory,
+            required_memory=required_memory,
+        )
+        apply_model_started = time.perf_counter()
+        try:
+            if "model_function_wrapper" in model_options:
+                output = model_options["model_function_wrapper"](model.apply_model, {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond}).chunk(batch_chunks)
+            else:
+                output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
+        finally:
+            log_source_stage(
+            "calc_cond_uncond.apply_model",
+                apply_model_started,
+                batch_chunks=batch_chunks,
+                cond_or_uncond=tuple(cond_or_uncond),
+                input_shape=tuple(input_x.shape),
+                free_memory=free_memory,
+                required_memory=required_memory,
+            )
         del input_x
 
         for o in range(batch_chunks):
@@ -315,6 +346,11 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
 
 
 def sampling_function_inner(model, x, timestep, uncond, cond, cond_scale, model_options={}, seed=None, return_full=False):
+    source_timing_enabled = stage_logs_enabled()
+    if source_timing_enabled:
+        log_source_stage_marker("sampling_function.inner", cond_scale=cond_scale)
+        sampling_inner_started = time.perf_counter()
+
     edit_strength = sum((item["strength"] if "strength" in item else 1) for item in cond)
 
     if math.isclose(cond_scale, 1.0) and model_options.get("disable_cfg1_optimization", False) == False:
@@ -338,6 +374,9 @@ def sampling_function_inner(model, x, timestep, uncond, cond, cond_scale, model_
     for fn in model_options.get("sampler_post_cfg_function", []):
         args = {"denoised": cfg_result, "cond": cond, "uncond": uncond, "cond_scale": cond_scale, "model": model, "uncond_denoised": uncond_pred, "cond_denoised": cond_pred, "sigma": timestep, "model_options": model_options, "input": x}
         cfg_result = fn(args)
+
+    if source_timing_enabled:
+        log_source_stage("sampling_function.inner", sampling_inner_started, cond_scale=cond_scale)
 
     if return_full:
         return cfg_result, cond_pred, uncond_pred
@@ -385,10 +424,18 @@ def sampling_function(self, denoiser_params, cond_scale, cond_composition, extra
 
 
 def sampling_prepare(unet: "UnetPatcher", x: torch.Tensor):
+    sampling_prepare_started = time.perf_counter()
+    log_source_stage_marker("sampling_prepare.total", input_shape=tuple(x.shape))
+
     shape = list(x.shape)
     mem_shape = [2 * shape[0]] + shape[1:]
 
-    unet_inference_memory = unet.memory_required(mem_shape)
+    log_source_stage_marker("sampling_prepare.memory_required", input_shape=tuple(mem_shape))
+    memory_required_started = time.perf_counter()
+    try:
+        unet_inference_memory = unet.memory_required(mem_shape)
+    finally:
+        log_source_stage("sampling_prepare.memory_required", memory_required_started, input_shape=tuple(mem_shape), required_memory=unet_inference_memory if "unet_inference_memory" in locals() else None)
     additional_inference_memory = unet.extra_preserved_memory_during_sampling
     additional_model_patchers = unet.extra_model_patchers_during_sampling
 
@@ -400,7 +447,22 @@ def sampling_prepare(unet: "UnetPatcher", x: torch.Tensor):
         lora_memory = utils.nested_compute_size(unet.online_patches, element_size=utils.dtype_to_element_size(unet.model.computation_dtype))
         additional_inference_memory += lora_memory
 
-    memory_management.load_models_gpu(models=[unet] + additional_model_patchers, memory_required=unet_inference_memory + additional_inference_memory, minimum_memory_required=unet_inference_memory // 2 + additional_inference_memory)
+    load_models_started = time.perf_counter()
+    log_source_stage_marker(
+        "sampling_prepare.load_models_gpu",
+        model_count=1 + len(additional_model_patchers),
+        memory_required=unet_inference_memory + additional_inference_memory,
+        minimum_memory_required=unet_inference_memory // 2 + additional_inference_memory,
+    )
+    try:
+        memory_management.load_models_gpu(models=[unet] + additional_model_patchers, memory_required=unet_inference_memory + additional_inference_memory, minimum_memory_required=unet_inference_memory // 2 + additional_inference_memory)
+    finally:
+        log_source_stage("sampling_prepare.load_models_gpu",
+            load_models_started,
+            model_count=1 + len(additional_model_patchers),
+            memory_required=unet_inference_memory + additional_inference_memory,
+            minimum_memory_required=unet_inference_memory // 2 + additional_inference_memory,
+        )
 
     if unet.has_online_lora():
         utils.nested_move_to_device(unet.online_patches, device=unet.current_device, dtype=unet.model.computation_dtype)
@@ -411,6 +473,8 @@ def sampling_prepare(unet: "UnetPatcher", x: torch.Tensor):
 
     for cnet in unet.list_controlnets():
         cnet.pre_run(real_model, percent_to_timestep_function)
+
+    log_source_stage("sampling_prepare.total", sampling_prepare_started, input_shape=tuple(x.shape), required_memory=unet_inference_memory + additional_inference_memory)
 
 
 def sampling_cleanup(unet: "UnetPatcher"):

@@ -23,6 +23,7 @@ import collections
 import copy
 import inspect
 import logging
+import os
 import uuid
 
 import torch
@@ -83,6 +84,11 @@ def wipe_lowvram_weight(m):
 
     if hasattr(m, "bias_function"):
         m.bias_function = []
+
+
+def _source_backend_direct_full_load_enabled() -> bool:
+    value = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_DIRECT_FULL_LOAD", "0") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
 
 
 def move_weight_functions(m, device):
@@ -590,7 +596,38 @@ class ModelPatcher:
                 loading.append((module_offload_mem, module_mem, n, m, params))
         return loading
 
+    def _can_direct_full_load(self, *, full_load: bool, force_patch_weights: bool) -> bool:
+        if not _source_backend_direct_full_load_enabled() or not full_load:
+            return False
+        if force_patch_weights or self.force_cast_weights:
+            return False
+        return (
+            len(self.patches) == 0
+            and len(self.online_patches) == 0
+            and len(self.backup) == 0
+            and len(self.pinned) == 0
+            and len(self.object_patches) == 0
+        )
+
+    def _direct_full_load(self, *, device_to=None, lowvram_model_memory=0):
+        for m in self.model.modules():
+            wipe_lowvram_weight(m)
+
+        if device_to is not None:
+            self.model.to(device_to)
+
+        self.current_device = device_to
+        self.model.model_lowvram = False
+        self.model.model_loaded_weight_memory = self.model_size()
+        self.model.model_offload_buffer_memory = 0
+        self.model.current_weight_patches_uuid = self.patches_uuid
+        logger.info("direct full load: True")
+
     def load(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False, full_load=False):
+        if self._can_direct_full_load(full_load=full_load, force_patch_weights=force_patch_weights):
+            self._direct_full_load(device_to=device_to, lowvram_model_memory=lowvram_model_memory)
+            return
+
         mem_counter = 0
         patch_counter = 0
         lowvram_counter = 0

@@ -29,6 +29,7 @@ from forge_neo.runtime_backend.adapter import (
     _source_backend_mode,
     _source_api_has_field,
     _source_prompt_with_loras,
+    _source_anima_reference_setting,
     _source_apply_raw_request_model_values,
     _source_api_raw_field,
     _source_payload_with_infotext_unset_fields,
@@ -1693,6 +1694,9 @@ def _source_backend_payload(request: object) -> dict[str, Any]:
     preset = str(getattr(request, "preset", "") or "").strip()
     if preset:
         override_settings["forge_preset"] = preset
+    anima_do_reference = _source_anima_reference_setting(request)
+    if anima_do_reference is not None:
+        override_settings["anima_do_reference"] = anima_do_reference
     if checkpoint is not None:
         override_settings["sd_model_checkpoint"] = checkpoint
     additional_modules = _source_backend_additional_modules(request)

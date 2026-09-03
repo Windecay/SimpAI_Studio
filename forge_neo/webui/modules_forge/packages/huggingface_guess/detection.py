@@ -198,21 +198,23 @@ def detect_unet_config(state_dict: dict, key_prefix: str) -> dict:
 
         return dit_config
 
-    if "{}blocks.0.mlp.layer1.weight".format(key_prefix) in state_dict_keys:  # Anima
+    anima_block_key = "{}blocks.0.mlp.layer1.weight".format(key_prefix)
+    anima_adapter_key = "{}llm_adapter.blocks.0.cross_attn.q_proj.weight".format(key_prefix)
+    anima_embed_key = "{}x_embedder.proj.1.weight".format(key_prefix)
+    if anima_block_key in state_dict_keys and anima_adapter_key in state_dict_keys and anima_embed_key in state_dict_keys:  # Anima
         dit_config = {}
-        assert "{}llm_adapter.blocks.0.cross_attn.q_proj.weight".format(key_prefix) in state_dict_keys
         dit_config["image_model"] = "anima"
-        dit_config["in_channels"] = int(state_dict["{}x_embedder.proj.1.weight".format(key_prefix)].shape[1] / 4) - 1
+        dit_config["in_channels"] = int(state_dict[anima_embed_key].shape[1] / 4) - 1
         assert dit_config["in_channels"] == 16
         dit_config["out_channels"] = 16
         dit_config["patch_spatial"] = 2
         dit_config["patch_temporal"] = 1
-        dit_config["model_channels"] = int(state_dict["{}x_embedder.proj.1.weight".format(key_prefix)].shape[0])
+        dit_config["model_channels"] = int(state_dict[anima_embed_key].shape[0])
         assert dit_config["model_channels"] == 2048
         dit_config["concat_padding_mask"] = True
         dit_config["crossattn_emb_channels"] = 1024
         dit_config["adaln_lora_dim"] = 256
-        dit_config["num_blocks"] = 28
+        dit_config["num_blocks"] = count_blocks(state_dict_keys, "{}blocks.".format(key_prefix) + "{}.")
         dit_config["num_heads"] = 16
         dit_config["rope_h_extrapolation_ratio"] = 4.0
         dit_config["rope_w_extrapolation_ratio"] = 4.0

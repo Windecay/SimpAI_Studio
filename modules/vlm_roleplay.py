@@ -1698,6 +1698,54 @@ def default_character_card(value: Any = None) -> dict[str, Any]:
     }
 
 
+def _merge_character_card_layers(base: Any, overlay: Any) -> dict[str, Any]:
+    """Merge duplicate card representations without letting empty fields erase data."""
+    base_card = default_character_card(base)
+    overlay_card = default_character_card(overlay)
+    merged = copy.deepcopy(base_card)
+    scalar_fields = (
+        "name",
+        "avatar_asset_id",
+        "appearance",
+        "identity",
+        "background",
+        "personality",
+        "speech_style",
+        "image_prompt",
+        "negative_prompt",
+        "first_message",
+    )
+    for field in scalar_fields:
+        incoming = _text(overlay_card.get(field))
+        existing = _text(base_card.get(field))
+        if incoming or not existing:
+            merged[field] = incoming
+    list_fields = (
+        "reference_asset_ids",
+        "behavior_rules",
+        "example_dialogues",
+        "locked_fields",
+        "state_image_history",
+    )
+    for field in list_fields:
+        incoming = overlay_card.get(field)
+        existing = base_card.get(field)
+        if incoming or not existing:
+            merged[field] = copy.deepcopy(incoming or [])
+    incoming_world_book = _dict(overlay_card.get("world_book"))
+    existing_world_book = _dict(base_card.get("world_book"))
+    if incoming_world_book.get("entries") or not existing_world_book.get("entries"):
+        merged["world_book"] = copy.deepcopy(incoming_world_book)
+    merged["id"] = _id(overlay_card.get("id") or base_card.get("id"), "character")
+    merged["revision"] = max(
+        int(base_card.get("revision") or 1),
+        int(overlay_card.get("revision") or 1),
+    )
+    merged["created_at"] = _text(base_card.get("created_at"), 80) or _text(overlay_card.get("created_at"), 80)
+    merged["updated_at"] = _text(overlay_card.get("updated_at"), 80) or _text(base_card.get("updated_at"), 80)
+    return merged
+
+
 def _normalize_character_cards(value: Any, primary: dict[str, Any]) -> dict[str, dict[str, Any]]:
     cards: dict[str, dict[str, Any]] = {}
     if isinstance(value, dict):
@@ -1711,9 +1759,13 @@ def _normalize_character_cards(value: Any, primary: dict[str, Any]) -> dict[str,
         if not source.get("id"):
             source["id"] = key
         card = default_character_card(source)
-        cards[card["id"]] = card
+        cards[card["id"]] = _merge_character_card_layers(cards[card["id"]], card) if card["id"] in cards else card
     primary_card = default_character_card(primary)
-    cards[primary_card["id"]] = primary_card
+    cards[primary_card["id"]] = (
+        _merge_character_card_layers(cards[primary_card["id"]], primary_card)
+        if primary_card["id"] in cards
+        else primary_card
+    )
     return dict(list(cards.items())[:MAX_ROLEPLAY_CHARACTERS])
 
 

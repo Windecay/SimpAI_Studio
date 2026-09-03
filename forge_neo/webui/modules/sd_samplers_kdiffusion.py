@@ -1,4 +1,5 @@
 import inspect
+import time
 
 import k_diffusion
 import k_diffusion.external
@@ -10,6 +11,7 @@ from modules import devices, sd_samplers_cfg_denoiser, sd_samplers_common, sd_sa
 from modules.script_callbacks import ExtraNoiseParams, extra_noise_callback
 from modules.sd_samplers_cfg_denoiser import CFGDenoiser  # noqa: F401
 from modules.shared import opts
+from modules.source_backend_timing import log_source_stage, log_source_stage_marker
 
 samplers_k_diffusion = [
     ("DPM++ 2M", "sample_dpmpp_2m", ["k_dpmpp_2m"], {"scheduler": "karras"}),
@@ -140,16 +142,32 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
     def sample_img2img(self, p, x, noise, conditioning, unconditional_conditioning, steps=None, image_conditioning=None):
         unet_patcher = self.model_wrap.inner_model.forge_objects.unet
-        sampling_prepare(self.model_wrap.inner_model.forge_objects.unet, x=x)
+
+        log_source_stage_marker("kdiffusion.img2img.sampling_prepare", sampler=self.funcname)
+        sampling_prepare_started = time.perf_counter()
+        try:
+            sampling_prepare(self.model_wrap.inner_model.forge_objects.unet, x=x)
+        finally:
+            log_source_stage("kdiffusion.img2img.sampling_prepare", sampling_prepare_started, sampler=self.funcname)
 
         steps, t_enc = sd_samplers_common.setup_img2img_steps(p, steps)
 
-        sigmas = self.get_sigmas(p, steps).to(x.device)
+        log_source_stage_marker("kdiffusion.img2img.sigmas", sampler=self.funcname, steps=steps)
+        sigmas_started = time.perf_counter()
+        try:
+            sigmas = self.get_sigmas(p, steps).to(x.device)
+        finally:
+            log_source_stage("kdiffusion.img2img.sigmas", sigmas_started, sampler=self.funcname, steps=steps)
         sigma_sched = sigmas[steps - t_enc - 1 :]
 
         x = x.to(noise)
 
-        xi = self.model_wrap.predictor.noise_scaling(sigma_sched[0], noise, x, max_denoise=False)
+        log_source_stage_marker("kdiffusion.img2img.noise_scaling", sampler=self.funcname)
+        noise_scaling_started = time.perf_counter()
+        try:
+            xi = self.model_wrap.predictor.noise_scaling(sigma_sched[0], noise, x, max_denoise=False)
+        finally:
+            log_source_stage("kdiffusion.img2img.noise_scaling", noise_scaling_started, sampler=self.funcname)
 
         if opts.img2img_extra_noise > 0:
             p.extra_generation_params["Extra noise"] = opts.img2img_extra_noise
@@ -158,7 +176,12 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
             noise = extra_noise_params.noise
             xi += noise * opts.img2img_extra_noise
 
-        extra_params_kwargs = self.initialize(p)
+        log_source_stage_marker("kdiffusion.img2img.initialize", sampler=self.funcname)
+        initialize_started = time.perf_counter()
+        try:
+            extra_params_kwargs = self.initialize(p)
+        finally:
+            log_source_stage("kdiffusion.img2img.initialize", initialize_started, sampler=self.funcname)
         parameters = inspect.signature(self.func).parameters
 
         if "sigma_min" in parameters:
@@ -192,31 +215,62 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
         p.sd_model.forge_objects.unet.model_options["transformer_options"]["sampling_sigmas"] = sigmas
 
-        samples = self.launch_sampling(
-            t_enc + 1,
-            lambda: self.func(self.model_wrap_cfg, xi, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
-        )
+        log_source_stage_marker("kdiffusion.img2img.launch_sampling", sampler=self.funcname, steps=t_enc + 1)
+        launch_sampling_started = time.perf_counter()
+        try:
+            samples = self.launch_sampling(
+                t_enc + 1,
+                lambda: self.func(self.model_wrap_cfg, xi, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
+            )
+        finally:
+            log_source_stage("kdiffusion.img2img.launch_sampling", launch_sampling_started, sampler=self.funcname, steps=t_enc + 1)
 
         self.add_infotext(p)
 
-        sampling_cleanup(unet_patcher)
+        log_source_stage_marker("kdiffusion.img2img.sampling_cleanup", sampler=self.funcname)
+        cleanup_started = time.perf_counter()
+        try:
+            sampling_cleanup(unet_patcher)
+        finally:
+            log_source_stage("kdiffusion.img2img.sampling_cleanup", cleanup_started, sampler=self.funcname)
 
         return samples
 
     def sample(self, p, x, conditioning, unconditional_conditioning, steps=None, image_conditioning=None):
         unet_patcher = self.model_wrap.inner_model.forge_objects.unet
-        sampling_prepare(self.model_wrap.inner_model.forge_objects.unet, x=x)
+
+        log_source_stage_marker("kdiffusion.txt2img.sampling_prepare", sampler=self.funcname)
+        sampling_prepare_started = time.perf_counter()
+        try:
+            sampling_prepare(self.model_wrap.inner_model.forge_objects.unet, x=x)
+        finally:
+            log_source_stage("kdiffusion.txt2img.sampling_prepare", sampling_prepare_started, sampler=self.funcname)
 
         steps = steps or p.steps
 
-        sigmas = self.get_sigmas(p, steps).to(x.device)
+        log_source_stage_marker("kdiffusion.txt2img.sigmas", sampler=self.funcname, steps=steps)
+        sigmas_started = time.perf_counter()
+        try:
+            sigmas = self.get_sigmas(p, steps).to(x.device)
+        finally:
+            log_source_stage("kdiffusion.txt2img.sigmas", sigmas_started, sampler=self.funcname, steps=steps)
 
         if opts.sgm_noise_multiplier:
             p.extra_generation_params["SGM noise multiplier"] = True
 
-        x = self.model_wrap.predictor.noise_scaling(sigmas[0], x, torch.zeros_like(x), max_denoise=opts.sgm_noise_multiplier)
+        log_source_stage_marker("kdiffusion.txt2img.noise_scaling", sampler=self.funcname)
+        noise_scaling_started = time.perf_counter()
+        try:
+            x = self.model_wrap.predictor.noise_scaling(sigmas[0], x, torch.zeros_like(x), max_denoise=opts.sgm_noise_multiplier)
+        finally:
+            log_source_stage("kdiffusion.txt2img.noise_scaling", noise_scaling_started, sampler=self.funcname)
 
-        extra_params_kwargs = self.initialize(p)
+        log_source_stage_marker("kdiffusion.txt2img.initialize", sampler=self.funcname)
+        initialize_started = time.perf_counter()
+        try:
+            extra_params_kwargs = self.initialize(p)
+        finally:
+            log_source_stage("kdiffusion.txt2img.initialize", initialize_started, sampler=self.funcname)
         parameters = inspect.signature(self.func).parameters
 
         if "n" in parameters:
@@ -247,13 +301,23 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
         p.sd_model.forge_objects.unet.model_options["transformer_options"]["sampling_sigmas"] = sigmas
 
-        samples = self.launch_sampling(
-            steps,
-            lambda: self.func(self.model_wrap_cfg, x, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
-        )
+        log_source_stage_marker("kdiffusion.txt2img.launch_sampling", sampler=self.funcname, steps=steps)
+        launch_sampling_started = time.perf_counter()
+        try:
+            samples = self.launch_sampling(
+                steps,
+                lambda: self.func(self.model_wrap_cfg, x, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
+            )
+        finally:
+            log_source_stage("kdiffusion.txt2img.launch_sampling", launch_sampling_started, sampler=self.funcname, steps=steps)
 
         self.add_infotext(p)
 
-        sampling_cleanup(unet_patcher)
+        log_source_stage_marker("kdiffusion.txt2img.sampling_cleanup", sampler=self.funcname)
+        cleanup_started = time.perf_counter()
+        try:
+            sampling_cleanup(unet_patcher)
+        finally:
+            log_source_stage("kdiffusion.txt2img.sampling_cleanup", cleanup_started, sampler=self.funcname)
 
         return samples

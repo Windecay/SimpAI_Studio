@@ -778,6 +778,32 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
 need_global_unload = False
 
 
+def _source_backend_anima_no_inference_mode_enabled() -> bool:
+    value = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_ANIMA_NO_INFERENCE_MODE", "0") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _uses_source_backend_anima_no_inference_mode(p: object) -> bool:
+    if not _source_backend_anima_no_inference_mode_enabled():
+        return False
+
+    sd_model = getattr(p, "sd_model", None)
+    forge_objects = getattr(sd_model, "forge_objects", None)
+    unet = getattr(forge_objects, "unet", None)
+    model = getattr(unet, "model", None)
+    diffusion_model = getattr(model, "diffusion_model", None)
+    diffusion_type = type(diffusion_model)
+    diffusion_module = str(getattr(diffusion_type, "__module__", "") or "")
+    diffusion_name = str(getattr(diffusion_type, "__name__", "") or "")
+    return diffusion_module.startswith("backend.") and diffusion_name == "Anima"
+
+
+def _source_backend_processing_context(p: object):
+    if _uses_source_backend_anima_no_inference_mode(p):
+        return torch.no_grad()
+    return torch.inference_mode()
+
+
 def _unload_text_encoder_after_conditioning(p: StableDiffusionProcessing) -> None:
     forge_objects = getattr(getattr(p, "sd_model", None), "forge_objects", None)
     clip = getattr(forge_objects, "clip", None)
@@ -932,7 +958,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
     infotexts = []
     output_images = []
-    with torch.inference_mode():
+    with _source_backend_processing_context(p):
         with devices.autocast():
             p.init(p.all_prompts, p.all_seeds, p.all_subseeds)
 

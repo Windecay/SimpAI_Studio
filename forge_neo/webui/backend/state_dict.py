@@ -1,10 +1,20 @@
 import json
+import os
 
 import torch
 
 
+def _load_state_dict_assign_enabled() -> bool:
+    value = str(os.environ.get("FORGE_NEO_LOAD_STATE_DICT_ASSIGN", "0") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
 def load_state_dict(model, sd, ignore_errors=[], log_name=None, ignore_start=None):
-    missing, unexpected = model.load_state_dict(sd, strict=False)
+    assign = _load_state_dict_assign_enabled()
+    try:
+        missing, unexpected = model.load_state_dict(sd, strict=False, assign=assign)
+    except TypeError:
+        missing, unexpected = model.load_state_dict(sd, strict=False)
     missing = [x for x in missing if x not in ignore_errors]
     unexpected = [x for x in unexpected if x not in ignore_errors]
 

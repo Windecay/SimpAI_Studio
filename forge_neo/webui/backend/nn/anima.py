@@ -6,6 +6,8 @@
 # References: https://github.com/nvidia-cosmos/cosmos-predict2
 
 import math
+import os
+import time
 from typing import Callable, Optional
 
 import comfy_kitchen as ck
@@ -15,10 +17,67 @@ from einops.layers.torch import Rearrange
 from torch import nn
 from torchvision.transforms import InterpolationMode, functional
 
+from backend.args import dynamic_args
 from backend.attention import attention_function
 from backend.memory_management import is_device_mps
 from backend.operations import scaled_dot_product_attention
 from backend.utils import pad_to_patch_size
+
+
+_SOURCE_BACKEND_ANIMA_FORWARD_CALLS = 0
+
+
+def _source_backend_anima_timing():
+    try:
+        from modules import source_backend_timing
+
+        return source_backend_timing if source_backend_timing.stage_logs_enabled() else None
+    except Exception:
+        return None
+
+
+def _source_backend_anima_forward_trace_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("FORGE_NEO_SOURCE_BACKEND_ANIMA_FORWARD_TRACE_CALLS", "0")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_backend_anima_block_trace_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("FORGE_NEO_SOURCE_BACKEND_ANIMA_BLOCK_TRACE_CALLS", "0")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_backend_anima_sync_timing_enabled() -> bool:
+    value = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_ANIMA_SYNC_TIMING", "0") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _source_backend_anima_sync_if_needed() -> None:
+    if not _source_backend_anima_sync_timing_enabled():
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    except Exception:
+        pass
+
+
+def _source_backend_anima_linear_state(linear: nn.Module) -> str:
+    weight = getattr(linear, "weight", None)
+    weight_function_count = len(getattr(linear, "weight_function", ()) or ())
+    bias_function_count = len(getattr(linear, "bias_function", ()) or ())
+    return (
+        f"device={getattr(weight, 'device', None)}"
+        f":dtype={getattr(weight, 'dtype', None)}"
+        f":manual_cast={getattr(linear, 'parameters_manual_cast', None)}"
+        f":force_device={getattr(linear, 'forge_force_cast_weights', None)}"
+        f":weight_fn={weight_function_count}"
+        f":bias_fn={bias_function_count}"
+    )
+
 
 # region DiT
 
@@ -148,9 +207,64 @@ class SelfCrossAttention(nn.Module):
         result = self.torch_attention_op(q, k, v, transformer_options=transformer_options)
         return self.output_dropout(self.output_proj(result))
 
-    def forward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None, rope_emb: Optional[torch.Tensor] = None, transformer_options: Optional[dict] = {}) -> torch.Tensor:
-        q, k, v = self.compute_qkv(x, context, rope_emb=rope_emb)
-        return self.compute_attention(q, k, v, transformer_options=transformer_options)
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: Optional[torch.Tensor] = None,
+        rope_emb: Optional[torch.Tensor] = None,
+        transformer_options: Optional[dict] = {},
+        _source_timing=None,
+        _source_trace_detail: bool = False,
+        _source_attention_name: str = "attention",
+        _source_block_index: Optional[int] = None,
+    ) -> torch.Tensor:
+        source_trace = _source_timing is not None and _source_trace_detail
+
+        if source_trace:
+            log_source_stage_marker = _source_timing.log_marker
+            log_source_stage = _source_timing.log_stage
+            log_source_stage_marker(
+                f"anima.block.{_source_attention_name}.qkv",
+                index=_source_block_index,
+            )
+            qkv_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            q, k, v = self.compute_qkv(x, context, rope_emb=rope_emb)
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                log_source_stage(
+                    f"anima.block.{_source_attention_name}.qkv",
+                    qkv_started,
+                    index=_source_block_index,
+                )
+
+        if source_trace:
+            log_source_stage_marker(
+                f"anima.block.{_source_attention_name}.attention",
+                index=_source_block_index,
+            )
+            attention_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            result = self.compute_attention(q, k, v, transformer_options=transformer_options)
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                log_source_stage(
+                    f"anima.block.{_source_attention_name}.attention",
+                    attention_started,
+                    index=_source_block_index,
+                )
+
+        if source_trace:
+            log_source_stage(
+                f"anima.block.{_source_attention_name}.total",
+                qkv_started,
+                index=_source_block_index,
+            )
+        return result
 
 
 class Timesteps(nn.Module):
@@ -286,15 +400,40 @@ class Block(nn.Module):
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
         extra_per_block_pos_emb: Optional[torch.Tensor] = None,
         transformer_options: Optional[dict] = {},
+        _source_timing=None,
+        _source_trace_detail: bool = False,
+        _source_block_index: Optional[int] = None,
     ) -> torch.Tensor:
+        source_trace = _source_timing is not None and _source_trace_detail
+        if source_trace:
+            self_q_proj_state = _source_backend_anima_linear_state(self.self_attn.q_proj)
+            cross_q_proj_state = _source_backend_anima_linear_state(self.cross_attn.q_proj)
+            _source_timing.log_marker(
+                "anima.block",
+                index=_source_block_index,
+                self_q_proj=self_q_proj_state,
+                cross_q_proj=cross_q_proj_state,
+            )
+            block_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+
         residual_dtype = x_B_T_H_W_D.dtype
         compute_dtype = emb_B_T_D.dtype
         if extra_per_block_pos_emb is not None:
             x_B_T_H_W_D = x_B_T_H_W_D + extra_per_block_pos_emb
 
-        shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = (self.adaln_modulation_self_attn(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
-        shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = (self.adaln_modulation_cross_attn(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
-        shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (self.adaln_modulation_mlp(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
+        if source_trace:
+            _source_timing.log_marker("anima.block.adaln", index=_source_block_index)
+            adaln_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = (self.adaln_modulation_self_attn(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
+            shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = (self.adaln_modulation_cross_attn(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
+            shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (self.adaln_modulation_mlp(emb_B_T_D) + adaln_lora_B_T_3D).chunk(3, dim=-1)
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                _source_timing.log_stage("anima.block.adaln", adaln_started, index=_source_block_index)
 
         shift_self_attn_B_T_1_1_D = rearrange(shift_self_attn_B_T_D, "b t d -> b t 1 1 d")
         scale_self_attn_B_T_1_1_D = rearrange(scale_self_attn_B_T_D, "b t d -> b t 1 1 d")
@@ -310,24 +449,37 @@ class Block(nn.Module):
 
         B, T, H, W, D = x_B_T_H_W_D.shape
 
-        normalized_x_B_T_H_W_D = self._fn(
-            x_B_T_H_W_D,
-            self.layer_norm_self_attn,
-            scale_self_attn_B_T_1_1_D,
-            shift_self_attn_B_T_1_1_D,
-        )
-        result_B_T_H_W_D = rearrange(
-            self.self_attn(
-                rearrange(normalized_x_B_T_H_W_D.to(compute_dtype), "b t h w d -> b (t h w) d"),
-                None,
-                rope_emb=rope_emb_L_1_1_D,
-                transformer_options=transformer_options,
-            ),
-            "b (t h w) d -> b t h w d",
-            t=T,
-            h=H,
-            w=W,
-        )
+        if source_trace:
+            _source_timing.log_marker("anima.block.self_attn", index=_source_block_index, q_proj=self_q_proj_state)
+            self_attn_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            normalized_x_B_T_H_W_D = self._fn(
+                x_B_T_H_W_D,
+                self.layer_norm_self_attn,
+                scale_self_attn_B_T_1_1_D,
+                shift_self_attn_B_T_1_1_D,
+            )
+            result_B_T_H_W_D = rearrange(
+                self.self_attn(
+                    rearrange(normalized_x_B_T_H_W_D.to(compute_dtype), "b t h w d -> b (t h w) d"),
+                    None,
+                    rope_emb=rope_emb_L_1_1_D,
+                    transformer_options=transformer_options,
+                    _source_timing=_source_timing,
+                    _source_trace_detail=_source_trace_detail,
+                    _source_attention_name="self_attn",
+                    _source_block_index=_source_block_index,
+                ),
+                "b (t h w) d -> b t h w d",
+                t=T,
+                h=H,
+                w=W,
+            )
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                _source_timing.log_stage("anima.block.self_attn", self_attn_started, index=_source_block_index)
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D.to(residual_dtype) * result_B_T_H_W_D.to(residual_dtype)
 
         def _x_fn(_x_B_T_H_W_D: torch.Tensor, layer_norm_cross_attn: Callable, _scale_cross_attn_B_T_1_1_D: torch.Tensor, _shift_cross_attn_B_T_1_1_D: torch.Tensor, transformer_options: Optional[dict] = {}) -> torch.Tensor:
@@ -338,6 +490,10 @@ class Block(nn.Module):
                     crossattn_emb,
                     rope_emb=rope_emb_L_1_1_D,
                     transformer_options=transformer_options,
+                    _source_timing=_source_timing,
+                    _source_trace_detail=_source_trace_detail,
+                    _source_attention_name="cross_attn",
+                    _source_block_index=_source_block_index,
                 ),
                 "b (t h w) d -> b t h w d",
                 t=T,
@@ -346,23 +502,45 @@ class Block(nn.Module):
             )
             return _result_B_T_H_W_D
 
-        result_B_T_H_W_D = _x_fn(
-            x_B_T_H_W_D,
-            self.layer_norm_cross_attn,
-            scale_cross_attn_B_T_1_1_D,
-            shift_cross_attn_B_T_1_1_D,
-            transformer_options=transformer_options,
-        )
+        if source_trace:
+            _source_timing.log_marker("anima.block.cross_attn", index=_source_block_index, q_proj=cross_q_proj_state)
+            cross_attn_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            result_B_T_H_W_D = _x_fn(
+                x_B_T_H_W_D,
+                self.layer_norm_cross_attn,
+                scale_cross_attn_B_T_1_1_D,
+                shift_cross_attn_B_T_1_1_D,
+                transformer_options=transformer_options,
+            )
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                _source_timing.log_stage("anima.block.cross_attn", cross_attn_started, index=_source_block_index)
         x_B_T_H_W_D = result_B_T_H_W_D.to(residual_dtype) * gate_cross_attn_B_T_1_1_D.to(residual_dtype) + x_B_T_H_W_D
 
-        normalized_x_B_T_H_W_D = self._fn(
-            x_B_T_H_W_D,
-            self.layer_norm_mlp,
-            scale_mlp_B_T_1_1_D,
-            shift_mlp_B_T_1_1_D,
-        )
-        result_B_T_H_W_D = self.mlp(normalized_x_B_T_H_W_D.to(compute_dtype))
+        if source_trace:
+            _source_timing.log_marker("anima.block.mlp", index=_source_block_index)
+            mlp_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
+        try:
+            normalized_x_B_T_H_W_D = self._fn(
+                x_B_T_H_W_D,
+                self.layer_norm_mlp,
+                scale_mlp_B_T_1_1_D,
+                shift_mlp_B_T_1_1_D,
+            )
+            result_B_T_H_W_D = self.mlp(normalized_x_B_T_H_W_D.to(compute_dtype))
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                _source_timing.log_stage("anima.block.mlp", mlp_started, index=_source_block_index)
         x_B_T_H_W_D = x_B_T_H_W_D + gate_mlp_B_T_1_1_D.to(residual_dtype) * result_B_T_H_W_D.to(residual_dtype)
+
+        if source_trace:
+            _source_backend_anima_sync_if_needed()
+            _source_timing.log_stage("anima.block.total", block_started, index=_source_block_index)
         return x_B_T_H_W_D
 
 
@@ -456,41 +634,125 @@ class Anima(nn.Module):
         return x_B_C_Tt_Hp_Wp
 
     def forward(self, x: torch.Tensor, timesteps: torch.Tensor, context: torch.Tensor, padding_mask: Optional[torch.Tensor] = None, **kwargs):
-        orig_shape = list(x.shape)
-        x = pad_to_patch_size(x, (self.patch_temporal, self.patch_spatial, self.patch_spatial))
-        x_B_C_T_H_W = x
-        timesteps_B_T = timesteps
-        crossattn_emb = context
+        global _SOURCE_BACKEND_ANIMA_FORWARD_CALLS
 
-        x_B_T_H_W_D, rope_emb_L_1_1_D, extra_pos_emb_None = self.prepare_embedded_sequence(x_B_C_T_H_W, padding_mask=padding_mask)
+        source_timing = _source_backend_anima_timing()
+        source_call = _SOURCE_BACKEND_ANIMA_FORWARD_CALLS
+        _SOURCE_BACKEND_ANIMA_FORWARD_CALLS += 1
+        source_trace = source_timing is not None and source_call < _source_backend_anima_forward_trace_limit()
+        block_trace_detail = source_call < _source_backend_anima_block_trace_limit()
+        if source_timing is None:
+            block_trace_detail = False
 
-        if timesteps_B_T.ndim == 1:
-            timesteps_B_T = timesteps_B_T.unsqueeze(1)
-        t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder[1](self.t_embedder[0](timesteps_B_T).to(x_B_T_H_W_D.dtype))
-        t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
-
-        block_kwargs = {
-            "rope_emb_L_1_1_D": rope_emb_L_1_1_D.unsqueeze(1).unsqueeze(0),
-            "adaln_lora_B_T_3D": adaln_lora_B_T_3D,
-            "extra_per_block_pos_emb": extra_pos_emb_None,
-            "transformer_options": kwargs.get("transformer_options", {}),
-        }
-
-        # To make fp16 compute_dtype work, we keep the residual stream in fp32 but run attention and MLP modules in fp16.
-        if x_B_T_H_W_D.dtype is torch.float16:
-            x_B_T_H_W_D = x_B_T_H_W_D.float()
-
-        for block in self.blocks:
-            x_B_T_H_W_D = block(
-                x_B_T_H_W_D,
-                t_embedding_B_T_D,
-                crossattn_emb,
-                **block_kwargs,
+        if source_trace:
+            source_timing.log_marker(
+                "anima.forward",
+                call=source_call,
+                input_shape=tuple(x.shape),
+                timestep_shape=tuple(timesteps.shape),
+                context_shape=tuple(context.shape),
+                input_dtype=x.dtype,
+                input_device=x.device,
             )
+            forward_started = time.perf_counter()
+            _source_backend_anima_sync_if_needed()
 
-        x_B_T_H_W_O = self.final_layer(x_B_T_H_W_D.to(crossattn_emb.dtype), t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D)
-        x_B_C_Tt_Hp_Wp = self.unpatchify(x_B_T_H_W_O)[:, :, : orig_shape[-3], : orig_shape[-2], : orig_shape[-1]]
-        return x_B_C_Tt_Hp_Wp
+        try:
+            orig_shape = list(x.shape)
+
+            ref_latents = dynamic_args.ref_latents if dynamic_args.anima else ()
+            for ref in ref_latents:
+                if x.shape[0] == 2:  # batch_cond_uncond
+                    ref = torch.cat((ref, ref), dim=0)
+                x = torch.cat((x, ref.to(x)), dim=2)
+
+            x = pad_to_patch_size(x, (self.patch_temporal, self.patch_spatial, self.patch_spatial))
+            x_B_C_T_H_W = x
+            timesteps_B_T = timesteps
+            crossattn_emb = context
+
+            if source_trace:
+                source_timing.log_marker("anima.forward.prepare_embedded_sequence", call=source_call)
+                prepare_started = time.perf_counter()
+                _source_backend_anima_sync_if_needed()
+            try:
+                x_B_T_H_W_D, rope_emb_L_1_1_D, extra_pos_emb_None = self.prepare_embedded_sequence(x_B_C_T_H_W, padding_mask=padding_mask)
+            finally:
+                if source_trace:
+                    _source_backend_anima_sync_if_needed()
+                    source_timing.log_stage("anima.forward.prepare_embedded_sequence", prepare_started, call=source_call)
+
+            if timesteps_B_T.ndim == 1:
+                timesteps_B_T = timesteps_B_T.unsqueeze(1)
+            t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder[1](self.t_embedder[0](timesteps_B_T).to(x_B_T_H_W_D.dtype))
+            t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
+
+            block_kwargs = {
+                "rope_emb_L_1_1_D": rope_emb_L_1_1_D.unsqueeze(1).unsqueeze(0),
+                "adaln_lora_B_T_3D": adaln_lora_B_T_3D,
+                "extra_per_block_pos_emb": extra_pos_emb_None,
+                "transformer_options": kwargs.get("transformer_options", {}),
+            }
+
+            # To make fp16 compute_dtype work, we keep the residual stream in fp32 but run attention and MLP modules in fp16.
+            if x_B_T_H_W_D.dtype is torch.float16:
+                x_B_T_H_W_D = x_B_T_H_W_D.float()
+
+            if source_trace:
+                source_timing.log_marker("anima.forward.blocks", call=source_call, count=len(self.blocks))
+                blocks_started = time.perf_counter()
+                _source_backend_anima_sync_if_needed()
+            try:
+                for block_index, block in enumerate(self.blocks):
+                    if source_trace:
+                        source_timing.log_marker("anima.forward.block", call=source_call, index=block_index)
+                        block_started = time.perf_counter()
+                        _source_backend_anima_sync_if_needed()
+                    try:
+                        x_B_T_H_W_D = block(
+                            x_B_T_H_W_D,
+                            t_embedding_B_T_D,
+                            crossattn_emb,
+                            _source_timing=source_timing,
+                            _source_trace_detail=block_trace_detail,
+                            _source_block_index=block_index,
+                            **block_kwargs,
+                        )
+                    finally:
+                        if source_trace:
+                            _source_backend_anima_sync_if_needed()
+                            source_timing.log_stage("anima.forward.block", block_started, call=source_call, index=block_index)
+            finally:
+                if source_trace:
+                    _source_backend_anima_sync_if_needed()
+                    source_timing.log_stage("anima.forward.blocks", blocks_started, call=source_call, count=len(self.blocks))
+
+            if source_trace:
+                source_timing.log_marker("anima.forward.final_layer", call=source_call)
+                final_layer_started = time.perf_counter()
+                _source_backend_anima_sync_if_needed()
+            try:
+                x_B_T_H_W_O = self.final_layer(x_B_T_H_W_D.to(crossattn_emb.dtype), t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D)
+            finally:
+                if source_trace:
+                    _source_backend_anima_sync_if_needed()
+                    source_timing.log_stage("anima.forward.final_layer", final_layer_started, call=source_call)
+
+            if source_trace:
+                source_timing.log_marker("anima.forward.unpatchify", call=source_call)
+                unpatchify_started = time.perf_counter()
+                _source_backend_anima_sync_if_needed()
+            try:
+                x_B_C_Tt_Hp_Wp = self.unpatchify(x_B_T_H_W_O)[:, :, : orig_shape[-3], : orig_shape[-2], : orig_shape[-1]]
+            finally:
+                if source_trace:
+                    _source_backend_anima_sync_if_needed()
+                    source_timing.log_stage("anima.forward.unpatchify", unpatchify_started, call=source_call)
+            return x_B_C_Tt_Hp_Wp
+        finally:
+            if source_trace:
+                _source_backend_anima_sync_if_needed()
+                source_timing.log_stage("anima.forward.total", forward_started, call=source_call)
 
 
 # region LLM

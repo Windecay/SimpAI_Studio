@@ -1,4 +1,5 @@
 import inspect
+import time
 from collections import namedtuple
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,7 @@ from PIL import Image
 from backend.sampling.sampling_function import sampling_cleanup, sampling_prepare
 from modules import devices, extra_networks, images, sd_models, sd_samplers, sd_vae_approx, sd_vae_taesd, shared
 from modules.shared import opts, state
+from modules.source_backend_timing import log_source_stage, log_source_stage_marker
 from modules_forge import main_entry
 
 SamplerDataTuple = namedtuple("SamplerData", ["name", "constructor", "aliases", "options"])
@@ -392,13 +394,32 @@ class Sampler:
         state.sampling_step = 0
         state.preview_step = 0
 
+        log_source_stage_marker("sampler.launch_func",
+            sampler=self.funcname,
+            steps=steps,
+            total_steps=self.model_wrap_cfg.total_steps,
+        )
+        launch_started = time.perf_counter()
+        outcome = "completed"
         try:
-            return func()
+            result = func()
         except RecursionError:
+            outcome = "recursion_error"
             print("Encountered RecursionError during sampling; try to use a smaller rho value instead")
-            return self.last_latent
+            result = self.last_latent
         except InterruptedException:
-            return self.last_latent
+            outcome = "interrupted"
+            result = self.last_latent
+        finally:
+            log_source_stage("sampler.launch_func",
+                launch_started,
+                sampler=self.funcname,
+                steps=steps,
+                total_steps=self.model_wrap_cfg.total_steps,
+                outcome=outcome,
+            )
+
+        return result
 
     def number_of_needed_noises(self, p):
         return p.steps

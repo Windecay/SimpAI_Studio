@@ -12199,12 +12199,19 @@ def _create_integrated_controls(
         )
     with InputAccordion(
         False,
-        label=_label("ImageStitch Integrated", "多图拼接参考"),
+        label=_label("ImageStitch Integrated", "图像编辑参考图"),
         visible=image_stitch_visible,
         elem_id=_forge_elem(prefix, "image_stitch"),
         elem_classes=["forge-neo-integrated-accordion"],
     ) as image_stitch_enabled:
         controls["image_stitch_enabled"] = image_stitch_enabled
+        gr.Markdown(
+            _label(
+                "Anima image editing: enable this section, upload reference images, and use the required Edit LoRA.",
+                "Anima 图像编辑：启用此项后上传参考图，并使用对应的编辑 LoRA。",
+            ),
+            elem_classes=["forge-neo-muted-note"],
+        )
         controls["image_stitch_references"] = gr.Gallery(
             label=_label("Reference Image(s)", "参考图"),
             show_label=True,
@@ -13420,7 +13427,7 @@ def create_app() -> gr.Blocks:
                                 with gr.Tab(_label("Generation", "生成")):
                                     img_canvas_copy_buttons: list[tuple[gr.Button, str, object, object, str]] = []
                                     with gr.Tabs(elem_id="forge_neo_img2img_mode_tabs", elem_classes=["forge-neo-mode-tabs"]):
-                                        with gr.Tab(_label("img2img", "img2img"), elem_id="forge_neo_img2img_mode_img2img") as img2img_mode_tab:
+                                        with gr.Tab(_label("img2img", "图生图"), elem_id="forge_neo_img2img_mode_img2img") as img2img_mode_tab:
                                             img_input_canvas = ForgeCanvas(
                                                 no_scribbles=True,
                                                 height=512,
@@ -13430,7 +13437,7 @@ def create_app() -> gr.Blocks:
                                             img_input = img_input_canvas.background
                                             img_input_foreground = img_input_canvas.foreground
                                             _create_img2img_canvas_copy_controls("img2img", img_input_canvas, img_canvas_copy_buttons)
-                                        with gr.Tab(_label("Sketch", "Sketch"), elem_id="forge_neo_img2img_mode_sketch") as sketch_mode_tab:
+                                        with gr.Tab(_label("Sketch", "草图"), elem_id="forge_neo_img2img_mode_sketch") as sketch_mode_tab:
                                             img_sketch_canvas = ForgeCanvas(
                                                 height=512,
                                                 scribble_color="#ff0000",
@@ -13440,7 +13447,7 @@ def create_app() -> gr.Blocks:
                                             img_sketch = img_sketch_canvas.background
                                             img_sketch_foreground = img_sketch_canvas.foreground
                                             _create_img2img_canvas_copy_controls("sketch", img_sketch_canvas, img_canvas_copy_buttons)
-                                        with gr.Tab(_label("Inpaint", "Inpaint"), elem_id="forge_neo_img2img_mode_inpaint") as inpaint_mode_tab:
+                                        with gr.Tab(_label("Inpaint", "重绘"), elem_id="forge_neo_img2img_mode_inpaint") as inpaint_mode_tab:
                                             img_inpaint_canvas = ForgeCanvas(
                                                 height=512,
                                                 scribble_color="#ffffff",
@@ -13455,7 +13462,7 @@ def create_app() -> gr.Blocks:
                                             img_inpaint = img_inpaint_canvas.background
                                             img_inpaint_foreground = img_inpaint_canvas.foreground
                                             _create_img2img_canvas_copy_controls("inpaint", img_inpaint_canvas, img_canvas_copy_buttons)
-                                        with gr.Tab(_label("Inpaint sketch", "Inpaint sketch"), elem_id="forge_neo_img2img_mode_inpaint_sketch") as inpaint_sketch_mode_tab:
+                                        with gr.Tab(_label("Inpaint sketch", "重绘草图"), elem_id="forge_neo_img2img_mode_inpaint_sketch") as inpaint_sketch_mode_tab:
                                             img_inpaint_sketch_canvas = ForgeCanvas(
                                                 height=512,
                                                 scribble_color="#ff0000",
@@ -13465,9 +13472,9 @@ def create_app() -> gr.Blocks:
                                             img_inpaint_sketch = img_inpaint_sketch_canvas.background
                                             img_inpaint_sketch_foreground = img_inpaint_sketch_canvas.foreground
                                             _create_img2img_canvas_copy_controls("inpaint_sketch", img_inpaint_sketch_canvas, img_canvas_copy_buttons)
-                                        with gr.Tab(_label("Inpaint upload", "Inpaint upload"), elem_id="forge_neo_img2img_mode_inpaint_upload") as inpaint_upload_mode_tab:
+                                        with gr.Tab(_label("Inpaint upload", "上传重绘"), elem_id="forge_neo_img2img_mode_inpaint_upload") as inpaint_upload_mode_tab:
                                             img_inpaint_upload = gr.Image(
-                                                label=_label("Image for img2img", "Image for img2img"),
+                                                label=_label("Image for img2img", "图生图输入图"),
                                                 type="pil",
                                                 sources="upload",
                                                 height=242,
@@ -13475,7 +13482,7 @@ def create_app() -> gr.Blocks:
                                                 elem_classes=["forge-neo-img2img-input"],
                                             )
                                             img_inpaint_upload_mask = gr.Image(
-                                                label=_label("Mask", "Mask"),
+                                                label=_label("Mask", "蒙版"),
                                                 type="pil",
                                                 image_mode="RGBA",
                                                 sources="upload",
@@ -13483,15 +13490,15 @@ def create_app() -> gr.Blocks:
                                                 elem_id="forge_neo_img2img_inpaint_upload_mask",
                                                 elem_classes=["forge-neo-img2img-input"],
                                             )
-                                        with gr.Tab(_label("Batch", "Batch"), elem_id="forge_neo_img2img_mode_batch") as batch_mode_tab:
+                                        with gr.Tab(_label("Batch", "批量处理"), elem_id="forge_neo_img2img_mode_batch") as batch_mode_tab:
                                             batch_source_type = gr.State("upload")
                                             with gr.Tabs(elem_id="forge_neo_img2img_batch_source", elem_classes=["forge-neo-mode-tabs"]):
-                                                with gr.Tab(_label("Upload", "Upload"), elem_id="forge_neo_img2img_batch_upload_tab") as batch_upload_tab:
+                                                with gr.Tab(_label("Upload", "上传"), elem_id="forge_neo_img2img_batch_upload_tab") as batch_upload_tab:
                                                     img_batch_upload = gr.Files(
                                                         label=_label("Files", "文件"),
                                                         elem_id="forge_neo_img2img_batch_upload",
                                                     )
-                                                with gr.Tab(_label("From directory", "From directory"), elem_id="forge_neo_img2img_batch_from_dir_tab") as batch_from_dir_tab:
+                                                with gr.Tab(_label("From directory", "从目录"), elem_id="forge_neo_img2img_batch_from_dir_tab") as batch_from_dir_tab:
                                                     gr.Markdown(
                                                         _label(
                                                             "Process images from a server-side directory.",
@@ -13606,7 +13613,7 @@ def create_app() -> gr.Blocks:
                                                 elem_id="forge_neo_img2img_inpaint_padding",
                                             )
                                     with gr.Accordion(
-                                        _label("Soft inpainting", "Soft inpainting"),
+                                        _label("Soft inpainting", "软重绘"),
                                         open=False,
                                         elem_id="forge_neo_img2img_soft_inpainting",
                                         elem_classes=["forge-neo-input-accordion", "forge-neo-soft-inpainting"],
@@ -13725,7 +13732,7 @@ def create_app() -> gr.Blocks:
                                     with gr.Row(elem_id="forge_neo_img2img_dimensions_batch", elem_classes=["forge-neo-dim-batch-row"]):
                                         with gr.Column(scale=4, elem_classes=["forge-neo-dimensions-column"]):
                                             with gr.Tabs(elem_id="forge_neo_img2img_resize_tabs", elem_classes=["forge-neo-mode-tabs"]):
-                                                with gr.Tab(_label("Resize to", "Resize to"), elem_id="forge_neo_img2img_resize_to") as img_resize_to_tab:
+                                                with gr.Tab(_label("Resize to", "缩放到"), elem_id="forge_neo_img2img_resize_to") as img_resize_to_tab:
                                                     with gr.Row(elem_id="forge_neo_img2img_dimensions", elem_classes=["forge-neo-resolution-row"]):
                                                         with gr.Column(scale=4, elem_classes=["forge-neo-resolution-sliders"]):
                                                             img_width = gr.Slider(64, 2048, value=img_defaults["width"], step=8, label=_label("Width", "宽度"), elem_id="forge_neo_img2img_width")
@@ -13733,7 +13740,7 @@ def create_app() -> gr.Blocks:
                                                         with gr.Column(scale=1, elem_classes=["forge-neo-dimension-tools"]):
                                                             img_res_switch_btn = gr.Button("⇅", elem_id="forge_neo_img2img_res_switch_btn", min_width=40)
                                                             img_detect_size_btn = gr.Button("📐", elem_id="forge_neo_img2img_detect_image_size_btn", min_width=40)
-                                                with gr.Tab(_label("Resize by", "Resize by"), elem_id="forge_neo_img2img_resize_by") as img_resize_by_tab:
+                                                with gr.Tab(_label("Resize by", "按比例缩放"), elem_id="forge_neo_img2img_resize_by") as img_resize_by_tab:
                                                     img_resize_scale = gr.Slider(
                                                         0.5,
                                                         4.0,

@@ -69,6 +69,7 @@ parser.add_argument("--flash", action="store_true", help="install flash_attn")
 parser.add_argument("--xformers", action="store_true", help="install xformers")
 parser.add_argument("--nunchaku", action="store_true", help="install nunchaku for SVDQ inference")
 parser.add_argument("--bnb", action="store_true", help="install bitsandbytes for 4-bit inference")
+parser.add_argument("--use-ck-attention", action="store_true", help="use Comfy-Kitchen attention")
 parser.add_argument("--onnxruntime-gpu", action="store_true", help="install nightly onnxruntime-gpu with cu130 support")
 
 parser.add_argument("--disable-sage", action="store_true", help="disable sageattention")
@@ -128,6 +129,8 @@ if TYPE_CHECKING:
 
     import torch
 
+    from backend.misc.context_windows import IndexListContextHandler
+
 
 class _DynamicArgsMeta(type):
     def get(cls, key, default=None):
@@ -161,20 +164,45 @@ class dynamic_args(metaclass=_DynamicArgsMeta):
     klein: bool = False
     """Flux.2 Klein"""
     wan: bool = False
+    """Wan 2.2"""
+    pid: bool = False
+    """PiD"""
+    anima: bool = False
+    """Anima"""
+    krea2: bool = False
+    """Krea 2"""
     ref_latents: list["torch.Tensor"] = []
     """Reference Latent(s) for Flux Kontext / Qwen-Image-Edit / Flux.2 Klein"""
     concat_latent: "torch.Tensor" = None
+    """Input Latent for Wan 2.2 I2V"""
+    lq_latent: list["torch.Tensor", "torch.Tensor"] = [None, None]
+    """lq_latent & degrade_sigma for PiD"""
+    context_handler: "IndexListContextHandler" = None
+    """Context Handler for PiD"""
     is_referencing: bool = False
     """Appending Reference Latent(s) (by. ImageStitch)"""
     ops: str = None
     """Operations for the Diffusion Model"""
     last_extra_generation_params: dict[str, str] = {}
     """Infotext captured during `get_learned_conditioning`"""
+    loading_refiner: bool = False
+    """Do not reset when loading Refiner"""
+
+    @classmethod
+    def reset(cls):
+        if cls.loading_refiner:
+            return
+
+        cls.ref_latents.clear()
+        cls.concat_latent = None
+        cls.lq_latent = [None, None]
+        cls.context_handler = None
 
 # Forge Neo compatibility helpers for direct source backend.
 def apply_preset(preset=None):
     value = str(preset or "").strip().casefold()
     dynamic_args.klein = value == "klein"
+    dynamic_args.anima = value == "anima"
     dynamic_args.wan = False
 
 
@@ -188,5 +216,6 @@ def apply_checkpoint(checkpoint):
         )
     ).casefold()
     dynamic_args.klein = "klein" in text
+    dynamic_args.anima = "anima" in text
     dynamic_args.wan = False
 

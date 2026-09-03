@@ -1393,6 +1393,50 @@
         return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div>${renderRoleplayStateChangeColumns()}<div class="describe-vlm-chat-roleplay-state-change-groups">${groupHtml}</div>${moreHtml}</div>`;
     }
 
+    function mergeRoleplayCharacterCardLayers(baseValue, overlayValue) {
+        const base = baseValue && typeof baseValue === 'object' ? baseValue : {};
+        const overlay = overlayValue && typeof overlayValue === 'object' ? overlayValue : {};
+        const merged = Object.assign({}, base);
+        const scalarFields = [
+            'name',
+            'avatar_asset_id',
+            'appearance',
+            'identity',
+            'background',
+            'personality',
+            'speech_style',
+            'image_prompt',
+            'negative_prompt',
+            'first_message'
+        ];
+        scalarFields.forEach((field) => {
+            const incoming = String(overlay[field] || '').trim();
+            const existing = String(base[field] || '').trim();
+            if (incoming || !existing) merged[field] = incoming;
+        });
+        ['reference_asset_ids', 'behavior_rules', 'example_dialogues', 'locked_fields', 'state_image_history']
+            .forEach((field) => {
+                const incoming = Array.isArray(overlay[field]) ? overlay[field] : [];
+                const existing = Array.isArray(base[field]) ? base[field] : [];
+                if (incoming.length || !existing.length) merged[field] = incoming.slice();
+            });
+        const incomingWorldBook = overlay.world_book && typeof overlay.world_book === 'object'
+            ? overlay.world_book
+            : {};
+        const existingWorldBook = base.world_book && typeof base.world_book === 'object'
+            ? base.world_book
+            : {};
+        if (Array.isArray(incomingWorldBook.entries) && incomingWorldBook.entries.length
+            || !Array.isArray(existingWorldBook.entries) || !existingWorldBook.entries.length) {
+            merged.world_book = incomingWorldBook;
+        }
+        merged.id = String(overlay.id || base.id || 'character').trim() || 'character';
+        merged.revision = Math.max(1, Math.round(Number(base.revision) || 1), Math.round(Number(overlay.revision) || 1));
+        merged.created_at = String(base.created_at || overlay.created_at || '').slice(0, 80);
+        merged.updated_at = String(overlay.updated_at || base.updated_at || '').slice(0, 80);
+        return merged;
+    }
+
     function normalizeRoleplaySession(value, conversationId = '') {
         const source = value && typeof value === 'object' ? value : {};
         const characterSource = source.character || source.character_card || {};
@@ -1516,7 +1560,9 @@
             const card = normalizeCharacterCard(value, key);
             characterCards[card.id] = card;
         });
-        characterCards[primaryCharacter.id] = primaryCharacter;
+        characterCards[primaryCharacter.id] = characterCards[primaryCharacter.id]
+            ? mergeRoleplayCharacterCardLayers(characterCards[primaryCharacter.id], primaryCharacter)
+            : primaryCharacter;
         const requestedActiveCharacterId = String(source.active_character_id || primaryCharacter.id).trim().slice(0, 160);
         const activeCharacterId = characterCards[requestedActiveCharacterId]
             ? requestedActiveCharacterId
@@ -1623,6 +1669,28 @@
             created_at: String(source.created_at || '').slice(0, 80),
             updated_at: String(source.updated_at || '').slice(0, 80)
         };
+    }
+
+    function mergeRoleplaySessionCharacterCards(currentValue, incomingValue, conversationId = '') {
+        const current = normalizeRoleplaySession(currentValue, conversationId);
+        const incoming = normalizeRoleplaySession(incomingValue, conversationId);
+        const characters = Object.assign({}, incoming.characters || {});
+        Object.entries(current.characters || {}).forEach(([id, card]) => {
+            characters[id] = characters[id]
+                ? mergeRoleplayCharacterCardLayers(card, characters[id])
+                : card;
+        });
+        const requestedActiveId = String(incomingValue?.active_character_id || '').trim();
+        const activeCharacterId = requestedActiveId && characters[requestedActiveId]
+            ? requestedActiveId
+            : current.active_character_id || incoming.active_character_id;
+        return normalizeRoleplaySession(Object.assign({}, incoming, {
+            id: incoming.id || current.id,
+            conversation_id: conversationId || incoming.conversation_id || current.conversation_id,
+            characters,
+            active_character_id: activeCharacterId,
+            character: characters[activeCharacterId] || current.character || incoming.character
+        }), conversationId);
     }
 
     function roleplayReferenceIds(session, owner, characterId = '') {
@@ -7108,7 +7176,11 @@
                 ), true);
                 return false;
             }
-            target.roleplaySession = normalizeRoleplaySession(response.roleplay_session || session, target.conversationId);
+            target.roleplaySession = mergeRoleplaySessionCharacterCards(
+                target.roleplaySession || session,
+                response.roleplay_session || session,
+                target.conversationId
+            );
             const action = Object.assign({}, response.roleplay_visual_action, {
                 type: 'offer_image',
                 roleplay_visual: true,
@@ -7787,7 +7859,11 @@
             setRoleplayActionStatus(runtime, modal, 'scene-reference', localText('The scene reference image was not applied.', '场景参考图没有采用成功。'), true);
             return false;
         }
-        runtime.roleplaySession = normalizeRoleplaySession(response.session, runtime.conversationId);
+        runtime.roleplaySession = mergeRoleplaySessionCharacterCards(
+            runtime.roleplaySession,
+            response.session,
+            runtime.conversationId
+        );
         const draft = roleplayReferenceDraft(runtime);
         setRoleplayReferenceDraft(runtime, 'scene', [assetId, ...draft.scene.filter((id) => roleplayReferenceIdentity(id) !== roleplayReferenceIdentity(assetId))]);
         generation.assets[index] = Object.assign({}, asset, { asset_id: assetId });
@@ -7839,7 +7915,11 @@
             setConversationStatus(runtime, localText('The character reference image was not applied.', '角色设定图没有采用成功。'), true);
             return false;
         }
-        runtime.roleplaySession = normalizeRoleplaySession(response.session, runtime.conversationId);
+        runtime.roleplaySession = mergeRoleplaySessionCharacterCards(
+            runtime.roleplaySession,
+            response.session,
+            runtime.conversationId
+        );
         const draft = roleplayReferenceDraft(runtime);
         const existingReferences = draft.characters?.[targetCharacterId] || [];
         setRoleplayReferenceDraft(runtime, 'character', [
@@ -7977,7 +8057,11 @@
             setConversationStatus(runtime, localText('The current appearance image was not applied.', '当前状态图没有采用成功。'), true);
             return false;
         }
-        runtime.roleplaySession = normalizeRoleplaySession(response.session, runtime.conversationId);
+        runtime.roleplaySession = mergeRoleplaySessionCharacterCards(
+            runtime.roleplaySession,
+            response.session,
+            runtime.conversationId
+        );
         generation.assets[index] = Object.assign({}, asset, { asset_id: assetId });
         action.accepted_asset_id = assetId;
         runtime.persistenceDirty = true;
@@ -12340,7 +12424,10 @@
         Object.entries(patch.characters && typeof patch.characters === 'object' ? patch.characters : {}).forEach(([id, card]) => {
             const key = String(card?.id || id || '').trim();
             if (!key) return;
-            characters[key] = Object.assign({}, characters[key] || {}, card, { id: key });
+            characters[key] = mergeRoleplayCharacterCardLayers(
+                characters[key] || { id: key },
+                Object.assign({}, card, { id: key })
+            );
         });
         const storyPatch = patch.story_state && typeof patch.story_state === 'object' ? patch.story_state : {};
         const characterStates = Object.assign({}, current.story_state.characters);
@@ -19196,7 +19283,11 @@
         }
         const roleplaySessionPayload = response?.roleplay_session || response?.roleplay?.session;
         if (response?.ok && selectedMode === 'roleplay' && roleplaySessionPayload) {
-            runtime.roleplaySession = normalizeRoleplaySession(roleplaySessionPayload, runtime.conversationId);
+            runtime.roleplaySession = mergeRoleplaySessionCharacterCards(
+                roleplaySessionBefore,
+                roleplaySessionPayload,
+                runtime.conversationId
+            );
             const serverStateChanges = response?.roleplay_state_changes || response?.roleplay?.state_changes;
             assistant.roleplay_state_changes = normalizeRoleplayStateChanges(serverStateChanges).length
                 ? normalizeRoleplayStateChanges(serverStateChanges)

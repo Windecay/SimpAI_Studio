@@ -20,9 +20,9 @@ SOURCE_BACKEND_ROOT_FILES = (
     "launch.py",
     "script.js",
     "style.css",
-    "styles.csv",
     "webui.py",
 )
+SOURCE_BACKEND_OPTIONAL_ROOT_FILES = ("styles.csv",)
 SOURCE_BACKEND_SUFFIXES = (
     ".py",
     ".json",
@@ -35,6 +35,7 @@ SOURCE_BACKEND_SUFFIXES = (
     ".css",
     ".js",
     ".mjs",
+    ".jinja",
     ".csv",
     ".jpg",
     ".jpeg",
@@ -85,11 +86,26 @@ SOURCE_BACKEND_LOCAL_PATCH_FILES = (
     "backend/loader.py",
     "extensions-builtin/sd_forge_lora/networks.py",
     "javascript/inputAccordion.js",
+    "styles.csv",
+    "modules/launch_utils.py",
     "modules/processing.py",
     "modules/sd_models.py",
     "modules_forge/patch_basic.py",
     "modules_forge/main_entry.py",
     "modules_forge/presets.py",
+    # Local Krea-2 integration files are not present in the source WebUI.
+    "backend/diffusion_engine/krea2.py",
+    "backend/nn/krea2.py",
+    "backend/regional_prompter_presets.json",
+    "backend/sampling/__init__.py",
+    "backend/text_processing/krea2_engine.py",
+    "modules/k_model.py",
+    "modules/k_prediction.py",
+)
+SOURCE_BACKEND_LOCAL_PATCH_PREFIXES = (
+    # Keep the local Krea-2 Turbo model configuration if a future source tree
+    # adds files at the same paths.
+    "backend/huggingface/krea/Krea-2-Turbo/",
 )
 SOURCE_BACKEND_EXCLUDED_PATHS = (
     "backend/diffusion_engine/wan.py",
@@ -115,6 +131,13 @@ def source_backend_is_excluded(relative: str | Path) -> bool:
     if normalized in SOURCE_BACKEND_EXCLUDED_PATHS:
         return True
     return any(normalized.startswith(prefix) for prefix in SOURCE_BACKEND_EXCLUDED_PREFIXES)
+
+
+def source_backend_is_local_patch(relative: str | Path) -> bool:
+    normalized = Path(relative).as_posix()
+    if normalized in SOURCE_BACKEND_LOCAL_PATCH_FILES:
+        return True
+    return any(normalized.startswith(prefix) for prefix in SOURCE_BACKEND_LOCAL_PATCH_PREFIXES)
 
 
 def source_backend_target_path(target_root: Path, relative: str | Path) -> Path:

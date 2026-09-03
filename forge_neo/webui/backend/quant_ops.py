@@ -1,20 +1,18 @@
-# https://github.com/Comfy-Org/ComfyUI/blob/v0.16.4/comfy/quant_ops.py
+# https://github.com/Comfy-Org/ComfyUI/blob/v0.33.1/comfy/quant_ops.py
 
 import comfy_kitchen as ck
 import torch
 from comfy_kitchen.tensor import (  # noqa
-    QuantizedLayout,
+    AsymW4A8Int8Layout,
     QuantizedTensor,
+    TensorCoreConvRotW4A4Layout,
     TensorCoreFP8Layout,
     TensorCoreMXFP8Layout,
     TensorCoreNVFP4Layout,
     TensorWiseINT8Layout,
     get_layout_class,
     register_layout_class,
-    register_layout_op,
 )
-
-from . import float
 
 if torch.version.cuda is None:
     ck.registry.disable("cuda")
@@ -25,20 +23,31 @@ else:
 
 from backend.args import args
 
-if not args.enable_triton_backend:
+if args.enable_triton_backend:
+    try:
+        import triton  # noqa
+    except ImportError:
+        ck.registry.disable("triton")
+else:
     ck.registry.disable("triton")
 
+import importlib.metadata
 
-# region FP8 Layouts
+ver = importlib.metadata.version("comfy-kitchen")
+
+print(f"Comfy-Kitchen {ver}:", {k: v["available"] and not v["disabled"] for k, v in ck.list_backends().items()})
+
+from . import float
+
+# region Layouts
 
 
-class _TensorCoreFP8LayoutBase(TensorCoreFP8Layout):
+class TensorCoreFP8LayoutBase(TensorCoreFP8Layout):
     FP8_DTYPE = None
 
     @classmethod
     def quantize(cls, tensor, scale=None, stochastic_rounding=0, inplace_ops=False):
-        if cls.FP8_DTYPE is None:
-            raise NotImplementedError(f"{cls.__name__} must define FP8_DTYPE")
+        assert cls.FP8_DTYPE is not None
 
         orig_dtype = tensor.dtype
         orig_shape = tuple(tensor.shape)
@@ -67,11 +76,34 @@ class _TensorCoreFP8LayoutBase(TensorCoreFP8Layout):
         return qdata, params
 
 
-class TensorCoreNVFP4Layout(TensorCoreNVFP4Layout):
+class TensorCoreMXFP8Layout_(TensorCoreMXFP8Layout):
     @classmethod
     def quantize(cls, tensor, scale=None, stochastic_rounding=0, inplace_ops=False):
-        if tensor.dim() != 2:
-            raise ValueError(f"NVFP4 requires 2D tensor, got {tensor.dim()}D")
+        assert tensor.dim() == 2
+
+        orig_dtype = tensor.dtype
+        orig_shape = tuple(tensor.shape)
+
+        padded_shape = cls.get_padded_shape(orig_shape)
+        needs_padding = padded_shape != orig_shape
+
+        if stochastic_rounding > 0:
+            qdata, block_scale = float.stochastic_round_quantize_mxfp8_by_block(tensor, pad_32x=needs_padding, seed=stochastic_rounding)
+        else:
+            qdata, block_scale = ck.quantize_mxfp8(tensor, pad_32x=needs_padding)
+
+        params = cls.Params(
+            scale=block_scale,
+            orig_dtype=orig_dtype,
+            orig_shape=orig_shape,
+        )
+        return qdata, params
+
+
+class TensorCoreNVFP4Layout_(TensorCoreNVFP4Layout):
+    @classmethod
+    def quantize(cls, tensor, scale=None, stochastic_rounding=0, inplace_ops=False):
+        assert tensor.dim() == 2
 
         orig_dtype = tensor.dtype
         orig_shape = tuple(tensor.shape)
@@ -100,51 +132,26 @@ class TensorCoreNVFP4Layout(TensorCoreNVFP4Layout):
         return qdata, params
 
 
-class TensorCoreMXFP8Layout(TensorCoreMXFP8Layout):
-    @classmethod
-    def quantize(cls, tensor, scale=None, stochastic_rounding=0, inplace_ops=False):
-        if tensor.dim() != 2:
-            raise ValueError(f"MXFP8 requires 2D tensor, got {tensor.dim()}D")
-
-        orig_dtype = tensor.dtype
-        orig_shape = tuple(tensor.shape)
-
-        padded_shape = cls.get_padded_shape(orig_shape)
-        needs_padding = padded_shape != orig_shape
-
-        if stochastic_rounding > 0:
-            qdata, block_scale = float.stochastic_round_quantize_mxfp8_by_block(tensor, pad_32x=needs_padding, seed=stochastic_rounding)
-        else:
-            qdata, block_scale = ck.quantize_mxfp8(tensor, pad_32x=needs_padding)
-
-        params = cls.Params(
-            scale=block_scale,
-            orig_dtype=orig_dtype,
-            orig_shape=orig_shape,
-        )
-        return qdata, params
-
-
-class TensorCoreFP8E4M3Layout(_TensorCoreFP8LayoutBase):
+class TensorCoreFP8E4M3Layout(TensorCoreFP8LayoutBase):
     FP8_DTYPE = torch.float8_e4m3fn
 
 
-class TensorCoreFP8E5M2Layout(_TensorCoreFP8LayoutBase):
+class TensorCoreFP8E5M2Layout(TensorCoreFP8LayoutBase):
     FP8_DTYPE = torch.float8_e5m2
-
-
-TensorCoreFP8Layout = TensorCoreFP8E4M3Layout
 
 
 # region Registry
 
 
-register_layout_class("TensorCoreFP8Layout", TensorCoreFP8Layout)
+register_layout_class("TensorCoreFP8Layout", TensorCoreFP8E4M3Layout)
 register_layout_class("TensorCoreFP8E4M3Layout", TensorCoreFP8E4M3Layout)
 register_layout_class("TensorCoreFP8E5M2Layout", TensorCoreFP8E5M2Layout)
-register_layout_class("TensorCoreNVFP4Layout", TensorCoreNVFP4Layout)
-register_layout_class("TensorCoreMXFP8Layout", TensorCoreMXFP8Layout)
+register_layout_class("TensorCoreNVFP4Layout", TensorCoreNVFP4Layout_)
+register_layout_class("TensorCoreMXFP8Layout", TensorCoreMXFP8Layout_)
 register_layout_class("TensorWiseINT8Layout", TensorWiseINT8Layout)
+register_layout_class("TensorCoreConvRotW4A4Layout", TensorCoreConvRotW4A4Layout)
+register_layout_class("AsymW4A8Int8Layout", AsymW4A8Int8Layout)
+
 
 QUANT_ALGOS = {
     "float8_e4m3fn": {
@@ -159,7 +166,7 @@ QUANT_ALGOS = {
     },
     "nvfp4": {
         "storage_t": torch.uint8,
-        "parameters": {"weight_scale", "weight_scale_2", "input_scale"},
+        "parameters": {"weight_scale", "weight_scale_2", "input_scale", "pre_quant_scale"},
         "comfy_tensor_layout": "TensorCoreNVFP4Layout",
         "group_size": 16,
     },
@@ -173,6 +180,18 @@ QUANT_ALGOS = {
         "storage_t": torch.int8,
         "parameters": {"weight_scale"},
         "comfy_tensor_layout": "TensorWiseINT8Layout",
+        "quantize_input": False,
+    },
+    "convrot_w4a4": {
+        "storage_t": torch.int8,
+        "parameters": {"weight_scale"},
+        "comfy_tensor_layout": "TensorCoreConvRotW4A4Layout",
+        "quantize_input": False,
+    },
+    "asym_w4a8_int8": {
+        "storage_t": torch.int8,
+        "parameters": {"weight_scale"},
+        "comfy_tensor_layout": "AsymW4A8Int8Layout",
         "quantize_input": False,
     },
 }

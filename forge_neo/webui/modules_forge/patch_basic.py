@@ -80,6 +80,21 @@ def patch_comfy_kitchen_rope_split_half():
     except ImportError:
         return
 
+    rope_backend = str(
+        os.environ.get("FORGE_NEO_SOURCE_BACKEND_COMFY_KITCHEN_ROPE_BACKEND", "native") or "native"
+    ).strip().lower()
+
+    if rope_backend == "eager":
+        try:
+            from comfy_kitchen.backends.eager import rope as eager_rope
+        except (ImportError, AttributeError):
+            print("Forge Neo source backend: eager comfy_kitchen RoPE is unavailable; using native RoPE", flush=True)
+        else:
+            ck.apply_rope_split_half = eager_rope.apply_rope_split_half
+            ck.apply_rope_split_half1 = eager_rope.apply_rope_split_half1
+            print("Forge Neo source backend: using eager comfy_kitchen RoPE", flush=True)
+            return
+
     if hasattr(ck, "apply_rope_split_half"):
         return
 

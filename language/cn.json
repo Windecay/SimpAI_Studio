@@ -694,6 +694,7 @@
   "Restoring parameters": "正在回填参数",
   "Workspace restored": "工作区恢复完成",
   "Workspace restore timed out": "工作区恢复超时",
+  "Workspace restore failed": "工作区恢复失败",
 
   "highly detailed face": "高精细的脸",
   "detailed girl face": "精细的女孩脸",

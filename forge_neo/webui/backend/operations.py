@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Haoming02 - Burnt the Kitchen
 
 import contextlib
+import os
 import time
 from typing import Callable, Union
 
@@ -13,8 +14,33 @@ from backend.args import args, dynamic_args
 from backend.patcher.lora import merge_lora_to_weight
 
 
+def gqa_repeat_factor(query_heads: int, key_heads: int, value_heads: int) -> int:
+    assert key_heads == value_heads
+    if query_heads == key_heads:
+        return 1
+    assert query_heads % key_heads == 0
+    return query_heads // key_heads
+
+
+def repeat_kv_for_gqa(k: torch.Tensor, v: torch.Tensor, query_heads: int, head_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
+    n_rep = gqa_repeat_factor(query_heads, k.shape[head_dim], v.shape[head_dim])
+    if n_rep > 1:
+        k = k.repeat_interleave(n_rep, dim=head_dim)
+        v = v.repeat_interleave(n_rep, dim=head_dim)
+    return k, v
+
+
 def scaled_dot_product_attention(q, k, v, *args, **kwargs):
+    attn_mask = args[0] if len(args) > 0 else kwargs.get("attn_mask")
+    if kwargs.get("enable_gqa", False) and attn_mask is not None:
+        k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
+        kwargs["enable_gqa"] = False
     return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
+
+
+def _source_backend_disable_cudnn_sdpa() -> bool:
+    value = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_DISABLE_CUDNN_SDPA", "0") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
 
 
 try:
@@ -30,9 +56,16 @@ try:
                 SDPBackend.MATH,
             ]
 
-            SDPA_BACKEND_PRIORITY.insert(0, SDPBackend.CUDNN_ATTENTION)
+            if _source_backend_disable_cudnn_sdpa():
+                memory_management.logger.info("PyTorch SDPA CUDNN priority disabled for source backend")
+            else:
+                SDPA_BACKEND_PRIORITY.insert(0, SDPBackend.CUDNN_ATTENTION)
 
             def scaled_dot_product_attention(q, k, v, *args, **kwargs):
+                attn_mask = args[0] if len(args) > 0 else kwargs.get("attn_mask")
+                if kwargs.get("enable_gqa", False) and attn_mask is not None:
+                    k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
+                    kwargs["enable_gqa"] = False
                 with sdpa_kernel(SDPA_BACKEND_PRIORITY, set_priority=True):
                     return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
 

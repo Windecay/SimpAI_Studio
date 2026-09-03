@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from backend.patcher.unet import UnetPatcher
 
 from backend.args import dynamic_args
+from backend.anima_lora import remap_anima_lora_key_map
 from backend.logging import setup_logger
 from backend.patcher.lora import load_lora, model_lora_keys_clip, model_lora_keys_unet
 from backend.utils import load_torch_file
@@ -42,11 +43,15 @@ def load_lora_for_models(model: "UnetPatcher", clip: "CLIP", lora: dict[str, tor
 
     model_flag: str = type(model.model).__name__ if model is not None else "default"
 
-    unet_keys = model_lora_keys_unet(model.model) if model is not None else {}
-    clip_keys = model_lora_keys_clip(clip.cond_stage_model) if clip is not None else {}
+    unet_keys = model_lora_keys_unet(model.model, {}) if model is not None else {}
+    clip_keys = model_lora_keys_clip(clip.cond_stage_model, {}) if clip is not None else {}
 
-    if model.model.diffusion_model.__class__.__name__ == "Anima":
+    is_anima = model.model.diffusion_model.__class__.__name__ == "Anima"
+    if is_anima:
         process_anima(lora)
+        unet_keys, remapped = remap_anima_lora_key_map(lora, unet_keys)
+        if remapped:
+            logger.info(f"[LORA] Remapped Anima 28-block LoRA to 40-block model for {remapped} targets")
 
     lora_unmatch = lora
     lora_unet, lora_unmatch = load_lora(lora_unmatch, unet_keys)

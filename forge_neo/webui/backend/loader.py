@@ -2,6 +2,7 @@ import importlib
 import json
 import logging
 import os.path
+import time
 from functools import partial
 from typing import TYPE_CHECKING, Callable
 
@@ -65,6 +66,21 @@ KREA2_REPOS = {"krea/Krea-2-Turbo", "krea/Krea-2-Raw"}
 
 def _is_krea2_config(guess):
     return getattr(guess, "huggingface_repo", "") in KREA2_REPOS or guess.unet_config.get("image_model") == "krea2"
+
+
+def _loader_stage_logs_enabled() -> bool:
+    value = str(os.environ.get("FORGE_NEO_LOADER_STAGE_LOGS", "") or "").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _log_loader_stage(name: str, started: float, **extra) -> None:
+    if not _loader_stage_logs_enabled():
+        return
+
+    elapsed = max(0.0, time.perf_counter() - started)
+    details = " ".join(f"{key}={value}" for key, value in extra.items() if value is not None)
+    suffix = f" {details}" if details else ""
+    logger.info(f"[Forge loader] stage={name} elapsed={elapsed:.3f}s{suffix}")
 
 
 def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_path, state_dict):
@@ -885,12 +901,16 @@ def split_state_dict(path: os.PathLike, additional_state_dicts: list[os.PathLike
     return state_dict, guess
 
 
-@torch.inference_mode()
+@torch.no_grad()
 def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = None) -> "ForgeDiffusionEngine":
+    total_started = time.perf_counter()
+    split_started = time.perf_counter()
     try:
         state_dicts, estimated_config = split_state_dict(sd, additional_state_dicts=additional_state_dicts)
     except AttributeError:
         raise ValueError("Failed to recognize model...") from None
+    finally:
+        _log_loader_stage("split_state_dict", split_started)
 
     repo_name = estimated_config.huggingface_repo
     if _is_krea2_config(estimated_config) and "raw" in os.path.basename(str(sd)).lower():
@@ -904,6 +924,7 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
     backend.args.dynamic_args.nunchaku = getattr(estimated_config, "nunchaku", False)
     backend.args.dynamic_args.klein = "klein" in repo_name
     backend.args.dynamic_args.wan = False
+    backend.args.dynamic_args.anima = "anima" in repo_name.casefold()
 
     if "xl" in repo_name and "rectified" in str(sd).lower():
         estimated_config.sampling_settings["RF"] = True
@@ -914,14 +935,19 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
     from diffusers import DiffusionPipeline
 
     local_path = os.path.join(HF, repo_name)
+    config_started = time.perf_counter()
     config: dict = DiffusionPipeline.load_config(local_path)
+    _log_loader_stage("diffusers_config", config_started, repo=repo_name)
 
     huggingface_components = {}
     for component_name, v in config.items():
         if isinstance(v, list) and len(v) == 2:
             lib_name, cls_name = v
             component_sd = state_dicts.pop(component_name, None)
+            component_started = time.perf_counter()
             component = load_huggingface_component(estimated_config, component_name, lib_name, cls_name, local_path, component_sd)
+            _log_loader_stage(f"{component_name} construct", component_started)
+            _log_loader_stage(f"{component_name} load_state_dict", component_started, loaded=component_sd is not None)
             if component_sd is not None:
                 del component_sd
             if component is not None:
@@ -959,6 +985,8 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
 
     for M in possible_models:
         if any(type(estimated_config) is x for x in M.matched_guesses):
-            return M(estimated_config=estimated_config, huggingface_components=huggingface_components)
+            model = M(estimated_config=estimated_config, huggingface_components=huggingface_components)
+            _log_loader_stage("forge_loader total", total_started, model=M.__name__, repo=repo_name)
+            return model
 
     raise ValueError("Failed to recognize model...") from None

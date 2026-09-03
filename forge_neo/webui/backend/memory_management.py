@@ -20,7 +20,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import gc
-import importlib
 import logging
 import os
 import platform
@@ -36,7 +35,7 @@ import torch
 
 from backend.args import args
 from backend.logging import setup_logger
-from backend.quant_ops import QuantizedTensor
+from backend.quant_ops import QuantizedTensor, ck
 
 if TYPE_CHECKING:
     from backend.patcher.base import ModelPatcher
@@ -486,15 +485,25 @@ if is_amd():
 
         logger.info("AMD Arch: {}".format(arch))
         logger.info("ROCm Version: {}".format(rocm_version))
-        if importlib.util.find_spec("triton") is not None:
+        def aotriton_supported() -> bool:
+            try:
+                if not torch.backends.cuda.is_flash_attention_available():
+                    return False
+                q = torch.empty((1, 1, 8, 64), dtype=torch.float16, device=get_torch_device())
+                params = torch.backends.cuda.SDPAParams(q, q, q, None, 0.0, False, False)
+                return torch.backends.cuda.can_use_flash_attention(params, False)
+            except Exception:
+                return False
+
+        if aotriton_supported():
             if torch_version_numeric >= (2, 7):
-                if any((a in arch) for a in ["gfx90a", "gfx942", "gfx1100", "gfx1101", "gfx1151"]):
+                if any((a in arch) for a in ["gfx90a", "gfx942", "gfx950", "gfx1100", "gfx1101", "gfx1150", "gfx1151", "gfx1170"]):
                     ENABLE_PYTORCH_ATTENTION = True
             if rocm_version >= (7, 0):
-                if any((a in arch) for a in ["gfx1201"]):
+                if any((a in arch) for a in ["gfx1200", "gfx1201"]):
                     ENABLE_PYTORCH_ATTENTION = True
         if torch_version_numeric >= (2, 7) and rocm_version >= (6, 4):
-            if any((a in arch) for a in ["gfx1200", "gfx1201", "gfx950"]):
+            if any((a in arch) for a in ["gfx1200", "gfx1201", "gfx950", "gfx1170"]):
                 SUPPORT_FP8_OPS = True
 
     except Exception:
@@ -687,7 +696,7 @@ class LoadedModel:
         return self.model.model_size() - self.model.loaded_size()
 
     def model_memory_required(self, device):
-        if device == self.model.current_loaded_device():
+        if device == self.model.current_device:
             return self.model_offloaded_memory()
         else:
             return self.model_memory()
@@ -798,9 +807,9 @@ def extra_reserved_memory() -> float:
 
 def _sampling_headroom_memory_from_env() -> float:
     try:
-        return max(0.0, float(os.environ.get("FORGE_NEO_SOURCE_BACKEND_SAMPLING_HEADROOM_MB", "1024"))) * 1024 * 1024
+        return max(0.0, float(os.environ.get("FORGE_NEO_SOURCE_BACKEND_SAMPLING_HEADROOM_MB", "2048"))) * 1024 * 1024
     except (TypeError, ValueError):
-        return float(1024 * 1024 * 1024)
+        return float(2048 * 1024 * 1024)
 
 
 def _weight_load_margin_from_env() -> float:
@@ -1428,6 +1437,16 @@ def flash_enabled() -> bool:
 
 def bnb_enabled() -> bool:
     return BNB_IS_AVAILABLE
+
+
+def ck_enabled() -> bool:
+    if cpu_state is not CPUState.GPU:
+        return False
+    try:
+        ck_is_available = ck.int8_attention_is_available()
+    except Exception:
+        return False
+    return ck_is_available and args.use_ck_attention
 
 
 def pytorch_attention_enabled() -> bool:

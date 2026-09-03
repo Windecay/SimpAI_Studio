@@ -843,6 +843,9 @@ def native_override_settings(request: object) -> dict[str, Any]:
     preset = str(getattr(request, "preset", "") or "").strip()
     if preset:
         settings["forge_preset"] = preset
+    anima_do_reference = _source_anima_reference_setting(request)
+    if anima_do_reference is not None:
+        settings["anima_do_reference"] = anima_do_reference
     checkpoint = _optional_model_name(getattr(request, "checkpoint", None))
     if checkpoint is not None:
         settings["sd_model_checkpoint"] = checkpoint
@@ -1149,6 +1152,15 @@ def _source_image_stitch_references(request: object) -> list[str]:
         if encoded:
             references.append(encoded)
     return references
+
+
+def _source_anima_reference_setting(request: object) -> bool | None:
+    preset = str(getattr(request, "preset", "") or "").strip().casefold()
+    if preset != "anima" and not preset.endswith("-anima"):
+        return None
+    if not bool(getattr(request, "image_stitch_enabled", False)):
+        return False
+    return bool(_source_image_stitch_references(request))
 
 
 def _script_arg_bool(args: dict[str, object], key: str, default: bool = False, *aliases: str) -> bool:

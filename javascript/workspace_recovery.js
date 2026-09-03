@@ -14,11 +14,15 @@
     const RESTORE_DELAY_MS = 450;
     const RESTORE_READY_TIMEOUT_MS = 30 * 1000;
     const RESTORE_READY_SETTLE_MS = 650;
+    const RESTORE_READY_DOM_STABLE_POLLS = 2;
     const RESTORE_POST_NAV_SETTLE_MS = 350;
     const RESTORE_LAYOUT_SETTLE_TIMEOUT_MS = 2500;
     const RESTORE_LAYOUT_POLL_MS = 100;
     const RESTORE_LAYOUT_STABLE_POLLS = 3;
     const RESTORE_POST_LAYOUT_SETTLE_MS = 350;
+    const RESTORE_PROGRESS_WATCHDOG_MS = 45 * 1000;
+    const RESTORE_SKETCH_READ_TIMEOUT_MS = 4000;
+    const RESTORE_CUSTOM_UI_TIMEOUT_MS = 5000;
     const WORKSPACE_STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
     const AUTO_RESTORE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
     const RESTORE_PROGRESS_ID = 'workspace_restore_progress';
@@ -50,6 +54,7 @@
     let restoreProgressValue = 0;
     let restoreProgressStartedAt = 0;
     let restoreProgressSoftTimer = 0;
+    let restoreProgressWatchdogTimer = 0;
     let restoreProgressHideTimer = 0;
     let restoreProgressTargetPreset = '';
     let restoreProgressFailed = false;
@@ -194,6 +199,54 @@
         restoreProgressSoftTimer = 0;
     }
 
+    function stopRestoreProgressWatchdog() {
+        if (!restoreProgressWatchdogTimer) return;
+        window.clearTimeout(restoreProgressWatchdogTimer);
+        restoreProgressWatchdogTimer = 0;
+    }
+
+    function abortRestoreAfterFailure(reason) {
+        const request = restoreRequest || pendingManualReconnectRequest() || automaticRestoreCandidate;
+        if (request) {
+            try {
+                if (request.source === 'browser_history') clearPageLifecycle();
+                else clearManualReconnectRequest(request);
+            } catch (error) {}
+            try {
+                clearStalePresetNavigation(request.context?.preset, reason || 'restore_timeout');
+            } catch (error) {}
+        }
+        restoreCompleted = true;
+        restoreRequested = false;
+        restoreRequest = null;
+        automaticRestoreCandidate = null;
+        preserveUiSnapshotUntilUnload = false;
+        captureSuspended = false;
+        restoreStartedAt = 0;
+        markPerformance('workspace.restore_aborted', {
+            owner: request?.owner || '',
+            preset: normalizedPresetName(request?.context?.preset || ''),
+            reason: String(reason || 'restore_timeout'),
+        }, true);
+    }
+
+    function startRestoreProgressWatchdog() {
+        stopRestoreProgressWatchdog();
+        if (typeof window.setTimeout !== 'function') return;
+        restoreProgressWatchdogTimer = window.setTimeout(() => {
+            restoreProgressWatchdogTimer = 0;
+            if (!restoreProgressActive) return;
+            markPerformance('workspace.restore_progress_timeout', {
+                owner: restoreRequest?.owner || '',
+                preset: restoreProgressTargetPreset,
+                progress: Math.round(restoreProgressValue),
+                elapsed_ms: Math.max(0, Date.now() - restoreProgressStartedAt),
+            }, true);
+            abortRestoreAfterFailure('restore_progress_timeout');
+            finishRestoreProgress(false, 'Workspace restore timed out');
+        }, RESTORE_PROGRESS_WATCHDOG_MS);
+    }
+
     function startRestoreProgressSoftTimer() {
         stopRestoreProgressSoftTimer();
         restoreProgressSoftTimer = window.setInterval(() => {
@@ -241,6 +294,7 @@
         restoreProgressUpdate(8, restoreProgressText('Restoring workspace', 'Restoring workspace'));
         if (host) {
             startRestoreProgressSoftTimer();
+            startRestoreProgressWatchdog();
             try { document.body.style.cursor = 'progress'; } catch (error) {}
         }
     }
@@ -251,6 +305,7 @@
     }
 
     function hideRestoreProgress(delay) {
+        stopRestoreProgressWatchdog();
         if (!document || typeof document.getElementById !== 'function') {
             restoreProgressActive = false;
             restoreProgressValue = 0;
@@ -279,6 +334,7 @@
     }
 
     function finishRestoreProgress(success, errorKey) {
+        stopRestoreProgressWatchdog();
         if (!restoreProgressActive) return;
         if (!success) restoreProgressFailed = true;
         if (success && restoreProgressFailed) {
@@ -935,7 +991,12 @@
         const restoredValues = { ...values };
         let restoredCount = 0;
         await Promise.all(targets.map(async ([key, entry]) => {
-            const record = await readSketchRecord(entry.value.storage_key);
+            let record = null;
+            try {
+                record = await readSketchRecord(entry.value.storage_key);
+            } catch (error) {
+                record = null;
+            }
             if (!record || record.signature !== entry.signature) return;
             if (record.payload === null) {
                 restoredValues[key] = { ...entry, value: '' };
@@ -1363,21 +1424,141 @@
         return {
             preset: normalizedPresetName(completion.preset || ''),
             seq: Number(completion.seq || window.__simpleai_preset_nav_completion_seq || 0),
+            completedAt: Number(completion.completed_at || 0),
         };
+    }
+
+    function presetNavigationPendingName() {
+        try {
+            return normalizedPresetName(
+                typeof topbarPendingPreset !== 'undefined' ? topbarPendingPreset : ''
+            );
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function presetNavigationPendingUntil() {
+        try {
+            const value = Number(
+                typeof topbarPendingPresetUntil !== 'undefined' ? topbarPendingPresetUntil : 0
+            );
+            return Number.isFinite(value) ? value : 0;
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    function clearStalePresetNavigation(target, reason) {
+        const expected = normalizedPresetName(target);
+        if (!expected) return false;
+        const pending = presetNavigationPendingName();
+        const pendingUntil = presetNavigationPendingUntil();
+
+        let cleared = false;
+        try {
+            if (presetNavigationActive()) {
+                document.documentElement?.classList?.remove?.('simpai-preset-nav-active');
+                cleared = true;
+            }
+        } catch (error) {}
+        try {
+            if (typeof finishPresetNavProgress === 'function') {
+                finishPresetNavProgress(expected);
+                cleared = true;
+            }
+        } catch (error) {}
+        try {
+            if (pending === expected && typeof topbarPendingPreset !== 'undefined') {
+                topbarPendingPreset = null;
+                topbarPendingPresetUntil = 0;
+                cleared = true;
+            }
+        } catch (error) {}
+        if (cleared) {
+            markPerformance('workspace.restore_preset_navigation_stale_cleared', {
+                preset: expected,
+                reason: String(reason || 'restore'),
+                pending,
+                pending_until: pendingUntil,
+            }, true);
+        }
+        return cleared;
+    }
+
+    function studioUiLooksMounted() {
+        try {
+            if (String(document?.readyState || '').toLowerCase() === 'loading') return false;
+            const root = rootNode();
+            if (!root || typeof root.querySelector !== 'function') return false;
+            const hasShell = !!root.querySelector(
+                '#topbar_row, #tabs, #main_layout_row, .gradio-container, [data-testid="interface"]'
+            );
+            const hasControl = !!root.querySelector(
+                '[id^="bar"], #generate_button, #scene_panel, .simpai-workspace-field'
+            );
+            return hasShell && hasControl;
+        } catch (error) {
+            return false;
+        }
     }
 
     function wait(delay) {
         return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, Number(delay) || 0)));
     }
 
+    async function awaitRestoreTask(task, timeoutMs, fallback, eventName, data) {
+        if (typeof window.setTimeout !== 'function') return await task;
+        let timer = 0;
+        const taskResult = Promise.resolve(task).then((value) => ({ timedOut: false, value }));
+        const timeoutResult = new Promise((resolve) => {
+            const scheduleTimeout = () => {
+                timer = window.setTimeout(
+                    () => resolve({ timedOut: true }),
+                    Math.max(0, Number(timeoutMs) || 0),
+                );
+            };
+            if (typeof queueMicrotask === 'function') queueMicrotask(scheduleTimeout);
+            else Promise.resolve().then(scheduleTimeout);
+        });
+        let result;
+        try {
+            result = await Promise.race([taskResult, timeoutResult]);
+        } finally {
+            if (timer && typeof window.clearTimeout === 'function') window.clearTimeout(timer);
+        }
+        if (!result?.timedOut) return result?.value;
+        markPerformance(eventName || 'workspace.restore_task_timeout', {
+            ...(data && typeof data === 'object' ? data : {}),
+            timeout_ms: Math.max(0, Number(timeoutMs) || 0),
+        }, true);
+        return fallback;
+    }
+
     async function waitForStudioUiReady(request) {
         updateRestoreProgress(16, 'Waiting for server');
         const deadline = Date.now() + RESTORE_READY_TIMEOUT_MS;
+        let mountedPolls = 0;
+        let domFallbackLogged = false;
         while (Date.now() < deadline) {
-            if (window.__simpleai_ui_ready === true) {
-                await wait(RESTORE_READY_SETTLE_MS);
-                updateRestoreProgress(30, 'Restoring workspace');
-                return true;
+            const sentinelReady = window.__simpleai_ui_ready === true;
+            const domReady = studioUiLooksMounted();
+            if (sentinelReady || domReady) {
+                mountedPolls = domReady ? mountedPolls + 1 : 0;
+                if (sentinelReady || mountedPolls >= RESTORE_READY_DOM_STABLE_POLLS) {
+                    if (!sentinelReady && !domFallbackLogged) {
+                        domFallbackLogged = true;
+                        markPerformance('workspace.restore_ui_ready_dom_fallback', {
+                            owner: request?.owner || '',
+                            preset: normalizedPresetName(request?.context?.preset || ''),
+                        }, true);
+                    }
+                    await wait(RESTORE_READY_SETTLE_MS);
+                    updateRestoreProgress(30, 'Restoring workspace');
+                    return true;
+                }
+            } else {
+                mountedPolls = 0;
             }
             await wait(100);
         }
@@ -1395,9 +1576,28 @@
             return true;
         }
         updateRestoreProgress(38, 'Switching to {preset}...', { preset: target });
-        if (currentPresetName() === target && !presetNavigationActive()) {
+        const initialCompletion = presetNavigationCompletion();
+        const initialCurrent = currentPresetName();
+        if (initialCurrent === target && !presetNavigationActive()) {
             updateRestoreProgress(64, 'Applying {preset}...', { preset: target });
             return true;
+        }
+        if (
+            initialCurrent === target
+            && presetNavigationActive()
+        ) {
+            clearStalePresetNavigation(target, 'current_preset_already_selected');
+            await wait(RESTORE_POST_NAV_SETTLE_MS);
+            if (currentPresetName() === target && !presetNavigationActive()) {
+                await wait(RESTORE_READY_SETTLE_MS);
+                updateRestoreProgress(64, 'Applying {preset}...', { preset: target });
+                markPerformance('workspace.restore_preset_navigation_ready', {
+                    preset: target,
+                    completion_seq: initialCompletion.seq,
+                    completion_fallback: true,
+                }, true);
+                return true;
+            }
         }
 
         let baselineCompletion = presetNavigationCompletion();
@@ -1420,15 +1620,30 @@
                 }
             }
             const completion = presetNavigationCompletion();
+            const pending = presetNavigationPendingName();
+            const pendingUntil = presetNavigationPendingUntil();
             const navigationFinished = buttonClicked
-                && completion.seq > baselineCompletion.seq
                 && completion.preset === target;
-            if (currentPresetName() === target && !presetNavigationActive() && navigationFinished) {
+            const completionAdvanced = completion.seq > baselineCompletion.seq
+                || completion.completedAt >= Number(restoreStartedAt || 0)
+                || baselineCompletion.preset !== target;
+            const pendingSettled = pending !== target || pendingUntil <= Date.now();
+            if (
+                currentPresetName() === target
+                && !presetNavigationActive()
+                && (
+                    !buttonClicked
+                    || (navigationFinished && completionAdvanced)
+                    || pendingSettled
+                    || completion.preset === target
+                )
+            ) {
                 await wait(RESTORE_POST_NAV_SETTLE_MS);
                 updateRestoreProgress(68, 'Applying {preset}...', { preset: target });
                 markPerformance('workspace.restore_preset_navigation_ready', {
                     preset: target,
                     completion_seq: completion.seq,
+                    completion_fallback: !completionAdvanced,
                 }, true);
                 return true;
             }
@@ -1451,59 +1666,71 @@
     async function prepareRestoreRequest(fallbackState, fallbackOwner) {
         const request = restoreRequest || activeRestoreRequest();
         if (!request) return [emptyRestoreSnapshot(), ownerKey() || fallbackOwner || 'local'];
-        request.context = requestWorkspaceContext(request);
-        restoreRequest = request;
-        if (!restoreProgressActive) startRestoreProgress(request);
-        restoreLayoutEnabled = request.source !== 'browser_history';
-        if (!restoreStartedAt) restoreStartedAt = Date.now();
-        captureSuspended = true;
-        restoreRequested = true;
-        if (request.source !== 'browser_history') clearManualReconnectRequest(request);
-        const uiReady = await waitForStudioUiReady(request);
-        const presetReady = await ensureReconnectPreset(request);
-        if (!presetReady) {
-            markPerformance('workspace.restore_preset_timeout', {
-                expected_preset: normalizedPresetName(request?.context?.preset || ''),
-                current_preset: currentPresetName(),
+        try {
+            request.context = requestWorkspaceContext(request);
+            restoreRequest = request;
+            if (!restoreProgressActive) startRestoreProgress(request);
+            restoreLayoutEnabled = request.source !== 'browser_history';
+            if (!restoreStartedAt) restoreStartedAt = Date.now();
+            captureSuspended = true;
+            restoreRequested = true;
+            if (request.source !== 'browser_history') clearManualReconnectRequest(request);
+            const uiReady = await waitForStudioUiReady(request);
+            const presetReady = await ensureReconnectPreset(request);
+            if (!presetReady) {
+                markPerformance('workspace.restore_preset_timeout', {
+                    expected_preset: normalizedPresetName(request?.context?.preset || ''),
+                    current_preset: currentPresetName(),
+                }, true);
+                return [emptyRestoreSnapshot(), request.owner];
+            }
+            await prepareRestoredLayout(request);
+            const requestSnapshot = request.snapshot
+                && request.snapshot.schema === 1
+                && request.snapshot.workspaces
+                && typeof request.snapshot.workspaces === 'object'
+                ? request.snapshot
+                : null;
+            const stored = workspaceSnapshot(request.owner);
+            const fallback = fallbackState && typeof fallbackState === 'object' ? fallbackState : null;
+            const candidate = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
+            const hydratedCandidate = await awaitRestoreTask(
+                hydrateSketchSnapshot(candidate, request.owner, request.context),
+                RESTORE_SKETCH_READ_TIMEOUT_MS,
+                candidate,
+                'workspace.restore_sketch_values_timeout',
+                { owner: request.owner, preset: request.context?.preset || '' },
+            );
+            const materialized = materializeWorkspaceSnapshot(
+                hydratedCandidate,
+                request.owner,
+                request.context,
+                request,
+            );
+            const snapshot = materialized.snapshot;
+            request.restore_snapshot = snapshot;
+            updateRestoreProgress(82, 'Restoring parameters');
+            markPerformance('workspace.restore_values_ready', {
+                owner: request.owner,
+                preset: currentPresetName(),
+                scene_theme: String(request.context?.scene_theme || ''),
+                value_count: materialized.valueCount,
+                rejected_values: materialized.rejectedCount,
+                ui_ready: uiReady,
+                snapshot_source: requestSnapshot
+                    ? `${request.source === 'browser_history' ? 'browser_history' : 'manual_reconnect'}:${materialized.sourceType}`
+                    : `${stored ? 'workspace_storage' : 'browser_state'}:${materialized.sourceType}`,
             }, true);
+            return [snapshot, request.owner];
+        } catch (error) {
+            markPerformance('workspace.restore_prepare_failed', {
+                owner: request.owner || '',
+                preset: normalizedPresetName(request?.context?.preset || ''),
+                message: String(error?.message || error || ''),
+            }, true);
+            finishRestoreProgress(false, 'Workspace restore failed');
             return [emptyRestoreSnapshot(), request.owner];
         }
-        await prepareRestoredLayout(request);
-        const requestSnapshot = request.snapshot
-            && request.snapshot.schema === 1
-            && request.snapshot.workspaces
-            && typeof request.snapshot.workspaces === 'object'
-            ? request.snapshot
-            : null;
-        const stored = workspaceSnapshot(request.owner);
-        const fallback = fallbackState && typeof fallbackState === 'object' ? fallbackState : null;
-        const candidate = requestSnapshot || stored || fallback || emptyRestoreSnapshot();
-        const hydratedCandidate = await hydrateSketchSnapshot(
-            candidate,
-            request.owner,
-            request.context,
-        );
-        const materialized = materializeWorkspaceSnapshot(
-            hydratedCandidate,
-            request.owner,
-            request.context,
-            request,
-        );
-        const snapshot = materialized.snapshot;
-        request.restore_snapshot = snapshot;
-        updateRestoreProgress(82, 'Restoring parameters');
-        markPerformance('workspace.restore_values_ready', {
-            owner: request.owner,
-            preset: currentPresetName(),
-            scene_theme: String(request.context?.scene_theme || ''),
-            value_count: materialized.valueCount,
-            rejected_values: materialized.rejectedCount,
-            ui_ready: uiReady,
-            snapshot_source: requestSnapshot
-                ? `${request.source === 'browser_history' ? 'browser_history' : 'manual_reconnect'}:${materialized.sourceType}`
-                : `${stored ? 'workspace_storage' : 'browser_state'}:${materialized.sourceType}`,
-        }, true);
-        return [snapshot, request.owner];
     }
 
     function workspaceKey(node) {
@@ -1955,7 +2182,13 @@
         const request = restoreRequest || pendingManualReconnectRequest();
         if (!request) return false;
         try {
-            await restoreCustomUiState(request);
+            await awaitRestoreTask(
+                restoreCustomUiState(request),
+                RESTORE_CUSTOM_UI_TIMEOUT_MS,
+                false,
+                'workspace.restore_custom_ui_timeout',
+                { owner: request.owner || '' },
+            );
         } catch (error) {
             markPerformance('workspace.restore_custom_ui_failed', {
                 owner: request.owner || '',
@@ -2084,7 +2317,11 @@
     window.addEventListener('pagehide', prepareForPageHide);
     window.addEventListener('beforeunload', prepareForPageHide);
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') prepareForPageHide();
+        if (document.visibilityState === 'hidden') {
+            // A browser-tab switch is not a page lifecycle transition. Capture
+            // the current values, but let pagehide/beforeunload record reloads.
+            prepareForReload();
+        }
     });
     window.addEventListener('pageshow', (event) => {
         if (event?.persisted) window.__simpai_page_was_restored = true;

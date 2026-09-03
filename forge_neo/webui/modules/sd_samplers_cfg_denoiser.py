@@ -1,9 +1,12 @@
+import time
+
 import torch
 
 from backend.sampling.sampling_function import sampling_function
 from modules import prompt_parser, sd_samplers_common
 from modules.script_callbacks import AfterCFGCallbackParams, CFGDenoiserParams, cfg_after_cfg_callback, cfg_denoiser_callback
 from modules.shared import opts, state
+from modules.source_backend_timing import log_source_stage, log_source_stage_marker, should_log_denoiser_step
 
 
 def catenate_conds(conds):
@@ -103,6 +106,12 @@ class CFGDenoiser(torch.nn.Module):
         if state.interrupted or state.skipped:
             raise sd_samplers_common.InterruptedException
 
+        source_step = int(getattr(state, "sampling_step", self.step) or 0)
+        source_trace = should_log_denoiser_step(source_step)
+        if source_trace:
+            log_source_stage_marker("denoiser.forward", step=source_step, sampler=getattr(self.sampler, "funcname", None))
+            forward_started = time.perf_counter()
+
         original_x_device = x.device
         original_x_dtype = x.dtype
 
@@ -149,7 +158,14 @@ class CFGDenoiser(torch.nn.Module):
                 self.p.extra_generation_params["NGMS all steps"] = opts.s_min_uncond_all
 
         extra_model_options = kwargs.get("model_options", {})
-        denoised, cond_pred, uncond_pred = sampling_function(self, denoiser_params=denoiser_params, cond_scale=cond_scale, cond_composition=cond_composition, extra_model_options=extra_model_options)
+        if source_trace:
+            log_source_stage_marker("denoiser.sampling_function", step=source_step)
+            sampling_started = time.perf_counter()
+        try:
+            denoised, cond_pred, uncond_pred = sampling_function(self, denoiser_params=denoiser_params, cond_scale=cond_scale, cond_composition=cond_composition, extra_model_options=extra_model_options)
+        finally:
+            if source_trace:
+                log_source_stage("denoiser.sampling_function", sampling_started, step=source_step)
 
         if self.need_last_noise_uncond:
             self.last_noise_uncond = (x - uncond_pred) / sigma[:, None, None, None]
@@ -176,7 +192,11 @@ class CFGDenoiser(torch.nn.Module):
         self.step += 1
 
         if self.classic_ddim_eps_estimation:
-            eps = (x - denoised) / sigma[:, None, None, None]
-            return eps
+            result = (x - denoised) / sigma[:, None, None, None]
+        else:
+            result = denoised.to(device=original_x_device, dtype=original_x_dtype)
 
-        return denoised.to(device=original_x_device, dtype=original_x_dtype)
+        if source_trace:
+            log_source_stage("denoiser.forward", forward_started, step=source_step)
+
+        return result
