@@ -31,6 +31,7 @@
     const MAX_ROLEPLAY_STATE_IMAGE_HISTORY = 30;
     const MAX_ROLEPLAY_CHARACTERS = 20;
     const MAX_ROLEPLAY_STATE_TEXT = 4000;
+    const MAX_ROLEPLAY_CURRENT_ACTION = 1000;
     const MAX_ROLEPLAY_STATE_FIELDS = 40;
     const MAX_ROLEPLAY_STATE_FIELD_LABEL = 120;
     const MAX_ROLEPLAY_STATE_FIELD_VALUE = 500;
@@ -77,17 +78,29 @@
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
     const CONVERSATIONS_STORAGE_KEY = 'simpai.describeVlmChat.conversations.v2';
+    const CONVERSATION_RECOVERY_STORAGE_KEY = 'simpai.describeVlmChat.recovery.v1';
+    const CONVERSATION_RECOVERY_SCHEMA = 'simpai.describeVlmChat.recovery';
+    const CONVERSATION_RECOVERY_VERSION = 1;
     const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
     const CONVERSATION_VERSION = 8;
     const CONVERSATIONS_SCHEMA = 'simpai.describeVlmChat.conversations';
     const CONVERSATIONS_VERSION = 2;
     const CONVERSATION_ARCHIVE_DB_NAME = 'simpai.describeVlmChat.archive.v1';
-    const CONVERSATION_ARCHIVE_DB_VERSION = 1;
+    const CONVERSATION_ARCHIVE_DB_VERSION = 2;
     const CONVERSATION_ARCHIVE_STORE = 'conversation_archives';
-    const CONVERSATION_ARCHIVE_FORMAT = 'deduplicated-v1';
+    const CONVERSATION_ARCHIVE_CHUNK_STORE = 'conversation_archive_chunks';
+    const CONVERSATION_ARCHIVE_STORAGE_FORMAT = 'json-chunks-v1';
+    const CONVERSATION_ARCHIVE_CHUNK_CHARS = 2 * 1024 * 1024;
+    const CONVERSATION_ARCHIVE_FORMAT = 'message-ref-v2';
+    const LEGACY_CONVERSATION_ARCHIVE_FORMAT = 'deduplicated-v1';
     const MAX_SAVED_CONVERSATIONS = 24;
-    const MAX_CONVERSATIONS_STORAGE_LENGTH = 3500000;
+    const MAX_CONVERSATIONS_STORAGE_LENGTH = 100000;
+    const MAX_CONVERSATION_RECOVERY_LENGTH = 64000;
+    const MAX_CONVERSATION_RECOVERY_MESSAGES = 4;
     const MAX_CONVERSATION_RECORD_LENGTH = 3000000;
+    const CONVERSATION_PERSIST_DESKTOP_DELAY_MS = 400;
+    const CONVERSATION_PERSIST_MOBILE_DELAY_MS = 800;
+    const CONVERSATION_PERSIST_IDLE_TIMEOUT_MS = 2400;
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
     const USER_SYSTEM_PROMPT_TEMPLATE_SAVE_ENDPOINT = '/vlm-user-system-prompt-templates/save';
     const USER_SYSTEM_PROMPT_TEMPLATE_DELETE_ENDPOINT = '/vlm-user-system-prompt-templates/delete';
@@ -103,6 +116,8 @@
     const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 12;
     let conversationArchiveDbPromise = null;
     const conversationArchiveQueues = new Map();
+    const conversationPersistSchedules = new Map();
+    let conversationCatalogMigrationScheduled = false;
     const CREATIVE_DEFAULT_PRESET = 'Z-imageT';
     const CREATIVE_POLL_INTERVAL_MS = 900;
     const CREATIVE_TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped', 'skipped_queue_limit', 'stale_branch']);
@@ -1995,13 +2010,28 @@
             : draft[owner];
     }
 
-    function normalizeRoleplayBranch(value, conversationId = '', index = 0) {
+    function normalizeRoleplayBranch(value, conversationId = '', index = 0, options = {}) {
         const source = value && typeof value === 'object' ? value : {};
         const rawSession = source.session && typeof source.session === 'object' ? source.session : source;
         const session = normalizeRoleplaySession(rawSession, conversationId);
         const branchId = String(source.branch_id || source.id || session.active_branch_id || (index === 0 ? 'main' : ''))
             .trim().slice(0, 160) || `roleplay_branch_${index + 1}`;
         session.active_branch_id = branchId;
+        const archiveSource = Array.isArray(source.archive_messages)
+            ? source.archive_messages
+            : Array.isArray(source.archiveMessages)
+                ? source.archiveMessages
+                : Array.isArray(source.messages)
+                    ? source.messages
+                    : [];
+        const archiveMessages = Array.isArray(source.archive_messages)
+            ? source.archive_messages.filter((message) => !message?.pending)
+            : Array.isArray(source.archiveMessages)
+                ? source.archiveMessages.filter((message) => !message?.pending)
+                : normalizePersistedMessages(archiveSource, {
+                    conversationId,
+                    maxMessages: null
+                });
         return {
             branch_id: branchId,
             label: String(source.label || source.name || '').trim().slice(0, 160),
@@ -2014,17 +2044,18 @@
             updated_at: String(source.updated_at || session.updated_at || '').trim().slice(0, 80),
             remote: !!source.remote,
             session,
-            messages: normalizePersistedMessages(
-                Array.isArray(source.messages) ? source.messages.slice(-MAX_ROLEPLAY_BRANCH_MESSAGES) : []
-            )
+            messages: options.fullHistory
+                ? archiveMessages
+                : normalizePersistedMessages(archiveMessages, { conversationId }),
+            archive_messages: archiveMessages
         };
     }
 
-    function normalizeRoleplayBranches(value, conversationId = '') {
+    function normalizeRoleplayBranches(value, conversationId = '', options = {}) {
         const source = Array.isArray(value) ? value : [];
         const seen = new Set();
         return source
-            .map((item, index) => normalizeRoleplayBranch(item, conversationId, index))
+            .map((item, index) => normalizeRoleplayBranch(item, conversationId, index, options))
             .filter((item) => {
                 if (!item.branch_id || seen.has(item.branch_id)) return false;
                 seen.add(item.branch_id);
@@ -2840,9 +2871,25 @@
 
     function createConversationRuntime(source = {}) {
         const conversationId = String(source.conversationId || source.conversation_id || uid('describe_vlm_chat')).trim();
+        const sourceMessages = Array.isArray(source.messages) ? source.messages : [];
+        const sourceArchiveMessages = Array.isArray(source.archiveMessages)
+            ? source.archiveMessages
+            : Array.isArray(source.archive_messages)
+                ? source.archive_messages
+                : sourceMessages;
+        const archiveMessages = normalizePersistedMessages(sourceArchiveMessages, {
+            conversationId,
+            maxMessages: null
+        });
+        const visibleMessages = source.archiveMessages || source.archive_messages || source.archive_index_only === true
+            || sourceMessages.length > MAX_PERSISTED_MESSAGES
+            ? visibleConversationMessages(sourceMessages.length ? sourceMessages : archiveMessages)
+            : sourceMessages;
         return {
             conversationId,
-            messages: Array.isArray(source.messages) ? source.messages : [],
+            messages: visibleMessages,
+            archiveMessages,
+            archiveVisibleMessageIds: persistedMessageIds(visibleMessages),
             pendingImages: Array.isArray(source.pendingImages) ? source.pendingImages : [],
             lastAutoReferencedDescribeMediaKey: String(source.lastAutoReferencedDescribeMediaKey || ''),
             describeMediaReferencePromise: source.describeMediaReferencePromise || null,
@@ -3393,6 +3440,65 @@
         return lang.startsWith('zh') || lang.startsWith('cn') ? cn : en;
     }
 
+    function vlmChatPerformanceNow() {
+        try {
+            return Number(window.performance?.now?.()) || Date.now();
+        } catch (error) {
+            return Date.now();
+        }
+    }
+
+    function vlmChatPerformanceContext(runtime = null, extra = {}) {
+        const target = runtime || currentConversationRuntime();
+        const session = target?.roleplaySession && typeof target.roleplaySession === 'object'
+            ? target.roleplaySession
+            : {};
+        const branches = Array.isArray(target?.roleplayBranches) ? target.roleplayBranches : [];
+        const worldEntries = Array.isArray(session.world_book?.entries) ? session.world_book.entries.length : 0;
+        const memories = Array.isArray(session.memory_store?.items) ? session.memory_store.items.length : 0;
+        const chapters = Array.isArray(session.chapters?.items) ? session.chapters.items.length : 0;
+        return Object.assign({
+            conversation_id: String(target?.conversationId || '').slice(0, 200),
+            chat_mode: normalizeChatMode(target?.chatMode || state.chatMode),
+            messages: Array.isArray(target?.messages) ? target.messages.length : 0,
+            branches: branches.length,
+            branch_messages: branches.reduce(
+                (total, branch) => total + (Array.isArray(branch?.messages) ? branch.messages.length : 0),
+                0
+            ),
+            world_entries: worldEntries,
+            memories,
+            chapters,
+            state_version: Math.max(0, Math.round(Number(session.state_version || session.story_state?.state_version) || 0)),
+            dom_nodes: document.getElementsByTagName('*').length,
+            viewport_width: Math.max(0, Math.round(Number(window.innerWidth) || 0)),
+            viewport_height: Math.max(0, Math.round(Number(window.innerHeight) || 0)),
+            device_pixel_ratio: Math.max(0, Number(window.devicePixelRatio) || 0),
+            lang: String(state.__lang || '').slice(0, 20)
+        }, extra || {});
+    }
+
+    function markVlmChatPerformance(event, runtime = null, extra = {}) {
+        try {
+            window.SimpAIStudioPerformance?.mark?.(
+                String(event || '').slice(0, 128),
+                vlmChatPerformanceContext(runtime, extra)
+            );
+        } catch (error) {
+            // Performance recording must never interrupt chat interactions.
+        }
+    }
+
+    function waitForVlmChatPaint() {
+        return new Promise((resolve) => {
+            if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(() => resolve());
+            } else {
+                window.setTimeout(resolve, 0);
+            }
+        });
+    }
+
     function roleplayDictionaryText(en) {
         const lang = String(state.__lang || getUiLang?.(state) || '').toLowerCase();
         if (!lang.startsWith('zh') && !lang.startsWith('cn')) return en;
@@ -3468,7 +3574,7 @@
             renderMessages();
             setStatus(localText(`Creative preference: ${creativePreferenceLabel(next)}`, `创作偏好：${creativePreferenceLabel(next)}`));
         }
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'creative_preference');
         return next;
     }
 
@@ -3496,7 +3602,6 @@
         } catch (err) {
             // Ignore storage failures in private or restricted browser contexts.
         }
-        if (state.persistenceRestored && state.conversationCatalogLoaded) saveConversationSnapshot();
     }
 
     function chatInputPlaceholder(mode) {
@@ -3588,6 +3693,8 @@
     }
 
     function conversationTitleForRecord(record, index = 0) {
+        const storedTitle = String(record?.title || record?.title_text || '').replace(/\s+/g, ' ').trim();
+        if (storedTitle) return `${storedTitle.slice(0, 48)}${storedTitle.length > 48 ? '...' : ''}`;
         const firstUserMessage = (Array.isArray(record?.messages) ? record.messages : [])
             .find((item) => item?.role === 'user' && String(item.content || '').trim());
         const text = String(firstUserMessage?.content || '').replace(/\s+/g, ' ').trim();
@@ -3725,6 +3832,9 @@
 
     function syncChatSettingsControls(modal) {
         if (!modal) return;
+        if (describeCompactViewport() && state.settingsPanelOpen && state.roleplayPanelOpen) {
+            closeRoleplayPanelForMobile();
+        }
         syncConversationControls(modal);
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
         const maxTokens = modal.querySelector('[data-describe-vlm-chat-max-tokens]');
@@ -4503,7 +4613,7 @@
         delete target.roleplayReferenceDraft;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_library_load', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(target, localText(`Loaded character ${card.name || card.id}.`, `已加载角色：${card.name || card.id}。`));
         return true;
@@ -4562,10 +4672,9 @@
         state.roleplayCharacterLibraryLoaded = true;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_library_save', 'soon');
         syncRoleplayControls(modal, target);
-        const select = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-library-select]');
-        if (select) select.value = saved.id;
+        syncRoleplayCharacterLibraryControls(modal, saved.id);
         setConversationStatus(target, localText(`Character ${saved.name} saved to the library.`, `角色“${saved.name}”已保存到角色库。`));
         return true;
     }
@@ -6175,6 +6284,7 @@
         const runtime = Object.assign({}, target.story_state.characters[activeId] || {});
         const appearanceField = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-current-appearance]');
         const stateTextField = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-state-text]');
+        const currentActionField = modal?.querySelector('[data-describe-vlm-chat-roleplay-character-current-action]');
         if (appearanceField) {
             runtime.appearance = String(appearanceField.value || '')
                 .trim()
@@ -6184,6 +6294,11 @@
             runtime.state_text = String(stateTextField.value || '')
                 .trim()
                 .slice(0, MAX_ROLEPLAY_STATE_TEXT);
+        }
+        if (currentActionField) {
+            runtime.current_action = String(currentActionField.value || '')
+                .trim()
+                .slice(0, MAX_ROLEPLAY_CURRENT_ACTION);
         }
         const stateFieldsContainer = roleplayStateFieldsContainer(modal, 'character');
         const hasStateFieldRows = !!stateFieldsContainer?.querySelector('[data-describe-vlm-chat-roleplay-state-field]');
@@ -6266,9 +6381,13 @@
         const used = new Set();
         incoming.forEach((field) => {
             const index = roleplayStateFieldMatchIndex(merged, field.label, true, used);
-            if (index < 0) return;
-            used.add(index);
-            merged[index] = { label: merged[index].label, value: field.value };
+            if (index >= 0) {
+                used.add(index);
+                return;
+            }
+            if (merged.length >= MAX_ROLEPLAY_STATE_FIELDS) return;
+            merged.push(field);
+            used.add(merged.length - 1);
         });
         return merged.slice(0, MAX_ROLEPLAY_STATE_FIELDS);
     }
@@ -6348,7 +6467,7 @@
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_switch', 'soon');
         syncRoleplayControls(modal, target);
         return true;
     }
@@ -6432,7 +6551,7 @@
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_presence', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(
             target,
@@ -6462,7 +6581,7 @@
         draft.characters[id] = [];
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_add', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(target, localText('Character added. Fill in the new character details.', '角色已增加，请填写新角色设定。'));
         return true;
@@ -6491,13 +6610,13 @@
         if (target.roleplayReferenceDraft?.characters) delete target.roleplayReferenceDraft.characters[removeId];
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_remove', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(target, localText('Character removed.', '角色已删除。'));
         return true;
     }
 
-    function syncRoleplayControls(modal, runtimeOverride = null) {
+    function syncRoleplayStrip(modal, runtimeOverride = null) {
         if (!modal) return;
         const active = normalizeChatMode(state.chatMode) === 'roleplay';
         const runtime = runtimeOverride || currentConversationRuntime();
@@ -6556,6 +6675,18 @@
         setAutoplayButton('[data-describe-vlm-chat-roleplay-step]', autoplayState.phase === 'running');
         setAutoplayButton('[data-describe-vlm-chat-roleplay-pause]', autoplayState.phase !== 'running');
         setAutoplayButton('[data-describe-vlm-chat-roleplay-stop]', !['running', 'paused'].includes(autoplayState.phase));
+        return { active, runtime, session, autoplayState };
+    }
+
+    function syncRoleplayControls(modal, runtimeOverride = null) {
+        const synced = syncRoleplayStrip(modal, runtimeOverride);
+        if (!synced) return;
+        const { active, runtime, session, autoplayState } = synced;
+        if (!active || !state.roleplayPanelOpen) {
+            const hiddenResourceManager = modal.querySelector('[data-describe-vlm-chat-roleplay-resources]');
+            if (hiddenResourceManager) clearRoleplayResourceManager(hiddenResourceManager);
+            return;
+        }
         const setValue = (selector, value) => {
             const element = modal.querySelector(selector);
             if (element && document.activeElement !== element) element.value = String(value || '');
@@ -6569,6 +6700,7 @@
         const activeCharacterRuntime = session.story_state.characters?.[session.active_character_id] || {};
         setValue('[data-describe-vlm-chat-roleplay-character-current-appearance]', activeCharacterRuntime.appearance);
         setValue('[data-describe-vlm-chat-roleplay-character-state-text]', activeCharacterRuntime.state_text);
+        setValue('[data-describe-vlm-chat-roleplay-character-current-action]', activeCharacterRuntime.current_action);
         const stateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-state-fields]');
         if (stateFields && !stateFields.contains(document.activeElement)) {
             delete stateFields.dataset.roleplayStateFieldsCleared;
@@ -6721,8 +6853,10 @@
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
-        persistRoleplayResourcesRemote(target).then((response) => {
+        if (options.persist !== false) {
+            scheduleConversationPersist(target, options.persistReason || 'roleplay_form_apply', options.persistPriority || 'soon');
+        }
+        const persistResources = () => persistRoleplayResourcesRemote(target).then((response) => {
             if (!response?.ok) {
                 setConversationStatus(target, localText(
                     'Story resources were saved locally, but remote saving failed.',
@@ -6735,8 +6869,10 @@
                 '故事资源已保存到本地，但远端保存失败。'
             ), true);
         });
+        if (options.deferRemote === false) persistResources();
+        else waitForVlmChatPaint().then(persistResources).catch(() => {});
         delete target.roleplayReferenceDraft;
-        syncRoleplayControls(modal);
+        if (options.syncControls !== false) syncRoleplayControls(modal, target);
         return target.roleplaySession;
     }
 
@@ -6793,7 +6929,7 @@
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_character_draft', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(target, localText(
             'Character draft applied. The original system prompt was kept.',
@@ -6823,10 +6959,12 @@
         }
         if (kind === 'character_state') {
             const stateText = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-character-state-text]')?.value || '').trim();
+            const currentAction = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-character-current-action]')?.value || '').trim();
             const stateRequest = String(modal?.querySelector('[data-describe-vlm-chat-roleplay-character-state-draft-context]')?.value || '').trim();
             const fields = visibleRoleplayCharacterStateFields(modal);
             return [
                 stateText ? `${localText('Current state', '当前状态')}: ${stateText}` : '',
+                currentAction ? `${localText('Current action', '当前行动')}: ${currentAction}` : '',
                 fields.length
                     ? `${localText('Current state fields', '当前状态字段')}: ${fields.map((field) => `${field.label}: ${field.value}`).join('; ')}`
                     : '',
@@ -6867,6 +7005,7 @@
             const fields = normalizeRoleplayStateFields(state.state_fields || state.fields);
             return [
                 `${localText('Current state', '当前状态')}: ${state.state_text || state.text || localText('(blank)', '（空白）')}`,
+                `${localText('Current action', '当前行动')}: ${state.current_action || localText('(blank)', '（空白）')}`,
                 `${localText('State fields', '状态字段')}: ${fields.length ? fields.map((field) => `${field.label}: ${field.value}`).join('; ') : localText('(none)', '（无）')}`
             ].join('\n');
         }
@@ -6991,7 +7130,7 @@
                 syncRoleplayControls(modal, target);
                 if (input) setChatInputValue('', false);
             }
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_visual_draft', 'soon');
             renderMessages();
             setConversationStatus(target, localText(
                 'The story image proposal is ready. Review it and confirm generation when it looks right.',
@@ -7296,13 +7435,17 @@
                 || String(generatedState.appearance || '').trim();
             const stateText = String(currentState.state_text || '').trim()
                 || String(generatedState.state_text || generatedState.text || '').trim();
+            const currentAction = String(currentState.current_action || '').trim()
+                || String(generatedState.current_action || '').trim();
             next.story_state.characters[activeId] = Object.assign({}, currentState, {
                 appearance: appearance.slice(0, 1200),
                 state_text: stateText.slice(0, MAX_ROLEPLAY_STATE_TEXT),
+                current_action: currentAction.slice(0, MAX_ROLEPLAY_CURRENT_ACTION),
                 state_fields: mergeRoleplayStateFields(currentState.state_fields, generatedState.state_fields || generatedState.fields)
             });
             setField('[data-describe-vlm-chat-roleplay-character-current-appearance]', next.story_state.characters[activeId].appearance);
             setField('[data-describe-vlm-chat-roleplay-character-state-text]', next.story_state.characters[activeId].state_text);
+            setField('[data-describe-vlm-chat-roleplay-character-current-action]', next.story_state.characters[activeId].current_action);
             renderRoleplayCharacterStateFields(modal, next.story_state.characters[activeId].state_fields);
         } else if (kind === 'world_book') {
             const generated = draft.world_book || draft.world || draft.entry || {};
@@ -7365,7 +7508,7 @@
         };
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_form_draft', 'soon');
         syncRoleplayControls(modal, target);
         if (kind === 'world_book') renderRoleplayResourceManager(modal, target);
         setConversationStatus(target, localText(
@@ -7385,7 +7528,7 @@
         target.roleplayFormDraftUndo = null;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.persistenceDirty = true;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_form_draft_keep', 'soon');
         renderRoleplayFormDraftReview(modal, target);
         setConversationStatus(target, localText('The assistant changes were kept.', '已保留助手本次修改。'));
         return true;
@@ -7399,7 +7542,7 @@
         target.roleplayFormDraftUndo = null;
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_form_draft_undo', 'soon');
         syncRoleplayControls(modal, target);
         setConversationStatus(target, localText('The assistant form fill was undone.', '已撤销本次助手填充。'));
         return true;
@@ -7491,7 +7634,7 @@
             target.roleplaySession = session;
             target.persistenceDirty = true;
             if (isCurrentConversationRuntime(target)) state.roleplaySession = session;
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_character_image_prepare', 'soon');
             syncRoleplayControls(modal, target);
             const response = await postJson('/describe-image/vlm-roleplay/character-image-action', {
                 session,
@@ -7524,7 +7667,7 @@
             target.messages.push(message);
             target.persistenceDirty = true;
             if (isCurrentConversationRuntime(target)) state.messages = target.messages;
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_character_image_action', 'soon');
             renderMessages();
             syncRoleplayControls(modal, target);
             const actionRef = `${target.messages.length - 1}:0`;
@@ -7564,7 +7707,7 @@
             target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
             target.persistenceDirty = true;
             if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_scene_image_prepare', 'soon');
             syncRoleplayControls(modal, target);
             const sceneReferenceSession = Object.assign({}, target.roleplaySession, {
                 story_state: Object.assign({}, target.roleplaySession?.story_state, {
@@ -7605,7 +7748,7 @@
             });
             target.persistenceDirty = true;
             if (isCurrentConversationRuntime(target)) state.messages = target.messages;
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_scene_image_action', 'soon');
             renderMessages();
             syncRoleplayControls(modal, target);
             const actionRef = `${target.messages.length - 1}:0`;
@@ -7767,7 +7910,7 @@
             target.messages.push(message);
             target.persistenceDirty = true;
             if (isCurrentConversationRuntime(target)) state.messages = target.messages;
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_appearance_image_action', 'soon');
             renderMessages();
             syncRoleplayControls(modal, target);
             const actionRef = `${target.messages.length - 1}:0`;
@@ -8012,9 +8155,12 @@
         });
         target.roleplaySession = normalizeRoleplaySession(branch.session, target.conversationId);
         target.roleplaySession.active_branch_id = selectedId;
-        target.messages = Array.isArray(branch.messages) && branch.messages.length
-            ? normalizePersistedMessages(branch.messages)
-            : [];
+        target.archiveMessages = normalizePersistedMessages(
+            Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
+            { conversationId: target.conversationId, maxMessages: null }
+        );
+        target.messages = visibleConversationMessages(target.archiveMessages);
+        target.archiveVisibleMessageIds = persistedMessageIds(target.messages);
         target.roleplayBranches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId);
         target.persistenceDirty = true;
         applyConversationRuntime(target);
@@ -8047,7 +8193,7 @@
         target.roleplayBranches = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId)
             .filter((item) => item.branch_id !== selectedId);
         target.persistenceDirty = true;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_branch_delete', 'soon');
         syncRoleplayBranchControls(document.getElementById('describe_vlm_chat_modal'), target);
         setConversationStatus(target, localText('Branch deleted.', '剧情分支已删除。'));
         return true;
@@ -8097,9 +8243,12 @@
             roleplayBranches: [],
             copyRoleplayState: true
         }, conversationId);
-        nextRuntime.messages = Array.isArray(branch.messages)
-            ? normalizePersistedMessages(branch.messages)
-            : [];
+        nextRuntime.archiveMessages = normalizePersistedMessages(
+            Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
+            { conversationId, maxMessages: null }
+        );
+        nextRuntime.messages = visibleConversationMessages(nextRuntime.archiveMessages);
+        nextRuntime.archiveVisibleMessageIds = persistedMessageIds(nextRuntime.messages);
         nextRuntime.roleplaySession = session;
         nextRuntime.roleplayBranches = [];
         upsertRoleplayBranchSnapshot(nextRuntime, {
@@ -9507,11 +9656,15 @@
         const activeRuntime = Object.assign({}, session.story_state.characters?.[activeId] || {});
         const characterCurrentAppearance = read('[data-describe-vlm-chat-roleplay-character-current-appearance]');
         const characterStateText = read('[data-describe-vlm-chat-roleplay-character-state-text]');
+        const characterCurrentAction = read('[data-describe-vlm-chat-roleplay-character-current-action]');
         if (characterCurrentAppearance !== null && changedSinceSnapshot(['character_state', 'appearance'], characterCurrentAppearance)) {
             activeRuntime.appearance = characterCurrentAppearance.slice(0, 1200);
         }
         if (characterStateText !== null && changedSinceSnapshot(['character_state', 'state_text'], characterStateText)) {
             activeRuntime.state_text = characterStateText.slice(0, MAX_ROLEPLAY_STATE_TEXT);
+        }
+        if (characterCurrentAction !== null && changedSinceSnapshot(['character_state', 'current_action'], characterCurrentAction)) {
+            activeRuntime.current_action = characterCurrentAction.slice(0, MAX_ROLEPLAY_CURRENT_ACTION);
         }
         const characterStateFieldsContainer = roleplayStateFieldsContainer(modal, 'character');
         const characterFieldsWereEdited = !!characterStateFieldsContainer && (
@@ -9651,6 +9804,7 @@
             character_state: {
                 appearance: read('[data-describe-vlm-chat-roleplay-character-current-appearance]', characterRuntime.appearance, ['character_state', 'appearance']),
                 state_text: read('[data-describe-vlm-chat-roleplay-character-state-text]', characterRuntime.state_text, ['character_state', 'state_text']),
+                current_action: read('[data-describe-vlm-chat-roleplay-character-current-action]', characterRuntime.current_action, ['character_state', 'current_action']),
                 state_fields: readStateFields('character', characterRuntime.state_fields, ['character_state', 'state_fields'])
             },
             player: {
@@ -10067,6 +10221,18 @@
     function describeCompactViewport() {
         const viewportWidth = Number(window.visualViewport?.width || window.innerWidth || 0);
         return window.innerWidth <= 640 || (viewportWidth > 0 && viewportWidth <= 640);
+    }
+
+    function closeRoleplayPanelForMobile(runtime = null) {
+        if (!describeCompactViewport()) return false;
+        const target = runtime || currentConversationRuntime();
+        const wasOpen = !!(state.roleplayPanelOpen || target?.roleplayPanelOpen);
+        if (target) {
+            target.roleplayPanelOpen = false;
+            if (wasOpen) delete target.roleplayReferenceDraft;
+        }
+        state.roleplayPanelOpen = false;
+        return wasOpen;
     }
 
     function describeViewportRect() {
@@ -10719,6 +10885,7 @@
           <div class="describe-vlm-chat-roleplay-reference-head"><span>${escapeHtml(localText('Current character state', '角色当前状态'))}</span><button type="button" data-describe-vlm-chat-roleplay-draft="character_state" title="${escapeHtml(localText('Generate or supplement current character state', '生成或补充角色当前状态'))}" aria-label="${escapeHtml(localText('Generate or supplement current character state', '生成或补充角色当前状态'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></div>
           <label><span>${escapeHtml(localText('Current appearance', '当前形象'))}</span><textarea data-describe-vlm-chat-roleplay-character-current-appearance rows="2" maxlength="1200" placeholder="${escapeHtml(localText('Current clothing, equipment, hairstyle, transformation, or visible injuries', '当前服装、穿戴装备、发型变化、变身或可见伤势'))}"></textarea></label>
           <textarea data-describe-vlm-chat-roleplay-character-state-text rows="3" maxlength="${MAX_ROLEPLAY_STATE_TEXT}" placeholder="${escapeHtml(localText('Describe the character\'s current condition, such as being knocked down and unable to move', '描述角色当前状态，例如被怪物击倒后无法动弹'))}"></textarea>
+          <label><span>${escapeHtml(localText('Current action', '当前行动'))}</span><textarea data-describe-vlm-chat-roleplay-character-current-action rows="2" maxlength="${MAX_ROLEPLAY_CURRENT_ACTION}" placeholder="${escapeHtml(localText('Describe only what this character is currently doing', '只描述该角色此刻正在进行的动作'))}"></textarea></label>
           <div class="describe-vlm-chat-roleplay-state-fields-head"><span>${escapeHtml(localText('Structured state fields', '结构化状态'))}</span><div class="describe-vlm-chat-roleplay-state-field-controls"><select data-describe-vlm-chat-roleplay-state-template="character" aria-label="${escapeHtml(roleplayDictionaryText('Choose a quick state template'))}">${renderRoleplayStateTemplateOptions()}</select><button type="button" data-describe-vlm-chat-roleplay-state-field-add="character" title="${escapeHtml(localText('Add state field', '添加状态项'))}" aria-label="${escapeHtml(localText('Add state field', '添加状态项'))}"><i class="fa-solid fa-plus"></i></button></div></div>
           <div class="describe-vlm-chat-roleplay-state-fields" data-describe-vlm-chat-roleplay-state-fields data-describe-vlm-chat-roleplay-state-fields-owner="character"></div>
           <label><span>${escapeHtml(localText('State generation request', '状态生成要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-state-draft-context rows="2" placeholder="${escapeHtml(localText('Ask the assistant to fill or update a status from the current story', '告诉助手根据当前剧情补充或更新哪些状态'))}"></textarea></label>
@@ -11137,6 +11304,7 @@
         const after = value.roleplay_session_after || value.session_after;
         return {
             id: String(value.id || uid(`roleplay_variant_${index}`)).slice(0, 240),
+            revision: Math.max(1, Math.round(Number(value.revision) || 1)),
             content,
             actions,
             completion: normalizeChatCompletion(value.completion),
@@ -11413,6 +11581,7 @@
         const legacyRoleplayControl = !!message.roleplay_control_only;
         const normalized = {
             id,
+            revision: Math.max(1, Math.round(Number(message.revision) || 1)),
             role,
             content,
             actions,
@@ -11451,14 +11620,85 @@
         return normalized;
     }
 
+    function persistedMessageLimit(options = {}) {
+        if (options.maxMessages === null || options.maxMessages === Infinity) return null;
+        if (options.maxMessages === undefined) return MAX_PERSISTED_MESSAGES;
+        const value = Number(options.maxMessages);
+        return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : MAX_PERSISTED_MESSAGES;
+    }
+
     function normalizePersistedMessages(messages, options = {}) {
-        const source = (Array.isArray(messages) ? messages : []).filter((message) => !message?.pending).slice(-MAX_PERSISTED_MESSAGES);
+        const rows = (Array.isArray(messages) ? messages : []).filter((message) => !message?.pending);
+        const limit = persistedMessageLimit(options);
+        const source = limit === null ? rows : limit > 0 ? rows.slice(-limit) : [];
         const thumbBudget = { remaining: MAX_PERSISTED_THUMB_TOTAL };
         const normalized = [];
         for (let index = source.length - 1; index >= 0; index -= 1) {
             normalized.unshift(normalizePersistedMessage(source[index], Object.assign({}, options, { thumbBudget })));
         }
         return retainLatestRoleplayContextReport(normalized.filter(Boolean));
+    }
+
+    function visibleConversationMessages(messages) {
+        return Array.isArray(messages) ? messages.slice(-MAX_PERSISTED_MESSAGES) : [];
+    }
+
+    function persistedMessageIds(messages) {
+        return (Array.isArray(messages) ? messages : [])
+            .filter((message) => !message?.pending)
+            .map((message) => String(message?.id || '').trim())
+            .filter(Boolean);
+    }
+
+    function syncConversationArchiveHistory(runtime, options = {}) {
+        if (!runtime) return [];
+        const conversationId = String(runtime.conversationId || '').trim();
+        const liveMessages = normalizePersistedMessages(runtime.messages, {
+            conversationId,
+            maxMessages: null
+        });
+        const existingMessages = normalizePersistedMessages(runtime.archiveMessages, {
+            conversationId,
+            maxMessages: null
+        });
+        if (!existingMessages.length || !liveMessages.length) {
+            runtime.archiveMessages = liveMessages;
+            runtime.archiveVisibleMessageIds = persistedMessageIds(runtime.messages);
+            return runtime.archiveMessages;
+        }
+        const visibleIds = Array.isArray(runtime.archiveVisibleMessageIds)
+            ? runtime.archiveVisibleMessageIds.map((value) => String(value || '').trim()).filter(Boolean)
+            : [];
+        const anchorId = String(
+            options.anchorId !== undefined
+                ? options.anchorId
+                : visibleIds[0] || persistedMessageIds(runtime.messages)[0] || ''
+        ).trim();
+        const anchorIndex = anchorId
+            ? existingMessages.findIndex((message) => String(message?.id || '').trim() === anchorId)
+            : -1;
+        if (anchorIndex >= 0) {
+            runtime.archiveMessages = existingMessages.slice(0, anchorIndex).concat(liveMessages);
+        } else {
+            const next = existingMessages.slice();
+            const indexById = new Map();
+            next.forEach((message, index) => {
+                const id = String(message?.id || '').trim();
+                if (id) indexById.set(id, index);
+            });
+            liveMessages.forEach((message) => {
+                const id = String(message?.id || '').trim();
+                const existingIndex = id ? indexById.get(id) : undefined;
+                if (existingIndex !== undefined) next[existingIndex] = message;
+                else {
+                    next.push(message);
+                    if (id) indexById.set(id, next.length - 1);
+                }
+            });
+            runtime.archiveMessages = next;
+        }
+        runtime.archiveVisibleMessageIds = persistedMessageIds(runtime.messages);
+        return runtime.archiveMessages;
     }
 
     function normalizePersistedRoleplayAutoplayState(value) {
@@ -11482,7 +11722,9 @@
     }
 
     function rebindRoleplayBranchIdentity(value, conversationId, sessionId = '', options = {}) {
-        const branch = normalizeRoleplayBranch(value, conversationId);
+        const branch = normalizeRoleplayBranch(value, conversationId, 0, {
+            fullHistory: !!options.fullHistory
+        });
         branch.session = rebindRoleplaySessionIdentity(branch.session, conversationId, sessionId);
         if (options.localOnly) branch.remote = false;
         return branch;
@@ -11540,6 +11782,7 @@
 
     function normalizeConversationRoleplayData(source, conversationId, options = {}) {
         const target = source && typeof source === 'object' ? source : {};
+        const fullHistory = options.fullHistory === true;
         const session = rebindRoleplaySessionIdentity(
             target.roleplaySession || target.roleplay_session,
             conversationId,
@@ -11548,15 +11791,22 @@
         const sessionId = session.id;
         const branches = normalizeRoleplayBranches(
             target.roleplayBranches || target.roleplay_branches,
-            conversationId
+            conversationId,
+            { fullHistory }
         ).map((branch) => rebindRoleplayBranchIdentity(
             branch,
             conversationId,
             sessionId,
-            { localOnly: !!options.localOnlyBranches }
+            { localOnly: !!options.localOnlyBranches, fullHistory }
         ));
+        const messageSource = fullHistory && Array.isArray(target.archiveMessages)
+            ? target.archiveMessages
+            : target.messages;
         const messages = rebindRoleplayMessageIdentities(
-            normalizePersistedMessages(target.messages, { conversationId }),
+            normalizePersistedMessages(messageSource, {
+                conversationId,
+                maxMessages: fullHistory ? null : undefined
+            }),
             conversationId,
             sessionId
         );
@@ -11759,6 +12009,111 @@
         };
     }
 
+    function compactRoleplaySessionIndexForCatalog(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const rawCharacters = source.characters && typeof source.characters === 'object'
+            ? source.characters
+            : {};
+        const primarySource = source.character && typeof source.character === 'object'
+            ? source.character
+            : {};
+        const activeCharacterId = String(
+            source.active_character_id || primarySource.id || Object.keys(rawCharacters)[0] || 'character'
+        ).slice(0, 160);
+        const cardIndex = (card, idHint = '') => ({
+            schema: 'simpai.vlm_roleplay.character',
+            version: 1,
+            id: String(card?.id || idHint || 'character').slice(0, 160),
+            revision: Math.max(1, Math.round(Number(card?.revision) || 1)),
+            name: String(card?.name || '').slice(0, 120),
+            avatar_asset_id: String(card?.avatar_asset_id || '').slice(0, 160),
+            reference_asset_ids: Array.isArray(card?.reference_asset_ids)
+                ? card.reference_asset_ids.map((item) => String(item || '').slice(0, 160)).filter(Boolean).slice(0, 1)
+                : []
+        });
+        const characters = {};
+        Object.entries(rawCharacters).slice(0, 8).forEach(([id, card]) => {
+            const compact = cardIndex(card, id);
+            characters[compact.id] = compact;
+        });
+        const primary = cardIndex(rawCharacters[activeCharacterId] || primarySource, activeCharacterId);
+        characters[primary.id] = primary;
+        const scene = source.story_state?.scene && typeof source.story_state.scene === 'object'
+            ? source.story_state.scene
+            : {};
+        const player = normalizeRoleplayPlayerState(source.story_state?.player_state);
+        const activeRuntime = source.story_state?.characters?.[activeCharacterId] || {};
+        const compactStateFields = (fields, limit = 6) => normalizeRoleplayStateFields(fields).slice(0, limit).map((field) => ({
+            label: String(field.label || '').slice(0, 60),
+            value: String(field.value || '').slice(0, 120)
+        }));
+        return {
+            schema: 'simpai.vlm_roleplay.session',
+            version: 1,
+            id: String(source.id || '').slice(0, 160),
+            conversation_id: String(source.conversation_id || '').slice(0, 200),
+            mode: 'roleplay',
+            character: primary,
+            characters,
+            active_character_id: primary.id,
+            persona: {
+                schema: 'simpai.vlm_roleplay.persona',
+                version: 1,
+                id: String(source.persona?.id || 'persona').slice(0, 160),
+                name: String(source.persona?.name || '').slice(0, 120)
+            },
+            story_state: {
+                schema: 'simpai.vlm_roleplay.story_state',
+                version: 1,
+                scene: {
+                    id: String(scene.id || '').slice(0, 160),
+                    location: String(scene.location || '').slice(0, 180),
+                    time: String(scene.time || '').slice(0, 100),
+                    present_character_ids: Array.isArray(scene.present_character_ids)
+                        ? scene.present_character_ids.map((item) => String(item || '').slice(0, 160)).filter(Boolean).slice(0, 8)
+                        : [],
+                    current_event: String(scene.current_event || '').slice(0, 280)
+                },
+                player_state: {
+                    status: String(player.status || 'present').slice(0, 40),
+                    is_present: player.status !== 'absent',
+                    state_text: String(player.state_text || '').slice(0, 240),
+                    state_fields: compactStateFields(player.state_fields, 4)
+                },
+                characters: {
+                    [primary.id]: {
+                        state_text: String(activeRuntime.state_text || '').slice(0, 320),
+                        state_fields: compactStateFields(activeRuntime.state_fields),
+                        emotion: String(activeRuntime.emotion || '').slice(0, 120),
+                        current_action: String(activeRuntime.current_action || '').slice(0, 180)
+                    }
+                },
+                state_version: Math.max(0, Math.round(Number(source.story_state?.state_version) || 0))
+            },
+            active_branch_id: String(source.active_branch_id || 'main').slice(0, 160),
+            active_turn_id: String(source.active_turn_id || '').slice(0, 200),
+            state_version: Math.max(0, Math.round(Number(source.state_version) || 0)),
+            autoplay_config: {
+                mode: String(source.autoplay_config?.mode || 'manual').slice(0, 40),
+                speaker_mode: String(source.autoplay_config?.speaker_mode || 'auto').slice(0, 40),
+                target_turns: Math.max(1, Math.min(100, Math.round(Number(source.autoplay_config?.target_turns) || 5))),
+                continuous: !!source.autoplay_config?.continuous
+            },
+            visual_config: { enabled: !!source.visual_config?.enabled },
+            world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: true, entries: [], metadata: {} },
+            memory_store: { schema: 'simpai.vlm_roleplay.memory_store', version: 1, items: [] },
+            chapters: { schema: 'simpai.vlm_roleplay.chapter_store', version: 1, active_id: '', items: [] }
+        };
+    }
+
+    function conversationCatalogTitle(source) {
+        const explicit = String(source?.title || source?.title_text || '').replace(/\s+/g, ' ').trim();
+        if (explicit) return explicit.slice(0, 120);
+        const firstUser = (Array.isArray(source?.messages) ? source.messages : [])
+            .find((message) => message?.role === 'user' && String(message.content || '').trim());
+        return String(firstUser?.content || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    }
+
     function compactConversationCatalogSnapshot(snapshot) {
         const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
         const lastMessage = Array.isArray(source.messages) ? source.messages.at(-1) : null;
@@ -11766,7 +12121,7 @@
             ? {
                 id: String(lastMessage.id || uid('conversation_index_message')).slice(0, 200),
                 role: String(lastMessage.role || 'assistant').slice(0, 40),
-                content: String(lastMessage.content || '').slice(-2000),
+                content: String(lastMessage.content || '').slice(-480),
                 roleplay_speaker_id: String(lastMessage.roleplay_speaker_id || '').slice(0, 160),
                 roleplay_speaker_name: String(lastMessage.roleplay_speaker_name || '').slice(0, 200),
                 roleplay_turn_intent: String(lastMessage.roleplay_turn_intent || '').slice(0, 40),
@@ -11787,15 +12142,16 @@
             saved_at: String(source.saved_at || '').slice(0, 80),
             persistence_revision: normalizeConversationPersistenceRevision(source.persistence_revision),
             conversation_id: String(source.conversation_id || '').slice(0, 200),
+            title: conversationCatalogTitle(source),
             messages: [message],
             chatMode: normalizeChatMode(source.chatMode),
-            customSystemPrompt: String(source.customSystemPrompt || '').slice(0, 2400),
+            customSystemPrompt: String(source.customSystemPrompt || '').slice(0, 480),
             systemPromptTemplateId: String(source.systemPromptTemplateId || '').slice(0, 160),
             systemPromptPickerValue: String(source.systemPromptPickerValue || '').slice(0, 200),
-            baseSystemPromptContent: String(source.baseSystemPromptContent || '').slice(0, 2400),
+            baseSystemPromptContent: String(source.baseSystemPromptContent || '').slice(0, 240),
             userSystemPromptTemplateId: String(source.userSystemPromptTemplateId || '').slice(0, 160),
             userSystemPromptTemplateName: String(source.userSystemPromptTemplateName || '').slice(0, 200),
-            userSystemPromptContent: String(source.userSystemPromptContent || '').slice(0, 2400),
+            userSystemPromptContent: String(source.userSystemPromptContent || '').slice(0, 240),
             systemPromptManualOverride: !!source.systemPromptManualOverride,
             auto_attach_previous_image: source.auto_attach_previous_image !== false,
             roleplay_panel_open: !!source.roleplay_panel_open,
@@ -11803,17 +12159,319 @@
             unload_after_chat: !!source.unload_after_chat,
             creative_preference_expanded: !!source.creative_preference_expanded,
             creative_preferences: normalizeCreativePreference(source.creative_preferences),
-            creative_initiative: normalizeCreativeInitiative(source.creative_initiative)
+            creative_initiative: normalizeCreativeInitiative(source.creative_initiative),
+            archive_index_only: true
         };
-        if (conversationHasRoleplayData(source, compact.conversation_id)) {
-            compact.roleplay_session = compactRoleplaySessionForCatalog(source.roleplay_session);
+        const hasRoleplayIndex = normalizeChatMode(source.chatMode || source.chat_mode) === 'roleplay'
+            || !!source.roleplay_session
+            || (Array.isArray(source.roleplay_branches) && source.roleplay_branches.length > 0);
+        if (hasRoleplayIndex) {
+            compact.roleplay_session = compactRoleplaySessionIndexForCatalog(source.roleplay_session);
             compact.roleplay_branches = (Array.isArray(source.roleplay_branches) ? source.roleplay_branches : [])
                 .map(compactRoleplayBranchIndex)
                 .filter(Boolean);
             compact.roleplay_form_draft_undo = null;
-            compact.archive_index_only = true;
         }
         return compact;
+    }
+
+    function compactConversationRecoveryMessage(message, contentLimit = MAX_PERSISTED_TEXT) {
+        if (!message || typeof message !== 'object' || message.pending) return null;
+        const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
+        const content = String(message.content || '').slice(0, Math.max(1000, Number(contentLimit) || MAX_PERSISTED_TEXT));
+        const stateChanges = normalizeRoleplayStateChanges(message.roleplay_state_changes);
+        const resourceChanges = normalizeRoleplayResourceChanges(message.roleplay_resource_changes);
+        const imageCount = Math.max(0, Number(message.image_count) || (Array.isArray(message.images) ? message.images.length : 0));
+        if (!content && !stateChanges.length && !resourceChanges.length && !imageCount) return null;
+        const compact = {
+            id: String(message.id || uid(`describe_vlm_chat_${role}`)).slice(0, 240),
+            revision: Math.max(1, Math.round(Number(message.revision) || 1)),
+            role,
+            content,
+            actions: [],
+            variants: [],
+            response_source: normalizeResponseSource(message.response_source || message),
+            roleplay_state_changes: stateChanges,
+            roleplay_resource_changes: resourceChanges,
+            roleplay_speaker_id: String(message.roleplay_speaker_id || '').slice(0, 160),
+            roleplay_speaker_name: String(message.roleplay_speaker_name || '').slice(0, 200),
+            roleplay_internal_turn: !!message.roleplay_internal_turn,
+            roleplay_turn_intent: normalizeRoleplayTurnIntentSetting(message.roleplay_turn_intent),
+            roleplay_control_only: !!message.roleplay_control_only,
+            images: [],
+            media_assets: [],
+            image_count: imageCount,
+            active_variant_index: 0
+        };
+        const completion = normalizeChatCompletion(message.completion);
+        if (completion) compact.completion = completion;
+        return compact;
+    }
+
+    function buildConversationRecoveryRecord(runtime, options = {}) {
+        const target = runtime || currentConversationRuntime();
+        const conversationId = String(target?.conversationId || '').trim();
+        if (!conversationId) return null;
+        const messageLimit = Math.max(1, Math.min(
+            MAX_CONVERSATION_RECOVERY_MESSAGES,
+            Math.round(Number(options.messageLimit) || MAX_CONVERSATION_RECOVERY_MESSAGES)
+        ));
+        const contentLimit = Math.max(1000, Math.round(Number(options.contentLimit) || MAX_PERSISTED_TEXT));
+        const messages = (Array.isArray(target.messages) ? target.messages : [])
+            .filter((message) => !message?.pending)
+            .slice(-messageLimit)
+            .map((message) => compactConversationRecoveryMessage(message, contentLimit))
+            .filter(Boolean);
+        const chatMode = normalizeChatMode(target.chatMode);
+        const recovery = {
+            schema: CONVERSATION_RECOVERY_SCHEMA,
+            version: CONVERSATION_RECOVERY_VERSION,
+            saved_at: normalizeConversationSavedAt(options.savedAt || new Date().toISOString()),
+            persistence_revision: normalizeConversationPersistenceRevision(
+                options.persistenceRevision !== undefined
+                    ? options.persistenceRevision
+                    : target.persistenceRevision
+            ),
+            conversation_id: conversationId,
+            chatMode,
+            messages
+        };
+        if (conversationHasRoleplayData(target, conversationId)) {
+            recovery.roleplay_session = compactRoleplaySessionIndexForCatalog(target.roleplaySession);
+            recovery.roleplay_branches = (Array.isArray(target.roleplayBranches) ? target.roleplayBranches : [])
+                .map(compactRoleplayBranchIndex)
+                .filter(Boolean);
+        }
+        return recovery;
+    }
+
+    function persistConversationRecoveryRecord(runtime, options = {}) {
+        const target = runtime || currentConversationRuntime();
+        const startedAt = vlmChatPerformanceNow();
+        const strategies = [
+            { messageLimit: MAX_CONVERSATION_RECOVERY_MESSAGES, contentLimit: MAX_PERSISTED_TEXT },
+            { messageLimit: 2, contentLimit: 8000 },
+            { messageLimit: 1, contentLimit: 6000 }
+        ];
+        try {
+            for (const strategy of strategies) {
+                const record = buildConversationRecoveryRecord(target, Object.assign({}, options, strategy));
+                if (!record?.messages?.length) return false;
+                const serialized = JSON.stringify(record);
+                if (serialized.length > MAX_CONVERSATION_RECOVERY_LENGTH) continue;
+                window.localStorage?.setItem(CONVERSATION_RECOVERY_STORAGE_KEY, serialized);
+                markVlmChatPerformance('vlm_chat.persist.recovery', target, {
+                    duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
+                    bytes: serialized.length,
+                    messages: record.messages.length,
+                    persistence_revision: record.persistence_revision
+                });
+                return true;
+            }
+        } catch (error) {}
+        return false;
+    }
+
+    function readConversationRecoveryRecord(conversationId) {
+        const id = String(conversationId || '').trim();
+        if (!id) return null;
+        try {
+            const record = JSON.parse(window.localStorage?.getItem(CONVERSATION_RECOVERY_STORAGE_KEY) || 'null');
+            if (
+                record?.schema !== CONVERSATION_RECOVERY_SCHEMA
+                || Number(record.version) !== CONVERSATION_RECOVERY_VERSION
+                || String(record.conversation_id || '').trim() !== id
+                || !Array.isArray(record.messages)
+            ) return null;
+            return record;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function clearConversationRecoveryRecord(conversationId, maximumRevision = null) {
+        const id = String(conversationId || '').trim();
+        if (!id) return false;
+        try {
+            const record = readConversationRecoveryRecord(id);
+            if (!record) return false;
+            if (
+                maximumRevision !== null
+                && normalizeConversationPersistenceRevision(record.persistence_revision)
+                    > normalizeConversationPersistenceRevision(maximumRevision)
+            ) return false;
+            window.localStorage?.removeItem(CONVERSATION_RECOVERY_STORAGE_KEY);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function mergeConversationRecoveryMessages(baseMessages, recoveryMessages, conversationId) {
+        const merged = normalizePersistedMessages(baseMessages, {
+            conversationId,
+            maxMessages: null
+        });
+        const indexById = new Map();
+        merged.forEach((message, index) => {
+            const id = String(message?.id || '').trim();
+            if (id) indexById.set(id, index);
+        });
+        (Array.isArray(recoveryMessages) ? recoveryMessages : []).forEach((message) => {
+            const normalized = normalizePersistedMessage(message, { conversationId });
+            if (!normalized) return;
+            const id = String(normalized.id || '').trim();
+            const existingIndex = id ? indexById.get(id) : undefined;
+            if (existingIndex !== undefined) {
+                merged[existingIndex] = normalized;
+                return;
+            }
+            merged.push(normalized);
+            if (id) indexById.set(id, merged.length - 1);
+        });
+        return retainLatestRoleplayContextReport(merged);
+    }
+
+    function mergeConversationRecoverySession(baseSession, recoverySession, conversationId) {
+        const current = normalizeRoleplaySession(baseSession, conversationId);
+        const patch = recoverySession && typeof recoverySession === 'object' ? recoverySession : null;
+        if (!patch) return current;
+        const characters = Object.assign({}, current.characters);
+        Object.entries(patch.characters && typeof patch.characters === 'object' ? patch.characters : {}).forEach(([id, card]) => {
+            const key = String(card?.id || id || '').trim();
+            if (!key) return;
+            characters[key] = Object.assign({}, characters[key] || {}, card, { id: key });
+        });
+        const storyPatch = patch.story_state && typeof patch.story_state === 'object' ? patch.story_state : {};
+        const characterStates = Object.assign({}, current.story_state.characters);
+        Object.entries(storyPatch.characters && typeof storyPatch.characters === 'object' ? storyPatch.characters : {}).forEach(([id, runtime]) => {
+            const key = String(id || '').trim();
+            if (!key) return;
+            characterStates[key] = Object.assign({}, characterStates[key] || {}, runtime || {});
+        });
+        const activeCharacterId = String(patch.active_character_id || current.active_character_id || '').trim();
+        const merged = Object.assign({}, current, {
+            id: String(patch.id || current.id || '').trim(),
+            conversation_id: conversationId,
+            characters,
+            active_character_id: activeCharacterId,
+            persona: Object.assign({}, current.persona, patch.persona || {}),
+            story_state: Object.assign({}, current.story_state, storyPatch, {
+                scene: Object.assign({}, current.story_state.scene, storyPatch.scene || {}),
+                player_state: Object.assign({}, current.story_state.player_state, storyPatch.player_state || {}),
+                characters: characterStates
+            }),
+            active_branch_id: String(patch.active_branch_id || current.active_branch_id || 'main'),
+            active_turn_id: String(patch.active_turn_id || current.active_turn_id || ''),
+            state_version: Math.max(
+                Number(current.state_version) || 0,
+                Number(patch.state_version) || 0
+            ),
+            director_config: Object.assign({}, current.director_config, patch.director_config || {}),
+            autoplay_config: Object.assign({}, current.autoplay_config, patch.autoplay_config || {}),
+            visual_config: Object.assign({}, current.visual_config, patch.visual_config || {}),
+            agent_routing: Object.assign({}, current.agent_routing, patch.agent_routing || {})
+        });
+        merged.character = characters[activeCharacterId] || current.character;
+        return normalizeRoleplaySession(merged, conversationId);
+    }
+
+    function conversationArchiveHash(value) {
+        const text = String(value || '');
+        let hash = 2166136261;
+        for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(36);
+    }
+
+    function conversationArchiveSessionRevision(session) {
+        const source = session && typeof session === 'object' ? session : {};
+        const story = source.story_state && typeof source.story_state === 'object' ? source.story_state : {};
+        const scene = story.scene && typeof story.scene === 'object' ? story.scene : {};
+        const characterId = String(source.active_character_id || source.character?.id || '').trim();
+        const characterState = story.characters?.[characterId] || {};
+        const playerState = story.player_state || {};
+        return [
+            source.state_version,
+            story.state_version,
+            source.active_turn_id,
+            source.updated_at,
+            story.updated_at,
+            scene.id,
+            scene.location,
+            scene.time,
+            scene.current_event,
+            characterId,
+            characterState.state_text,
+            (Array.isArray(characterState.state_fields) ? characterState.state_fields : [])
+                .map((field) => `${field?.label || ''}:${field?.value || ''}`).join('|'),
+            playerState.status,
+            playerState.state_text,
+            (Array.isArray(playerState.state_fields) ? playerState.state_fields : [])
+                .map((field) => `${field?.label || ''}:${field?.value || ''}`).join('|'),
+            Array.isArray(source.world_book?.entries) ? source.world_book.entries.length : 0,
+            Array.isArray(source.memory_store?.items) ? source.memory_store.items.length : 0,
+            Array.isArray(source.chapters?.items) ? source.chapters.items.length : 0
+        ].join('\u001f');
+    }
+
+    function conversationArchiveActionRevision(action) {
+        const generation = action?.generation && typeof action.generation === 'object' ? action.generation : {};
+        return [
+            action?.tool_call_id,
+            action?.type,
+            action?.task,
+            action?.state_version,
+            action?.turn_id,
+            action?.accepted_asset_id,
+            action?.prompt,
+            generation.state,
+            generation.run_id,
+            generation.preview_serial,
+            Array.isArray(generation.assets) ? generation.assets.map((asset) => asset?.asset_id || asset?.name || '').join('|') : ''
+        ].join('\u001e');
+    }
+
+    function conversationArchiveVariantRevision(variant) {
+        return [
+            variant?.id,
+            variant?.revision,
+            variant?.content,
+            variant?.state_version,
+            variant?.turn_id,
+            conversationArchiveSessionRevision(variant?.roleplay_session_before),
+            conversationArchiveSessionRevision(variant?.roleplay_session_after),
+            (Array.isArray(variant?.actions) ? variant.actions : []).map(conversationArchiveActionRevision).join('\u001d')
+        ].join('\u001c');
+    }
+
+    function conversationArchiveMessageKey(message, index = 0) {
+        const id = String(message?.id || `message_${index}`).trim().slice(0, 240) || `message_${index}`;
+        const signature = [
+            message?.revision,
+            message?.role,
+            message?.content,
+            message?.created_at,
+            message?.state_version,
+            message?.turn_id,
+            message?.roleplay_speaker_id,
+            message?.roleplay_turn_intent,
+            message?.active_variant_index,
+            message?.image_count,
+            conversationArchiveSessionRevision(message?.roleplay_session_before),
+            conversationArchiveSessionRevision(message?.roleplay_session_after),
+            (Array.isArray(message?.actions) ? message.actions : []).map(conversationArchiveActionRevision).join('\u001d'),
+            (Array.isArray(message?.variants) ? message.variants : []).map(conversationArchiveVariantRevision).join('\u001b'),
+            (Array.isArray(message?.roleplay_state_changes) ? message.roleplay_state_changes : [])
+                .map((change) => `${change?.entity_type || ''}:${change?.entity_id || ''}:${change?.field || ''}:${change?.after || ''}`)
+                .join('\u001a'),
+            (Array.isArray(message?.roleplay_resource_changes) ? message.roleplay_resource_changes : [])
+                .map((change) => `${change?.kind || ''}:${change?.op || ''}:${change?.id || ''}:${change?.field || ''}`)
+                .join('\u0019')
+        ].join('\u001f');
+        return `${id}:${conversationArchiveHash(signature)}`;
     }
 
     function buildConversationArchivePayload(snapshot) {
@@ -11823,19 +12481,10 @@
             || !Array.isArray(snapshot.messages)
             || !Array.isArray(snapshot.roleplay_branches)
         ) return snapshot;
-        const messagePool = [];
-        const messageRefs = new Map();
-        const addMessages = (messages) => (Array.isArray(messages) ? messages : []).map((message) => {
-            let fingerprint = '';
-            try {
-                fingerprint = JSON.stringify(message);
-            } catch (err) {
-                fingerprint = `unserializable:${messagePool.length}`;
-            }
-            if (messageRefs.has(fingerprint)) return messageRefs.get(fingerprint);
-            const ref = messagePool.length;
-            messagePool.push(message);
-            messageRefs.set(fingerprint, ref);
+        const messagePool = Object.create(null);
+        const addMessages = (messages) => (Array.isArray(messages) ? messages : []).map((message, index) => {
+            const ref = conversationArchiveMessageKey(message, index);
+            if (!Object.prototype.hasOwnProperty.call(messagePool, ref)) messagePool[ref] = message;
             return ref;
         });
         const archive = Object.assign({}, snapshot);
@@ -11853,14 +12502,19 @@
     }
 
     function expandConversationArchivePayload(data) {
+        const archiveFormat = String(data?.roleplay_archive_format || '').trim();
         if (
             !data
             || typeof data !== 'object'
-            || data.roleplay_archive_format !== CONVERSATION_ARCHIVE_FORMAT
+            || ![CONVERSATION_ARCHIVE_FORMAT, LEGACY_CONVERSATION_ARCHIVE_FORMAT].includes(archiveFormat)
         ) return data;
-        const pool = Array.isArray(data.roleplay_message_pool) ? data.roleplay_message_pool : [];
+        const pool = data.roleplay_message_pool && typeof data.roleplay_message_pool === 'object'
+            ? data.roleplay_message_pool
+            : archiveFormat === LEGACY_CONVERSATION_ARCHIVE_FORMAT
+                ? []
+                : {};
         const expandRefs = (refs) => (Array.isArray(refs) ? refs : [])
-            .map((ref) => pool[Number(ref)])
+            .map((ref) => Array.isArray(pool) ? pool[Number(ref)] : pool[String(ref)])
             .filter((message) => message && typeof message === 'object');
         const expanded = Object.assign({}, data, {
             messages: expandRefs(data.roleplay_active_message_refs),
@@ -11894,6 +12548,19 @@
                     const store = db.createObjectStore(CONVERSATION_ARCHIVE_STORE, { keyPath: 'conversation_id' });
                     store.createIndex('saved_at', 'saved_at', { unique: false });
                 }
+                let chunkStore = db.objectStoreNames.contains(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                    ? request.transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                    : db.createObjectStore(CONVERSATION_ARCHIVE_CHUNK_STORE, { keyPath: 'chunk_id' });
+                if (!chunkStore.indexNames.contains('conversation_id')) {
+                    chunkStore.createIndex('conversation_id', 'conversation_id', { unique: false });
+                }
+                if (!chunkStore.indexNames.contains('conversation_chunk_index')) {
+                    chunkStore.createIndex(
+                        'conversation_chunk_index',
+                        ['conversation_id', 'chunk_index'],
+                        { unique: true }
+                    );
+                }
             };
             request.onsuccess = () => {
                 const db = request.result;
@@ -11909,24 +12576,78 @@
         return conversationArchiveDbPromise;
     }
 
-    async function writeConversationArchivePayload(payload) {
+    async function writeConversationArchivePayload(payload, runtime = null) {
         const conversationId = String(payload?.conversation_id || '').trim();
         if (!conversationId) throw new Error('conversation_id_missing');
+        const startedAt = vlmChatPerformanceNow();
+        const archivePayload = payload?.roleplay_archive_format
+            ? payload
+            : buildConversationArchivePayload(payload);
+        const serialized = JSON.stringify(archivePayload);
+        if (!serialized) throw new Error('archive_serialization_failed');
+        const chunks = [];
+        for (let offset = 0; offset < serialized.length; offset += CONVERSATION_ARCHIVE_CHUNK_CHARS) {
+            chunks.push(serialized.slice(offset, offset + CONVERSATION_ARCHIVE_CHUNK_CHARS));
+        }
         const db = await openConversationArchiveDb();
         return new Promise((resolve, reject) => {
             let transaction;
             try {
-                transaction = db.transaction(CONVERSATION_ARCHIVE_STORE, 'readwrite');
-                transaction.objectStore(CONVERSATION_ARCHIVE_STORE).put({
+                transaction = db.transaction(
+                    [CONVERSATION_ARCHIVE_STORE, CONVERSATION_ARCHIVE_CHUNK_STORE],
+                    'readwrite'
+                );
+                const metadataStore = transaction.objectStore(CONVERSATION_ARCHIVE_STORE);
+                const chunkStore = transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE);
+                metadataStore.put({
                     conversation_id: conversationId,
                     saved_at: String(payload.saved_at || new Date().toISOString()),
-                    payload: buildConversationArchivePayload(payload)
+                    persistence_revision: normalizeConversationPersistenceRevision(
+                        archivePayload.persistence_revision ?? archivePayload.persistenceRevision
+                    ),
+                    storage_format: CONVERSATION_ARCHIVE_STORAGE_FORMAT,
+                    chunk_count: chunks.length,
+                    serialized_length: serialized.length,
+                    roleplay_archive_format: String(archivePayload.roleplay_archive_format || '')
                 });
+                const keysRequest = chunkStore.index('conversation_id').getAllKeys(
+                    IDBKeyRange.only(conversationId)
+                );
+                keysRequest.onsuccess = () => {
+                    (Array.isArray(keysRequest.result) ? keysRequest.result : []).forEach((key) => {
+                        chunkStore.delete(key);
+                    });
+                    chunks.forEach((data, chunkIndex) => {
+                        chunkStore.put({
+                            chunk_id: `${conversationId}:${chunkIndex}`,
+                            conversation_id: conversationId,
+                            chunk_index: chunkIndex,
+                            data
+                        });
+                    });
+                };
+                keysRequest.onerror = () => {
+                    try { transaction.abort(); } catch (error) {}
+                };
             } catch (error) {
                 reject(error);
                 return;
             }
-            transaction.oncomplete = () => resolve(true);
+            transaction.oncomplete = () => {
+                clearConversationRecoveryRecord(
+                    conversationId,
+                    normalizeConversationPersistenceRevision(payload.persistence_revision)
+                );
+                markVlmChatPerformance('vlm_chat.persist.indexeddb', runtime, {
+                    duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
+                    persistence_revision: normalizeConversationPersistenceRevision(
+                        archivePayload.persistence_revision ?? archivePayload.persistenceRevision
+                    ),
+                    archive_chunks: chunks.length,
+                    archive_chars: serialized.length
+                });
+                resolve(true);
+            };
             transaction.onerror = () => reject(transaction.error || new Error('indexeddb_write_failed'));
             transaction.onabort = () => reject(transaction.error || new Error('indexeddb_write_aborted'));
         });
@@ -11936,7 +12657,7 @@
         const id = String(conversationId || '').trim();
         if (!id) return null;
         const db = await openConversationArchiveDb();
-        return new Promise((resolve, reject) => {
+        const metadata = await new Promise((resolve, reject) => {
             let transaction;
             let request;
             try {
@@ -11950,19 +12671,72 @@
             request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'));
             transaction.onerror = () => reject(transaction.error || new Error('indexeddb_read_failed'));
         });
+        if (!metadata || metadata.payload) return metadata;
+        if (metadata.storage_format !== CONVERSATION_ARCHIVE_STORAGE_FORMAT) return metadata;
+        const rows = await new Promise((resolve, reject) => {
+            let transaction;
+            let request;
+            try {
+                transaction = db.transaction(CONVERSATION_ARCHIVE_CHUNK_STORE, 'readonly');
+                request = transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE)
+                    .index('conversation_id')
+                    .getAll(IDBKeyRange.only(id));
+            } catch (error) {
+                reject(error);
+                return;
+            }
+            request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+            request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'));
+            transaction.onerror = () => reject(transaction.error || new Error('indexeddb_read_failed'));
+        });
+        const ordered = rows.slice().sort((left, right) => Number(left?.chunk_index || 0) - Number(right?.chunk_index || 0));
+        if (ordered.length !== Math.max(0, Math.round(Number(metadata.chunk_count) || 0))) {
+            throw new Error('indexeddb_archive_chunk_missing');
+        }
+        let serialized = ordered.map((row) => String(row?.data || '')).join('');
+        if (metadata.serialized_length !== undefined
+            && serialized.length !== Math.max(0, Math.round(Number(metadata.serialized_length) || 0))) {
+            throw new Error('indexeddb_archive_length_mismatch');
+        }
+        try {
+            return Object.assign({}, metadata, { payload: JSON.parse(serialized) });
+        } catch (error) {
+            throw new Error('indexeddb_archive_parse_failed');
+        }
     }
 
     async function deleteConversationArchive(conversationId) {
         const id = String(conversationId || '').trim();
         if (!id) return false;
+        clearConversationRecoveryRecord(id);
         const queue = conversationArchiveQueues.get(id);
-        if (queue?.promise) await queue.promise.catch(() => {});
+        if (queue) {
+            queue.cancelled = true;
+            queue.pending = null;
+            if (queue.promise) await queue.promise.catch(() => {});
+            conversationArchiveQueues.delete(id);
+        }
         const db = await openConversationArchiveDb();
         return new Promise((resolve, reject) => {
             let transaction;
             try {
-                transaction = db.transaction(CONVERSATION_ARCHIVE_STORE, 'readwrite');
+                transaction = db.transaction(
+                    [CONVERSATION_ARCHIVE_STORE, CONVERSATION_ARCHIVE_CHUNK_STORE],
+                    'readwrite'
+                );
                 transaction.objectStore(CONVERSATION_ARCHIVE_STORE).delete(id);
+                const chunkStore = transaction.objectStore(CONVERSATION_ARCHIVE_CHUNK_STORE);
+                const keysRequest = chunkStore.index('conversation_id').getAllKeys(
+                    IDBKeyRange.only(id)
+                );
+                keysRequest.onsuccess = () => {
+                    (Array.isArray(keysRequest.result) ? keysRequest.result : []).forEach((key) => {
+                        chunkStore.delete(key);
+                    });
+                };
+                keysRequest.onerror = () => {
+                    try { transaction.abort(); } catch (error) {}
+                };
             } catch (error) {
                 reject(error);
                 return;
@@ -11992,11 +12766,11 @@
         queue.running = true;
         const drain = (async () => {
             let lastError = null;
-            while (queue.pending) {
+            while (queue.pending && !queue.cancelled) {
                 const pending = queue.pending;
                 queue.pending = null;
                 try {
-                    await writeConversationArchivePayload(pending.snapshot);
+                    await writeConversationArchivePayload(pending.snapshot, pending.runtime);
                     lastError = null;
                     if (pending.runtime) {
                         pending.runtime.archiveSaveError = '';
@@ -12009,13 +12783,14 @@
                     reportConversationArchiveError(pending.runtime, error);
                 }
             }
+            if (queue.cancelled) queue.pending = null;
             if (lastError) throw lastError;
             return true;
         })();
         queue.promise = drain.finally(() => {
             queue.running = false;
             queue.promise = null;
-            if (queue.pending) {
+            if (queue.pending && !queue.cancelled) {
                 startConversationArchiveQueue(conversationId, queue);
             } else {
                 conversationArchiveQueues.delete(conversationId);
@@ -12029,7 +12804,7 @@
         if (!conversationId) return Promise.reject(new Error('conversation_id_missing'));
         let queue = conversationArchiveQueues.get(conversationId);
         if (!queue) {
-            queue = { pending: null, running: false, promise: null };
+            queue = { pending: null, running: false, promise: null, cancelled: false };
             conversationArchiveQueues.set(conversationId, queue);
         }
         queue.pending = { snapshot, runtime };
@@ -12108,29 +12883,37 @@
         if (!conversationId) return { ok: false, restored: false };
         runtime.archiveHydrationPending = true;
         const promise = (async () => {
-            let record;
+            const recovery = readConversationRecoveryRecord(conversationId);
+            let record = null;
             try {
                 record = await readConversationArchivePayload(conversationId);
             } catch (error) {
-                reportConversationArchiveError(runtime, error);
-                return { ok: false, restored: false, error };
+                if (!recovery) {
+                    reportConversationArchiveError(runtime, error);
+                    return { ok: false, restored: false, error };
+                }
             }
-            if (!record?.payload) {
-                runtime.archiveHydrated = true;
-                runtime.archiveHydrationRequired = false;
-                return { ok: true, restored: false, available: true };
-            }
-            const restored = normalizeConversationPayload(record.payload, { preserveId: true });
-            if (!restored) {
+            const restored = record?.payload
+                ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
+                : null;
+            if (record?.payload && !restored) {
                 const error = new Error('invalid_conversation_archive');
                 reportConversationArchiveError(runtime, error);
                 return { ok: false, restored: false, error };
             }
-            const archiveIsRicher = archiveSnapshotIsRicher(runtime, restored);
-            if (!archiveIsRicher) {
+            const currentRevision = normalizeConversationPersistenceRevision(runtime.persistenceRevision);
+            const archiveRevision = normalizeConversationPersistenceRevision(restored?.persistenceRevision);
+            const recoveryRevision = normalizeConversationPersistenceRevision(recovery?.persistence_revision);
+            const recoveryApplies = !!recovery
+                && recoveryRevision > archiveRevision
+                && recoveryRevision >= currentRevision;
+            const archiveIsRicher = restored ? archiveSnapshotIsRicher(runtime, restored) : false;
+            if (!archiveIsRicher && !recoveryApplies) {
+                if (recovery) clearConversationRecoveryRecord(conversationId, Math.max(archiveRevision, currentRevision));
+                syncConversationArchiveHistory(runtime);
                 runtime.archiveHydrated = true;
                 runtime.archiveHydrationRequired = false;
-                return { ok: true, restored: false, available: true };
+                return { ok: true, restored: false, available: !!restored };
             }
             if (
                 runtime.persistenceDirty
@@ -12139,29 +12922,42 @@
                 || runtime.activeRequestId
                 || runtime.deleted
             ) return { ok: false, restored: false, available: true, skipped: true };
+            const archiveSource = restored || runtime;
+            const settingsSource = recoveryApplies ? runtime : archiveSource;
+            const restoredMessages = recoveryApplies
+                ? mergeConversationRecoveryMessages(archiveSource.messages, recovery.messages, conversationId)
+                : archiveSource.messages;
+            const restoredSession = recoveryApplies
+                ? mergeConversationRecoverySession(archiveSource.roleplaySession, recovery.roleplay_session, conversationId)
+                : archiveSource.roleplaySession;
             const hydrated = createConversationRuntime(Object.assign({}, runtime, {
-                conversationId: restored.conversationId,
-                messages: restored.messages,
-                chatMode: restored.chatMode,
-                roleplaySession: restored.roleplaySession,
-                roleplayBranches: restored.roleplayBranches,
-                roleplayFormDraftUndo: restored.roleplayFormDraftUndo,
-                roleplayPanelOpen: restored.roleplayPanelOpen,
-                roleplayAutoplayState: restored.roleplayAutoplayState,
-                customSystemPrompt: restored.customSystemPrompt,
-                systemPromptTemplateId: restored.systemPromptTemplateId,
-                systemPromptPickerValue: restored.systemPromptPickerValue,
-                baseSystemPromptContent: restored.baseSystemPromptContent,
-                userSystemPromptTemplateId: restored.userSystemPromptTemplateId,
-                userSystemPromptTemplateName: restored.userSystemPromptTemplateName,
-                userSystemPromptContent: restored.userSystemPromptContent,
-                systemPromptManualOverride: restored.systemPromptManualOverride,
-                autoAttachPreviousImage: restored.autoAttachPreviousImage,
-                unloadAfterChat: restored.unloadAfterChat,
-                creativePreference: restored.creativePreference,
-                creativePreferenceExpanded: restored.creativePreferenceExpanded,
-                creativeInitiative: restored.creativeInitiative,
-                persistenceDirty: false,
+                conversationId,
+                messages: visibleConversationMessages(restoredMessages),
+                archiveMessages: restoredMessages,
+                chatMode: settingsSource.chatMode,
+                roleplaySession: restoredSession,
+                roleplayBranches: archiveSource.roleplayBranches,
+                roleplayFormDraftUndo: archiveSource.roleplayFormDraftUndo,
+                roleplayPanelOpen: settingsSource.roleplayPanelOpen,
+                roleplayAutoplayState: settingsSource.roleplayAutoplayState,
+                customSystemPrompt: settingsSource.customSystemPrompt,
+                systemPromptTemplateId: settingsSource.systemPromptTemplateId,
+                systemPromptPickerValue: settingsSource.systemPromptPickerValue,
+                baseSystemPromptContent: settingsSource.baseSystemPromptContent,
+                userSystemPromptTemplateId: settingsSource.userSystemPromptTemplateId,
+                userSystemPromptTemplateName: settingsSource.userSystemPromptTemplateName,
+                userSystemPromptContent: settingsSource.userSystemPromptContent,
+                systemPromptManualOverride: settingsSource.systemPromptManualOverride,
+                autoAttachPreviousImage: settingsSource.autoAttachPreviousImage,
+                unloadAfterChat: settingsSource.unloadAfterChat,
+                creativePreference: settingsSource.creativePreference,
+                creativePreferenceExpanded: settingsSource.creativePreferenceExpanded,
+                creativeInitiative: settingsSource.creativeInitiative,
+                persistenceRevision: Math.max(currentRevision, archiveRevision, recoveryRevision),
+                persistenceSavedAt: recoveryApplies
+                    ? normalizeConversationSavedAt(recovery.saved_at)
+                    : normalizeConversationSavedAt(archiveSource.savedAt || archiveSource.persistenceSavedAt),
+                persistenceDirty: recoveryApplies,
                 archiveHydrated: true,
                 archiveHydrationRequired: false,
                 archiveHydrationFailed: false
@@ -12169,7 +12965,7 @@
             state.conversationRuntimes.set(conversationId, hydrated);
             if (isCurrentConversationRuntime(runtime) && state.conversationId === conversationId) {
                 applyConversationRuntime(hydrated);
-                state.persistenceDirty = false;
+                state.persistenceDirty = recoveryApplies;
                 state.persistenceRestored = true;
                 const modal = document.getElementById('describe_vlm_chat_modal');
                 syncChatSettingsControls(modal);
@@ -12184,10 +12980,12 @@
                     ));
                 }
             }
+            if (recoveryApplies) scheduleConversationPersist(hydrated, 'recovery_restore', 'soon');
             return {
                 ok: true,
                 restored: true,
                 available: true,
+                recovered: recoveryApplies,
                 runtime: hydrated,
                 branchCount: hydrated.roleplayBranches.length
             };
@@ -12224,6 +13022,7 @@
 
     function conversationRecordFromSource(source, options = {}) {
         const target = source && typeof source === 'object' ? source : {};
+        const fullHistory = options.fullHistory === true;
         const conversationId = String(
             options.conversationId || target.conversationId || target.conversation_id || uid('describe_vlm_chat')
         ).trim();
@@ -12243,15 +13042,27 @@
                 ? options.persistenceRevision
                 : (target.persistenceRevision ?? target.persistence_revision)
         );
-        let messages = normalizePersistedMessages(target.messages, { conversationId });
+        const messageSource = fullHistory && Array.isArray(target.archiveMessages)
+            ? target.archiveMessages
+            : target.messages;
+        let messages = normalizePersistedMessages(messageSource, {
+            conversationId,
+            maxMessages: fullHistory ? null : undefined
+        });
         let roleplayData = null;
         if (roleplayHasData) {
             roleplayData = normalizeConversationRoleplayData(target, conversationId, {
                 sessionId: options.roleplaySessionId || '',
-                localOnlyBranches: !!options.localOnlyBranches
+                localOnlyBranches: !!options.localOnlyBranches,
+                fullHistory
             });
             compactConversationRoleplayStorage(roleplayData, Number(options.storageCompactLevel) || 0);
             messages = roleplayData.messages;
+            roleplayData.branches = roleplayData.branches.map((branch) => {
+                const persisted = Object.assign({}, branch);
+                delete persisted.archive_messages;
+                return persisted;
+            });
         }
         const selection = normalizeStoredSystemPromptSelection(target);
         const read = (camel, snake, fallback = '') => {
@@ -12265,6 +13076,7 @@
             saved_at: savedAt,
             persistence_revision: persistenceRevision,
             conversation_id: conversationId,
+            title: conversationCatalogTitle(target),
             messages,
             chatMode: mode,
             customSystemPrompt: String(read('customSystemPrompt', 'custom_system_prompt', '') || '').slice(0, MAX_PERSISTED_TEXT),
@@ -12300,6 +13112,7 @@
     function upsertRoleplayBranchSnapshot(runtime, options = {}) {
         const target = runtime || currentConversationRuntime();
         if (!target || normalizeChatMode(target.chatMode) !== 'roleplay') return null;
+        if (options.syncArchive !== false) syncConversationArchiveHistory(target);
         const session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const branchId = String(options.branch_id || session.active_branch_id || 'main').trim() || 'main';
         const previous = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId)
@@ -12314,7 +13127,7 @@
             created_at: previous?.created_at || now,
             updated_at: now,
             session,
-            messages: normalizePersistedMessages(target.messages).slice(-MAX_ROLEPLAY_BRANCH_MESSAGES)
+            messages: Array.isArray(target.archiveMessages) ? target.archiveMessages : target.messages
         }, target.conversationId);
         const rows = normalizeRoleplayBranches(target.roleplayBranches, target.conversationId)
             .filter((item) => item.branch_id !== branchId);
@@ -12329,12 +13142,17 @@
 
     function conversationPayload(runtime = null, options = {}) {
         const source = runtime || currentConversationRuntime();
-        upsertRoleplayBranchSnapshot(source);
+        const fullHistory = options.fullHistory === true;
+        if (fullHistory) syncConversationArchiveHistory(source);
+        if (options.updateRoleplayBranch !== false) {
+            upsertRoleplayBranchSnapshot(source, { syncArchive: false });
+        }
         const conversationId = String(source.conversationId || ensureConversationId()).trim();
         return conversationRecordFromSource(source, {
             conversationId,
             roleplayHasData: conversationHasRoleplayData(source, conversationId),
             storageCompactLevel: Number(options.storageCompactLevel) || 0,
+            fullHistory,
             savedAt: options.savedAt || source.persistenceSavedAt,
             persistenceRevision: options.persistenceRevision !== undefined
                 ? options.persistenceRevision
@@ -12350,6 +13168,11 @@
             || Number(data.version) !== CONVERSATION_VERSION
             || !Array.isArray(data.messages)
         ) return null;
+        const archiveHistory = options.fullHistory === true
+            || options.import === true
+            || [CONVERSATION_ARCHIVE_FORMAT, LEGACY_CONVERSATION_ARCHIVE_FORMAT].includes(
+                String(data.roleplay_archive_format || '').trim()
+            );
         const expandedData = expandConversationArchivePayload(data);
         const conversationId = options.preserveId
             ? String(expandedData.conversation_id || '').trim() || uid('describe_vlm_chat')
@@ -12358,15 +13181,26 @@
         const roleplayData = roleplayHasData
             ? normalizeConversationRoleplayData(expandedData, conversationId, {
                 sessionId: options.import ? uid('roleplay_session_import') : '',
-                localOnlyBranches: !!options.import
+                localOnlyBranches: !!options.import,
+                fullHistory: archiveHistory
             })
             : null;
         const selection = normalizeStoredSystemPromptSelection(expandedData);
         return {
             conversationId,
+            title: String(expandedData.title || expandedData.title_text || '').replace(/\s+/g, ' ').trim().slice(0, 120),
             savedAt: normalizeConversationSavedAt(expandedData.saved_at),
             persistenceRevision: normalizeConversationPersistenceRevision(expandedData.persistence_revision),
-            messages: roleplayData?.messages || normalizePersistedMessages(expandedData.messages, { conversationId }),
+            messages: roleplayData?.messages || normalizePersistedMessages(expandedData.messages, {
+                conversationId,
+                maxMessages: archiveHistory ? null : undefined
+            }),
+            archiveMessages: archiveHistory
+                ? (roleplayData?.messages || normalizePersistedMessages(expandedData.messages, {
+                    conversationId,
+                    maxMessages: null
+                }))
+                : undefined,
             chatMode: normalizeChatMode(expandedData.chatMode),
             roleplaySession: roleplayData?.session || normalizeRoleplaySession(expandedData.roleplay_session, conversationId),
             roleplayBranches: roleplayData?.branches || normalizeRoleplayBranches(expandedData.roleplay_branches, conversationId),
@@ -12389,12 +13223,15 @@
     function normalizeConversationRecordForCatalog(value) {
         const normalized = normalizeConversationPayload(value, { preserveId: true });
         if (!normalized) return null;
-        return conversationRecordFromSource(normalized, {
+        const record = conversationRecordFromSource(normalized, {
             conversationId: normalized.conversationId,
             roleplayHasData: conversationHasRoleplayData(value, normalized.conversationId),
             savedAt: value.saved_at,
             persistenceRevision: value.persistence_revision
         });
+        record.title = String(value.title || value.title_text || normalized.title || record.title || '').slice(0, 120);
+        record.archive_index_only = value.archive_index_only === true;
+        return record;
     }
 
     function conversationRecordHasHistory(record) {
@@ -12441,6 +13278,140 @@
         state.conversationCatalog = catalog.records;
         state.conversationCatalogLoaded = true;
         state.conversationCatalogActiveId = catalog.activeId;
+        scheduleConversationCatalogMigration();
+    }
+
+    function conversationPersistDelay(priority = 'normal') {
+        if (priority === 'urgent') return 0;
+        if (priority === 'soon') return describeCompactViewport() ? 180 : 100;
+        return describeCompactViewport()
+            ? CONVERSATION_PERSIST_MOBILE_DELAY_MS
+            : CONVERSATION_PERSIST_DESKTOP_DELAY_MS;
+    }
+
+    function cancelScheduledConversationPersist(runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        const conversationId = String(target?.conversationId || '').trim();
+        if (!conversationId) return false;
+        const scheduled = conversationPersistSchedules.get(conversationId);
+        if (!scheduled) return false;
+        if (scheduled.timer !== null) window.clearTimeout(scheduled.timer);
+        if (scheduled.idle !== null && typeof window.cancelIdleCallback === 'function') {
+            window.cancelIdleCallback(scheduled.idle);
+        }
+        conversationPersistSchedules.delete(conversationId);
+        return true;
+    }
+
+    function scheduleConversationPersist(runtime = null, reason = 'change', priority = 'normal') {
+        const target = runtime || currentConversationRuntime();
+        if (!target || target.deleted) return false;
+        const conversationId = String(target.conversationId || '').trim();
+        if (!conversationId) return false;
+        target.persistenceDirty = true;
+        target.persistenceScheduleReason = String(reason || 'change').slice(0, 80);
+        if (isCurrentConversationRuntime(target)) state.persistenceDirty = true;
+        cancelScheduledConversationPersist(target);
+        const scheduled = {
+            runtime: target,
+            reason: target.persistenceScheduleReason,
+            timer: null,
+            idle: null
+        };
+        const persist = () => {
+            if (conversationPersistSchedules.get(conversationId) !== scheduled) return;
+            conversationPersistSchedules.delete(conversationId);
+            if (!target.deleted && target.persistenceDirty) saveConversationSnapshot(target);
+        };
+        scheduled.timer = window.setTimeout(() => {
+            scheduled.timer = null;
+            if (conversationPersistSchedules.get(conversationId) !== scheduled) return;
+            if (typeof window.requestIdleCallback === 'function') {
+                scheduled.idle = window.requestIdleCallback(persist, {
+                    timeout: priority === 'urgent' ? 300 : CONVERSATION_PERSIST_IDLE_TIMEOUT_MS
+                });
+            } else {
+                scheduled.timer = window.setTimeout(persist, 0);
+            }
+        }, conversationPersistDelay(priority));
+        conversationPersistSchedules.set(conversationId, scheduled);
+        return true;
+    }
+
+    function flushScheduledConversationPersist(runtime = null) {
+        const target = runtime || currentConversationRuntime();
+        if (!target || target.deleted) return false;
+        cancelScheduledConversationPersist(target);
+        if (!target.persistenceDirty && !target.messages?.length) return false;
+        return saveConversationSnapshot(target);
+    }
+
+    function scheduleConversationCatalogMigration() {
+        if (conversationCatalogMigrationScheduled) return;
+        const candidates = state.conversationCatalog.filter((record) => (
+            record
+            && record.archive_index_only !== true
+            && conversationRecordHasHistory(record)
+        ));
+        if (!candidates.length) return;
+        conversationCatalogMigrationScheduled = true;
+        const migrate = async () => {
+            try {
+                let changed = false;
+                for (const record of candidates) {
+                    const conversationId = String(record.conversation_id || '').trim();
+                    const revision = normalizeConversationPersistenceRevision(record.persistence_revision);
+                    const current = state.conversationCatalog.find((item) => String(item?.conversation_id || '').trim() === conversationId);
+                    if (!conversationId || !current || current.archive_index_only === true) continue;
+                    if (normalizeConversationPersistenceRevision(current.persistence_revision) !== revision) continue;
+                    let archiveAvailable = false;
+                    try {
+                        const existingRecord = await readConversationArchivePayload(conversationId);
+                        const existingPayload = existingRecord?.payload
+                            ? normalizeConversationPayload(existingRecord.payload, { preserveId: true })
+                            : null;
+                        const existingRevision = normalizeConversationPersistenceRevision(existingPayload?.persistenceRevision);
+                        const localMetrics = conversationSnapshotMetrics(record);
+                        const existingMetrics = conversationSnapshotMetrics(existingPayload);
+                        const existingIsAtLeastAsRich = !!existingPayload && (
+                            existingRevision > revision
+                            || (
+                                existingRevision === revision
+                                && existingMetrics.messages >= localMetrics.messages
+                                && existingMetrics.branches >= localMetrics.branches
+                                && existingMetrics.branchMessages >= localMetrics.branchMessages
+                                && existingMetrics.snapshots >= localMetrics.snapshots
+                                && existingMetrics.stateVersion >= localMetrics.stateVersion
+                            )
+                        );
+                        if (!existingIsAtLeastAsRich) {
+                            await queueConversationArchiveSave(buildConversationArchivePayload(record));
+                        }
+                        archiveAvailable = true;
+                    } catch (error) {
+                        continue;
+                    }
+                    if (!archiveAvailable) continue;
+                    const latest = state.conversationCatalog.find((item) => String(item?.conversation_id || '').trim() === conversationId);
+                    if (!latest || latest.archive_index_only === true) continue;
+                    if (normalizeConversationPersistenceRevision(latest.persistence_revision) !== revision) continue;
+                    state.conversationCatalog = state.conversationCatalog.map((item) => (
+                        String(item?.conversation_id || '').trim() === conversationId
+                            ? compactConversationCatalogSnapshot(item)
+                            : item
+                    ));
+                    changed = true;
+                }
+                if (changed) persistConversationCatalog();
+            } finally {
+                conversationCatalogMigrationScheduled = false;
+            }
+        };
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(() => { migrate().catch(() => {}); }, { timeout: 5000 });
+        } else {
+            window.setTimeout(() => { migrate().catch(() => {}); }, 1200);
+        }
     }
 
     function persistConversationCatalog() {
@@ -12454,16 +13425,20 @@
             saved_at: new Date().toISOString(),
             conversations: records
         };
+        const startedAt = vlmChatPerformanceNow();
         let serialized = '';
         try {
             serialized = JSON.stringify(payload);
-            while (serialized.length > MAX_CONVERSATIONS_STORAGE_LENGTH && payload.conversations.length > 1) {
-                payload.conversations.shift();
-                serialized = JSON.stringify(payload);
-            }
             window.localStorage?.setItem(CONVERSATIONS_STORAGE_KEY, serialized);
             state.conversationCatalog = payload.conversations;
             state.conversationCatalogActiveId = payload.active_id;
+            markVlmChatPerformance('vlm_chat.persist.catalog', currentConversationRuntime(), {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
+                bytes: serialized.length,
+                target_bytes: MAX_CONVERSATIONS_STORAGE_LENGTH,
+                over_target: serialized.length > MAX_CONVERSATIONS_STORAGE_LENGTH,
+                conversations: payload.conversations.length
+            });
             return true;
         } catch (err) {
             return false;
@@ -12506,6 +13481,7 @@
         try {
             const target = runtime || syncCurrentRuntimeFromState();
             if (target?.deleted) return;
+            cancelScheduledConversationPersist(target);
             if (target.archiveHydrationPending && !target.archiveHydrated) {
                 target.archiveSaveRequested = true;
                 return false;
@@ -12526,36 +13502,46 @@
                 savedAt: persistenceSavedAt,
                 persistenceRevision
             };
-            const fullSnapshot = conversationPayload(target, persistenceOptions);
+            const prepareStartedAt = vlmChatPerformanceNow();
+            const persistReason = String(target.persistenceScheduleReason || 'direct').slice(0, 80);
+            const skipBranchSnapshotReasons = new Set([
+                'send_pending',
+                'roleplay_settings_apply',
+                'roleplay_form_apply',
+                'roleplay_character_switch',
+                'roleplay_presence',
+                'roleplay_character_add',
+                'roleplay_character_remove',
+                'roleplay_character_library_load',
+                'roleplay_character_library_save',
+                'roleplay_character_draft',
+                'roleplay_form_draft',
+                'roleplay_form_draft_keep',
+                'roleplay_form_draft_undo'
+            ]);
+            const fullSnapshot = conversationPayload(target, Object.assign({}, persistenceOptions, {
+                fullHistory: true,
+                updateRoleplayBranch: !skipBranchSnapshotReasons.has(persistReason)
+            }));
             if (conversationRecordHasHistory(fullSnapshot)) {
-                target.archiveSavePromise = queueConversationArchiveSave(fullSnapshot, target);
+                const archiveSnapshot = buildConversationArchivePayload(fullSnapshot);
+                target.archiveSavePromise = queueConversationArchiveSave(archiveSnapshot, target);
                 target.archiveSavePromise.catch(() => {});
             } else {
                 deleteConversationArchive(fullSnapshot.conversation_id).catch(() => {});
             }
-            let snapshot = fullSnapshot;
-            let serialized = JSON.stringify(snapshot);
-            if (serialized.length > 900000) {
-                snapshot = conversationPayload(target, Object.assign({}, persistenceOptions, { storageCompactLevel: 1 }));
-                serialized = JSON.stringify(snapshot);
-            }
-            if (serialized.length > 1500000) {
-                snapshot = conversationPayload(target, Object.assign({}, persistenceOptions, { storageCompactLevel: 2 }));
-                serialized = JSON.stringify(snapshot);
-            }
-            if (serialized.length > MAX_CONVERSATION_RECORD_LENGTH) {
-                snapshot = conversationPayload(target, Object.assign({}, persistenceOptions, { storageCompactLevel: 3 }));
-                serialized = JSON.stringify(snapshot);
-            }
-            if (serialized.length > MAX_CONVERSATION_RECORD_LENGTH) {
-                snapshot = compactConversationCatalogSnapshot(fullSnapshot);
-                serialized = JSON.stringify(snapshot);
-            }
-            if (serialized.length > MAX_CONVERSATION_RECORD_LENGTH) return false;
+            const snapshot = compactConversationCatalogSnapshot(fullSnapshot);
+            markVlmChatPerformance('vlm_chat.persist.prepare', target, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - prepareStartedAt),
+                persistence_revision: persistenceRevision,
+                reason: persistReason,
+                archive_format: String(snapshot.roleplay_archive_format || CONVERSATION_ARCHIVE_FORMAT)
+            });
             if (!conversationRecordHasHistory(snapshot)) {
                 const removed = removeConversationRecord(snapshot.conversation_id, false);
                 deleteConversationArchive(snapshot.conversation_id).catch(() => {});
                 target.persistenceDirty = false;
+                target.persistenceScheduleReason = '';
                 if (isCurrentConversationRuntime(target)) state.persistenceDirty = false;
                 if (removed) persistConversationCatalog();
                 if (isCurrentConversationRuntime(target)) {
@@ -12565,6 +13551,7 @@
             }
             if (upsertConversationRecord(snapshot)) {
                 target.persistenceDirty = false;
+                target.persistenceScheduleReason = '';
                 if (isCurrentConversationRuntime(target)) {
                     state.persistenceDirty = false;
                     if (state.messages.length <= 2) syncConversationControls(document.getElementById('describe_vlm_chat_modal'));
@@ -12581,9 +13568,23 @@
     function persistConversationBeforePageHide() {
         try {
             const runtime = currentConversationRuntime();
-            if (!runtime?.messages?.length && !runtime?.persistenceDirty) return;
+            if (!runtime?.messages?.length) return;
+            const archivePending = conversationArchiveQueues.has(String(runtime.conversationId || '').trim());
+            if (!runtime.persistenceDirty) {
+                if (archivePending) {
+                    persistConversationRecoveryRecord(runtime, {
+                        persistenceRevision: normalizeConversationPersistenceRevision(runtime.persistenceRevision),
+                        savedAt: runtime.persistenceSavedAt || new Date().toISOString()
+                    });
+                }
+                return;
+            }
             runtime.persistenceDirty = true;
             if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
+            persistConversationRecoveryRecord(runtime, {
+                persistenceRevision: normalizeConversationPersistenceRevision(runtime.persistenceRevision) + 1,
+                savedAt: new Date().toISOString()
+            });
             saveConversationSnapshot(runtime);
         } catch (err) {}
     }
@@ -12597,6 +13598,7 @@
         const runtime = ensureConversationRuntime(conversationId, {
             conversationId,
             messages: restored.messages,
+            archiveMessages: restored.archiveMessages,
             chatMode: restored.chatMode,
             roleplaySession: restored.roleplaySession,
             roleplayBranches: restored.roleplayBranches,
@@ -12658,8 +13660,26 @@
         } catch (err) {}
     }
 
-    function downloadConversation() {
-        const payload = buildConversationArchivePayload(conversationPayload());
+    async function downloadConversation() {
+        const runtime = syncCurrentRuntimeFromState();
+        syncConversationArchiveHistory(runtime);
+        let payload = conversationPayload(runtime, { fullHistory: true });
+        try {
+            const record = await readConversationArchivePayload(runtime.conversationId);
+            const archived = record?.payload
+                ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
+                : null;
+            if (archived && archiveSnapshotIsRicher(runtime, archived)) {
+                payload = conversationRecordFromSource(archived, {
+                    conversationId: archived.conversationId,
+                    roleplayHasData: conversationHasRoleplayData(archived, archived.conversationId),
+                    fullHistory: true,
+                    savedAt: archived.savedAt,
+                    persistenceRevision: archived.persistenceRevision
+                });
+            }
+        } catch (error) {}
+        payload = buildConversationArchivePayload(payload);
         const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -12675,7 +13695,7 @@
         const reader = new FileReader();
         reader.onload = async () => {
             try {
-                const restored = normalizeConversationPayload(JSON.parse(String(reader.result || '')), { import: true });
+                const restored = normalizeConversationPayload(JSON.parse(String(reader.result || '')), { import: true, fullHistory: true });
                 if (!restored) throw new Error('invalid conversation');
                 activeCreativeRunIds().forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
                     user_context: creativeUserContext()
@@ -12751,14 +13771,17 @@
     }
 
     function switchConversation(conversationId) {
+        const switchStartedAt = vlmChatPerformanceNow();
         ensureConversationCatalogLoaded();
         const id = String(conversationId || '').trim();
         if (!id || id === state.conversationId) return;
         const target = state.conversationCatalog.find((item) => String(item?.conversation_id || '').trim() === id);
         if (!target) return;
-        syncCurrentRuntimeFromState();
-        stopRoleplayAutoplayRuntime(currentConversationRuntime());
-        saveConversationSnapshot();
+        const previousRuntime = syncCurrentRuntimeFromState();
+        stopRoleplayAutoplayRuntime(previousRuntime);
+        if (previousRuntime.persistenceDirty || previousRuntime.messages.length) {
+            scheduleConversationPersist(previousRuntime, 'conversation_switch', 'soon');
+        }
         const targetRuntime = ensureConversationRuntime(id, target);
         if (!applyConversationRuntime(targetRuntime)) return;
         targetRuntime.archiveHydrated = false;
@@ -12772,6 +13795,9 @@
         syncBusyControls(modal);
         renderPendingImages();
         renderMessages();
+        markVlmChatPerformance('vlm_chat.conversation.switch', targetRuntime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - switchStartedAt)
+        });
         window.setTimeout(resumeCreativeGenerationPolls, 0);
         const switchToken = uid('describe_vlm_chat_switch');
         state.activeConversationSwitchToken = switchToken;
@@ -12801,10 +13827,13 @@
     }
 
     function startNewConversation() {
+        const startedAt = vlmChatPerformanceNow();
         ensureConversationCatalogLoaded();
-        syncCurrentRuntimeFromState();
+        const previousRuntime = syncCurrentRuntimeFromState();
         stopActiveConversationWork();
-        saveConversationSnapshot();
+        if (previousRuntime.persistenceDirty || previousRuntime.messages.length) {
+            scheduleConversationPersist(previousRuntime, 'new_conversation_previous', 'soon');
+        }
         const runtime = createDefaultConversationRuntime();
         state.conversationRuntimes.set(runtime.conversationId, runtime);
         applyConversationRuntime(runtime);
@@ -12812,7 +13841,6 @@
         state.persistenceRestored = true;
         state.persistenceDirty = false;
         saveChatSettings();
-        saveConversationSnapshot();
         const modal = document.getElementById('describe_vlm_chat_modal');
         const input = modal?.querySelector('[data-describe-vlm-chat-input]');
         if (input) input.value = '';
@@ -12820,6 +13848,9 @@
         syncBusyControls(modal);
         renderPendingImages();
         renderMessages();
+        markVlmChatPerformance('vlm_chat.conversation.new', runtime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt)
+        });
         setStatus(t('New conversation started.', '已新建对话。'));
     }
 
@@ -13045,6 +14076,7 @@
     }
 
     function startRoleplayExampleTemplate() {
+        const startedAt = vlmChatPerformanceNow();
         ensureConversationCatalogLoaded();
         syncCurrentRuntimeFromState();
         const current = currentConversationRuntime();
@@ -13052,7 +14084,9 @@
         if (current.busy || current.activeAbortController || current.activeRequestId || autoplayActive) {
             stopActiveConversationWork();
         }
-        saveConversationSnapshot(current);
+        if (current.persistenceDirty || current.messages.length) {
+            scheduleConversationPersist(current, 'roleplay_example_previous', 'soon');
+        }
         const conversationId = uid('describe_vlm_chat_example');
         const runtime = createEmptyConversationRuntime(Object.assign({}, current, { chatMode: 'roleplay' }), conversationId);
         runtime.chatMode = 'roleplay';
@@ -13072,13 +14106,17 @@
         state.persistenceRestored = true;
         state.persistenceDirty = true;
         state.conversationCatalogActiveId = conversationId;
-        saveConversationSnapshot(runtime);
+        scheduleConversationPersist(runtime, 'roleplay_example', 'soon');
         const modal = document.getElementById('describe_vlm_chat_modal');
         syncChatSettingsControls(modal);
         syncBusyControls(modal);
         renderPendingImages();
         renderMessages();
         syncRoleplayControls(modal, runtime);
+        markVlmChatPerformance('vlm_chat.conversation.new', runtime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - startedAt),
+            source: 'roleplay_example'
+        });
         setStatus(localText(
             'Example roleplay template loaded in a new conversation.',
             '已在新对话中载入角色扮演示例模板。'
@@ -13103,6 +14141,7 @@
         const runtime = state.conversationRuntimes.get(id);
         const nextRecord = state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null;
         let requestId = String(runtime?.activeRequestId || '');
+        cancelScheduledConversationPersist(runtime);
         if (isCurrent) {
             stopActiveConversationWork();
         } else if (runtime) {
@@ -13114,7 +14153,11 @@
             stopCreativePolls(runtime);
         }
         const currentRuntime = isCurrent ? currentConversationRuntime() : null;
-        if (runtime) runtime.deleted = true;
+        if (runtime) {
+            runtime.deleted = true;
+            runtime.archiveMessages = [];
+            runtime.archiveVisibleMessageIds = [];
+        }
         removeConversationRecord(id, false);
         state.conversationRuntimes.delete(id);
         deleteConversationArchive(id).catch(() => {});
@@ -13158,6 +14201,7 @@
 
     async function clearConversation() {
         const previousConversationId = state.conversationId;
+        cancelScheduledConversationPersist(currentConversationRuntime());
         stopActiveConversationWork();
         const runtime = currentConversationRuntime();
         const index = state.conversationCatalog.findIndex(
@@ -13167,6 +14211,8 @@
             ? state.conversationCatalog[index + 1] || state.conversationCatalog[index - 1] || null
             : null;
         runtime.messages = [];
+        runtime.archiveMessages = [];
+        runtime.archiveVisibleMessageIds = [];
         runtime.pendingImages = [];
         runtime.roleplaySession = normalizeRoleplaySession(null, previousConversationId);
         runtime.roleplayBranches = [];
@@ -13780,11 +14826,11 @@
         const modal = document.getElementById('describe_vlm_chat_modal');
         if (isCurrentConversationRuntime(target)) syncRoleplayControls(modal, target);
         target.persistenceDirty = true;
-        saveConversationSnapshot(target);
-        persistRoleplayBranchRemote(
+        scheduleConversationPersist(target, 'roleplay_context_edit', 'soon');
+        waitForVlmChatPaint().then(() => persistRoleplayBranchRemote(
             target,
             target.roleplaySession?.active_branch_id || 'main'
-        ).catch(() => {});
+        )).catch(() => {});
         return true;
     }
 
@@ -14020,6 +15066,9 @@
             return;
         }
         const roleplay = normalizeChatMode(runtime.chatMode) === 'roleplay';
+        const archiveAnchorId = Array.isArray(runtime.archiveVisibleMessageIds)
+            ? String(runtime.archiveVisibleMessageIds[0] || '')
+            : '';
         const roleplaySnapshot = roleplay
             ? roleplaySessionBeforeContextEdit(runtime, index)
             : null;
@@ -14030,6 +15079,7 @@
             });
         }
         runtime.messages = runtime.messages.slice(0, index).filter((item) => !item?.pending);
+        syncConversationArchiveHistory(runtime, { anchorId: archiveAnchorId });
         runtime.pendingImages = limitReferenceMedia(restoredImages);
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
@@ -14064,6 +15114,9 @@
             return;
         }
         const roleplay = normalizeChatMode(runtime.chatMode) === 'roleplay';
+        const archiveAnchorId = Array.isArray(runtime.archiveVisibleMessageIds)
+            ? String(runtime.archiveVisibleMessageIds[0] || '')
+            : '';
         const roleplaySnapshot = roleplay
             ? roleplaySessionBeforeContextEdit(runtime, index)
             : null;
@@ -14076,6 +15129,7 @@
         } else {
             runtime.messages.splice(index, 1);
         }
+        syncConversationArchiveHistory(runtime, { anchorId: archiveAnchorId });
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
         resetConversationAfterContextEdit();
@@ -14127,6 +15181,9 @@
             return false;
         }
         const nextBranch = uid('roleplay_branch');
+        const archiveAnchorId = Array.isArray(runtime.archiveVisibleMessageIds)
+            ? String(runtime.archiveVisibleMessageIds[0] || '')
+            : '';
         preserveRoleplayBranchBeforeMutation(runtime, {
             branch_id: runtime.roleplaySession?.active_branch_id || 'main',
             reason: 'reply_regenerate',
@@ -14143,6 +15200,7 @@
             fork_turn_id: currentVariant.turn_id || message.id
         });
         runtime.messages = runtime.messages.slice(0, index);
+        syncConversationArchiveHistory(runtime, { anchorId: archiveAnchorId });
         runtime.persistenceDirty = true;
         applyConversationRuntime(runtime);
         state.roleplaySession = runtime.roleplaySession;
@@ -14193,6 +15251,9 @@
             reason: 'switch_reply_variant',
             fork_turn_id: variant.turn_id || message.id
         });
+        const archiveAnchorId = Array.isArray(runtime.archiveVisibleMessageIds)
+            ? String(runtime.archiveVisibleMessageIds[0] || '')
+            : '';
         runtime.messages = runtime.messages.slice(0, index + 1);
         const liveMessage = runtime.messages[index];
         liveMessage.content = variant.content;
@@ -14204,6 +15265,7 @@
         liveMessage.active_variant_index = nextIndex;
         liveMessage.roleplay_session_after = variant.roleplay_session_after;
         runtime.roleplaySession = normalizeRoleplaySession(variant.roleplay_session_after, runtime.conversationId);
+        syncConversationArchiveHistory(runtime, { anchorId: archiveAnchorId });
         upsertRoleplayBranchSnapshot(runtime, {
             branch_id: runtime.roleplaySession.active_branch_id || variant.branch_id || 'main',
             reason: 'switch_reply_variant',
@@ -16420,7 +17482,7 @@
         const target = runtime || currentConversationRuntime();
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.persistenceDirty = true;
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'creative_action');
         if (render && isCurrentConversationRuntime(target)) renderMessages(renderOptions);
     }
 
@@ -17628,6 +18690,7 @@
     async function sendMessage() {
         const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
         const runtime = options.runtime || syncCurrentRuntimeFromState();
+        const sendStartedAt = vlmChatPerformanceNow();
         if (runtime.busy) return;
         if (runtime.archiveHydrationPending && !runtime.archiveHydrated) {
             setStatus(localText(
@@ -17698,7 +18761,7 @@
             : '';
         runtime.userSystemPromptContent = userSystemPromptContent;
         runtime.systemPromptManualOverride = customSystemPrompt.trim() !== mergedSystemPrompt.trim();
-        if (selectedMode === 'roleplay') {
+        if (selectedMode === 'roleplay' && (runtime.roleplayPanelOpen || state.roleplayPanelOpen)) {
             syncRoleplayAgentRoutingFromVisibleForm(modal, runtime);
             syncRoleplaySessionFromVisibleFormForSend(modal, runtime);
         }
@@ -17845,6 +18908,7 @@
             : '';
         let userMessage = {
             id: uid('describe_vlm_chat_user'),
+            revision: 1,
             role: 'user',
             content: isDirectRun ? inputSnapshot : message,
             image_count: images.length,
@@ -17869,6 +18933,7 @@
         }
         const pendingAssistant = {
             id: pendingAssistantId,
+            revision: 1,
             role: 'assistant',
             content: roleplayTextStream
                 ? localText('Writing the character reply...', '正在生成角色回复……')
@@ -17888,8 +18953,15 @@
         messages.push(pendingAssistant);
         runtime.persistenceDirty = true;
         if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
-        saveConversationSnapshot(runtime);
         if (isCurrentConversationRuntime(runtime)) renderMessages();
+        markVlmChatPerformance('vlm_chat.send.click_to_echo', runtime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - sendStartedAt),
+            request_kind: roleplayRequestKindValue || selectedMode,
+            current_conversation: isCurrentConversationRuntime(runtime)
+        });
+        scheduleConversationPersist(runtime, 'send_pending');
+        if (isCurrentConversationRuntime(runtime)) await waitForVlmChatPaint();
+        if (requestToken !== runtime.requestToken) return;
 
         const requestId = uid('describe_vlm_chat_req');
         const abortController = new AbortController();
@@ -17987,6 +19059,7 @@
         ) && !isDirectRun;
         let streamedReplyText = '';
         let streamRenderTimer = null;
+        let firstStreamTokenRecorded = false;
         const onChatStreamEvent = (event) => {
             if (event?.type === 'status') {
                 const phase = String(event.phase || '').trim();
@@ -18025,6 +19098,13 @@
                 return;
             }
             if (event?.type !== 'delta') return;
+            if (!firstStreamTokenRecorded) {
+                firstStreamTokenRecorded = true;
+                markVlmChatPerformance('vlm_chat.stream.first_token', runtime, {
+                    duration_ms: Math.max(0, vlmChatPerformanceNow() - requestStartedAt),
+                    request_kind: roleplayRequestKindValue || selectedMode
+                });
+            }
             streamedReplyText += String(event.text || '');
             if (streamRenderTimer !== null) return;
             streamRenderTimer = window.setTimeout(() => {
@@ -18032,9 +19112,16 @@
                 updatePendingAssistantStream(streamedReplyText, runtime);
             }, 45);
         };
+        const requestStartedAt = vlmChatPerformanceNow();
+        markVlmChatPerformance('vlm_chat.send.click_to_request', runtime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - sendStartedAt),
+            request_kind: roleplayRequestKindValue || selectedMode,
+            stream: streamEligible
+        });
         const response = streamEligible
             ? await postJsonStream('/describe-image/vlm-chat-stream', payload, { signal: abortController.signal }, onChatStreamEvent)
             : await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
+        const finalReceivedAt = vlmChatPerformanceNow();
         if (streamRenderTimer !== null) {
             window.clearTimeout(streamRenderTimer);
             streamRenderTimer = null;
@@ -18055,13 +19142,18 @@
             runtime.busyStage = '';
             replacePendingAssistant(t('Stopped.', '已停止。'), messages);
             runtime.persistenceDirty = true;
-            saveConversationSnapshot(runtime);
+            scheduleConversationPersist(runtime, 'send_aborted', 'soon');
             if (isCurrentConversationRuntime(runtime)) {
                 state.busy = false;
                 state.busyStage = '';
                 renderMessages();
                 setStatus(t('Reply stopped.', '已停止当前回复。'));
             }
+            markVlmChatPerformance('vlm_chat.stream.final_commit', runtime, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - finalReceivedAt),
+                request_kind: roleplayRequestKindValue || selectedMode,
+                aborted: true
+            });
             return;
         }
         const pendingIndex = messages.findIndex((item) => item.pending);
@@ -18075,6 +19167,7 @@
             : describeVlmChatFailure(response);
         const assistant = {
             id: pendingMessageId || uid('describe_vlm_chat_assistant'),
+            revision: Math.max(1, Math.round(Number(pendingIndex >= 0 ? messages[pendingIndex]?.revision : 1) || 1)),
             role: 'assistant',
             content: reply,
             completion,
@@ -18120,7 +19213,6 @@
             }
             if (isCurrentConversationRuntime(runtime)) {
                 state.roleplaySession = runtime.roleplaySession;
-                syncRoleplayControls(modal);
             }
         }
         if (selectedMode === 'roleplay' && response?.roleplay && typeof response.roleplay === 'object') {
@@ -18172,7 +19264,7 @@
                 continuous: decision.continuous !== undefined ? !!decision.continuous : currentAutoplay.continuous,
                 reason: String(decision.reason || ''),
                 error: String(decision.director_error || ''),
-            });
+            }, '', { syncControls: false });
         }
         userMessage.media_assets = Array.isArray(response?.input_media_assets)
             ? response.input_media_assets.map(normalizeChatMediaInput).filter(Boolean)
@@ -18212,14 +19304,19 @@
             }));
         }
         runtime.persistenceDirty = true;
-        saveConversationSnapshot(runtime);
+        scheduleConversationPersist(runtime, 'send_final');
         if (isCurrentConversationRuntime(runtime)) {
             state.busy = false;
             state.busyStage = '';
-            state.persistenceDirty = false;
+            state.persistenceDirty = true;
             renderMessages();
-            syncRoleplayControls(modal);
+            if (selectedMode === 'roleplay') syncRoleplayControls(modal, runtime);
         }
+        markVlmChatPerformance('vlm_chat.stream.final_commit', runtime, {
+            duration_ms: Math.max(0, vlmChatPerformanceNow() - finalReceivedAt),
+            request_kind: roleplayRequestKindValue || selectedMode,
+            current_conversation: isCurrentConversationRuntime(runtime)
+        });
         if (response?.ok && selectedMode === 'roleplay' && response?.roleplay_visual_action?.prompt) {
             window.setTimeout(() => autoStartRoleplayVisualActionForMessage(assistant.id, runtime), 0);
         }
@@ -18287,7 +19384,7 @@
         return response;
     }
 
-    function updateRoleplayAutoplayState(runtime, patch = {}, message = '') {
+    function updateRoleplayAutoplayState(runtime, patch = {}, message = '', options = {}) {
         const target = runtime || currentConversationRuntime();
         target.roleplayAutoplayState = normalizeRoleplayAutoplayState(Object.assign(
             {},
@@ -18297,7 +19394,9 @@
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) {
             state.roleplayAutoplayState = target.roleplayAutoplayState;
-            syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'));
+            if (options.syncControls !== false) {
+                syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'));
+            }
         }
         if (message) setConversationStatus(target, message);
         return target.roleplayAutoplayState;
@@ -18603,7 +19702,7 @@
                 continuous,
                 error: ''
             });
-            saveConversationSnapshot(target);
+            scheduleConversationPersist(target, 'roleplay_autoplay_turn');
             if ((!continuous && completed >= targetTurns) || stepOnly) break;
             await roleplayAutoplayWait(360);
         }
@@ -18611,7 +19710,7 @@
         if (finished.phase === 'running') {
             updateRoleplayAutoplayState(target, { phase: 'idle', target_turns: targetTurns });
         }
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_autoplay_complete', 'soon');
         return true;
     }
 
@@ -18670,7 +19769,7 @@
             syncBusyControls(document.getElementById('describe_vlm_chat_modal'));
             renderMessages();
         }
-        saveConversationSnapshot(target);
+        scheduleConversationPersist(target, 'roleplay_autoplay_stop', 'soon');
         if (options?.announce) {
             setConversationStatus(target, localText('Autoplay stopped.', '托管剧情已停止。'));
         }
@@ -18990,7 +20089,9 @@
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-settings-toggle]')) {
-            state.settingsPanelOpen = !state.settingsPanelOpen;
+            const nextOpen = !state.settingsPanelOpen;
+            state.settingsPanelOpen = nextOpen;
+            if (nextOpen) closeRoleplayPanelForMobile();
             syncChatSettingsControls(modal);
             return;
         }
@@ -18999,12 +20100,18 @@
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-open]')) {
+            const openedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
+            if (describeCompactViewport()) state.settingsPanelOpen = false;
             runtime.roleplayReferenceDraft = createRoleplayReferenceDraft(runtime.roleplaySession);
             runtime.roleplayPanelOpen = true;
             state.roleplayPanelOpen = true;
             runtime.persistenceDirty = true;
-            syncRoleplayControls(modal);
+            if (describeCompactViewport()) syncChatSettingsControls(modal);
+            else syncRoleplayControls(modal);
+            markVlmChatPerformance('vlm_chat.roleplay.open', runtime, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - openedAt)
+            });
             refreshRoleplayBranches(runtime).catch(() => {});
             loadRoleplayReferenceLibrary(modal).catch(() => {});
             return;
@@ -19219,13 +20326,21 @@
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-save]')) {
+            const appliedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
-            applyRoleplayForm(modal, runtime, { allowEmptyStateFields: true });
+            applyRoleplayForm(modal, runtime, {
+                allowEmptyStateFields: true,
+                persist: false,
+                syncControls: false
+            });
             runtime.roleplayFormDraftUndo = null;
             runtime.roleplayPanelOpen = false;
             state.roleplayPanelOpen = false;
-            saveConversationSnapshot(runtime);
+            scheduleConversationPersist(runtime, 'roleplay_settings_apply', 'soon');
             syncRoleplayControls(modal);
+            markVlmChatPerformance('vlm_chat.roleplay.apply', runtime, {
+                duration_ms: Math.max(0, vlmChatPerformanceNow() - appliedAt)
+            });
             setConversationStatus(runtime, localText('Roleplay settings applied.', '角色扮演设置已应用。'));
             return;
         }
@@ -19791,6 +20906,9 @@
             state.chatMode = normalizeChatMode(evt.target.value);
             const runtime = syncCurrentRuntimeFromState();
             runtime.chatMode = state.chatMode;
+            if (state.chatMode === 'roleplay' && describeCompactViewport()) {
+                state.settingsPanelOpen = false;
+            }
             if (
                 state.chatMode === 'roleplay'
                 && previousMode !== 'roleplay'

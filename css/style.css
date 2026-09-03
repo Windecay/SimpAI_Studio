@@ -25325,3 +25325,27 @@ button[aria-label="Edit"][title="Edit"] {
     padding-right: 42px;
   }
 }
+
+/* When both mobile setting surfaces are visible during a transition, keep
+   the roleplay status strip in its own row instead of covering VLM controls. */
+@media (max-width: 640px) {
+  .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) {
+    grid-template-rows: auto auto auto auto minmax(72px, 1fr) auto auto;
+  }
+
+  .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) .describe-vlm-chat-roleplay-strip {
+    grid-row: 4;
+  }
+
+  .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) .describe-vlm-chat-chat-area {
+    grid-row: 5;
+  }
+
+  .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) .describe-vlm-chat-status {
+    grid-row: 6;
+  }
+
+  .describe-vlm-chat-panel:has(.describe-vlm-chat-controls:not(.is-collapsed)):has(.describe-vlm-chat-roleplay-strip:not([hidden])) .describe-vlm-chat-compose {
+    grid-row: 7;
+  }
+}

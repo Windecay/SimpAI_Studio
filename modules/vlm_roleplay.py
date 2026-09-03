@@ -1932,6 +1932,7 @@ def build_roleplay_form_draft_prompt(
             "character_state": {
                 "appearance": "",
                 "state_text": "",
+                "current_action": "",
                 "state_fields": [{"label": "", "value": ""}],
             }
         }
@@ -2251,6 +2252,7 @@ def parse_roleplay_form_draft(text: Any, target: Any = "character") -> dict[str,
         character_state = {
             "appearance": _text(raw.get("appearance"), 1200),
             "state_text": _text(raw.get("state_text") or raw.get("text"), 4000),
+            "current_action": _text(raw.get("current_action"), 1000),
             "state_fields": _clean_state_fields(raw.get("state_fields") or raw.get("fields")),
         }
         return {
@@ -6350,6 +6352,7 @@ def build_director_empty_state_review_prompt(
             "If a bounded field reaches an explicitly stated terminal endpoint, use zero or the existing maximum as appropriate. If the amount is not explicit and no terminal endpoint is established, update state_text rather than inventing a number.",
             "Text-valued state fields such as action ability, equipment, condition, allegiance, or position may be updated with a concise value directly established by the plot. Do not require a number for those fields.",
             "For state_fields, copy field_id exactly from the catalog and send only changed entries. Never create, rename, or translate a field. Preserve an unchanged health or resource field.",
+            "For current_action, omit the subject or use the target character's configured name. Never assign an action beginning with the player, another character, or an unregistered person name to the target character. Retarget only when an exact existing character ID is available; otherwise omit the patch.",
             "Evaluate each field independently. Action ability means the capacity to move, think, or perform actions; do not write values such as controlled, obedient, loyal, or submissive into that field when the entity remains capable of acting.",
             "If a changed field or plot fact contradicts the current state_text or condition, add a separate op=replace patch for state_text with a concise current snapshot. Do not preserve prose that says the entity still resists or can act normally after the new facts establish the opposite.",
             "Use state_text when the plot establishes a meaningful current condition but no existing field is a valid semantic match. Use patches=[] only when this focused audit confirms no established state change.",
@@ -7097,15 +7100,24 @@ def _director_character_is_named_subject(
 
 
 _DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE = re.compile(
-    r"^([\u3400-\u9fff]{2,10}?)(?=(?:正(?:在)?|仍(?:然)?|已经|已然|最终|终于|随后|随即|"
-    r"突然|缓缓|慢慢|开始|继续))",
+    r"^([\u3400-\u9fff]{2,10}?)(?=\s*[，,:：]?\s*(?:正(?:在)?|仍(?:然)?|已经|已然|最终|终于|随后|随即|"
+    r"突然|缓缓|慢慢|开始|继续|"
+    r"靠(?:在|着|向)|倚(?:在|着)|站(?:在|着|起|到)|坐(?:在|着|下|到)|蹲(?:在|下|着)|"
+    r"跪(?:在|下|着)|躺(?:在|下|着)|趴(?:在|下|着)|抱(?:着|住|紧|起)|搂(?:着|住)|"
+    r"握(?:着|住|紧)|拿(?:着|起|出)|看(?:着|向)|望(?:着|向)|盯(?:着|住)|走(?:向|到|进|出|近|开)|"
+    r"跑(?:向|到|进|出|开)|冲(?:向|到|进|出)|退(?:到|向|后|开)|推(?:着|开|向)|拉(?:着|住|起|开|向)|"
+    r"抬(?:起|手|头)|低(?:下|头)|转(?:身|头|向)|伸(?:出|手|向)|收(?:回|起)|闭(?:上|眼)|睁(?:开|眼)|"
+    r"举(?:起|着)|放(?:下|开)|挡(?:在|住)|扶(?:着|住|起)|贴(?:着|近|在)|扑(?:向|到)|离开|进入|返回|"
+    r"停(?:在|下)|说(?:道|着)|问(?:道|着)|回答))",
     re.IGNORECASE,
 )
 _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS = {
     "此时", "此刻", "这时", "现在", "少女", "女孩", "女人", "男子", "男人", "角色", "对方",
     "双手", "左手", "右手", "手中", "身体", "身躯", "目光", "眼神", "眼睛", "嘴角", "唇角",
     "呼吸", "胸口", "心跳", "脸上", "脸颊", "头发", "衣角", "脚步", "声音", "表情", "神情",
-    "动作", "姿态",
+    "动作", "姿态", "双臂", "左臂", "右臂", "手臂", "肩膀", "背部", "后背", "一只手", "另一只手",
+    "缓缓", "慢慢", "轻轻", "静静", "默默", "紧紧", "小心", "谨慎", "快速", "迅速", "突然",
+    "随后", "随即", "继续", "开始", "已经", "正在", "仍然", "最终", "终于", "依旧",
 }
 
 
@@ -7114,7 +7126,8 @@ def _director_current_action_actor(
     value: Any,
 ) -> dict[str, str]:
     """Identify an explicit clause-leading actor in a current_action value."""
-    source = _text(value, 12000).lstrip(" \t\r\n'\"“”‘’（(【[")
+    source = _text(value, 12000).lstrip(" \t\r\n'\"“”‘’（(【[*#>-")
+    source = re.sub(r"^(?:current\s+action|action|当前行动)\s*[:：]\s*", "", source, flags=re.IGNORECASE)
     if not source:
         return {}
 
