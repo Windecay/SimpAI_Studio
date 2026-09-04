@@ -4098,7 +4098,7 @@ packages = {'base_package': {'id': 1,
  'minimax_h3_package': {'id': 47,
                         'name': '[47]MiniMax H3文生、图生、多参考图原生音视频模型包',
                         'note': 'MiniMax H3文生视频、首尾帧图生视频、多参考图视频生成模型包，输出原生音频|显存需求：★★★★ 速度：★',
-                        'files': ['diffusion_models,minimax_h3_fl2va_pruned_int8_convrot.safetensors,20970379616,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'files': ['diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
                                   'loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
                                   'text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                                   'vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors',
@@ -4174,6 +4174,7 @@ OBSOLETE_MODELS = [
     'nsfw_wan_umt5-xxl_bf16_fixed.safetensors',
     'minimax_h3_video_vae_fp16.safetensors',
     'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+    'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
 ]
 
 MODELSCOPE_FILE_CACHE = {}

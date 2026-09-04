@@ -6770,16 +6770,30 @@ def _director_resolve_character_id(
             local_ambiguous = True
 
     # A valid-looking model id is not enough to override a patch that names a
-    # different affected character. Resolve the patch's own evidence first;
-    # otherwise a stale or hallucinated id can redirect Olga's state to the
-    # currently speaking character.
+    # different affected character. Resolve the patch's own evidence first.
+    # The attribution text contains the whole turn (often several characters
+    # and several actions), so it must not be used to assign state_text,
+    # appearance, condition, or state_fields to the only character that
+    # happened to be mentioned there.
     attribution_source = _text(attribution_text, 12000)
-    mentioned, preferred = text_candidates(attribution_source)
-    if len(preferred) == 1:
-        return next(iter(preferred)), "director_character_target_id_repaired"
-    if field_key not in {"current_action", "action"} and len(mentioned) == 1:
-        return next(iter(mentioned)), "director_character_target_id_repaired"
-    if local_ambiguous or mentioned:
+    if field_key in {"current_action", "action"}:
+        attribution_actor = _director_explicit_action_actor_from_attribution(
+            normalized,
+            attribution_source,
+            present_ids=present_ids,
+        )
+        if attribution_actor.get("entity_type") == "character":
+            actor_id = _text(attribution_actor.get("entity_id"), 160)
+            if actor_id in characters and actor_id in present_ids:
+                return actor_id, "director_character_target_id_repaired"
+
+    if local_ambiguous:
+        return "", "director_character_target_ambiguous"
+    attribution_mentions = _director_entity_mentions(
+        normalized,
+        attribution_source,
+    ).intersection(present_ids)
+    if len(attribution_mentions) > 1:
         return "", "director_character_target_ambiguous"
 
     family = _director_id_family(requested)
@@ -7225,6 +7239,47 @@ def _director_current_action_actor(
     return {}
 
 
+def _director_explicit_action_actor_from_attribution(
+    normalized: dict[str, Any],
+    value: Any,
+    *,
+    present_ids: set[str] | None = None,
+) -> dict[str, str]:
+    """Find one explicit action actor across attribution clauses.
+
+    Attribution normally contains both sides of a turn. Only a single,
+    clause-leading registered character is safe to reuse for an action patch;
+    a name mentioned elsewhere in the turn is not enough.
+    """
+    source = _text(value, 16000)
+    if not source:
+        return {}
+    allowed = (
+        set(normalized.get("characters", {}).keys())
+        if present_ids is None
+        else set(present_ids)
+    )
+    candidates: dict[tuple[str, str], dict[str, str]] = {}
+    for clause in re.split(r"[\n。！？!?；;]+", source):
+        actor = _director_current_action_actor(normalized, clause)
+        entity_type = _text(actor.get("entity_type"), 40)
+        entity_id = _text(actor.get("entity_id"), 160)
+        if entity_type == "character" and entity_id in allowed:
+            candidates[(entity_type, entity_id)] = actor
+        elif entity_type in {"player", "ambiguous", "unknown"}:
+            # A competing explicit actor makes the attribution unsafe for a
+            # character patch, even when another clause names a character.
+            candidates[(entity_type, entity_id)] = actor
+    character_candidates = [
+        actor
+        for (entity_type, _entity_id), actor in candidates.items()
+        if entity_type == "character"
+    ]
+    if len(candidates) == 1 and len(character_candidates) == 1:
+        return character_candidates[0]
+    return {}
+
+
 def _director_character_is_affected_subject(
     normalized: dict[str, Any],
     value: Any,
@@ -7476,6 +7531,41 @@ def _director_explicit_target_from_text(
                 "field": "state_fields",
             }
     return None
+
+
+def _director_target_attribution_evidence(
+    normalized: dict[str, Any],
+    value: Any,
+    entity_type: str,
+    entity_id: str,
+) -> str:
+    """Keep only attribution clauses that mention the requested entity."""
+    source = _text(value, 12000)
+    if not source or not entity_id:
+        return ""
+    if entity_type == "player":
+        persona = normalized.get("persona", {})
+        aliases = [
+            _text(persona.get("id"), 160),
+            *_director_name_aliases(persona.get("name")),
+            "玩家", "我", "我的", "我们", "你", "你的", "你们", "您",
+        ]
+    elif entity_type == "character":
+        card = normalized.get("characters", {}).get(entity_id, {})
+        aliases = _director_character_aliases(entity_id, card)
+    else:
+        return ""
+    aliases = sorted({item for item in aliases if item}, key=len, reverse=True)
+    if not aliases:
+        return ""
+    clauses = []
+    for clause in re.split(r"[\n。！？!?；;]+", source):
+        clause = _text(clause, 1200)
+        if clause and any(_director_alias_matches(clause, alias) for alias in aliases):
+            clauses.append(clause)
+    if not clauses:
+        return ""
+    return "\n".join(clauses[:4])[:3600]
 
 
 def _numeric_effect_state_updates(
@@ -8949,17 +9039,10 @@ def _director_patch_target(
         warnings.append(internal_repair_warning)
     if internal_repair_evidence and internal_repair_evidence not in patch_text:
         patch_text = "\n".join(item for item in (patch_text, internal_repair_evidence) if item)
-    explicit_target = _director_explicit_target_from_text(
-        normalized,
-        "\n".join(
-            item
-            for item in (
-                patch_text,
-                _text(attribution_scope, 10000),
-            )
-            if item
-        ),
-    )
+    # Explicit target directives belong to this patch. Reading the first
+    # "目标实体" from the whole turn can redirect every sibling patch to one
+    # character.
+    explicit_target = _director_explicit_target_from_text(normalized, patch_text)
     if explicit_target:
         _explicit_path, explicit_descriptor = explicit_target
         explicit_type = explicit_descriptor.get("entity_type")
@@ -9030,10 +9113,6 @@ def _director_patch_target(
                 normalized,
                 patch_text,
             ).intersection(present_ids)
-            affected_attribution_character_ids = _director_affected_character_ids(
-                normalized,
-                attribution_scope,
-            ).intersection(present_ids)
             patch_character_ids = {
                 character_id
                 for character_id in _director_entity_mentions(normalized, patch_text).intersection(present_ids)
@@ -9044,10 +9123,6 @@ def _director_patch_target(
                 inferred_character_id = next(iter(affected_patch_character_ids))
             elif len(patch_character_ids) == 1:
                 inferred_character_id = next(iter(patch_character_ids))
-            elif len(affected_attribution_character_ids) == 1:
-                inferred_character_id = next(iter(affected_attribution_character_ids))
-            elif len(present_ids) == 1 and not _director_entity_mentions(normalized, patch_text):
-                inferred_character_id = next(iter(present_ids))
             player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
             if inferred_character_id and not player_condition and player_id not in patch_mentions:
                 requested_type = "character"
@@ -9178,7 +9253,12 @@ def _director_patch_target(
         "field": requested_field,
     }
     if not _text(patch.get("evidence"), 1200) and not internal_repair_evidence:
-        attribution_evidence = _text(attribution_text, 8000)
+        attribution_evidence = _director_target_attribution_evidence(
+            normalized,
+            attribution_text,
+            requested_type,
+            requested_id,
+        )
         if attribution_evidence:
             attribution_mentions = _director_entity_mentions(normalized, attribution_evidence)
             if requested_type == "player":

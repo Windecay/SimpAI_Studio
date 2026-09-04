@@ -31321,9 +31321,9 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 modelDependency: {
                     mode: 'requires_models',
                     label: t('Requires H3 models', '需要 H3 模型'),
-                    note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, and both H3 VAEs.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器和两个 H3 VAE。'),
+                    note: t('Requires the MiniMax H3 hybrid FL2VA/Ref2VA model, Qwen3-VL text encoder, and both H3 VAEs.', '需要 MiniMax H3 FL2VA/Ref2VA 混合模型、Qwen3-VL 文本编码器和两个 H3 VAE。'),
                     models: [
-                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                         'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
@@ -31342,9 +31342,9 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 modelDependency: {
                     mode: 'requires_models',
                     label: t('Requires images + H3 models', '需要图片和 H3 模型'),
-                    note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, both H3 VAEs, and a first-frame image.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE 和一张首帧图。'),
+                    note: t('Requires the MiniMax H3 hybrid FL2VA/Ref2VA model, Qwen3-VL text encoder, both H3 VAEs, and a first-frame image.', '需要 MiniMax H3 FL2VA/Ref2VA 混合模型、Qwen3-VL 文本编码器、两个 H3 VAE 和一张首帧图。'),
                     models: [
-                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                         'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'
@@ -31363,9 +31363,9 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 modelDependency: {
                     mode: 'requires_models',
                     label: t('Requires media + H3 models', '需要参考媒体和 H3 模型'),
-                    note: t('Requires the MiniMax H3 FL2VA model, Qwen3-VL text encoder, both H3 VAEs, and at least one image, video, or audio reference.', '需要 MiniMax H3 FL2VA 模型、Qwen3-VL 文本编码器、两个 H3 VAE，以及至少一个图片、视频或音频参考。'),
+                    note: t('Requires the MiniMax H3 hybrid FL2VA/Ref2VA model, Qwen3-VL text encoder, both H3 VAEs, and at least one image, video, or audio reference.', '需要 MiniMax H3 FL2VA/Ref2VA 混合模型、Qwen3-VL 文本编码器、两个 H3 VAE，以及至少一个图片、视频或音频参考。'),
                     models: [
-                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
                         'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                         'minimax_h3_video_vae_int8_convrot.safetensors',
@@ -31388,7 +31388,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     label: t('Requires H3 models', '需要 H3 模型'),
                     note: t('Requires the MiniMax H3 T2V model set. Each shot generates video and audio before Timeline composition.', '需要 MiniMax H3 文生视频模型组。每个分镜先生成视频和音频，再进入 Timeline 合成。'),
                     models: [
-                        'minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+                        'minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors',
                         'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
                         'minimax_h3_video_vae_int8_convrot.safetensors',
                         'minimax_h3_audio_vae_fp32.safetensors'

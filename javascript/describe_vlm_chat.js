@@ -1671,26 +1671,92 @@
         };
     }
 
+    function mergeRoleplayValuePreservingMissing(baseValue, incomingValue) {
+        if (incomingValue === undefined) return cloneRoleplayDraftValue(baseValue);
+        if (incomingValue === null || typeof incomingValue !== 'object') {
+            return cloneRoleplayDraftValue(incomingValue);
+        }
+        if (Array.isArray(incomingValue)) return cloneRoleplayDraftValue(incomingValue);
+        const base = baseValue && typeof baseValue === 'object' && !Array.isArray(baseValue)
+            ? baseValue
+            : {};
+        const merged = Object.assign({}, base);
+        Object.keys(incomingValue).forEach((key) => {
+            merged[key] = mergeRoleplayValuePreservingMissing(base[key], incomingValue[key]);
+        });
+        return merged;
+    }
+
+    function roleplaySessionStateVersion(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const story = source.story_state && typeof source.story_state === 'object' ? source.story_state : {};
+        return Math.max(
+            0,
+            Math.round(Number(source.state_version) || 0),
+            Math.round(Number(story.state_version) || 0)
+        );
+    }
+
     function mergeRoleplaySessionCharacterCards(currentValue, incomingValue, conversationId = '') {
         const current = normalizeRoleplaySession(currentValue, conversationId);
-        const incoming = normalizeRoleplaySession(incomingValue, conversationId);
-        const characters = Object.assign({}, incoming.characters || {});
-        Object.entries(current.characters || {}).forEach(([id, card]) => {
-            characters[id] = characters[id]
-                ? mergeRoleplayCharacterCardLayers(card, characters[id])
-                : card;
+        const incomingSource = incomingValue && typeof incomingValue === 'object' ? incomingValue : {};
+        const incoming = normalizeRoleplaySession(incomingSource, conversationId);
+        const merged = mergeRoleplayValuePreservingMissing(current, incomingSource);
+        const characters = Object.assign({}, current.characters || {});
+        const incomingCharacters = incomingSource.characters && typeof incomingSource.characters === 'object'
+            ? incomingSource.characters
+            : {};
+        Object.entries(incomingCharacters).forEach(([id, rawCard]) => {
+            const key = String(rawCard?.id || id || '').trim();
+            if (!key) return;
+            const existing = characters[key] || { id: key };
+            characters[key] = mergeRoleplayCharacterCardLayers(existing, Object.assign({}, rawCard, { id: key }));
         });
-        const requestedActiveId = String(incomingValue?.active_character_id || '').trim();
+        const rawCharacter = incomingSource.character && typeof incomingSource.character === 'object'
+            ? incomingSource.character
+            : null;
+        if (rawCharacter) {
+            const key = String(rawCharacter.id || incomingSource.active_character_id || current.active_character_id || '').trim();
+            if (key) {
+                characters[key] = mergeRoleplayCharacterCardLayers(
+                    characters[key] || { id: key },
+                    Object.assign({}, rawCharacter, { id: key })
+                );
+            }
+        }
+        const incomingResourceStores = [
+            ['world_book', 'entries'],
+            ['memory_store', 'items'],
+            ['chapters', 'items']
+        ];
+        incomingResourceStores.forEach(([storeKey, listKey]) => {
+            const incomingStore = incomingSource[storeKey];
+            const currentStore = current[storeKey];
+            if (
+                incomingStore
+                && typeof incomingStore === 'object'
+                && Array.isArray(incomingStore[listKey])
+                && incomingStore[listKey].length === 0
+                && Array.isArray(currentStore?.[listKey])
+                && currentStore[listKey].length > 0
+            ) {
+                merged[storeKey] = Object.assign({}, merged[storeKey], {
+                    [listKey]: cloneRoleplayDraftValue(currentStore[listKey])
+                });
+            }
+        });
+        merged.characters = characters;
+        const requestedActiveId = String(incomingSource.active_character_id || '').trim();
         const activeCharacterId = requestedActiveId && characters[requestedActiveId]
             ? requestedActiveId
-            : current.active_character_id || incoming.active_character_id;
-        return normalizeRoleplaySession(Object.assign({}, incoming, {
-            id: incoming.id || current.id,
-            conversation_id: conversationId || incoming.conversation_id || current.conversation_id,
-            characters,
-            active_character_id: activeCharacterId,
-            character: characters[activeCharacterId] || current.character || incoming.character
-        }), conversationId);
+            : current.active_character_id && characters[current.active_character_id]
+                ? current.active_character_id
+                : incoming.active_character_id;
+        merged.active_character_id = activeCharacterId;
+        merged.character = characters[activeCharacterId] || current.character || incoming.character;
+        merged.id = String(merged.id || current.id || incoming.id || '').trim();
+        merged.conversation_id = conversationId || merged.conversation_id || current.conversation_id || incoming.conversation_id;
+        return normalizeRoleplaySession(merged, conversationId);
     }
 
     function roleplayReferenceIds(session, owner, characterId = '') {
@@ -2491,14 +2557,35 @@
             : `<span class="describe-vlm-chat-roleplay-participant-empty">${escapeHtml(emptyLabel)}</span>`;
     }
 
+    function roleplayReplySpeakerIdForRuntime(runtime, session = null, preferredId = '') {
+        const normalized = normalizeRoleplaySession(session || runtime?.roleplaySession);
+        const activeId = String(normalized.active_character_id || normalized.character?.id || '').trim();
+        const presentIds = Array.isArray(normalized.story_state?.scene?.present_character_ids)
+            ? normalized.story_state.scene.present_character_ids
+                .map((id) => String(id || '').trim())
+                .filter((id) => id && normalized.characters?.[id])
+            : [];
+        const allowedIds = new Set(presentIds.length ? presentIds : (activeId ? [activeId] : []));
+        const candidates = [
+            preferredId,
+            runtime?.roleplayReplySpeakerId,
+            activeId,
+            ...presentIds
+        ].map((id) => String(id || '').trim()).filter(Boolean);
+        for (const candidate of candidates) {
+            if (allowedIds.has(candidate) && normalized.characters?.[candidate]) return candidate;
+        }
+        return '';
+    }
+
     function renderRoleplayParticipantSummary(runtime) {
         const target = runtime || currentConversationRuntime();
         const session = normalizeRoleplaySession(target?.roleplaySession, target?.conversationId);
         const participants = roleplayParticipantEntriesFromNormalized(session);
         const present = participants.filter((item) => item.is_present);
         const absent = participants.filter((item) => !item.is_present);
-        const nextSpeaker = participants.find((item) => item.entity_type === 'character' && item.id === session.active_character_id)
-            || participants.find((item) => item.entity_type === 'character')
+        const nextSpeakerId = roleplayReplySpeakerIdForRuntime(target, session);
+        const nextSpeaker = participants.find((item) => item.entity_type === 'character' && item.id === nextSpeakerId)
             || null;
         const player = participants.find((item) => item.entity_type === 'player');
         const playerNotice = player && !player.is_present
@@ -2507,8 +2594,8 @@
         const presentZoneLabel = localText('Characters present in the scene. Drop a participant here.', '当前在场角色。将角色拖到这里入场。');
         const absentZoneLabel = localText('Characters absent from the scene. Drop a participant here.', '当前离场角色。将角色拖到这里离场。');
         return `<div class="describe-vlm-chat-roleplay-participant-summary" data-describe-vlm-chat-roleplay-participant-summary aria-live="polite">
-  <span class="describe-vlm-chat-roleplay-participant-group is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="present" role="group" aria-label="${escapeHtml(presentZoneLabel)}" title="${escapeHtml(presentZoneLabel)}"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
-  <span class="describe-vlm-chat-roleplay-participant-group is-absent is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="absent" role="group" aria-label="${escapeHtml(absentZoneLabel)}" title="${escapeHtml(absentZoneLabel)}"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: session.active_character_id })}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="present" role="group" aria-label="${escapeHtml(presentZoneLabel)}" title="${escapeHtml(presentZoneLabel)}"><b>${escapeHtml(localText('Present', '在场'))}</b><span>${renderRoleplayParticipantChips(present, localText('None', '无'), { activeSpeakerId: nextSpeakerId })}</span></span>
+  <span class="describe-vlm-chat-roleplay-participant-group is-absent is-presence-drop-zone" data-describe-vlm-chat-roleplay-presence-zone="absent" role="group" aria-label="${escapeHtml(absentZoneLabel)}" title="${escapeHtml(absentZoneLabel)}"><b>${escapeHtml(localText('Absent', '离场'))}</b><span>${renderRoleplayParticipantChips(absent, localText('None', '无'), { activeSpeakerId: nextSpeakerId })}</span></span>
   <span class="describe-vlm-chat-roleplay-current-speaker"><b>${escapeHtml(roleplayDictionaryText('Next reply'))}</b><span data-describe-vlm-chat-roleplay-next-speaker>${escapeHtml(nextSpeaker?.name || localText('Not selected', '未选择'))}</span></span>
   ${playerNotice}
 </div>`;
@@ -2852,6 +2939,7 @@
         roleplayBranches: [],
         roleplayPanelOpen: false,
         roleplayTurnIntent: 'auto',
+        roleplayReplySpeakerId: '',
         roleplayAutoplayState: normalizeRoleplayAutoplayState(null),
         customSystemPrompt: savedChatSettings.customSystemPrompt,
         maxTokens: savedChatSettings.maxTokens,
@@ -2967,6 +3055,7 @@
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(source.roleplayFormDraftUndo),
             roleplayPanelOpen: !!source.roleplayPanelOpen,
             roleplayTurnIntent: normalizeRoleplayTurnIntentSetting(source.roleplayTurnIntent || source.roleplay_turn_intent),
+            roleplayReplySpeakerId: String(source.roleplayReplySpeakerId || source.roleplay_reply_speaker_id || '').trim().slice(0, 160),
             roleplayAutoplayState: normalizeRoleplayAutoplayState(source.roleplayAutoplayState),
             customSystemPrompt: storedText(source, [
                 'customSystemPrompt', 'custom_system_prompt', 'userSystemPrompt', 'user_system_prompt',
@@ -3052,7 +3141,21 @@
         const refreshFromSource = !!runtime && sourceIsPersisted && sourceHasHistory
             && !runtimeHasLiveWork && !runtimeHasUnsavedChanges;
         if (!runtime || forceRefresh || refreshFromSource) {
-            runtime = createConversationRuntime(Object.assign({}, source || {}, { conversationId: id }));
+            const refreshedSource = Object.assign({}, source || {}, { conversationId: id });
+            if (runtime && refreshFromSource && !forceRefresh) {
+                refreshedSource.messages = Array.isArray(source?.archiveMessages)
+                    ? source.archiveMessages
+                    : (Array.isArray(runtime.messages) && runtime.messages.length ? runtime.messages : source?.messages);
+                refreshedSource.archiveMessages = Array.isArray(source?.archiveMessages)
+                    ? source.archiveMessages
+                    : runtime.archiveMessages;
+                refreshedSource.roleplaySession = mergeRoleplaySessionCharacterCards(
+                    runtime.roleplaySession,
+                    source?.roleplaySession || source?.roleplay_session,
+                    id
+                );
+            }
+            runtime = createConversationRuntime(refreshedSource);
             state.conversationRuntimes.set(id, runtime);
         }
         return runtime;
@@ -3069,6 +3172,7 @@
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
             roleplayTurnIntent: state.roleplayTurnIntent,
+            roleplayReplySpeakerId: state.roleplayReplySpeakerId,
             roleplayAutoplayState: state.roleplayAutoplayState,
             customSystemPrompt: state.customSystemPrompt,
             systemPromptTemplateId: state.systemPromptTemplateId,
@@ -3105,6 +3209,7 @@
             roleplaySession: source.copyRoleplayState ? source.roleplaySession : null,
             roleplayBranches: source.copyRoleplayState ? source.roleplayBranches : [],
             roleplayTurnIntent: 'auto',
+            roleplayReplySpeakerId: source.copyRoleplayState ? source.roleplayReplySpeakerId : '',
             customSystemPrompt: source.customSystemPrompt,
             systemPromptTemplateId: source.systemPromptTemplateId,
             systemPromptPickerValue: source.systemPromptPickerValue,
@@ -3144,6 +3249,18 @@
 
     function syncCurrentRuntimeFromState() {
         const runtime = currentConversationRuntime();
+        const stateSession = state.roleplaySession && typeof state.roleplaySession === 'object'
+            ? state.roleplaySession
+            : null;
+        const runtimeSession = runtime.roleplaySession && typeof runtime.roleplaySession === 'object'
+            ? runtime.roleplaySession
+            : null;
+        let roleplaySession = stateSession || runtimeSession;
+        if (stateSession && runtimeSession && stateSession !== runtimeSession) {
+            roleplaySession = roleplaySessionStateVersion(runtimeSession) > roleplaySessionStateVersion(stateSession)
+                ? normalizeRoleplaySession(runtimeSession, runtime.conversationId)
+                : mergeRoleplaySessionCharacterCards(runtimeSession, stateSession, runtime.conversationId);
+        }
         Object.assign(runtime, {
             conversationId: state.conversationId,
             messages: state.messages,
@@ -3151,10 +3268,11 @@
             lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
             describeMediaReferencePromise: state.describeMediaReferencePromise,
             chatMode: state.chatMode,
-            roleplaySession: state.roleplaySession,
+            roleplaySession,
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
             roleplayTurnIntent: state.roleplayTurnIntent,
+            roleplayReplySpeakerId: state.roleplayReplySpeakerId,
             roleplayAutoplayState: state.roleplayAutoplayState,
             customSystemPrompt: state.customSystemPrompt,
             systemPromptTemplateId: state.systemPromptTemplateId,
@@ -3182,6 +3300,9 @@
             persistenceSavedAt: state.persistenceSavedAt,
             persistenceDirty: state.persistenceDirty
         });
+        if (isCurrentConversationRuntime(runtime) && roleplaySession) {
+            state.roleplaySession = runtime.roleplaySession;
+        }
         return runtime;
     }
 
@@ -3197,6 +3318,7 @@
         state.roleplayBranches = normalizeRoleplayBranches(runtime.roleplayBranches, runtime.conversationId);
         state.roleplayPanelOpen = !!runtime.roleplayPanelOpen;
         state.roleplayTurnIntent = normalizeRoleplayTurnIntentSetting(runtime.roleplayTurnIntent);
+        state.roleplayReplySpeakerId = String(runtime.roleplayReplySpeakerId || '').trim().slice(0, 160);
         state.roleplayAutoplayState = normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState);
         state.customSystemPrompt = runtime.customSystemPrompt;
         state.systemPromptTemplateId = runtime.systemPromptTemplateId;
@@ -4637,10 +4759,8 @@
             setConversationStatus(target, localText('The selected library character could not be loaded.', '选中的角色库角色无法加载。'), true);
             return false;
         }
-        let session = applyVisibleRoleplayCharacterFields(
-            normalizeRoleplaySession(target.roleplaySession, target.conversationId),
-            modal
-        );
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const currentId = session.active_character_id;
         const currentCard = session.characters?.[currentId] || session.character;
         const targetId = roleplayCharacterHasDetails(currentCard) ? roleplayCharacterIdForLibraryCard(session, response.character.id) : currentId;
@@ -4689,11 +4809,8 @@
 
     async function saveRoleplayCharacterToLibrary(runtime = currentConversationRuntime(), modal = document.getElementById('describe_vlm_chat_modal')) {
         const target = runtime || currentConversationRuntime();
-        let session = applyVisibleRoleplayCharacterFields(
-            normalizeRoleplaySession(target.roleplaySession, target.conversationId),
-            modal,
-            true
-        );
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         await ensureRoleplayCharacterLibrary(modal).catch(() => []);
         const sourceCard = session.characters?.[session.active_character_id] || session.character;
         const card = normalizeRoleplayCharacterLibraryCard(sourceCard);
@@ -6524,10 +6641,8 @@
 
     function switchRoleplayCharacter(runtime, modal, characterId) {
         const target = runtime || currentConversationRuntime();
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const nextId = String(characterId || '').trim();
         if (!nextId || !session.characters?.[nextId]) return false;
         session.active_character_id = nextId;
@@ -6559,9 +6674,10 @@
             setConversationStatus(target, roleplayDictionaryText('Only characters present in the current scene can be selected for the next reply.'));
             return false;
         }
-        if (!switchRoleplayCharacter(target, modal, nextId)) return false;
-        const updated = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        const name = String(updated.characters?.[nextId]?.name || nextId).trim();
+        target.roleplayReplySpeakerId = nextId.slice(0, 160);
+        if (isCurrentConversationRuntime(target)) state.roleplayReplySpeakerId = target.roleplayReplySpeakerId;
+        syncRoleplayControls(modal, target);
+        const name = String(session.characters?.[nextId]?.name || nextId).trim();
         setConversationStatus(target, `${roleplayDictionaryText('Next reply')}: ${name}`);
         modal?.querySelector('[data-describe-vlm-chat-input]')?.focus?.();
         return true;
@@ -6576,6 +6692,85 @@
         };
     }
 
+    function roleplayFormSnapshotForRuntime(runtime, session) {
+        const snapshot = runtime?.roleplayFormSnapshot;
+        const activeId = String(session?.active_character_id || session?.character?.id || '').trim();
+        return snapshot && snapshot.active_character_id === activeId ? snapshot : null;
+    }
+
+    function roleplayFormValueAtPath(source, path) {
+        const parts = Array.isArray(path)
+            ? path
+            : String(path || '').split('.');
+        return parts.filter(Boolean).reduce(
+            (value, key) => value === undefined || value === null ? undefined : value[key],
+            source
+        );
+    }
+
+    function roleplayVisibleFormValueAtPath(modal, path) {
+        const parts = (Array.isArray(path) ? path : String(path || '').split('.')).filter(Boolean);
+        const key = parts.join('.');
+        const selectors = {
+            'character.name': '[data-describe-vlm-chat-roleplay-character-name]',
+            'character.appearance': '[data-describe-vlm-chat-roleplay-character-appearance]',
+            'character.identity': '[data-describe-vlm-chat-roleplay-character-identity]',
+            'character.style': '[data-describe-vlm-chat-roleplay-character-style]',
+            'character_state.appearance': '[data-describe-vlm-chat-roleplay-character-current-appearance]',
+            'character_state.state_text': '[data-describe-vlm-chat-roleplay-character-state-text]',
+            'character_state.current_action': '[data-describe-vlm-chat-roleplay-character-current-action]',
+            'player.name': '[data-describe-vlm-chat-roleplay-persona-name]',
+            'player.appearance': '[data-describe-vlm-chat-roleplay-persona-appearance]',
+            'player.identity': '[data-describe-vlm-chat-roleplay-persona-identity]',
+            'player.status': '[data-describe-vlm-chat-roleplay-player-status]',
+            'player.current_appearance': '[data-describe-vlm-chat-roleplay-player-current-appearance]',
+            'player.state_text': '[data-describe-vlm-chat-roleplay-player-state-text]',
+            'scene.location': '[data-describe-vlm-chat-roleplay-scene-location]',
+            'scene.time': '[data-describe-vlm-chat-roleplay-scene-time]',
+            'scene.current_event': '[data-describe-vlm-chat-roleplay-scene-event]'
+        };
+        if (key === 'character_state.state_fields') return visibleRoleplayCharacterStateFields(modal);
+        if (key === 'player.state_fields') return visibleRoleplayPlayerStateFields(modal);
+        if (key === 'scene.present_character_ids') {
+            return Array.from(modal?.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]:checked') || [])
+                .map((input) => String(input.value || '').trim())
+                .filter(Boolean)
+                .slice(0, MAX_ROLEPLAY_CHARACTERS);
+        }
+        const selector = selectors[key];
+        if (!selector) return undefined;
+        const field = modal?.querySelector(selector);
+        return field ? String(field.value || '').trim() : undefined;
+    }
+
+    function roleplayFormValueHasPendingEdit(runtime, session, path, value, modal = document.getElementById('describe_vlm_chat_modal')) {
+        const snapshot = roleplayFormSnapshotForRuntime(runtime, session);
+        if (!snapshot) return false;
+        const previous = roleplayFormValueAtPath(snapshot, path);
+        if (previous === undefined) return false;
+        const visible = roleplayVisibleFormValueAtPath(modal, path);
+        if (visible === undefined) return false;
+        return JSON.stringify(previous) !== JSON.stringify(visible);
+    }
+
+    function syncRoleplayPresenceControls(modal, runtime = null) {
+        if (!modal) return;
+        const target = runtime || currentConversationRuntime();
+        const session = normalizeRoleplaySession(target?.roleplaySession, target?.conversationId);
+        const participantSummary = modal.querySelector('[data-describe-vlm-chat-roleplay-participant-summary]');
+        if (participantSummary) participantSummary.outerHTML = renderRoleplayParticipantSummary(target);
+        const playerStatus = modal.querySelector('[data-describe-vlm-chat-roleplay-player-status]');
+        const playerState = normalizeRoleplayPlayerState(session.story_state?.player_state);
+        if (
+            playerStatus
+            && document.activeElement !== playerStatus
+            && !roleplayFormValueHasPendingEdit(target, session, ['player', 'status'], playerState.status)
+        ) {
+            playerStatus.value = playerState.status;
+        }
+        renderRoleplaySceneCharacterSelector(modal, session);
+    }
+
     function setRoleplayParticipantPresence(runtime, modal, participantId, status) {
         const target = runtime || currentConversationRuntime();
         const nextStatus = status === 'present' ? 'present' : 'absent';
@@ -6587,9 +6782,6 @@
             return false;
         }
         let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
         const playerId = String(session.persona?.id || 'player').trim() || 'player';
         let participantName = id;
         if (id === playerId) {
@@ -6616,11 +6808,15 @@
             }
             session.story_state.scene.present_character_ids = Array.from(presentSet).slice(0, MAX_ROLEPLAY_CHARACTERS);
         }
+        if (nextStatus !== 'present' && target.roleplayReplySpeakerId === id) {
+            target.roleplayReplySpeakerId = '';
+            if (isCurrentConversationRuntime(target)) state.roleplayReplySpeakerId = '';
+        }
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
         if (isCurrentConversationRuntime(target)) state.roleplaySession = target.roleplaySession;
         scheduleConversationPersist(target, 'roleplay_presence', 'soon');
-        syncRoleplayControls(modal, target);
+        syncRoleplayPresenceControls(modal, target);
         setConversationStatus(
             target,
             `${participantName}: ${nextStatus === 'present' ? localText('Present', '已入场') : localText('Absent', '已离场')}`
@@ -6630,10 +6826,8 @@
 
     function addRoleplayCharacter(runtime, modal) {
         const target = runtime || currentConversationRuntime();
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const characters = session.characters || {};
         if (Object.keys(characters).length >= MAX_ROLEPLAY_CHARACTERS) {
             setConversationStatus(target, localText('The roleplay session already has the maximum number of characters.', '角色扮演会话已达到角色数量上限。'), true);
@@ -6657,10 +6851,8 @@
 
     function removeRoleplayCharacter(runtime, modal) {
         const target = runtime || currentConversationRuntime();
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const ids = Object.keys(session.characters || {});
         if (ids.length <= 1) {
             setConversationStatus(target, localText('At least one character is required.', '至少需要保留一个角色。'), true);
@@ -6755,42 +6947,67 @@
             if (hiddenResourceManager) clearRoleplayResourceManager(hiddenResourceManager);
             return;
         }
-        const setValue = (selector, value) => {
+        const setValue = (selector, value, path) => {
             const element = modal.querySelector(selector);
-            if (element && document.activeElement !== element) element.value = String(value || '');
+            const nextValue = String(value || '');
+            if (
+                element
+                && document.activeElement !== element
+                && !roleplayFormValueHasPendingEdit(runtime, session, path, nextValue)
+            ) element.value = nextValue;
         };
         renderRoleplayCharacterSelector(modal, session);
         syncRoleplayCharacterGuidance(modal, session);
-        setValue('[data-describe-vlm-chat-roleplay-character-name]', session.character.name);
-        setValue('[data-describe-vlm-chat-roleplay-character-appearance]', session.character.appearance);
-        setValue('[data-describe-vlm-chat-roleplay-character-identity]', [session.character.identity, session.character.background].filter(Boolean).join('\n\n'));
-        setValue('[data-describe-vlm-chat-roleplay-character-style]', [session.character.personality, session.character.speech_style].filter(Boolean).join('\n\n'));
+        setValue('[data-describe-vlm-chat-roleplay-character-name]', session.character.name, ['character', 'name']);
+        setValue('[data-describe-vlm-chat-roleplay-character-appearance]', session.character.appearance, ['character', 'appearance']);
+        setValue('[data-describe-vlm-chat-roleplay-character-identity]', [session.character.identity, session.character.background].filter(Boolean).join('\n\n'), ['character', 'identity']);
+        setValue('[data-describe-vlm-chat-roleplay-character-style]', [session.character.personality, session.character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style']);
         const activeCharacterRuntime = session.story_state.characters?.[session.active_character_id] || {};
-        setValue('[data-describe-vlm-chat-roleplay-character-current-appearance]', activeCharacterRuntime.appearance);
-        setValue('[data-describe-vlm-chat-roleplay-character-state-text]', activeCharacterRuntime.state_text);
-        setValue('[data-describe-vlm-chat-roleplay-character-current-action]', activeCharacterRuntime.current_action);
+        setValue('[data-describe-vlm-chat-roleplay-character-current-appearance]', activeCharacterRuntime.appearance, ['character_state', 'appearance']);
+        setValue('[data-describe-vlm-chat-roleplay-character-state-text]', activeCharacterRuntime.state_text, ['character_state', 'state_text']);
+        setValue('[data-describe-vlm-chat-roleplay-character-current-action]', activeCharacterRuntime.current_action, ['character_state', 'current_action']);
         const stateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-state-fields]');
-        if (stateFields && !stateFields.contains(document.activeElement)) {
+        if (
+            stateFields
+            && !stateFields.contains(document.activeElement)
+            && !roleplayFormValueHasPendingEdit(runtime, session, ['character_state', 'state_fields'], activeCharacterRuntime.state_fields)
+        ) {
             delete stateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayCharacterStateFields(modal, activeCharacterRuntime.state_fields);
         }
-        setValue('[data-describe-vlm-chat-roleplay-persona-name]', session.persona.name);
-        setValue('[data-describe-vlm-chat-roleplay-persona-appearance]', session.persona.appearance);
-        setValue('[data-describe-vlm-chat-roleplay-persona-identity]', [session.persona.identity, session.persona.goals.join(', ')].filter(Boolean).join('\n\n'));
+        setValue('[data-describe-vlm-chat-roleplay-persona-name]', session.persona.name, ['player', 'name']);
+        setValue('[data-describe-vlm-chat-roleplay-persona-appearance]', session.persona.appearance, ['player', 'appearance']);
+        setValue('[data-describe-vlm-chat-roleplay-persona-identity]', [session.persona.identity, session.persona.goals.join(', ')].filter(Boolean).join('\n\n'), ['player', 'identity']);
         const playerState = normalizeRoleplayPlayerState(session.story_state.player_state);
         const playerStatus = modal.querySelector('[data-describe-vlm-chat-roleplay-player-status]');
-        if (playerStatus && document.activeElement !== playerStatus) playerStatus.value = playerState.status;
-        setValue('[data-describe-vlm-chat-roleplay-player-current-appearance]', playerState.appearance);
-        setValue('[data-describe-vlm-chat-roleplay-player-state-text]', playerState.state_text);
+        if (
+            playerStatus
+            && document.activeElement !== playerStatus
+            && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'status'], playerState.status)
+        ) playerStatus.value = playerState.status;
+        setValue('[data-describe-vlm-chat-roleplay-player-current-appearance]', playerState.appearance, ['player', 'current_appearance']);
+        setValue('[data-describe-vlm-chat-roleplay-player-state-text]', playerState.state_text, ['player', 'state_text']);
         const playerStateFields = modal.querySelector('[data-describe-vlm-chat-roleplay-player-state-fields]');
-        if (playerStateFields && !playerStateFields.contains(document.activeElement)) {
+        if (
+            playerStateFields
+            && !playerStateFields.contains(document.activeElement)
+            && !roleplayFormValueHasPendingEdit(runtime, session, ['player', 'state_fields'], playerState.state_fields)
+        ) {
             delete playerStateFields.dataset.roleplayStateFieldsCleared;
             renderRoleplayPlayerStateFields(modal, playerState.state_fields);
         }
-        setValue('[data-describe-vlm-chat-roleplay-scene-location]', session.story_state.scene.location);
-        setValue('[data-describe-vlm-chat-roleplay-scene-time]', session.story_state.scene.time);
-        setValue('[data-describe-vlm-chat-roleplay-scene-event]', session.story_state.scene.current_event);
-        renderRoleplaySceneCharacterSelector(modal, session);
+        setValue('[data-describe-vlm-chat-roleplay-scene-location]', session.story_state.scene.location, ['scene', 'location']);
+        setValue('[data-describe-vlm-chat-roleplay-scene-time]', session.story_state.scene.time, ['scene', 'time']);
+        setValue('[data-describe-vlm-chat-roleplay-scene-event]', session.story_state.scene.current_event, ['scene', 'current_event']);
+        const sceneInputs = Array.from(modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]'));
+        const visiblePresence = sceneInputs
+            .filter((input) => input.checked)
+            .map((input) => String(input.value || '').trim())
+            .filter(Boolean)
+            .slice(0, MAX_ROLEPLAY_CHARACTERS);
+        if (!roleplayFormValueHasPendingEdit(runtime, session, ['scene', 'present_character_ids'], visiblePresence)) {
+            renderRoleplaySceneCharacterSelector(modal, session);
+        }
         const autoplay = modal.querySelector('[data-describe-vlm-chat-roleplay-autoplay-mode]');
         if (autoplay) autoplay.value = String(session.autoplay_config.mode || 'manual');
         const targetTurns = modal.querySelector('[data-describe-vlm-chat-roleplay-target-turns]');
@@ -6871,18 +7088,9 @@
     function applyRoleplayForm(modal, runtime = null, options = {}) {
         if (!modal) return null;
         const target = runtime || currentConversationRuntime();
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal, options);
-        session = applyVisibleRoleplayPlayerState(session, modal, options);
-        session = applyVisibleRoleplayPersonaFields(session, modal, false);
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target)
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const read = (selector) => String(modal.querySelector(selector)?.value || '').trim();
-        session.story_state.scene.location = read('[data-describe-vlm-chat-roleplay-scene-location]');
-        session.story_state.scene.time = read('[data-describe-vlm-chat-roleplay-scene-time]');
-        session.story_state.scene.current_event = read('[data-describe-vlm-chat-roleplay-scene-event]');
-        session.story_state.scene.present_character_ids = Array.from(
-            modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]:checked')
-        ).map((input) => String(input.value || '').trim()).filter(Boolean).slice(0, MAX_ROLEPLAY_CHARACTERS);
         session = applyVisibleRoleplayResourceStores(session, modal);
         const referenceDraft = roleplayReferenceDraft(target);
         Object.keys(session.characters || {}).forEach((characterId) => {
@@ -7386,13 +7594,8 @@
                             '请生成一个适合角色扮演的鲜明角色，包含明确身份、动机、性格和说话方式，设定要方便直接开始游戏。'
                         );
         }
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayPlayerState(session, modal);
-        if (kind === 'persona') session = applyVisibleRoleplayPersonaFields(session, modal);
-        if (kind === 'character_state') {
-            session = applyVisibleRoleplayCharacterFields(session, modal);
-            session = applyVisibleRoleplayCharacterState(session, modal);
-        }
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target)
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         if (kind === 'world_book') {
             session = applyVisibleRoleplayResourceStores(session, modal);
             if (session.world_book.entries.length >= MAX_ROLEPLAY_WORLD_BOOK_ENTRIES) {
@@ -7643,10 +7846,8 @@
 
     function roleplaySessionFromVisibleForm(runtime, modal) {
         const target = runtime || currentConversationRuntime();
-        let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
-        session = applyVisibleRoleplayCharacterFields(session, modal);
-        session = applyVisibleRoleplayCharacterState(session, modal);
-        session = applyVisibleRoleplayPlayerState(session, modal);
+        let session = syncRoleplaySessionFromVisibleFormForSend(modal, target, { includePresence: false })
+            || normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const referenceDraft = roleplayReferenceDraft(target);
         const activeId = session.active_character_id || session.character.id;
         const characterReferences = referenceDraft.characters?.[activeId] || referenceDraft.character || [];
@@ -9690,9 +9891,10 @@
         return session;
     }
 
-    function syncRoleplaySessionFromVisibleFormForSend(modal, runtime = null) {
+    function syncRoleplaySessionFromVisibleFormForSend(modal, runtime = null, options = {}) {
         const target = runtime || currentConversationRuntime();
         if (!modal || !target?.roleplaySession) return null;
+        const includePresence = options.includePresence !== false;
         let session = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
         const read = (selector) => {
             const field = modal.querySelector(selector);
@@ -9812,20 +10014,21 @@
         if (location !== null && changedSinceSnapshot(['scene', 'location'], location)) scene.location = location;
         if (time !== null && changedSinceSnapshot(['scene', 'time'], time)) scene.time = time;
         if (currentEvent !== null && changedSinceSnapshot(['scene', 'current_event'], currentEvent)) scene.current_event = currentEvent;
-        const presenceInputs = Array.from(
-            modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]')
-        );
-        if (presenceInputs.length) {
-            const presentIds = presenceInputs
-                .filter((input) => input.checked)
-                .map((input) => String(input.value || '').trim())
-                .filter(Boolean)
-                .slice(0, MAX_ROLEPLAY_CHARACTERS);
-            if (changedSinceSnapshot(['scene', 'present_character_ids'], presentIds)) {
-                scene.present_character_ids = presentIds;
+        if (includePresence) {
+            const presenceInputs = Array.from(
+                modal.querySelectorAll('[data-describe-vlm-chat-roleplay-scene-character]')
+            );
+            if (presenceInputs.length) {
+                const presentIds = presenceInputs
+                    .filter((input) => input.checked)
+                    .map((input) => String(input.value || '').trim())
+                    .filter(Boolean)
+                    .slice(0, MAX_ROLEPLAY_CHARACTERS);
+                if (changedSinceSnapshot(['scene', 'present_character_ids'], presentIds)) {
+                    scene.present_character_ids = presentIds;
+                }
             }
         }
-
         session.conversation_id = target.conversationId;
         target.roleplaySession = normalizeRoleplaySession(session, target.conversationId);
         target.persistenceDirty = true;
@@ -10313,7 +10516,10 @@
         const wasOpen = !!(state.roleplayPanelOpen || target?.roleplayPanelOpen);
         if (target) {
             target.roleplayPanelOpen = false;
-            if (wasOpen) delete target.roleplayReferenceDraft;
+            if (wasOpen) {
+                delete target.roleplayReferenceDraft;
+                delete target.roleplayFormSnapshot;
+            }
         }
         state.roleplayPanelOpen = false;
         return wasOpen;
@@ -11994,7 +12200,9 @@
             characters[compact.id] = compact;
         });
         const primary = characterCard(source.character, source.active_character_id || 'character');
-        characters[primary.id] = primary;
+        characters[primary.id] = characters[primary.id]
+            ? mergeRoleplayCharacterCardLayers(characters[primary.id], primary)
+            : primary;
         const rawRuntimes = source.story_state?.characters && typeof source.story_state.characters === 'object'
             ? source.story_state.characters
             : {};
@@ -12120,8 +12328,16 @@
             const compact = cardIndex(card, id);
             characters[compact.id] = compact;
         });
-        const primary = cardIndex(rawCharacters[activeCharacterId] || primarySource, activeCharacterId);
-        characters[primary.id] = primary;
+        const primaryFromCharacters = rawCharacters[activeCharacterId]
+            ? cardIndex(rawCharacters[activeCharacterId], activeCharacterId)
+            : null;
+        const primaryFromSource = cardIndex(primarySource, activeCharacterId);
+        const primary = primaryFromCharacters
+            ? mergeRoleplayCharacterCardLayers(primaryFromCharacters, primaryFromSource)
+            : primaryFromSource;
+        characters[primary.id] = characters[primary.id]
+            ? mergeRoleplayCharacterCardLayers(characters[primary.id], primary)
+            : primary;
         const scene = source.story_state?.scene && typeof source.story_state.scene === 'object'
             ? source.story_state.scene
             : {};
@@ -18993,6 +19209,9 @@
         const roleplayTurnIntent = roleplaySessionBefore
             ? effectiveRoleplayTurnIntent(roleplayTurnIntentSetting, roleplaySessionBefore)
             : '';
+        const roleplaySpeakerId = selectedMode === 'roleplay'
+            ? roleplayReplySpeakerIdForRuntime(runtime, roleplaySessionBefore, options.roleplaySpeakerId)
+            : '';
         let userMessage = {
             id: uid('describe_vlm_chat_user'),
             revision: 1,
@@ -19037,6 +19256,7 @@
             pending: true
         };
         if (roleplaySessionBefore) pendingAssistant.roleplay_session_before = roleplaySessionBefore;
+        if (selectedMode === 'roleplay') pendingAssistant.roleplay_speaker_id = roleplaySpeakerId;
         messages.push(pendingAssistant);
         runtime.persistenceDirty = true;
         if (isCurrentConversationRuntime(runtime)) state.persistenceDirty = true;
@@ -19090,7 +19310,7 @@
                 ? normalizeRoleplaySpeakerMode(options.roleplaySpeakerMode || runtime.roleplaySession?.autoplay_config?.speaker_mode)
                 : '',
             roleplay_speaker_id: selectedMode === 'roleplay'
-                ? String(options.roleplaySpeakerId || runtime.roleplaySession?.active_character_id || '').trim()
+                ? roleplaySpeakerId
                 : '',
             roleplay_last_speaker_id: selectedMode === 'roleplay'
                 ? String(options.roleplayLastSpeakerId || '').trim()
@@ -19272,7 +19492,7 @@
                 ? response.agent_route
                 : null,
             roleplay_speaker_id: selectedMode === 'roleplay'
-                ? String(options.roleplaySpeakerId || runtime.roleplaySession?.active_character_id || '').trim()
+                ? roleplaySpeakerId
                 : '',
             roleplay_speaker_name: '',
             roleplay_internal_turn: selectedMode === 'roleplay' ? internalRoleplayTurn : false
@@ -19588,9 +19808,7 @@
         const mode = normalizeRoleplaySpeakerMode(
             options.speakerMode || session.autoplay_config?.speaker_mode
         );
-        const currentId = String(
-            options.currentSpeakerId || session.active_character_id || ''
-        ).trim();
+        const currentId = roleplayReplySpeakerIdForRuntime(target, session, options.currentSpeakerId);
         const presentIds = Array.isArray(session.story_state?.scene?.present_character_ids)
             ? session.story_state.scene.present_character_ids
                 .map((id) => String(id || '').trim())
@@ -19725,7 +19943,7 @@
             const speakerMode = normalizeRoleplaySpeakerMode(session.autoplay_config?.speaker_mode);
             const speakerIds = await requestRoleplaySpeakerPlan(target, {
                 speakerMode,
-                currentSpeakerId: session.active_character_id
+                currentSpeakerId: roleplayReplySpeakerIdForRuntime(target, target.roleplaySession)
             });
             const afterPlan = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (!speakerIds.length || afterPlan.phase !== 'running') break;
@@ -20194,6 +20412,7 @@
             const openedAt = vlmChatPerformanceNow();
             const runtime = syncCurrentRuntimeFromState();
             if (describeCompactViewport()) state.settingsPanelOpen = false;
+            delete runtime.roleplayFormSnapshot;
             runtime.roleplayReferenceDraft = createRoleplayReferenceDraft(runtime.roleplaySession);
             runtime.roleplayPanelOpen = true;
             state.roleplayPanelOpen = true;
@@ -20222,6 +20441,7 @@
         if (evt.target.closest('[data-describe-vlm-chat-roleplay-close]')) {
             const runtime = syncCurrentRuntimeFromState();
             delete runtime.roleplayReferenceDraft;
+            delete runtime.roleplayFormSnapshot;
             runtime.roleplayPanelOpen = false;
             state.roleplayPanelOpen = false;
             syncRoleplayControls(modal);
@@ -21211,7 +21431,7 @@
                 ? 'present'
                 : 'absent';
             if (data?.id && modal && !modal.hidden) {
-                setRoleplayParticipantPresence(syncCurrentRuntimeFromState(), modal, data.id, status);
+                setRoleplayParticipantPresence(currentConversationRuntime(), modal, data.id, status);
             }
             document.querySelectorAll('[data-describe-vlm-chat-roleplay-presence-zone].is-drag-over').forEach((item) => item.classList.remove('is-drag-over'));
             document.getElementById('describe_vlm_chat_modal')?.classList.remove('is-roleplay-presence-dragging');

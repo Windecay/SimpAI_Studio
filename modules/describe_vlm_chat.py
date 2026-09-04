@@ -2538,18 +2538,30 @@ def _run_roleplay_director(
         speaker_id,
     )
     character_ids = list(normalized_session.get("characters", {}).keys())[:20]
+    present_character_ids = sorted(
+        vlm_roleplay._director_present_character_ids(
+            normalized_session,
+            resolved_speaker_id,
+        )
+    )
     player_id = _clean_text(normalized_session.get("persona", {}).get("id")) or "player"
+    player_status = _clean_text(
+        normalized_session.get("story_state", {}).get("player_state", {}).get("status")
+    ) or "present"
 
     _roleplay_trace(
         "[RoleplayDirector] start request_id=%s conversation_id=%s speaker_id=%s "
-        "resolved_speaker_id=%s character_ids=%s player_id=%s state_version=%s "
+        "resolved_speaker_id=%s character_ids=%s present_character_ids=%s "
+        "player_id=%s player_status=%s state_version=%s "
         "turn_intent=%s autoplay=%s",
         request_id,
         _roleplay_log_value(conversation_id, 180),
         _roleplay_log_value(speaker_id, 160),
         _roleplay_log_value(resolved_speaker_id, 160),
         _roleplay_log_value(character_ids, 1200),
+        _roleplay_log_value(present_character_ids, 1200),
         _roleplay_log_value(player_id, 160),
+        _roleplay_log_value(player_status, 40),
         normalized_session.get("state_version", 0),
         _roleplay_log_value(turn_intent or payload.get("roleplay_turn_intent"), 60),
         autoplay_enabled,
