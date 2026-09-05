@@ -35,6 +35,8 @@ PARAM_ALIASES = {
     "sampler": "sampler",
     "schedule type": "scheduler",
     "cfg scale": "cfg_scale",
+    "shift": "distilled_cfg_scale",
+    "distilled cfg scale": "distilled_cfg_scale",
     "seed": "seed",
     "size": "size",
     "model": "model",
@@ -216,6 +218,8 @@ def parse_generation_parameters(text: str | None) -> dict[str, object]:
         parsed["seed"] = _to_int(parsed["seed"], -1)
     if "cfg_scale" in parsed:
         parsed["cfg_scale"] = _to_float(parsed["cfg_scale"], 1.0)
+    if "distilled_cfg_scale" in parsed:
+        parsed["distilled_cfg_scale"] = _to_float(parsed["distilled_cfg_scale"], 3.0)
     if "denoising_strength" in parsed:
         parsed["denoising_strength"] = _to_float(parsed["denoising_strength"], 0.0)
     if "size" in parsed:

@@ -6,7 +6,7 @@ from backend.sampling.sampling_function import sampling_function
 from modules import prompt_parser, sd_samplers_common
 from modules.script_callbacks import AfterCFGCallbackParams, CFGDenoiserParams, cfg_after_cfg_callback, cfg_denoiser_callback
 from modules.shared import opts, state
-from modules.source_backend_timing import log_source_stage, log_source_stage_marker, should_log_denoiser_step
+from modules.source_backend_timing import log_source_stage, log_source_stage_marker, log_tensor_stats, should_log_denoiser_step
 
 
 def catenate_conds(conds):
@@ -106,6 +106,15 @@ class CFGDenoiser(torch.nn.Module):
         if state.interrupted or state.skipped:
             raise sd_samplers_common.InterruptedException
 
+        sampling_step = int(getattr(self, "step", 0) or 0)
+        trace_tensor_stats = bool(getattr(self.inner_model.inner_model, "trace_tensor_stats", False))
+        trace_extra = {
+            "step": sampling_step,
+            "state_step": int(getattr(state, "sampling_step", 0) or 0),
+            "sampler": getattr(self.sampler, "funcname", None),
+        }
+        log_tensor_stats("sampling.denoiser_input", x, enabled=trace_tensor_stats, **trace_extra)
+
         source_step = int(getattr(state, "sampling_step", self.step) or 0)
         source_trace = should_log_denoiser_step(source_step)
         if source_trace:
@@ -167,6 +176,8 @@ class CFGDenoiser(torch.nn.Module):
             if source_trace:
                 log_source_stage("denoiser.sampling_function", sampling_started, step=source_step)
 
+        log_tensor_stats("sampling.denoised_before_post_cfg", denoised, enabled=trace_tensor_stats, **trace_extra)
+
         if self.need_last_noise_uncond:
             self.last_noise_uncond = (x - uncond_pred) / sigma[:, None, None, None]
 
@@ -186,6 +197,8 @@ class CFGDenoiser(torch.nn.Module):
         cfg_after_cfg_callback(after_cfg_callback_params)
         denoised = after_cfg_callback_params.x
 
+        log_tensor_stats("sampling.denoised_after_post_cfg", denoised, enabled=trace_tensor_stats, **trace_extra)
+
         self.sampler.last_latent = denoised
         sd_samplers_common.store_latent(denoised.detach().clone())
 
@@ -195,6 +208,8 @@ class CFGDenoiser(torch.nn.Module):
             result = (x - denoised) / sigma[:, None, None, None]
         else:
             result = denoised.to(device=original_x_device, dtype=original_x_dtype)
+
+        log_tensor_stats("sampling.denoiser_output", result, enabled=trace_tensor_stats, **trace_extra)
 
         if source_trace:
             log_source_stage("denoiser.forward", forward_started, step=source_step)

@@ -21,6 +21,8 @@ from backend.sampling.condition import (
     compile_weighted_conditions,
 )
 from modules.source_backend_timing import (
+    log_tensor_stats,
+    tensor_stats_enabled,
     log_source_stage,
     log_source_stage_marker,
     stage_logs_enabled,
@@ -120,6 +122,47 @@ def cond_equal_size(c1, c2):
         if not c1[k].can_concat(c2[k]):
             return False
     return True
+
+
+def _log_sampling_tensor(name, tensor, model_options, **extra) -> None:
+    if not tensor_stats_enabled() or not model_options.get("_source_tensor_trace", False):
+        return
+
+    trace_extra = {
+        "step": model_options.get("_source_tensor_step"),
+        "sampler": model_options.get("_source_tensor_sampler"),
+        **extra,
+    }
+    log_tensor_stats(name, tensor, enabled=True, **trace_extra)
+
+
+def _log_conditioning_tensors(conditioning, model_options, cond_or_uncond, batch_size) -> None:
+    if not tensor_stats_enabled() or not model_options.get("_source_tensor_trace", False):
+        return
+
+    for condition_name, condition in conditioning.items():
+        tensor = getattr(condition, "cond", None)
+        if not isinstance(tensor, torch.Tensor):
+            continue
+
+        _log_sampling_tensor(
+            f"sampling.conditioning.{condition_name}",
+            tensor,
+            model_options,
+            batch_chunks=len(cond_or_uncond),
+            cond_or_uncond=tuple(cond_or_uncond),
+        )
+        for chunk_index, branch in enumerate(cond_or_uncond):
+            start = chunk_index * batch_size
+            end = start + batch_size
+            _log_sampling_tensor(
+                f"sampling.conditioning.{condition_name}_chunk",
+                tensor[start:end],
+                model_options,
+                batch_chunks=len(cond_or_uncond),
+                chunk_index=chunk_index,
+                cond_or_uncond=branch,
+            )
 
 
 def can_concat_cond(c1, c2):
@@ -267,6 +310,7 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
         batch_chunks = len(cond_or_uncond)
         input_x = torch.cat(input_x)
         c = cond_cat(c)
+        _log_conditioning_tensors(c, model_options, cond_or_uncond, batch_size=x_in.shape[0])
         timestep_ = torch.cat([timestep] * batch_chunks)
         if required_memory is None:
             required_memory = model.memory_required([len(to_batch) * first_shape[0]] + list(first_shape)[1:])
@@ -314,9 +358,9 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
         apply_model_started = time.perf_counter()
         try:
             if "model_function_wrapper" in model_options:
-                output = model_options["model_function_wrapper"](model.apply_model, {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond}).chunk(batch_chunks)
+                model_output = model_options["model_function_wrapper"](model.apply_model, {"input": input_x, "timestep": timestep_, "c": c, "cond_or_uncond": cond_or_uncond})
             else:
-                output = model.apply_model(input_x, timestep_, **c).chunk(batch_chunks)
+                model_output = model.apply_model(input_x, timestep_, **c)
         finally:
             log_source_stage(
             "calc_cond_uncond.apply_model",
@@ -327,9 +371,25 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
                 free_memory=free_memory,
                 required_memory=required_memory,
             )
+        _log_sampling_tensor(
+            "sampling.apply_model_output",
+            model_output,
+            model_options,
+            batch_chunks=batch_chunks,
+            cond_or_uncond=tuple(cond_or_uncond),
+        )
+        output = model_output.chunk(batch_chunks)
         del input_x
 
         for o in range(batch_chunks):
+            _log_sampling_tensor(
+                "sampling.apply_model_output_chunk",
+                output[o],
+                model_options,
+                batch_chunks=batch_chunks,
+                chunk_index=o,
+                cond_or_uncond=cond_or_uncond[o],
+            )
             if cond_or_uncond[o] == COND:
                 out_cond[:, :, area[o][2] : area[o][0] + area[o][2], area[o][3] : area[o][1] + area[o][3]] += output[o] * mult[o]
                 out_count[:, :, area[o][2] : area[o][0] + area[o][2], area[o][3] : area[o][1] + area[o][3]] += mult[o]
@@ -362,6 +422,8 @@ def sampling_function_inner(model, x, timestep, uncond, cond, cond_scale, model_
         model, cond, uncond_, x, timestep, model_options = fn(model, cond, uncond_, x, timestep, model_options)
 
     cond_pred, uncond_pred = calc_cond_uncond_batch(model, cond, uncond_, x, timestep, model_options)
+    _log_sampling_tensor("sampling.cond_pred", cond_pred, model_options)
+    _log_sampling_tensor("sampling.uncond_pred", uncond_pred, model_options)
 
     if "sampler_cfg_function" in model_options:
         args = {"cond": x - cond_pred, "uncond": x - uncond_pred, "cond_scale": cond_scale, "timestep": timestep, "input": x, "sigma": timestep, "cond_denoised": cond_pred, "uncond_denoised": uncond_pred, "model": model, "model_options": model_options}
@@ -374,6 +436,8 @@ def sampling_function_inner(model, x, timestep, uncond, cond, cond_scale, model_
     for fn in model_options.get("sampler_post_cfg_function", []):
         args = {"denoised": cfg_result, "cond": cond, "uncond": uncond, "cond_scale": cond_scale, "model": model, "uncond_denoised": uncond_pred, "cond_denoised": cond_pred, "sigma": timestep, "model_options": model_options, "input": x}
         cfg_result = fn(args)
+
+    _log_sampling_tensor("sampling.cfg_result", cfg_result, model_options, cond_scale=cond_scale)
 
     if source_timing_enabled:
         log_source_stage("sampling_function.inner", sampling_inner_started, cond_scale=cond_scale)
@@ -395,6 +459,12 @@ def sampling_function(self, denoiser_params, cond_scale, cond_composition, extra
     cond = compile_weighted_conditions(denoiser_params.text_cond, cond_composition)
     model_options = utils.join_dicts(unet_patcher.model_options, extra_model_options)
     seed = self.p.seeds[0]
+
+    source_model = self.inner_model.inner_model
+    if tensor_stats_enabled() and getattr(source_model, "trace_tensor_stats", False):
+        model_options["_source_tensor_trace"] = True
+        model_options["_source_tensor_step"] = int(getattr(self, "step", 0))
+        model_options["_source_tensor_sampler"] = getattr(self.sampler, "funcname", None)
 
     if extra_concat_condition is not None:
         image_cond_in = extra_concat_condition

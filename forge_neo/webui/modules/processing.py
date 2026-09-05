@@ -35,6 +35,7 @@ from modules.sysinfo import set_config
 from modules.ui import sRound
 from modules_forge import main_entry
 from modules_forge.utils import apply_circular_forge
+from modules.source_backend_timing import log_tensor_stats, tensor_stats_enabled
 
 logger = logging.getLogger("processing")
 setup_logger(logger)
@@ -610,6 +611,13 @@ class DecodedSamples(list):
 
 def decode_latent_batch(model, batch, target_device=None, check_for_nans=False):
     samples = DecodedSamples()
+    log_tensor_stats(
+        "sampling_output",
+        batch,
+        model=type(model).__name__,
+        channel_dim=1,
+        enabled=getattr(model, "trace_tensor_stats", False),
+    )
     samples_pytorch = decode_first_stage(model, batch).to(target_device)
 
     for x in samples_pytorch:
@@ -1054,7 +1062,21 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
             del samples_ddim
 
-            devices.test_for_nans(x_samples_ddim)
+            log_tensor_stats(
+                "final_image_before_nan_sanitize",
+                x_samples_ddim,
+                model=type(p.sd_model).__name__,
+                channel_dim=1,
+                enabled=getattr(p.sd_model, "trace_tensor_stats", False),
+            )
+            devices.test_for_nans(x_samples_ddim, label="decoded image")
+            log_tensor_stats(
+                "final_image_after_nan_sanitize",
+                x_samples_ddim,
+                model=type(p.sd_model).__name__,
+                channel_dim=1,
+                enabled=getattr(p.sd_model, "trace_tensor_stats", False),
+            )
             devices.torch_gc()
 
             state.nextjob()
@@ -1085,6 +1107,15 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 p.batch_index = i
                 x_sample = 255.0 * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
                 x_sample = x_sample.astype(np.uint8)
+                if tensor_stats_enabled() and getattr(p.sd_model, "trace_tensor_stats", False):
+                    log_tensor_stats(
+                        "final_image_uint8",
+                        torch.from_numpy(x_sample),
+                        model=type(p.sd_model).__name__,
+                        channel_dim=2,
+                        image_index=i,
+                        enabled=True,
+                    )
                 if _is_video:
                     frames.append(x_sample)
 

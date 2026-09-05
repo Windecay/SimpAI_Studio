@@ -845,6 +845,29 @@ def sample_Kohaku_LoNyu_Yog(model, x, sigmas, extra_args=None, callback=None, di
     return x
 
 
+def _er_sde_tensor_stats_enabled(model) -> bool:
+    try:
+        from modules.source_backend_timing import tensor_stats_enabled
+
+        if not tensor_stats_enabled():
+            return False
+        source_model = getattr(getattr(model, "inner_model", None), "inner_model", None)
+        return bool(getattr(source_model, "trace_tensor_stats", False))
+    except Exception:
+        return False
+
+
+def _log_er_sde_tensor_stats(name, tensor, model, **extra) -> None:
+    if not _er_sde_tensor_stats_enabled(model):
+        return
+    try:
+        from modules.source_backend_timing import log_tensor_stats
+
+        log_tensor_stats(name, tensor, enabled=True, **extra)
+    except Exception:
+        pass
+
+
 @torch.no_grad()
 def sample_er_sde(model, x, sigmas, extra_args=None, callback=None, disable=None, s_noise=1.0, noise_sampler=None, noise_scaler=None, max_stage=3):
     """
@@ -870,14 +893,27 @@ def sample_er_sde(model, x, sigmas, extra_args=None, callback=None, disable=None
 
     old_denoised = None
     old_denoised_d = None
+    trace_tensor_stats = _er_sde_tensor_stats_enabled(model)
 
     for i in trange(len(sigmas) - 1, disable=disable):
+        stage_used = min(max_stage, i + 1)
+        step_details = {
+            "step": i,
+            "sigma": float(sigmas[i].detach().item()),
+            "sigma_next": float(sigmas[i + 1].detach().item()),
+            "er_lambda_s": float(er_lambdas[i].detach().item()),
+            "er_lambda_t": float(er_lambdas[i + 1].detach().item()),
+            "stage_used": stage_used,
+            "sampler": "sample_er_sde",
+        } if trace_tensor_stats else {}
+        _log_er_sde_tensor_stats("sampling.er_sde.x_before_model", x, model, **step_details)
         denoised = model(x, sigmas[i] * s_in, **extra_args)
+        _log_er_sde_tensor_stats("sampling.er_sde.denoised", denoised, model, **step_details)
         if callback is not None:
             callback({"x": x, "i": i, "sigma": sigmas[i], "sigma_hat": sigmas[i], "denoised": denoised})
-        stage_used = min(max_stage, i + 1)
         if sigmas[i + 1] == 0:
             x = denoised
+            _log_er_sde_tensor_stats("sampling.er_sde.x_after_terminal", x, model, **step_details)
         else:
             er_lambda_s, er_lambda_t = er_lambdas[i], er_lambdas[i + 1]
             alpha_s = sigmas[i] / er_lambda_s
@@ -887,6 +923,7 @@ def sample_er_sde(model, x, sigmas, extra_args=None, callback=None, disable=None
 
             # Stage 1 Euler
             x = r_alpha * r * x + alpha_t * (1 - r) * denoised
+            _log_er_sde_tensor_stats("sampling.er_sde.x_after_stage1", x, model, **step_details)
 
             if stage_used >= 2:
                 dt = er_lambda_t - er_lambda_s
@@ -898,16 +935,21 @@ def sample_er_sde(model, x, sigmas, extra_args=None, callback=None, disable=None
                 s = torch.sum(1 / scaled_pos) * lambda_step_size
                 denoised_d = (denoised - old_denoised) / (er_lambda_s - er_lambdas[i - 1])
                 x = x + alpha_t * (dt + s * noise_scaler(er_lambda_t)) * denoised_d
+                _log_er_sde_tensor_stats("sampling.er_sde.x_after_stage2", x, model, **step_details)
 
                 if stage_used >= 3:
                     # Stage 3
                     s_u = torch.sum((lambda_pos - er_lambda_s) / scaled_pos) * lambda_step_size
                     denoised_u = (denoised_d - old_denoised_d) / ((er_lambda_s - er_lambdas[i - 2]) / 2)
                     x = x + alpha_t * ((dt**2) / 2 + s_u * noise_scaler(er_lambda_t)) * denoised_u
+                    _log_er_sde_tensor_stats("sampling.er_sde.x_after_stage3", x, model, **step_details)
                 old_denoised_d = denoised_d
 
+            noise_applied = False
             if s_noise > 0:
                 x = x + alpha_t * noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * (er_lambda_t**2 - er_lambda_s**2 * r**2).sqrt().nan_to_num(nan=0.0)
+                noise_applied = True
+            _log_er_sde_tensor_stats("sampling.er_sde.x_after_noise", x, model, noise_applied=noise_applied, **step_details)
         old_denoised = denoised
 
     return x

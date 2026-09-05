@@ -14,6 +14,15 @@ from backend import memory_management, utils
 from backend.modules.k_prediction import PredictionDiscreteFlow, PredictionFlux
 
 
+def _log_source_tensor_stats(name: str, tensor: torch.Tensor, **extra) -> None:
+    try:
+        from modules.source_backend_timing import log_tensor_stats
+
+        log_tensor_stats(name, tensor, **extra)
+    except Exception:
+        pass
+
+
 class ForgeObjects:
     def __init__(self, unet, clip, vae, clipvision):
         self.unet: "UnetPatcher" = unet
@@ -74,18 +83,38 @@ class ForgeDiffusionEngine:
                 start_image = x[i : i + 1].movedim(1, -1).mul(0.5).add(0.5)
                 sample = self.forge_objects.vae.encode(start_image)
                 sample = self.forge_objects.vae.first_stage_model.process_in(sample)
+                _log_source_tensor_stats(
+                    "vae.process_in",
+                    sample,
+                    model=type(self).__name__,
+                    channel_dim=1,
+                    batch_start=i,
+                    enabled=getattr(self, "trace_tensor_stats", False),
+                )
                 samples.append(sample)
             return torch.cat(samples, dim=0).to(x)
         else:
             start_image = x.movedim(1, -1).mul(0.5).add(0.5)
             sample = self.forge_objects.vae.encode(start_image)
             sample = self.forge_objects.vae.first_stage_model.process_in(sample)
+            _log_source_tensor_stats(
+                "vae.process_in",
+                sample,
+                model=type(self).__name__,
+                channel_dim=1,
+                enabled=getattr(self, "trace_tensor_stats", False),
+            )
             return sample.to(x)
 
     @torch.inference_mode()
     def decode_first_stage(self, x: torch.Tensor):
         sample = self.forge_objects.vae.first_stage_model.process_out(x)
-        sample = self.forge_objects.vae.decode(sample).movedim(-1, (2 if self.is_wan else 1)).mul_(2.0).sub_(1.0)
+        trace_tensor_stats = getattr(self, "trace_tensor_stats", False)
+        _log_source_tensor_stats("vae.process_out", sample, model=type(self).__name__, channel_dim=1, enabled=trace_tensor_stats)
+        decoded = self.forge_objects.vae.decode(sample)
+        _log_source_tensor_stats("vae.decode_return", decoded, model=type(self).__name__, channel_dim=-1, enabled=trace_tensor_stats)
+        sample = decoded.movedim(-1, (2 if self.is_wan else 1)).mul_(2.0).sub_(1.0)
+        _log_source_tensor_stats("decoded_output", sample, model=type(self).__name__, channel_dim=(2 if self.is_wan else 1), enabled=trace_tensor_stats)
         return sample.to(x)
 
     def get_prompt_lengths_on_ui(self, prompt):

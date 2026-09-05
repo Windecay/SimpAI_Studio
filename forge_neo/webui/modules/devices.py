@@ -60,7 +60,16 @@ class NansException(Exception):
 
 
 def test_for_nans(x: torch.Tensor, *args, **kwargs):
-    if torch.isnan(x).any():
-        memory_management.logger.warning("Encountered NaN in Latent" + ("; Try --disable-sage" if memory_management.sage_enabled() else ""))
+    if not isinstance(x, torch.Tensor) or not (x.is_floating_point() or x.is_complex()):
+        return
+
+    nan_count = int(torch.isnan(x).sum().item())
+    inf_count = int(torch.isinf(x).sum().item())
+    if nan_count or inf_count:
+        label = kwargs.get("label", "Tensor")
+        memory_management.logger.warning(
+            f"Encountered non-finite values in {label}: nan={nan_count} inf={inf_count} shape={tuple(x.shape)} dtype={x.dtype}"
+            + ("; Try --disable-sage" if memory_management.sage_enabled() else "")
+        )
         x.nan_to_num_(nan=0.0, posinf=1.0, neginf=0.0)
         # raise NansException

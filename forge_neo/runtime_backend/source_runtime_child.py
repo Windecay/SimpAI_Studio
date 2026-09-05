@@ -1090,6 +1090,9 @@ def _source_package_roots(source_root: Path) -> tuple[Path, Path, Path]:
 
 def _setup_source_imports(backend_root: Path, data_root: Path, model_ref: Path | None = None) -> Path:
     global _SOURCE_BACKEND_ROOT, _SOURCE_DATA_ROOT, _SOURCE_ROOT
+    # Extension metadata imports GitPython even when installation/update checks are skipped.
+    # Missing Git must not prevent inference; actual Git commands still report errors.
+    os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
     source_root = _source_code_root(data_root, backend_root)
     _SOURCE_BACKEND_ROOT = backend_root
     _SOURCE_DATA_ROOT = data_root
@@ -1102,6 +1105,15 @@ def _setup_source_imports(backend_root: Path, data_root: Path, model_ref: Path |
     _package_alias("backend", backend_package_root)
     _package_alias("modules", modules_root)
     _package_alias("modules_forge", modules_forge_root)
+
+    diagnostic_module = sys.modules.get("_forge_diagnostic_logging")
+    if diagnostic_module is None:
+        diagnostic_path = _LOCAL_SOURCE_WEBUI_ROOT / "backend" / "diagnostic_logging.py"
+        spec = importlib.util.spec_from_file_location("_forge_diagnostic_logging", diagnostic_path)
+        diagnostic_module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = diagnostic_module
+        spec.loader.exec_module(diagnostic_module)
+    diagnostic_module.configure(repo_root, job_id=lambda: _CURRENT_JOB_ID)
 
     source_site_packages = data_root.parent / "system" / "python" / "Lib" / "site-packages"
     for path in (source_site_packages, modules_forge_root / "packages", source_root, repo_root):

@@ -5545,8 +5545,18 @@ def _generate_clicked(*values):
         status = _status(state, "Stopped.", "已停止。")
     elif result.status == "skipped":
         status = _status(state, "Skipped.", "已跳过。")
+    elif result.status == "error":
+        status = _status(state, "Generation failed.", "生成失败。")
     if result.error:
-        status = f"{status}\n{result.error}"
+        if "ANIMA_NONFINITE_CONDITIONING" in result.error:
+            message = _status(
+                state,
+                "Anima text conditioning contains NaN/Inf. Generation stopped before sampling; no black image was saved for this failed sample. See the Forge Neo log for retry details.",
+                "Anima 文本条件出现 NaN/Inf，已在采样前停止，本次失败样本未保存黑图。重试详情请查看 Forge Neo 日志。",
+            )
+        else:
+            message = result.error
+        status = f"{status}\n{message}"
     if result.output_paths:
         status = f"{status}\n{_status(state, 'Saved:', '已保存：')} {result.output_paths[0]}"
     if len(result.output_paths) > 1:
@@ -7067,8 +7077,8 @@ def _png_send_updates(text: str, state, *, target: str) -> tuple[object, ...]:
     if not params:
         message = _status(state, "No generation parameters found.", "没有找到可回填的生成参数。")
         if target == "txt2img":
-            return (message, *[gr.update() for _ in range(9)], *_no_script_send_updates())
-        return (message, *[gr.update() for _ in range(9)], *_no_script_send_updates(), gr.update())
+            return (message, *[gr.update() for _ in range(9)], *_no_script_send_updates(), gr.update())
+        return (message, *[gr.update() for _ in range(9)], *_no_script_send_updates(), gr.update(), gr.update())
 
     prompt = str(params.get("prompt", ""))
     negative = str(params.get("negative_prompt", ""))
@@ -7078,6 +7088,8 @@ def _png_send_updates(text: str, state, *, target: str) -> tuple[object, ...]:
     width_value = params.get("width")
     height_value = params.get("height")
     cfg_value = params.get("cfg_scale")
+    distilled_cfg_value = params.get("distilled_cfg_scale")
+    distilled_cfg_update = gr.update(value=distilled_cfg_value) if distilled_cfg_value is not None else gr.update()
     seed_value = params.get("seed")
     denoise_value = params.get("denoising_strength")
     message = _status(state, "Parameters sent.", "参数已发送。")
@@ -7095,11 +7107,12 @@ def _png_send_updates(text: str, state, *, target: str) -> tuple[object, ...]:
         *_script_send_updates_from_params(params),
     ]
     if target == "txt2img":
-        return (message, *common)
+        return (message, *common, distilled_cfg_update)
     return (
         message,
         *common,
         gr.update(value=denoise_value) if denoise_value is not None else gr.update(),
+        distilled_cfg_update,
     )
 
 
@@ -13348,6 +13361,7 @@ def create_app() -> gr.Blocks:
                             cfg_scale,
                             seed,
                             *_script_send_outputs(script, script_controls),
+                            distilled_cfg_scale,
                         ],
                         show_progress=False,
                     )
@@ -14054,6 +14068,7 @@ def create_app() -> gr.Blocks:
                             img_seed,
                             *_script_send_outputs(img_script, img_script_controls),
                             img_denoising_strength,
+                            img_distilled_cfg_scale,
                         ],
                         show_progress=False,
                     )
@@ -15055,6 +15070,7 @@ def create_app() -> gr.Blocks:
                             cfg_scale,
                             seed,
                             *_script_send_outputs(script, script_controls),
+                            distilled_cfg_scale,
                         ],
                     )
                     png_send_img.click(
@@ -15074,6 +15090,7 @@ def create_app() -> gr.Blocks:
                             img_seed,
                             *_script_send_outputs(img_script, img_script_controls),
                             img_denoising_strength,
+                            img_distilled_cfg_scale,
                         ],
                     )
                     png_send_inpaint.click(
@@ -15093,6 +15110,7 @@ def create_app() -> gr.Blocks:
                             img_seed,
                             *_script_send_outputs(img_script, img_script_controls),
                             img_denoising_strength,
+                            img_distilled_cfg_scale,
                             mode_img,
                         ],
                     )

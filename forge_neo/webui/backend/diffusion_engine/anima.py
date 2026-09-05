@@ -20,11 +20,22 @@ class Anima(ForgeDiffusionEngine):
     matched_guesses = [model_list.Anima]
 
     def __init__(self, estimated_config, huggingface_components):
+        from modules.source_backend_timing import tensor_stats_enabled
+
         super().__init__(estimated_config, huggingface_components)
+        self.trace_tensor_stats = tensor_stats_enabled()
 
         clip = CLIP(model_dict={"qwen3_06b": huggingface_components["text_encoder"]}, tokenizer_dict={"qwen3_06b": huggingface_components["tokenizer"], "t5xxl": huggingface_components["tokenizer_2"]})
+        text_encoder = clip.cond_stage_model.qwen3_06b
+        text_encoder.trace_tensor_stats = self.trace_tensor_stats
+        if hasattr(text_encoder, "llm_adapter"):
+            text_encoder.llm_adapter.trace_tensor_stats = self.trace_tensor_stats
 
-        vae = VAE(model=huggingface_components["vae"], is_wan=True)
+        vae = VAE(
+            model=huggingface_components["vae"],
+            is_wan=True,
+            trace_tensor_stats=self.trace_tensor_stats,
+        )
 
         k_predictor = self._get_predictor()
 

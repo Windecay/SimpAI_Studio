@@ -11,7 +11,7 @@ from modules import devices, sd_samplers_cfg_denoiser, sd_samplers_common, sd_sa
 from modules.script_callbacks import ExtraNoiseParams, extra_noise_callback
 from modules.sd_samplers_cfg_denoiser import CFGDenoiser  # noqa: F401
 from modules.shared import opts
-from modules.source_backend_timing import log_source_stage, log_source_stage_marker
+from modules.source_backend_timing import log_source_stage, log_source_stage_marker, log_tensor_stats, tensor_stats_enabled
 
 samplers_k_diffusion = [
     ("DPM++ 2M", "sample_dpmpp_2m", ["k_dpmpp_2m"], {"scheduler": "karras"}),
@@ -142,6 +142,13 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
     def sample_img2img(self, p, x, noise, conditioning, unconditional_conditioning, steps=None, image_conditioning=None):
         unet_patcher = self.model_wrap.inner_model.forge_objects.unet
+        trace_tensor_stats = tensor_stats_enabled() and bool(getattr(self.model_wrap.inner_model, "trace_tensor_stats", False))
+        trace_extra = {
+            "sampler": self.funcname,
+            "img2img": True,
+        }
+        log_tensor_stats("sampling.img2img.latent_input", x, enabled=trace_tensor_stats, **trace_extra)
+        log_tensor_stats("sampling.img2img.noise_input", noise, enabled=trace_tensor_stats, **trace_extra)
 
         log_source_stage_marker("kdiffusion.img2img.sampling_prepare", sampler=self.funcname)
         sampling_prepare_started = time.perf_counter()
@@ -159,8 +166,20 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
         finally:
             log_source_stage("kdiffusion.img2img.sigmas", sigmas_started, sampler=self.funcname, steps=steps)
         sigma_sched = sigmas[steps - t_enc - 1 :]
+        if trace_tensor_stats:
+            log_tensor_stats(
+                "sampling.img2img.sigma_schedule",
+                sigma_sched,
+                enabled=True,
+                steps=steps,
+                t_enc=t_enc,
+                sigma_first=float(sigma_sched[0].detach().item()),
+                sigma_last=float(sigma_sched[-1].detach().item()),
+                **trace_extra,
+            )
 
         x = x.to(noise)
+        log_tensor_stats("sampling.img2img.latent_cast", x, enabled=trace_tensor_stats, **trace_extra)
 
         log_source_stage_marker("kdiffusion.img2img.noise_scaling", sampler=self.funcname)
         noise_scaling_started = time.perf_counter()
@@ -168,6 +187,14 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
             xi = self.model_wrap.predictor.noise_scaling(sigma_sched[0], noise, x, max_denoise=False)
         finally:
             log_source_stage("kdiffusion.img2img.noise_scaling", noise_scaling_started, sampler=self.funcname)
+        if trace_tensor_stats:
+            log_tensor_stats(
+                "sampling.img2img.noise_scaled",
+                xi,
+                sigma=float(sigma_sched[0].detach().item()),
+                **trace_extra,
+                enabled=True,
+            )
 
         if opts.img2img_extra_noise > 0:
             p.extra_generation_params["Extra noise"] = opts.img2img_extra_noise
@@ -175,6 +202,8 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
             extra_noise_callback(extra_noise_params)
             noise = extra_noise_params.noise
             xi += noise * opts.img2img_extra_noise
+
+        log_tensor_stats("sampling.img2img.initial_latent", xi, enabled=trace_tensor_stats, **trace_extra)
 
         log_source_stage_marker("kdiffusion.img2img.initialize", sampler=self.funcname)
         initialize_started = time.perf_counter()

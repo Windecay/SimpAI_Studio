@@ -27,6 +27,28 @@ from backend.utils import pad_to_patch_size
 _SOURCE_BACKEND_ANIMA_FORWARD_CALLS = 0
 
 
+def _source_backend_anima_log_tensor_stats(name: str, tensor: torch.Tensor, *, enabled: bool = False, **extra) -> None:
+    if not enabled:
+        return
+
+    try:
+        from modules.source_backend_timing import log_tensor_stats
+
+        log_tensor_stats(name, tensor, enabled=True, **extra)
+    except Exception:
+        pass
+
+
+def _source_backend_anima_is_finite(tensor: torch.Tensor) -> bool:
+    if tensor is None or not (tensor.is_floating_point() or tensor.is_complex()):
+        return True
+
+    try:
+        return bool(torch.isfinite(tensor).all().item())
+    except Exception:
+        return False
+
+
 def _source_backend_anima_timing():
     try:
         from modules import source_backend_timing
@@ -660,7 +682,9 @@ class Anima(nn.Module):
         try:
             orig_shape = list(x.shape)
 
-            ref_latents = dynamic_args.ref_latents if dynamic_args.anima else ()
+            # Be tolerant to hot-reload stale dynamic_args class objects that may
+            # not carry newly-added flags yet.
+            ref_latents = dynamic_args.ref_latents if getattr(dynamic_args, "anima", False) else ()
             for ref in ref_latents:
                 if x.shape[0] == 2:  # batch_cond_uncond
                     ref = torch.cat((ref, ref), dim=0)
@@ -894,8 +918,15 @@ class LLMAdapter(nn.Module):
         self.blocks = nn.ModuleList([TransformerBlock(source_dim, model_dim, num_heads=num_heads, use_self_attn=use_self_attn, layer_norm=layer_norm) for _ in range(num_layers)])
         self.out_proj = nn.Linear(model_dim, target_dim)
         self.norm = nn.RMSNorm(target_dim, eps=1e-6)
+        self.trace_tensor_stats = False
 
-    def forward(self, source_hidden_states, target_input_ids, target_attention_mask=None, source_attention_mask=None):
+    def _forward_impl(
+        self,
+        source_hidden_states,
+        target_input_ids,
+        target_attention_mask=None,
+        source_attention_mask=None,
+    ):
         if target_attention_mask is not None:
             target_attention_mask = target_attention_mask.to(torch.bool)
             if target_attention_mask.ndim == 2:
@@ -908,10 +939,59 @@ class LLMAdapter(nn.Module):
 
         x = self.in_proj(self.embed(target_input_ids))
         context = source_hidden_states
+
+        trace_enabled = bool(getattr(self, "trace_tensor_stats", False))
+        _source_backend_anima_log_tensor_stats(
+            "anima.llm_adapter.source_hidden_states",
+            context,
+            enabled=trace_enabled,
+        )
+        _source_backend_anima_log_tensor_stats(
+            "anima.llm_adapter.embedding",
+            x,
+            enabled=trace_enabled,
+        )
+
         position_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0)
         position_ids_context = torch.arange(context.shape[1], device=x.device).unsqueeze(0)
         position_embeddings = self.rotary_emb(x, position_ids)
         position_embeddings_context = self.rotary_emb(x, position_ids_context)
-        for block in self.blocks:
+        for block_index, block in enumerate(self.blocks):
             x = block(x, context, target_attention_mask=target_attention_mask, source_attention_mask=source_attention_mask, position_embeddings=position_embeddings, position_embeddings_context=position_embeddings_context)
-        return self.norm(self.out_proj(x))
+            _source_backend_anima_log_tensor_stats(
+                "anima.llm_adapter.block_output",
+                x,
+                enabled=trace_enabled,
+                block_index=block_index,
+            )
+
+        projected = self.out_proj(x)
+        _source_backend_anima_log_tensor_stats(
+            "anima.llm_adapter.out_proj",
+            projected,
+            enabled=trace_enabled,
+        )
+        output = self.norm(projected)
+        _source_backend_anima_log_tensor_stats(
+            "anima.llm_adapter.output",
+            output,
+            enabled=trace_enabled,
+        )
+        return output
+
+    def forward(self, source_hidden_states, target_input_ids, target_attention_mask=None, source_attention_mask=None):
+        output = self._forward_impl(
+            source_hidden_states,
+            target_input_ids,
+            target_attention_mask=target_attention_mask,
+            source_attention_mask=source_attention_mask,
+        )
+
+        if _source_backend_anima_is_finite(output):
+            return output
+        _source_backend_anima_log_tensor_stats(
+            "anima.llm_adapter.nonfinite_output",
+            output,
+            enabled=bool(getattr(self, "trace_tensor_stats", False)),
+        )
+        raise RuntimeError("ANIMA_NONFINITE_CONDITIONING: LLMAdapter output contains NaN/Inf.")

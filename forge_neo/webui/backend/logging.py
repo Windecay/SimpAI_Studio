@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import Iterable, Optional
 
 from rich.console import ConsoleRenderable, RenderableType
@@ -57,3 +58,6 @@ def setup_logger(logger: logging.Logger):
         logger.addHandler(handler)
 
     logger.setLevel(args.loglevel or "INFO")
+    diagnostics = sys.modules.get("_forge_diagnostic_logging")
+    if diagnostics is not None:
+        diagnostics.attach(logger)

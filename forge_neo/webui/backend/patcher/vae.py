@@ -9,6 +9,15 @@ from backend import memory_management
 from backend.patcher.base import ModelPatcher
 
 
+def _log_source_tensor_stats(name: str, tensor: torch.Tensor, **extra) -> None:
+    try:
+        from modules.source_backend_timing import log_tensor_stats
+
+        log_tensor_stats(name, tensor, **extra)
+    except Exception:
+        pass
+
+
 @torch.inference_mode()
 def tiled_scale_multidim(samples, function, tile=(64, 64), overlap=8, upscale_amount=4, out_channels=3, output_device="cpu", downscale=False, index_formulas=None):
     """https://github.com/comfyanonymous/ComfyUI/blob/v0.3.64/comfy/utils.py#L901"""
@@ -121,7 +130,18 @@ def tiled_scale(samples, function, tile_x=64, tile_y=64, overlap=8, upscale_amou
 
 
 class VAE:
-    def __init__(self, model=None, device=None, dtype=None, no_init=False, *, is_wan=False, is_flux2=False, is_mugen=False):
+    def __init__(
+        self,
+        model=None,
+        device=None,
+        dtype=None,
+        no_init=False,
+        *,
+        is_wan=False,
+        is_flux2=False,
+        is_mugen=False,
+        trace_tensor_stats=False,
+    ):
         if no_init:
             return
 
@@ -160,6 +180,7 @@ class VAE:
         self.vae_dtype = dtype or memory_management.vae_dtype()
         self.first_stage_model.to(self.vae_dtype)
         self.output_device = memory_management.intermediate_device()
+        self.trace_tensor_stats = bool(trace_tensor_stats)
 
         self.patcher = ModelPatcher(self.first_stage_model, load_device=self.device, offload_device=offload_device)
         self.is_wan = is_wan
@@ -176,16 +197,20 @@ class VAE:
         n.vae_dtype = self.vae_dtype
         n.output_device = self.output_device
         n.is_wan = self.is_wan
+        n.trace_tensor_stats = self.trace_tensor_stats
         return n
 
     def decode_tiled_(self, samples, tile_x=64, tile_y=64, overlap=16):
         decode_fn = lambda a: self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
         output = self.process_output((tiled_scale(samples, decode_fn, tile_x // 2, tile_y * 2, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x * 2, tile_y // 2, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device) + tiled_scale(samples, decode_fn, tile_x, tile_y, overlap, upscale_amount=self.upscale_ratio, output_device=self.output_device)) / 3.0)
+        _log_source_tensor_stats("vae.tiled_process_output", output, vae_dtype=self.vae_dtype, channel_dim=1, enabled=self.trace_tensor_stats)
         return output
 
     def decode_tiled_3d(self, samples, tile_t=999, tile_x=32, tile_y=32, overlap=(1, 8, 8)):
         decode_fn = lambda a: self.first_stage_model.decode(a.to(self.vae_dtype).to(self.device)).float()
-        return self.process_output(tiled_scale_multidim(samples, decode_fn, tile=(tile_t, tile_x, tile_y), overlap=overlap, upscale_amount=self.upscale_ratio, out_channels=self.output_channels, index_formulas=self.upscale_index_formula, output_device=self.output_device))
+        output = self.process_output(tiled_scale_multidim(samples, decode_fn, tile=(tile_t, tile_x, tile_y), overlap=overlap, upscale_amount=self.upscale_ratio, out_channels=self.output_channels, index_formulas=self.upscale_index_formula, output_device=self.output_device))
+        _log_source_tensor_stats("vae.tiled_process_output", output, vae_dtype=self.vae_dtype, channel_dim=1, enabled=self.trace_tensor_stats)
+        return output
 
     def encode_tiled_(self, pixel_samples, tile_x=512, tile_y=512, overlap=64):
         encode_fn = lambda a: self.first_stage_model.encode((self.process_input(a)).to(self.vae_dtype).to(self.device)).float()
@@ -215,7 +240,11 @@ class VAE:
 
             for x in range(0, samples_in.shape[0], batch_number):
                 samples = samples_in[x : x + batch_number].to(device=self.device, dtype=self.vae_dtype)
-                out = self.process_output(self.first_stage_model.decode(samples).to(device=self.output_device, dtype=torch.float32, copy=True))
+                _log_source_tensor_stats("vae.input", samples, vae_dtype=self.vae_dtype, channel_dim=1, batch_start=x, enabled=self.trace_tensor_stats)
+                decoded = self.first_stage_model.decode(samples)
+                _log_source_tensor_stats("vae.raw_decode", decoded, vae_dtype=self.vae_dtype, channel_dim=1, batch_start=x, enabled=self.trace_tensor_stats)
+                out = self.process_output(decoded.to(device=self.output_device, dtype=torch.float32, copy=True))
+                _log_source_tensor_stats("vae.process_output", out, vae_dtype=self.vae_dtype, channel_dim=1, batch_start=x, enabled=self.trace_tensor_stats)
                 if pixel_samples is None:
                     pixel_samples = torch.empty((samples_in.shape[0],) + tuple(out.shape[1:]), device=self.output_device)
                 pixel_samples[x : x + batch_number] = out
@@ -251,6 +280,10 @@ class VAE:
         return output.movedim(1, -1)
 
     def encode(self, pixel_samples: torch.Tensor):
+        _log_source_tensor_stats(
+            "vae.encode_input", pixel_samples, vae_dtype=self.vae_dtype,
+            channel_dim=-1, enabled=self.trace_tensor_stats,
+        )
         if memory_management.VAE_ALWAYS_TILED:
             return self.encode_tiled(pixel_samples)
 
@@ -267,7 +300,24 @@ class VAE:
             samples = None
             for x in range(0, _samples.shape[0], batch_number):
                 pixels_in = self.process_input(_samples[x : x + batch_number]).to(self.vae_dtype).to(self.device)
-                out = self.first_stage_model.encode(pixels_in).to(self.output_device).float()
+                _log_source_tensor_stats(
+                    "vae.raw_encode_input",
+                    pixels_in,
+                    vae_dtype=self.vae_dtype,
+                    channel_dim=1,
+                    batch_start=x,
+                    enabled=self.trace_tensor_stats,
+                )
+                encoded = self.first_stage_model.encode(pixels_in)
+                _log_source_tensor_stats(
+                    "vae.raw_encode",
+                    encoded,
+                    vae_dtype=self.vae_dtype,
+                    channel_dim=1,
+                    batch_start=x,
+                    enabled=self.trace_tensor_stats,
+                )
+                out = encoded.to(self.output_device).float()
                 if samples is None:
                     samples = torch.empty((_samples.shape[0],) + tuple(out.shape[1:]), device=self.output_device)
                 samples[x : x + batch_number] = out
@@ -281,6 +331,14 @@ class VAE:
         if _tile:
             memory_management.soft_empty_cache()
             return self.encode_tiled(pixel_samples)
+
+        _log_source_tensor_stats(
+            "vae.encode_output",
+            samples,
+            vae_dtype=self.vae_dtype,
+            channel_dim=1,
+            enabled=self.trace_tensor_stats,
+        )
 
         return samples
 
