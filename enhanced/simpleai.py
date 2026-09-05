@@ -12,6 +12,7 @@ import cv2
 import args_manager
 import modules.util as util
 import modules.comfy_prompt_compat as comfy_prompt_compat
+from modules.comfyd_recovery import install_comfyd_recovery
 import enhanced.all_parameters as ads
 import simpleai_base.p2p_task as p2p_task
 from build_launcher import is_win32_standalone_build
@@ -483,6 +484,24 @@ def _set_comfyd_arg(flag, value):
     comfyd.comfyd_args.append([flag, value])
 
 
+def _select_comfyd_recovery_port(preferred):
+    frontend_port = getattr(args_manager.args, "port", None)
+    port = find_available_port(preferred, reserved_ports={frontend_port}, suppress_logging=True)
+    if not is_port_available(port, "0.0.0.0"):
+        raise RuntimeError(f"No available Comfyd port near {preferred}")
+    return port
+
+
+def _publish_comfyd_recovery_port(port):
+    shared.sysinfo["loopback_port"] = port
+    _set_comfyd_arg("--port", str(port))
+
+
+_comfyd_supervisor = install_comfyd_recovery(
+    comfyd, comfyclient_pipeline, _select_comfyd_recovery_port, _publish_comfyd_recovery_port,
+)
+
+
 def _launch_arg_was_set(flag, argv=None):
     argv = sys.argv if argv is None else argv
     prefix = f"{flag}="
@@ -732,6 +751,7 @@ def _build_comfyd_launch_args(argv=None):
     return mapped
 
 
+@_comfyd_supervisor.synchronized
 def update_comfyd_io_paths(user_did=None, update_runtime=True, update_startup=True):
     target_did, comfyd_input, comfyd_output = get_comfyd_io_paths(user_did)
     os.makedirs(comfyd_output, exist_ok=True)
@@ -740,7 +760,7 @@ def update_comfyd_io_paths(user_did=None, update_runtime=True, update_startup=Tr
         comfyclient_pipeline.set_input_directory(comfyd_input)
     sync_intput_reserved(target_did)
 
-    if update_runtime and comfyd.is_running():
+    if update_runtime:
         comfyd.modify_variable({"outputs": comfyd_output, "inputs": comfyd_input})
 
     if update_startup:
@@ -756,8 +776,10 @@ def refresh_comfyd_model_catalog():
     return comfy_prompt_compat.refresh_comfy_model_catalog(comfyclient_pipeline)
 
 
+@_comfyd_supervisor.synchronized
 def reset_simpleai_args():
     global args_comfyd
+    _comfyd_supervisor.clear_runtime_variables()
     shared.sysinfo.update(dict(
         torch_version=torch_version,
         xformers_version=xformers_version ))
@@ -911,9 +933,9 @@ def get_path_in_user_dir(filename, user_did=None, catalog=None):
         return path_file
     return None
 
+@_comfyd_supervisor.synchronized
 def _restart_comfyd_after_setting_change():
-    if comfyd.is_running():
-        comfyd.stop(force=True)
+    comfyd.stop(force=True)
     reset_simpleai_args()
     if getattr(comfyd, "comfyd_active", False):
         comfyd.start()

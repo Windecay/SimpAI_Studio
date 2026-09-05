@@ -2542,7 +2542,8 @@ def _bounded_float(value: Any, default: float = 0.5) -> float:
 
 def normalize_world_book_entry(value: Any = None, index: int = 0) -> dict[str, Any] | None:
     source = _dict(value)
-    content = _text(source.get("content") or source.get("text") or source.get("body"), 8000)
+    # Storage keeps the source; only Context Builder applies prompt budgets.
+    content = str(source.get("content") or source.get("text") or source.get("body") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     title = _text(source.get("title") or source.get("name"), 240)
     raw_keys = source.get("keys") or source.get("primary_keys")
     if isinstance(raw_keys, str):
@@ -3043,6 +3044,15 @@ def _import_example_dialogues(value: Any) -> list[str]:
     return [item.strip() for item in parts if item.strip()][:20]
 
 
+def _import_tavern_greetings(value: Any) -> list[str]:
+    # Greetings are complete alternative openings, not example-dialogue snippets.
+    return [
+        item.replace("\r\n", "\n").replace("\r", "\n").strip()
+        for item in (value if isinstance(value, list) else [])
+        if isinstance(item, str) and item.strip()
+    ]
+
+
 def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[str, Any]:
     """Convert TavernAI/SillyTavern JSON or PNG card metadata to a roleplay card."""
     raw = value
@@ -3079,8 +3089,8 @@ def import_tavern_character_card(value: Any = None, filename: Any = "") -> dict[
     post_history_instructions = _text(first_value("post_history_instructions"), 16000)
     if not system_prompt:
         system_prompt = _text(depth_prompt.get("prompt"), 16000)
-    alternate_greetings = _import_example_dialogues(first_value("alternate_greetings"))
-    group_only_greetings = _import_example_dialogues(first_value("group_only_greetings"))
+    alternate_greetings = _import_tavern_greetings(first_value("alternate_greetings"))
+    group_only_greetings = _import_tavern_greetings(first_value("group_only_greetings"))
     description = first_value("identity", "description", "persona")
     scenario = first_value("background", "scenario")
     speech_style = first_value("speech_style", "talk_style", "speaking_style")
@@ -3644,6 +3654,8 @@ def match_world_book_entries(
     active_chapter_id = _text(normalized.get("active_chapter_id"), 160)
     search_text = _roleplay_context_query(normalized, query)
     rows: list[tuple[int, dict[str, Any]]] = []
+    if not normalized.get("world_book", {}).get("enabled", True):
+        return []
     for entry in normalized.get("world_book", {}).get("entries", []):
         if not entry.get("enabled") or not entry.get("content"):
             continue
@@ -3688,7 +3700,7 @@ def match_world_book_entries(
             score += 12
         rows.append((score, copy.deepcopy(entry)))
     rows.sort(key=lambda item: (-item[0], str(item[1].get("updated_at") or "")))
-    return [item for _, item in rows[: max(1, min(50, int(limit or 20)))]]
+    return [item for _, item in rows[: max(1, min(MAX_WORLD_BOOK_ENTRIES, int(limit or 20)))]]
 
 
 def query_roleplay_memories(
@@ -4344,6 +4356,32 @@ def _context_block(
     }
 
 
+def _fit_world_book_context(entries: list[dict[str, Any]], budget: int) -> dict[str, Any]:
+    """Fit matching lore by character budget, leaving persisted text untouched."""
+    selected = []
+    truncated_ids = []
+    for index, entry in enumerate(entries):
+        remaining = max(0, budget - len(json.dumps(selected, ensure_ascii=False, separators=(",", ": "))))
+        share = max(160, remaining // max(1, len(entries) - index) - 100)
+        source = str(entry.get("content") or "")
+        row = {
+            "id": _text(entry.get("id"), 160),
+            "title": _context_text(entry.get("title"), 240),
+            "content": _context_text(source, min(2400, share)),
+        }
+        candidate = _context_block("world_book", [*selected, row])
+        if candidate["chars"] > budget:
+            continue
+        selected.append(row)
+        if row["content"] != source:
+            truncated_ids.append(row["id"])
+    block = _context_block("world_book", selected, items=len(selected), omitted=len(entries) - len(selected))
+    selected_ids = {row["id"] for row in selected}
+    block["truncated_ids"] = truncated_ids
+    block["omitted_ids"] = [entry["id"] for entry in entries if entry["id"] not in selected_ids]
+    return block
+
+
 def _context_compact_runtime_lines(value: Any) -> list[str]:
     source = _dict(value)
     lines: list[str] = []
@@ -4499,7 +4537,7 @@ def build_roleplay_context(
         normalized,
         query,
         actor_id,
-        world_limit=max(1, limits["world_book"]),
+        world_limit=MAX_WORLD_BOOK_ENTRIES,
         memory_limit=max(1, limits["memories"]),
     )
     history_pack = _context_history(history, limits)
@@ -4652,17 +4690,17 @@ def build_roleplay_context(
             blocks.append(chapter_block)
             used_system_chars += chapter_block["chars"]
 
-    world_rows = [
-        {
-            "id": _text(item.get("id"), 160),
-            "title": _context_text(item.get("title"), 240),
-            "content": _context_text(item.get("content"), 900),
-            "keys": _clean_string_list(item.get("keys"), 12),
-        }
-        for item in _list(resources.get("world_book"), limits["world_book"])
-        if isinstance(item, dict)
-    ]
-    add_optional_list("world_book", world_rows, len(resources.get("world_book") or []))
+    world_candidates = resources.get("world_book") or []
+    world_budget = max(0, system_budget - used_system_chars)
+    if resources.get("memories"):
+        world_budget -= min(900, world_budget // 4)
+    world_block = _fit_world_book_context(world_candidates, world_budget)
+    if world_block["items"]:
+        blocks.append(world_block)
+        used_system_chars += world_block["chars"]
+    elif world_candidates:
+        world_block["transport"] = "report"
+        blocks.append(world_block)
 
     memory_rows = [
         {
@@ -4700,6 +4738,12 @@ def build_roleplay_context(
         "history_chars": history_pack["chars"],
         "history_budget_chars": history_pack["budget"],
         "history_omitted": history_pack["omitted"],
+        "world_book_selection": {
+            "matched": len(world_candidates),
+            "selected": world_block["items"],
+            "omitted_ids": world_block["omitted_ids"],
+            "truncated_ids": world_block["truncated_ids"],
+        },
         "blocks": blocks,
         "history": history_pack,
     }

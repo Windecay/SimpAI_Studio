@@ -455,6 +455,7 @@ def install_workspace_recovery(blocks: Any, after_event: Any | None = None) -> W
             inputs=[browser_state, spec.component],
             outputs=browser_state,
             js=_workspace_save_js(spec),
+            preprocess=False,
             queue=False,
             show_progress="hidden",
             api_visibility="private",

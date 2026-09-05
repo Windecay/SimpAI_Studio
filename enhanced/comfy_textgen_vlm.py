@@ -25,16 +25,17 @@ class ComfyTextgenVLM:
 
         return comfyd, comfyclient_pipeline
 
-    def _ensure_server(self, timeout=120):
+    def _ensure_server(self, timeout=300):
         if bool(getattr(getattr(shared, "args", None), "disable_backend", False)):
             raise RuntimeError("Comfy backend is disabled.")
         if bool(getattr(getattr(shared, "args", None), "disable_comfyd", False)):
             raise RuntimeError("Comfyd is disabled.")
         comfyd, comfyclient_pipeline = self._runtime()
-        if not comfyd.is_running():
-            comfyd.start()
-        endpoint = str(comfyclient_pipeline.server_address())
+        comfyd.start()
         deadline = time.monotonic() + max(1.0, float(timeout))
+        comfyclient_pipeline.wait_for_server_ready(
+            timeout_seconds=timeout, process_alive_callback=comfyd.is_running,
+        )
         last_error = ""
         while time.monotonic() < deadline:
             if not comfyd.is_running():
@@ -42,6 +43,7 @@ class ComfyTextgenVLM:
             try:
                 import httpx
 
+                endpoint = str(comfyclient_pipeline.server_address())
                 with httpx.Client(timeout=5.0) as client:
                     response = client.get(f"http://{endpoint}/object_info")
                     response.raise_for_status()
@@ -212,6 +214,11 @@ class ComfyTextgenVLM:
         return str(value) if value is not None else None
 
     def _execute_workflow(self, workflow, preview_id, timeout=600):
+        comfyd, _ = self._runtime()
+        with comfyd.task_session():
+            return self._execute_workflow_in_session(workflow, preview_id, timeout)
+
+    def _execute_workflow_in_session(self, workflow, preview_id, timeout=600):
         _, comfyclient_pipeline = self._runtime()
         user_did, user_cert = self._user_credentials()
         queued = comfyclient_pipeline.queue_prompt(user_did, workflow, user_cert)

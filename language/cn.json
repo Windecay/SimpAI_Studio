@@ -2081,6 +2081,8 @@
   "Recent established facts": "最近确认的剧情事实",
   "Active chapter summary": "当前章节摘要",
   "Triggered world book": "已触发世界书",
+  "Entries omitted by context budget": "因上下文预算未选中的条目",
+  "Entries shortened for this reply": "本次回复截短的条目",
   "Relevant long-term memories": "相关长期记忆",
   "Recent dialogue": "最近对话",
   "The remote connection stopped returning data. The input box is available again.": "远程连接长时间没有返回数据，输入框已恢复。",

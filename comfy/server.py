@@ -884,6 +884,14 @@ class PromptServer():
                 return web.Response(status=404)
             return web.json_response(dt["__metadata__"])
 
+        @routes.get("/simpai/health")
+        async def simpai_health(request):
+            return web.json_response({
+                "service": "simpai-comfyd",
+                "pid": os.getpid(),
+                "queue_remaining": self.prompt_queue.get_tasks_remaining(),
+            })
+
         @routes.get("/system_stats")
         async def system_stats(request):
             primary_device = comfy.model_management.get_torch_device()

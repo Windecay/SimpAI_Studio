@@ -594,7 +594,9 @@
                 content,
                 chars: Math.max(0, Math.round(Number(block.chars) || content.length)),
                 items: Math.max(0, Math.round(Number(block.items) || 0)),
-                omitted: Math.max(0, Math.round(Number(block.omitted) || 0))
+                omitted: Math.max(0, Math.round(Number(block.omitted) || 0)),
+                truncated_ids: Array.isArray(block.truncated_ids) ? block.truncated_ids.map(String).slice(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES) : [],
+                omitted_ids: Array.isArray(block.omitted_ids) ? block.omitted_ids.map(String).slice(0, MAX_ROLEPLAY_WORLD_BOOK_ENTRIES) : []
             };
         }).filter(Boolean);
         if (!blocks.length) return null;
@@ -735,9 +737,14 @@
         if (content) content.textContent = roleplayContextPrettyContent(selected);
         if (note) {
             const omitted = selected.id === 'recent_dialogue' ? report.history_omitted : selected.omitted;
-            note.textContent = omitted > 0
+            note.textContent = selected.id === 'world_book'
+                ? `${roleplayDictionaryText('Entries omitted by context budget')}: ${omitted} · ${roleplayDictionaryText('Entries shortened for this reply')}: ${selected.truncated_ids.length}`
+                : omitted > 0
                 ? localText(`${omitted} older item(s) omitted.`, `已省略 ${omitted} 项较早内容。`)
                 : localText('No content was omitted from this block.', '这一部分没有省略内容。');
+            note.title = selected.id === 'world_book'
+                ? [...selected.omitted_ids, ...selected.truncated_ids].join(', ')
+                : '';
         }
     }
 
@@ -769,7 +776,7 @@
 
     function normalizeRoleplayWorldBookEntry(value, index = 0) {
         const source = value && typeof value === 'object' ? value : {};
-        const content = roleplayResourceText(source.content || source.text || source.body, 8000);
+        const content = String(source.content || source.text || source.body || '').trim();
         const title = roleplayResourceText(source.title || source.name, 240);
         const keys = roleplayResourceList(
             Array.isArray(source.keys || source.primary_keys)
@@ -950,7 +957,7 @@
         if (!item) return '';
         return `<article class="describe-vlm-chat-roleplay-resource-row" data-roleplay-resource-row="world" data-resource-id="${escapeHtml(item.id)}" data-resource-source="${escapeHtml(item.source)}" data-resource-extensions="${escapeHtml(encodeURIComponent(JSON.stringify(item.extensions || {})))}">
           <div class="describe-vlm-chat-roleplay-resource-row-head"><input data-resource-field="title" type="text" maxlength="240" value="${escapeHtml(item.title)}" aria-label="${escapeHtml(localText('World book title', '世界书标题'))}"><button type="button" data-roleplay-resource-remove title="${escapeHtml(localText('Delete entry', '删除条目'))}" aria-label="${escapeHtml(localText('Delete entry', '删除条目'))}"><i class="fa-solid fa-trash"></i></button></div>
-          <textarea data-resource-field="content" rows="2" maxlength="8000" placeholder="${escapeHtml(localText('Reusable setting, rule, location, or lore', '可复用的设定、规则、地点或背景知识'))}">${escapeHtml(item.content)}</textarea>
+          <textarea data-resource-field="content" rows="2" placeholder="${escapeHtml(localText('Reusable setting, rule, location, or lore', '可复用的设定、规则、地点或背景知识'))}">${escapeHtml(item.content)}</textarea>
           <div class="describe-vlm-chat-roleplay-resource-grid">
             <label><span>${escapeHtml(localText('Keywords', '关键词'))}</span><input data-resource-field="keys" type="text" value="${escapeHtml(roleplayResourceJoin(item.keys))}" placeholder="${escapeHtml(localText('Comma separated', '用逗号分隔'))}"></label>
             <label><span>${escapeHtml(localText('Secondary keywords', '次要关键词'))}</span><input data-resource-field="secondary_keys" type="text" value="${escapeHtml(roleplayResourceJoin(item.secondary_keys))}" placeholder="${escapeHtml(localText('Optional', '可选'))}"></label>
@@ -6587,9 +6594,10 @@
         };
         const identity = read('[data-describe-vlm-chat-roleplay-character-identity]');
         const style = read('[data-describe-vlm-chat-roleplay-character-style]');
+        const exampleDialogues = read('[data-describe-vlm-chat-roleplay-character-example-dialogues]');
         const appearance = read('[data-describe-vlm-chat-roleplay-character-appearance]');
         const name = read('[data-describe-vlm-chat-roleplay-character-name]');
-        const hasVisibleValues = [name, appearance, identity, style].some((value) => value !== null && value !== '');
+        const hasVisibleValues = [name, appearance, identity, style, exampleDialogues].some((value) => value !== null && value !== '');
         if (!preserveEmpty || hasVisibleValues) {
             if (name !== null) card.name = name;
             if (appearance !== null) card.appearance = appearance;
@@ -6600,6 +6608,9 @@
             if (style !== null) {
                 card.personality = style.split(/\n\n+/)[0] || '';
                 card.speech_style = style.split(/\n\n+/).slice(1).join('\n\n');
+            }
+            if (exampleDialogues !== null) {
+                card.example_dialogues = parseRoleplayCharacterLibraryExampleDialogues(exampleDialogues);
             }
         }
         normalized.characters[activeId] = card;
@@ -6962,6 +6973,11 @@
         setValue('[data-describe-vlm-chat-roleplay-character-appearance]', session.character.appearance, ['character', 'appearance']);
         setValue('[data-describe-vlm-chat-roleplay-character-identity]', [session.character.identity, session.character.background].filter(Boolean).join('\n\n'), ['character', 'identity']);
         setValue('[data-describe-vlm-chat-roleplay-character-style]', [session.character.personality, session.character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style']);
+        setValue(
+            '[data-describe-vlm-chat-roleplay-character-example-dialogues]',
+            formatRoleplayCharacterLibraryExampleDialogues(session.character.example_dialogues),
+            ['character', 'example_dialogues']
+        );
         const activeCharacterRuntime = session.story_state.characters?.[session.active_character_id] || {};
         setValue('[data-describe-vlm-chat-roleplay-character-current-appearance]', activeCharacterRuntime.appearance, ['character_state', 'appearance']);
         setValue('[data-describe-vlm-chat-roleplay-character-state-text]', activeCharacterRuntime.state_text, ['character_state', 'state_text']);
@@ -7763,6 +7779,7 @@
             setField('[data-describe-vlm-chat-roleplay-character-appearance]', next.character.appearance);
             setField('[data-describe-vlm-chat-roleplay-character-identity]', [next.character.identity, next.character.background].filter(Boolean).join('\n\n'));
             setField('[data-describe-vlm-chat-roleplay-character-style]', [next.character.personality, next.character.speech_style].filter(Boolean).join('\n\n'));
+            setField('[data-describe-vlm-chat-roleplay-character-example-dialogues]', formatRoleplayCharacterLibraryExampleDialogues(next.character.example_dialogues));
         }
         target.roleplaySession = normalizeRoleplaySession(next, target.conversationId);
         const draftCharacterId = target.roleplaySession.active_character_id || target.roleplaySession.character.id;
@@ -9918,6 +9935,7 @@
         const characterAppearance = read('[data-describe-vlm-chat-roleplay-character-appearance]');
         const characterIdentity = read('[data-describe-vlm-chat-roleplay-character-identity]');
         const characterStyle = read('[data-describe-vlm-chat-roleplay-character-style]');
+        const characterExampleDialogues = read('[data-describe-vlm-chat-roleplay-character-example-dialogues]');
         if (characterName !== null && changedSinceSnapshot(['character', 'name'], characterName)) {
             card.name = characterName;
         }
@@ -9934,7 +9952,13 @@
             card.personality = parts.shift() || '';
             card.speech_style = parts.join('\n\n');
         }
-        if (activeId && (characterName !== null || characterAppearance !== null || characterIdentity !== null || characterStyle !== null)) {
+        if (characterExampleDialogues !== null) {
+            const examples = parseRoleplayCharacterLibraryExampleDialogues(characterExampleDialogues);
+            if (changedSinceSnapshot(['character', 'example_dialogues'], examples)) {
+                card.example_dialogues = examples;
+            }
+        }
+        if (activeId && (characterName !== null || characterAppearance !== null || characterIdentity !== null || characterStyle !== null || characterExampleDialogues !== null)) {
             session.characters[activeId] = card;
             session.character = card;
         }
@@ -10062,6 +10086,16 @@
                 : visibleRoleplayCharacterStateFields(modal);
             return JSON.stringify(visibleValue) === JSON.stringify(fallback) ? fallback : previousValue;
         };
+        const readExampleDialogues = (fallback, path) => {
+            const field = modal.querySelector('[data-describe-vlm-chat-roleplay-character-example-dialogues]');
+            const previousValue = previousSnapshot
+                ? path.reduce((value, key) => value?.[key], previousSnapshot)
+                : undefined;
+            const fallbackValue = Array.isArray(fallback) ? fallback : [];
+            if (!field || field === document.activeElement || previousValue === undefined) return fallbackValue;
+            const visibleValue = parseRoleplayCharacterLibraryExampleDialogues(field.value);
+            return JSON.stringify(visibleValue) === JSON.stringify(fallbackValue) ? fallbackValue : previousValue;
+        };
         const character = session.characters?.[activeId] || session.character || {};
         const characterRuntime = session.story_state.characters?.[activeId] || {};
         const playerState = normalizeRoleplayPlayerState(session.story_state.player_state);
@@ -10086,7 +10120,8 @@
                 name: read('[data-describe-vlm-chat-roleplay-character-name]', character.name, ['character', 'name']),
                 appearance: read('[data-describe-vlm-chat-roleplay-character-appearance]', character.appearance, ['character', 'appearance']),
                 identity: read('[data-describe-vlm-chat-roleplay-character-identity]', [character.identity, character.background].filter(Boolean).join('\n\n'), ['character', 'identity']),
-                style: read('[data-describe-vlm-chat-roleplay-character-style]', [character.personality, character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style'])
+                style: read('[data-describe-vlm-chat-roleplay-character-style]', [character.personality, character.speech_style].filter(Boolean).join('\n\n'), ['character', 'style']),
+                example_dialogues: readExampleDialogues(character.example_dialogues, ['character', 'example_dialogues'])
             },
             character_state: {
                 appearance: read('[data-describe-vlm-chat-roleplay-character-current-appearance]', characterRuntime.appearance, ['character_state', 'appearance']),
@@ -11136,7 +11171,7 @@
         <label><span>${escapeHtml(localText('API profile', 'API 模型'))}</span><select data-describe-vlm-chat-roleplay-agent-api-version>${renderRoleplayApiProfileOptions()}</select></label>
         <label class="describe-vlm-chat-roleplay-check"><input data-describe-vlm-chat-roleplay-agent-fallback type="checkbox"><span>${escapeHtml(localText('Allow fallback after a model failure', '模型失败后允许使用备用'))}</span></label>
       </div>
-      <div class="describe-vlm-chat-roleplay-section">
+      <div class="describe-vlm-chat-roleplay-section describe-vlm-chat-roleplay-character-section">
         <div class="describe-vlm-chat-roleplay-section-head"><strong>${escapeHtml(localText('Characters', '角色列表'))}</strong><span class="describe-vlm-chat-roleplay-section-actions"><button type="button" data-describe-vlm-chat-roleplay-character-add title="${escapeHtml(localText('Add character', '增加角色'))}" aria-label="${escapeHtml(localText('Add character', '增加角色'))}"><i class="fa-solid fa-plus"></i></button><button type="button" data-describe-vlm-chat-roleplay-character-remove title="${escapeHtml(localText('Remove current character', '删除当前角色'))}" aria-label="${escapeHtml(localText('Remove current character', '删除当前角色'))}"><i class="fa-solid fa-trash"></i></button><button type="button" data-describe-vlm-chat-roleplay-import-draft title="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}" aria-label="${escapeHtml(localText('Ask the assistant to create a character draft', '让助手生成角色草稿'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button></span></div>
         <div class="describe-vlm-chat-roleplay-character-guidance" data-describe-vlm-chat-roleplay-character-guidance hidden>
           <div class="describe-vlm-chat-roleplay-character-guidance-copy"><i class="fa-solid fa-sparkles"></i><div><strong>${escapeHtml(localText('Start with a character', '先创建一个角色'))}</strong><span>${escapeHtml(localText('Let the assistant fill the form, or start with the name field.', '可以让助手填写表格，也可以先填写名称。'))}</span></div></div>
@@ -11159,6 +11194,7 @@
         <label><span>${escapeHtml(localText('Fixed appearance', '固定形象'))}</span><textarea data-describe-vlm-chat-roleplay-character-appearance rows="2" placeholder="${escapeHtml(localText('Face, hair, body type, age, and other stable visual traits', '脸型、发型、体型、年龄等不会随剧情轻易改变的特征'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Identity and background', '身份与背景'))}</span><textarea data-describe-vlm-chat-roleplay-character-identity rows="3"></textarea></label>
         <label><span>${escapeHtml(localText('Personality and speech', '性格与说话方式'))}</span><textarea data-describe-vlm-chat-roleplay-character-style rows="3"></textarea></label>
+        <label><span>${escapeHtml(localText('Example dialogues (use <START> between examples)', '示例对话（多段示例之间使用 <START> 分隔）'))}</span><textarea data-describe-vlm-chat-roleplay-character-example-dialogues rows="5" placeholder="${escapeHtml(localText('Use <START> before each example, then write {{user}} and {{char}} dialogue.', '每段示例前写 <START>，并使用 {{user}} 与 {{char}} 表示对话。'))}"></textarea></label>
         <label><span>${escapeHtml(localText('Character draft request', '角色生成要求'))}</span><div class="describe-vlm-chat-character-mention-wrap" data-roleplay-character-mention-wrap><textarea data-describe-vlm-chat-roleplay-character-draft-context data-roleplay-character-mention-input rows="2" aria-describedby="describe_vlm_chat_roleplay_character_mention_hint" aria-controls="describe_vlm_chat_roleplay_character_mention_menu" aria-expanded="false" placeholder="${escapeHtml(localText('Describe the character you want the assistant to create', '描述你希望助手生成的角色'))}"></textarea><small id="describe_vlm_chat_roleplay_character_mention_hint" class="describe-vlm-chat-character-mention-hint">${escapeHtml(roleplayDictionaryText("Type @ to reference a character from the current story or character library, for example: Create @Mira's mother."))}</small><div id="describe_vlm_chat_roleplay_character_mention_menu" class="describe-vlm-chat-character-mention-menu" data-roleplay-character-mention-menu role="listbox" hidden></div></div></label>
         <label><span>${escapeHtml(localText('Character image direction', '角色图要求'))}</span><textarea data-describe-vlm-chat-roleplay-character-reference-request rows="2" placeholder="${escapeHtml(localText('Optional image direction, such as full body, white evening dress, neutral pose', '可选的角色图要求，例如全身、白色晚装、自然站姿'))}"></textarea></label>
         <div class="describe-vlm-chat-roleplay-current-appearance-editor">
