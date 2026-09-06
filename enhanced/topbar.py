@@ -308,6 +308,7 @@ PRESET_STORE_ORDER = [
     "MiniMax-H3(T2V)",
     "MiniMax-H3(I2V)",
     "MiniMax-H3(R2V)",
+    "MiniMax-H3(Avatar)",
     "MiniMax-H3(R2C)",
     "MiniMax-H3(R2I)",
     "Bernini-ImageEdit",

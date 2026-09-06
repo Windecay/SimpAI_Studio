@@ -236,7 +236,7 @@ def target_compiler(target):
         return None
     if "r2i" in task_method:
         return {"id": COMPILER_ID, "route": "image_reference"}
-    if "r2v" in task_method or "r2c" in task_method:
+    if "r2v" in task_method or "r2c" in task_method or "minimax_h3_avatar" in task_method:
         return {"id": COMPILER_ID, "route": "reference"}
     if "i2v" in task_method:
         return {"id": COMPILER_ID, "route": "frame_anchor"}
@@ -793,6 +793,23 @@ def build_system_instructions(target_or_compiler, context=None):
             f"{alignment} Return exactly these three sections in this order: integrated_multimodal_description, "
             "overall_soundscape, non_diegetic_music. Each section name must be lowercase and followed by a colon. "
             "integrated_multimodal_description must begin with [Shot 1]."
+        )
+    avatar_target = " ".join(_clean_text(target.get(key)).lower() for key in ("key", "name", "label", "task_method"))
+    if mode == MODE_REF2VA and ("minimax_h3_avatar" in avatar_target or "minimax-h3(avatar)" in avatar_target):
+        common += (
+            "\nAudio-driven avatar content rules: animate the person in <Picture 1> in precise lip sync with "
+            "the existing vocal performance in <Audio 1>. Use reference generation + audio reuse in summary "
+            "and fully_copy for the supplied <Audio 1> segment in retention_analysis, not a voice-style reference. "
+            "Preserve the source voice, words, rhythm, pauses, and existing sounds unchanged. Never invent a transcript, "
+            "regenerate speech, or add speakers, music, ambience, sound effects, or subtitles. Without a verified "
+            "transcript, describe the existing (S1) performance without quoting guessed words. The source audio is "
+            "requested sound, not silence: Synchronized sound and overall_soundscape must specify unchanged "
+            "<Audio 1>; non_diegetic_music is N/A, with existing source music retained. Keep facial identity, "
+            "hairstyle, clothing, background, and lighting consistent. Default to one continuous shot with fixed "
+            "framing, a visible face, natural blinks, restrained expressions, and small head and body movements; "
+            "do not add events or scene changes merely to fill a longer duration. Respect explicit user motion "
+            "requests and only assign supplied additional pictures their requested roles. Follow the runtime "
+            "duration without hardcoding 14 seconds or instructing audio stretching or repetition."
         )
     return f"MiniMax H3 prompt compiler mode: {mode}.\n{format_rules}\n{common}\nRuntime media inventory:\n{context_note(target_context)}"
 

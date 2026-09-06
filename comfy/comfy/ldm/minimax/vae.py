@@ -519,14 +519,14 @@ class MiniMaxH3VideoVAE(nn.Module):
             for j, (j_pos, j_len) in enumerate(zip(x_idx, x_len)):
                 zj, zw = j_pos // self.vae_ratio, j_len // self.vae_ratio
                 tile = self._decode_pixels(z[..., zi:zi + zl, zj:zj + zw])
-                if i < len(y_idx) - 1:
-                    new_tails.append(tile[..., -y_overlap[i]:, :].clone())
-                next_left_tail = tile[..., :, -x_overlap[j]:].clone() if j < len(x_idx) - 1 else None
                 if i > 0:
                     tile = self.blend(row_tails[j], tile, y_overlap[i - 1], dim=-2)
+                # Carry vertical fusion between rows before applying horizontal fusion.
+                if i < len(y_idx) - 1:
+                    new_tails.append(tile[..., -y_overlap[i]:, :].clone())
                 if j > 0:
                     tile = self.blend(left_tail, tile, x_overlap[j - 1], dim=-1)
-                left_tail = next_left_tail
+                left_tail = tile[..., :, -x_overlap[j]:].clone() if j < len(x_idx) - 1 else None
                 if i < len(y_idx) - 1:
                     tile = tile[..., :-y_overlap[i], :]
                 if j < len(x_idx) - 1:
