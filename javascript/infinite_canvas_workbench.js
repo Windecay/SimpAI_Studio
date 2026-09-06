@@ -6063,10 +6063,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             if (!clean || rows.some(item => item.value === clean)) return;
             rows.push({ value: clean, label: label || clean });
         };
-        add(selectedName, selectedEntry?.display_name || selectedEntry?.name || selectedName);
-        const entries = Array.isArray(opts.entries) ? opts.entries : canvasAgentReadyPresetEntries();
+        if (!opts.task || canvasAgentPresetSupportsTask(selectedEntry, opts.task)) {
+            add(selectedName, selectedEntry?.display_name || selectedEntry?.name || selectedName);
+        }
+        const entries = Array.isArray(opts.entries) ? opts.entries
+            : (opts.task ? getPresetCatalog().filter(entry => canvasAgentPresetSupportsTask(entry, opts.task)) : canvasAgentReadyPresetEntries());
         entries.forEach(entry => add(entry.name || entry.display_name, entry.display_name || entry.name));
-        if (!rows.length && selectedName) add(selectedName, selectedName);
+        if (!rows.length && selectedName && !opts.task) add(selectedName, selectedName);
         return rows;
     }
 
@@ -9160,7 +9163,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 top_k: 40,
                 repetition_penalty: 1.05,
                 seed: -1,
-                disable_thinking: isH3Target || isH3StoryboardCell,
+                disable_thinking: true,
                 h3_visual_reference_max_side: (isH3Target || isH3StoryboardCell) ? 512 : 0,
                 free_after: false
             }, model === 'Custom' ? getCanvasAgentCustomRuntimeParams() : {})
@@ -9169,7 +9172,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             timeoutError: t('Prompt rewrite timed out. Please run with the current prompt or try again.', '提示词改写超时。请使用当前提示词运行，或稍后重试。')
         });
         if (!response?.ok || !String(response.text || '').trim()) {
-            return { ok: false, error: response?.details || response?.error || 'LLM refine returned no text' };
+            return { ok: false, error: response?.details || response?.error || t('The model returned no prompt text. Please retry or use the original prompt.', '模型没有返回提示词正文，请重试或使用原提示词。') };
         }
         let candidate = String(response.text || '').trim();
         if (!isH3StoryboardCell && canvasAgentPromptRewriteTooWeak(prompt, candidate)) {
@@ -9490,6 +9493,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
 
     async function runCanvasAgentTextToImage(prompt, options) {
         const opts = options || {};
+        await refreshPresetCatalog();
         const target = opts.ignoreSelectedTarget ? null : getCanvasAgentTargetNode();
         let generator = target && isCanvasAgentGeneratorTarget(target) ? target : null;
         const ownerNode = getNode(opts.sourceVlmNodeId) || null;
@@ -9516,12 +9520,12 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         let selectedChoice = null;
         let fallbackNote = '';
         if (!generator) {
-            const choice = await chooseCanvasAgentPresetEntry('t2i', { prompt: opts.originalPrompt || prompt, presetName: opts.presetName || opts.plan?.preset || '' });
+            const choice = await chooseCanvasAgentPresetEntry('t2i', { prompt: opts.originalPrompt || prompt, presetName: opts.presetName || opts.plan?.preset || '', task: 'text_to_image' });
             selectedChoice = choice;
-            selectedEntry = choice.entry;
+            selectedEntry = choice.entry || getPresetCatalog().find(entry => canvasAgentPresetSupportsTask(entry, 'text_to_image'));
             if (!selectedEntry) {
                 resetCanvasAgentRunInfo();
-                showToast(t('No text-to-image preset from the Agent queue was found.', 'Agent 文生图队列中没有找到可用 preset'));
+                showToast(t('No text-to-image preset was found in the catalog.', '预设目录中没有找到文生图预设'));
                 setCanvasAgentMessage((choice.checked || []).join('; '));
                 return { ok: false, error: 'no text-to-image preset found', checked: choice.checked || [] };
             }
@@ -9582,7 +9586,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             message: t('Agent will use {target} and submit this prompt.', 'Agent 将使用 {target} 并提交以下提示词。').replace('{target}', label),
             form: decisionForm,
             fields: [
-                ...(generator ? [] : [{ key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(selectedEntry) }]),
+                ...(generator ? [] : [{ key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(selectedEntry, { task: 'text_to_image' }) }]),
                 canvasAgentPromptDecisionField()
             ],
             facts: [
@@ -9615,14 +9619,42 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             ? String(resolved.prompt || '').trim()
             : canvasAgentPromptFromDecision(decisionForm, resolved.prompt);
         if (!generator) {
-            const chosenEntry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || selectedEntry;
-            if (!chosenEntry) {
+            const chosenEntry = findPresetCatalogEntryByName(decisionForm.preset);
+            if (!chosenEntry || !canvasAgentPresetSupportsTask(chosenEntry, 'text_to_image')) {
                 resetCanvasAgentRunInfo();
                 showToast(t('Selected target preset is unavailable.', '选择的目标 preset 不可用'));
                 return { ok: false, error: 'selected preset unavailable' };
             }
             selectedEntry = chosenEntry;
             const presetName = normalizePresetName(selectedEntry?.name || selectedEntry?.display_name || selectedPresetName);
+            if (presetName !== selectedPresetName) {
+                const changedTarget = canvasAgentPromptTargetFromEntry(selectedEntry, 'text-to-image');
+                const rewrite = await ensureCanvasAgentPromptMatchesTarget(resolved.prompt, changedTarget, 'text-to-image', {
+                    entry: selectedEntry,
+                    presetName,
+                    promptSource: resolved.source,
+                    presetDefaults: canvasAgentPresetPromptDefaults(selectedEntry)
+                });
+                if (!rewrite.ok) {
+                    resetCanvasAgentRunInfo();
+                    return { ok: false, error: rewrite.error || 'prompt target rewrite failed' };
+                }
+                const gate = await ensureCanvasAgentPromptPreflightAllows(rewrite.prompt || resolved.prompt, changedTarget, 'text-to-image', {
+                    entry: selectedEntry,
+                    action: 'text_to_image',
+                    presetName,
+                    userPrompt: sourceUserPrompt,
+                    autoStart: opts.autoStart
+                });
+                if (!gate.ok) {
+                    resetCanvasAgentRunInfo();
+                    return { ok: false, error: gate.error || 'prompt preflight blocked' };
+                }
+                resolved.prompt = gate.prompt;
+                resolved.source = rewrite.source || resolved.source;
+                preflight = gate.preflight;
+                workflowKey = opts.sourceVlmNodeId ? vlmCanvasAgentWorkflowKey(opts.sourceVlmNodeId, 't2i', presetName) : '';
+            }
             selectedPresetName = presetName;
             if (!workflowKey && opts.sourceVlmNodeId && presetName) {
                 const implicitKey = vlmCanvasAgentWorkflowKey(opts.sourceVlmNodeId, 't2i', presetName);
@@ -28959,6 +28991,24 @@ ${renderGenerationMetadataInspectorSection(node)}
     function buildAddNodeContextMenuItems(targetWorld, includeViewActions) {
         const items = [
             {
+                label: t('Presets', '预设'),
+                searchOnly: true,
+                children: getPresetCatalog().map(entry => ({
+                    label: entry.display_name || entry.name,
+                    icon: 'fa-square-plus',
+                    search: [entry.name, entry.display_name, entry.backend_engine, entry.task_method, entry.engine_type,
+                        ...(Array.isArray(entry.themes) ? entry.themes.map(localizeCanvasLabel) : [])],
+                    action: async () => {
+                        const resolved = await resolvePresetCatalogEntry(entry.name);
+                        if (!resolved) {
+                            showToast(t('Preset definition is not ready. Please reopen the preset list.', 'Preset 定义尚未加载，请重新打开 Preset 列表。'));
+                            return;
+                        }
+                        addPresetNode(resolved, targetWorld);
+                    }
+                }))
+            },
+            {
                 label: t('Browser / Import', '浏览器 / 导入'),
                 icon: 'fa-photo-film',
                 search: 'browser import media gallery album local file transfer station 浏览器 导入 媒体 相册 文件 本地 中转站',
@@ -29043,10 +29093,17 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function openAddNodeMenu(x, y, world, includeViewActions, closeDelayMs) {
         const targetWorld = world || lastPointerWorld || viewportCenterWorld();
-        openContextMenu(x, y, buildAddNodeContextMenuItems(targetWorld, includeViewActions), {
+        const items = buildAddNodeContextMenuItems(targetWorld, includeViewActions);
+        openContextMenu(x, y, items, {
             closeDelayMs,
             searchable: true,
             searchPlaceholder: t('Search nodes / actions...', '搜索节点 / 操作...')
+        });
+        const searchInput = contextMenu.querySelector('[data-context-menu-search]');
+        refreshPresetCatalog().then(() => {
+            if (contextMenu.hidden || contextMenu.querySelector('[data-context-menu-search]') !== searchInput) return;
+            items.splice(0, items.length, ...buildAddNodeContextMenuItems(targetWorld, includeViewActions));
+            searchInput?.dispatchEvent(new Event('input'));
         });
         return;
         openContextMenu(x, y, [
@@ -30671,6 +30728,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         const results = [];
         (items || []).forEach((item, index) => {
             if (!item || item.separator) return;
+            if (item.searchOnly && !hasContextMenuChildren(item)) return;
             const path = parentPath ? `${parentPath}.${index}` : String(index);
             const ownMatch = inheritedMatch || contextMenuItemMatchesTokens(item, tokens, ancestors);
             if (hasContextMenuChildren(item)) {
@@ -30690,6 +30748,7 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function renderContextMenuItems(items, parentPath) {
         return (items || []).map((item, index) => {
+            if (item?.searchOnly) return '';
             if (item?.separator) return '<div class="sai-canvas-context-menu-separator" role="separator"></div>';
             const path = item?.__path || (parentPath ? `${parentPath}.${index}` : String(index));
             const children = hasContextMenuChildren(item);

@@ -622,7 +622,7 @@ class LlamaCppVLM:
             "special_tokens_map": special_tokens_map,
         }
 
-    def _create_text_only_thinking_chat_handler(self, llm):
+    def _create_text_only_thinking_chat_handler(self, llm, enable_thinking=True):
         handler = self.chat_handler
         if handler is None or not self._chat_handler_controls_thinking():
             return None
@@ -642,7 +642,7 @@ class LlamaCppVLM:
         controls_thinking = False
         for name in ("enable_thinking", "force_reasoning"):
             if hasattr(handler, name) or name in template_args:
-                template_args[name] = True
+                template_args[name] = bool(enable_thinking)
                 controls_thinking = True
         if not controls_thinking:
             return None
@@ -674,6 +674,15 @@ class LlamaCppVLM:
         self.text_chat_handler = None
         self._non_thinking_template_active = False
         if not self._is_qwen35_family(chat_handler_name, model_path):
+            self.text_chat_handler = self._create_text_only_thinking_chat_handler(
+                llm, enable_thinking=False
+            )
+            self._non_thinking_template_active = self.text_chat_handler is not None
+            if self._non_thinking_template_active:
+                logger.info(
+                    "Configured %s text-only request handler with enable_thinking=False.",
+                    chat_handler_name or "llama.cpp",
+                )
             return
 
         text_handler = self._create_text_only_qwen_chat_handler(
@@ -1332,8 +1341,36 @@ class LlamaCppVLM:
                                     "llama.cpp MTP initialization failed; retrying this load with standard decoding: %s",
                                     mtp_failure,
                                 )
+                            if not attempt_loaded_mtp:
+                                # Leave the exception scope before collecting its partially initialized Llama.
                                 gc.collect()
+                                if self.chat_handler is not None:
+                                    close_handler = getattr(self.chat_handler, "close", None)
+                                    if callable(close_handler):
+                                        close_handler()
+                                    else:
+                                        exit_stack = getattr(self.chat_handler, "_exit_stack", None)
+                                        if exit_stack is not None:
+                                            exit_stack.close()
+                                self._prepare_chat_handler(
+                                    handler_class,
+                                    mmproj_path=mmproj_path,
+                                    model_path=model_path,
+                                    chat_handler_name=chat_handler_name,
+                                    image_min_tokens=image_min_tokens,
+                                    image_max_tokens=image_max_tokens,
+                                )
+                                llama_kwargs["chat_handler"] = self.chat_handler
+                                mtp_kwargs.clear()
                                 ldm_patched.modules.model_management.soft_empty_cache(True)
+                                logger.info(
+                                    "llama.cpp MTP fallback cleanup completed; loading standard decoding "
+                                    "with n_gpu_layers=%s, offload_kqv=%s, kv_cache_type=%s, n_ctx=%s",
+                                    attempt_layers,
+                                    attempt_offload_kqv,
+                                    attempt_kv_cache_type,
+                                    n_ctx,
+                                )
                                 self.llm = Llama(**llama_kwargs)
                         else:
                             self.llm = Llama(**llama_kwargs)
@@ -1987,9 +2024,9 @@ class LlamaCppVLM:
         )
         if has_media:
             text_route = "multimodal_handler"
-        elif text_handler is self.thinking_text_chat_handler:
+        elif text_handler is not None and text_handler is self.thinking_text_chat_handler:
             text_route = "thinking_template"
-        elif text_handler is self.text_chat_handler:
+        elif text_handler is not None and text_handler is self.text_chat_handler:
             text_route = "non_thinking_template"
         elif thinking_enabled:
             text_route = "metadata_template_without_thinking_override"
