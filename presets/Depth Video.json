@@ -26,7 +26,7 @@
                     "zh": "深度视频"
                 }
             },
-            "theme_title": "Depth Anything V2 Depth Video",
+            "theme_title": "Depth Anything V2 Depth Video [Create Reference Video]",
             "director_capability": {
                 "image_policy": "forbidden",
                 "audio_policy": "forbidden",

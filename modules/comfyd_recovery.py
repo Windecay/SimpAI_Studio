@@ -38,6 +38,17 @@ def _connection_refused(error):
     return False
 
 
+def _local_connection_error(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if (getattr(error, "errno", None) in (errno.EADDRINUSE, 10048)
+                or getattr(error, "winerror", None) == 10048):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 def probe_health(host, port, pid):
     try:
         with httpx.Client(timeout=3.0, trust_env=False) as client:
@@ -50,7 +61,9 @@ def probe_health(host, port, pid):
     except httpx.HTTPStatusError as exc:
         state = "foreign" if exc.response.status_code == 404 else "unresponsive"
         return Health(state, str(exc))
-    except (httpx.HTTPError, ValueError) as exc:
+    except (httpx.HTTPError, ValueError, OSError) as exc:
+        if _local_connection_error(exc):
+            return Health("probe_error", str(exc))
         if _connection_refused(exc):
             return Health("refused", str(exc))
         # A read timeout during GPU work is not evidence that the listener died.
@@ -58,6 +71,8 @@ def probe_health(host, port, pid):
             with socket.create_connection((host, int(port)), timeout=3.0):
                 pass
         except OSError as connect_error:
+            if _local_connection_error(connect_error):
+                return Health("probe_error", str(connect_error))
             if _connection_refused(connect_error):
                 return Health("refused", str(connect_error))
         return Health("unresponsive", str(exc))
@@ -104,6 +119,7 @@ class ComfydSupervisor:
         self._probe_process = None
         self._failure_since = None
         self._failure_state = None
+        self._failure_warned = False
         self._failures = 0
         self._busy = False
         self._attempts = 0
@@ -165,6 +181,7 @@ class ComfydSupervisor:
         self._probe_process = None
         self._failure_since = None
         self._failure_state = None
+        self._failure_warned = False
         self._failures = 0
         self._busy = False
         self._vars_pending = bool(self._runtime_vars)
@@ -318,7 +335,7 @@ class ComfydSupervisor:
         try:
             health = self.probe(host, port, process.pid)
         except Exception as exc:
-            health = Health("unresponsive", str(exc))
+            health = Health("probe_error" if _local_connection_error(exc) else "unresponsive", str(exc))
         with self.lock:
             if self._probe_process is process:
                 self._probe_process = None
@@ -339,6 +356,7 @@ class ComfydSupervisor:
                 self._failures = 0
                 self._failure_since = None
                 self._failure_state = None
+                self._failure_warned = False
                 return self._apply_variables()
             self._http_ready = False
             self._healthy_since = None
@@ -346,12 +364,20 @@ class ComfydSupervisor:
                 self._failures = 0
                 self._failure_since = None
                 self._failure_state = health.state
+                self._failure_warned = False
             self._failures += 1
             if self._failure_since is None:
                 self._failure_since = now
-                logger.warning("[Comfyd] Health failure PID=%s port=%s state=%s: %s",
-                               process.pid, port, health.state, health.detail)
+                logger.debug("[Comfyd] Health probe failed PID=%s port=%s state=%s: %s",
+                             process.pid, port, health.state, health.detail)
             if self._failures < self.failure_threshold:
+                return False
+            if now - self._failure_since >= 30.0 and not self._failure_warned:
+                logger.warning("[Comfyd] Health checks persistently failing PID=%s port=%s state=%s: %s",
+                               process.pid, port, health.state, health.detail)
+                self._failure_warned = True
+            # A local socket allocation failure says nothing about child health.
+            if health.state == "probe_error":
                 return False
             if health.state == "foreign":
                 recover = True

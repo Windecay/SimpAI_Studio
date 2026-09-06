@@ -2089,6 +2089,7 @@
   "Check the server log for the matching request ID before retrying this turn.": "重新发送本回合前，请先在服务端日志中核对对应的 request_id。",
   "Canvas data could not be restored. Reload the source image and try again.": "画布数据无法恢复，请重新载入原图后再生成。",
   "Depth Anything V2 Depth Video": "深度视频",
+  "Depth Anything V2 Depth Video [Create Reference Video]": "制作参考用深度视频",
   "Depth Video": "深度视频",
   "Topaz-Starlight": "Topaz星光超分",
   "Enhancement strength": "增强强度",

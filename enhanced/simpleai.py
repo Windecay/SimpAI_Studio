@@ -6,6 +6,8 @@ import json
 import copy
 import getpass
 import importlib.util
+import threading
+from functools import wraps
 import gradio as gr
 import shared
 import cv2
@@ -28,9 +30,6 @@ from enhanced.logger import format_name
 from ui.update_helpers import gr_update
 from modules.access_mode import is_local_mode
 logger = logging.getLogger(format_name(__name__))
-
-comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
-comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)
 
 def is_advanced_logs_enabled():
     return ads.get_admin_default('advanced_logs')
@@ -497,9 +496,31 @@ def _publish_comfyd_recovery_port(port):
     _set_comfyd_arg("--port", str(port))
 
 
-_comfyd_supervisor = install_comfyd_recovery(
-    comfyd, comfyclient_pipeline, _select_comfyd_recovery_port, _publish_comfyd_recovery_port,
-)
+_comfyd_supervisor = None
+_comfyd_init_lock = threading.RLock()
+
+
+def _get_comfyd_supervisor():
+    global _comfyd_supervisor
+    with _comfyd_init_lock:
+        if _comfyd_supervisor is None:
+            # Shared config imports this module in Forge, which does not use Comfy.
+            comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
+            comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)
+            _comfyd_supervisor = install_comfyd_recovery(
+                comfyd, comfyclient_pipeline,
+                _select_comfyd_recovery_port, _publish_comfyd_recovery_port,
+            )
+        return _comfyd_supervisor
+
+
+def _comfyd_synchronized(fn):
+    @wraps(fn)
+    def locked(*args, **kwargs):
+        supervisor = _get_comfyd_supervisor()
+        with supervisor.lock:
+            return fn(*args, **kwargs)
+    return locked
 
 
 def _launch_arg_was_set(flag, argv=None):
@@ -751,7 +772,7 @@ def _build_comfyd_launch_args(argv=None):
     return mapped
 
 
-@_comfyd_supervisor.synchronized
+@_comfyd_synchronized
 def update_comfyd_io_paths(user_did=None, update_runtime=True, update_startup=True):
     target_did, comfyd_input, comfyd_output = get_comfyd_io_paths(user_did)
     os.makedirs(comfyd_output, exist_ok=True)
@@ -776,10 +797,10 @@ def refresh_comfyd_model_catalog():
     return comfy_prompt_compat.refresh_comfy_model_catalog(comfyclient_pipeline)
 
 
-@_comfyd_supervisor.synchronized
+@_comfyd_synchronized
 def reset_simpleai_args():
     global args_comfyd
-    _comfyd_supervisor.clear_runtime_variables()
+    _get_comfyd_supervisor().clear_runtime_variables()
     shared.sysinfo.update(dict(
         torch_version=torch_version,
         xformers_version=xformers_version ))
@@ -933,7 +954,7 @@ def get_path_in_user_dir(filename, user_did=None, catalog=None):
         return path_file
     return None
 
-@_comfyd_supervisor.synchronized
+@_comfyd_synchronized
 def _restart_comfyd_after_setting_change():
     comfyd.stop(force=True)
     reset_simpleai_args()
