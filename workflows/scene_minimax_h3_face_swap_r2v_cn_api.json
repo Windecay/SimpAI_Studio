@@ -508,7 +508,7 @@
     "inputs": {
       "dilation": 0,
       "feather": 0,
-      "bboxes": ["85", 4],
+      "bboxes": ["104", 0],
       "image": ["49", 0]
     },
     "class_type": "bbox_to_segs",
@@ -550,7 +550,8 @@
       "output_target_height": 1024,
       "output_padding": "0",
       "image": ["49", 0],
-      "mask": ["88", 0]
+      "mask": ["88", 0],
+      "optional_context_mask": ["104", 1]
     },
     "class_type": "InpaintCropImproved",
     "_meta": {"title": "Crop Detected Face Sequence"}
@@ -673,6 +674,17 @@
     },
     "class_type": "ImageToMask",
     "_meta": {"title": "Restore Automatic Face Mask"}
+  },
+  "104": {
+    "inputs": {
+      "bboxes": ["85", 4],
+      "images": ["49", 0],
+      "fps": ["49", 3],
+      "mask_expand": ["92", 0],
+      "mask_blend": 64
+    },
+    "class_type": "SimpAIFaceTrack",
+    "_meta": {"title": "SimpAI Face Track"}
   },
   "103": {
     "inputs": {
