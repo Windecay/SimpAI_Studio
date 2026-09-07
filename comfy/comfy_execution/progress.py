@@ -337,6 +337,28 @@ def add_progress_handler(handler: ProgressHandler) -> None:
     registry.register_handler(handler)
 
 
+def release_progress_inputs(prompt_id: str) -> None:
+    registry = global_progress_registry
+    if registry is None or registry.prompt_id != prompt_id:
+        return
+
+    from comfy_execution.graph import DynamicPrompt
+
+    # Retain node identities for progress/UI consumers, without execution payloads.
+    graph = registry.dynprompt
+    snapshot = DynamicPrompt({
+        node_id: {"class_type": node["class_type"], "inputs": {}}
+        for node_id, node in graph.original_prompt.items()
+    })
+    snapshot.ephemeral_prompt = {
+        node_id: {"class_type": node["class_type"], "inputs": {}}
+        for node_id, node in graph.ephemeral_prompt.items()
+    }
+    snapshot.ephemeral_parents = graph.ephemeral_parents.copy()
+    snapshot.ephemeral_display = graph.ephemeral_display.copy()
+    registry.dynprompt = snapshot
+
+
 def get_progress_state() -> ProgressRegistry:
     global global_progress_registry
     if global_progress_registry is None:

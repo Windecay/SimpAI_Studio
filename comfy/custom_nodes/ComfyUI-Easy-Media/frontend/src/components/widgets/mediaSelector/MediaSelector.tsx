@@ -1,60 +1,69 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import {
   Search,
   ArrowUpDown,
   LayoutList,
   LayoutGrid,
+  ListChecks,
   CheckCircle2,
   FileAudio,
+  FileVideo,
   Image as ImageIcon,
   File,
   Folder,
   ChevronRight,
   Link2,
   Plus,
+  RefreshCw,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 import { $error } from '@/lib/comfy-api'
+import { uploadInputMediaFile } from '@/lib/media-upload'
+import { useDelayedIntersection } from '@/hooks/use-delayed-intersection'
 import type { SlotItem } from '@/lib/timeline-utils'
+import {
+  getMediaList,
+  getMediaListStoreRevision,
+  getRecentMedia,
+  getRecentMediaHistory,
+  invalidateMediaListCache,
+  subscribeMediaListStore,
+  type MediaDirEntry,
+  type MediaFileEntry,
+  type MediaItem,
+  type MediaListMediaType,
+  type RecentMediaHistoryEntry,
+} from '@/stores/media-list-store'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type MediaType = 'all' | 'image' | 'audio' | 'video'
-export type MediaTab = 'inputs' | 'outputs' | 'local' | 'url' | 'slot'
+export type MediaType = MediaListMediaType
+export type MediaTab = 'inputs' | 'outputs' | 'history' | 'local' | 'url' | 'slot'
 type ViewMode = 'grid' | 'list'
-type SortBy = 'name' | 'date' | 'size'
+type SortBy = 'name' | 'date' | 'folders'
+type BrowsableMediaTab = Extract<MediaTab, 'inputs' | 'outputs' | 'local'>
+
+interface MediaSelectorSession {
+  activeTab: MediaTab
+  subfolders: Partial<Record<BrowsableMediaTab, string>>
+}
+
+const mediaSelectorSessions = new Map<MediaType, MediaSelectorSession>()
 
 const MULTIPLE_MEDIA_SEPARATOR = '|MULTIPLE|'
-
-interface MediaDirEntry {
-  type: 'dir'
-  name: string
-  path: string
-}
-
-interface MediaFileEntry {
-  type: 'file'
-  name: string
-  path: string
-  url: string
-  size: number
-  mtime: number
-  width?: number
-  height?: number
-}
-
-type MediaItem = MediaDirEntry | MediaFileEntry
+const MEDIA_REFRESH_COOLDOWN_MS = 2_000
 
 interface MediaSelectorChangeEvent {
   filePath: string
-  sourceType: 'input' | 'output' | 'local'
+  sourceType: 'input' | 'output' | 'temp' | 'local'
 }
 
 export interface MediaSelectorProps {
@@ -66,6 +75,14 @@ export interface MediaSelectorProps {
   defaultTab?: MediaTab
   /** Slot items computed from the connected node graph (only for image/audio media types) */
   slotItems?: SlotItem[]
+  /** History tab source: output only, or combined output + temp previews. */
+  historySource?: 'outputs' | 'combined'
+  /** Only render the history tab. Used by watch-output-history flows. */
+  historyOnly?: boolean
+  /** Enables the image-only batch selection toolbar. */
+  allowMultipleSelection?: boolean
+  /** Maximum number of files that can be returned in one batch. */
+  maxSelectionCount?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -81,9 +98,11 @@ function formatSize(bytes: number): string {
 function getFileIcon(name: string, mediaType: MediaType) {
   if (mediaType === 'audio') return FileAudio
   if (mediaType === 'image') return ImageIcon
+  if (mediaType === 'video') return FileVideo
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   if (['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'opus', 'wma'].includes(ext)) return FileAudio
   if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'tif'].includes(ext)) return ImageIcon
+  if (['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].includes(ext)) return FileVideo
   return File
 }
 
@@ -99,9 +118,50 @@ function isAudioFile(name: string, mediaType: MediaType): boolean {
   return ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'opus', 'wma'].includes(ext)
 }
 
+function isVideoFile(name: string, mediaType: MediaType): boolean {
+  if (mediaType === 'video') return true
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  return ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].includes(ext)
+}
+
 function getSelectedMediaValues(value: string): Set<string> {
   if (!value) return new Set()
   return new Set(value.split(MULTIPLE_MEDIA_SEPARATOR).filter((item) => item.length > 0))
+}
+
+function getSelectedMediaParent(value: string): string {
+  const firstValue = value.split(MULTIPLE_MEDIA_SEPARATOR)[0] ?? ''
+  if (!firstValue || firstValue.startsWith('http') || firstValue.startsWith('__slot__:')) return ''
+  const normalized = firstValue.replaceAll('\\', '/')
+  return normalized.split('/').slice(0, -1).join('/')
+}
+
+function splitSubfolderPath(subfolder: string): string[] {
+  return subfolder.replaceAll('\\', '/').split('/').filter(Boolean)
+}
+
+function formatMediaInfo(file: MediaFileEntry, mediaType: MediaType): string {
+  if (isImageFile(file.name, mediaType) && file.width && file.height) {
+    return `${file.width}×${file.height}`
+  }
+  return formatSize(file.size)
+}
+
+function sortFiles(files: MediaFileEntry[], sortBy: SortBy): MediaFileEntry[] {
+  return [...files].sort((a, b) => {
+    if (sortBy === 'date') return b.mtime - a.mtime
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function sortDirs(dirs: MediaDirEntry[]): MediaDirEntry[] {
+  return [...dirs].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function sortByLabelKey(sortBy: SortBy): string {
+  if (sortBy === 'name') return 'mediaSelector.sortName'
+  if (sortBy === 'date') return 'mediaSelector.sortDate'
+  return 'mediaSelector.sortFolders'
 }
 
 // ---------------------------------------------------------------------------
@@ -114,23 +174,7 @@ function LazyImage({
   className,
 }: Readonly<{ src: string; alt: string; className?: string }>) {
   const ref = useRef<HTMLImageElement>(null)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0 },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+  const visible = useDelayedIntersection(ref)
 
   return (
     <img
@@ -140,6 +184,32 @@ function LazyImage({
       className={className}
       onError={(e) => {
         ;(e.target as HTMLImageElement).style.display = 'none'
+      }}
+    />
+  )
+}
+
+function LazyVideo({
+  src,
+  className,
+}: Readonly<{ src: string; className?: string }>) {
+  const ref = useRef<HTMLVideoElement>(null)
+  const visible = useDelayedIntersection(ref)
+
+  return (
+    <video
+      ref={ref}
+      src={visible ? src : undefined}
+      className={className}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={(event) => {
+        const video = event.currentTarget
+        if (Number.isFinite(video.duration) && video.duration > 0.1) video.currentTime = 0.1
+      }}
+      onError={(event) => {
+        event.currentTarget.style.display = 'none'
       }}
     />
   )
@@ -156,7 +226,8 @@ function FileThumbnail({
 }: Readonly<{ file: MediaFileEntry; mediaType: MediaType; isSelected: boolean }>) {
   const Icon = getFileIcon(file.name, mediaType)
   const showImage = isImageFile(file.name, mediaType) && !!file.url
-  const isAudio = !showImage && isAudioFile(file.name, mediaType)
+  const showVideo = !showImage && isVideoFile(file.name, mediaType) && !!file.url
+  const isAudio = !showImage && !showVideo && isAudioFile(file.name, mediaType)
 
   return (
     <div
@@ -167,6 +238,8 @@ function FileThumbnail({
     >
       {showImage ? (
         <LazyImage src={file.url} alt={file.name} className="w-full h-full object-cover" />
+      ) : showVideo ? (
+        <LazyVideo src={file.url} className="w-full h-full object-cover" />
       ) : (
         <Icon className={`w-6 h-6 ${isAudio ? 'text-highlight' : 'text-muted-foreground'}`} />
       )}
@@ -220,7 +293,7 @@ function Breadcrumb({
   onNavigate,
 }: Readonly<{ subfolder: string; onNavigate: (path: string) => void }>) {
   if (!subfolder) return null
-  const parts = subfolder.split('/').filter(Boolean)
+  const parts = splitSubfolderPath(subfolder)
   return (
     <div className="flex items-center gap-0.5 px-2 py-0.5 border-b border-border text-[11px] text-muted-foreground flex-wrap">
       <button
@@ -261,28 +334,49 @@ function RemoteFileList({
   sortBy,
   searchQuery,
   value,
+  historySource = 'outputs',
   onChange,
+  onSourceChange,
+  initialSubfolder,
+  onNavigateSubfolder,
   onAddLocalFile,
+  multipleSelection,
+  selectionLimit,
+  onToggleSelection,
+  onVisibleFilesChange,
 }: Readonly<{
-  source: 'inputs' | 'outputs' | 'local'
+  source: 'inputs' | 'outputs' | 'history' | 'local'
   mediaType: MediaType
   localPath: string
   viewMode: ViewMode
   sortBy: SortBy
   searchQuery: string
   value: string
+  historySource?: 'outputs' | 'combined'
   onChange: (v: string, source: 'input' | 'output' | 'local') => void
+  onSourceChange?: (event: MediaSelectorChangeEvent) => void
+  initialSubfolder?: string
+  onNavigateSubfolder?: (path: string) => void
   onAddLocalFile?: () => void
+  multipleSelection: boolean
+  selectionLimit: number
+  onToggleSelection: (path: string, source: 'input' | 'output' | 'local') => void
+  onVisibleFilesChange: (files: MediaFileEntry[]) => void
 }>) {
   const t = useT()
   const [items, setItems] = useState<MediaItem[]>([])
-  const [subfolder, setSubfolder] = useState('')
+  const [subfolder, setSubfolder] = useState(initialSubfolder ?? '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const cacheRevision = useSyncExternalStore(
+    subscribeMediaListStore,
+    getMediaListStoreRevision,
+    getMediaListStoreRevision,
+  )
   const selectedValues = getSelectedMediaValues(value)
 
   // Reset to root when the source or local path changes
-  const rootKey = `${source}|${localPath}`
+  const rootKey = source === 'history' ? 'history' : `${source}|${localPath}`
   const prevRootKeyRef = useRef(rootKey)
 
   useEffect(() => {
@@ -303,51 +397,38 @@ function RemoteFileList({
     setLoading(true)
     setError(null)
 
-    const params = new URLSearchParams({ source, type: mediaType })
-    if (source === 'local') params.set('path', localPath)
-    if (subfolder) params.set('subfolder', subfolder)
-
     let cancelled = false
-    fetch(`/easy-media/media/list?${params}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`${r.status}`)
-        return r.json() as Promise<{ items: MediaItem[] }>
+    const request = source === 'history'
+      ? historySource === 'combined'
+        ? getRecentMediaHistory(mediaType, 48, 50)
+        : getRecentMedia({ source: 'outputs', mediaType, hours: 48, limit: 50 })
+      : getMediaList({ source, mediaType, localPath, subfolder })
+    request
+      .then((list) => {
+        if (!cancelled) setItems(list)
       })
-      .then((data) => {
-          if (!cancelled) {
-            const raw = data as Record<string, unknown>
-            // Support both old "files" (no type field) and new "items" format
-            const rawList = (raw.items ?? raw.files ?? []) as Array<Record<string, unknown>>
-            const list: MediaItem[] = rawList.map((entry) =>
-              entry.type === 'dir'
-                ? (entry as unknown as MediaDirEntry)
-                : ({ ...entry, type: 'file' } as unknown as MediaFileEntry),
-            )
-            setItems(list)
-          }
-        })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : JSON.stringify(e))
       })
       .finally(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
-  }, [source, mediaType, localPath, subfolder])
+  }, [source, historySource, mediaType, localPath, subfolder, cacheRevision])
 
-  const dirs = items.filter((i): i is MediaDirEntry => i.type === 'dir')
-  const files = (items.filter((i): i is MediaFileEntry => i.type === 'file') as MediaFileEntry[])
-    .filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    .sort((a, b) => {
-      const selectedDelta = Number(selectedValues.has(b.path)) - Number(selectedValues.has(a.path))
-      if (selectedDelta !== 0) return selectedDelta
-      if (sortBy === 'name') return a.name.localeCompare(b.name)
-      if (sortBy === 'date') return b.mtime - a.mtime
-      return b.size - a.size
-    })
+  const dirs = sortDirs(items.filter((i): i is MediaDirEntry => i.type === 'dir'))
+  const files = sortFiles(
+    (items.filter((i): i is MediaFileEntry => i.type === 'file') as MediaFileEntry[])
+      .filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    sortBy,
+  )
 
   const filteredDirs = dirs.filter((d) =>
     searchQuery ? d.name.toLowerCase().includes(searchQuery.toLowerCase()) : true,
   )
+
+  useEffect(() => {
+    onVisibleFilesChange(files)
+  }, [files, onVisibleFilesChange])
 
   if (loading) return viewMode === 'grid' ? <GridSkeleton /> : <ListSkeleton />
 
@@ -361,49 +442,126 @@ function RemoteFileList({
 
   const isEmpty = filteredDirs.length === 0 && files.length === 0
   const selectedFiles = files.filter((file) => selectedValues.has(file.path))
-  const unselectedFiles = files.filter((file) => !selectedValues.has(file.path))
-  const leadFiles = selectedFiles.length > 0 ? selectedFiles : files
-  const tailFiles = selectedFiles.length > 0 ? unselectedFiles : []
+  const sortedItems: MediaItem[] = sortBy === 'folders'
+    ? [...filteredDirs, ...files]
+    : [...files, ...filteredDirs]
+  const unselectedItems = sortedItems.filter((item) => item.type === 'dir' || !selectedValues.has(item.path))
+
+  function navigateSubfolder(path: string) {
+    if (path === subfolder) return
+    setItems([])
+    setLoading(true)
+    onVisibleFilesChange([])
+    setSubfolder(path)
+    onNavigateSubfolder?.(path)
+  }
+
+  function fileSourceType(file: MediaFileEntry): 'input' | 'output' | 'temp' | 'local' {
+    if (source === 'history') {
+      const historyType = (file as RecentMediaHistoryEntry).source_type
+      return historyType === 'temp' ? 'temp' : 'output'
+    }
+    return source === 'outputs' ? 'output' : source === 'local' ? 'local' : 'input'
+  }
+
+  function selectFile(file: MediaFileEntry) {
+    const actualSource = fileSourceType(file)
+    onChange(file.path, actualSource === 'temp' ? 'output' : actualSource)
+    onSourceChange?.({ filePath: file.path, sourceType: actualSource })
+  }
 
   function renderGridFile(file: MediaFileEntry, selected: boolean) {
+    const sourceType = fileSourceType(file)
+    const selectionDisabled = multipleSelection && !selected && selectedValues.size >= selectionLimit
     return (
-      <button
+      <div
         key={file.path}
-        type="button"
-        className="flex flex-col gap-1 text-left hover:opacity-80 transition-opacity"
-        onClick={() => onChange(file.path, source === 'outputs' ? 'output' : 'input')}
+        role="button"
+        tabIndex={selectionDisabled ? -1 : 0}
+        aria-disabled={selectionDisabled}
+        className={cn(
+          'relative flex flex-col gap-1 text-left hover:opacity-80 transition-opacity',
+          selectionDisabled && 'cursor-not-allowed opacity-50',
+        )}
+        onClick={() => multipleSelection
+          ? onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)
+          : selectFile(file)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          if (multipleSelection) onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)
+          else selectFile(file)
+        }}
       >
-        <FileThumbnail file={file} mediaType={mediaType} isSelected={selected} />
+        <FileThumbnail file={file} mediaType={mediaType} isSelected={selected && !multipleSelection} />
+        {multipleSelection && (
+          <Checkbox
+            checked={selected}
+            disabled={selectionDisabled}
+            aria-label={t('mediaSelector.selectFile', { name: file.name })}
+            className="absolute right-1 top-1 z-10 bg-background/80"
+            onClick={(event) => event.stopPropagation()}
+            onCheckedChange={() => onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)}
+          />
+        )}
         <span className="text-[10px] truncate leading-tight max-w-full" title={file.name}>
           {file.name}
         </span>
         <span className="text-[10px] text-muted-foreground truncate leading-tight max-w-full">
-          {isImageFile(file.name, mediaType) && file.width && file.height
-            ? `${file.width}×${file.height}`
-            : formatSize(file.size)}
+          {formatMediaInfo(file, mediaType)}
         </span>
-      </button>
+      </div>
     )
   }
 
   function renderListFile(file: MediaFileEntry, selected: boolean) {
     const Icon = getFileIcon(file.name, mediaType)
     const showThumb = isImageFile(file.name, mediaType) && !!file.url
-    const showAudioIcon = !showThumb && isAudioFile(file.name, mediaType)
+    const showVideoThumb = !showThumb && isVideoFile(file.name, mediaType) && !!file.url
+    const showAudioIcon = !showThumb && !showVideoThumb && isAudioFile(file.name, mediaType)
+    const sourceType = fileSourceType(file)
+    const selectionDisabled = multipleSelection && !selected && selectedValues.size >= selectionLimit
 
     return (
-      <button
+      <div
         key={file.path}
-        type="button"
+        role="button"
+        tabIndex={selectionDisabled ? -1 : 0}
+        aria-disabled={selectionDisabled}
         className={cn(
           'flex items-center gap-2 px-2 py-1 text-left hover:bg-accent transition-colors',
           selected && 'bg-accent',
+          selectionDisabled && 'cursor-not-allowed opacity-50',
         )}
-        onClick={() => onChange(file.path, source === 'outputs' ? 'output' : 'input')}
+        onClick={() => multipleSelection
+          ? onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)
+          : selectFile(file)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          if (multipleSelection) onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)
+          else selectFile(file)
+        }}
       >
+        {multipleSelection && (
+          <Checkbox
+            checked={selected}
+            disabled={selectionDisabled}
+            aria-label={t('mediaSelector.selectFile', { name: file.name })}
+            onClick={(event) => event.stopPropagation()}
+            onCheckedChange={() => onToggleSelection(file.path, sourceType === 'temp' ? 'output' : sourceType)}
+          />
+        )}
         {showThumb && (
           <div className="w-4 h-4 rounded overflow-hidden shrink-0 bg-muted">
             <LazyImage src={file.url} alt={file.name} className="w-full h-full object-cover" />
+          </div>
+        )}
+        {showVideoThumb && (
+          <div className="w-4 h-4 rounded overflow-hidden shrink-0 bg-muted">
+            <LazyVideo src={file.url} className="w-full h-full object-cover" />
           </div>
         )}
         {showAudioIcon && (
@@ -411,20 +569,66 @@ function RemoteFileList({
             <Icon className="w-3 h-3 text-white" />
           </div>
         )}
-        {!showThumb && !showAudioIcon && (
+        {!showThumb && !showVideoThumb && !showAudioIcon && (
           <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
         )}
         <span className="flex-1 text-xs truncate min-w-0" title={file.name}>
           {file.name}
         </span>
         <span className="text-[10px] text-muted-foreground shrink-0">
-          {isImageFile(file.name, mediaType) && file.width && file.height
-            ? `${file.width}×${file.height}`
-            : formatSize(file.size)}
+          {formatMediaInfo(file, mediaType)}
         </span>
-        {selected && <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />}
+        {selected && !multipleSelection && <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />}
+      </div>
+    )
+  }
+
+  function renderGridDir(dir: MediaDirEntry) {
+    return (
+      <button
+        key={dir.path}
+        type="button"
+        className="flex flex-col gap-1 text-left hover:opacity-80 transition-opacity"
+        onClick={() => navigateSubfolder(dir.path)}
+      >
+        <div className="relative w-full aspect-square rounded overflow-hidden bg-muted flex items-center justify-center">
+          <Folder className="w-6 h-6 text-warning" />
+        </div>
+        <span className="text-[10px] truncate leading-tight max-w-full" title={dir.name}>
+          {dir.name}
+        </span>
       </button>
     )
+  }
+
+  function renderListDir(dir: MediaDirEntry) {
+    return (
+      <button
+        key={dir.path}
+        type="button"
+        className="flex items-center gap-2 px-2 py-1 text-left hover:bg-accent transition-colors"
+        onClick={() => navigateSubfolder(dir.path)}
+      >
+        <div className="w-4 h-4 rounded flex items-center justify-center bg-muted shrink-0">
+          <Folder className="w-3 h-3 text-warning" />
+        </div>
+        <span className="flex-1 text-xs truncate min-w-0" title={dir.name}>
+          {dir.name}
+        </span>
+      </button>
+    )
+  }
+
+  function renderGridItem(item: MediaItem) {
+    return item.type === 'dir'
+      ? renderGridDir(item)
+      : renderGridFile(item, selectedValues.has(item.path))
+  }
+
+  function renderListItem(item: MediaItem) {
+    return item.type === 'dir'
+      ? renderListDir(item)
+      : renderListFile(item, selectedValues.has(item.path))
   }
 
   function renderGrid() {
@@ -446,23 +650,8 @@ function RemoteFileList({
             </span>
           </button>
         )}
-        {leadFiles.map((file) => renderGridFile(file, selectedValues.has(file.path)))}
-        {filteredDirs.map((dir) => (
-          <button
-            key={dir.path}
-            type="button"
-            className="flex flex-col gap-1 text-left hover:opacity-80 transition-opacity"
-            onClick={() => setSubfolder(dir.path)}
-          >
-            <div className="relative w-full aspect-square rounded overflow-hidden bg-muted flex items-center justify-center">
-              <Folder className="w-6 h-6 text-warning" />
-            </div>
-            <span className="text-[10px] truncate leading-tight max-w-full" title={dir.name}>
-              {dir.name}
-            </span>
-          </button>
-        ))}
-        {tailFiles.map((file) => renderGridFile(file, false))}
+        {selectedFiles.map((file) => renderGridFile(file, true))}
+        {unselectedItems.map(renderGridItem)}
       </div>
     )
   }
@@ -486,30 +675,17 @@ function RemoteFileList({
             </span>
           </button>
         )}
-        {leadFiles.map((file) => renderListFile(file, selectedValues.has(file.path)))}
-        {filteredDirs.map((dir) => (
-          <button
-            key={dir.path}
-            type="button"
-            className="flex items-center gap-2 px-2 py-1 text-left hover:bg-accent transition-colors"
-            onClick={() => setSubfolder(dir.path)}
-          >
-            <div className="w-4 h-4 rounded flex items-center justify-center bg-muted shrink-0">
-              <Folder className="w-3 h-3 text-warning" />
-            </div>
-            <span className="flex-1 text-xs truncate min-w-0" title={dir.name}>
-              {dir.name}
-            </span>
-          </button>
-        ))}
-        {tailFiles.map((file) => renderListFile(file, false))}
+        {selectedFiles.map((file) => renderListFile(file, true))}
+        {unselectedItems.map(renderListItem)}
       </div>
     )
   }
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Breadcrumb subfolder={subfolder} onNavigate={setSubfolder} />
+      {source !== 'history' ? (
+        <Breadcrumb subfolder={subfolder} onNavigate={navigateSubfolder} />
+      ) : null}
       {isEmpty && (
         <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">
           {t('mediaSelector.empty')}
@@ -532,35 +708,175 @@ export function MediaSelector({
   mediaType = 'all',
   defaultTab = 'inputs',
   slotItems = [],
+  historySource = 'outputs',
+  historyOnly = false,
+  allowMultipleSelection = false,
+  maxSelectionCount = 9,
 }: Readonly<MediaSelectorProps>) {
   const t = useT()
-  const showSlotTab = mediaType === 'image' || mediaType === 'audio'
-  const [activeTab, setActiveTab] = useState<MediaTab>(defaultTab)
+  const showSlotTab = mediaType === 'image' || mediaType === 'audio' || mediaType === 'video'
+  const initialSession = mediaSelectorSessions.get(mediaType)
+  const initialSubfolders = value && ['inputs', 'outputs', 'local'].includes(defaultTab)
+    ? { ...initialSession?.subfolders, [defaultTab]: getSelectedMediaParent(value) }
+    : initialSession?.subfolders ?? {}
+  const [activeTab, setActiveTab] = useState<MediaTab>(
+    historyOnly ? 'history' : value ? defaultTab : initialSession?.activeTab ?? defaultTab,
+  )
+  const [subfolders, setSubfolders] = useState<Partial<Record<BrowsableMediaTab, string>>>(
+    initialSubfolders,
+  )
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [sortBy, setSortBy] = useState<SortBy>('name')
   const [searchQuery, setSearchQuery] = useState('')
   const [localPath, setLocalPath] = useState('')
   const [urlInput, setUrlInput] = useState(activeTab === 'url' ? value : '')
   const [urlChecking, setUrlChecking] = useState(false)
-  const selectedValues = getSelectedMediaValues(value)
+  const [multipleSelection, setMultipleSelection] = useState(false)
+  const [draftSelectedValues, setDraftSelectedValues] = useState<Set<string>>(() => new Set())
+  const [visibleFiles, setVisibleFiles] = useState<MediaFileEntry[]>([])
+  const [refreshCoolingDown, setRefreshCoolingDown] = useState(false)
+  const lastRefreshAtRef = useRef<number | null>(null)
+  const refreshCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const normalizedSelectionLimit = Math.max(1, Math.min(9, maxSelectionCount))
+  const supportsMultipleSelection = mediaType === 'image'
+    && allowMultipleSelection
+  const effectiveValue = multipleSelection
+    ? [...draftSelectedValues].join(MULTIPLE_MEDIA_SEPARATOR)
+    : value
+  const selectedValues = getSelectedMediaValues(effectiveValue)
 
-  // Sync defaultTab when it changes (e.g. popover re-opens for a different segment)
+  const previousDefaultTabRef = useRef(defaultTab)
+
+  // Sync defaultTab when it changes after mount (e.g. a mounted selector targets another segment).
   useEffect(() => {
+    if (historyOnly) return
+    if (previousDefaultTabRef.current === defaultTab) return
+    previousDefaultTabRef.current = defaultTab
     setActiveTab(defaultTab)
     setSearchQuery('')
-  }, [defaultTab])
+  }, [defaultTab, historyOnly])
+
+  useEffect(() => () => {
+    if (refreshCooldownTimerRef.current !== null) {
+      clearTimeout(refreshCooldownTimerRef.current)
+    }
+  }, [])
+
+  function rememberSession(nextTab: MediaTab, nextSubfolders = subfolders) {
+    mediaSelectorSessions.set(mediaType, { activeTab: nextTab, subfolders: nextSubfolders })
+  }
+
+  function handleTabChange(nextTab: MediaTab) {
+    setActiveTab(nextTab)
+    setSearchQuery('')
+    setVisibleFiles([])
+    if (multipleSelection) {
+      setDraftSelectedValues(new Set())
+      setMultipleSelection(false)
+    }
+    rememberSession(nextTab)
+  }
+
+  function handleSubfolderChange(tab: BrowsableMediaTab, path: string) {
+    const nextSubfolders = { ...subfolders, [tab]: path }
+    setSubfolders(nextSubfolders)
+    rememberSession(activeTab, nextSubfolders)
+    setSearchQuery('')
+  }
 
   function cycleSortBy() {
     setSortBy((prev) => {
       if (prev === 'name') return 'date'
-      if (prev === 'date') return 'size'
+      if (prev === 'date') return 'folders'
       return 'name'
     })
   }
 
-  function handleFileChange(filePath: string, source: 'input' | 'output' | 'local') {
-    onChange(filePath, source)
+  function handleRefresh() {
+    const now = Date.now()
+    if (
+      lastRefreshAtRef.current !== null
+      && now - lastRefreshAtRef.current < MEDIA_REFRESH_COOLDOWN_MS
+    ) return
+
+    lastRefreshAtRef.current = now
+    setRefreshCoolingDown(true)
+    const source = activeTab === 'outputs' || activeTab === 'history'
+      ? 'outputs'
+      : activeTab === 'local'
+        ? 'local'
+        : 'inputs'
+    invalidateMediaListCache(source)
+
+    if (refreshCooldownTimerRef.current !== null) {
+      clearTimeout(refreshCooldownTimerRef.current)
+    }
+    refreshCooldownTimerRef.current = setTimeout(() => {
+      refreshCooldownTimerRef.current = null
+      setRefreshCoolingDown(false)
+    }, MEDIA_REFRESH_COOLDOWN_MS)
+  }
+
+  function handleFileChange(
+    filePath: string,
+    source: 'input' | 'output' | 'temp' | 'local',
+  ) {
+    onChange(filePath, source === 'temp' ? 'output' : source)
     onSourceChange?.({ filePath, sourceType: source })
+  }
+
+  function handleVisibleFilesChange(nextFiles: MediaFileEntry[]) {
+    setVisibleFiles((current) => {
+      const currentPaths = current.map((file) => file.path).join('\n')
+      const nextPaths = nextFiles.map((file) => file.path).join('\n')
+      return currentPaths === nextPaths ? current : nextFiles
+    })
+  }
+
+  function beginMultipleSelection() {
+    setDraftSelectedValues(new Set(
+      [...getSelectedMediaValues(value)].slice(0, normalizedSelectionLimit),
+    ))
+    setMultipleSelection(true)
+  }
+
+  function cancelMultipleSelection() {
+    setDraftSelectedValues(new Set())
+    setMultipleSelection(false)
+  }
+
+  function handleToggleSelection(filePath: string) {
+    setDraftSelectedValues((current) => {
+      const next = new Set(current)
+      if (next.has(filePath)) {
+        next.delete(filePath)
+      } else if (next.size < normalizedSelectionLimit) {
+        next.add(filePath)
+      }
+      return next
+    })
+  }
+
+  function handleSelectAll() {
+    setDraftSelectedValues((current) => {
+      const next = new Set(current)
+      for (const file of visibleFiles) {
+        if (next.size >= normalizedSelectionLimit) break
+        next.add(file.path)
+      }
+      return next
+    })
+  }
+
+  function confirmMultipleSelection() {
+    if (draftSelectedValues.size === 0) return
+    const source = activeTab === 'outputs' || activeTab === 'history'
+      ? 'output'
+      : activeTab === 'local'
+        ? 'local'
+        : 'input'
+    handleFileChange([...draftSelectedValues].join(MULTIPLE_MEDIA_SEPARATOR), source)
+    setMultipleSelection(false)
   }
 
   async function handleUrlConfirm() {
@@ -596,6 +912,7 @@ export function MediaSelector({
       if (data.source_type === 'url') {
         onChange(data.url!)
       } else {
+        invalidateMediaListCache('inputs')
         onChange(data.file_name!)
       }
     } catch {
@@ -622,7 +939,8 @@ export function MediaSelector({
       if (input.files.length === 1) {
         const file = input.files[0]
         try {
-          const uploaded = await uploadFile(file)
+          const uploaded = await uploadInputMediaFile(file, subfolders.inputs ?? '')
+          invalidateMediaListCache('inputs')
           onChange(uploaded)
         } catch (err) {
           console.error('[MediaSelector] upload failed:', err)
@@ -634,13 +952,14 @@ export function MediaSelector({
       const paths: string[] = []
       for (const file of input.files) {
         try {
-          const uploaded = await uploadFile(file)
+          const uploaded = await uploadInputMediaFile(file, subfolders.inputs ?? '')
           paths.push(uploaded)
         } catch (err) {
           console.error('[MediaSelector] upload failed:', err)
         }
       }
       if (paths.length > 0) {
+        invalidateMediaListCache('inputs')
         // Select first file for single selection, but indicate multiple were uploaded
         onChange(paths.join(MULTIPLE_MEDIA_SEPARATOR))
       }
@@ -648,39 +967,38 @@ export function MediaSelector({
     input.click()
   }
 
-  async function uploadFile(file: File): Promise<string> {
-    const form = new FormData()
-    form.append('image', file)
-    form.append('type', 'input')
-    form.append('overwrite', 'false')
-    const res = await fetch('/upload/image', { method: 'POST', body: form })
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-    const json = await res.json() as { name: string; subfolder?: string }
-    const sub = json.subfolder ? `${json.subfolder}/` : ''
-    return `${sub}${json.name}`
-  }
-
   return (
-    <div data-media-selector="" className="flex flex-col w-72 h-80 text-xs select-none">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MediaTab)} className="flex flex-col flex-1 overflow-hidden">
+    <div data-media-selector="" className="flex flex-col w-80 h-80 text-xs select-none">
+      <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as MediaTab)} className="flex flex-col flex-1 overflow-hidden">
         {/* Tab header */}
         <TabsList className="w-full rounded-none rounded-t-md h-7 p-0.5 gap-0.5 shrink-0">
-          <TabsTrigger value="inputs" className="flex-1 h-full text-[11px] px-1">
-            {t('mediaSelector.tabInputs')}
-          </TabsTrigger>
-          <TabsTrigger value="outputs" className="flex-1 h-full text-[11px] px-1">
-            {t('mediaSelector.tabOutputs')}
-          </TabsTrigger>
-          {/* <TabsTrigger value="local" className="flex-1 h-full text-[11px] px-1">
-            {t('mediaSelector.tabLocal')}
-          </TabsTrigger> */}
-          <TabsTrigger value="url" className="flex-1 h-full text-[11px] px-1">
-            {t('mediaSelector.tabUrl')}
-          </TabsTrigger>
-          {showSlotTab && (
-            <TabsTrigger value="slot" className="flex-1 h-full text-[11px] px-1">
-              {t('mediaSelector.tabSlot')}
+          {historyOnly ? (
+            <TabsTrigger value="history" className="flex-1 h-full text-[11px] px-1">
+              {t('mediaSelector.tabHistory')}
             </TabsTrigger>
+          ) : (
+            <>
+              <TabsTrigger value="inputs" className="flex-1 h-full text-[11px] px-1">
+                {t('mediaSelector.tabInputs')}
+              </TabsTrigger>
+              <TabsTrigger value="outputs" className="flex-1 h-full text-[11px] px-1">
+                {t('mediaSelector.tabOutputs')}
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex-1 h-full text-[11px] px-1">
+                {t('mediaSelector.tabHistory')}
+              </TabsTrigger>
+              {/* <TabsTrigger value="local" className="flex-1 h-full text-[11px] px-1">
+                {t('mediaSelector.tabLocal')}
+              </TabsTrigger> */}
+              <TabsTrigger value="url" className="flex-1 h-full text-[11px] px-1">
+                {t('mediaSelector.tabUrl')}
+              </TabsTrigger>
+              {showSlotTab && (
+                <TabsTrigger value="slot" className="flex-1 h-full text-[11px] px-1">
+                  {t('mediaSelector.tabSlot')}
+                </TabsTrigger>
+              )}
+            </>
           )}
         </TabsList>
 
@@ -696,32 +1014,81 @@ export function MediaSelector({
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            {supportsMultipleSelection && !multipleSelection && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-[11px]"
+                title={t('mediaSelector.filter')}
+                onClick={beginMultipleSelection}
+              >
+                <ListChecks className="w-3 h-3" />
+                {t('mediaSelector.filter')}
+              </Button>
+            )}
+            {multipleSelection ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title={t('mediaSelector.cancelFilter')}
+                  onClick={cancelMultipleSelection}
+                >
+                  <ListChecks className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-[11px]"
+                  disabled={visibleFiles.length === 0 || draftSelectedValues.size >= normalizedSelectionLimit}
+                  onClick={handleSelectAll}
+                >
+                  {t('mediaSelector.selectAll')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-[11px]"
+                  disabled={draftSelectedValues.size === 0}
+                  onClick={confirmMultipleSelection}
+                >
+                  {t('mediaSelector.confirm')}
+                </Button>
+              </>
+            ) : null}
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              title={t('mediaSelector.sort', { by: sortBy })}
+              title={t('mediaSelector.sort', { by: t(sortByLabelKey(sortBy)) })}
               onClick={cycleSortBy}
             >
               <ArrowUpDown className="w-3 h-3" />
             </Button>
+            {!multipleSelection && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                title={t(viewMode === 'grid' ? 'mediaSelector.viewList' : 'mediaSelector.viewGrid')}
+                onClick={() => setViewMode((current) => current === 'grid' ? 'list' : 'grid')}
+              >
+                {viewMode === 'grid'
+                  ? <LayoutList className="w-3 h-3" />
+                  : <LayoutGrid className="w-3 h-3" />}
+              </Button>
+            )}
             <Button
-              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              variant="ghost"
               size="icon"
               className="h-6 w-6"
-              title={t('mediaSelector.viewList')}
-              onClick={() => setViewMode('list')}
+              title={t('mediaSelector.refresh')}
+              aria-label={t('mediaSelector.refresh')}
+              disabled={refreshCoolingDown}
+              onClick={handleRefresh}
             >
-              <LayoutList className="w-3 h-3" />
-            </Button>
-            <Button
-              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-              size="icon"
-              className="h-6 w-6"
-              title={t('mediaSelector.viewGrid')}
-              onClick={() => setViewMode('grid')}
-            >
-              <LayoutGrid className="w-3 h-3" />
+              <RefreshCw className="w-3 h-3" />
             </Button>
           </div>
         )}
@@ -735,9 +1102,15 @@ export function MediaSelector({
             viewMode={viewMode}
             sortBy={sortBy}
             searchQuery={searchQuery}
-            value={value}
+            value={effectiveValue}
             onChange={(path) => handleFileChange(path, 'input')}
+            initialSubfolder={subfolders.inputs}
+            onNavigateSubfolder={(path) => handleSubfolderChange('inputs', path)}
             onAddLocalFile={handleAddLocalFile}
+            multipleSelection={multipleSelection}
+            selectionLimit={normalizedSelectionLimit}
+            onToggleSelection={handleToggleSelection}
+            onVisibleFilesChange={handleVisibleFilesChange}
           />
         </TabsContent>
 
@@ -749,8 +1122,34 @@ export function MediaSelector({
             viewMode={viewMode}
             sortBy={sortBy}
             searchQuery={searchQuery}
-            value={value}
+            value={effectiveValue}
             onChange={(path) => handleFileChange(path, 'output')}
+            initialSubfolder={subfolders.outputs}
+            onNavigateSubfolder={(path) => handleSubfolderChange('outputs', path)}
+            multipleSelection={multipleSelection}
+            selectionLimit={normalizedSelectionLimit}
+            onToggleSelection={handleToggleSelection}
+            onVisibleFilesChange={handleVisibleFilesChange}
+          />
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-0 flex-1 overflow-hidden flex flex-col">
+          <RemoteFileList
+            source="history"
+            mediaType={mediaType}
+            localPath=""
+            viewMode={viewMode}
+            sortBy={sortBy}
+            searchQuery={searchQuery}
+            value={effectiveValue}
+            historySource={historySource}
+            onChange={(path, source) => handleFileChange(path, source)}
+            onSourceChange={onSourceChange}
+            initialSubfolder=""
+            multipleSelection={multipleSelection}
+            selectionLimit={normalizedSelectionLimit}
+            onToggleSelection={handleToggleSelection}
+            onVisibleFilesChange={handleVisibleFilesChange}
           />
         </TabsContent>
 
@@ -771,8 +1170,14 @@ export function MediaSelector({
             viewMode={viewMode}
             sortBy={sortBy}
             searchQuery={searchQuery}
-            value={value}
+            value={effectiveValue}
             onChange={(path) => handleFileChange(path, 'local')}
+            initialSubfolder={subfolders.local}
+            onNavigateSubfolder={(path) => handleSubfolderChange('local', path)}
+            multipleSelection={multipleSelection}
+            selectionLimit={normalizedSelectionLimit}
+            onToggleSelection={handleToggleSelection}
+            onVisibleFilesChange={handleVisibleFilesChange}
           />
         </TabsContent>
 
@@ -812,9 +1217,14 @@ export function MediaSelector({
                   const selected = selectedValues.has(item.value)
                   const isImage = item.value.startsWith('__slot__:image')
                   const isAudio = item.value.startsWith('__slot__:audio')
+                  const isVideo = item.value.startsWith('__slot__:video')
                   const displayLabel = isImage
                     ? t('mediaSelector.slotImage', { n: index + 1 })
-                    : t('mediaSelector.slotAudio', { n: index + 1 })
+                    : isAudio
+                      ? t('mediaSelector.slotAudio', { n: index + 1 })
+                      : isVideo
+                        ? t('mediaSelector.slotVideo', { n: index + 1 })
+                        : item.label
                   return (
                     <button
                       key={item.value}
@@ -834,6 +1244,10 @@ export function MediaSelector({
                       ) : isAudio ? (
                         <div className="w-8 h-8 rounded flex items-center justify-center bg-[#34d399] shrink-0">
                           <FileAudio className="w-4 h-4 text-white" />
+                        </div>
+                      ) : isVideo ? (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted">
+                          <FileVideo className="h-4 w-4 text-muted-foreground" />
                         </div>
                       ) : (
                         <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />

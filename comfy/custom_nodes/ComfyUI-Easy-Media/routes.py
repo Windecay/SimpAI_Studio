@@ -22,8 +22,11 @@ Response (JSON):
     }
 """
 
-import os
+import asyncio
 import json
+import math
+import os
+import traceback
 import uuid
 from pathlib import Path
 
@@ -32,102 +35,137 @@ from server import PromptServer
 from aiohttp import web
 import folder_paths
 
-try:
-    from PIL import Image as PILImage
-    _HAS_PIL = True
-except ImportError:
-    _HAS_PIL = False
-
-# ---------------------------------------------------------------------------
-# File-extension filters
-# ---------------------------------------------------------------------------
-
-IMAGE_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".webp", ".gif",
-    ".bmp", ".tiff", ".tif",
-}
-
-AUDIO_EXTENSIONS = {
-    ".mp3", ".wav", ".flac", ".ogg", ".m4a",
-    ".aac", ".opus", ".wma",
-}
-
-VIDEO_EXTENSIONS = {
-    ".mp4", ".webm", ".mov", ".avi", ".mkv",
-    ".flv", ".wmv", ".m4v",
-}
-
-ALL_EXTENSIONS = IMAGE_EXTENSIONS | AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
-
-_TYPE_MAP: dict[str, set[str]] = {
-    "image": IMAGE_EXTENSIONS,
-    "audio": AUDIO_EXTENSIONS,
-    "video": VIDEO_EXTENSIONS,
-    "all":   ALL_EXTENSIONS,
-}
-
-
-def _allowed_extensions(media_type: str) -> set[str]:
-    return _TYPE_MAP.get(media_type, ALL_EXTENSIONS)
-
-
-def _file_entry(abs_path: str, rel_path: str, source: str) -> dict:
-    """Build a file-info dict from an absolute path."""
-    stat = os.stat(abs_path)
-    if source in ("inputs", "outputs"):
-        # ComfyUI serves these via /view?filename=<name>&type=<source>&subfolder=<dir>
-        source_param = "input" if source == "inputs" else "output"
-        filename = os.path.basename(abs_path)
-        subfolder = os.path.dirname(rel_path)
-        url = f"/view?filename={filename}&type={source_param}&subfolder={subfolder}"
-    else:
-        url = ""
-    entry: dict = {
-        "type": "file",
-        "name":  os.path.basename(abs_path),
-        "path":  rel_path,
-        "url":   url,
-        "size":  stat.st_size,
-        "mtime": stat.st_mtime,
-    }
-    # Attach pixel dimensions for image files
-    ext = Path(abs_path).suffix.lower()
-    if _HAS_PIL and ext in IMAGE_EXTENSIONS:
-        try:
-            with PILImage.open(abs_path) as img:
-                entry["width"] = img.width
-                entry["height"] = img.height
-        except Exception:
-            pass
-    return entry
+from .utils.prompt_builder import get_system_prompt_options
+from .utils.llm_api import load_api_key_from_config
+from .utils.h3_project import (
+    delete_h3_project,
+    delete_h3_project_video,
+    load_h3_project_data,
+    safe_h3_project_name,
+)
+from .utils.models import (
+    MissingEasyMediaModelError,
+    download_model,
+    model_payload,
+    get_model_info,
+)
+from .utils.media import (
+    allowed_extensions,
+    extract_filename_from_content_disposition,
+    is_json_error,
+    list_dir_shallow,
+    list_recent_media_files,
+)
+from .modules.subtitle_recognition import (
+    MissingSubtitleRecognitionDependenciesError,
+    recognize_audio_subtitles,
+    subtitle_recognition_options,
+    validate_subtitle_recognition_method,
+)
+from .utils.speech import generate_voxcpm2_speech
+from .utils.workflow_submission import register_workflow_routes
+from .utils.video import (
+    download_audio_to_temp,
+    download_video_to_temp,
+    extract_video_audio_to_temp,
+    resolve_segment_audio_path,
+    resolve_segment_video_path,
+)
 
 
-def _list_dir_shallow(base_path: Path, subfolder: str, source: str, allowed: set[str]) -> list[dict]:
-    """List immediate children of *subfolder* inside *base_path* (non-recursive)."""
-    base_resolved = base_path.resolve()
-    target = (base_resolved / subfolder) if subfolder else base_resolved
+_SMART_SPLIT_LOCK = asyncio.Lock()
+_SUBTITLE_SPEECH_LOCK = asyncio.Lock()
+_RUNNINGHUB_ACCOUNT_ENDPOINT = "https://www.runninghub.cn/uc/openapi/accountStatus"
 
-    # Security: disallow path traversal outside base
+register_workflow_routes(
+    PromptServer.instance.routes,
+    lambda session_id: session_id in PromptServer.instance.sockets,
+)
+
+
+@PromptServer.instance.routes.get("/easy-media/project")
+async def handle_h3_project(request: web.Request) -> web.Response:
+    project_name = request.rel_url.query.get("project_name", "")
     try:
-        target = target.resolve()
-        target.relative_to(base_resolved)
-    except ValueError:
-        return []
+        return web.json_response(load_h3_project_data(project_name))
+    except (FileNotFoundError, TypeError, ValueError) as error:
+        return web.json_response({"error": str(error)}, status=404)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Failed to load H3 project: {error}"}, status=500)
 
-    if not target.is_dir():
-        return []
 
-    items: list[dict] = []
-    for entry in sorted(target.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
-        try:
-            rel = str(entry.relative_to(base_resolved))
-            if entry.is_dir():
-                items.append({"type": "dir", "name": entry.name, "path": rel})
-            elif entry.is_file() and entry.suffix.lower() in allowed:
-                items.append(_file_entry(str(entry), rel, source))
-        except (OSError, ValueError):
-            continue
-    return items
+@PromptServer.instance.routes.get("/easy-media/projects")
+async def handle_h3_projects(_request: web.Request) -> web.Response:
+    try:
+        root = (
+            Path(folder_paths.get_output_directory()).resolve()
+            / "easy_media"
+            / "projects"
+        )
+        names = {
+            path.name
+            for path in root.iterdir()
+            if path.is_dir() and not path.name.startswith(".")
+        } if root.is_dir() else set()
+        names.add("default")
+        projects = ["default", *sorted(name for name in names if name != "default")]
+        return web.json_response({"projects": projects})
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Failed to list H3 projects: {error}"}, status=500)
+
+
+@PromptServer.instance.routes.delete("/easy-media/project")
+async def handle_delete_h3_project(request: web.Request) -> web.Response:
+    project_name = request.rel_url.query.get("project_name", "")
+    try:
+        safe_name = safe_h3_project_name(project_name)
+        deleted = delete_h3_project(safe_name)
+        return web.json_response({"project_name": safe_name, "deleted": deleted})
+    except (TypeError, ValueError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Failed to delete H3 project: {error}"}, status=500)
+
+
+@PromptServer.instance.routes.delete("/easy-media/project/video")
+async def handle_delete_h3_project_video(request: web.Request) -> web.Response:
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Request must contain a JSON object")
+        project_name = payload.get("project_name")
+        segment_index = payload.get("segment_index")
+        file_path = payload.get("file_path")
+        if not isinstance(project_name, str) or not isinstance(file_path, str):
+            raise ValueError("project_name and file_path must be strings")
+        if type(segment_index) is not int or segment_index < 0:
+            raise ValueError("segment_index must be a non-negative integer")
+        return web.json_response(delete_h3_project_video(project_name, segment_index, file_path))
+    except FileNotFoundError as error:
+        return web.json_response({"error": str(error)}, status=404)
+    except (TypeError, ValueError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Failed to delete project video: {error}"}, status=500)
+
+
+def _segment_source_audio_window(data: dict, fps: float) -> tuple[float, float]:
+    start_frame = data.get("start_frame")
+    end_frame = data.get("end_frame")
+    if not isinstance(start_frame, (int, float)) or not isinstance(end_frame, (int, float)):
+        return 0.0, 0.0
+    if not math.isfinite(start_frame) or not math.isfinite(end_frame):
+        return 0.0, 0.0
+    origin_start_frame = data.get("origin_start_frame")
+    if not isinstance(origin_start_frame, (int, float)) or not math.isfinite(origin_start_frame):
+        origin_start_frame = start_frame
+    source_start = max(0.0, (float(start_frame) - float(origin_start_frame)) / fps)
+    duration = max(0.0, (float(end_frame) - float(start_frame)) / fps)
+    return source_start, duration
 
 
 @PromptServer.instance.routes.get("/easy-media/media/list")
@@ -137,14 +175,14 @@ async def handle_media_list(request: web.Request) -> web.Response:
     local_path = request.rel_url.query.get("path", "")
     subfolder = request.rel_url.query.get("subfolder", "")
 
-    allowed = _allowed_extensions(media_type)
+    allowed = allowed_extensions(media_type)
 
     if source == "inputs":
         base = Path(folder_paths.get_input_directory())
-        items = _list_dir_shallow(base, subfolder, "inputs", allowed)
+        items = list_dir_shallow(base, subfolder, "inputs", allowed)
     elif source == "outputs":
         base = Path(folder_paths.get_output_directory())
-        items = _list_dir_shallow(base, subfolder, "outputs", allowed)
+        items = list_dir_shallow(base, subfolder, "outputs", allowed)
     elif source == "local":
         if not local_path:
             return web.Response(
@@ -159,7 +197,7 @@ async def handle_media_list(request: web.Request) -> web.Response:
                 content_type="application/json",
                 text=json.dumps({"error": "directory not found"}),
             )
-        items = _list_dir_shallow(Path(abs_path), subfolder, "local", allowed)
+        items = list_dir_shallow(Path(abs_path), subfolder, "local", allowed)
     else:
         return web.Response(
             status=400,
@@ -167,6 +205,43 @@ async def handle_media_list(request: web.Request) -> web.Response:
             text=json.dumps({"error": f"unknown source '{source}'"}),
         )
 
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps({"items": items}),
+    )
+
+
+@PromptServer.instance.routes.get("/easy-media/media/recent")
+async def handle_media_recent(request: web.Request) -> web.Response:
+    source = request.rel_url.query.get("source", "outputs")
+    media_type = request.rel_url.query.get("type", "all")
+    subfolder = request.rel_url.query.get("subfolder", "")
+    try:
+        hours = max(0.0, float(request.rel_url.query.get("hours", "48")))
+        limit = max(1, min(1000, int(request.rel_url.query.get("limit", "100"))))
+    except (TypeError, ValueError):
+        return web.Response(
+            status=400,
+            content_type="application/json",
+            text=json.dumps({"error": "hours and limit must be valid numbers"}),
+        )
+
+    allowed = allowed_extensions(media_type)
+
+    if source == "inputs":
+        base = Path(folder_paths.get_input_directory())
+    elif source == "outputs":
+        base = Path(folder_paths.get_output_directory())
+    elif source == "temp":
+        base = Path(folder_paths.get_temp_directory())
+    else:
+        return web.Response(
+            status=400,
+            content_type="application/json",
+            text=json.dumps({"error": f"unknown source '{source}'"}),
+        )
+
+    items = list_recent_media_files(base, subfolder, source, allowed, hours, limit)
     return web.Response(
         content_type="application/json",
         text=json.dumps({"items": items}),
@@ -209,33 +284,6 @@ async def handle_easy_upload(request: web.Request) -> web.Response:
     )
 
 
-def _extract_filename_from_content_disposition(header: str | None) -> str | None:
-    """Extract filename from Content-Disposition header."""
-    if not header:
-        return None
-    import re
-    match = re.search(r'filename\*=(?:utf-8\'\')?([^;\s]+)', header, re.IGNORECASE)
-    if match:
-        return match.group(1).strip('"')
-    match = re.search(r'filename=([^;\s]+)', header, re.IGNORECASE)
-    if match:
-        return match.group(1).strip('"')
-    return None
-
-
-def _is_json_error(content: bytes) -> bool:
-    """Check if content looks like a JSON error response (not a file)."""
-    if len(content) < 2 or content[0] != 123:  # doesn't start with '{'
-        return False
-    try:
-        obj = json.loads(content.decode('utf-8', errors='ignore'))
-        return isinstance(obj, dict) and any(
-            k in obj for k in ('detail', 'error', 'message', 'code')
-        )
-    except Exception:
-        return False
-
-
 @PromptServer.instance.routes.post("/easy-media/download-url")
 async def handle_download_url(request: web.Request) -> web.Response:
     """
@@ -262,7 +310,7 @@ async def handle_download_url(request: web.Request) -> web.Response:
                 content = await resp.read()
 
                 # Detect JSON error responses (e.g., {"detail": "Not found"})
-                if _is_json_error(content):
+                if is_json_error(content):
                     try:
                         err_obj = json.loads(content.decode('utf-8', errors='ignore'))
                         err_msg = err_obj.get('detail') or err_obj.get('error') or err_obj.get('message') or 'Download failed'
@@ -277,7 +325,7 @@ async def handle_download_url(request: web.Request) -> web.Response:
                 # Derive filename from Content-Disposition or URL path
                 ct = resp.headers.get("Content-Type", "").split(";")[0].strip()
                 cd = resp.headers.get("Content-Disposition")
-                filename = _extract_filename_from_content_disposition(cd)
+                filename = extract_filename_from_content_disposition(cd)
                 if not filename:
                     url_path = url.split("?")[0].rstrip("/")
                     filename = Path(url_path).name
@@ -318,10 +366,10 @@ async def handle_download_url(request: web.Request) -> web.Response:
                     target = input_dir / filename
 
                 target.write_bytes(content)
-                return web.Response(
-                    content_type="application/json",
-                    text=json.dumps({"source_type": "input", "file_name": filename}),
-                )
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"source_type": "input", "file_name": filename}),
+        )
 
     except Exception as exc:
         return web.Response(
@@ -330,3 +378,308 @@ async def handle_download_url(request: web.Request) -> web.Response:
             text=json.dumps({"error": str(exc)}),
         )
 
+
+@PromptServer.instance.routes.get("/easy-media/prompt/system-prompts")
+async def handle_system_prompt_options(request: web.Request) -> web.Response:
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps({
+            "items": get_system_prompt_options(),
+        }),
+    )
+
+
+@PromptServer.instance.routes.post("/easy-media/prompt-enhancer/runninghub-balance")
+async def handle_runninghub_balance(request: web.Request) -> web.Response:
+    """Proxy RunningHub balance lookup so the widget is not blocked by browser CORS."""
+    try:
+        try:
+            data = await request.json()
+        except Exception as error:
+            raise ValueError("Invalid JSON body") from error
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+
+        explicit_api_key = data.get("api_key", "")
+        if explicit_api_key is not None and not isinstance(explicit_api_key, str):
+            raise ValueError("api_key must be a string")
+        api_key = str(explicit_api_key or "").strip()
+        if not api_key:
+            api_key = load_api_key_from_config("RUNNINGHUB_API_KEY")
+        if not api_key:
+            api_key = os.getenv("RUNNINGHUB_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError(
+                "RunningHub API key is required in the node, config.yaml, or RUNNINGHUB_API_KEY."
+            )
+
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                _RUNNINGHUB_ACCOUNT_ENDPOINT,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"apikey": api_key},
+            ) as response:
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, json.JSONDecodeError) as error:
+                    raise RuntimeError("RunningHub returned an invalid account response.") from error
+                if response.status >= 400:
+                    message = payload.get("msg") if isinstance(payload, dict) else None
+                    raise RuntimeError(message or f"RunningHub account request failed ({response.status}).")
+
+        if not isinstance(payload, dict) or payload.get("code") != 0:
+            message = payload.get("msg") if isinstance(payload, dict) else None
+            raise RuntimeError(message or "RunningHub account request failed.")
+        account = payload.get("data")
+        if not isinstance(account, dict):
+            raise RuntimeError("RunningHub account response did not contain account data.")
+        try:
+            amount = float(account.get("remainMoney"))
+        except (TypeError, ValueError) as error:
+            raise RuntimeError("RunningHub account response did not contain a valid balance.") from error
+        if not math.isfinite(amount):
+            raise RuntimeError("RunningHub account response did not contain a finite balance.")
+        currency = account.get("currency")
+        return web.json_response({
+            "amount": amount,
+            "currency": currency if isinstance(currency, str) else "CNY",
+        })
+    except ValueError as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as error:
+        return web.json_response({"error": str(error)}, status=502)
+
+
+@PromptServer.instance.routes.post("/easy-media/models/download")
+async def handle_model_download(request: web.Request) -> web.Response:
+    try:
+        try:
+            data = await request.json()
+        except Exception as error:
+            raise ValueError("Invalid JSON body") from error
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+        model_name = data.get("model_name")
+        if not isinstance(model_name, str) or not model_name:
+            raise ValueError("model_name is required")
+
+        model = get_model_info(model_name)
+        path = await download_model(model.name)
+        return web.json_response({
+            "ok": True,
+            "model": model_payload(model),
+            "path": str(path),
+        })
+    except TimeoutError as error:
+        return web.json_response({"error": str(error)}, status=504)
+    except ValueError as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except aiohttp.ClientError as error:
+        return web.json_response({"error": f"Automatic download failed: {error}"}, status=502)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Automatic download failed: {error}"}, status=500)
+
+
+@PromptServer.instance.routes.post("/easy-media/video/smart-split")
+async def handle_video_smart_split(request: web.Request) -> web.Response:
+    """Run OmniShotCut for one video and return its detected frame ranges."""
+    temp_path: Path | None = None
+    try:
+        try:
+            data = await request.json()
+        except Exception as error:
+            raise ValueError("Invalid JSON body") from error
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+        fps = data.get("fps")
+        if not isinstance(fps, (int, float)) or not math.isfinite(fps) or fps <= 0:
+            raise ValueError("fps must be a positive finite number")
+        if data.get("source_type") == "url":
+            url = data.get("url")
+            if not isinstance(url, str) or not url:
+                raise ValueError("url is required for URL video segments")
+            temp_path = await download_video_to_temp(url)
+            video_path = temp_path
+        else:
+            video_path = resolve_segment_video_path(data)
+
+        from .modules.omnishotcut import detect_shots
+
+        async with _SMART_SPLIT_LOCK:
+            ranges = await asyncio.to_thread(detect_shots, video_path, float(fps), mode="clean_shot")
+        return web.json_response({"ranges": ranges})
+    except MissingEasyMediaModelError as error:
+        return web.json_response({
+            "error": str(error),
+            "model_missing": model_payload(error.model),
+        }, status=428)
+    except (ValueError, FileNotFoundError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"OmniShotCut detection failed: {error}"}, status=500)
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError as error:
+                print(f"[Easy Media] Failed to remove OmniShotCut temporary video: {error}")
+
+
+@PromptServer.instance.routes.post("/easy-media/subtitles/recognize")
+async def handle_subtitle_recognition(request: web.Request) -> web.Response:
+    """Run ASR for one video/audio segment and return subtitle segments."""
+    source_temp_path: Path | None = None
+    extracted_audio_path: Path | None = None
+    try:
+        try:
+            data = await request.json()
+        except Exception as error:
+            raise ValueError("Invalid JSON body") from error
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+        fps = data.get("fps")
+        if not isinstance(fps, (int, float)) or not math.isfinite(fps) or fps <= 0:
+            raise ValueError("fps must be a positive finite number")
+
+        method = validate_subtitle_recognition_method(
+            str(data.get("method", "qwen3-asr"))
+        )
+        max_sentence_length, unload_model = subtitle_recognition_options(data)
+        media_type = data.get("media_type")
+        source_type = data.get("source_type")
+        if source_type == "url":
+            url = data.get("url")
+            if not isinstance(url, str) or not url:
+                raise ValueError("url is required for URL media segments")
+            if media_type == "video":
+                source_temp_path = await download_video_to_temp(url)
+                media_path = source_temp_path
+            elif media_type == "audio":
+                source_temp_path = await download_audio_to_temp(url)
+                media_path = source_temp_path
+            else:
+                raise ValueError("media_type must be video or audio")
+        elif media_type == "video":
+            media_path = resolve_segment_video_path(data)
+        elif media_type == "audio":
+            media_path = resolve_segment_audio_path(data)
+        else:
+            raise ValueError("media_type must be video or audio")
+
+        source_start, source_duration = _segment_source_audio_window(data, float(fps))
+        if media_type == "video" or source_start > 0 or source_duration > 0:
+            extracted_audio_path = extract_video_audio_to_temp(
+                media_path,
+                start_time=source_start,
+                duration=source_duration,
+            )
+            audio_path = extracted_audio_path
+        else:
+            audio_path = media_path
+
+        segments = await asyncio.to_thread(
+            recognize_audio_subtitles,
+            audio_path,
+            method,
+            max_sentence_length,
+            unload_model,
+        )
+        return web.json_response({"segments": segments})
+    except MissingSubtitleRecognitionDependenciesError as error:
+        return web.json_response({
+            "error": str(error),
+            "missing_dependencies": error.dependencies,
+        }, status=424)
+    except MissingEasyMediaModelError as error:
+        return web.json_response({
+            "error": str(error),
+            "model_missing": model_payload(error.model),
+        }, status=428)
+    except (ValueError, FileNotFoundError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Subtitle recognition failed: {error}"}, status=500)
+    finally:
+        for path in (source_temp_path, extracted_audio_path):
+            if path is None:
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                print(f"[Easy Media] Failed to remove subtitle recognition temporary file: {error}")
+
+
+@PromptServer.instance.routes.post("/easy-media/subtitles/speech")
+async def handle_subtitle_speech(request: web.Request) -> web.Response:
+    """Generate speech audio for a subtitle segment."""
+    try:
+        try:
+            data = await request.json()
+        except Exception as error:
+            raise ValueError("Invalid JSON body") from error
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+
+        text = data.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("text is required")
+        model = data.get("model", "VoxCPM2")
+        if model != "VoxCPM2":
+            raise ValueError(f"unsupported speech model: {model}")
+        prompt = data.get("prompt", "")
+        if not isinstance(prompt, str):
+            raise ValueError("prompt must be a string")
+        cfg = data.get("cfg", 2.0)
+        if not isinstance(cfg, (int, float)) or not math.isfinite(cfg):
+            raise ValueError("cfg must be a finite number")
+        steps = data.get("steps", 10)
+        if not isinstance(steps, (int, float)) or not math.isfinite(steps):
+            raise ValueError("steps must be a finite number")
+
+        reference_audio_path = None
+        raw_reference_audio_path = data.get("reference_audio_path")
+        if isinstance(raw_reference_audio_path, str) and raw_reference_audio_path:
+            reference_audio_path = resolve_segment_audio_path({
+                "source_type": data.get("reference_audio_source_type", "input"),
+                "file_path": raw_reference_audio_path,
+                "local_path": raw_reference_audio_path,
+            })
+
+        async with _SUBTITLE_SPEECH_LOCK:
+            result = await asyncio.to_thread(
+                generate_voxcpm2_speech,
+                text=text.strip(),
+                prompt=prompt,
+                cfg=float(cfg),
+                steps=int(steps),
+                reference_audio_path=reference_audio_path,
+            )
+
+        return web.json_response({
+            "file_path": result.file_path,
+            "absolute_path": result.absolute_path,
+            "source_type": result.source_type,
+            "duration": result.duration,
+            "message": f"Audio generated and saved to {result.absolute_path}",
+        })
+    except MissingEasyMediaModelError as error:
+        return web.json_response({
+            "error": str(error),
+            "model_missing": model_payload(error.model),
+        }, status=428)
+    except RuntimeError as error:
+        message = str(error)
+        status = 424 if "Missing Python dependencies" in message else 500
+        return web.json_response({"error": message}, status=status)
+    except (ValueError, FileNotFoundError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    except Exception as error:
+        traceback.print_exc()
+        return web.json_response({"error": f"Subtitle speech generation failed: {error}"}, status=500)

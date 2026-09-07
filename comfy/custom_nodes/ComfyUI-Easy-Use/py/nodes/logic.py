@@ -8,6 +8,7 @@ from ..libs.utils import AlwaysEqualProxy, ByPassTypeTuple, cleanGPUUsedForce, c
 from ..libs.cache import cache, update_cache, remove_cache
 from ..libs.log import log_node_info, log_node_warn
 from ..libs.math import evaluate_formula
+from ..libs.path_utils import resolve_output_file_path
 import numpy as np
 import time
 import os
@@ -102,8 +103,8 @@ class RangeInt(io.ComfyNode):
             inputs=[
                 io.Combo.Input("range_mode", options=["step", "num_steps"], default="step"),
                 io.Int.Input("start", default=0, min=-4096, max=4096, step=1),
-                io.Int.Input("stop", default=0, min=-4096, max=4096, step=1),
-                io.Int.Input("step", default=0, min=-4096, max=4096, step=1),
+                io.Int.Input("stop", default=1, min=-4096, max=4096, step=1),
+                io.Int.Input("step", default=1, min=-4096, max=4096, step=1),
                 io.Int.Input("num_steps", default=0, min=-4096, max=4096, step=1),
                 io.Combo.Input("end_mode", options=["Inclusive", "Exclusive"], default="Inclusive"),
             ],
@@ -115,16 +116,20 @@ class RangeInt(io.ComfyNode):
 
     @classmethod
     def execute(cls, range_mode, start, stop, step, num_steps, end_mode):
-        error_if_mismatched_list_args(locals())
+        input_args = {k: v for k, v in locals().items() if k not in ("self", "cls")}
+        error_if_mismatched_list_args(input_args)
         ranges = []
         range_sizes = []
         for rm, e_start, e_stop, e_num_steps, e_step, e_end_mode in zip_with_fill(
                 range_mode, start, stop, num_steps, step, end_mode
         ):
             if rm == "step":
-                if e_end_mode == "Inclusive":
-                    e_stop += 1
-                vals = list(range(e_start, e_stop, e_step))
+                if e_step == 0:
+                    vals = [e_start]
+                else:
+                    if e_end_mode == "Inclusive":
+                        e_stop += 1
+                    vals = list(range(e_start, e_stop, e_step))
                 ranges.extend(vals)
                 range_sizes.append(len(vals))
             elif rm == "num_steps":
@@ -162,9 +167,9 @@ class RangeFloat(io.ComfyNode):
             inputs=[
                 io.Combo.Input("range_mode", options=["step", "num_steps"], default="step"),
                 io.Float.Input("start", default=0, min=-4096, max=4096, step=0.1),
-                io.Float.Input("stop", default=0, min=-4096, max=4096, step=0.1),
-                io.Float.Input("step", default=0, min=-4096, max=4096, step=0.1),
-                io.Int.Input("num_steps", default=0, min=-4096, max=4096, step=1),
+                io.Float.Input("stop", default=1.0, min=-4096, max=4096, step=0.1),
+                io.Float.Input("step", default=1.0, min=-4096, max=4096, step=0.1),
+                io.Int.Input("num_steps", default=1, min=-4096, max=4096, step=1),
                 io.Combo.Input("end_mode", options=["Inclusive", "Exclusive"], default="Inclusive"),
             ],
             outputs=[
@@ -200,7 +205,8 @@ class RangeFloat(io.ComfyNode):
 
     @classmethod
     def execute(cls, range_mode, start, stop, step, num_steps, end_mode):
-        error_if_mismatched_list_args(locals())
+        input_args = {k: v for k, v in locals().items() if k not in ("self", "cls")}
+        error_if_mismatched_list_args(input_args)
         getcontext().prec = 12
         start = [round(Decimal(s), 2) for s in start]
         stop = [round(Decimal(s), 2) for s in stop]
@@ -530,6 +536,9 @@ class simpleMath(io.ComfyNode):
     def execute(cls, value, a=0, b=0, c=0):
         try:
             result = evaluate_formula(value, a, b, c)
+            if isinstance(result, list):
+                result_int = [int(r) for r in result]
+                return io.NodeOutput(result_int, result, [r != 0 for r in result])
             result_int = int(result)
             return io.NodeOutput(result_int, result, result_int != 0)
         except Exception as e:
@@ -565,14 +574,14 @@ class simpleMathDual(io.ComfyNode):
     def execute(cls, value1, value2, a=0, b=0, c=0, d=0):
         try:
             result1 = evaluate_formula(value1, a, b, c, d)
-            result1_int = int(result1)
+            result1_int = [int(r) for r in result1] if isinstance(result1, list) else int(result1)
         except Exception as e:
             log_node_warn(f"公式1计算错误: {str(e)}")
             result1 = 0.0
             result1_int = 0
         try:
             result2 = evaluate_formula(value2, a, b, c, d)
-            result2_int = int(result2)
+            result2_int = [int(r) for r in result2] if isinstance(result2, list) else int(result2)
         except Exception as e:
             log_node_warn(f"公式2计算错误: {str(e)}")
             result2 = 0.0
@@ -584,70 +593,10 @@ class simpleMathDual(io.ComfyNode):
 try:
     from comfy_execution.graph_utils import GraphBuilder, is_link
     from comfy_execution.graph import ExecutionBlocker
-    from comfy_execution.utils import get_executing_context
-except:
+except Exception:
     GraphBuilder = None
     ExecutionBlocker = None
-    get_executing_context = None
 
-try:
-    from comfy.cli_args import args as comfy_args
-except Exception:
-    comfy_args = None
-
-
-def _easyuse_use_new_loop_logic():
-    return bool(getattr(comfy_args, "cache_clear_on_finish", False))
-
-
-_EASYUSE_LOOP_CARRY = {}
-
-
-def _easyuse_get_prompt_id():
-    if get_executing_context is None:
-        return None
-    ctx = get_executing_context()
-    if ctx is None:
-        return None
-    return ctx.prompt_id
-
-
-def _easyuse_is_primitive(v):
-    return v is None or isinstance(v, (str, int, float, bool, list, tuple, dict))
-
-
-def _easyuse_loop_key(prompt_id, loop_id):
-    return (prompt_id, str(loop_id))
-
-
-def _easyuse_carry_set(prompt_id, loop_id, key, value):
-    k = _easyuse_loop_key(prompt_id, loop_id)
-    m = _EASYUSE_LOOP_CARRY.get(k)
-    if m is None:
-        m = {}
-        _EASYUSE_LOOP_CARRY[k] = m
-    m[key] = value
-
-
-def _easyuse_carry_get(prompt_id, loop_id, key):
-    m = _EASYUSE_LOOP_CARRY.get(_easyuse_loop_key(prompt_id, loop_id))
-    if m is None:
-        return None
-    return m.get(key, None)
-
-
-def _easyuse_carry_clear(prompt_id, loop_id):
-    _EASYUSE_LOOP_CARRY.pop(_easyuse_loop_key(prompt_id, loop_id), None)
-
-def easyuse_clear_loop_carry(prompt_id=None):
-    if not _easyuse_use_new_loop_logic():
-        return
-    if prompt_id is None:
-        _EASYUSE_LOOP_CARRY.clear()
-        return
-    to_delete = [k for k in _EASYUSE_LOOP_CARRY.keys() if k[0] == prompt_id]
-    for k in to_delete:
-        _EASYUSE_LOOP_CARRY.pop(k, None)
 
 class whileLoopStart:
     def __init__(self):
@@ -672,23 +621,10 @@ class whileLoopStart:
 
     CATEGORY = "EasyUse/Logic/While Loop"
 
-    @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        return _easyuse_get_prompt_id() if _easyuse_use_new_loop_logic() else False
-
     def while_loop_open(self, condition, **kwargs):
         values = []
         for i in range(MAX_FLOW_NUM):
-            v = kwargs.get("initial_value%d" % i, None)
-            if _easyuse_use_new_loop_logic() and condition and isinstance(v, dict) and "__easyuse_carry__" in v:
-                try:
-                    prompt_id = _easyuse_get_prompt_id()
-                    carry = v.get("__easyuse_carry__", None)
-                    if prompt_id is not None and isinstance(carry, list) and len(carry) == 2:
-                        v = _easyuse_carry_get(prompt_id, carry[0], carry[1])
-                except Exception:
-                    pass
-            values.append(v if condition else ExecutionBlocker(None))
+            values.append(kwargs.get("initial_value%d" % i, None) if condition else ExecutionBlocker(None))
         return tuple(["stub"] + values)
 
 
@@ -720,10 +656,6 @@ class whileLoopEnd:
     FUNCTION = "while_loop_close"
 
     CATEGORY = "EasyUse/Logic/While Loop"
-
-    @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        return _easyuse_get_prompt_id() if _easyuse_use_new_loop_logic() else False
 
     def explore_dependencies(self, node_id, dynprompt, upstream, parent_ids):
         node_info = dynprompt.get_node(node_id)
@@ -766,76 +698,7 @@ class whileLoopEnd:
                 self.collect_contained(child_id, upstream, contained)
 
     def while_loop_close(self, flow, condition, dynprompt=None, unique_id=None,**kwargs):
-        if not _easyuse_use_new_loop_logic():
-            if not condition:
-                values = []
-                for i in range(MAX_FLOW_NUM):
-                    values.append(kwargs.get("initial_value%d" % i, None))
-                return tuple(values)
-
-            upstream = {}
-            parent_ids = []
-            self.explore_dependencies(unique_id, dynprompt, upstream, parent_ids)
-            parent_ids = list(set(parent_ids))
-            prompts = dynprompt.get_original_prompt()
-            output_nodes = {}
-            for id in prompts:
-                node = prompts[id]
-                if "inputs" not in node:
-                    continue
-                class_type = node["class_type"]
-                class_def = ALL_NODE_CLASS_MAPPINGS[class_type]
-                if hasattr(class_def, 'OUTPUT_NODE') and class_def.OUTPUT_NODE == True:
-                    for k, v in node['inputs'].items():
-                        if is_link(v):
-                            output_nodes[id] = v
-
-            graph = GraphBuilder()
-            self.explore_output_nodes(dynprompt, upstream, output_nodes, parent_ids)
-            contained = {}
-            open_node = flow[0]
-            self.collect_contained(open_node, upstream, contained)
-            contained[unique_id] = True
-            contained[open_node] = True
-
-            for node_id in contained:
-                original_node = dynprompt.get_node(node_id)
-                node = graph.node(original_node["class_type"], "Recurse" if node_id == unique_id else node_id)
-                node.set_override_display_id(node_id)
-            for node_id in contained:
-                original_node = dynprompt.get_node(node_id)
-                node = graph.lookup_node("Recurse" if node_id == unique_id else node_id)
-                for k, v in original_node["inputs"].items():
-                    if is_link(v) and v[0] in contained:
-                        parent = graph.lookup_node(v[0])
-                        node.set_input(k, parent.out(v[1]))
-                    else:
-                        node.set_input(k, v)
-
-            new_open = graph.lookup_node(open_node)
-            for i in range(MAX_FLOW_NUM):
-                key = "initial_value%d" % i
-                new_open.set_input(key, kwargs.get(key, None))
-
-            my_clone = graph.lookup_node("Recurse")
-            result = map(lambda x: my_clone.out(x), range(MAX_FLOW_NUM))
-            return {
-                "result": tuple(result),
-                "expand": graph.finalize(),
-            }
-
-        prompt_id = _easyuse_get_prompt_id()
-        open_node = flow[0]
-        open_node_display = open_node
-        try:
-            if dynprompt is not None:
-                open_node_display = dynprompt.get_display_node_id(open_node)
-        except Exception:
-            open_node_display = open_node
-        loop_id = open_node_display
         if not condition:
-            if prompt_id is not None:
-                _easyuse_carry_clear(prompt_id, loop_id)
             # We're done with the loop
             values = []
             for i in range(MAX_FLOW_NUM):
@@ -866,6 +729,7 @@ class whileLoopEnd:
         graph = GraphBuilder()
         self.explore_output_nodes(dynprompt, upstream, output_nodes, parent_ids)
         contained = {}
+        open_node = flow[0]
         self.collect_contained(open_node, upstream, contained)
         contained[unique_id] = True
         contained[open_node] = True
@@ -885,26 +749,9 @@ class whileLoopEnd:
                     node.set_input(k, v)
 
         new_open = graph.lookup_node(open_node)
-        open_node_inputs = {}
-        try:
-            open_node_inputs = dynprompt.get_original_prompt().get(open_node_display, {}).get("inputs", {})
-        except Exception:
-            open_node_inputs = {}
         for i in range(MAX_FLOW_NUM):
             key = "initial_value%d" % i
-            carry_v = kwargs.get(key, None)
-            if prompt_id is not None and carry_v is not None and not _easyuse_is_primitive(carry_v):
-                _easyuse_carry_set(prompt_id, loop_id, key, carry_v)
-                new_open.set_input(key, {"__easyuse_carry__": [str(loop_id), key]})
-                continue
-            if _easyuse_is_primitive(carry_v) and carry_v is not None:
-                new_open.set_input(key, carry_v)
-                continue
-            raw_v = open_node_inputs.get(key, None)
-            if is_link(raw_v) and raw_v[0] not in contained:
-                new_open.set_input(key, raw_v)
-            else:
-                new_open.set_input(key, raw_v if _easyuse_is_primitive(raw_v) else None)
+            new_open.set_input(key, kwargs.get(key, None))
         my_clone = graph.lookup_node("Recurse")
         result = map(lambda x: my_clone.out(x), range(MAX_FLOW_NUM))
         return {
@@ -919,27 +766,12 @@ class forLoopStart:
 
     @classmethod
     def INPUT_TYPES(cls):
-        if not _easyuse_use_new_loop_logic():
-            return {
-                "required": {
-                    "total": ("INT", {"default": 1, "min": 1, "max": 100000, "step": 1}),
-                },
-                "optional": {
-                    "initial_value%d" % i: (any_type,) for i in range(1, MAX_FLOW_NUM)
-                },
-                "hidden": {
-                    "initial_value0": (any_type,),
-                    "prompt": "PROMPT",
-                    "extra_pnginfo": "EXTRA_PNGINFO",
-                    "unique_id": "UNIQUE_ID"
-                }
-            }
         return {
             "required": {
-                "total": ("INT", {"default": 1, "min": 1, "max": 100000, "step": 1}),
+                "total": ("INT", {"default": 1, "min": 0, "max": 100000, "step": 1}),
             },
             "optional": {
-                "initial_value%d" % i: (any_type, {"rawLink": True}) for i in range(1, MAX_FLOW_NUM)
+                "initial_value%d" % i: (any_type,) for i in range(1, MAX_FLOW_NUM)
             },
             "hidden": {
                 "initial_value0": (any_type,),
@@ -955,36 +787,24 @@ class forLoopStart:
 
     CATEGORY = "EasyUse/Logic/For Loop"
 
-    @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        return _easyuse_get_prompt_id() if _easyuse_use_new_loop_logic() else False
-
     def for_loop_start(self, total, prompt=None, extra_pnginfo=None, unique_id=None, **kwargs):
-        if not _easyuse_use_new_loop_logic():
-            graph = GraphBuilder()
-            i = 0
-            if "initial_value0" in kwargs:
-                i = kwargs["initial_value0"]
-
-            initial_values = {("initial_value%d" % num): kwargs.get("initial_value%d" % num, None) for num in range(1, MAX_FLOW_NUM)}
-            graph.node("easy whileLoopStart", condition=total, initial_value0=i, **initial_values)
-            outputs = [kwargs.get("initial_value%d" % num, None) for num in range(1, MAX_FLOW_NUM)]
-            return {
-                "result": tuple(["stub", i] + outputs),
-                "expand": graph.finalize(),
-            }
-
-        graph = GraphBuilder()
         i = 0
         if "initial_value0" in kwargs:
             i = kwargs["initial_value0"]
 
+        if total <= 0:
+            # Zero iterations: block every value output so nothing in the loop body runs
+            # (including output nodes placed inside it). forLoopEnd detects the same case
+            # and hands the initial values straight through to its own outputs.
+            return tuple(["stub"] + [ExecutionBlocker(None)] * MAX_FLOW_NUM)
+
+        graph = GraphBuilder()
         initial_values = {("initial_value%d" % num): kwargs.get("initial_value%d" % num, None) for num in
                           range(1, MAX_FLOW_NUM)}
         while_open = graph.node("easy whileLoopStart", condition=total, initial_value0=i, **initial_values)
-        outputs = [while_open.out(i) for i in range(1, MAX_FLOW_NUM + 1)]
+        outputs = [kwargs.get("initial_value%d" % num, None) for num in range(1, MAX_FLOW_NUM)]
         return {
-            "result": tuple(["stub"] + outputs),
+            "result": tuple(["stub", i] + outputs),
             "expand": graph.finalize(),
         }
 
@@ -1015,10 +835,6 @@ class forLoopEnd:
 
     CATEGORY = "EasyUse/Logic/For Loop"
 
-    @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        return _easyuse_get_prompt_id() if _easyuse_use_new_loop_logic() else False
-
 
 
     def for_loop_end(self, flow, dynprompt=None, extra_pnginfo=None, unique_id=None, **kwargs):
@@ -1028,16 +844,33 @@ class forLoopEnd:
 
         # Using dynprompt to get the original node
         forstart_node = dynprompt.get_node(while_open)
+        inputs = forstart_node['inputs']
+        # The values fed into For Loop Start, used as the result when the loop runs 0 times
+        skipped_values = {}
         if forstart_node['class_type'] == 'easy forLoopStart':
-            inputs = forstart_node['inputs']
             total = inputs['total']
+            skipped_values = {("initial_value%d" % i): inputs.get("initial_value%d" % i, None) for i in
+                              range(1, MAX_FLOW_NUM)}
         elif forstart_node['class_type'] == 'easy loadImagesForLoop':
-            inputs = forstart_node['inputs']
             limit = inputs['limit']
             start_index = inputs['start_index']
             # Filter files by extension
             directory = inputs['directory']
             total = graph.node('easy imagesCountInDirectory', directory=directory, limit=limit, start_index=start_index, extension='*').out(0)
+
+        # total == 0 bypasses the loop entirely: the outputs are just the initial values
+        # from For Loop Start. When total is a widget we know that here; when it is wired
+        # from another node we have to decide at execution time (below).
+        if skipped_values and not is_link(total) and total <= 0:
+            skip_close = graph.node("easy whileLoopEnd",
+                                    flow=flow,
+                                    condition=False,
+                                    initial_value0=0,
+                                    **skipped_values)
+            return {
+                "result": tuple([skip_close.out(i) for i in range(1, MAX_FLOW_NUM)]),
+                "expand": graph.finalize(),
+            }
 
         sub = graph.node("easy mathInt", operation="add", a=[while_open, 1], b=1)
         cond = graph.node("easy compare", a=sub.out(0), b=total, comparison='a < b')
@@ -1048,8 +881,25 @@ class forLoopEnd:
                                  condition=cond.out(0),
                                  initial_value0=sub.out(0),
                                  **input_values)
+        outputs = [while_close.out(i) for i in range(1, MAX_FLOW_NUM)]
+
+        if skipped_values and is_link(total):
+            # total is wired in, so pick between the loop result and the initial values at
+            # execution time. easy ifElse inputs are lazy, so the branch that isn't taken is
+            # never evaluated -- which is what keeps the (blocked) loop body from erroring.
+            runs = graph.node("easy compare", a=total, b=0, comparison='a > b')
+            for i in range(1, MAX_FLOW_NUM):
+                skipped = skipped_values["initial_value%d" % i]
+                if skipped is None:
+                    # Nothing to fall back to for this slot, leave it as-is
+                    continue
+                outputs[i - 1] = graph.node("easy ifElse",
+                                            boolean=runs.out(0),
+                                            on_true=while_close.out(i),
+                                            on_false=skipped).out(0)
+
         return {
-            "result": tuple([while_close.out(i) for i in range(1, MAX_FLOW_NUM)]),
+            "result": tuple(outputs),
             "expand": graph.finalize(),
         }
 
@@ -1082,7 +932,6 @@ class Compare(io.ComfyNode):
 
     @classmethod
     def execute(cls, a=0, b=0, comparison="a == b"):
-        # print('a:', a, 'b:', b, 'comparison:', comparison)
         return io.NodeOutput(COMPARE_FUNCTIONS[comparison](a, b))
 
 
@@ -1621,7 +1470,6 @@ class cleanGPUUsed(io.ComfyNode):
     @classmethod
     def execute(cls, anything, **kwargs):
         cleanGPUUsedForce()
-        remove_cache("*")
         return io.NodeOutput(anything)
 
 
@@ -1740,9 +1588,14 @@ class saveText(io.ComfyNode):
             log_node_warn("Save Text", "No file details found. No file output.")
             return io.NodeOutput(text, None)
 
-        filepath = os.path.join(output_file_path, file_name) + "." + file_extension
-        if not os.path.exists(output_file_path):
-            os.makedirs(output_file_path)
+        if file_extension not in ("txt", "csv"):
+            raise ValueError("Unsupported text file extension")
+
+        output_dir = folder_paths.get_output_directory()
+        filepath = resolve_output_file_path(
+            output_dir, output_file_path, file_name, file_extension
+        )
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
         file_mode = "w" if overwrite else "a"
         log_node_info("Save Text", f"Saving to {filepath}")
@@ -1759,27 +1612,24 @@ class saveText(io.ComfyNode):
 
         result_image = None
         if image is not None:
-            imagepath = os.path.join(output_file_path, file_name)
-            index = 1
+            imagepath = resolve_output_file_path(
+                output_dir, output_file_path, file_name, "png"
+            )
             if not overwrite:
-                while os.path.exists(filepath):
-                    imagepath = os.path.join(output_file_path, file_name) + "_" + str(index)
+                index = 1
+                while os.path.exists(imagepath):
+                    imagepath = resolve_output_file_path(
+                        output_dir, output_file_path, f"{file_name}_{index}", "png"
+                    )
                     index += 1
 
-            output_dir = folder_paths.output_directory
-            output_path_val = "" if output_file_path in [None, "", "none", "."] else output_file_path
-            if not os.path.isabs(output_file_path):
-                output_path_val = os.path.join(output_dir, output_path_val)
-            if output_path_val.strip():
-                if not os.path.isabs(output_path_val):
-                    output_path_val = os.path.join(folder_paths.output_directory, output_path_val)
-                if not os.path.exists(output_path_val.strip()):
-                    print(f"The path `{output_path_val.strip()}` does not exist! Creating directory.")
-                    os.makedirs(output_path_val, exist_ok=True)
+            image_output_path = os.path.dirname(imagepath)
+            os.makedirs(image_output_path, exist_ok=True)
 
             images_tensor = torch.cat([image], dim=0)
-            cls.save_image(images_tensor, imagepath, "png", 100, None, None,
-                           filename_number_start="true", output_path=output_path_val,
+            image_name = os.path.splitext(os.path.basename(imagepath))[0]
+            cls.save_image(images_tensor, image_name, "png", 100, None, None,
+                           filename_number_start="true", output_path=image_output_path,
                            delimiter="_", number_padding=4, lossless_webp=False)
             log_node_info("Save Text", f"Saving Image to {imagepath}")
             result_image = image

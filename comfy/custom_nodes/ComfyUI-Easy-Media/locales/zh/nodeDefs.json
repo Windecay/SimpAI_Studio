@@ -1,4 +1,22 @@
 {
+  "easy compareVideos": {
+    "display_name": "视频对比",
+    "description": "使用交互式对比滑块左右并排预览源视频和输出视频。当两个输入都连接时，以输出视频时长为准。",
+    "inputs": {
+      "source": {
+        "name": "源视频",
+        "tooltip": "源视频输入（可选）。"
+      },
+      "output": {
+        "name": "目标视频",
+        "tooltip": "目标视频输入（可选）。"
+      },
+      "compare_video": {
+        "name": "对比视频数据",
+        "tooltip": "对比视频的内部数据。"
+      }
+    }
+  },
   "easy saveVideo": {
     "display_name": "保存视频",
     "description": "将图像和可选音频保存为视频文件，同时输出 VIDEO 供下游节点使用及完整文件路径。",
@@ -26,7 +44,9 @@
         "name": "输出模式",
         "options": {
           "save": "保存",
-          "preview_only": "仅预览"
+          "preview_only": "仅预览",
+          "hide": "隐藏",
+          "hide&save": "隐藏并保存"
         }
       },
       "filename_prefix": {
@@ -51,11 +71,23 @@
   },
   "easy mergeVideosFromPaths": {
     "display_name": "从路径合并视频",
-    "description": "从文件路径或 URL 列表加载并按顺序拼接视频。支持 ComfyUI temp/output 文件名、绝对本地路径和 HTTP(S) URL。所有片段必须具有相同的帧率、分辨率和音频配置。",
+    "description": "从文件路径或 URL 列表加载并按顺序拼接视频。支持 ComfyUI input/temp/output 路径、子目录与 ** 通配模式、绝对本地路径和 HTTP(S) URL；可使用 FFmpeg 为最终视频添加或替换音频。所有片段必须具有相同的帧率、分辨率和音频配置。",
     "inputs": {
       "paths": {
         "name": "路径列表",
-        "tooltip": "每行一个路径（或逗号分隔）。支持 ComfyUI output/temp 文件名、绝对路径或 URL。"
+        "tooltip": "每行一个路径（或逗号分隔）。支持 ComfyUI input/output/temp 路径、子目录、** 通配模式、绝对路径或 URL。"
+      },
+      "frame_count": {
+        "name": "截取帧数",
+        "tooltip": "合并后最多保留的帧数。设置为 -1 时保留所有帧。"
+      },
+      "audio_mode": {
+        "name": "音频模式",
+        "tooltip": "将输入音频与视频原音轨混合，或覆盖视频原音轨。"
+      },
+      "audio": {
+        "name": "音频",
+        "tooltip": "可选。使用 FFmpeg 混合或覆盖最终合并视频的音频轨道。"
       }
     },
     "outputs": {
@@ -78,6 +110,20 @@
     "outputs": {
       "0": {
         "name": "视频"
+      }
+    }
+  },
+  "easy getAudioFromVideo": {
+    "display_name": "从视频中提取音频",
+    "description": "从 VIDEO 中提取音频轨。优先使用 FFmpeg，失败时回退到 ComfyUI VIDEO components。",
+    "inputs": {
+      "video": {
+        "name": "视频"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "音频"
       }
     }
   },
@@ -248,6 +294,54 @@
       }
     }
   },
+  "easy modelLoaderPack": {
+    "display_name": "模型加载器打包",
+    "description": "将模型组件组合为兼容 FastUse 节点的 FAST_MODEL_LOADER。",
+    "inputs": {
+      "model": { "name": "模型" },
+      "clip": { "name": "CLIP" },
+      "vae": { "name": "VAE" },
+      "audio_vae": { "name": "音频 VAE" }
+    },
+    "outputs": {
+      "0": { "name": "模型加载器" }
+    }
+  },
+  "easy matchLine": {
+    "display_name": "匹配行",
+    "description": "返回第一行包含匹配文本的从 0 开始的行索引；未找到时返回 -1。",
+    "inputs": {
+      "text": {
+        "name": "文本"
+      },
+      "match": {
+        "name": "匹配文本"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "行索引"
+      }
+    }
+  },
+  "easy apiWorkflowGate": {
+    "display_name": "API工作流阀门",
+    "description": "使用 API 工作流执行时透传输入，检测到工作流元数据时不求值输入并输出 None。列表输入请使用列表输出口。",
+    "inputs": {
+      "value": {
+        "name": "输入",
+        "tooltip": "任意类型输入；仅在 API 工作流格式执行时求值。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "输出"
+      },
+      "1": {
+        "name": "列表输出"
+      }
+    }
+  },
   "easy makeImageList": {
     "display_name": "创建图像列表",
     "description": "将多个可选的图像输入组合成图像列表。",
@@ -305,6 +399,27 @@
       "0": {
         "name": "图像列表"
       }
+    }
+  },
+  "easy splitImages": {
+    "display_name": "图像拆分V2",
+    "description": "将图像列表或单个图像批次拆分为最多 10 个单图输出。",
+    "inputs": {
+      "images": {
+        "name": "图像"
+      }
+    },
+    "outputs": {
+      "0": { "name": "图像 0" },
+      "1": { "name": "图像 1" },
+      "2": { "name": "图像 2" },
+      "3": { "name": "图像 3" },
+      "4": { "name": "图像 4" },
+      "5": { "name": "图像 5" },
+      "6": { "name": "图像 6" },
+      "7": { "name": "图像 7" },
+      "8": { "name": "图像 8" },
+      "9": { "name": "图像 9" }
     }
   },
   "easy makeAudioList": {
@@ -366,6 +481,99 @@
       }
     }
   },
+  "easy splitAudios": {
+    "display_name": "音频拆分",
+    "description": "将音频列表拆分为最多 10 个独立音频输出。",
+    "inputs": {
+      "audios": { "name": "音频列表" }
+    },
+    "outputs": {
+      "0": { "name": "音频 0" },
+      "1": { "name": "音频 1" },
+      "2": { "name": "音频 2" },
+      "3": { "name": "音频 3" },
+      "4": { "name": "音频 4" },
+      "5": { "name": "音频 5" },
+      "6": { "name": "音频 6" },
+      "7": { "name": "音频 7" },
+      "8": { "name": "音频 8" },
+      "9": { "name": "音频 9" }
+    }
+  },
+  "easy audioMerge": {
+    "display_name": "合并音频",
+    "description": "合并或拼接最多 6 个音频输入，可展开音频列表并自动忽略空项。",
+    "inputs": {
+      "audios": {
+        "name": "音频",
+        "tooltip": "要合并或拼接的音频输入。最多可连接 6 个来源。"
+      },
+      "merge_method": {
+        "name": "合并方式",
+        "tooltip": "使用 add/mean/subtract/multiply 叠加音频，或使用 after/before 拼接音频。",
+        "options": {
+          "add": "相加",
+          "mean": "平均",
+          "subtract": "相减",
+          "multiply": "相乘",
+          "after": "追加到后面",
+          "before": "插入到前面"
+        }
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "音频"
+      }
+    }
+  },
+  "easy makeVideoList": {
+    "display_name": "创建视频列表",
+    "description": "将最多 10 个可选视频输入组合成视频列表。",
+    "inputs": {
+      "skip_empty": {
+        "name": "跳过空输入",
+        "options": {
+          "true": "跳过",
+          "false": "填充"
+        }
+      },
+      "video1": { "name": "视频 1" },
+      "video2": { "name": "视频 2" },
+      "video3": { "name": "视频 3" },
+      "video4": { "name": "视频 4" },
+      "video5": { "name": "视频 5" },
+      "video6": { "name": "视频 6" },
+      "video7": { "name": "视频 7" },
+      "video8": { "name": "视频 8" },
+      "video9": { "name": "视频 9" },
+      "video10": { "name": "视频 10" }
+    },
+    "outputs": {
+      "0": {
+        "name": "视频"
+      }
+    }
+  },
+  "easy splitVideos": {
+    "display_name": "视频拆分",
+    "description": "将视频列表拆分为最多 10 个独立视频输出。",
+    "inputs": {
+      "videos": { "name": "视频列表" }
+    },
+    "outputs": {
+      "0": { "name": "视频 0" },
+      "1": { "name": "视频 1" },
+      "2": { "name": "视频 2" },
+      "3": { "name": "视频 3" },
+      "4": { "name": "视频 4" },
+      "5": { "name": "视频 5" },
+      "6": { "name": "视频 6" },
+      "7": { "name": "视频 7" },
+      "8": { "name": "视频 8" },
+      "9": { "name": "视频 9" }
+    }
+  },
   "LTXVAddGuidesFromBatchIndexes": {
     "display_name": "LTXV 添加引导图（按批次索引）",
     "description": "从批次中添加引导图像或图像序列到潜在空间指定帧索引位置。批次图像数量大于等于 9 时会作为一个整体图像序列处理。",
@@ -415,6 +623,249 @@
       }
     }
   },
+  "easy multiTrackEditor": {
+    "display_name": "多轨编辑器",
+    "description": "编辑多轨媒体数据，并输出轨道信息以及图像、音频和视频媒体列表。",
+    "inputs": {
+      "resolution": { "name": "分辨率", "tooltip": "选择输出分辨率，或选择自定义宽高。" },
+      "format": { "name": "视频格式", "tooltip": "选择视频格式以自动设置分辨率和帧率。" },
+      "track_data": { "name": "多轨数据" },
+      "prompt_override": { "name": "提示词覆盖", "tooltip": "覆盖多轨任务片段中的提示词。" },
+      "image": { "name": "图像列表", "tooltip": "多轨任务片段使用的可选图像列表。" },
+      "audio": { "name": "音频列表", "tooltip": "多轨音频片段使用的可选音频列表。" },
+      "video": { "name": "视频列表", "tooltip": "多轨视频片段使用的可选视频列表。" }
+    },
+    "outputs": {
+      "0": { "name": "轨道信息" },
+      "1": { "name": "图像" },
+      "2": { "name": "音频" },
+      "3": { "name": "视频" }
+    }
+  },
+  "easy multiTrackInfoOutput": {
+    "display_name": "多轨信息输出",
+    "description": "输出多轨项目的尺寸、总帧数、帧率和任务数量。",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息" }
+    },
+    "outputs": {
+      "0": { "name": "宽度" },
+      "1": { "name": "高度" },
+      "2": { "name": "总帧数" },
+      "3": { "name": "帧率" },
+      "4": { "name": "任务数量" }
+    }
+  },
+  "easy multiTrackAudioOutput": {
+    "display_name": "多轨音频输出",
+    "description": "合并全部音频，并以完整轨道或 S2V 裁剪模式输出前两条音频轨。",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息" },
+      "audio": { "name": "音频" },
+      "mode": {
+        "name": "模式",
+        "options": {
+          "default": "默认",
+          "crop": "S2V 裁剪"
+        }
+      },
+      "task_index": {
+        "name": "任务索引",
+        "tooltip": "按零基索引选择任务片段，例如 0 对应任务 0、1 对应任务 1；仅输出相交音频，起始帧相对于任务片段起点计算。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "合并音频" },
+      "1": { "name": "音频 0" },
+      "2": { "name": "音频 0 起始帧" },
+      "3": { "name": "音频 1" },
+      "4": { "name": "音频 1 起始帧" }
+    }
+  },
+  "easy recognizeSubtitle": {
+    "display_name": "识别字幕",
+    "description": "使用 Qwen3-ASR 或 Whisper Large V3 从音频或视频中识别带时间戳的字幕，并输出 SRT 或时间戳文本。",
+    "inputs": {
+      "audio": {
+        "name": "音频",
+        "tooltip": "可选 AUDIO 输入；同时连接音频和视频时优先识别音频。"
+      },
+      "video": {
+        "name": "视频",
+        "tooltip": "可选 VIDEO 输入；未连接音频时从视频中提取音轨。"
+      },
+      "model_type": {
+        "name": "模型类型",
+        "options": {
+          "qwen3-asr": "Qwen3-ASR",
+          "whisper-large-v3": "Whisper Large V3"
+        }
+      },
+      "output_format": {
+        "name": "输出格式",
+        "tooltip": "输出标准 SRT，或每行一条“(开始秒, 结束秒) 字幕”的时间戳文本。",
+        "options": {
+          "srt": "SRT",
+          "timestamp": "时间戳"
+        }
+      },
+      "max_sentence_length": {
+        "name": "每句最大长度",
+        "tooltip": "每条字幕允许的最大字符数，超长字幕会切分并按字符比例分配时间。"
+      },
+      "unload_model": {
+        "name": "卸载模型",
+        "tooltip": "识别完成后将模型移至 CPU，并清理加速设备缓存。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "字幕文本" }
+    }
+  },
+  "easy addSubtitleToVideo": {
+    "display_name": "添加字幕到视频",
+    "description": "将 SRT、时间戳或括号格式的多行字幕文本规范化为 SRT，并烧录到视频中。",
+    "inputs": {
+      "subtitle_text": {
+        "name": "字幕文本",
+        "tooltip": "支持标准 SRT、行内时间戳和括号格式，例如 [00:01.000 --> 00:03.000] 字幕。"
+      },
+      "video": { "name": "视频" },
+      "font_size": {
+        "name": "字体大小",
+        "tooltip": "设置烧录字幕的字体大小。"
+      },
+      "srt_save": {
+        "name": "SRT 保存位置",
+        "tooltip": "将规范化后的 SRT 保存到临时目录或 output/srt。",
+        "options": {
+          "temp": "临时目录",
+          "output": "输出目录"
+        }
+      }
+    },
+    "outputs": {
+      "0": { "name": "视频" }
+    }
+  },
+  "easy multiTrackAddSubtitleToVIdeo": {
+    "display_name": "多轨字幕烧录到视频",
+    "description": "将轨道信息中的所有字幕轨片段烧录到视频中，并保存 SRT 字幕文件。",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息" },
+      "video": { "name": "视频" },
+      "srt_save": {
+        "name": "SRT 保存位置",
+        "tooltip": "将生成的 SRT 保存到临时目录或 output/srt。",
+        "options": {
+          "temp": "临时目录",
+          "output": "输出目录"
+        }
+      }
+    },
+    "outputs": {
+      "0": { "name": "视频" }
+    }
+  },
+  "easy multiTrackTaskOutput": {
+    "display_name": "多轨任务输出",
+    "description": "输出指定多轨任务片段的提示词和对应时间范围内的媒体。",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息" },
+      "images": { "name": "图像" },
+      "audio": { "name": "音频" },
+      "video": { "name": "视频" },
+      "task_index": { "name": "任务片段索引" },
+      "prompt_format": { "name": "提示词格式", "tooltip": "选择任务提示词的输出格式。" }
+    },
+    "outputs": {
+      "0": { "name": "系统提示词" },
+      "1": { "name": "用户提示词" },
+      "2": { "name": "类型" },
+      "3": { "name": "帧数" },
+      "4": { "name": "图像" },
+      "5": { "name": "音频" },
+      "6": { "name": "视频" },
+      "7": { "name": "图像索引" }
+    }
+  },
+  "easy multiTrackPromptEnhancer": {
+    "display_name": "多轨提示词增强器",
+    "description": "调用 MiniMax H3-Context-IR、第三方多模态大模型或本地 llama.cpp 模型，根据多轨任务提示词和参考媒体反推并增强视频提示词。",
+    "inputs": {
+      "system_prompt": { "name": "系统提示词", "tooltip": "可选的系统指令输入；MiniMax H3 会忽略此输入。" },
+      "user_prompt": { "name": "用户提示词", "tooltip": "用户提示词输入；MiniMax H3 要求内容非空。" },
+      "type": { "name": "类型", "tooltip": "用于选择 H3 的 t2va、i2va 或 r2va 请求格式，并拼接各服务的媒体角色。" },
+      "length": { "name": "帧数", "tooltip": "MiniMax 对齐帧数，将按最近整数换算为 4–15 秒。" },
+      "images": { "name": "图像", "tooltip": "支持单张图像、图像批次或列表。H3 会逐张上传；第三方模型输入会限制在 200 万像素以内。" },
+      "video": { "name": "视频", "tooltip": "支持视频或视频列表。厂商支持当前来源时优先传入公网视频 URL 或本地视频数据；不支持时才对每个视频最多均匀抽取 24 帧。原生视频上传最多保留 15 秒，RunningHub 视频还会限制为 10MB。" },
+      "audio": { "name": "音频", "tooltip": "用于 H3 r2va 的音频或音频列表，逐个上传至 MiniMax；第三方模型不会传入音频。" },
+      "files": { "name": "文件", "tooltip": "预留文件输入口，等待后续服务接入。" },
+      "llama_model": { "name": "llama.cpp 模型", "tooltip": "本地 llama.cpp 模型输入，仅选择本地模型时才会加载。需要安装 ComfyUI-llama-cpp_vlm 提供的 llama_cpp_instruct_adv 节点：https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm" },
+      "model": { "name": "模型", "tooltip": "选择用于增强提示词的服务厂商与模型。" },
+      "inference_mode": { "name": "推理模式", "tooltip": "one by one：逐项处理输入列表，同一项内的多图批次会一起推理；images：把所有列表项中的全部图片合并到一次提示中；video：把每个图片列表项分别视为一个视频片段。" },
+      "force_offload": { "name": "强制卸载", "tooltip": "推理完成后卸载本地 llama.cpp 模型以释放内存。" },
+      "ratio": { "name": "宽高比", "tooltip": "海螺官方接口；纯文本 adaptive 请求使用 16:9。" },
+      "return_async": { "name": "异步返回", "tooltip": "当前仅在 h3-context-ir 有效；开启时不进行任务查询。" },
+      "apikey": { "name": "API 密钥", "tooltip": "服务 API 密钥。留空时从 config.yaml 或环境变量读取对应厂商的密钥。" },
+      "max_size": { "name": "图片或视频最大尺寸", "tooltip": "本地 llama.cpp 模型会将其作为 max_size，限制所有推理模式的输入图片尺寸。" },
+      "max_tokens": { "name": "最大令牌数", "tooltip": "第三方模型最多生成的输出令牌数。" },
+      "seed": { "name": "随机种", "tooltip": "ComfyUI 常规随机种，由兼容的第三方大模型接口使用。" },
+      "enabled": { "name": "启用", "tooltip": "开启时增强提示词；关闭时不调用所选模型，直接原样输出用户提示词。" },
+      "api_account": { "name": "API 账户", "tooltip": "显示当前厂商余额并提供余额页面和 API Key 管理入口，不参与提示词增强执行。" }
+    },
+    "outputs": {
+      "0": { "name": "提示词", "tooltip": "增强后的视频提示词。" },
+      "1": { "name": "任务 ID", "tooltip": "MiniMax 任务 ID；其他厂商返回空字符串。" },
+      "2": { "name": "文件 ID", "tooltip": "MiniMax 已上传图像、视频和音频的文件 ID，多个 ID 使用英文逗号分隔；没有上传媒体时返回空字符串。" }
+    }
+  },
+  "easy multitrackPromptEnhanceToProject": {
+    "display_name": "多轨提示词增强到项目",
+    "description": "以纯文本方式逐个增强轨道信息中的任务片段提示词，将结果写回对应片段，并输出更新后的项目数据与分段提示词列表。",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息", "tooltip": "需要逐片段增强任务提示词的多轨项目数据。" },
+      "llama_model": { "name": "llama.cpp 模型", "tooltip": "本地 llama.cpp 模型输入，仅选择本地模型时才会加载。需要安装 ComfyUI-llama-cpp_vlm 提供的 llama_cpp_instruct_adv 节点：https://github.com/lihaoyun6/ComfyUI-llama-cpp_vlm" },
+      "model": { "name": "模型", "tooltip": "选择用于增强每个任务片段提示词的服务厂商与模型。" },
+      "inference_mode": { "name": "推理模式", "tooltip": "保留与原提示词增强器一致的本地 llama.cpp 推理配置；本节点仅执行纯文本推理。" },
+      "force_offload": { "name": "强制卸载", "tooltip": "每次本地推理完成后卸载 llama.cpp 模型以释放内存。" },
+      "ratio": { "name": "宽高比", "tooltip": "海螺官方接口的输出宽高比；纯文本 adaptive 请求使用 16:9。" },
+      "return_async": { "name": "异步返回", "tooltip": "为保证增强文本可以写回项目，本节点始终等待每个任务完成。" },
+      "apikey": { "name": "API 密钥", "tooltip": "服务 API 密钥。留空时从 config.yaml 或环境变量读取对应厂商的密钥。" },
+      "max_size": { "name": "最大尺寸", "tooltip": "保留与原提示词增强器一致的本地 llama.cpp 配置；纯文本推理不会使用图片尺寸。" },
+      "max_tokens": { "name": "最大令牌数", "tooltip": "第三方模型最多生成的输出令牌数。" },
+      "seed": { "name": "随机种", "tooltip": "对每个任务片段使用的 ComfyUI 随机种。" },
+      "enabled": { "name": "启用", "tooltip": "开启时增强并覆盖全部任务提示词；关闭时返回未修改的项目副本及当前提示词列表。" },
+      "api_account": { "name": "API 账户", "tooltip": "显示当前厂商余额并提供余额页面和 API Key 管理入口，不参与提示词增强执行。" }
+    },
+    "outputs": {
+      "0": { "name": "轨道信息", "tooltip": "已将增强提示词写回任务片段的项目数据。" },
+      "1": { "name": "分段提示词", "tooltip": "按任务片段时间顺序排列的增强提示词列表。" }
+    }
+  },
+  "easy multiTrackPromptEnhanceToProjectApply": {
+    "display_name": "多轨提示词增强到项目写回",
+    "inputs": {
+      "tracks_info": { "name": "轨道信息" },
+      "prompt_count": { "name": "提示词数量" }
+    },
+    "outputs": {
+      "0": { "name": "轨道信息" },
+      "1": { "name": "分段提示词" }
+    }
+  },
+  "easy multiTrackPromptEnhancerImageListBridge": {
+    "display_name": "多轨提示词增强器图片列表桥接",
+    "description": "内部节点，用于在本地 llama.cpp 展开子图中保持图片列表语义。",
+    "inputs": {
+      "images": { "name": "图像", "tooltip": "由多轨提示词增强器转发的图片数据。" },
+      "max_size": { "name": "最大尺寸", "tooltip": "送入本地 llama.cpp 视觉推理前使用的图片长边上限，硬上限为 768。" },
+      "inference_mode": { "name": "推理模式", "tooltip": "保留独立参考图，并按同一次推理中的图片或采样帧数量分摊视觉尺寸预算。" }
+    },
+    "outputs": {
+      "0": { "name": "图像", "tooltip": "以 ComfyUI 输出列表形式转发的图片。" }
+    }
+  },
   "LTXVMakeRefVideo": {
     "display_name": "LTXV 制作参考视频",
     "description": "将批次参考图像扩展为用于 IC-LoRA 的参考视频。",
@@ -432,6 +883,552 @@
       "0": {
         "name": "图像"
       }
+    }
+  },
+  "easy makeRefsCompositeBySam3": {
+    "display_name": "SAM3 制作参考图拼贴",
+    "description": "使用原图或 SAM3 识别并分割提示词对应的主体，将参考图居中排列到指定尺寸的拼贴画布。",
+    "inputs": {
+      "model": {
+        "name": "SAM3 模型",
+        "tooltip": "用于主体识别和遮罩分割的 SAM3 模型。"
+      },
+      "clip": {
+        "name": "CLIP",
+        "tooltip": "用于编码 SAM3 识别提示词的 CLIP 模型。"
+      },
+      "images": {
+        "name": "参考图像",
+        "tooltip": "要识别并加入拼贴的参考图像列表或图像批次。"
+      },
+      "prompt": {
+        "name": "识别提示词",
+        "tooltip": "在 SAM3 遮罩分割模式下用于识别主体的文本提示词。"
+      },
+      "width": {
+        "name": "画布宽度"
+      },
+      "height": {
+        "name": "画布高度"
+      },
+      "detection_threshold": {
+        "name": "检测阈值",
+        "tooltip": "SAM3 文本提示识别的置信度阈值。"
+      },
+      "background": {
+        "name": "背景颜色",
+        "options": {
+          "white": "白色",
+          "black": "黑色"
+        }
+      },
+      "composite_mode": {
+        "name": "拼贴模式",
+        "tooltip": "选择直接拼贴原图或拼贴 SAM3 遮罩分割后的主体。",
+        "options": {
+          "original": "原图",
+          "sam3_masked": "SAM3 遮罩分割"
+        }
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "拼贴图"
+      },
+      "1": {
+        "name": "遮罩"
+      }
+    }
+  },
+  "easy ltxMultiTrackEncode": {
+    "display_name": "LTX 多轨编码",
+    "description": "生成提示词条件以及 LTX 视频和音频潜空间。",
+    "inputs": {
+      "model": { "name": "模型" },
+      "clip": { "name": "CLIP" },
+      "audio_vae": { "name": "音频 VAE" },
+      "audio": { "name": "音频" },
+      "local_prompt": { "name": "局部提示词" },
+      "global_prompt": { "name": "全局提示词" },
+      "epsilon": { "name": "Epsilon" },
+      "width": { "name": "宽度" },
+      "height": { "name": "高度" },
+      "frame_rate": { "name": "帧率" },
+      "video_length": { "name": "视频帧数" },
+      "half_latent_size": {
+        "name": "潜空间尺寸减半",
+        "tooltip": "创建视频潜空间时将输入宽高减半。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "模型" },
+      "1": { "name": "正向条件" },
+      "2": { "name": "负向条件" },
+      "3": { "name": "视频潜空间" },
+      "4": { "name": "音频潜空间" }
+    }
+  },
+  "easy ltxI2VInplaceAndUpsample": {
+    "display_name": "LTX 图生视频原位处理与放大",
+    "description": "可选使用潜空间放大模型，并将指定图像作为 LTX 视频潜空间的原位引导。",
+    "inputs": {
+      "vae": { "name": "VAE" },
+      "image": {
+        "name": "图像",
+        "tooltip": "可选。未连接图像时自动跳过图生视频原位引导。"
+      },
+      "video_latent": { "name": "视频潜空间" },
+      "upscale_models": {
+        "name": "潜空间放大模型",
+        "tooltip": "可选。连接多个模型时将按顺序依次放大视频潜空间。"
+      },
+      "img_index": {
+        "name": "图像索引",
+        "tooltip": "从图像列表或批次中选择用于引导的图像，索引从 0 开始。"
+      },
+      "strength": { "name": "强度" },
+      "img_compression": {
+        "name": "图像压缩",
+        "tooltip": "传入图生视频原位处理前应用的图像压缩量。"
+      },
+      "bypass": {
+        "name": "跳过",
+        "tooltip": "跳过图生视频原位引导。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "视频潜空间" }
+    }
+  },
+  "easy ltxSamplerSimple": {
+    "display_name": "LTX 简易采样器",
+    "description": "合并 LTX 视频和音频潜空间进行采样，并分离最终的视频与音频潜空间。",
+    "inputs": {
+      "model": { "name": "模型" },
+      "positive": { "name": "正向条件" },
+      "negative": { "name": "负向条件" },
+      "video_latent": { "name": "视频潜空间" },
+      "audio_latent": { "name": "音频潜空间" },
+      "sampler_name": { "name": "采样器" },
+      "sigmas": { "name": "Sigma 序列" },
+      "cfg": { "name": "CFG" },
+      "seed": { "name": "种子" }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "负向条件" },
+      "2": { "name": "视频潜空间" },
+      "3": { "name": "音频潜空间" }
+    }
+  },
+  "BerniniModelPatch": {
+    "display_name": "Bernini 模型补丁",
+    "description": "使用 ComfyUI 模型包装器为 Wan 模型添加 Bernini 上下文潜空间支持。",
+    "inputs": {
+      "model": { "name": "模型" }
+    },
+    "outputs": {
+      "0": { "name": "模型" }
+    }
+  },
+  "BerniniConditioning": {
+    "display_name": "Bernini 条件",
+    "description": "为 Bernini 上下文视频与图像生成条件，将源视频和参考图像编码后附加到正向与负向条件中。",
+    "inputs": {
+      "positive": { "name": "正向条件" },
+      "negative": { "name": "负向条件" },
+      "vae": { "name": "VAE" },
+      "width": { "name": "宽度" },
+      "height": { "name": "高度" },
+      "length": { "name": "帧数" },
+      "batch_size": { "name": "批次大小" },
+      "source_video": {
+        "name": "源视频",
+        "tooltip": "要编辑或重绘的源视频（v2v 或 rv2v 任务）。将调整至指定宽高并裁剪到指定帧数，作为编辑底图或画布。"
+      },
+      "reference_video": {
+        "name": "参考视频",
+        "tooltip": "合成到源视频中的动态内容（视频植入或 ads2v），例如屏幕内播放的片段。保持原始宽高比，长边限制为参考最大尺寸，并裁剪到指定帧数。"
+      },
+      "reference_images": {
+        "name": "参考图像",
+        "tooltip": "作为上下文标记注入的参考图像（r2v 或 rv2v）。每个插槽按自身宽高比单独编码，长边限制为参考最大尺寸；不同尺寸的参考图像请连接到不同插槽。"
+      },
+      "ref_max_size": {
+        "name": "参考最大尺寸",
+        "tooltip": "参考视频和参考图像的长边最大尺寸。调整时保持宽高比并对齐到 16 像素。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "负向条件" },
+      "2": { "name": "潜空间" }
+    }
+  },
+  "easy berniniS2VConditioning": {
+    "display_name": "简易 Bernini S2V 条件",
+    "description": "统一 Bernini 上下文与 Wan S2V 音频条件。单路音频不连接遮罩时保留原版全画面单人逻辑；连接遮罩后启用空间注入，并可选第二位音频。",
+    "inputs": {
+      "positive": { "name": "正向条件" },
+      "negative": { "name": "负向条件" },
+      "vae": { "name": "VAE" },
+      "width": { "name": "宽度" },
+      "height": { "name": "高度" },
+      "length": { "name": "帧数" },
+      "batch_size": { "name": "批次大小" },
+      "audio_0": {
+        "name": "音频 0 音频",
+        "tooltip": "可选。未连接音频 0 遮罩时，使用原版全画面单人音频注入。"
+      },
+      "mask_0": {
+        "name": "音频 0 遮罩",
+        "tooltip": "白色区域为音频 0 的口型同步区域；连接后启用空间遮罩注入。"
+      },
+      "audio_1": {
+        "name": "音频 1 音频",
+        "tooltip": "可选的第二位说话者音频。"
+      },
+      "mask_1": {
+        "name": "音频 1 遮罩",
+        "tooltip": "连接音频 1 音频时必需。"
+      },
+      "second_speaker_start_frame": {
+        "name": "音频 1 起始帧",
+        "tooltip": "-1 表示在音频 0 音频结束后自动开始；其他值表示指定输出视频帧。"
+      },
+      "source_video": { "name": "源视频" },
+      "reference_video": { "name": "参考视频" },
+      "reference_images": { "name": "参考图像" },
+      "ref_max_size": { "name": "参考最大尺寸" },
+      "mask_crossfade_frames": {
+        "name": "遮罩交叉淡化帧数",
+        "tooltip": "平滑两位音频的遮罩切换；0 表示硬切。"
+      },
+      "audio_inject_scale": { "name": "音频注入强度" }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "负向条件" },
+      "2": { "name": "潜空间" }
+    }
+  },
+  "MiniMaxH3ImageToVideo": {
+    "display_name": "MiniMax H3 图像生成视频",
+    "description": "创建 MiniMax H3 文生视频或首尾帧生视频条件，并生成联合音视频潜空间。",
+    "inputs": {
+      "clip": { "name": "CLIP" },
+      "vae": { "name": "VAE" },
+      "prompt": { "name": "提示词" },
+      "width": { "name": "宽度" },
+      "height": { "name": "高度" },
+      "length": { "name": "视频帧数" },
+      "first_frame": { "name": "首帧" },
+      "last_frame": { "name": "尾帧" }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "潜空间" }
+    }
+  },
+  "MiniMaxH3ReferenceToVideo": {
+    "display_name": "MiniMax H3 参考生成视频",
+    "description": "使用图像、视频和音频创建 MiniMax H3 参考条件；提示词可通过 <Picture i>、<Video i> 和 <Audio i> 标签引用媒体。",
+    "inputs": {
+      "clip": { "name": "CLIP" },
+      "vae": { "name": "VAE" },
+      "audio_vae": { "name": "音频 VAE" },
+      "prompt": { "name": "提示词" },
+      "width": { "name": "宽度" },
+      "height": { "name": "高度" },
+      "length": { "name": "视频帧数" },
+      "ref_image_size": {
+        "name": "参考图像尺寸",
+        "tooltip": "参考图像尺寸调整。“match”会将每张参考图像缩放（仅缩小，保持宽高比）至生成图像的像素区域；“max”的短边上限为 2048 像素（仅缩小，不放大），以实现最佳的身份保真度。参考词元会贯穿每个采样步骤，因此“max”的运行速度可能慢几倍。",
+        "options": {
+          "match": "匹配生成尺寸",
+          "max": "最大参考尺寸"
+        }
+      },
+      "ref_images": { "name": "参考图像" },
+      "ref_videos": { "name": "参考视频帧" },
+      "ref_video_audios": { "name": "参考视频音频" },
+      "ref_audios": { "name": "独立参考音频" }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "潜空间" }
+    }
+  },
+  "easy removeH3MotionContextLatent": {
+    "display_name": "移除 H3 Motion Context 潜空间",
+    "description": "循环结束后，按输出目录中的文件前缀移除 H3 Motion Context 潜空间文件。",
+    "inputs": {
+      "filename_path": {
+        "name": "文件路径前缀",
+        "tooltip": "相对于 ComfyUI 输出目录的安全文件前缀。"
+      },
+      "input": { "name": "输入" }
+    },
+    "outputs": {
+      "0": { "name": "输出" },
+      "1": { "name": "已删除数量" }
+    }
+  },
+  "easy MiniMaxH3MotionContextHard": {
+    "display_name": "简易 MiniMax H3 硬上下文",
+    "description": "保留 Motion Context 0.4 原生视频与音频关键帧，同时将同一段上一片段音视频潜空间尾部复制到当前采样起点，并分别应用释放遮罩。",
+    "inputs": {
+      "conditioning": { "name": "条件" },
+      "vae": { "name": "VAE" },
+      "latent": { "name": "当前潜空间" },
+      "context_latent": { "name": "上一片段上下文潜空间" },
+      "context_length": { "name": "视频上下文长度" },
+      "video_transition_steps": { "name": "视频过渡步数" },
+      "audio_transition_steps": { "name": "音频过渡步数" }
+    },
+    "outputs": {
+      "0": { "name": "条件" },
+      "1": { "name": "裁剪帧数" },
+      "2": { "name": "潜空间" }
+    }
+  },
+  "easy MiniMaxH3ContextSwapNoise": {
+    "display_name": "简易 MiniMax H3 局部替换上下文噪声",
+    "description": "为局部替换创建一次性上下文副本：仅对视频潜空间添加锥形噪声，音频保持不变。",
+    "inputs": {
+      "context_latent": { "name": "上下文潜空间" },
+      "context_length": { "name": "上下文长度" },
+      "seed": { "name": "噪声种子" }
+    },
+    "outputs": {
+      "0": { "name": "临时上下文潜空间" }
+    }
+  },
+  "easy MiniMaxH3HiResContinuity": {
+    "display_name": "简易 MiniMax H3 高分辨率连续性",
+    "description": "用于二采上下文衔接：将上一片段最终高分辨率视频潜空间尾部复制到当前放大后的潜空间，并冻结当前音频。",
+    "inputs": {
+      "current_hires_latent": { "name": "当前高分辨率潜空间" },
+      "previous_hires_latent": { "name": "上一片段高分辨率潜空间" },
+      "context_length": { "name": "上下文长度" },
+      "video_transition_steps": { "name": "视频过渡步数" }
+    },
+    "outputs": {
+      "0": { "name": "潜空间" },
+      "1": { "name": "裁剪帧数" }
+    }
+  },
+  "easy multitrackProject": {
+    "display_name": "多轨项目",
+    "description": "执行多轨 MiniMax H3 项目的一采与可选二采，并保存片段产物。",
+    "inputs": {
+      "model_loader": {
+        "name": "模型加载器",
+        "tooltip": "连接 FastUse 或模型加载器打包节点输出的 FAST_MODEL_LOADER。"
+      },
+      "tracks_info": {
+        "name": "多轨信息",
+        "tooltip": "多轨编辑器输出的完整项目数据。"
+      },
+      "sampler": { "name": "采样器" },
+      "sigmas": { "name": "Sigmas" },
+      "project_name": {
+        "name": "项目名称",
+        "tooltip": "项目目录位于 output/easy_media/projects/{项目名}/；留空时使用 default 项目目录。"
+      },
+      "project_save": {
+        "name": "项目保存方式",
+        "tooltip": "new 为当前片段创建新版本，并保留当前索引及后续已有的 video 和 latent；override 覆盖已有版本。",
+        "options": {
+          "new": "新建",
+          "override": "覆盖"
+        }
+      },
+
+      "sampling_plan": {
+        "name": "采样方案",
+        "tooltip": "选择采样调度方案，默认；外接采样器或 Sigmas 后，执行阶段会自动采用 custom。",
+        "options": {
+          "custom": "自定义",
+          "light": "轻度",
+          "medium": "中等",
+          "high": "高",
+          "extra_high": "极高",
+          "ultra": "逆天"
+        }
+      },
+      "sampling_mode": {
+        "name": "采样模式",
+        "tooltip": "选择 dual 后显示二采专用的模型、采样与噪声设置。"
+      },
+      "model_loader_2nd": {
+        "name": "模型加载器(二采)",
+        "tooltip": "可选；仅替换二采模型，编码与 VAE 保持一采配置以确保 latent 兼容。"
+      },
+      "sampler_2nd":{
+        "name": "采样器(二采)"
+      },
+      "sigmas_2nd":{
+        "name": "Sigmas(二采)"
+      },
+      "1st_pass_only": {
+        "name": "仅执行一采预览",
+        "tooltip": "在二采模式下，仅执行首个选中片段的一采，用于快速预览。"
+      },
+      "disable_2nd_noise": {
+        "name": "禁用二采噪声",
+        "tooltip": "在二采中禁用噪声。"
+      },
+      "upscale_by": { "name": "放大倍数" },
+      "upscale_model": { "name": "放大模型" },
+      "segment_start_number": { "name": "片段开始编号" },
+      "segment_count": {
+        "name": "片段最大数量",
+        "tooltip": "从片段开始索引起处理的片段数。-1 表示处理剩余全部片段；仅 override 模式会在执行前删除开始索引及其后的旧片段和产物，new 模式会保留它们；超出时自动在末尾停止。"
+      },
+      "seed": {
+        "name": "种子",
+        "tooltip": "一采与二采共用的随机种子。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "项目名称" },
+      "1": { "name": "锁定音频" }
+    }
+  },
+  "easy multitrackProjectVideoCombine": {
+    "display_name": "多轨项目视频合并",
+    "description": "预览并合并多轨项目中的活动视频片段。",
+    "inputs": {
+      "project_name": {
+        "name": "项目名称",
+        "tooltip": "连接多轨项目节点输出的项目名称。"
+      },
+      "project_data": { "name": "项目数据" }
+    },
+    "outputs": {
+      "0": { "name": "视频" },
+      "1": { "name": "文件名前缀" }
+    }
+  },
+  "easy minimaxH3AudioLock": {
+    "display_name": "简易 MiniMax H3 音频锁定",
+    "description": "将原音频锁定或混合到 MiniMax H3 音视频联合潜空间中，并通过分流噪声遮罩控制音频保留强度。",
+    "inputs": {
+      "latent": { "name": "潜空间", "tooltip": "MiniMax H3 音视频联合潜空间。" },
+      "audio_vae": { "name": "音频 VAE", "tooltip": "MiniMax H3 音频 VAE。" },
+      "audio": { "name": "音频", "tooltip": "要锁定到 H3 潜空间的原音频，支持音频列表。" },
+      "remix_strength": { "name": "锁定强度", "tooltip": "0 表示完全重新生成音频；1 表示完整锁定原音频。" },
+      "short_audio_mode": {
+        "name": "短音频处理",
+        "tooltip": "编码前使用静音补齐或循环方式补足短音频。",
+        "options": { "silence": "静音补齐", "loop": "循环" }
+      }
+    },
+    "outputs": { "0": { "name": "潜空间" } }
+  },
+  "easy minimaxPromptOverride": {
+    "display_name": "MiniMax 提示词覆盖",
+    "description": "将每个 MiniMax H3 片段的提示词、生成时长、生成类型、衔接模式和轨道锁定组装为 prompt_override JSON 字符串。",
+    "inputs": {
+      "prompts": {
+        "name": "提示词列表",
+        "tooltip": "每个 MiniMax H3 片段对应一个提示词。可使用 @图片N/@音频N/@视频N 或 <Picture N>/<Audio N>/<Video N> 引用媒体输入；未使用的前置编号会自动向前递减。"
+      },
+      "duration": {
+        "name": "生成时长",
+        "tooltip": "每个片段的秒数。单个值如 10 会应用到所有片段；逗号分隔值如 10,5,10 会按顺序设置，少于片段数时复用最后一个值。每个值必须在 2～15 秒之间。"
+      },
+      "generation_type": {
+        "name": "生成类型",
+        "tooltip": "每个片段的生成类型。支持 r2v、t2v、i2v、v2v、l2v(尾帧)；单个值会应用到所有片段，逗号分隔值如 r2v,i2v,r2v 会按顺序设置，少于片段数时复用最后一个值。"
+      },
+      "continuity_mode": {
+        "name": "衔接模式",
+        "tooltip": "每个片段的衔接模式。支持 shot、context、context_swap；单个值会应用到所有片段，逗号分隔值如 shot,context,context 会按顺序设置，少于片段数时复用最后一个值。"
+      },
+      "system_prompt": {
+        "name": "系统提示词",
+        "tooltip": "可选。非空时会写入最终 tracks_info 中每个任务片段的 system_prompt。"
+      },
+      "video_track_lock": {
+        "name": "视频轨锁定",
+        "tooltip": "要锁定的视频轨序号（从 1 开始）；0 表示不锁定。"
+      },
+      "audio_track_lock": {
+        "name": "音频轨锁定",
+        "tooltip": "要锁定的音频轨序号（从 1 开始）；0 表示不锁定。"
+      }
+    },
+    "outputs": {
+      "0": { "name": "提示词覆盖" }
+    }
+  },
+  "easy minimaxH3ToVideo": {
+    "display_name": "简易 MiniMax H3 视频生成",
+    "description": "统一生成 MiniMax H3 文生视频、参考生视频、首尾帧生视频和尾帧生视频条件。支持图像批次及图像、视频、音频列表；参考视频会自动拆分为图像序列和音频。",
+    "inputs": {
+      "clip": {
+        "name": "CLIP",
+        "tooltip": "用于编码提示词和视觉参考的 MiniMax H3 CLIP。"
+      },
+      "vae": {
+        "name": "VAE",
+        "tooltip": "用于编码参考图像和视频帧的 MiniMax H3 视频 VAE。"
+      },
+      "audio_vae": {
+        "name": "音频 VAE",
+        "tooltip": "可选。连接任何参考视频或独立参考音频时建议提供；存在参考音频时必需。"
+      },
+      "images": {
+        "name": "图像",
+        "tooltip": "支持单张图像、图像批次或图像列表。参考模式使用全部图像；未输入视频或音频时，首尾帧模式在仅有一张图像时将其作为首帧，有多张图像时使用展开后的第一张和最后一张图像，尾帧模式仅使用展开后的最后一张图像。输入视频或音频后会改走参考生视频，并将全部图像用作参考图像。"
+      },
+      "videos": {
+        "name": "视频",
+        "tooltip": "参考视频或视频列表。输入后会自动改走参考生视频，并提取原始帧和内含音频。"
+      },
+      "audios": {
+        "name": "音频",
+        "tooltip": "独立参考音频或音频列表。输入后会自动改走参考生视频。"
+      },
+      "prompt": {
+        "name": "提示词",
+        "tooltip": "生成视频的文本描述。参考模式可使用 <Picture i>、<Video i> 和 <Audio i> 标签引用输入媒体。"
+      },
+      "mode": {
+        "name": "生成模式",
+        "tooltip": "选择参考生视频、首尾帧生视频或尾帧生视频。首尾帧或尾帧模式下输入视频或音频时，会自动改走参考生视频；所有媒体输入均为空时，各模式都会执行文生视频。",
+        "options": {
+          "reference": "参考生视频",
+          "multi_frames": "首尾帧生视频",
+          "last_frame": "尾帧生视频"
+        }
+      },
+      "width": {
+        "name": "宽度",
+        "tooltip": "生成视频的画布宽度。"
+      },
+      "height": {
+        "name": "高度",
+        "tooltip": "生成视频的画布高度。"
+      },
+      "length": {
+        "name": "视频帧数",
+        "tooltip": "24fps 下的视频帧数；会自动向上对齐到 MiniMax H3 的 17k+5 帧网格（124 帧约 5 秒；训练范围约为 124–362 帧，更长时长未经测试）。"
+      },
+      "ref_image_size": {
+        "name": "参考图像尺寸",
+        "tooltip": "参考图像尺寸调整。“match”会将每张参考图像缩放（仅缩小，保持宽高比）至生成图像的像素区域；“max”的短边上限为 2048 像素（仅缩小，不放大），以实现最佳的身份保真度。参考词元会贯穿每个采样步骤，因此“max”的运行速度可能慢几倍。",
+        "options": {
+          "match": "匹配生成尺寸",
+          "max": "最大参考尺寸"
+        }
+      }
+    },
+    "outputs": {
+      "0": { "name": "正向条件" },
+      "1": { "name": "潜空间" }
     }
   }
 }

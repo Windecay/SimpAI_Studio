@@ -45,8 +45,34 @@ export interface ReactWidgetOptions {
   defaultValue?: string
   /** Custom height for the widget container in pixels */
   height?: number
+  /** Keep this widget sized to its LiteGraph node despite legacy width writes. */
+  keepResponsiveWidthInLiteGraph?: boolean
   /** Extra options merged into DOMWidgetOptions passed to addDOMWidget */
   domWidgetOptions?: Omit<DOMWidgetOptions<string>, 'getValue' | 'setValue'>
+}
+
+interface LiteGraphRuntime {
+  vueNodesMode?: boolean
+}
+
+function isVueNodesMode(): boolean {
+  const liteGraph = (globalThis as typeof globalThis & { LiteGraph?: LiteGraphRuntime }).LiteGraph
+  return Boolean(liteGraph?.vueNodesMode)
+}
+
+function keepWidgetWidthResponsive(widget: DOMWidget<HTMLDivElement, string>) {
+  let width = widget.width
+
+  Object.defineProperty(widget, 'width', {
+    configurable: true,
+    enumerable: true,
+    get: () => width,
+    set: (nextWidth: number | undefined) => {
+      if (isVueNodesMode()) width = nextWidth
+    },
+  })
+
+  if (!isVueNodesMode()) width = undefined
 }
 
 /**
@@ -126,9 +152,16 @@ export function createReactWidget<T extends object | string = object>(
       },
     ) as ComfyDOMWidget<HTMLDivElement, string>
 
+    if (options.keepResponsiveWidthInLiteGraph) {
+      keepWidgetWidthResponsive(widget)
+    }
+
+    // Keep compatibility with node reloaders that only recognize string DOM
+    // widgets through the legacy inputEl field.
+    widget.inputEl = container
+
     // serializeValue is called by ComfyUI when building the API prompt payload
     widget.serializeValue = () => currentValue
-
     root = createRoot(container)
     render()
 

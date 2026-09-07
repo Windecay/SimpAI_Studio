@@ -1,6 +1,14 @@
 import type { AudioContent } from '@/types/timeline'
 
-type ViewSourceType = 'input' | 'output'
+type ViewSourceType = 'input' | 'output' | 'temp'
+
+export interface ViewableMediaContent {
+  source_type: 'preset' | 'input' | 'output' | 'local' | 'url' | 'slot'
+  file_path?: string
+  local_path?: string
+  url?: string
+  slot_name?: string
+}
 
 function splitMediaPath(filePath: string): { filename: string; subfolder: string } {
   const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
@@ -15,11 +23,27 @@ export function mediaPathToViewUrl(filePath: string, sourceType: ViewSourceType)
   return `/view?filename=${encodeURIComponent(filename)}&type=${sourceType}&subfolder=${encodeURIComponent(subfolder)}`
 }
 
-export function audioContentToViewUrl(content: AudioContent): string | null {
+export function addMediaRevision(url: string, revision?: string | number): string {
+  if (revision === undefined || revision === '') return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${encodeURIComponent(String(revision))}`
+}
+
+export function mediaContentToViewUrl(content: ViewableMediaContent): string | null {
   if (content.url) return content.url
   if (content.local_path) return `file://${content.local_path}`
+  if (content.source_type !== 'input' && content.source_type !== 'output') return null
   if (!content.file_path) return null
 
   const typeParam = content.source_type === 'output' ? 'output' : 'input'
   return mediaPathToViewUrl(content.file_path, typeParam)
+}
+
+export function mediaSlotNumber(slotName: string | undefined, fallbackIndex = 0): number {
+  const slotNumber = slotName?.match(/(\d+)$/)?.[1]
+  return slotNumber ? Number(slotNumber) : fallbackIndex + 1
+}
+
+export function audioContentToViewUrl(content: AudioContent): string | null {
+  return mediaContentToViewUrl(content)
 }

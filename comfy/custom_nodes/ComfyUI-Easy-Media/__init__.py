@@ -8,6 +8,9 @@ from comfy_api.latest import ComfyExtension, io
 from aiohttp import web
 from .nodes import *
 from .routes import *
+from .utils.bernini_s2v_model_patch import apply_bernini_s2v_model_patches
+
+apply_bernini_s2v_model_patches()
 
 # Define the path
 root_path = os.path.dirname(__file__)
@@ -47,27 +50,81 @@ class EasyMediaExtension(ComfyExtension):
     @override
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
         nodes = [
+            # TimelineEditor
             TimelineEditor,
             TimelineInfoOutput,
             TimelineSegmentOutput,
             TimelineSegmentCount,
+            # MultiTrack
+            MultiTrackEditor,
+            MultiTrackTaskOutput,
+            MultiTrackPromptEnhancer,
+            MultiTrackPromptEnhanceToProject,
+            MultiTrackPromptEnhanceToProjectApply,
+            MultiTrackPromptEnhancerImageListBridge,
+            MultiTrackInfoOutput,
+            MultiTrackAudioOutput,
+            # Subtitle
+            MultiTrackAddSubtitleToVideo,
+            RecognizeSubtitle,
+            AddSubtitleToVideo,
+            # Image
+            MakeRefsCompositeBySam3,
             ImageIndexesToIntList,
-            MakeImageList,
-            MakeAudioList,
-            # Wan
-            BerniniModelPatch,
-            # LTXV
-            LTXVAddGuidesFromBatchIndexes,
-            LTXVMakeRefVideo,
+            # Audio
+            EasyAudioMerge,
+            EasyMinimaxH3AudioLock,
             # Video
             EasySaveVideo,
+            EasyCompareVideos,
+            EasyGetAudioFromVideo,
             EasyMergeVideos,
             EasyMergeVideosFromPaths,
+            # Split
+            SplitImages,
+            SplitAudios,
+            SplitVideos,
+            # Make List
+            MakeImageList,
+            MakeAudioList,
+            MakeVideoList,
+            # Common
+            EasyModelLoaderPack,
+            MatchLine,
+            APIWorkflowGate,
+            # MiniMax
+            EasyMiniMaxH3MotionContextHard,
+            EasyMiniMaxH3ContextSwapNoise,
+            EasyMiniMaxH3HiResContinuity,
+            EasyH3MotionContextLatentTrim,
+            EasyH3ProjectContextLatentLoad,
+            EasyH3SegmentSamplingStart,
+            EasyH3SegmentSaveEnd,
+            EasyH3ContextMediaTrim,
+            EasyH3AudioContextLatent,
+            EasyH3LockedAudioDurationAlign,
+            EasyH3ProjectArtifact,
+            EasyMultiTrackProject,
+            EasyMultiTrackProjectVideoCombine,
+            EasyMiniMaxH3ToVideo,
+            EasyMinimaxPromptOverride,
+            EasyMiniMaxH3ReferenceToVideoBridge,
+            EasyRemoveH3MotionContextLatent,
+            # Wan
+            BerniniModelPatch,
+            EasyBerniniS2VConditioning,
+            # LTXV
+            LTXMultiTrackEncode,
+            LTXI2VInplaceAndUpsample,
+            LTXSamplerSimple,
+            LTXVAddGuidesFromBatchIndexes,
+            LTXVMakeRefVideo,
         ]
         try:
             from comfy_extras.nodes_bernini import BerniniConditioning as CoreBerniniConditioning
         except ImportError:
             nodes.extend([BerniniConditioning])
+        nodes.extend(get_minimax_h3_fallback_nodes())
         return nodes
 async def comfy_entrypoint() -> EasyMediaExtension:
     return EasyMediaExtension()

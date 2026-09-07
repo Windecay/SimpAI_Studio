@@ -1,4 +1,5 @@
 import copy
+import gc
 import heapq
 import inspect
 import logging
@@ -44,12 +45,13 @@ from comfy_execution.graph import (
 )
 from comfy_execution.graph_utils import GraphBuilder, is_link
 from comfy_execution.validation import validate_node_input
-from comfy_execution.progress import get_progress_state, reset_progress_state, add_progress_handler, WebUIProgressHandler
+from comfy_execution.progress import get_progress_state, reset_progress_state, release_progress_inputs, add_progress_handler, WebUIProgressHandler
 from comfy_execution.utils import CurrentNodeContext
 from comfy_execution.asset_enrichment import enrich_output_with_assets
 from comfy_api.internal import _ComfyNodeInternal, _NodeOutputInternal, first_real_override, is_class, make_locked_method_func
 from comfy_api.latest import io, _io
 from comfy_execution.cache_provider import _has_cache_providers, _get_cache_providers, _logger as _cache_logger
+from simpai_prompt_cleanup import clear_plugin_caches, log_cleanup_memory
 
 
 class ExecutionResult(Enum):
@@ -213,44 +215,6 @@ class CacheSet:
         }
         return result
 
-
-def _clear_easyuse_global_cache():
-    target_tail = "/py/libs/cache.py"
-    for module in tuple(sys.modules.values()):
-        module_file = getattr(module, "__file__", None)
-        if not module_file:
-            continue
-
-        module_file_norm = module_file.lower().replace("\\", "/")
-        while "//" in module_file_norm:
-            module_file_norm = module_file_norm.replace("//", "/")
-
-        if "comfyui-easy-use" not in module_file_norm or not module_file_norm.endswith(target_tail):
-            continue
-
-        try:
-            remove_cache = getattr(module, "remove_cache", None)
-            if callable(remove_cache):
-                remove_cache("*")
-        except Exception:
-            pass
-
-        try:
-            cache_obj = getattr(module, "cache", None)
-            clear = getattr(cache_obj, "clear", None)
-            if callable(clear):
-                clear()
-        except Exception:
-            pass
-
-        try:
-            cache_count = getattr(module, "cache_count", None)
-            if isinstance(cache_count, dict):
-                cache_count.clear()
-        except Exception:
-            pass
-
-        break
 
 SENSITIVE_EXTRA_DATA_KEYS = ("auth_token_comfy_org", "api_key_comfy_org")
 
@@ -826,6 +790,42 @@ class PromptExecutor:
         asyncio.run(self.execute_async(prompt, prompt_id, extra_data, execute_outputs))
 
     async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+        self.success = False
+        self.history_result = {"outputs": {}, "meta": {}}
+        prompt_output_cache = self.caches.outputs
+        try:
+            await self._execute_async(prompt, prompt_id, extra_data, execute_outputs)
+        except BaseException as ex:
+            self.success = False
+            if getattr(args, "cache_clear_on_finish", False):
+                traceback.clear_frames(ex.__traceback__)
+            raise
+        finally:
+            try:
+                await prompt_output_cache.wait_for_pending_stores()
+            finally:
+                if self.cache_type == CacheType.RAM_PRESSURE:
+                    detail("RAM cache evictions: prompt=%s active=%s full=%s", prompt_id, prompt_output_cache.active_evictions, prompt_output_cache.full_evictions)
+                prompt_output_cache = None
+                comfy.memory_management.set_ram_cache_release_state(None, 0)
+                try:
+                    self.prompt_model_tracker.end()
+                finally:
+                    self._notify_prompt_lifecycle("end", prompt_id)
+                    self.server.last_node_id = None
+                    if getattr(args, "cache_clear_on_finish", False):
+                        with log_cleanup_memory(prompt_id):
+                            # The execution frame must be gone before collecting its caches.
+                            self.caches = CacheSet(cache_type=self.cache_type, cache_args=self.cache_args)
+                            release_progress_inputs(prompt_id)
+                            clear_plugin_caches()
+                            gc.collect()
+                            try:
+                                comfy.model_management.unload_and_free_everything()
+                            except Exception:
+                                logging.warning("Could not unload models after prompt %s", prompt_id, exc_info=True)
+
+    async def _execute_async(self, prompt, prompt_id, extra_data, execute_outputs):
         set_preview_method(extra_data.get("preview_method"))
 
         nodes.interrupt_processing(False)
@@ -843,9 +843,9 @@ class PromptExecutor:
         ram_headroom = int(self.cache_args["ram"] * (1024 ** 3))
         ram_inactive_headroom = int(self.cache_args["ram_inactive"] * (1024 ** 3))
         ram_release_callback = self.caches.outputs.ram_release if self.cache_type == CacheType.RAM_PRESSURE else None
-        prompt_output_cache = self.caches.outputs
         comfy.memory_management.set_ram_cache_release_state(ram_release_callback, ram_headroom)
 
+        pending_async_nodes = {}
         try:
             with torch.inference_mode():
                 dynamic_prompt = DynamicPrompt(prompt)
@@ -870,7 +870,6 @@ class PromptExecutor:
                               { "nodes": cached_nodes, "prompt_id": prompt_id},
                               broadcast=False)
                 pending_subgraph_results = {}
-                pending_async_nodes = {} # TODO - Unify this with pending_subgraph_results
                 ui_node_outputs = {}
                 executed = set()
                 execution_list = ExecutionList(dynamic_prompt, self.caches.outputs, self.prompt_model_tracker.add)
@@ -881,6 +880,7 @@ class PromptExecutor:
                 while not execution_list.is_empty():
                     node_id, error, ex = await execution_list.stage_node_execution()
                     if error is not None:
+                        self.success = False
                         self.handle_execution_error(prompt_id, dynamic_prompt.original_prompt, current_outputs, executed, error, ex)
                         break
 
@@ -920,6 +920,7 @@ class PromptExecutor:
                         if cached is not None:
                             display_node_id = dynamic_prompt.get_display_node_id(node_id)
                             _send_cached_ui(self.server, node_id, display_node_id, cached, prompt_id, ui_node_outputs)
+                    self.success = True
                     self.add_message("execution_success", { "prompt_id": prompt_id }, broadcast=False)
 
                 ui_outputs = {}
@@ -932,28 +933,20 @@ class PromptExecutor:
                     "meta": meta_outputs,
                 }
                 self.server.last_node_id = None
-                if comfy.model_management.DISABLE_SMART_MEMORY:
+                if comfy.model_management.DISABLE_SMART_MEMORY and not getattr(args, "cache_clear_on_finish", False):
                     comfy.model_management.unload_all_models()
-                if getattr(args, "cache_clear_on_finish", False):
-                    try:
-                        self.caches = CacheSet(cache_type=self.cache_type, cache_args=self.cache_args)
-                    except Exception:
-                        pass
-                    try:
-                        _clear_easyuse_global_cache()
-                    except Exception:
-                        pass
-                    try:
-                        comfy.model_management.unload_and_free_everything()
-                    except Exception:
-                        pass
         finally:
-            await prompt_output_cache.wait_for_pending_stores()
-            if self.cache_type == CacheType.RAM_PRESSURE:
-                detail("RAM cache evictions: prompt=%s active=%s full=%s", prompt_id, self.caches.outputs.active_evictions, self.caches.outputs.full_evictions)
-            comfy.memory_management.set_ram_cache_release_state(None, 0)
-            self.prompt_model_tracker.end()
-            self._notify_prompt_lifecycle("end", prompt_id)
+            if getattr(args, "cache_clear_on_finish", False):
+                pending_tasks = [
+                    task for results in pending_async_nodes.values()
+                    for task in results if isinstance(task, asyncio.Task)
+                ]
+                for task in pending_tasks:
+                    task.cancel()
+                if pending_tasks:
+                    await asyncio.gather(*pending_tasks, return_exceptions=True)
+                    # Let the completion callbacks release their execution-list references.
+                    await asyncio.sleep(0)
 
 
 async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):

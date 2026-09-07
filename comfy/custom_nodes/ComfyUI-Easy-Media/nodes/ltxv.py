@@ -153,6 +153,7 @@ class LTXVMakeRefVideo(io.ComfyNode):
             display_name="LTXVMakeRefVideo",
             category="image/ltxv",
             description="Expands a batch of reference images into a reference video for IC-LoRA.",
+            is_input_list=True,
             inputs=[
                 io.Image.Input("images"),
                 io.Int.Input("frame_count", default=17, min=17, step=8),
@@ -163,13 +164,65 @@ class LTXVMakeRefVideo(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, images: torch.Tensor, frame_count: int) -> io.NodeOutput:
+    def execute(cls, images: list[torch.Tensor], frame_count: list[int]) -> io.NodeOutput:
         try:
-            frames = cls._expand_frames(images, frame_count)
+            image_batch = cls._prepare_image_batch(images)
+            if not frame_count:
+                raise ValueError("frame_count must contain one value")
+            frames = cls._expand_frames(image_batch, int(frame_count[0]))
         except Exception as exc:
             raise RuntimeError("Failed to create IC-LoRA reference video frames") from exc
 
         return io.NodeOutput(frames)
+
+    @staticmethod
+    def _prepare_image_batch(images: list[torch.Tensor]) -> torch.Tensor:
+        if not images:
+            raise ValueError("images must contain at least one image tensor")
+        if not all(isinstance(image, torch.Tensor) for image in images):
+            raise TypeError("images must contain only torch.Tensor values")
+        if any(image.ndim != 4 or image.shape[0] < 1 for image in images):
+            raise ValueError("Each image input must have shape [B, H, W, C] with B >= 1")
+
+        if len(images) == 1:
+            return images[0]
+
+        individual_images = [frame for batch in images for frame in batch.split(1, dim=0)]
+        background = individual_images[-1]
+        target_height, target_width, target_channels = background.shape[1:]
+        prepared = []
+
+        for image in individual_images[:-1]:
+            if image.shape[-1] != target_channels:
+                raise ValueError("All image inputs must have the same channel count as the background")
+
+            image = image.to(device=background.device, dtype=background.dtype)
+            source_height, source_width = image.shape[1:3]
+            if (source_height, source_width) == (target_height, target_width):
+                prepared.append(image)
+                continue
+
+            scale = min(target_width / source_width, target_height / source_height)
+            resized_width = max(1, min(target_width, round(source_width * scale)))
+            resized_height = max(1, min(target_height, round(source_height * scale)))
+            resized = torch.nn.functional.interpolate(
+                image.movedim(-1, 1),
+                size=(resized_height, resized_width),
+                mode="bilinear",
+                align_corners=False,
+            ).movedim(1, -1)
+            canvas = torch.ones(
+                (1, target_height, target_width, target_channels),
+                device=background.device,
+                dtype=background.dtype,
+            )
+            top = (target_height - resized_height) // 2
+            left = (target_width - resized_width) // 2
+            canvas[:, top:top + resized_height, left:left + resized_width] = resized
+            prepared.append(canvas)
+
+        prepared.append(background)
+        return torch.cat(prepared, dim=0)
 
     @staticmethod
     def _expand_frames(images: torch.Tensor, frame_count: int) -> torch.Tensor:
@@ -180,16 +233,63 @@ class LTXVMakeRefVideo(io.ComfyNode):
         if image_count <= 0:
             raise ValueError("images batch must contain at least one image")
 
-        base_count = frame_count // image_count
-        remainder = frame_count % image_count
+        background = images[-1:]
+        frames = background.repeat(frame_count, 1, 1, 1)
+        subjects = images[:-1]
+        if subjects.shape[0] == 0:
+            return frames
 
-        frames: list[torch.Tensor] = []
-        for index in range(image_count):
-            repeats = base_count + (1 if index < remainder else 0)
-            if repeats > 0:
-                frames.append(images[index:index + 1].repeat(repeats, 1, 1, 1))
+        latent_count = max(1, round((frame_count - 1) / 8) + 1)
+        subject_budget = max(0, latent_count - 1)
+        subject_count = subjects.shape[0]
 
-        if not frames:
-            raise ValueError("frame_count must produce at least one frame")
+        if subject_budget >= subject_count:
+            counts = LTXVMakeRefVideo._allocate_subject_latent_counts(subject_count, subject_budget)
+            cursor = 0
+            for image, count in zip(subjects, counts):
+                start, end = LTXVMakeRefVideo._latent_to_frame_range(cursor, cursor + count - 1)
+                cursor += count
+                frames[max(0, start):min(frame_count - 1, end) + 1] = image
+        else:
+            _, subject_end = LTXVMakeRefVideo._latent_to_frame_range(0, max(0, latent_count - 2))
+            subject_frame_count = max(1, subject_end + 1)
+            for index, image in enumerate(subjects):
+                start = int(index * subject_frame_count / subject_count)
+                end = int((index + 1) * subject_frame_count / subject_count)
+                frames[start:min(frame_count, max(start + 1, end))] = image
 
-        return torch.cat(frames, dim=0)
+        return frames
+
+    @staticmethod
+    def _latent_to_frame_range(latent_start: int, latent_end: int) -> tuple[int, int]:
+        frame_start = 0 if latent_start <= 0 else 1 + (latent_start - 1) * 8
+        frame_end = 0 if latent_end <= 0 else latent_end * 8
+        return frame_start, frame_end
+
+    @staticmethod
+    def _allocate_subject_latent_counts(subject_count: int, subject_budget: int) -> list[int]:
+        counts = [1] * subject_count
+        extra = max(0, subject_budget - subject_count)
+
+        if extra > 0:
+            counts[0] += 1
+            extra -= 1
+
+        index = 1
+        while extra > 0 and subject_count > 1 and any(count < 2 for count in counts[1:]):
+            if counts[index] < 2:
+                counts[index] += 1
+                extra -= 1
+            index = index + 1 if index + 1 < subject_count else 1
+
+        if extra > 0 and counts[0] < 3:
+            counts[0] += 1
+            extra -= 1
+
+        index = 0
+        while extra > 0:
+            counts[index] += 1
+            extra -= 1
+            index = (index + 1) % subject_count
+
+        return counts

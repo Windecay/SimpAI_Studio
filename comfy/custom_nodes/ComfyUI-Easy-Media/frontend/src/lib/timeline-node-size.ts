@@ -1,6 +1,11 @@
-const TIMELINE_NODE_NAME = 'easy timelineEditor'
+const TIMELINE_NODE_NAME = new Set(['easy timelineEditor', 'easy multiTrackEditor'])
 const TIMELINE_HEIGHT_PROPERTY = 'easyMediaTimelineHeight'
 const TIMELINE_WIDGET_RESIZE_GUARD = '__easyMediaTimelineWidgetResizeGuard'
+const TIMELINE_HEIGHT_RESTORE_VERSION = '__easyMediaTimelineHeightRestoreVersion'
+const TIMELINE_WIDGET_DEFAULT_SIZES: Record<string, [number, number]> = {
+  'easy timelineEditor': [520, 430],
+  'easy multiTrackEditor': [800, 700],
+}
 const WIDGET_RESIZE_GUARD_MS = 500
 
 type NodeSize = [number, number]
@@ -55,9 +60,29 @@ function applyHeight(node: any, height: number, fallbackWidth?: number) {
   node.setDirtyCanvas?.(true, true)
 }
 
+function invalidatePendingHeightRestores(node: any) {
+  const currentVersion = Number(node?.[TIMELINE_HEIGHT_RESTORE_VERSION])
+  node[TIMELINE_HEIGHT_RESTORE_VERSION] = Number.isFinite(currentVersion) ? currentVersion + 1 : 1
+}
+
+export function adjustMultiTrackEditorNodeHeight(node: any, heightDelta: number) {
+  const currentSize = readSize(node?.size)
+  if (!currentSize || !Number.isFinite(heightDelta) || heightDelta === 0) return
+
+  const nextHeight = Math.max(1, currentSize[1] + heightDelta)
+  invalidatePendingHeightRestores(node)
+  delete node[TIMELINE_WIDGET_RESIZE_GUARD]
+  preserveHeight(node, nextHeight)
+  applyHeight(node, nextHeight, currentSize[0])
+}
+
 function restoreHeight(node: any, height: number | null, fallbackWidth?: number) {
   if (!Number.isFinite(height) || height === null || height <= 0) return
-  window.setTimeout(() => applyHeight(node, height, fallbackWidth), 100)
+  const restoreVersion = Number(node?.[TIMELINE_HEIGHT_RESTORE_VERSION]) || 0
+  globalThis.setTimeout(() => {
+    if ((Number(node?.[TIMELINE_HEIGHT_RESTORE_VERSION]) || 0) !== restoreVersion) return
+    applyHeight(node, height, fallbackWidth)
+  }, 100)
 }
 
 function readWidgetResizeGuard(node: any): ResizeGuard | null {
@@ -83,8 +108,8 @@ function beginWidgetResizeGuard(node: any) {
   } satisfies ResizeGuard
 }
 
-export function preserveTimelineEditorNodeHeight(nodeType: any, nodeData: { name?: string }) {
-  if (nodeData.name !== TIMELINE_NODE_NAME) return
+export function preserveTimelineEditorNodeSize(nodeType: any, nodeData: { name?: string }) {
+  if (!TIMELINE_NODE_NAME.has(nodeData.name || '')) return
 
   const originalOnNodeCreated = nodeType.prototype.onNodeCreated
   const originalOnConfigure = nodeType.prototype.onConfigure
@@ -94,12 +119,19 @@ export function preserveTimelineEditorNodeHeight(nodeType: any, nodeData: { name
 
   nodeType.prototype.onNodeCreated = function () {
     originalOnNodeCreated?.call(this)
-    restoreHeight(this, readStoredHeight(this))
+    const nodeName = nodeData.name || ''
+    const defaultSize = TIMELINE_WIDGET_DEFAULT_SIZES[nodeName]
+    if (!defaultSize) return
+
+    this.size[0] = defaultSize[0]
+    this.size[1] = defaultSize[1]
+    this.setDirtyCanvas?.(true, true)
   }
 
   nodeType.prototype.onConfigure = function (serialisedNode: any) {
     originalOnConfigure?.call(this, serialisedNode)
     const savedHeight = readStoredHeight(this, serialisedNode)
+    invalidatePendingHeightRestores(this)
     if (savedHeight !== null) preserveHeight(this, savedHeight)
     restoreHeight(this, savedHeight, readSize(serialisedNode?.size)?.[0])
   }
@@ -139,3 +171,5 @@ export function preserveTimelineEditorNodeHeight(nodeType: any, nodeData: { name
     serialisedNode.properties[TIMELINE_HEIGHT_PROPERTY] = this.properties?.[TIMELINE_HEIGHT_PROPERTY]
   }
 }
+
+export const preserveTimelineEditorNodeHeight = preserveTimelineEditorNodeSize

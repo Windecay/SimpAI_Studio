@@ -11,6 +11,8 @@ import threading
 import re
 import shutil
 import git
+import glob
+import json
 from datetime import datetime
 
 from server import PromptServer
@@ -31,12 +33,13 @@ logging.info("[ComfyUI-Manager] network_mode: " + core.get_config()['network_mod
 comfy_ui_hash = "-"
 comfyui_tag = None
 
-SECURITY_MESSAGE_MIDDLE_OR_BELOW = "ERROR: To use this action, a security_level of `middle or below` is required. Please contact the administrator.\nReference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
+SECURITY_MESSAGE_MIDDLE_OR_BELOW = "ERROR: To use this action, security_level must be any value other than 'strong' (allowed: normal, normal-, weak). security_level is read once at ComfyUI startup, so changing it needs a restart, done with the server down: STOP ComfyUI, edit config.ini, then start it again. Please contact the administrator.\nReference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
 SECURITY_MESSAGE_NORMAL_MINUS = "ERROR: To use this feature, you must either set '--listen' to a local IP and set the security level to 'normal-' or lower, or set the security level to 'middle' or 'weak'. Please contact the administrator.\nReference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
 SECURITY_MESSAGE_GENERAL = "ERROR: This installation is not allowed in this security_level. Please contact the administrator.\nReference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
-SECURITY_MESSAGE_NORMAL_MINUS_MODEL = "ERROR: Downloading models that are not in '.safetensors' format is only allowed for models registered in the 'default' channel at this security level. If you want to download this model, set the security level to 'normal-' or lower."
-SECURITY_MESSAGE_FLAG_GIT_URL = "ERROR: This action requires 'allow_git_url_install = true' in config.ini ([default] section). This setting is independent of security_level. Reference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
-SECURITY_MESSAGE_FLAG_PIP = "ERROR: This action requires 'allow_pip_install = true' in config.ini ([default] section). This setting is independent of security_level. Reference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
+SECURITY_MESSAGE_NORMAL_MINUS_MODEL = "ERROR: Downloading models not in '.safetensors' format is only allowed for models registered in the 'default' channel at this security level. To download this model, set security_level to 'weak' - or to 'normal-' if ComfyUI is listening on a loopback address (--listen 127.0.0.1 or ::1). Both security_level and the listen address are read once at ComfyUI startup, so changing either needs a restart, done with the server down: stop ComfyUI, edit config.ini, then start it again."
+SECURITY_MESSAGE_FLAG_GIT_URL = "ERROR: This action requires BOTH: (1) 'allow_git_url_install = true' in config.ini ([default] section), AND (2) ComfyUI launched with a loopback --listen (127.0.0.1 or ::1) - currently listening on {listen}. BOTH values are read once at ComfyUI startup, so changing either one needs a restart, done with the server down: STOP ComfyUI, change the setting, then start it again. Both are independent of security_level. Reference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
+SECURITY_MESSAGE_FLAG_PIP = "ERROR: This action requires BOTH: (1) 'allow_pip_install = true' in config.ini ([default] section), AND (2) ComfyUI launched with a loopback --listen (127.0.0.1 or ::1) - currently listening on {listen}. BOTH values are read once at ComfyUI startup, so changing either one needs a restart, done with the server down: STOP ComfyUI, change the setting, then start it again. Both are independent of security_level. Reference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
+SECURITY_MESSAGE_BLOCKED_RISK = "ERROR: This node pack is classified as blocked-risk and cannot be installed at any security_level. This is not a configuration problem - contact the administrator if you believe the classification is wrong.\nReference: https://github.com/ltdrdata/ComfyUI-Manager#security-policy"
 
 routes = PromptServer.instance.routes
 
@@ -315,7 +318,6 @@ setup_environment()
 
 from aiohttp import web
 import aiohttp
-import json
 import zipfile
 import urllib.request
 
@@ -839,6 +841,86 @@ async def fetch_updates(request):
     except:
         traceback.print_exc()
         return web.Response(status=400)
+    
+@routes.get("/customnode/get_node_types_in_workflows")
+async def get_node_types_in_workflows(request):
+    try:
+        # get our username from the request header
+        user_id = PromptServer.instance.user_manager.get_request_user_id(request)
+
+        # get the base workflow directory (TODO: figure out if non-standard directories are possible, and how to find them)
+        workflow_files_base_path = os.path.abspath(os.path.join(folder_paths.get_user_directory(), user_id, "workflows"))
+
+        logging.debug(f"workflows base path: {workflow_files_base_path}")
+
+        # workflow directory doesn't actually exist, return 204 (No Content)
+        if not os.path.isdir(workflow_files_base_path):
+            logging.debug("workflows base path doesn't exist - nothing to do...")
+            return web.Response(status=204)
+        
+        # get all JSON files under the workflow directory
+        workflow_file_relative_paths: list[str] = glob.glob(pathname="**/*.json", root_dir=workflow_files_base_path, recursive=True)
+
+        logging.debug(f"found the following workflows: {workflow_file_relative_paths}")
+
+        # set up our list of workflow/node-lists
+        workflow_node_mappings: list[dict[str, str | list[str]]] = []
+
+        # iterate over each found JSON file
+        for workflow_file_path in workflow_file_relative_paths:
+
+            try:
+                workflow_file_absolute_path = os.path.abspath(os.path.join(workflow_files_base_path, workflow_file_path))
+                logging.debug(f"starting work on {workflow_file_absolute_path}")
+                # load the JSON file
+                workflow_file_data = json.load(open(workflow_file_absolute_path, "r"))
+
+                # make sure there's a nodes key (otherwise this might not actually be a workflow file)
+                if "nodes" not in workflow_file_data:
+                    logging.warning(f"{workflow_file_path} has no 'nodes' key (possibly invalid?) - skipping...")
+                    # skip to next file
+                    continue
+
+                # now this looks like a valid file, so let's get to work
+                new_mapping = {"workflow_file_name": workflow_file_path}
+                # we can't use an actual set, because you can't use dicts as set members
+                node_set = []
+
+                # iterate over each node in the workflow
+                for node in workflow_file_data["nodes"]:
+                    if "id" not in node:
+                        logging.warning("Found a node with no ID - possibly corrupt/invalid workflow?")
+                        continue
+                    # if there's no type, throw a warning
+                    if "type" not in node:
+                        logging.warning(f"Node type not found in {workflow_file_path} for node ID {node['id']}")
+                        # skip to next node
+                        continue
+
+                    node_data_to_return = {"type": node["type"]}
+                    if "properties" not in node:
+                        logging.warning(f"Node ${node['id']} has no properties field - can't determine cnr_id")
+                    else:
+                        for property_key in ["cnr_id", "ver"]:
+                            if property_key in node["properties"]:
+                                node_data_to_return[property_key] = node["properties"][property_key]                  
+                    
+                    # add it to the list for this workflow
+                    if not node_data_to_return in node_set:
+                        node_set.append(node_data_to_return)
+
+                # annoyingly, Python can't serialize sets to JSON
+                new_mapping["node_types"] = list(node_set)
+                workflow_node_mappings.append(new_mapping)            
+
+            except Exception as e:
+                logging.warning(f"Couldn't open {workflow_file_path}: {e}")
+
+        return web.json_response(workflow_node_mappings, content_type='application/json')
+    
+    except:
+        traceback.print_exc()
+        return web.Response(status=500)
 
 
 @routes.post("/manager/queue/update_all")
@@ -1413,12 +1495,12 @@ async def install_custom_node(request):
         # term is load-bearing here — the 'middle' entry gate above has
         # no network-position term.
         if not is_dedicated_install_allowed(core.get_config()['allow_git_url_install'], args.listen):
-            logging.error(SECURITY_MESSAGE_FLAG_GIT_URL)
+            logging.error(SECURITY_MESSAGE_FLAG_GIT_URL.format(listen=args.listen))
             return web.Response(status=404, text="A security error has occurred. Please check the terminal logs")
     elif not is_allowed_security_level(risky_level):
         # 'block' arm stays an unconditional deny (is_allowed_security_level
         # returns False for 'block'); 'middle'/'low' arms unchanged.
-        logging.error(SECURITY_MESSAGE_GENERAL)
+        logging.error(SECURITY_MESSAGE_BLOCKED_RISK)
         return web.Response(status=404, text="A security error has occurred. Please check the terminal logs")
 
     install_item = json_data.get('ui_id'), node_spec_str, json_data['channel'], json_data['mode'], skip_post_install
@@ -1475,7 +1557,7 @@ async def fix_custom_node(request):
 @routes.post("/customnode/install/git_url")
 async def install_custom_node_git_url(request):
     if not is_dedicated_install_allowed(core.get_config()['allow_git_url_install'], args.listen):
-        logging.error(SECURITY_MESSAGE_FLAG_GIT_URL)
+        logging.error(SECURITY_MESSAGE_FLAG_GIT_URL.format(listen=args.listen))
         return security_403_response(flag_token='allow_git_url_install')
 
     # Read the body as JSON (not raw text): a cross-origin <form method=POST>
@@ -1505,7 +1587,7 @@ async def install_custom_node_git_url(request):
 @routes.post("/customnode/install/pip")
 async def install_custom_node_pip(request):
     if not is_dedicated_install_allowed(core.get_config()['allow_pip_install'], args.listen):
-        logging.error(SECURITY_MESSAGE_FLAG_PIP)
+        logging.error(SECURITY_MESSAGE_FLAG_PIP.format(listen=args.listen))
         return security_403_response(flag_token='allow_pip_install')
 
     # JSON body (not raw text) for the same preflight-forcing reason as

@@ -10551,7 +10551,9 @@ button.describe-vlm-chat-roleplay-participant-chip {
 
     #scene_reference_audios {
         display: grid !important;
-        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-columns: none !important;
+        grid-auto-flow: column !important;
+        grid-auto-columns: minmax(0, 1fr) !important;
         gap: 8px !important;
         align-items: start !important;
     }
@@ -22945,6 +22947,8 @@ button[aria-label="Edit"][title="Edit"] {
 .describe-vlm-chat-roleplay-panel-body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
   align-items: start;
   gap: 10px;
   min-height: 0;
@@ -23164,6 +23168,7 @@ button[aria-label="Edit"][title="Edit"] {
 }
 
 .describe-vlm-chat-roleplay-character-section {
+  box-sizing: border-box;
   align-self: start;
   min-height: 0;
   max-height: min(720px, calc(100dvh - 260px));
