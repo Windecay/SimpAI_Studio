@@ -115,6 +115,8 @@
     const MAX_ROLEPLAY_BRANCH_MESSAGES = 80;
     const MAX_ROLEPLAY_STORAGE_SNAPSHOT_MESSAGES = 12;
     let conversationArchiveDbPromise = null;
+    let conversationHistoryViewer = null;
+    const CONVERSATION_HISTORY_PAGE_SIZE = 20;
     const conversationArchiveQueues = new Map();
     const conversationPersistSchedules = new Map();
     let conversationCatalogMigrationScheduled = false;
@@ -922,8 +924,7 @@
             ? requestedChapter
             : (chapters.find((item) => item.status === 'active')?.id || chapters[0]?.id || 'chapter_1');
         chapters.forEach((item) => {
-            if (item.id === activeId) item.status = 'active';
-            else if (item.status === 'active') item.status = 'completed';
+            if (item.id !== activeId && item.status === 'active') item.status = 'completed';
         });
         return {
             world_book: { schema: 'simpai.vlm_roleplay.world_book', version: 1, enabled: worldSource.enabled !== false, entries: worldEntries, metadata: worldSource.metadata && typeof worldSource.metadata === 'object' ? worldSource.metadata : {}, updated_at: roleplayResourceText(worldSource.updated_at, 80) || new Date().toISOString() },
@@ -938,6 +939,27 @@
             String(value || '').split(/[,，\n]+/),
             limit
         );
+    }
+
+    function normalizeRoleplayResourceReview(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        return {
+            pending: Array.isArray(source.pending) ? source.pending.filter(item => item && typeof item === 'object'
+                && item.id && ['memory', 'world_book', 'chapter'].includes(item.kind)).map(item => ({
+                id: String(item.id).slice(0, 160),
+                kind: item.kind,
+                chapter_id: String(item.chapter_id || '').slice(0, 160),
+                turn_id: String(item.turn_id || '').slice(0, 200),
+                required: item.required === true,
+                reason: String(item.reason || '').slice(0, 100),
+                source: String(item.source || '').slice(0, 7000),
+                source_offset: Math.max(0, Math.min(7000, Number(item.source_offset) || 0)),
+                transition: item.transition && typeof item.transition === 'object'
+                    ? JSON.parse(JSON.stringify(item.transition)) : {}
+            })) : [],
+            last_checked_turn_id: String(source.last_checked_turn_id || '').slice(0, 200),
+            outcomes: Array.isArray(source.outcomes) ? JSON.parse(JSON.stringify(source.outcomes.slice(0, 12))) : []
+        };
     }
 
     function roleplayResourceJoin(value) {
@@ -1628,8 +1650,9 @@
                 recent_turn_facts: Array.isArray(stateSource.recent_turn_facts)
                     ? stateSource.recent_turn_facts.filter((item) => item && typeof item === 'object').slice(-12)
                     : [],
+                resource_review: normalizeRoleplayResourceReview(stateSource.resource_review),
                 open_threads: cleanList(stateSource.open_threads, 40),
-                chapter_summary: String(stateSource.chapter_summary || activeChapter.summary || '').slice(0, MAX_PERSISTED_TEXT),
+                chapter_summary: String(activeChapter.summary || '').slice(0, MAX_PERSISTED_TEXT),
                 long_summary: String(stateSource.long_summary || '').slice(0, MAX_PERSISTED_TEXT),
                 state_version: Math.max(0, Math.round(Number(stateSource.state_version) || Number(source.state_version) || 0)),
                 updated_at: String(stateSource.updated_at || '').slice(0, 80)
@@ -2692,15 +2715,19 @@
         )).join('');
     }
 
-    function vlmContextWindowForVersion(version) {
+    function knownVlmContextWindowForVersion(version) {
         const cleanVersion = resolveVlmVersion(version);
         const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
         const catalogValue = state.vlmContextWindows?.[cleanVersion];
         const registryValue = registry.VLM_CONTEXT_WINDOWS?.[cleanVersion];
-        const parsed = Number(catalogValue || registryValue || 8192);
-        return Number.isFinite(parsed)
+        const parsed = Number(catalogValue || registryValue || 0);
+        return Number.isFinite(parsed) && parsed > 0
             ? Math.max(VLM_N_CTX_MIN, Math.min(Math.round(parsed), VLM_N_CTX_MAX))
-            : 8192;
+            : 0;
+    }
+
+    function vlmContextWindowForVersion(version) {
+        return knownVlmContextWindowForVersion(version) || Math.max(8192, normalizeVlmNctx(state.nCtx));
     }
 
     function vlmBackendForVersion(version) {
@@ -2722,7 +2749,7 @@
     }
 
     function currentVlmNctx(version = readSelectedVlmVersion()) {
-        return normalizeVlmNctx(state.nCtx, 0, vlmContextWindowForVersion(version));
+        return normalizeVlmNctx(state.nCtx, 0, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX);
     }
 
     function normalizeChatMaxTokens(value, fallback = 0) {
@@ -3783,7 +3810,7 @@
                 maxTokens: normalizeChatMaxTokens(state.maxTokens, 0),
                 vramPolicy: normalizeVlmVramPolicy(state.vramPolicy),
                 kvCacheType: normalizeVlmKvCacheType(state.kvCacheType),
-                nCtx: currentVlmNctx(),
+                nCtx: normalizeVlmNctx(state.nCtx),
                 systemPromptTemplateId: state.systemPromptTemplateId,
                 systemPromptPickerValue: state.systemPromptPickerValue,
                 baseSystemPromptContent: state.baseSystemPromptContent,
@@ -4075,12 +4102,11 @@
         }
         if (nCtx) {
             const version = resolveVlmVersion(readSelectedVlmVersion());
-            const contextWindow = vlmContextWindowForVersion(version);
-            state.nCtx = currentVlmNctx(version);
+            const preferredNctx = normalizeVlmNctx(state.nCtx);
             nCtx.min = String(VLM_N_CTX_MIN);
-            nCtx.max = String(contextWindow);
+            nCtx.max = String(Math.max(preferredNctx, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX));
             nCtx.step = String(VLM_N_CTX_STEP);
-            nCtx.value = state.nCtx > 0 ? String(state.nCtx) : '';
+            if (document.activeElement !== nCtx) nCtx.value = preferredNctx > 0 ? String(preferredNctx) : '';
             nCtx.placeholder = localText('Auto', '自动');
             nCtx.disabled = vlmBackendForVersion(version) !== 'llamacpp';
         }
@@ -8455,7 +8481,7 @@
             reason: 'branch_restore',
             fork_turn_id: target.roleplaySession?.active_turn_id || ''
         });
-        target.roleplaySession = normalizeRoleplaySession(branch.session, target.conversationId);
+        target.roleplaySession = roleplaySessionForHistoryRestore(branch.session, target);
         target.roleplaySession.active_branch_id = selectedId;
         target.archiveMessages = normalizePersistedMessages(
             Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
@@ -9684,7 +9710,7 @@
         if (!Object.keys(state.vlmContextWindows).length) {
             state.vlmModelCatalog.forEach((item) => {
                 const id = String(item?.id || '').trim();
-                const contextWindow = Number(item?.context_window || item?.runtime_config?.n_ctx || 0);
+                const contextWindow = Number(item?.context_window || item?.runtime_config?.context_window || 0);
                 if (id && Number.isFinite(contextWindow) && contextWindow > 0) state.vlmContextWindows[id] = contextWindow;
             });
         }
@@ -10370,13 +10396,13 @@
         const nCtx = status.querySelector('[data-describe-vlm-chat-n-ctx]');
         if (nCtx) {
             const version = resolveVlmVersion(readSelectedVlmVersion());
-            const max = String(vlmContextWindowForVersion(version));
+            const preferredNctx = normalizeVlmNctx(state.nCtx);
+            const max = String(Math.max(preferredNctx, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX));
             const disabled = vlmBackendForVersion(version) !== 'llamacpp';
             if (nCtx.max !== max) nCtx.max = max;
             if (nCtx.disabled !== disabled) nCtx.disabled = disabled;
             if (document.activeElement !== nCtx) {
-                const nextValue = currentVlmNctx(version);
-                const textValue = nextValue > 0 ? String(nextValue) : '';
+                const textValue = preferredNctx > 0 ? String(preferredNctx) : '';
                 if (nCtx.value !== textValue) nCtx.value = textValue;
             }
         }
@@ -11335,6 +11361,7 @@
       <div class="describe-vlm-chat-compose-tools" aria-label="${escapeHtml(t('Chat tools', '对话工具'))}">
         <button type="button" data-describe-vlm-chat-import-prompt title="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}" aria-label="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}"><i class="fa-solid fa-file-import"></i></button>
         <button type="button" data-describe-vlm-chat-save title="${escapeHtml(t('Save conversation', '保存对话'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
+        <button type="button" data-describe-vlm-chat-history title="${escapeHtml(roleplayDictionaryText('Full conversation history'))}" aria-label="${escapeHtml(roleplayDictionaryText('Full conversation history'))}"><i class="fa-solid fa-book-open"></i></button>
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
@@ -11927,6 +11954,13 @@
             variants,
             active_variant_index: Math.max(0, Math.min(Math.max(0, variants.length - 1), Math.round(Number(message.active_variant_index) || 0)))
         };
+        if (message.text_edit_previous && typeof message.text_edit_previous.content === 'string') {
+            normalized.text_edit_previous = {
+                content: message.text_edit_previous.content.slice(0, MAX_PERSISTED_TEXT),
+                variant_id: String(message.text_edit_previous.variant_id || '').slice(0, 240)
+            };
+        }
+        if (message.text_edited_at) normalized.text_edited_at = String(message.text_edited_at).slice(0, 80);
         if (roleplayContext) normalized.roleplay_context = roleplayContext;
         const roleplayBefore = message.roleplay_session_before || message.session_before;
         const roleplayAfter = message.roleplay_session_after || message.session_after;
@@ -12309,6 +12343,7 @@
                 recent_turn_facts: Array.isArray(source.story_state?.recent_turn_facts)
                     ? source.story_state.recent_turn_facts.filter((item) => item && typeof item === 'object').slice(-12)
                     : [],
+                resource_review: normalizeRoleplayResourceReview(source.story_state?.resource_review),
                 open_threads: [],
                 chapter_summary: String(source.story_state?.chapter_summary || '').slice(0, 2400),
                 long_summary: String(source.story_state?.long_summary || '').slice(0, 2400),
@@ -14008,7 +14043,7 @@
             const archived = record?.payload
                 ? normalizeConversationPayload(record.payload, { preserveId: true, fullHistory: true })
                 : null;
-            if (archived && archiveSnapshotIsRicher(runtime, archived)) {
+            if (archived && !runtime.archiveHydrated && !runtime.persistenceDirty && archiveSnapshotIsRicher(runtime, archived)) {
                 payload = conversationRecordFromSource(archived, {
                     conversationId: archived.conversationId,
                     roleplayHasData: conversationHasRoleplayData(archived, archived.conversationId),
@@ -14027,6 +14062,314 @@
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(url), 0);
         setStatus(t('Conversation saved.', '对话已保存。'));
+    }
+
+    function conversationHistoryRuntime(viewer) {
+        return state.conversationRuntimes.get(viewer.conversationId);
+    }
+
+    function conversationHistoryBranchMessages(runtime, branchId) {
+        if (branchId === String(runtime.roleplaySession?.active_branch_id || 'main')) {
+            return runtime.archiveMessages || [];
+        }
+        const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === branchId);
+        return branch?.archive_messages || branch?.messages || [];
+    }
+
+    function conversationHistorySpeaker(message, runtime, branchId) {
+        const branch = (runtime.roleplayBranches || []).find(item => item.branch_id === branchId);
+        const session = branchId === String(runtime.roleplaySession?.active_branch_id || 'main')
+            ? runtime.roleplaySession : branch?.session;
+        if (message.roleplay_control_only) return roleplayDictionaryText('Story control');
+        if (message.role === 'user') return session?.persona?.name || roleplayDictionaryText('You');
+        if (message.role === 'system') return roleplayDictionaryText('System');
+        return message.roleplay_speaker_name
+            || session?.characters?.[message.roleplay_speaker_id]?.name
+            || roleplayDictionaryText('Assistant');
+    }
+
+    function conversationHistoryBusy(runtime) {
+        return !runtime || runtime.deleted || runtime.busy || runtime.creativeDirectorBusy
+            || runtime.activeAbortController || runtime.activeRequestId
+            || runtime.roleplayAutoplayState?.phase === 'running'
+            || activeCreativeRunIds(runtime.messages || []).length > 0;
+    }
+
+    function conversationHistoryStatus(viewer, text, error = false) {
+        const status = viewer.dialog.querySelector('[data-history-status]');
+        status.textContent = text;
+        status.classList.toggle('is-error', error);
+    }
+
+    function closeConversationHistory(viewer) {
+        if (viewer.saving) return;
+        if (viewer.unsavedWrite && !window.confirm(roleplayDictionaryText('Text changes have not been saved. Close anyway?'))) return;
+        const draft = viewer.dialog.querySelector('[data-history-draft]');
+        if (viewer.edit && draft.value !== viewer.edit.content
+            && !window.confirm(roleplayDictionaryText('Discard unsaved text changes?'))) return;
+        viewer.dialog.close();
+        clearTimeout(viewer.searchTimer);
+        viewer.dialog.remove();
+        if (conversationHistoryViewer === viewer) conversationHistoryViewer = null;
+        viewer.returnFocus?.focus?.();
+    }
+
+    function renderConversationHistory(viewer) {
+        const runtime = conversationHistoryRuntime(viewer);
+        if (!runtime || runtime.deleted) return;
+        const messages = conversationHistoryBranchMessages(runtime, viewer.branchId);
+        const search = viewer.query.toLocaleLowerCase();
+        if (viewer.rowsCache?.messages !== messages || viewer.rowsCache?.search !== search
+            || viewer.rowsCache?.branchId !== viewer.branchId) {
+            viewer.rowsCache = {
+                messages, search, branchId: viewer.branchId,
+                rows: messages.map((message, index) => ({ message, index })).filter(({ message }) => (
+                    !message.pending && (!search || `${conversationHistorySpeaker(message, runtime, viewer.branchId)}\n${message.content || ''}`.toLocaleLowerCase().includes(search))
+                ))
+            };
+        }
+        const rows = viewer.rowsCache.rows;
+        viewer.pages = Math.max(1, Math.ceil(rows.length / CONVERSATION_HISTORY_PAGE_SIZE));
+        viewer.page = Math.max(0, Math.min(viewer.pages - 1, viewer.page));
+        const pageRows = rows.slice(viewer.page * CONVERSATION_HISTORY_PAGE_SIZE, (viewer.page + 1) * CONVERSATION_HISTORY_PAGE_SIZE);
+        const text = roleplayDictionaryText;
+        const list = viewer.dialog.querySelector('[data-history-list]');
+        list.innerHTML = pageRows.map(({ message, index }) => {
+            const title = conversationHistorySpeaker(message, runtime, viewer.branchId);
+            const variant = message.variants?.[message.active_variant_index || 0];
+            const canUndo = message.text_edit_previous
+                && message.text_edit_previous.variant_id === String(variant?.id || '');
+            return `<article data-history-message="${escapeHtml(message.id)}">
+  <header><span><small>#${index + 1}</small><strong>${escapeHtml(title)}</strong>${message.text_edited_at ? `<small>${escapeHtml(text('Text edited'))}</small>` : ''}</span><span>
+    ${canUndo ? `<button type="button" data-history-undo="${escapeHtml(message.id)}" title="${escapeHtml(text('Undo text edit'))}" aria-label="${escapeHtml(text('Undo text edit'))}"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+    <button type="button" data-history-edit="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit message text'))}" aria-label="${escapeHtml(text('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>
+  </span></header><p>${escapeHtml(message.content || '')}</p></article>`;
+        }).join('') || `<p class="describe-vlm-history-empty">${escapeHtml(text('No matching messages'))}</p>`;
+        list.scrollTop = 0;
+        viewer.dialog.querySelector('[data-history-count]').textContent = `${rows.length} / ${messages.length} ${text('Messages')}`;
+        const pageInput = viewer.dialog.querySelector('[data-history-page]');
+        pageInput.value = viewer.page + 1;
+        pageInput.max = viewer.pages;
+        viewer.dialog.querySelector('[data-history-pages]').textContent = `/ ${viewer.pages}`;
+        for (const command of ['first', 'previous', 'next', 'last']) {
+            viewer.dialog.querySelector(`[data-history-nav="${command}"]`).disabled =
+                ['first', 'previous'].includes(command) ? viewer.page === 0 : viewer.page === viewer.pages - 1;
+        }
+    }
+
+    function startConversationHistoryEdit(viewer, messageId) {
+        const runtime = conversationHistoryRuntime(viewer);
+        if (conversationHistoryBusy(runtime)) {
+            conversationHistoryStatus(viewer, roleplayDictionaryText('Wait for active tasks before editing history.'), true);
+            return false;
+        }
+        const message = conversationHistoryBranchMessages(runtime, viewer.branchId).find(item => item.id === messageId);
+        if (!message || message.pending) return false;
+        viewer.edit = {
+            id: message.id, content: String(message.content || ''),
+            revision: Number(message.revision) || 1,
+            variantId: String(message.variants?.[message.active_variant_index || 0]?.id || '')
+        };
+        viewer.dialog.querySelector('[data-history-browse]').hidden = true;
+        viewer.dialog.querySelector('[data-history-editor]').hidden = false;
+        viewer.dialog.querySelector('[data-history-edit-title]').textContent =
+            conversationHistorySpeaker(message, runtime, viewer.branchId);
+        const draft = viewer.dialog.querySelector('[data-history-draft]');
+        draft.value = viewer.edit.content;
+        draft.focus();
+        conversationHistoryStatus(viewer, roleplayDictionaryText('Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
+        return true;
+    }
+
+    function cancelConversationHistoryEdit(viewer, ask = true) {
+        if (viewer.saving) return false;
+        if (ask && viewer.edit && viewer.dialog.querySelector('[data-history-draft]').value !== viewer.edit.content
+            && !window.confirm(roleplayDictionaryText('Discard unsaved text changes?'))) return false;
+        viewer.edit = null;
+        viewer.dialog.querySelector('[data-history-editor]').hidden = true;
+        viewer.dialog.querySelector('[data-history-browse]').hidden = false;
+        renderConversationHistory(viewer);
+        return true;
+    }
+
+    async function saveConversationHistoryEdit(viewer, undo = false) {
+        if (!viewer.edit || viewer.saving) return;
+        const runtime = conversationHistoryRuntime(viewer);
+        const text = roleplayDictionaryText;
+        if (conversationHistoryBusy(runtime)) {
+            conversationHistoryStatus(viewer, text('Wait for active tasks before editing history.'), true);
+            return;
+        }
+        syncConversationArchiveHistory(runtime);
+        const messages = conversationHistoryBranchMessages(runtime, viewer.branchId);
+        const message = messages.find(item => item.id === viewer.edit.id);
+        const variant = message?.variants?.[message.active_variant_index || 0];
+        if (!message || message.content !== viewer.edit.content
+            || (Number(message.revision) || 1) !== viewer.edit.revision
+            || String(variant?.id || '') !== viewer.edit.variantId) {
+            conversationHistoryStatus(viewer, text('This message changed while editing. Cancel and reopen it before saving.'), true);
+            return;
+        }
+        const content = undo ? message.text_edit_previous?.content : viewer.dialog.querySelector('[data-history-draft]').value;
+        if (typeof content !== 'string' || !content.trim() || content.length > MAX_PERSISTED_TEXT) {
+            conversationHistoryStatus(viewer, `${text('Message text must contain 1 to')} ${MAX_PERSISTED_TEXT} ${text('characters')}`, true);
+            return;
+        }
+        if (undo && message.text_edit_previous.variant_id !== String(variant?.id || '')) return;
+        const edited = Object.assign({}, message, {
+            content,
+            revision: (Number(message.revision) || 1) + 1,
+            text_edited_at: new Date().toISOString()
+        });
+        if (undo) delete edited.text_edit_previous;
+        else if (content !== message.content) edited.text_edit_previous = {
+            content: message.content, variant_id: String(variant?.id || '')
+        };
+        if (variant) edited.variants = message.variants.map((item, index) => index === (message.active_variant_index || 0)
+            ? Object.assign({}, item, { content, revision: (Number(item.revision) || 1) + 1 }) : item);
+        viewer.unsavedWrite = true;
+        const replace = rows => (rows || []).map(item => item.id === edited.id ? edited : item);
+        if (viewer.branchId === String(runtime.roleplaySession?.active_branch_id || 'main')) {
+            runtime.archiveMessages = replace(runtime.archiveMessages);
+            runtime.messages = replace(runtime.messages);
+        } else {
+            runtime.roleplayBranches = runtime.roleplayBranches.map(branch => branch.branch_id === viewer.branchId
+                ? Object.assign({}, branch, { messages: replace(branch.messages), archive_messages: replace(messages) })
+                : branch);
+        }
+        runtime.persistenceDirty = true;
+        if (isCurrentConversationRuntime(runtime)) {
+            state.messages = runtime.messages;
+            state.roleplayBranches = runtime.roleplayBranches;
+            state.persistenceDirty = true;
+            renderMessages();
+        }
+        viewer.edit = { ...viewer.edit, content, revision: edited.revision };
+        viewer.dialog.querySelector('[data-history-draft]').value = content;
+        viewer.saving = true;
+        viewer.dialog.querySelector('[data-history-edit-save]').disabled = true;
+        conversationHistoryStatus(viewer, text('Saving text changes...'));
+        try {
+            if (saveConversationSnapshot(runtime) === false) throw new Error('archive_unavailable');
+            if (!runtime.archiveSavePromise) throw new Error('archive_unavailable');
+            await runtime.archiveSavePromise;
+            viewer.unsavedWrite = false;
+            viewer.saving = false;
+            cancelConversationHistoryEdit(viewer, false);
+            conversationHistoryStatus(viewer, text('Text changes saved. Story state is unchanged.'));
+        } catch (error) {
+            conversationHistoryStatus(viewer, text('Text changes could not be saved. Keep this window open and retry.'), true);
+        } finally {
+            viewer.saving = false;
+            viewer.dialog.querySelector('[data-history-edit-save]').disabled = false;
+        }
+    }
+
+    async function openConversationHistory(messageId = '') {
+        if (conversationHistoryViewer) {
+            conversationHistoryViewer.dialog.focus();
+            return;
+        }
+        const text = roleplayDictionaryText;
+        const runtime = syncCurrentRuntimeFromState();
+        const dialog = document.createElement('dialog');
+        dialog.className = 'describe-vlm-history-dialog';
+        dialog.setAttribute('aria-labelledby', 'describe_vlm_history_title');
+        const iconButton = (attribute, icon, label) => `<button type="button" ${attribute} title="${escapeHtml(text(label))}" aria-label="${escapeHtml(text(label))}"><i class="fa-solid fa-${icon}"></i></button>`;
+        dialog.innerHTML = `<header class="describe-vlm-history-head"><h2 id="describe_vlm_history_title">${escapeHtml(text('Full conversation history'))}</h2>${iconButton('data-history-close', 'xmark', 'Close')}</header>
+<section data-history-browse hidden>
+  <div class="describe-vlm-history-tools"><select data-history-branch aria-label="${escapeHtml(text('Story branch'))}"></select><input type="search" data-history-search placeholder="${escapeHtml(text('Search full conversation'))}" aria-label="${escapeHtml(text('Search full conversation'))}"><select data-history-format aria-label="${escapeHtml(text('Export format'))}"><option value="txt">TXT</option><option value="md">Markdown</option></select>${iconButton('data-history-export', 'download', 'Export branch text')}</div>
+  <nav class="describe-vlm-history-pages"><small data-history-count></small><span>${iconButton('data-history-nav="first"', 'angles-left', 'First page')}${iconButton('data-history-nav="previous"', 'angle-left', 'Previous page')}<input type="number" min="1" data-history-page aria-label="${escapeHtml(text('Page'))}"><small data-history-pages></small>${iconButton('data-history-nav="next"', 'angle-right', 'Next page')}${iconButton('data-history-nav="last"', 'angles-right', 'Last page')}</span></nav>
+  <div data-history-list tabindex="0"></div>
+</section>
+<section data-history-editor hidden><strong data-history-edit-title></strong><textarea data-history-draft maxlength="${MAX_PERSISTED_TEXT}" aria-label="${escapeHtml(text('Edit message text'))}"></textarea><div class="describe-vlm-history-edit-actions"><button type="button" data-history-edit-cancel>${escapeHtml(text('Cancel'))}</button><button type="button" data-history-edit-save><i class="fa-solid fa-check"></i> ${escapeHtml(text('Save text'))}</button></div></section>
+<footer data-history-status role="status" aria-live="polite"></footer>`;
+        const viewer = {
+            dialog, conversationId: runtime.conversationId, branchId: String(runtime.roleplaySession?.active_branch_id || 'main'),
+            page: 0, pages: 1, query: '', edit: null, saving: false, ready: false,
+            returnFocus: document.activeElement
+        };
+        conversationHistoryViewer = viewer;
+        document.body.appendChild(dialog);
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeConversationHistory(viewer); });
+        dialog.addEventListener('click', event => {
+            event.stopPropagation();
+            if (event.target.closest('[data-history-close]')) return closeConversationHistory(viewer);
+            if (!viewer.ready || viewer.saving) return;
+            const nav = event.target.closest('[data-history-nav]')?.dataset.historyNav;
+            if (nav) {
+                viewer.page = nav === 'first' ? 0 : nav === 'last' ? viewer.pages - 1 : viewer.page + (nav === 'next' ? 1 : -1);
+                renderConversationHistory(viewer);
+            }
+            const edit = event.target.closest('[data-history-edit]');
+            if (edit) startConversationHistoryEdit(viewer, edit.dataset.historyEdit);
+            if (event.target.closest('[data-history-edit-cancel]')) cancelConversationHistoryEdit(viewer);
+            if (event.target.closest('[data-history-edit-save]')) saveConversationHistoryEdit(viewer);
+            const undo = event.target.closest('[data-history-undo]');
+            if (undo && window.confirm(text('Undo the last text edit in this branch?'))
+                && startConversationHistoryEdit(viewer, undo.dataset.historyUndo)) saveConversationHistoryEdit(viewer, true);
+            if (event.target.closest('[data-history-export]')) {
+                const current = conversationHistoryRuntime(viewer);
+                if (!current || current.deleted) return;
+                const format = dialog.querySelector('[data-history-format]').value;
+                const body = conversationHistoryBranchMessages(current, viewer.branchId).map((message, index) =>
+                    `${format === 'md' ? '## ' : ''}${index + 1}. ${conversationHistorySpeaker(message, current, viewer.branchId)}\n\n${message.content || ''}`
+                ).join('\n\n');
+                const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `simpai-conversation-${viewer.branchId.replace(/[^a-zA-Z0-9_-]/g, '_')}.${format}`;
+                link.click();
+                window.setTimeout(() => URL.revokeObjectURL(url), 0);
+            }
+        });
+        dialog.addEventListener('input', event => {
+            if (!viewer.ready || !event.target.matches('[data-history-search]')) return;
+            viewer.query = event.target.value;
+            viewer.page = 0;
+            clearTimeout(viewer.searchTimer);
+            viewer.searchTimer = setTimeout(() => {
+                if (dialog.isConnected && !viewer.edit) renderConversationHistory(viewer);
+            }, 180);
+        });
+        dialog.addEventListener('change', event => {
+            if (!viewer.ready || viewer.saving) return;
+            if (event.target.matches('[data-history-branch]')) {
+                viewer.branchId = event.target.value;
+                viewer.page = 0;
+                renderConversationHistory(viewer);
+            }
+            if (event.target.matches('[data-history-page]')) {
+                viewer.page = Math.max(0, Math.floor(Number(event.target.value) || 1) - 1);
+                renderConversationHistory(viewer);
+            }
+        });
+        dialog.showModal();
+        conversationHistoryStatus(viewer, text('Loading full conversation...'));
+        try {
+            const hydration = await restoreConversationArchiveForRuntime(runtime);
+            if (!dialog.isConnected) return;
+            if (!hydration.ok) throw new Error('archive_unavailable');
+            const restored = conversationHistoryRuntime(viewer);
+            if (!restored || restored.deleted) throw new Error('conversation_unavailable');
+            syncConversationArchiveHistory(restored);
+            viewer.branchId = String(restored.roleplaySession?.active_branch_id || 'main');
+            const branches = new Map([[viewer.branchId, `${text('Current branch')} (${viewer.branchId})`]]);
+            (restored.roleplayBranches || []).forEach(branch => {
+                if (!branches.has(branch.branch_id)) branches.set(branch.branch_id, branch.label || branch.branch_id);
+            });
+            dialog.querySelector('[data-history-branch]').innerHTML = Array.from(branches, ([id, label]) =>
+                `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`).join('');
+            dialog.querySelector('[data-history-browse]').hidden = false;
+            viewer.ready = true;
+            const index = conversationHistoryBranchMessages(restored, viewer.branchId).findIndex(item => item.id === messageId);
+            if (index >= 0) viewer.page = Math.floor(index / CONVERSATION_HISTORY_PAGE_SIZE);
+            renderConversationHistory(viewer);
+            conversationHistoryStatus(viewer, text('Only this branch and reply version are edited. Story state, memories and chapters are not recalculated.'));
+            if (messageId) startConversationHistoryEdit(viewer, messageId);
+        } catch (error) {
+            conversationHistoryStatus(viewer, text('Full history is unavailable. Wait for active tasks to finish, then reopen this window.'), true);
+        }
     }
 
     function importConversationFile(file) {
@@ -14683,6 +15026,18 @@
 
     function busyControlLabel(stage = '') {
         const normalized = String(stage || '').trim().toLowerCase();
+        if (normalized === 'waiting_for_gpu') {
+            return roleplayDictionaryText('Waiting for the current GPU task to finish...');
+        }
+        if (normalized === 'roleplay_numeric_settlement_started') {
+            return roleplayDictionaryText('Settling numeric state...');
+        }
+        if (normalized === 'roleplay_state_field_repair_started') {
+            return roleplayDictionaryText('Reviewing state changes...');
+        }
+        if (normalized === 'roleplay_target_repair_started') {
+            return localText('Checking which character the changes belong to...', '正在核对状态变化所属的角色……');
+        }
         if (normalized === 'roleplay_director_started') {
             return localText(
                 'Updating story state. New messages can be sent when this finishes.',
@@ -14705,6 +15060,54 @@
             'Generating a reply. New messages can be sent when this finishes.',
             '正在生成回复，完成后才能发送新消息。'
         );
+    }
+
+    function roleplayDirectorOutcomeText(director = {}) {
+        const status = String(director.status || '').trim().toLowerCase();
+        const review = director.resource_review || {};
+        const targetCount = Number(director.target_review?.pending_count || 0);
+        const targetNote = targetCount > 0 ? localText(
+            `${targetCount} state changes still have unclear targets and were not written. Check the affected characters' states and edit them manually as needed.`,
+            `${targetCount} 项状态变化仍无法确认所属角色，未写入。请核对相关角色的状态，必要时手动修改。`
+        ) : '';
+        if (Number(review.pending_count) > 0 && ['partial', 'state_update_pending'].includes(status)) {
+            const labels = { memory: 'Memory', world_book: 'World book', chapter: 'Chapters' };
+            const kinds = [...new Set((review.outcomes || []).filter(item => item.status === 'pending').map(item => item.kind))];
+            const detail = kinds.map(kind => roleplayDictionaryText(labels[kind] || kind)).join(', ');
+            return `${targetNote}${targetNote ? ' ' : ''}${roleplayDictionaryText('Story resource checks pending')}: ${review.pending_count}${detail ? ` (${detail})` : ''} · ${roleplayDictionaryText('Retry next turn')}`;
+        }
+        if (targetNote && ['partial', 'state_update_pending'].includes(status)) {
+            return status === 'partial'
+                ? `${localText('Other changes were saved.', '其他变化已保存。')} ${targetNote}` : targetNote;
+        }
+        if (status === 'no_change') return roleplayDictionaryText('State checked; no changes this turn.');
+        if (status === 'partial') return roleplayDictionaryText('Some changes were saved; director work remains incomplete.');
+        if (status !== 'committed') return roleplayDictionaryText('Director work is incomplete; unchanged fields retain their previous values.');
+        const states = Number.isFinite(Number(director.state_change_count))
+            ? Number(director.state_change_count)
+            : Array.isArray(director.state_changes) ? director.state_changes.length : 0;
+        const resources = Array.isArray(director.resource_changes) ? director.resource_changes.length : 0;
+        const estimated = Number(director.numeric_settlement?.estimated_count || 0);
+        const note = estimated > 0 ? ` · ${roleplayDictionaryText('Estimated numeric changes')}: ${estimated}` : '';
+        return `${roleplayDictionaryText('State changes')}: ${states} · ${roleplayDictionaryText('Story resource changes')}: ${resources}${note}`;
+    }
+
+    function roleplayDirectorFailureDetail(director = {}) {
+        const codes = [director.error, ...(Array.isArray(director.warnings) ? director.warnings : [])].filter(Boolean);
+        if (codes.includes('director_input_budget_exceeded')) {
+            return localText(
+                'The director input exceeds the available context budget. Increase the context setting or shorten this message; no incomplete input was sent.',
+                '导演输入超过当前可用上下文预算。请提高上下文设置或缩短本次消息；此次未发送缺失资料的请求。'
+            );
+        }
+        if (Number(director.target_review?.pending_count || 0) > 0) return '';
+        if (codes.some(code => /director_.*target.*(unknown|mismatch|invalid|rejected)/.test(String(code)))) {
+            return localText(
+                'A character target could not be verified. The rejected changes were not written; check the character states.',
+                '有角色归属未能通过校验，被拒绝的变化未写入，请核对角色状态。'
+            );
+        }
+        return String(director.error || director.warnings?.[0] || '').slice(0, 240);
     }
 
     function setConversationBusyStage(runtime, stage = '') {
@@ -15127,6 +15530,14 @@
         return null;
     }
 
+    function roleplaySessionForHistoryRestore(snapshot, runtime = currentConversationRuntime()) {
+        const current = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        const restored = normalizeRoleplaySession(snapshot, runtime.conversationId);
+        // Model selection belongs to the conversation settings, not to story history.
+        restored.agent_routing = current.agent_routing;
+        return restored;
+    }
+
     function startRoleplayEditBranch(runtime = currentConversationRuntime(), turnId = '', options = {}) {
         if (normalizeChatMode(runtime?.chatMode) !== 'roleplay') return '';
         const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
@@ -15138,7 +15549,7 @@
         });
         const nextBranch = uid('roleplay_branch');
         const restoredSession = options.session_snapshot && typeof options.session_snapshot === 'object'
-            ? normalizeRoleplaySession(options.session_snapshot, runtime.conversationId)
+            ? roleplaySessionForHistoryRestore(options.session_snapshot, runtime)
             : session;
         runtime.roleplaySession = normalizeRoleplaySession(Object.assign({}, restoredSession, {
             active_branch_id: nextBranch,
@@ -15528,10 +15939,10 @@
             reason: 'reply_regenerate',
             fork_turn_id: currentVariant.turn_id || message.id
         });
-        runtime.roleplaySession = normalizeRoleplaySession(Object.assign({}, currentVariant.roleplay_session_before, {
+        runtime.roleplaySession = roleplaySessionForHistoryRestore(Object.assign({}, currentVariant.roleplay_session_before, {
             active_branch_id: nextBranch,
             active_turn_id: currentVariant.turn_id || message.id
-        }), runtime.conversationId);
+        }), runtime);
         upsertRoleplayBranchSnapshot(runtime, {
             branch_id: nextBranch,
             parent_branch_id: currentVariant.branch_id || currentVariant.roleplay_session_before?.active_branch_id || 'main',
@@ -15603,7 +16014,7 @@
         liveMessage.roleplay_resource_changes = normalizeRoleplayResourceChanges(variant.roleplay_resource_changes);
         liveMessage.active_variant_index = nextIndex;
         liveMessage.roleplay_session_after = variant.roleplay_session_after;
-        runtime.roleplaySession = normalizeRoleplaySession(variant.roleplay_session_after, runtime.conversationId);
+        runtime.roleplaySession = roleplaySessionForHistoryRestore(variant.roleplay_session_after, runtime);
         syncConversationArchiveHistory(runtime, { anchorId: archiveAnchorId });
         upsertRoleplayBranchSnapshot(runtime, {
             branch_id: runtime.roleplaySession.active_branch_id || variant.branch_id || 'main',
@@ -18507,11 +18918,13 @@
                 ? renderRoleplayResourceChanges(message.roleplay_resource_changes)
                 : '';
             return `<div class="describe-vlm-chat-msg is-${role} ${pending ? 'is-pending' : ''}" data-describe-vlm-chat-message="${messageIndex}">
-  <div class="describe-vlm-chat-msg-head">${roleplayIdentityHtml}<span>
+    <div class="describe-vlm-chat-msg-head">${roleplayIdentityHtml}<span>
+    ${message.text_edited_at ? `<small class="describe-vlm-chat-text-edited">${escapeHtml(roleplayDictionaryText('Text edited'))}</small>` : ''}
     ${responseSource}
     ${completionSpeed}
     ${variantControls}
     <button type="button" data-describe-vlm-chat-copy-message="${messageIndex}" title="${escapeHtml(t('Copy message', '复制消息'))}" aria-label="${escapeHtml(t('Copy message', '复制消息'))}"><i class="fa-solid fa-copy"></i></button>
+    ${!pending ? `<button type="button" data-describe-vlm-chat-edit-text="${escapeHtml(message.id)}" title="${escapeHtml(roleplayDictionaryText('Edit message text'))}" aria-label="${escapeHtml(roleplayDictionaryText('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>` : ''}
     <button type="button" data-describe-vlm-chat-quote="${messageIndex}" title="${escapeHtml(t('Quote to input', '引用到输入'))}" aria-label="${escapeHtml(t('Quote to input', '引用到输入'))}"><i class="fa-solid fa-reply"></i></button>
     <button type="button" data-describe-vlm-chat-rollback="${messageIndex}" title="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}" aria-label="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}"><i class="fa-solid fa-clock-rotate-left"></i></button>
     <button type="button" class="is-danger" data-describe-vlm-chat-delete="${messageIndex}" title="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}" aria-label="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}"><i class="fa-solid fa-trash"></i></button>
@@ -19404,13 +19817,34 @@
         let streamRenderTimer = null;
         let firstStreamTokenRecorded = false;
         const onChatStreamEvent = (event) => {
+            if (requestToken !== runtime.requestToken) return;
             if (event?.type === 'status') {
                 const phase = String(event.phase || '').trim();
+                if (phase === 'waiting_for_gpu') {
+                    if (runtime.busyStage !== phase) runtime.gpuWaitResumeStage = runtime.busyStage || '';
+                    setConversationBusyStage(runtime, phase);
+                    setConversationStatus(runtime, busyControlLabel(phase));
+                    return;
+                }
+                if (phase === 'gpu_wait_finished') {
+                    const resumeStage = runtime.gpuWaitResumeStage || '';
+                    runtime.gpuWaitResumeStage = '';
+                    setConversationBusyStage(runtime, resumeStage);
+                    setConversationStatus(runtime, busyControlLabel(resumeStage));
+                    return;
+                }
                 if (phase === 'roleplay_director_started'
+                    || phase === 'roleplay_numeric_settlement_started'
+                    || phase === 'roleplay_state_field_repair_started'
+                    || phase === 'roleplay_target_repair_started'
                     || phase === 'roleplay_resource_update_started'
                     || phase === 'roleplay_state_commit_started') {
                     setConversationBusyStage(runtime, phase);
-                    setConversationStatus(runtime, phase === 'roleplay_director_started'
+                    setConversationStatus(runtime, phase === 'roleplay_numeric_settlement_started'
+                        || phase === 'roleplay_state_field_repair_started'
+                        || phase === 'roleplay_target_repair_started'
+                        ? busyControlLabel(phase)
+                        : phase === 'roleplay_director_started'
                         ? localText(
                             'Updating story state. New messages can be sent when this finishes.',
                             '正在计算剧情状态，完成前暂时不能发送新消息。'
@@ -19452,6 +19886,7 @@
             if (streamRenderTimer !== null) return;
             streamRenderTimer = window.setTimeout(() => {
                 streamRenderTimer = null;
+                if (requestToken !== runtime.requestToken) return;
                 updatePendingAssistantStream(streamedReplyText, runtime);
             }, 45);
         };
@@ -19469,6 +19904,7 @@
             window.clearTimeout(streamRenderTimer);
             streamRenderTimer = null;
         }
+        if (requestToken !== runtime.requestToken) return;
         if (streamedReplyText) updatePendingAssistantStream(streamedReplyText, runtime);
         if (runtime.activeRequestId === requestId) {
             runtime.activeRequestId = '';
@@ -19564,16 +20000,9 @@
         }
         if (selectedMode === 'roleplay' && response?.roleplay && typeof response.roleplay === 'object') {
             const directorStatus = String(response.roleplay.status || '').trim().toLowerCase();
-            if (directorStatus && directorStatus !== 'committed') {
-                const detail = String(
-                    response.roleplay.error
-                    || response.roleplay.warnings?.[0]
-                    || localText('The external director did not commit a state update.', '外场导演没有提交状态更新。')
-                ).slice(0, 240);
-                setConversationStatus(runtime, localText(
-                    `Story state update failed: ${detail}`,
-                    `剧情状态更新失败：${detail}`
-                ), true);
+            if (directorStatus && !['committed', 'no_change'].includes(directorStatus)) {
+                const detail = roleplayDirectorFailureDetail(response.roleplay);
+                setConversationStatus(runtime, `${roleplayDirectorOutcomeText(response.roleplay)}${detail ? ` ${detail}` : ''}`, true);
             }
         }
         if (selectedMode === 'roleplay') {
@@ -19672,6 +20101,12 @@
         }
         if (!response?.ok) {
             setConversationStatus(runtime, reply, true);
+        } else if (
+            selectedMode === 'roleplay'
+            && response?.roleplay
+            && !['committed', 'no_change'].includes(String(response.roleplay.status || '').trim().toLowerCase())
+        ) {
+            // Keep incomplete director work visible even when images were uploaded.
         } else if (completion?.output_limited) {
             setConversationStatus(runtime, chatCompletionLimitMessage(completion), true);
         } else if (estimatedUploadBytes > 0) {
@@ -19681,12 +20116,6 @@
                 'The selected Custom API has image input disabled; text was sent without images.',
                 '当前 Custom API 未启用图像输入，本次仅发送文字。'
             ));
-        } else if (
-            selectedMode === 'roleplay'
-            && response?.roleplay
-            && String(response.roleplay.status || '').trim().toLowerCase() !== 'committed'
-        ) {
-            // Keep the director error shown above instead of clearing it below.
         } else if (selectedMode === 'roleplay' && response?.roleplay_state_version !== undefined) {
             const route = response?.roleplay_agent_route && typeof response.roleplay_agent_route === 'object'
                 ? response.roleplay_agent_route
@@ -19706,10 +20135,7 @@
             const routeNoteCn = routeType
                 ? ` · 智能体 ${route.profile_type === 'api' ? 'API' : '本地'}${route.fallback_used ? '（备用）' : ''}`
                 : '';
-            setConversationStatus(runtime, t(
-                `Story state updated to version ${response.roleplay_state_version}.${routeNoteEn}`,
-                `剧情状态已更新到第 ${response.roleplay_state_version} 版。${routeNoteCn}`
-            ));
+            setConversationStatus(runtime, `${roleplayDirectorOutcomeText(response.roleplay)}${localText(routeNoteEn, routeNoteCn)}`);
         } else {
             setConversationStatus(runtime, '');
         }
@@ -20757,6 +21183,11 @@
             modal.querySelector('[data-describe-vlm-chat-conversation-file]')?.click();
             return;
         }
+        const editText = evt.target.closest('[data-describe-vlm-chat-edit-text]');
+        if (editText || evt.target.closest('[data-describe-vlm-chat-history]')) {
+            openConversationHistory(editText?.getAttribute('data-describe-vlm-chat-edit-text') || '');
+            return;
+        }
         const generationMediaPicker = evt.target.closest('[data-describe-vlm-chat-generation-pick-media]');
         if (generationMediaPicker) {
             const input = modal.querySelector('[data-describe-vlm-chat-generation-file]');
@@ -21044,7 +21475,7 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-n-ctx]')) {
             const version = resolveVlmVersion(readSelectedVlmVersion());
-            state.nCtx = normalizeVlmNctx(evt.target.value, 0, vlmContextWindowForVersion(version));
+            state.nCtx = normalizeVlmNctx(evt.target.value, 0, knownVlmContextWindowForVersion(version) || VLM_N_CTX_MAX);
             state.vlmRuntimeStatus = null;
             state.vlmRuntimeStatusResponse = null;
             saveChatSettings();

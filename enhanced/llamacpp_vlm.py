@@ -143,7 +143,7 @@ SpeculativeType = None
 # Avoid paying the reload cost for small, noisy GPU-layer estimates.
 LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_DELTA = 5
 LLAMA_CPP_AUTO_RELOAD_MIN_LAYER_RATIO = 0.10
-LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB = 2.0
+LLAMA_CPP_AUTO_RELOAD_RETRY_FREE_GAIN_GB = 2.0
 LLAMA_CPP_AUTO_RELOAD_EXTERNAL_PRESSURE_GB = 1.0
 try:
     from llama_cpp import Llama
@@ -950,20 +950,31 @@ class LlamaCppVLM:
             reclaimable_gb=loaded_model_credit_gb,
             policy=vram_policy,
         )
-        total_layers = self._get_layer_count(model_path)
-
-        hparams = self._get_gguf_hparams(model_path)
-        n_embd = hparams.get("embedding_length")
-        n_head = hparams.get("head_count")
-        n_kv_heads = hparams.get("head_count_kv") or n_head
-        kv_cache_gb, kv_cache_from_metadata = estimate_llama_cpp_kv_cache_gb(
-            n_ctx,
-            total_layers,
-            n_embd,
-            n_head,
-            n_kv_heads,
-            kv_cache_type=kv_cache_type,
-        )
+        if (
+            self.llm is not None
+            and self.current_model_path == model_path
+            and self.current_n_ctx == n_ctx
+            and self.current_kv_cache_type == kv_cache_type
+            and self.current_total_layers
+            and self.current_kv_cache_gb is not None
+        ):
+            total_layers = self.current_total_layers
+            kv_cache_gb = self.current_kv_cache_gb
+            kv_cache_from_metadata = self.current_vram_estimate.get("kv_cache_from_metadata", False)
+        else:
+            total_layers = self._get_layer_count(model_path)
+            hparams = self._get_gguf_hparams(model_path)
+            n_embd = hparams.get("embedding_length")
+            n_head = hparams.get("head_count")
+            n_kv_heads = hparams.get("head_count_kv") or n_head
+            kv_cache_gb, kv_cache_from_metadata = estimate_llama_cpp_kv_cache_gb(
+                n_ctx,
+                total_layers,
+                n_embd,
+                n_head,
+                n_kv_heads,
+                kv_cache_type=kv_cache_type,
+            )
         _, kv_type_config = llama_cpp_kv_cache_type_config(kv_cache_type)
         offload_kqv = kv_cache_gb <= budget["gpu_budget_gb"]
         kv_cache_reserved_gb = (
@@ -1118,6 +1129,7 @@ class LlamaCppVLM:
 
             auto_n_gpu_layers = n_gpu_layers == -1
             auto_estimate = {}
+            upward_auto_reload = False
             reload_reason = "model or runtime settings changed"
             if same_loaded_model:
                 if not auto_n_gpu_layers:
@@ -1161,21 +1173,8 @@ class LlamaCppVLM:
                             external_process_delta,
                             current_vram_snapshot.get("external_process_count"),
                         )
-                    if (
-                        not external_pressure
-                        and current_free_vram_gb is not None
-                        and self.current_post_load_free_vram_gb is not None
-                        and current_free_vram_gb
-                        < self.current_post_load_free_vram_gb + LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB
-                    ):
-                        logger.debug(
-                            "Skipping llama.cpp VLM auto reload: free VRAM gain=%.2fGB, "
-                            "threshold=%.2fGB, post_load=%.2fGB, current=%.2fGB",
-                            current_free_vram_gb - self.current_post_load_free_vram_gb,
-                            LLAMA_CPP_AUTO_RELOAD_MIN_FREE_GAIN_GB,
-                            self.current_post_load_free_vram_gb,
-                            current_free_vram_gb,
-                        )
+                    current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
+                    if self.current_total_layers and current_score >= self.current_total_layers and not external_pressure:
                         return
                     try:
                         current_credit_gb = self._estimate_current_gpu_layer_credit_gb(model_path)
@@ -1193,16 +1192,24 @@ class LlamaCppVLM:
                             e,
                         )
                         estimated_layers = self.current_n_gpu_layers or 0
-                    current_score = self._gpu_layer_score(self.current_n_gpu_layers, self.current_total_layers)
                     target_score = self._gpu_layer_score(
                         estimated_layers,
                         auto_estimate.get("total_layers") or self.current_total_layers,
                     )
-                    if target_score > current_score and not external_pressure:
+                    reload_threshold = self._auto_gpu_layer_reload_threshold(
+                        auto_estimate.get("total_layers") or self.current_total_layers
+                    )
+                    logger.info(
+                        "llama.cpp VLM auto offload check: current_gpu_layers=%s/%s, "
+                        "target_gpu_layers=%s, free=%.2fGB, layer_threshold=%s",
+                        self.current_n_gpu_layers,
+                        self.current_total_layers,
+                        estimated_layers,
+                        current_free_vram_gb if current_free_vram_gb is not None else -1.0,
+                        reload_threshold,
+                    )
+                    if target_score > current_score:
                         layer_delta = target_score - current_score
-                        reload_threshold = self._auto_gpu_layer_reload_threshold(
-                            auto_estimate.get("total_layers") or self.current_total_layers
-                        )
                         if layer_delta < reload_threshold:
                             logger.debug(
                                 "Skipping llama.cpp VLM auto reload: GPU layer improvement=%s, "
@@ -1213,7 +1220,28 @@ class LlamaCppVLM:
                                 estimated_layers,
                             )
                             return
+                        # A first retry must remain possible when generation finishes during loading.
+                        # Only throttle a repeated upward reload that already hit allocation limits.
+                        if (
+                            self.current_vram_estimate.get("auto_reload_limited")
+                            and current_free_vram_gb is not None
+                            and self.current_post_load_free_vram_gb is not None
+                            and current_free_vram_gb
+                            < self.current_post_load_free_vram_gb + LLAMA_CPP_AUTO_RELOAD_RETRY_FREE_GAIN_GB
+                        ):
+                            logger.info(
+                                "Skipping repeated llama.cpp VLM auto reload after allocation fallback: "
+                                "current_gpu_layers=%s, target_gpu_layers=%s, free=%.2fGB, "
+                                "retry_free=%.2fGB",
+                                self.current_n_gpu_layers,
+                                estimated_layers,
+                                current_free_vram_gb,
+                                self.current_post_load_free_vram_gb + LLAMA_CPP_AUTO_RELOAD_RETRY_FREE_GAIN_GB,
+                            )
+                            return
                         n_gpu_layers = estimated_layers
+                        upward_auto_reload = True
+                        auto_reload_layer_size_gb = float(self.current_gpu_layer_size_gb or 0.0)
                         reload_reason = "automatic GPU layer budget improved"
                         logger.info(
                             "Reloading llama.cpp VLM with higher GPU offload: current_n_gpu_layers=%s, target_n_gpu_layers=%s",
@@ -1228,7 +1256,7 @@ class LlamaCppVLM:
                             "current_n_gpu_layers=%s, target_n_gpu_layers=%s, external_delta=%.2fGB",
                             self.current_n_gpu_layers,
                             n_gpu_layers,
-                            external_vram_delta_gb,
+                            external_vram_delta_gb if external_vram_delta_gb is not None else -1.0,
                         )
                     else:
                         return
@@ -1508,6 +1536,24 @@ class LlamaCppVLM:
             self.current_external_vram_gb = post_load_vram_snapshot.get("external_vram_gb")
             self.current_external_process_count = post_load_vram_snapshot.get("external_process_count")
             self.current_vram_estimate = dict(auto_estimate)
+            free_gain_during_reload_gb = 0.0
+            if (
+                upward_auto_reload
+                and current_free_vram_gb is not None
+                and self.current_post_load_free_vram_gb is not None
+            ):
+                # Discount the layer redistribution when checking for memory released by other work.
+                free_gain_during_reload_gb = (
+                    self.current_post_load_free_vram_gb - current_free_vram_gb
+                    + (self._gpu_layer_score(loaded_layers, total_layers) - current_score)
+                    * auto_reload_layer_size_gb
+                )
+            self.current_vram_estimate["auto_reload_limited"] = bool(
+                upward_auto_reload
+                and self._gpu_layer_score(loaded_layers, total_layers)
+                < self._gpu_layer_score(target_n_gpu_layers, total_layers)
+                and free_gain_during_reload_gb < LLAMA_CPP_AUTO_RELOAD_RETRY_FREE_GAIN_GB
+            )
             self.current_vram_estimate["target_n_gpu_layers"] = target_n_gpu_layers
             self.current_vram_estimate["loaded_n_gpu_layers"] = loaded_layers
             self.current_vram_estimate["loaded_offload_kqv"] = loaded_offload_kqv

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import modules.vlm_agent_router as vlm_agent_router
+import modules.vlm_roleplay_resources as vlm_roleplay_resources
 from modules.custom_llm_api import strip_reasoning_text
 
 
@@ -3369,9 +3370,7 @@ def normalize_chapter_store(
     if active_id not in {item["id"] for item in items}:
         active_id = next((item["id"] for item in items if item["status"] == "active"), items[0]["id"])
     for item in items:
-        if item["id"] == active_id:
-            item["status"] = "active"
-        elif item["status"] == "active":
+        if item["id"] != active_id and item["status"] == "active":
             item["status"] = "completed"
     return {
         "schema": "simpai.vlm_roleplay.chapter_store",
@@ -3412,6 +3411,7 @@ def default_story_state(value: Any = None) -> dict[str, Any]:
             for item in _list(source.get("recent_turn_facts"), MAX_RECENT_TURN_FACTS)
             if isinstance(item, dict)
         ][-MAX_RECENT_TURN_FACTS:],
+        "resource_review": vlm_roleplay_resources.normalize_review(source.get("resource_review")),
         "open_threads": _clean_string_list(source.get("open_threads"), 40),
         "chapter_summary": _text(source.get("chapter_summary")),
         "long_summary": _text(source.get("long_summary")),
@@ -3546,7 +3546,7 @@ def normalize_roleplay_session(value: Any = None) -> dict[str, Any]:
         (item for item in session["chapters"]["items"] if item["id"] == session["active_chapter_id"]),
         None,
     )
-    if active_chapter and active_chapter.get("summary"):
+    if active_chapter:
         session["story_state"]["chapter_summary"] = active_chapter["summary"]
     session["state_version"] = max(
         int(session.get("state_version") or 0),
@@ -5064,6 +5064,7 @@ def build_director_prompt(
             "entity_type": "character",
             "id": resolved_speaker_id,
             "name": _text(speaker_card.get("name"), 200),
+            "is_present": resolved_speaker_id in present_character_ids,
             "state_path_prefix": f"characters.{resolved_speaker_id}",
             "state_fields": _state_field_catalog(
                 normalized.get("story_state", {}).get("characters", {}).get(resolved_speaker_id, {}).get("state_fields", [])
@@ -5213,7 +5214,7 @@ def build_director_prompt(
             "For damage, healing, resource spending, or recovery, update the relevant existing field such as HP/生命值, MP/魔力值, 理智, or another clearly related numeric field. Do not create a new numeric field when no matching field exists; use state_text instead.",
             "Existing state_fields are user-defined schema. Never rename, translate, replace, or add fields during a runtime update. Use only field_id values from the state field catalog for the selected target. If no catalog field matches the effect, update state_text instead and leave numeric fields unchanged.",
             "When the latest exchange changes whether the player is in the current scene, update player_state.status using only present or absent. Describe injury, unconsciousness, inability to act, inability to fight, and other conditions in player_state.state_text or player_state.state_fields instead of inventing new status values.",
-            "Player presence is authoritative. If the current player status is absent, do not emit player_state status, appearance, state_text, or state_fields patches because a character acted, because second-person wording appeared, or because the player was mentioned as background context. Update an absent player's runtime only when the latest user instruction explicitly controls that player, such as an explicit return, departure, injury, appearance change, or state assignment. Otherwise leave player_state unchanged.",
+            "Player presence is authoritative. If the current player status is absent, leave player_state unchanged. Operator pronouns I/you/we, NPC dialogue, quoted instructions and background mentions never authorize player state changes. Only an unquoted user instruction naming the player as the affected entity may assign off-scene state; an explicit user return/departure may change presence. A selected speaking character is not automatically present; the scene roster is authoritative.",
             "Do not write memories, world-book entries, chapter text, or image prompts in this response. Set resource_signals only; a separate resource pass handles those stores when needed.",
             "Set resource_signals.memory=true for a durable decision, promise, relationship shift, acquired or lost important item, lasting injury, quest result, or fact that later turns should remember.",
             "Set resource_signals.world_book=true only for reusable lore such as a setting rule, location fact, faction, custom, magic rule, or named organization newly established by this exchange.",
@@ -5279,8 +5280,11 @@ def build_director_resource_prompt(
     lang: str = "cn",
     context: Any = None,
     n_ctx: Any = None,
+    resource_plan: Any = None,
 ) -> str:
     normalized = normalize_roleplay_session(session)
+    if resource_plan and resource_plan.get("tasks"):
+        return vlm_roleplay_resources.prompt_contract(resource_plan, normalized, lang)
     reply_language = "English" if str(lang or "").lower().startswith("en") else "Chinese"
     facts = normalize_turn_facts(turn_facts)
     signals = normalize_director_resource_signals(resource_signals, normalized)
@@ -5691,10 +5695,10 @@ def normalize_director_resource_signals(value: Any, session: Any = None) -> dict
         first_summary_turn = min(4, max(1, int(summary_schedule.get("interval") or 8)))
         summary_due = int(summary_schedule.get("next_turn_count") or 0) >= first_summary_turn
     return {
-        "memory": bool(source.get("memory")),
-        "world_book": bool(source.get("world_book")),
-        "chapter": bool(source.get("chapter")) or summary_due,
-        "visual": bool(source.get("visual")) and visual_enabled,
+        "memory": source.get("memory") in (True, 1, "true"),
+        "world_book": source.get("world_book") in (True, 1, "true"),
+        "chapter": source.get("chapter") in (True, 1, "true") or summary_due,
+        "visual": source.get("visual") in (True, 1, "true") and visual_enabled,
         "reasons": _clean_string_list(source.get("reasons"), 12),
         "summary_due": summary_due,
     }
@@ -5787,6 +5791,8 @@ def _director_turn_fact_state_text_patches(
             "field": "state_text",
             "value": next_text,
             "evidence": _text(item.get("evidence") or item.get("reason"), 1200),
+            **({"_director_bound_target": True} if item.get("_director_bound_target") else {}),
+            **({"_director_evidence_invalid": True} if item.get("_director_evidence_invalid") else {}),
         })
     return patches, ["director_turn_fact_state_text_patch_normalized"] if patches else []
 
@@ -5976,6 +5982,7 @@ def parse_director_resource_response(text: Any) -> dict[str, Any]:
         }
     return {
         "ok": True,
+        "reviews": _list(data.get("reviews"), 20),
         "memories": _list(data.get("memories"), 20),
         "world_book_updates": _list(data.get("world_book_updates") or data.get("world_book"), 20),
         "memory_deletions": _clean_string_list(data.get("memory_deletions"), MAX_MEMORY_ITEMS),
@@ -6899,6 +6906,8 @@ def _director_reuse_character_target_ids(
     evidence_by_key: dict[str, str] = {}
     references: list[tuple[dict[str, Any], str, str, str]] = []
     for patch in rows:
+        if patch.get("_director_bound_target") or patch.get("_director_target_ref_invalid"):
+            continue
         requested_type = _director_target_type(
             patch.get("target_entity_type") or patch.get("entity_type")
         )
@@ -6990,6 +6999,8 @@ def _director_reuse_misclassified_player_target_ids(
     references: list[tuple[dict[str, Any], str, str, str, set[str]]] = []
 
     for patch in rows:
+        if patch.get("_director_bound_target") or patch.get("_director_target_ref_invalid"):
+            continue
         requested_type = _director_target_type(
             patch.get("target_entity_type") or patch.get("entity_type")
         )
@@ -7139,6 +7150,55 @@ def _director_player_is_present(normalized: dict[str, Any]) -> bool:
     return True
 
 
+def _director_player_control_source(value: Any) -> str:
+    """Quoted/reported dialogue cannot authorize writes to an off-scene player."""
+    source = _text(value, 16000)
+    source = re.sub(r'“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"', "", source)
+    clauses = []
+    for clause in re.findall(r"[^。！？!?；;\n]+[。！？!?；;]?", source):
+        if clause.endswith(("?", "？")) or re.search(
+            r"(?:是否|会不会|能否|假如|如果|假设|要是|倘若|计划|打算|希望|"
+            r"不要|别让|不许|禁止|阻止|没有|并未|并不)|(?:吗|么)[。！!]?$"
+            r"|\b(?:if|would|should|don't|do not|never|not yet)\b",
+            clause,
+            re.IGNORECASE,
+        ):
+            continue
+        if re.search(
+            r"(?:说|说道|问|问道|喊|喊道|回答|台词|对白|转述)\s*[:：]"
+            r"|\b(?:says?|said|asks?|asked|replies|replied)\s*:",
+            clause,
+            re.IGNORECASE,
+        ):
+            continue
+        if _director_instruction_is_read_only(clause) or _director_instruction_is_non_fact_command(clause):
+            continue
+        clauses.append(clause)
+    return "。".join(clauses)
+
+
+def _director_player_presence_request(normalized: dict[str, Any], value: Any) -> str:
+    source = _director_player_control_source(value)
+    persona = normalized.get("persona", {})
+    aliases = {
+        _text(persona.get("id"), 160),
+        *_director_name_aliases(persona.get("name")),
+        "玩家", "主角", "player",
+    } - {""}
+    named_ref = "(?:" + "|".join(re.escape(item) for item in sorted(aliases, key=len, reverse=True)) + ")"
+    subject = rf"(?:{named_ref}|(?:^|[，,。；;\n])\s*(?:我|I)\s*)"
+    leave = r"(?:去外面|出去|离开|离场|不在场|leave\b|step out\b)"
+    enter = r"(?:回来了|回来|回到(?:现场|场景|房间)|重新在场|进入现场|加入现场|am back\b|return\b)"
+    matches = []
+    for status, action in (("absent", leave), ("present", enter)):
+        for match in re.finditer(rf"{subject}\s*(?:先|暂时|现在|已经|已|要)?\s*{action}", source, re.IGNORECASE):
+            prefix = source[max(0, match.start() - 16):match.start()]
+            if re.search(r"(?:不要|别让|不让|不许|禁止|阻止|假如|如果|希望|计划|打算)(?:让)?\s*$", prefix):
+                continue
+            matches.append((match.start(), status))
+    return max(matches)[1] if matches else ""
+
+
 def _director_player_update_is_explicit(
     normalized: dict[str, Any],
     patch: dict[str, Any],
@@ -7149,14 +7209,14 @@ def _director_player_update_is_explicit(
 ) -> bool:
     if trusted_control:
         return True
-    source = _text(instruction_text, 16000)
+    source = _director_player_control_source(instruction_text)
     if not source:
         return False
     persona = normalized.get("persona", {})
     aliases = [
         _text(persona.get("id"), 160),
         *_director_name_aliases(persona.get("name")),
-        "我", "我的", "我们", "玩家", "你", "你的", "你们", "您",
+        "玩家", "主角", "player",
     ]
     aliases = sorted({item for item in aliases if item}, key=len, reverse=True)
     player_ref = "(?:" + "|".join(re.escape(item) for item in aliases) + ")"
@@ -7166,19 +7226,17 @@ def _director_player_update_is_explicit(
     )
     field_key = _text(field, 120).strip().casefold()
     if field_key == "status":
-        return bool(re.search(
-            rf"{player_ref}[^。！？!?；;\n]{{0,24}}"
-            r"(?:离场|不在场|不出场|在场|回到现场|回到场景|回到房间|回来|进入现场|加入现场)",
-            source,
-            re.IGNORECASE,
-        ))
-    if _director_describes_player_condition(normalized, source):
-        return True
+        requested = _director_player_presence_request(normalized, source)
+        return bool(requested and _text(patch.get("value"), 40).casefold() == requested)
     return bool(re.search(
         rf"(?:将|把|让|令|使|设置|修改|更新|恢复|记录|指定)\s*{player_ref}"
-        rf"[^。！？!?；;\n]{{0,30}}{field_words}"
+        rf"(?:的)?{field_words}"
         rf"|{player_ref}(?:的)?{field_words}\s*(?:改成|改为|设为|设置为|调整为|变成|是|为|[:：])"
-        rf"|{player_ref}[^。！？!?；;\n]{{0,20}}(?:穿上|脱下|换上|装备|解除装备|更换装备)",
+        rf"|{player_ref}\s*(?:正在|已经|逐渐|慢慢|在场外|在远处|仍然|现在)?\s*"
+        r"(?:受到|受伤|负伤|被击中|被治疗|被束缚|陷入|处于|失去|恢复|回复|倒下|昏迷|"
+        r"穿上|脱下|换上|装备|解除装备|更换装备)"
+        rf"|(?:治疗|伤害|击中|命中|束缚|救治)\s*{player_ref}"
+        rf"|{player_ref}(?:的)?{field_words}\s*(?:下降|上升|恢复|降低|增加|减少|耗尽|清零)",
         source,
         re.IGNORECASE,
     ))
@@ -7392,12 +7450,10 @@ def _director_present_character_ids(normalized: dict[str, Any], speaker_id: str 
         for character_id in _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
         if character_id in normalized.get("characters", {})
     }
-    if not present_ids:
+    if "present_character_ids" not in scene:
         active_id = _text(normalized.get("active_character_id"), 160)
         if active_id in normalized.get("characters", {}):
             present_ids.add(active_id)
-    if speaker_id in normalized.get("characters", {}):
-        present_ids.add(speaker_id)
     return present_ids
 
 
@@ -7935,12 +7991,8 @@ def _synthesize_director_control_updates(
                 return True
         return False
 
-    player_leave_request = bool(re.search(
-        r"(?:我|玩家)\s*(?:先|暂时)?\s*(?:去外面|出去|离开|离场|不在场)|"
-        r"(?:先|暂时)?离开(?:当前)?(?:场景|大厅|这里)|\b(?:leave|step out)\b",
-        source,
-        re.IGNORECASE,
-    ))
+    player_presence_request = _director_player_presence_request(normalized, source)
+    player_leave_request = player_presence_request == "absent"
     location_match = re.search(
         r"(?:当前|场景)?(?:地点|位置)\s*(?:改成|改为|设为|设置为|调整为|是|为)\s*"
         r"(?P<location>[^，,。！？!?；;\n]+)",
@@ -8188,7 +8240,7 @@ def _synthesize_director_control_updates(
             },
         ])
         warnings.append("director_control_player_absent_synthesized")
-    elif re.search(r"(?:我|玩家)\s*(?:回来了|回来|回到现场|回到房间|重新在场)|\b(?:I am back|back in the scene)\b", source, re.IGNORECASE):
+    elif player_presence_request == "present":
         result.extend([
             {
                 "op": "replace",
@@ -8307,7 +8359,9 @@ def _synthesize_director_control_updates(
             world_keys.append("公开")
         world_updates.append({
             "op": "update" if world_entry else "add",
-            "id": _text(world_entry.get("id"), 160) if world_entry else "",
+            "id": _text(world_entry.get("id"), 160) if world_entry else (
+                "world_control_" + hashlib.sha256(world_fact.encode("utf-8")).hexdigest()[:20]
+            ),
             "title": _text(world_entry.get("title"), 240) if world_entry else f"{'公开规则' if public_world_rule else '世界规则'}：{world_fact[:32]}",
             "content": world_fact,
             "keys": world_keys,
@@ -8320,6 +8374,7 @@ def _synthesize_director_control_updates(
     if memory_fact and not memory_negative and not memory_query:
         memory_type = "relationship" if re.search(r"人情|欠|关系|信任|好感", memory_fact, re.IGNORECASE) else "fact"
         memories.append({
+            "id": "memory_control_" + hashlib.sha256(memory_fact.encode("utf-8")).hexdigest()[:20],
             "text": memory_fact,
             "type": memory_type,
             "importance": 0.8,
@@ -8353,17 +8408,7 @@ def _synthesize_director_control_updates(
         if world_updates:
             warnings.append("director_control_world_book_delete_synthesized")
 
-    if re.search(r"(?:下一章|新章节|开新章|开启新章)", source, re.IGNORECASE):
-        title_match = re.search(
-            r"(?:下一章|新章节|开新章|开启新章)\s*[:：]?\s*(?:进入|开启|开始)?\s*([^，,。！？!?；;\n]+)",
-            source,
-            re.IGNORECASE,
-        )
-        if title_match:
-            chapter_update["title"] = title_match.group(1).strip()
-        chapter_update["new_chapter"] = True
-    if re.search(r"(?:当前|本|这一)?章节[^。！？!?；;\n]{0,32}(?:完成|结束|completed)", source, re.IGNORECASE):
-        chapter_update["status"] = "completed"
+    chapter_update.update(vlm_roleplay_resources.chapter_intent(source))
     goal_match = re.search(
         r"(?:当前目标|场景目标|核心目标|小目标|目标)\s*(?:改成|改为|设为|设置为|是|为|变成)\s*([^，,。！？!?；;\n]+)",
         source,
@@ -9052,6 +9097,58 @@ def _director_patch_target(
     instruction_text: Any = "",
 ) -> tuple[list[str], dict[str, str], list[str]]:
     """Resolve and validate a director patch before it can mutate runtime state."""
+    if patch.get("_director_target_ref_invalid"):
+        return [], {}, ["director_character_target_unknown"]
+    if patch.get("_director_evidence_invalid"):
+        return [], {}, ["director_evidence_invalid_rejected"]
+    if patch.get("_director_scene_roster_invalid"):
+        return [], {}, ["director_scene_roster_invalid_rejected"]
+    bound_target = (
+        (patch.get("target_entity_type"), patch.get("target_entity_id"))
+        if patch.get("_director_bound_target") else None
+    )
+    trusted_control = bool(patch.get("_director_explicit_player_control"))
+    path, target, warnings = _director_resolve_patch_target(
+        normalized, patch, speaker_id=speaker_id,
+        attribution_text=attribution_text, instruction_text=instruction_text,
+    )
+    if not path:
+        return path, target, warnings
+    # Attribution repair can change the entity after the initial checks.
+    # Validate the final destination, including targets reached by an early return.
+    resolved = _director_target_from_path(normalized, path)
+    if resolved:
+        entity_type, entity_id, field = resolved
+        if bound_target and (entity_type, entity_id) != bound_target:
+            return [], {}, [*warnings, "director_bound_target_mismatch_rejected"]
+        rejection = ""
+        if entity_type == "player":
+            if field not in DIRECTOR_PLAYER_FIELDS:
+                rejection = "director_player_field_invalid"
+            elif not _director_player_is_present(normalized) and not _director_player_update_is_explicit(
+                normalized, patch, field=field, instruction_text=instruction_text,
+                trusted_control=trusted_control,
+            ):
+                rejection = "director_absent_player_target_rejected"
+        elif entity_type == "character":
+            if field not in DIRECTOR_CHARACTER_FIELDS:
+                rejection = "director_character_field_invalid"
+            elif entity_id not in _director_present_character_ids(normalized, _text(speaker_id, 160)):
+                rejection = "director_character_target_not_present"
+        if rejection:
+            return [], {}, [*warnings, rejection]
+    return path, target, warnings
+
+
+def _director_resolve_patch_target(
+    normalized: dict[str, Any],
+    patch: dict[str, Any],
+    *,
+    speaker_id: Any = "",
+    attribution_text: Any = "",
+    instruction_text: Any = "",
+) -> tuple[list[str], dict[str, str], list[str]]:
+    """Resolve attribution; the caller checks the resulting entity's write permissions."""
     warnings: list[str] = []
     requested_type = _director_target_type(patch.get("target_entity_type") or patch.get("entity_type"))
     requested_id = _text(
@@ -9078,7 +9175,11 @@ def _director_patch_target(
     internal_repair_evidence = _text(patch.pop("_director_target_repair_evidence", ""), 1200)
     authoritative_numeric = bool(patch.pop("_director_authoritative_numeric", False))
     trusted_player_control = bool(patch.pop("_director_explicit_player_control", False))
-    attribution_scope = "" if authoritative_numeric else attribution_text
+    attribution_scope = (
+        _text(patch.get("evidence"), 1200)
+        if patch.get("_director_numeric_settlement")
+        else "" if authoritative_numeric else attribution_text
+    )
     if internal_repair_warning:
         warnings.append(internal_repair_warning)
     if internal_repair_evidence and internal_repair_evidence not in patch_text:
@@ -9253,7 +9354,9 @@ def _director_patch_target(
                     return [], {}, warnings
                 requested_id = actor_id
                 warnings.append("director_target_corrected_from_explicit_evidence")
-        if requested_id == speaker:
+        if requested_id == speaker and not (
+            patch.get("_director_numeric_settlement") and patch.get("_director_numeric_group_recipient")
+        ):
             attribution_source = "\n".join(
                 item
                 for item in (
@@ -9328,7 +9431,9 @@ def _director_patch_target(
         exchange_text = _text(attribution_scope, 8000)
         exchange_mentions = _director_entity_mentions(normalized, exchange_text)
         patch_mentions = _director_entity_mentions(normalized, patch_text)
-        group_scope = _director_has_group_scope("\n".join((exchange_text, patch_text)))
+        group_scope = _director_has_group_scope("\n".join((exchange_text, patch_text))) or bool(
+            patch.get("_director_numeric_settlement") and patch.get("_director_numeric_group_recipient")
+        )
         player_id = _text(normalized.get("persona", {}).get("id"), 160) or "player"
         numeric_target_confirmed = requested_field == "state_fields" and any(
             requested_id in effect.get("target_ids", [])
@@ -9340,6 +9445,8 @@ def _director_patch_target(
         )
         if requested_type == "player":
             player_referenced = (
+                trusted_player_control
+                or
                 numeric_target_confirmed
                 or
                 player_id in exchange_mentions
@@ -9372,7 +9479,11 @@ def _director_patch_target(
                 warnings.append("director_character_target_not_mentioned")
                 return [], {}, warnings
 
-        if numeric_target_confirmed:
+        if numeric_target_confirmed or (
+            patch.get("_director_numeric_settlement")
+            and patch.get("_director_numeric_group_recipient")
+            and requested_id in patch_mentions
+        ):
             return path, target, warnings
 
     if requested_type != "character" or requested_id != speaker or requested_field not in DIRECTOR_CONDITION_FIELDS:
@@ -9500,12 +9611,19 @@ def _apply_world_book_updates(
             (index for index, entry in enumerate(entries) if entry.get("id") == entry_id),
             -1,
         ) if entry_id else -1
+        if existing_index < 0 and raw.get("content"):
+            existing_index = next(
+                (index for index, entry in enumerate(entries)
+                 if _canonical_turn_text(entry.get("content")) == _canonical_turn_text(raw["content"])),
+                -1,
+            )
         if operation in {"remove", "delete"}:
             if existing_index >= 0 and not entries[existing_index].get("locked"):
                 removed = entries.pop(existing_index)
                 changes.append({"op": "remove", "kind": "world", "id": removed.get("id"), "title": removed.get("title", "")})
             continue
-        candidate = normalize_world_book_entry(raw, len(entries))
+        existing = entries[existing_index] if existing_index >= 0 else {}
+        candidate = normalize_world_book_entry({**existing, **raw}, len(entries))
         if not candidate or not candidate.get("content"):
             continue
         candidate["source"] = "director"
@@ -9515,15 +9633,28 @@ def _apply_world_book_updates(
                 continue
             candidate["id"] = entries[existing_index]["id"]
             candidate["created_at"] = entries[existing_index].get("created_at") or candidate["created_at"]
+            if _resource_values_equal(existing, candidate):
+                continue
             entries[existing_index] = candidate
             changes.append({"op": "update", "kind": "world", "id": candidate["id"], "title": candidate["title"]})
         else:
+            if len(entries) >= MAX_WORLD_BOOK_ENTRIES:
+                continue
+            if candidate["id"] in {entry["id"] for entry in entries}:
+                candidate["id"] = f"world_{uuid.uuid4().hex[:12]}"
             entries.append(candidate)
             changes.append({"op": "add", "kind": "world", "id": candidate["id"], "title": candidate["title"]})
     store["entries"] = entries[-MAX_WORLD_BOOK_ENTRIES:]
     store["updated_at"] = _now()
     normalized["world_book"] = store
     return changes
+
+
+def _resource_values_equal(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    ignored = {"created_at", "updated_at", "source"}
+    return {key: value for key, value in before.items() if key not in ignored} == {
+        key: value for key, value in after.items() if key not in ignored
+    }
 
 
 def _apply_chapter_update(
@@ -9547,15 +9678,35 @@ def _apply_chapter_update(
         active_id = active["id"]
         store["active_id"] = active_id
     changes: list[dict[str, Any]] = []
-    summary_changed = False
-    if bool(payload.get("new_chapter")):
+    summary_changed_ids: set[str] = set()
+    for row in _list(payload.get("summaries"), 20):
+        if not isinstance(row, dict) or not _text(row.get("summary"), 6000):
+            continue
+        chapter = next((item for item in items if item["id"] == row.get("chapter_id")), None)
+        if chapter is None or chapter.get("locked"):
+            continue
+        summary = _text(row["summary"], 6000)
+        if chapter.get("summary") != summary:
+            chapter["summary"] = summary
+            changes.append({"op": "set", "kind": "chapter", "id": chapter["id"],
+                            "title": chapter["title"], "field": "summary", "value": summary})
+        summary_changed_ids.add(chapter["id"])
+    previous_active = active
+    already_advanced = bool(turn_id and active.get("start_turn_id") == turn_id)
+    if (bool(payload.get("new_chapter")) and not active.get("locked") and not already_advanced
+            and len(items) < MAX_CHAPTERS):
         active["status"] = "completed"
         active["end_turn_id"] = _text(turn_id, 200)
         active["updated_at"] = _now()
+        changes.append({"op": "set", "kind": "chapter", "id": active["id"],
+                        "title": active["title"], "field": "status", "value": "completed"})
         next_index = len(items) + 1
+        new_id = _id(payload.get("id"), f"chapter_{next_index}")
+        if new_id in {item["id"] for item in items}:
+            new_id = f"chapter_{uuid.uuid4().hex[:12]}"
         next_chapter = normalize_chapter(
             {
-                "id": payload.get("id") or f"chapter_{next_index}",
+                "id": new_id,
                 "title": payload.get("title") or f"Chapter {next_index}",
                 "summary": payload.get("summary"),
                 "goal": payload.get("goal"),
@@ -9570,8 +9721,9 @@ def _apply_chapter_update(
         store["active_id"] = next_chapter["id"]
         active = next_chapter
         changes.append({"op": "new", "kind": "chapter", "id": next_chapter["id"], "title": next_chapter["title"]})
-        summary_changed = bool(next_chapter.get("summary"))
-    else:
+        if next_chapter.get("summary"):
+            summary_changed_ids.add(next_chapter["id"])
+    elif not active.get("locked") and not already_advanced and not payload.get("new_chapter"):
         fields = {
             "title": ("title", 240),
             "summary": ("summary", 6000),
@@ -9588,13 +9740,15 @@ def _apply_chapter_update(
                 active[target_key] = value
                 changes.append({"op": "set", "kind": "chapter", "id": active["id"], "field": target_key, "value": value})
                 if target_key == "summary":
-                    summary_changed = True
-    try:
-        active["turn_count"] = min(MAX_AUTOPLAY_TURNS, int(active.get("turn_count") or 0) + 1)
-    except (TypeError, ValueError):
-        active["turn_count"] = 1
-    if summary_changed:
-        active["last_summary_turn_count"] = active["turn_count"]
+                    summary_changed_ids.add(active["id"])
+                if target_key == "status" and value == "completed":
+                    active["end_turn_id"] = _text(turn_id, 200)
+    if not turn_id or normalized.get("active_turn_id") != turn_id:
+        previous_active["turn_count"] = min(MAX_AUTOPLAY_TURNS, int(previous_active.get("turn_count") or 0) + 1)
+    for chapter in items:
+        if chapter["id"] in summary_changed_ids:
+            chapter["last_summary_turn_count"] = chapter["turn_count"]
+            chapter["updated_at"] = _now()
     active["updated_at"] = _now()
     store["items"] = items[-MAX_CHAPTERS:]
     store["updated_at"] = _now()
@@ -9624,6 +9778,10 @@ def apply_director_result(
     resource_changes: list[dict[str, Any]] = []
     warnings = _clean_string_list(result.get("warnings"), 30)
     patches = _list(result.get("patches"), 80)
+    for patch in patches:
+        if isinstance(patch, dict):
+            # Only controls synthesized from this request may bypass absence.
+            patch.pop("_director_explicit_player_control", None)
     read_only_turn = _director_instruction_is_read_only(instruction_text)
     if read_only_turn:
         patches = []
@@ -9736,6 +9894,12 @@ def apply_director_result(
                 instruction_text=instruction_text,
             )
             warnings.extend(target_warnings)
+            if patch.get("_director_numeric_settlement") and (
+                target.get("entity_type") != patch.get("target_entity_type")
+                or target.get("entity_id") != patch.get("target_entity_id")
+            ):
+                warnings.append("director_numeric_target_mismatch_rejected")
+                continue
         else:
             path = _path_parts(patch.get("path"))
         operation = _text(patch.get("op"), 20).lower() or "set"
@@ -9881,29 +10045,38 @@ def apply_director_result(
     for memory in _list(result.get("memories"), 20):
         if not isinstance(memory, dict):
             continue
-        payload = dict(memory)
+        existing_index = next(
+            (index for index, item in enumerate(memories)
+             if (memory.get("id") and item.get("id") == memory["id"])
+             or (memory.get("text") and _canonical_turn_text(item.get("text")) == _canonical_turn_text(memory["text"]))),
+            -1,
+        )
+        existing = memories[existing_index] if existing_index >= 0 else {}
+        payload = {**existing, **memory}
         payload.setdefault("chapter_id", normalized.get("active_chapter_id"))
         payload.setdefault("branch_id", normalized.get("active_branch_id"))
         payload.setdefault("turn_id", turn_id)
         normalized_memory = normalize_memory_item(payload, len(memories))
         if not normalized_memory:
             continue
-        existing_index = next(
-            (index for index, item in enumerate(memories)
-             if item.get("id") == normalized_memory["id"]
-             or _canonical_turn_text(item.get("text")) == _canonical_turn_text(normalized_memory.get("text"))),
-            -1,
-        )
         if existing_index >= 0:
             if memories[existing_index].get("locked"):
                 continue
             normalized_memory["id"] = memories[existing_index]["id"]
             normalized_memory["created_at"] = memories[existing_index].get("created_at") or normalized_memory["created_at"]
+            if _resource_values_equal(existing, normalized_memory):
+                continue
             memories[existing_index] = normalized_memory
-            resource_changes.append({"op": "update", "kind": "memory", "id": normalized_memory["id"]})
+            resource_changes.append({"op": "update", "kind": "memory", "id": normalized_memory["id"],
+                                     "title": normalized_memory["text"][:120]})
         else:
+            if len(memories) >= MAX_MEMORY_ITEMS:
+                continue
+            if normalized_memory["id"] in {item["id"] for item in memories}:
+                normalized_memory["id"] = f"memory_{uuid.uuid4().hex[:12]}"
             memories.append(normalized_memory)
-            resource_changes.append({"op": "add", "kind": "memory", "id": normalized_memory["id"]})
+            resource_changes.append({"op": "add", "kind": "memory", "id": normalized_memory["id"],
+                                     "title": normalized_memory["text"][:120]})
     memory_store["items"] = memories[-MAX_MEMORY_ITEMS:]
     memory_store["updated_at"] = _now()
     normalized["memory_store"] = memory_store

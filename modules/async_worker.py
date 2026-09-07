@@ -11,11 +11,11 @@ from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
 from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
 from modules.comfy_progress_filter import use_progress_profile
+from modules.gpu_task_lock import exclusive_task_lock
 import modules.config
 
 patch_all()
 
-exclusive_task_lock = threading.Lock()
 cloud_task_semaphore = threading.Semaphore(2)
 
 

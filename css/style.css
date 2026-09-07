@@ -5707,6 +5707,140 @@ html.describe-vlm-chat-resizing * {
   opacity: 1;
 }
 
+.describe-vlm-chat-text-edited { color: #b5bbc5; font-size: 11px; }
+
+.describe-vlm-history-dialog {
+  box-sizing: border-box;
+  width: min(1000px, calc(100vw - 24px));
+  height: min(900px, calc(100dvh - 32px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid #59606b;
+  border-radius: 8px;
+  background: #20242b;
+  color: #f3f4f6;
+  font: 14px/1.5 system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+.describe-vlm-history-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.describe-vlm-history-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.describe-vlm-history-dialog [hidden] { display: none !important; }
+.describe-vlm-history-dialog * { box-sizing: border-box; min-width: 0; letter-spacing: 0; }
+.describe-vlm-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #414753;
+}
+.describe-vlm-history-head h2 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.describe-vlm-history-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #59606b;
+  border-radius: 5px;
+  background: #303640;
+  color: #f3f4f6;
+  cursor: pointer;
+}
+.describe-vlm-history-dialog button:hover { background: #414956; }
+.describe-vlm-history-dialog button:disabled { opacity: 0.4; cursor: default; }
+.describe-vlm-history-dialog :focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.describe-vlm-history-dialog input,
+.describe-vlm-history-dialog select,
+.describe-vlm-history-dialog textarea {
+  width: 100%;
+  border: 1px solid #59606b;
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: #f3f4f6;
+  background: #191d23;
+  font: inherit;
+}
+.describe-vlm-history-dialog [data-history-browse] {
+  display: grid;
+  grid-row: 2;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+}
+.describe-vlm-history-tools {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(140px, 2fr) 108px 32px;
+  gap: 8px;
+  padding: 12px 16px 6px;
+  align-items: center;
+}
+.describe-vlm-history-pages {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 12px;
+  border-bottom: 1px solid #414753;
+}
+.describe-vlm-history-pages > span { display: flex; align-items: center; gap: 5px; }
+.describe-vlm-history-dialog [data-history-page] { width: 65px; height: 32px; }
+.describe-vlm-history-dialog [data-history-list] {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px;
+}
+.describe-vlm-history-dialog article { padding: 16px 0; border-bottom: 1px solid #414753; }
+.describe-vlm-history-dialog article header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.describe-vlm-history-dialog article header > span { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.describe-vlm-history-dialog article header > span:last-child { flex: 0 0 auto; }
+.describe-vlm-history-dialog article strong { color: #7dd3fc; overflow-wrap: anywhere; }
+.describe-vlm-history-dialog small { color: #b5bbc5; }
+.describe-vlm-history-dialog article p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; }
+.describe-vlm-history-dialog [data-history-editor] {
+  display: grid;
+  grid-row: 2;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px;
+  min-height: 0;
+}
+.describe-vlm-history-dialog [data-history-edit-title] { overflow-wrap: anywhere; }
+.describe-vlm-history-dialog [data-history-draft] { resize: none; min-height: 0; line-height: 1.7; }
+.describe-vlm-history-edit-actions { display: flex; justify-content: end; gap: 8px; }
+.describe-vlm-history-edit-actions button { width: auto; padding: 0 12px; gap: 6px; }
+.describe-vlm-history-dialog button[data-history-edit-save] { color: #ecfdf5; background: #116149; border-color: #34d399; }
+.describe-vlm-history-dialog [data-history-status] {
+  grid-row: 3;
+  padding: 10px 16px;
+  border-top: 1px solid #414753;
+  color: #b5bbc5;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.describe-vlm-history-dialog [data-history-status].is-error { color: #fca5a5; }
+@media (max-width: 600px) {
+  .describe-vlm-history-dialog { width: calc(100vw - 12px); height: calc(100dvh - 16px); }
+  .describe-vlm-history-tools { grid-template-columns: minmax(0, 1fr) 108px 32px; padding-inline: 10px; }
+  .describe-vlm-history-dialog [data-history-search] { grid-row: 2; grid-column: 1 / -1; }
+  .describe-vlm-history-pages { padding-inline: 10px; }
+  .describe-vlm-history-dialog [data-history-list] { padding-inline: 10px; }
+}
+
 .describe-vlm-chat-completion-warning {
   display: flex;
   align-items: flex-start;
@@ -24896,6 +25030,13 @@ button[aria-label="Edit"][title="Edit"] {
     line-height: 1.2;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  .describe-vlm-chat-status.is-error:not(.is-actionable) {
+    max-height: 54px;
+    overflow-y: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .describe-vlm-chat-compose-toolbar {
