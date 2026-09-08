@@ -38,13 +38,13 @@ class MiniMaxH3ReferenceToImage(MiniMaxH3ReferenceToVideo):
     @classmethod
     def execute(cls, clip, vae, prompt, width, height, length, ref_image_size="match", ref_images=None):
         return MiniMaxH3ReferenceToVideo.execute(
-            clip,
-            vae,
-            None,
-            prompt,
-            width,
-            height,
-            length,
+            clip=clip,
+            vae=vae,
+            audio_vae=None,
+            prompt=prompt,
+            width=width,
+            height=height,
+            length=length,
             ref_image_size=ref_image_size,
             ref_images=ref_images,
         )

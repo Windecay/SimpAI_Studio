@@ -1352,7 +1352,352 @@
         return normalizeRoleplayStateChanges(changes);
     }
 
-    function renderRoleplayStateChangeRow(change) {
+    function roleplayCorrectionRuntimeField(session, type, id, field) {
+        const owner = type === 'player' && id === session?.persona?.id
+            ? session.story_state?.player_state
+            : type === 'character' && session?.characters?.[id] ? session.story_state?.characters?.[id] : null;
+        if (!owner) throw new Error('The selected character is no longer available.');
+        const allowed = type === 'player' ? ['status', 'appearance', 'state_text', 'state_fields']
+            : ['location', 'condition', 'appearance', 'state_text', 'state_fields', 'emotion', 'current_action', 'inventory', 'goals'];
+        if (!allowed.includes(field)) throw new Error('This field is not supported by the selected character.');
+        return owner;
+    }
+
+    function roleplayCorrectionEqual(a, b) {
+        return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    }
+
+    function roleplayCorrectionContext(runtime, messageId) {
+        if (!runtime || runtime.deleted || normalizeChatMode(runtime.chatMode) !== 'roleplay') {
+            throw new Error('This story is no longer active.');
+        }
+        const message = [...(runtime.messages || [])].reverse().find(item => item.role === 'assistant');
+        if (!message || message.id !== messageId || message.pending) {
+            throw new Error('Only the latest reply can change the current story state.');
+        }
+        const variant = message.variants?.[message.active_variant_index || 0];
+        const before = roleplaySessionBeforeMessage(message, runtime.conversationId);
+        const after = roleplaySessionAfterMessage(message, runtime.conversationId);
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        if (!before || !after || after.id !== session.id || after.active_branch_id !== session.active_branch_id) {
+            throw new Error('This reply has no matching state snapshot.');
+        }
+        return { message, variant, before, after, session };
+    }
+
+    function roleplayCorrectionTransfer(before, after, destination) {
+        if (typeof after !== 'string') return structuredClone(after);
+        const number = value => String(value ?? '').trim().match(/^(-?\d+(?:\.\d+)?)(?:\s*\/\s*(\d+(?:\.\d+)?))?(%)?$/);
+        const a = number(before), b = number(after), d = number(destination);
+        if (a && b && d && !!a[2] === !!b[2] && !!b[2] === !!d[2]
+            && !!a[3] === !!b[3] && !!b[3] === !!d[3] && a[2] === b[2]) {
+            let value = Number(d[1]) + Number(b[1]) - Number(a[1]);
+            if (d[2] || d[3]) value = Math.max(0, Math.min(Number(d[2] || 100), value));
+            value = Math.round(value * 1000000) / 1000000;
+            return `${value}${d[2] ? `/${d[2]}` : d[3] || ''}`;
+        }
+        if (a || b || d) return String(destination ?? '');
+        const oldLines = new Set(String(before || '').split('\n').map(line => line.trim()).filter(Boolean));
+        const added = after.split('\n').map(line => line.trim()).filter(line => line && !oldLines.has(line));
+        const current = String(destination || '').split('\n').map(line => line.trim()).filter(Boolean);
+        return [...new Set([...current, ...added])].join('\n');
+    }
+
+    function roleplayCorrectionDraft(context, change, type, id) {
+        const field = change.field;
+        const original = roleplayCorrectionRuntimeField(context.before, change.entity_type, change.entity_id, field)[field];
+        const applied = roleplayCorrectionRuntimeField(context.after, change.entity_type, change.entity_id, field)[field];
+        const current = roleplayCorrectionRuntimeField(context.session, change.entity_type, change.entity_id, field)[field];
+        if (!roleplayCorrectionEqual(applied, current)) {
+            throw new Error('This state has changed since the reply. Reopen character settings to review it.');
+        }
+        if (type === change.entity_type && id === change.entity_id) return structuredClone(current);
+        const destination = roleplayCorrectionRuntimeField(context.session, type, id, field)[field];
+        if (field === 'state_fields') {
+            const diff = changedRoleplayStateFieldValues(original, applied);
+            const rows = structuredClone(destination || []);
+            for (const item of diff?.after || []) {
+                const previous = (diff.before || []).find(row => row.label === item.label);
+                const target = rows.find(row => row.label === item.label);
+                if (target) target.value = roleplayCorrectionTransfer(previous?.value, item.value, target.value);
+                else rows.push(structuredClone(item));
+            }
+            return rows;
+        }
+        if (field === 'state_text') return roleplayCorrectionTransfer(original, applied, destination);
+        if (Array.isArray(applied)) {
+            const added = applied.filter(item => !(original || []).includes(item));
+            return [...new Set([...(destination || []), ...added])];
+        }
+        return structuredClone(applied);
+    }
+
+    function normalizeRoleplayStateEdit(value) {
+        if (!value || typeof value !== 'object' || !Array.isArray(value.writes)) return null;
+        const writes = value.writes.slice(0, 2).map(item => ({
+            entity_type: item.entity_type === 'player' ? 'player' : 'character',
+            entity_id: String(item.entity_id || '').slice(0, 160),
+            field: String(item.field || '').slice(0, 120),
+            before: structuredClone(item.before ?? null), after: structuredClone(item.after ?? null)
+        }));
+        return {
+            writes, changes: normalizeRoleplayStateChanges(value.changes), at: String(value.at || '').slice(0, 80),
+            facts_before: Array.isArray(value.facts_before) ? structuredClone(value.facts_before.slice(-12)) : [],
+            facts_after: Array.isArray(value.facts_after) ? structuredClone(value.facts_after.slice(-12)) : []
+        };
+    }
+
+    function applyRoleplayStateCorrection(runtime, messageId, changeIndex, target, value, mode = 'edit') {
+        const context = roleplayCorrectionContext(runtime, messageId);
+        const { message, variant, before, session } = context;
+        const changes = normalizeRoleplayStateChanges(message.roleplay_state_changes);
+        const next = structuredClone(session);
+        const writes = [];
+        const write = (type, id, field, desired) => {
+            const owner = roleplayCorrectionRuntimeField(next, type, id, field);
+            const previous = structuredClone(owner[field] ?? null);
+            owner[field] = structuredClone(desired);
+            if (field === 'status') owner.is_present = desired === 'present';
+            writes.push({ entity_type: type, entity_id: id, field, before: previous, after: structuredClone(desired) });
+        };
+        if (mode === 'undo_edit') {
+            const edit = normalizeRoleplayStateEdit(message.roleplay_state_edit);
+            if (!edit) throw new Error('There is no state correction to undo.');
+            for (const item of edit.writes) {
+                const current = roleplayCorrectionRuntimeField(session, item.entity_type, item.entity_id, item.field)[item.field];
+                if (!roleplayCorrectionEqual(current, item.after)) throw new Error('State changed after this correction. It cannot be undone automatically.');
+            }
+            if (!roleplayCorrectionEqual(session.story_state.recent_turn_facts || [], edit.facts_after)) {
+                throw new Error('State changed after this correction. It cannot be undone automatically.');
+            }
+            for (const item of edit.writes) write(item.entity_type, item.entity_id, item.field, item.before);
+            next.story_state.recent_turn_facts = structuredClone(edit.facts_before);
+        } else {
+            const change = changes[changeIndex];
+            if (!change) throw new Error('This state update is no longer available.');
+            const [type, id] = target;
+            roleplayCorrectionDraft(context, change, type, id);
+            if (mode === 'revert' || type !== change.entity_type || id !== change.entity_id) {
+                const original = roleplayCorrectionRuntimeField(before, change.entity_type, change.entity_id, change.field)[change.field];
+                write(change.entity_type, change.entity_id, change.field, original);
+            }
+            if (mode !== 'revert') {
+                if (change.field === 'status' && !['present', 'absent'].includes(value)) throw new Error('Invalid presence value.');
+                if (change.field === 'state_fields' && (!Array.isArray(value) || value.length > 40
+                    || value.some(row => !String(row.label || '').trim() || String(row.value ?? '').length > 500)
+                    || new Set(value.map(row => row.label.trim())).size !== value.length)) {
+                    throw new Error('State fields need unique names and values of at most 500 characters.');
+                }
+                if (typeof value === 'string' && value.length > (change.field === 'state_text' ? 4000 : 1200)) {
+                    throw new Error('The state text is too long.');
+                }
+                write(type, id, change.field, value);
+            }
+        }
+        next.state_version = Math.max(session.state_version || 0, session.story_state.state_version || 0) + 1;
+        next.story_state.state_version = next.state_version;
+        next.updated_at = next.story_state.updated_at = new Date().toISOString();
+        const affected = [...new Map([...changes, ...writes].map(item =>
+            [JSON.stringify([item.entity_type, item.entity_id, item.field]), item])).values()];
+        const updatedChanges = normalizeRoleplayStateChanges(affected.map(item => ({
+            entity_type: item.entity_type, entity_id: item.entity_id, field: item.field,
+            entity_name: item.entity_type === 'player' ? next.persona.name : next.characters[item.entity_id]?.name,
+            label: roleplayStateChangeLabel(item.field),
+            before: roleplayCorrectionRuntimeField(before, item.entity_type, item.entity_id, item.field)[item.field],
+            after: roleplayCorrectionRuntimeField(next, item.entity_type, item.entity_id, item.field)[item.field]
+        }))).filter(item => !roleplayCorrectionEqual(item.before, item.after));
+        const factsBefore = structuredClone(session.story_state.recent_turn_facts || []);
+        if (mode !== 'undo_edit') {
+            const turnId = variant?.turn_id || context.after.active_turn_id || `manual:${messageId}`;
+            const prior = factsBefore.find(item => item.turn_id === turnId) || {};
+            const touched = new Set(writes.map(item => JSON.stringify([item.entity_type, item.entity_id])));
+            const unaffected = item => !touched.has(JSON.stringify([item.target_entity_type, item.target_entity_id]));
+            const note = roleplayDictionaryText('User correction: current character states override the previous state assignment.');
+            next.story_state.recent_turn_facts = [...factsBefore.filter(item => item.turn_id !== turnId), {
+                ...prior, turn_id: turnId, summary: note,
+                actions: (prior.actions || []).filter(unaffected),
+                state_changes: [
+                    ...(prior.state_changes || []).filter(unaffected),
+                    ...writes.map(item => ({
+                        target_entity_type: item.entity_type, target_entity_id: item.entity_id,
+                        fields: [item.field], summary: note, evidence: note
+                    }))
+                ],
+                appearance_changes: (prior.appearance_changes || []).filter(unaffected)
+            }].slice(-12);
+        }
+        const edit = mode === 'undo_edit' ? null : normalizeRoleplayStateEdit({
+            writes, changes, at: next.updated_at, facts_before: factsBefore, facts_after: next.story_state.recent_turn_facts
+        });
+        const edited = {
+            ...message, revision: (Number(message.revision) || 1) + 1,
+            roleplay_session_after: next, roleplay_state_changes: updatedChanges, roleplay_state_edit: edit
+        };
+        if (variant) edited.variants = message.variants.map((item, index) => index === (message.active_variant_index || 0)
+            ? { ...item, revision: (Number(item.revision) || 1) + 1, roleplay_session_after: next,
+                state_version: next.state_version, roleplay_state_changes: updatedChanges, roleplay_state_edit: edit }
+            : item);
+        runtime.roleplaySession = normalizeRoleplaySession(next, runtime.conversationId);
+        runtime.messages = runtime.messages.map(item => item.id === messageId ? edited : item);
+        if (runtime.archiveMessages) runtime.archiveMessages = runtime.archiveMessages.map(item => item.id === messageId ? edited : item);
+        runtime.persistenceDirty = true;
+        return edited;
+    }
+
+    function openRoleplayStateCorrection(messageId, changeIndex = -1, undo = false) {
+        if (document.getElementById('describe_vlm_state_correction')) return;
+        const runtime = syncCurrentRuntimeFromState();
+        const text = roleplayDictionaryText;
+        if (!runtime.busy && runtime.roleplayAutoplayState?.phase === 'running') pauseRoleplayAutoplay();
+        if (conversationHistoryBusy(runtime)) {
+            setConversationStatus(runtime, text('Wait for the current reply before correcting state.'), true);
+            return;
+        }
+        let context, change;
+        try {
+            context = roleplayCorrectionContext(runtime, messageId);
+            change = normalizeRoleplayStateChanges(context.message.roleplay_state_changes)[changeIndex];
+            if (!undo && !change) throw new Error('This state update is no longer available.');
+        } catch (error) {
+            setConversationStatus(runtime, text(error.message), true);
+            return;
+        }
+        const dialog = document.createElement('dialog');
+        dialog.id = 'describe_vlm_state_correction';
+        dialog.className = 'describe-vlm-state-correction';
+        const fingerprint = JSON.stringify(runtime.roleplaySession);
+        const revision = context.message.revision;
+        let saving = false, applied = false, locallySaved = false;
+        let draft = null;
+        const options = [
+            ['player', context.session.persona.id, context.session.persona.name || text('Player')],
+            ...Object.entries(context.session.characters).map(([id, card]) => ['character', id, card.name || id])
+        ];
+        const editableOptions = options.filter(([type, id]) => {
+            try {
+                if (!undo) roleplayCorrectionRuntimeField(context.session, type, id, change.field);
+                return true;
+            } catch { return false; }
+        });
+        dialog.innerHTML = `<header><strong>${escapeHtml(text(undo ? 'Undo state correction' : 'Correct state update'))}</strong><button type="button" data-state-close title="${escapeHtml(text('Close'))}" aria-label="${escapeHtml(text('Close'))}"><i class="fa-solid fa-xmark"></i></button></header>
+<div class="describe-vlm-state-correction-body">
+  <div data-state-source></div>
+  ${undo ? '' : `<label><span>${escapeHtml(text('Correct character'))}</span><select data-state-target>${editableOptions.map(([type, id, name]) => `<option value="${escapeHtml(JSON.stringify([type, id]))}"${type === change.entity_type && id === change.entity_id ? ' selected' : ''}>${escapeHtml(name)} (${escapeHtml(text(type === 'player' ? 'Player' : 'Character'))})</option>`).join('')}</select></label>
+  <p data-state-restore-note hidden></p><div data-state-draft></div>`}
+</div>
+<p data-state-feedback role="status" aria-live="polite"></p>
+<footer>${undo ? '' : `<button type="button" class="is-danger" data-state-revert><i class="fa-solid fa-rotate-left"></i><span>${escapeHtml(text('Revert this update'))}</span></button>`}<button type="button" class="is-primary" data-state-save><i class="fa-solid fa-check"></i><span>${escapeHtml(text(undo ? 'Undo state correction' : 'Save correction'))}</span></button></footer>`;
+        const feedback = (message, error = false) => {
+            const el = dialog.querySelector('[data-state-feedback]');
+            el.textContent = message;
+            el.classList.toggle('is-error', error);
+        };
+        const preview = (title, value) => `<div><b>${escapeHtml(title)}</b><pre>${escapeHtml(roleplayStateChangeDisplayValue(value))}</pre></div>`;
+        const source = dialog.querySelector('[data-state-source]');
+        if (undo) {
+            const edit = normalizeRoleplayStateEdit(context.message.roleplay_state_edit);
+            source.innerHTML = (edit?.writes || []).map(item => {
+                const name = item.entity_type === 'player' ? context.session.persona.name : context.session.characters[item.entity_id]?.name;
+                return `<strong>${escapeHtml(name || item.entity_id)} · ${escapeHtml(roleplayStateChangeLabel(item.field))}</strong><div class="describe-vlm-state-correction-preview">${preview(text('Before'), item.after)}${preview(text('After'), item.before)}</div>`;
+            }).join('');
+        } else {
+            const before = roleplayCorrectionRuntimeField(context.before, change.entity_type, change.entity_id, change.field)[change.field];
+            const after = roleplayCorrectionRuntimeField(context.after, change.entity_type, change.entity_id, change.field)[change.field];
+            source.innerHTML = `<strong>${escapeHtml(change.entity_name)} · ${escapeHtml(change.label)}</strong><div class="describe-vlm-state-correction-preview">${preview(text('Before'), before)}${preview(text('After'), after)}</div>`;
+        }
+        const renderDraft = () => {
+            const [type, id] = JSON.parse(dialog.querySelector('[data-state-target]').value);
+            try {
+                draft = roleplayCorrectionDraft(context, change, type, id);
+                const root = dialog.querySelector('[data-state-draft]');
+                if (change.field === 'state_fields') {
+                    root.innerHTML = `<div class="describe-vlm-state-correction-fields">${(draft || []).map((row, index) => `<label><span>${escapeHtml(row.label)}</span><input data-state-field-index="${index}" value="${escapeHtml(row.value ?? '')}" maxlength="500"></label>`).join('')}</div>`;
+                } else if (change.field === 'status') {
+                    root.innerHTML = `<label><span>${escapeHtml(change.label)}</span><select data-state-value><option value="present">${escapeHtml(text('Present'))}</option><option value="absent">${escapeHtml(text('Absent'))}</option></select></label>`;
+                    root.querySelector('select').value = draft;
+                } else {
+                    root.innerHTML = `<label><span>${escapeHtml(text('Corrected state'))}</span><textarea data-state-value rows="5" maxlength="${change.field === 'state_text' ? 4000 : 1200}"></textarea></label>`;
+                    root.querySelector('textarea').value = Array.isArray(draft) ? draft.join('\n') : draft || '';
+                }
+                const note = dialog.querySelector('[data-state-restore-note]');
+                note.hidden = type === change.entity_type && id === change.entity_id;
+                note.textContent = `${change.entity_name}: ${text('The mistaken update will be reverted; other state stays unchanged.')}`;
+                dialog.querySelector('[data-state-save]').disabled = false;
+                dialog.querySelector('[data-state-revert]').disabled = false;
+                feedback('');
+            } catch (error) {
+                feedback(text(error.message), true);
+                dialog.querySelector('[data-state-save]').disabled = true;
+                dialog.querySelector('[data-state-revert]').disabled = true;
+            }
+        };
+        const close = () => {
+            if (saving) return;
+            if (applied && !locallySaved && !window.confirm(text('The correction has not been saved. Close anyway?'))) return;
+            dialog.close();
+            dialog.remove();
+        };
+        const save = async mode => {
+            if (saving) return;
+            saving = true;
+            try {
+                if (!applied) {
+                    if (conversationHistoryBusy(runtime) || !isCurrentConversationRuntime(runtime)
+                        || JSON.stringify(runtime.roleplaySession) !== fingerprint
+                        || roleplayCorrectionContext(runtime, messageId).message.revision !== revision) {
+                        throw new Error('The story changed while editing. Close and reopen this correction.');
+                    }
+                    const target = undo ? null : JSON.parse(dialog.querySelector('[data-state-target]').value);
+                    let value = draft;
+                    if (!undo && mode !== 'revert') {
+                        if (change.field === 'state_fields') value = (draft || []).map((row, index) => ({
+                            label: row.label, value: dialog.querySelector(`[data-state-field-index="${index}"]`).value
+                        }));
+                        else {
+                            const raw = dialog.querySelector('[data-state-value]').value;
+                            value = Array.isArray(draft) ? raw.split('\n').map(item => item.trim()).filter(Boolean) : raw;
+                        }
+                    }
+                    applyRoleplayStateCorrection(runtime, messageId, changeIndex, target, value, mode);
+                    applied = true;
+                    state.messages = runtime.messages;
+                    state.roleplaySession = runtime.roleplaySession;
+                    state.persistenceDirty = true;
+                    syncRoleplayControls(document.getElementById('describe_vlm_chat_modal'), runtime);
+                    renderMessages();
+                }
+                dialog.querySelectorAll('input, textarea, select, [data-state-revert], [data-state-save]').forEach(el => { el.disabled = true; });
+                feedback(text('Saving state correction...'));
+                cancelScheduledConversationPersist(runtime);
+                runtime.persistenceScheduleReason = 'roleplay_state_correction';
+                if (saveConversationSnapshot(runtime) === false || !runtime.archiveSavePromise) throw new Error('State correction could not be saved. Retry before closing.');
+                await runtime.archiveSavePromise;
+                locallySaved = true;
+                const response = await persistRoleplayBranchRemote(runtime);
+                if (!response?.ok) throw new Error('The correction is saved locally, but server sync failed. Retry to sync.');
+                saving = false;
+                setConversationStatus(runtime, text('State correction saved.'));
+                close();
+            } catch (error) {
+                feedback(text(locallySaved ? 'The correction is saved locally, but server sync failed. Retry to sync.'
+                    : applied ? 'State correction could not be saved. Retry before closing.' : error.message), true);
+                dialog.querySelector('[data-state-save]').disabled = false;
+                if (applied) dialog.querySelector('[data-state-save] span').textContent = text('Retry saving');
+            } finally {
+                saving = false;
+            }
+        };
+        dialog.querySelector('[data-state-close]').addEventListener('click', close);
+        dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+        dialog.querySelector('[data-state-target]')?.addEventListener('change', renderDraft);
+        dialog.querySelector('[data-state-save]').addEventListener('click', () => save(undo ? 'undo_edit' : 'edit'));
+        dialog.querySelector('[data-state-revert]')?.addEventListener('click', () => save('revert'));
+        document.body.appendChild(dialog);
+        dialog.showModal();
+        if (!undo) renderDraft();
+    }
+
+    function renderRoleplayStateChangeRow(change, options = {}) {
         const beforeFull = roleplayStateChangeDisplayValue(change.before);
         const afterFull = roleplayStateChangeDisplayValue(change.after);
         const beforeLabel = localText('Before', '原状态');
@@ -1373,7 +1718,8 @@
             : '';
         const valueTitle = `${beforeLabel}: ${beforeFull} / ${afterLabel}: ${afterFull}`;
         const valueAriaLabel = `${beforeLabel}: ${beforeCompact}; ${afterLabel}: ${compactAfter}`;
-        return `<li data-describe-vlm-chat-roleplay-state-change-field="${escapeHtml(change.field)}"><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}</b><span class="describe-vlm-chat-roleplay-state-change-values" title="${escapeHtml(valueTitle)}" aria-label="${escapeHtml(valueAriaLabel)}"><span class="describe-vlm-chat-roleplay-state-change-before"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(beforeCompact)}</span></span><span class="describe-vlm-chat-roleplay-state-change-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span class="describe-vlm-chat-roleplay-state-change-after"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(compactAfter)}</span></span></span>${detailHtml}</li>`;
+        const editButton = options.messageId ? `<button type="button" class="describe-vlm-state-correct" data-roleplay-state-correct="${escapeHtml(options.messageId)}" data-state-change-index="${options.index}" title="${escapeHtml(roleplayDictionaryText('Correct this state update'))}" aria-label="${escapeHtml(roleplayDictionaryText('Correct this state update'))}"><i class="fa-solid fa-pen"></i></button>` : '';
+        return `<li data-describe-vlm-chat-roleplay-state-change-field="${escapeHtml(change.field)}"><b>${escapeHtml([change.entity_name || change.entity_id, change.label].filter(Boolean).join(' · '))}${editButton}</b><span class="describe-vlm-chat-roleplay-state-change-values" title="${escapeHtml(valueTitle)}" aria-label="${escapeHtml(valueAriaLabel)}"><span class="describe-vlm-chat-roleplay-state-change-before"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(beforeCompact)}</span></span><span class="describe-vlm-chat-roleplay-state-change-arrow" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span class="describe-vlm-chat-roleplay-state-change-after"><span class="describe-vlm-chat-roleplay-state-change-value-text">${escapeHtml(compactAfter)}</span></span></span>${detailHtml}</li>`;
     }
 
     function renderRoleplayStateChangeColumns() {
@@ -1382,9 +1728,10 @@
         return `<div class="describe-vlm-chat-roleplay-state-change-columns" aria-hidden="true"><span></span><span class="describe-vlm-chat-roleplay-state-change-values-head"><span>${escapeHtml(beforeLabel)}</span><span></span><span>${escapeHtml(afterLabel)}</span></span></div>`;
     }
 
-    function renderRoleplayStateChanges(value) {
+    function renderRoleplayStateChanges(value, options = {}) {
         const changes = normalizeRoleplayStateChanges(value);
-        if (!changes.length) return '';
+        if (!changes.length && !options.edit) return '';
+        const row = change => renderRoleplayStateChangeRow(change, { messageId: options.messageId, index: changes.indexOf(change) });
         const visibleChanges = changes.slice(0, MAX_ROLEPLAY_STATE_CHANGE_ROWS);
         const groups = [];
         const groupMap = new Map();
@@ -1412,14 +1759,15 @@
             const icon = group.entity_type === 'player' ? 'fa-user' : 'fa-user-pen';
             return `<section class="describe-vlm-chat-roleplay-state-change-group" data-roleplay-state-group-kind="${escapeHtml(group.entity_type)}" data-roleplay-state-group-index="${groupIndex % 3}">
   <div class="describe-vlm-chat-roleplay-state-change-group-head"><i class="fa-solid ${icon}" aria-hidden="true"></i><b>${escapeHtml(group.entity_name)}</b><small>${escapeHtml(label)}</small></div>
-  <ul>${group.changes.map(renderRoleplayStateChangeRow).join('')}</ul>
+  <ul>${group.changes.map(row).join('')}</ul>
 </section>`;
         }).join('');
         const hiddenChanges = changes.slice(MAX_ROLEPLAY_STATE_CHANGE_ROWS);
         const moreHtml = hiddenChanges.length
-            ? `<details class="describe-vlm-chat-roleplay-state-changes-more"><summary>${escapeHtml(localText(`${hiddenChanges.length} more changes`, `还有 ${hiddenChanges.length} 项变化`))}</summary><ul>${hiddenChanges.map(renderRoleplayStateChangeRow).join('')}</ul></details>`
+            ? `<details class="describe-vlm-chat-roleplay-state-changes-more"><summary>${escapeHtml(localText(`${hiddenChanges.length} more changes`, `还有 ${hiddenChanges.length} 项变化`))}</summary><ul>${hiddenChanges.map(row).join('')}</ul></details>`
             : '';
-        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span></div>${renderRoleplayStateChangeColumns()}<div class="describe-vlm-chat-roleplay-state-change-groups">${groupHtml}</div>${moreHtml}</div>`;
+        const manual = options.edit ? `<small>${escapeHtml(roleplayDictionaryText('Manually corrected'))}</small>${options.messageId ? `<button type="button" data-roleplay-state-undo="${escapeHtml(options.messageId)}" title="${escapeHtml(roleplayDictionaryText('Undo state correction'))}" aria-label="${escapeHtml(roleplayDictionaryText('Undo state correction'))}"><i class="fa-solid fa-rotate-left"></i></button>` : ''}` : '';
+        return `<div class="describe-vlm-chat-roleplay-state-changes" data-describe-vlm-chat-roleplay-state-changes><div class="describe-vlm-chat-roleplay-state-changes-head"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(localText('State updates', '状态更新'))}</span>${manual}</div>${changes.length ? renderRoleplayStateChangeColumns() : ''}<div class="describe-vlm-chat-roleplay-state-change-groups">${groupHtml}</div>${moreHtml}</div>`;
     }
 
     function mergeRoleplayCharacterCardLayers(baseValue, overlayValue) {
@@ -11663,6 +12011,7 @@
             completion: normalizeChatCompletion(value.completion),
             response_source: normalizeResponseSource(value.response_source || value),
             roleplay_state_changes: normalizeRoleplayStateChanges(value.roleplay_state_changes),
+            roleplay_state_edit: normalizeRoleplayStateEdit(value.roleplay_state_edit),
             roleplay_resource_changes: normalizeRoleplayResourceChanges(value.roleplay_resource_changes),
             roleplay_speaker_id: String(value.roleplay_speaker_id || '').slice(0, 160),
             roleplay_speaker_name: String(value.roleplay_speaker_name || '').slice(0, 200),
@@ -11940,6 +12289,7 @@
             actions,
             response_source: normalizeResponseSource(message.response_source || message),
             roleplay_state_changes: normalizeRoleplayStateChanges(message.roleplay_state_changes),
+            roleplay_state_edit: normalizeRoleplayStateEdit(message.roleplay_state_edit),
             roleplay_resource_changes: normalizeRoleplayResourceChanges(message.roleplay_resource_changes),
             roleplay_speaker_id: String(message.roleplay_speaker_id || '').slice(0, 160),
             roleplay_speaker_name: String(message.roleplay_speaker_name || '').slice(0, 200),
@@ -16011,6 +16361,7 @@
         liveMessage.completion = variant.completion || null;
         liveMessage.response_source = variant.response_source || null;
         liveMessage.roleplay_state_changes = normalizeRoleplayStateChanges(variant.roleplay_state_changes);
+        liveMessage.roleplay_state_edit = normalizeRoleplayStateEdit(variant.roleplay_state_edit);
         liveMessage.roleplay_resource_changes = normalizeRoleplayResourceChanges(variant.roleplay_resource_changes);
         liveMessage.active_variant_index = nextIndex;
         liveMessage.roleplay_session_after = variant.roleplay_session_after;
@@ -18912,7 +19263,12 @@
                 ? `<div class="describe-vlm-chat-completion-warning" role="alert"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(chatCompletionLimitMessage(completion))}</span></div>`
                 : '';
             const stateChangesHtml = role === 'assistant' && !pending
-                ? renderRoleplayStateChanges(message.roleplay_state_changes)
+                ? renderRoleplayStateChanges(message.roleplay_state_changes, {
+                    messageId: normalizeChatMode(state.chatMode) === 'roleplay'
+                        && message.id === [...state.messages].reverse().find(item => item.role === 'assistant')?.id
+                        ? message.id : '',
+                    edit: message.roleplay_state_edit
+                })
                 : '';
             const resourceChangesHtml = role === 'assistant' && !pending
                 ? renderRoleplayResourceChanges(message.roleplay_resource_changes)
@@ -21181,6 +21537,15 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-import]')) {
             modal.querySelector('[data-describe-vlm-chat-conversation-file]')?.click();
+            return;
+        }
+        const correctState = evt.target.closest('[data-roleplay-state-correct]');
+        const undoState = evt.target.closest('[data-roleplay-state-undo]');
+        if (correctState || undoState) {
+            openRoleplayStateCorrection(
+                (correctState || undoState).getAttribute(correctState ? 'data-roleplay-state-correct' : 'data-roleplay-state-undo'),
+                Number(correctState?.getAttribute('data-state-change-index') ?? -1), !!undoState
+            );
             return;
         }
         const editText = evt.target.closest('[data-describe-vlm-chat-edit-text]');

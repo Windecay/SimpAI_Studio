@@ -172,14 +172,14 @@ def _conditioning(clip, vae, prompt, width, height, length, frames):
 
     return _node_result(
         MiniMaxH3ReferenceToVideo.execute(
-            clip,
-            vae,
-            None,
-            prompt,
-            int(width),
-            int(height),
-            int(length),
-            "match",
+            clip=clip,
+            vae=vae,
+            audio_vae=None,
+            prompt=prompt,
+            width=int(width),
+            height=int(height),
+            length=int(length),
+            ref_image_size="match",
             ref_videos={"ref_video_0": frames},
         )
     )

@@ -454,13 +454,13 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
     ):
         if ref_image_size != "auto":
             return MiniMaxH3ReferenceToVideo.execute(
-                clip,
-                vae,
-                audio_vae,
-                prompt,
-                width,
-                height,
-                length,
+                clip=clip,
+                vae=vae,
+                audio_vae=audio_vae,
+                prompt=prompt,
+                width=width,
+                height=height,
+                length=length,
                 ref_image_size=ref_image_size,
                 ref_images=ref_images,
                 ref_videos=ref_videos,

@@ -2351,12 +2351,8 @@ def _sync_aimdo_simple_vram_headroom(reserved_vram):
         if getattr(aimdo_control, "lib", None) is None:
             return
 
-        try:
-            aimdo_control.init(simple_vram_headroom=int(reserved_vram))
-        except TypeError:
-            setter = getattr(aimdo_control.lib, "set_simple_vram_headroom", None)
-            if setter is not None:
-                setter(int(reserved_vram))
+        # Updating headroom must not reinitialize the NVML pressure policy.
+        aimdo_control.lib.set_simple_vram_headroom(int(reserved_vram))
     except Exception as e:
         logging.debug("Unable to update DynamicVRAM reserved headroom: %s", e)
 

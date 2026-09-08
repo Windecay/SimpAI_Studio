@@ -6271,6 +6271,107 @@ html.describe-vlm-chat-resizing * {
   line-height: 1.2;
 }
 
+.describe-vlm-state-correct,
+.describe-vlm-chat-roleplay-state-changes-head > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 5px;
+  padding: 0;
+  border: 1px solid rgba(100, 188, 245, 0.5);
+  border-radius: 4px;
+  background: rgba(57, 136, 192, 0.15);
+  color: #8cd4ff;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+dialog.describe-vlm-state-correction {
+  width: min(640px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  padding: 0;
+  margin: auto;
+  border: 1px solid #555b61;
+  border-radius: 8px;
+  background: #24272b;
+  color: #edf0f2;
+  font: 13px/1.5 system-ui, sans-serif;
+  overflow: auto;
+  letter-spacing: 0;
+}
+
+.describe-vlm-state-correction::backdrop { background: rgba(0, 0, 0, 0.6); }
+.describe-vlm-state-correction header,
+.describe-vlm-state-correction footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #292d32;
+}
+.describe-vlm-state-correction header strong { font-size: 15px; }
+.describe-vlm-state-correction button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #606970;
+  border-radius: 4px;
+  background: #343a40;
+  color: #edf0f2;
+  font: inherit;
+  cursor: pointer;
+}
+.describe-vlm-state-correction button.is-primary { background: #23668b; border-color: #4395bf; }
+.describe-vlm-state-correction button.is-danger { color: #ffb4b4; }
+.describe-vlm-state-correction button:disabled { opacity: 0.45; cursor: default; }
+.describe-vlm-state-correction-body { padding: 14px 16px; }
+.describe-vlm-state-correction label { display: grid; gap: 5px; min-width: 0; margin-top: 10px; }
+.describe-vlm-state-correction label > span { color: #c3c9cf; overflow-wrap: anywhere; }
+.describe-vlm-state-correction select,
+.describe-vlm-state-correction input,
+.describe-vlm-state-correction textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #606970;
+  border-radius: 4px;
+  padding: 7px 9px;
+  background: #191c20;
+  color: #f1f3f5;
+  font: inherit;
+}
+.describe-vlm-state-correction textarea { resize: vertical; min-height: 110px; max-height: 280px; }
+.describe-vlm-state-correction-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.describe-vlm-state-correction-preview b { font-size: 11px; color: #bfc6ce; }
+.describe-vlm-state-correction-preview pre {
+  max-height: 130px;
+  margin: 4px 0 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+}
+.describe-vlm-state-correction-preview > :first-child pre { color: #9da6af; }
+.describe-vlm-state-correction-preview > :last-child pre { color: #b2e8c8; }
+.describe-vlm-state-correction-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.describe-vlm-state-correction [data-state-feedback] { margin: 0; padding: 0 16px 12px; color: #a4dcba; overflow-wrap: anywhere; }
+.describe-vlm-state-correction [data-state-feedback].is-error { color: #ffb4b4; }
+.describe-vlm-state-correction [data-state-restore-note] { color: #f1d097; font-size: 12px; }
+.describe-vlm-state-correction [hidden] { display: none !important; }
+@media (max-width: 480px) {
+  .describe-vlm-state-correction-fields { grid-template-columns: minmax(0, 1fr); }
+  .describe-vlm-state-correction footer { flex-wrap: wrap; }
+  .describe-vlm-state-correction footer button { flex: 1 1 auto; }
+}
+
 .describe-vlm-chat-roleplay-state-change-before,
 .describe-vlm-chat-roleplay-state-change-after {
   display: block;
