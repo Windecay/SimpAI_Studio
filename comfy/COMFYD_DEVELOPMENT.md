@@ -29,9 +29,9 @@
 - 同步 `main_comfyd.py` 的 Windows 默认 CUDA 设备及启动提示。
 - 将私有 `comfy_version.py` 更新为上游 commit `8a33128f`。
 
-## 2026-08-30 主项目入口依赖同步
+## 2026-09-08
 
-- 将主项目与内置 Comfyd 的运行依赖统一到 `comfyui-frontend-package==1.51.9`、`comfyui-workflow-templates==0.11.50`、`comfy-aimdo==0.4.15` 和 `av>=17.0.0`。
-- 同步 `launch.py` 与 `simpleai_update.py` 的固定版本；`entry_with_update.py`、`entry_without_update.py` 和 `launch_with_commit.py` 均继续通过 `launch.py` 使用同一份启动检查。
-- 确认 `webui.py` 没有独立依赖版本，Forge Neo 入口仅固定本次未变化的 `comfy-kitchen==0.2.31`。
-- 扩充启动契约测试，校验根依赖、内置 Comfyd 依赖、普通启动和独立更新入口保持一致。
+- 同步上游至 `eb357862`，合并结果保留在暂存区，不创建提交。
+- 解决启动参数和路径测试冲突，保留禁用 compiler 时禁用 CUDA graphs 的行为及测试参数恢复。
+- 私有入口同步 Windows 默认单 GPU 的中英提示，保留已有私有启动逻辑；更新 `comfy_version.py`。
+- 路径测试首次验证出现绝对路径断言不一致；调整测试以匹配既有私有输出目录规范化行为，不改变目录处理。

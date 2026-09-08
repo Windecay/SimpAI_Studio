@@ -187,10 +187,19 @@
   },
   "44": {
     "inputs": {
-      "model": ["43", 0]
+      "model": ["43", 0],
+      "selection": "top-k (SLA)",
+      "selection.keep_percent": 10.0,
+      "start_percent": 0.0,
+      "end_percent": 1.0,
+      "min_tokens": 8192,
+      "dense_blocks": "",
+      "extra_tokens": 0,
+      "sink_conditioning": "exact_kv",
+      "verbose": true
     },
-    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
-    "_meta": {"title": "MiniMax H3 Memory Efficient Sage Attention Patch"}
+    "class_type": "BlockSparseAttention",
+    "_meta": {"title": "MiniMax H3 SLA"}
   },
   "45": {
     "inputs": {

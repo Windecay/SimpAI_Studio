@@ -593,6 +593,7 @@ if __name__ == "__main__":
         and os.environ.get("CUDA_VISIBLE_DEVICES") is None
     ):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        logging.warning("Windows defaults to single GPU mode due to an NVIDIA issue; use --cuda-device all to enable all GPUs. / Windows 因 NVIDIA 相关问题默认使用单 GPU；使用 --cuda-device all 可启用所有 GPU。")
 
 faulthandler.enable(file=sys.stderr, all_threads=args.debug_hang)
 if __name__ == "__main__" and args.debug_hang:
