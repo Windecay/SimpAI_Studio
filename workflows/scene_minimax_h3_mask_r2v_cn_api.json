@@ -561,7 +561,7 @@
   },
   "86": {
     "inputs": {
-      "expression": "max(5, round(a * 24 / max(0.001, b)))",
+      "expression": "a",
       "values.a": ["49", 1],
       "values.b": ["49", 3]
     },
@@ -573,22 +573,22 @@
       "images": ["49", 0],
       "target_frame_count": ["86", 1],
       "source_fps": ["49", 3],
-      "target_fps": 24.0,
-      "resample_when_fps_diff": true
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
-    "_meta": {"title": "Resample H3 Source Video to 24 FPS"}
+    "_meta": {"title": "Preserve Loaded H3 Source Frames"}
   },
   "88": {
     "inputs": {
       "images": ["50", 0],
       "target_frame_count": ["86", 1],
       "source_fps": ["49", 3],
-      "target_fps": 24.0,
-      "resample_when_fps_diff": true
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
-    "_meta": {"title": "Resample H3 Mask Video to 24 FPS"}
+    "_meta": {"title": "Preserve Loaded H3 Mask Frames"}
   },
   "89": {
     "inputs": {
@@ -604,9 +604,9 @@
     "inputs": {
       "images": ["15", 0],
       "target_frame_count": ["49", 1],
-      "source_fps": 24.0,
+      "source_fps": ["49", 3],
       "target_fps": ["49", 3],
-      "resample_when_fps_diff": true
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
     "_meta": {"title": "Restore H3 Output FPS and Frame Count"}

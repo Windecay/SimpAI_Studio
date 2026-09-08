@@ -621,7 +621,7 @@
   },
   "96": {
     "inputs": {
-      "expression": "max(5, round(a * 24 / max(0.001, b)))",
+      "expression": "a",
       "values.a": ["49", 1],
       "values.b": ["49", 3]
     },
@@ -633,22 +633,22 @@
       "images": ["90", 0],
       "target_frame_count": ["96", 1],
       "source_fps": ["49", 3],
-      "target_fps": 24.0,
-      "resample_when_fps_diff": true
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
-    "_meta": {"title": "Resample Detected Face Crop to 24 FPS"}
+    "_meta": {"title": "Preserve Detected Face Crop Frames"}
   },
   "98": {
     "inputs": {
       "images": ["101", 0],
       "target_frame_count": ["96", 1],
       "source_fps": ["49", 3],
-      "target_fps": 24.0,
-      "resample_when_fps_diff": true
+      "target_fps": ["49", 3],
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
-    "_meta": {"title": "Resample Automatic Face Mask to 24 FPS"}
+    "_meta": {"title": "Preserve Automatic Face Mask Frames"}
   },
   "99": {
     "inputs": {
@@ -664,9 +664,9 @@
     "inputs": {
       "images": ["15", 0],
       "target_frame_count": ["49", 1],
-      "source_fps": 24.0,
+      "source_fps": ["49", 3],
       "target_fps": ["49", 3],
-      "resample_when_fps_diff": true
+      "resample_when_fps_diff": false
     },
     "class_type": "SimpAIVideoFrameAlign",
     "_meta": {"title": "Restore Detected Face Crop FPS and Frame Count"}
