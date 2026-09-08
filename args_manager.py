@@ -45,6 +45,12 @@ args_parser.parser.add_argument("--reset-admin", type=str, help="Reset the admin
 args_parser.parser.add_argument("--disable-comfyd", action='store_true',
                                 help="disable auto start comfyd server at launch", default=False)
 
+comfy_compiler_group = args_parser.parser.add_mutually_exclusive_group()
+comfy_compiler_group.add_argument("--disable-comfy-compiler", action="store_true",
+                                  help="Disable the Comfy model compiler (Studio default).")
+comfy_compiler_group.add_argument("--enable-comfy-compiler", action="store_true",
+                                  help="Opt in to the Comfy model compiler for testing.")
+
 args_parser.parser.add_argument("--reserve-vram", type=float, default=None, help="Set the amount of vram in GB you want to reserve for use by your OS/other software. By default some amount is reverved depending on your OS.")
 args_parser.parser.add_argument("--vram-headroom", type=float, default=None, help="Set the amount of vram in GB for DynamicVRAM to maintain as extra headroom.")
 

@@ -686,6 +686,11 @@ def _default_non_nvidia_comfyd_guards(argv=None):
 
 def _build_comfyd_launch_args(argv=None):
     mapped = []
+    # Temporarily avoid compiler-related sparse attention OOMs.
+    if _launch_arg_was_set("--enable-comfy-compiler", argv):
+        _append_comfyd_arg(mapped, "--enable-comfy-compiler")
+    else:
+        _append_comfyd_arg(mapped, "--disable-comfy-compiler")
 
     value_mappings = (
         ("--gpu-device-id", "gpu_device_id", "--cuda-device"),

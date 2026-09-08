@@ -9,6 +9,7 @@ import threading
 import time
 
 import modules.canvas_danbooru_service as canvas_danbooru_service
+import modules.minimax_h3_prompt_compiler as minimax_h3_prompt_compiler
 from modules.gpu_task_lock import GpuTaskCancelled, exclusive_gpu_task
 from modules.llama_cpp_runtime import (
     normalize_llama_cpp_kv_cache_type,
@@ -589,6 +590,23 @@ VIDEO_GENERATION_INTENT_RE = re.compile(
     r"生成.{0,8}(?:视频|影片|短片)|制作.{0,8}(?:视频|影片|短片)|"
     r"\b(?:generate|create|make|render)\b.{0,30}\b(?:video|movie|clip|animation)\b|"
     r"\b(?:text|image|reference)[-_ ]?to[-_ ]?video\b|\b(?:t2v|i2v|r2v)\b",
+    re.I,
+)
+CREATIVE_MOTION_INTENT_RE = re.compile(
+    r"转圈|转身|旋转|走动|行走|奔跑|跳舞|挥手|眨眼|动起来|动画|镜头移动|"
+    r"\b(?:turn(?:s|ing)? around|spin(?:s|ning)?|rotat\w*|walk\w*|run(?:s|ning)?|"
+    r"danc\w*|wav(?:e|es|ing)|blink\w*|animat\w*|camera movement)\b",
+    re.I,
+)
+CREATIVE_STILL_IMAGE_INTENT_RE = re.compile(
+    r"(?:画|绘制|生成|制作).{0,8}(?:一张|单张|海报|插画)|静态图|"
+    r"\b(?:draw|paint|poster|illustration|still image)\b",
+    re.I,
+)
+CREATIVE_REFERENCE_OPT_OUT_RE = re.compile(
+    r"(?:不用|不使用|不要使用|忽略).{0,12}(?:上传|附件|参考|这张|这些).{0,6}(?:图|素材)|"
+    r"\b(?:ignore|do not use|don't use|without using)\b.{0,30}"
+    r"\b(?:attached|uploaded|reference)\b.{0,15}\b(?:images?|pictures?|photos?|media)\b",
     re.I,
 )
 CREATIVE_EDIT_INTENT_RE = re.compile(
@@ -1196,7 +1214,7 @@ def _normalize_preset_capabilities(value, limit=100):
             "default_theme": default_theme,
             "per_theme": per_theme,
         }
-        for duration_key in ("video_duration_min", "video_duration_max"):
+        for duration_key in ("video_duration_min", "video_duration_max", "video_duration_default"):
             try:
                 duration_value = float(item.get(duration_key))
             except Exception:
@@ -1646,6 +1664,7 @@ def _build_direct_run_result(payload):
             {"ok": False, "error": "Direct run could not prepare a generation action."},
             "direct_run_action",
         )
+    generation["direct_run"] = True
     return {
         "ok": True,
         "conversation_id": conversation_id,
@@ -3932,7 +3951,12 @@ def _infer_specialized_generation_task(text):
 def _infer_video_generation_task(text, media_refs=None, available_media_refs=None):
     source = str(text or "").strip()
     refs = media_refs if isinstance(media_refs, list) else []
-    if not source or not VIDEO_GENERATION_INTENT_RE.search(source):
+    timed_motion = (
+        _creative_duration_from_value(source) is not None
+        and CREATIVE_MOTION_INTENT_RE.search(source)
+        and not CREATIVE_STILL_IMAGE_INTENT_RE.search(source)
+    )
+    if not source or not (VIDEO_GENERATION_INTENT_RE.search(source) or timed_motion):
         return ""
     counts = _generation_media_counts(refs, available_media_refs)
     if counts["video"]:
@@ -4326,6 +4350,18 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
         source.get("media_refs") or source.get("input_refs"),
         available_media_refs,
     )
+    ignore_references = (
+        source.get("reference_policy") == "none"
+        or bool(CREATIVE_REFERENCE_OPT_OUT_RE.search(str(user_message or "")))
+    )
+    if ignore_references:
+        refs = []
+        available = []
+    elif not refs and available:
+        # Attachments belong to the request even when the model omits their IDs.
+        refs = _limit_generation_media_refs(
+            list(available), available_media_refs, CREATIVE_REFERENCE_MEDIA_LIMITS,
+        )
     intent_text = "\n".join(part for part in (user_message, instruction) if part)
     task = _normalize_generation_task(
         source.get("task") or source.get("task_type"),
@@ -4363,6 +4399,8 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
             intent_text,
         ),
     }
+    if ignore_references:
+        request["reference_policy"] = "none"
     if task in VIDEO_GENERATION_TASKS:
         duration = _normalize_creative_video_duration(
             source.get("video_duration")
@@ -4718,6 +4756,162 @@ def compile_creative_action_plans(
     return compiled
 
 
+def _creative_h3_target(action, runtime_payload, payload):
+    plan = action.get("execution_plan") if isinstance(action.get("execution_plan"), dict) else {}
+    params = runtime_payload.get("params") or {}
+    capability = _preset_capability_map(params.get("describe_preset_capabilities")).get(
+        str(plan.get("preset") or action.get("preset") or "").lower(),
+    ) or {}
+    target = {
+        "name": plan.get("preset") or action.get("preset") or "",
+        "task_method": plan.get("task_method") or capability.get("task_method") or "",
+    }
+    if not minimax_h3_prompt_compiler.target_compiler(target):
+        return None
+    target["key"] = target["name"] or target["task_method"]
+    if not target["task_method"]:
+        target["prompt_compiler"] = minimax_h3_prompt_compiler.normalize_compiler(target["name"])
+    manifest = params.get("describe_media_manifest") or []
+    bindings = plan.get("media_bindings") or []
+    refs = [item.get("ref") for item in bindings] or action.get("media_refs") or []
+    counts = _generation_media_counts(refs, manifest)
+    overrides = plan.get("parameter_overrides") or {}
+    duration = overrides.get("scene_video_duration") or capability.get("video_duration_default") or 5
+    target["prompt_compiler_context"] = {
+        "image_count": counts["image"],
+        "video_count": counts["video"],
+        "audio_count": counts["audio"],
+        "inventory_known": True,
+        "duration_seconds": duration,
+        "language": _requested_prompt_language(payload.get("message"), _payload_lang(payload)),
+        "task_method": target["task_method"],
+    }
+    return target
+
+
+def _format_creative_h3_action(action, runtime_payload, payload, stream_callback=None):
+    if action.get("type") != "generate_image" or action.get("direct_run"):
+        return action
+    if (action.get("execution_plan") or {}).get("status") in {
+        "needs_media", "needs_mask", "needs_interaction", "no_compatible_route",
+        "parameter_profile_missing", "parameter_profile_incompatible",
+    }:
+        return action
+    target = _creative_h3_target(action, runtime_payload, payload)
+    if target is None:
+        return action
+    item = dict(action)
+    prompt = str(item.get("prompt") or "").strip()
+    validation = minimax_h3_prompt_compiler.validate_prompt(prompt, target)
+    error = ""
+    if not validation["ok"]:
+        from modules import canvas_vlm_agent
+
+        # Use the selected model in a separate, stateless rewrite with the actual media order.
+        params = dict(runtime_payload.get("params") or {})
+        manifest = params.get("describe_media_manifest") or []
+        sources = runtime_payload.get("asset_sources") or []
+        source_by_ref = {
+            row.get("ref"): sources[index]
+            for index, row in enumerate(manifest)
+            if index < len(sources)
+        }
+        plan = item.get("execution_plan") or {}
+        refs = [binding.get("ref") for binding in plan.get("media_bindings") or []] or item.get("media_refs") or []
+        rewrite_payload = {
+            **runtime_payload,
+            "asset_sources": [source_by_ref[ref] for ref in refs if ref in source_by_ref],
+            "chat_messages": [],
+            "chat_messages_full": [],
+            "agent_context": {"prompt_generation_targets": {"text_to_image": target}},
+            "lang": target["prompt_compiler_context"]["language"],
+        }
+        params.update({
+            "mode": "chat",
+            "agent_mode": "raw",
+            "agent_use_skills": False,
+            "agent_use_canvas_context": False,
+            "agent_action_hints": False,
+            "save_context": False,
+            "conversation_id": f"{params.get('conversation_id', '')}:h3_prompt:{params.get('request_id', '')}",
+            "user_system_prompt": canvas_vlm_agent._canvas_vlm_prompt_rewrite_system_prompt("", rewrite_payload),
+            "prompt": minimax_h3_prompt_compiler.build_rewrite_request(prompt, target),
+            "max_tokens": 3072 if validation["mode"] == minimax_h3_prompt_compiler.MODE_REF2VA else 2048,
+            "temperature": 0.25,
+            "enable_thinking": False,
+            "disable_thinking": True,
+            "disable_llm_draft_retry": True,
+        })
+        params.pop("system_prompt", None)
+        rewrite_payload["params"] = params
+        rewrite_payload["conversation_id"] = params["conversation_id"]
+        if callable(stream_callback):
+            stream_callback({"type": "status", "phase": "creative_h3_prompt_started"})
+        try:
+            if is_describe_vlm_chat_cancelled(payload.get("conversation_id"), payload.get("request_id")):
+                raise ValueError("Stopped.")
+            if len(rewrite_payload["asset_sources"]) != len(refs):
+                raise ValueError("H3 prompt reference media are missing.")
+            rewritten = _run_standalone_vlm_runtime(
+                rewrite_payload, payload, status_callback=stream_callback,
+            )
+            if is_describe_vlm_chat_cancelled(payload.get("conversation_id"), payload.get("request_id")):
+                raise ValueError("Stopped.")
+            if not isinstance(rewritten, dict) or not rewritten.get("ok"):
+                failure = rewritten if isinstance(rewritten, dict) else {}
+                raise ValueError(str(failure.get("details") or failure.get("error") or "H3 prompt adaptation failed."))
+            candidate = str(rewritten.get("text") or rewritten.get("raw_text") or "").strip()
+            validation = minimax_h3_prompt_compiler.validate_prompt(candidate, target)
+            if validation["ok"]:
+                item["prompt"] = candidate
+                if isinstance(item.get("task_request"), dict):
+                    item["task_request"] = {**item["task_request"], "instruction": candidate}
+            else:
+                error = "; ".join(validation.get("errors") or [])
+        except Exception as exc:
+            error = str(exc)
+        finally:
+            if callable(stream_callback):
+                stream_callback({"type": "status", "phase": "creative_h3_prompt_finished"})
+    item["prompt_reformat"] = {
+        "state": "failed" if error or not validation["ok"] else "idle",
+        "target_preset": target["name"],
+        "error": error[:2000],
+    }
+    item["h3_prompt_validation"] = validation
+    if item["prompt_reformat"]["state"] == "failed":
+        item["generation"] = {"state": "failed", "error": error or "H3 prompt validation failed."}
+    return item
+
+
+def _run_creative_prompt_reformat(payload):
+    action = payload.get("creative_action")
+    if not isinstance(action, dict) or action.get("type") != "generate_image":
+        return {"ok": False, "error": "Invalid creative action."}
+    built = build_runtime_payload({**payload, "chat_mode": "creative", "message": action.get("prompt") or ""})
+    if not built.get("ok"):
+        return built
+    runtime_payload = built["runtime_payload"]
+    media = [item for item in payload.get("input_media_assets") or [] if isinstance(item, dict)][:CREATIVE_MAX_ATTACHMENTS]
+    runtime_payload["params"]["describe_media_manifest"] = [
+        {"ref": item.get("ref"), "type": item.get("type") or "image", "index": index + 1}
+        for index, item in enumerate(media)
+    ]
+    runtime_payload["asset_sources"] = [
+        {"node_id": f"creative_prompt:{item.get('ref')}", "type": item.get("type") or "image", "asset": item.get("asset") or {}}
+        for item in media
+    ]
+    formatted = _format_creative_h3_action(action, runtime_payload, payload)
+    state = formatted.get("prompt_reformat") or {}
+    return {
+        "ok": state.get("state") != "failed",
+        "prompt": formatted.get("prompt") or "",
+        "prompt_reformat": state,
+        "validation": formatted.get("h3_prompt_validation"),
+        "error": state.get("error") or "",
+    }
+
+
 def _creative_action_prompt_target(action, preset_capabilities=None):
     if not isinstance(action, dict) or action.get("type") != "generate_image":
         return ""
@@ -4727,6 +4921,11 @@ def _creative_action_prompt_target(action, preset_capabilities=None):
         return "outpaint_instruction"
     preset = str(plan.get("preset") or action.get("preset") or "").strip()
     capability = _preset_capability_map(preset_capabilities).get(preset.lower()) or {}
+    h3 = minimax_h3_prompt_compiler.target_compiler({
+        "name": preset, "task_method": plan.get("task_method") or capability.get("task_method"),
+    })
+    if h3 and h3["route"] != "image_reference":
+        return ""
     task_methods = [
         str(value or "").strip().lower()
         for value in (capability.get("task_method"), plan.get("task_method"))
@@ -5823,6 +6022,11 @@ def run_describe_vlm_chat(payload, stream_callback=None):
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
     request_kind = str(payload.get("request_kind") or "").strip().lower()
+    if request_kind == "creative_prompt_reformat":
+        try:
+            return _run_creative_prompt_reformat(payload)
+        finally:
+            clear_describe_vlm_chat_cancel(conversation_id, request_id)
     if request_kind == "direct_run":
         return _build_direct_run_result(payload)
     if request_kind == "creative_offer" and not _creative_offer_uses_custom_api(payload):
@@ -6161,11 +6365,28 @@ def run_describe_vlm_chat(payload, stream_callback=None):
                 _payload_lang(payload),
             ),
         )
+        parsed["actions"] = [
+            _format_creative_h3_action(action, runtime_payload, payload, stream_callback)
+            if isinstance(action, dict) else action
+            for action in parsed.get("actions") or []
+        ]
+        if is_describe_vlm_chat_cancelled(conversation_id, request_id):
+            clear_describe_vlm_chat_cancel(conversation_id, request_id)
+            return _describe_vlm_chat_failure({"ok": False, "cancelled": True, "error": "Stopped."}, "cancel_check")
         creative_reply = _localized_creative_generation_reply(
             parsed.get("actions"),
             _payload_lang(payload),
             auto_generate=bool(params.get("describe_creative_auto_generate")),
         )
+        if any(
+            action.get("prompt_reformat", {}).get("state") == "failed"
+            for action in parsed["actions"] if isinstance(action, dict)
+        ):
+            creative_reply = (
+                "H3 prompt adaptation failed. Generation has not started; the draft and references have been kept."
+                if _payload_lang(payload) == "en"
+                else "H3 提示词整理失败，尚未开始生成；已保留原稿和引用素材。"
+            )
         if creative_reply:
             parsed["reply"] = creative_reply
     result = dict(result)

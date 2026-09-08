@@ -11943,6 +11943,7 @@
             roleplay_visual_manual: !!action.roleplay_visual_manual,
             prompt_target_preset: String(action.prompt_target_preset || action.preset || '').trim().slice(0, 200),
             prompt_user_edited: !!action.prompt_user_edited,
+            direct_run: !!action.direct_run,
             prompt_reformat: normalizeRoleplayPromptReformat(action.prompt_reformat),
             roleplay_visible_character_ids: Array.isArray(action.roleplay_visible_character_ids)
                 ? action.roleplay_visible_character_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 20)
@@ -14464,7 +14465,7 @@
         viewer.returnFocus?.focus?.();
     }
 
-    function renderConversationHistory(viewer) {
+    function renderConversationHistory(viewer, direction = 0) {
         const runtime = conversationHistoryRuntime(viewer);
         if (!runtime || runtime.deleted) return;
         const messages = conversationHistoryBranchMessages(runtime, viewer.branchId);
@@ -14481,9 +14482,22 @@
         const rows = viewer.rowsCache.rows;
         viewer.pages = Math.max(1, Math.ceil(rows.length / CONVERSATION_HISTORY_PAGE_SIZE));
         viewer.page = Math.max(0, Math.min(viewer.pages - 1, viewer.page));
-        const pageRows = rows.slice(viewer.page * CONVERSATION_HISTORY_PAGE_SIZE, (viewer.page + 1) * CONVERSATION_HISTORY_PAGE_SIZE);
-        const text = roleplayDictionaryText;
         const list = viewer.dialog.querySelector('[data-history-list]');
+        const anchor = direction ? Array.from(list.querySelectorAll('article')).find(node =>
+            node.getBoundingClientRect().bottom > list.getBoundingClientRect().top + 1) : null;
+        const anchorId = anchor?.dataset.historyMessage;
+        const anchorTop = anchor?.getBoundingClientRect().top;
+        if (!direction) viewer.windowStart = viewer.windowEnd = viewer.page;
+        else if (direction > 0) {
+            viewer.windowEnd = Math.min(viewer.pages - 1, viewer.windowEnd + 1);
+            viewer.windowStart = Math.max(viewer.windowStart, viewer.windowEnd - 2);
+        } else {
+            viewer.windowStart = Math.max(0, viewer.windowStart - 1);
+            viewer.windowEnd = Math.min(viewer.windowEnd, viewer.windowStart + 2);
+        }
+        viewer.page = direction < 0 ? viewer.windowStart : viewer.windowEnd;
+        const pageRows = rows.slice(viewer.windowStart * CONVERSATION_HISTORY_PAGE_SIZE, (viewer.windowEnd + 1) * CONVERSATION_HISTORY_PAGE_SIZE);
+        const text = roleplayDictionaryText;
         list.innerHTML = pageRows.map(({ message, index }) => {
             const title = conversationHistorySpeaker(message, runtime, viewer.branchId);
             const variant = message.variants?.[message.active_variant_index || 0];
@@ -14495,7 +14509,13 @@
     <button type="button" data-history-edit="${escapeHtml(message.id)}" title="${escapeHtml(text('Edit message text'))}" aria-label="${escapeHtml(text('Edit message text'))}"><i class="fa-solid fa-pen"></i></button>
   </span></header><p>${escapeHtml(message.content || '')}</p></article>`;
         }).join('') || `<p class="describe-vlm-history-empty">${escapeHtml(text('No matching messages'))}</p>`;
-        list.scrollTop = 0;
+        if (viewer.windowEnd === viewer.pages - 1 && rows.length) {
+            list.insertAdjacentHTML('beforeend', `<p><small>${escapeHtml(text('End of conversation history'))}</small></p>`);
+        }
+        const restoredAnchor = anchorId && Array.from(list.querySelectorAll('article')).find(node => node.dataset.historyMessage === anchorId);
+        if (restoredAnchor) list.scrollTop += restoredAnchor.getBoundingClientRect().top - anchorTop;
+        else list.scrollTop = 0;
+        viewer.lastScrollTop = list.scrollTop;
         viewer.dialog.querySelector('[data-history-count]').textContent = `${rows.length} / ${messages.length} ${text('Messages')}`;
         const pageInput = viewer.dialog.querySelector('[data-history-page]');
         pageInput.value = viewer.page + 1;
@@ -14641,6 +14661,16 @@
         };
         conversationHistoryViewer = viewer;
         document.body.appendChild(dialog);
+        const historyList = dialog.querySelector('[data-history-list]');
+        historyList.addEventListener('scroll', () => {
+            const previous = viewer.lastScrollTop || 0;
+            const current = historyList.scrollTop;
+            viewer.lastScrollTop = current;
+            if (!viewer.ready || viewer.edit || viewer.saving) return;
+            if (current > previous && historyList.scrollHeight - current - historyList.clientHeight < 160
+                && viewer.windowEnd < viewer.pages - 1) renderConversationHistory(viewer, 1);
+            else if (current < previous && current < 160 && viewer.windowStart > 0) renderConversationHistory(viewer, -1);
+        }, { passive: true });
         dialog.addEventListener('cancel', event => { event.preventDefault(); closeConversationHistory(viewer); });
         dialog.addEventListener('click', event => {
             event.stopPropagation();
@@ -15376,6 +15406,9 @@
 
     function busyControlLabel(stage = '') {
         const normalized = String(stage || '').trim().toLowerCase();
+        if (normalized === 'creative_h3_prompt_started') {
+            return roleplayDictionaryText('Preparing H3 prompt...');
+        }
         if (normalized === 'waiting_for_gpu') {
             return roleplayDictionaryText('Waiting for the current GPU task to finish...');
         }
@@ -17423,6 +17456,10 @@
             const durationMax = Number(durationParam?.max);
             if (Number.isFinite(durationMin)) capability.video_duration_min = durationMin;
             if (Number.isFinite(durationMax)) capability.video_duration_max = durationMax;
+            const durationDefault = capability.output_type === 'video'
+                ? creativeVideoDurationSpec({ preset: entry.name, task: 'text_to_video' }, entry)?.value
+                : null;
+            if (Number.isFinite(durationDefault)) capability.video_duration_default = durationDefault;
             return capability;
         }).filter((item) => item.name);
     }
@@ -17582,10 +17619,11 @@
         );
         const task = creativeActionTask(action, normalized);
         const allowed = creativeTaskAllowedMediaTypes(task);
+        const compatible = entry && creativePresetHasTaskRoute(entry, task, normalized);
         const limits = {
-            image: entry ? creativePresetMaxMedia(entry, 'image') : MAX_REFERENCE_IMAGES,
-            video: entry ? creativePresetMaxMedia(entry, 'video') : MAX_REFERENCE_VIDEOS,
-            audio: entry ? creativePresetMaxMedia(entry, 'audio') : MAX_REFERENCE_AUDIOS
+            image: compatible ? creativePresetMaxMedia(entry, 'image') : MAX_REFERENCE_IMAGES,
+            video: compatible ? creativePresetMaxMedia(entry, 'video') : MAX_REFERENCE_VIDEOS,
+            audio: compatible ? creativePresetMaxMedia(entry, 'audio') : MAX_REFERENCE_AUDIOS
         };
         const counts = { image: 0, video: 0, audio: 0 };
         action.media_inputs = normalized.filter((input) => {
@@ -17619,8 +17657,26 @@
         };
     }
 
-    function prepareAssistantActions(actions, mode, inputMediaAssets = [], runtime = null) {
-        const mediaByRef = new Map((Array.isArray(inputMediaAssets) ? inputMediaAssets : []).map((item) => [String(item?.ref || ''), item]));
+    function creativeInputMediaAssets(inputMediaAssets = [], inputMediaPayloads = []) {
+        const mediaByRef = new Map();
+        (Array.isArray(inputMediaPayloads) ? inputMediaPayloads : []).forEach((payload, index) => {
+            const input = normalizeCreativeMediaInput({
+                ref: payload?.id,
+                name: payload?.name,
+                type: mediaKind(payload),
+                asset: payload
+            }, index);
+            if (input) mediaByRef.set(input.ref, input);
+        });
+        (Array.isArray(inputMediaAssets) ? inputMediaAssets : []).forEach((item, index) => {
+            const input = normalizeCreativeMediaInput(item, index);
+            if (input) mediaByRef.set(input.ref, input);
+        });
+        return limitReferenceMedia(Array.from(mediaByRef.values()));
+    }
+
+    function prepareAssistantActions(actions, mode, inputMediaAssets = [], runtime = null, inputMediaPayloads = []) {
+        const mediaByRef = new Map(creativeInputMediaAssets(inputMediaAssets, inputMediaPayloads).map((item) => [item.ref, item]));
         const prepared = [];
         (Array.isArray(actions) ? actions : []).forEach((raw) => {
             if (!raw || typeof raw !== 'object') return null;
@@ -17646,7 +17702,10 @@
             const plan = normalizeCreativeExecutionPlan(action.execution_plan);
             const requestedRefs = plan?.media_bindings?.length
                 ? plan.media_bindings.map((binding) => binding.ref)
-                : Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
+                : Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')).filter(Boolean) : [];
+            if (!requestedRefs.length && action.task_request?.reference_policy !== 'none') {
+                requestedRefs.push(...mediaByRef.keys());
+            }
             action.execution_plan = plan;
             action.requested_task = plan?.task || action.task_request?.task || action.task || '';
             action.preset = plan?.preset || (plan?.status === 'no_compatible_route' ? '' : String(action.preset || CREATIVE_DEFAULT_PRESET));
@@ -17661,6 +17720,10 @@
             action.task = plan?.task || creativeActionTask(action, action.media_inputs);
             const generation = creativeGenerationForAction(action);
             clampCreativeActionMediaInputs(action);
+            if (requestedRefs.some((ref) => !mediaByRef.has(ref))) {
+                generation.state = 'needs_media';
+                generation.error = roleplayDictionaryText('An attached input could not be restored. Generation has been stopped.');
+            }
             if (plan && ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route', 'parameter_profile_missing', 'parameter_profile_incompatible'].includes(plan.status) && generation.state === 'awaiting_confirmation') {
                 generation.state = plan.status;
             }
@@ -18269,7 +18332,7 @@
   <div class="describe-vlm-chat-generation-status is-${escapeHtml(currentState)}" aria-live="polite"><span>${escapeHtml(stateLabel)}</span>${active && progress ? `<progress max="100" value="${progress}"></progress><b>${progress}%</b>` : ''}${statusDetail && !['awaiting_confirmation', 'finished', 'failed', 'models_missing'].includes(currentState) ? `<small>${escapeHtml(statusDetail)}</small>` : ''}</div>
   <div class="describe-vlm-chat-action-buttons">
     ${canSubmit ? `<button type="button" data-describe-vlm-chat-generation-run="${escapeHtml(actionRef)}" title="${escapeHtml(submitTitle)}" aria-label="${escapeHtml(submitTitle)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(submitLabel)}</span></button>` : ''}
-    ${active && generation.run_id ? `<button type="button" class="is-danger" data-describe-vlm-chat-generation-stop="${escapeHtml(actionRef)}" title="${escapeHtml(stopTitle)}" aria-label="${escapeHtml(stopTitle)}"><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>` : ''}
+    ${active && (generation.run_id || (promptReformatActive && promptReformat.request_id.startsWith('creative_h3_prompt'))) ? `<button type="button" class="is-danger" data-describe-vlm-chat-generation-stop="${escapeHtml(actionRef)}" title="${escapeHtml(stopTitle)}" aria-label="${escapeHtml(stopTitle)}"><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>` : ''}
     <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Copy prompt', '复制提示词'))}" aria-label="${escapeHtml(localText('Copy prompt', '复制提示词'))}"><i class="fa-solid fa-copy"></i></button>
   </div>
   </div>
@@ -18876,6 +18939,78 @@
         }
     }
 
+    async function prepareCreativeH3Prompt(ref, action, entry, runtime, attemptToken) {
+        const method = String(action.execution_plan?.task_method || entry?.task_method || '');
+        const descriptor = `${entry?.name || ''} ${method}`.toLowerCase();
+        if (normalizeChatMode(runtime.chatMode) !== 'creative' || action.direct_run
+            || !descriptor.includes('minimax') || !descriptor.includes('h3')
+            || method.includes('minimax_h3_upscale')) return true;
+        const requestId = uid('creative_h3_prompt');
+        const currentPrompt = String(action.prompt || '');
+        const targetPreset = action.preset;
+        const isCurrent = () => {
+            const live = creativeActionFromRef(ref, runtime.messages);
+            return live?.action === action && action.generation?._attempt_token === attemptToken
+                && action.prompt_reformat?.request_id === requestId;
+        };
+        const duration = creativeVideoDurationSpec(action, entry);
+        if (duration) {
+            action.execution_plan.parameter_overrides = {
+                ...action.execution_plan.parameter_overrides, scene_video_duration: duration.value
+            };
+        }
+        action.prompt_reformat = { state: 'running', target_preset: targetPreset, request_id: requestId, error: '' };
+        persistCreativeAction(true, {}, runtime);
+        try {
+            const version = readSelectedVlmVersion();
+            const response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'creative_prompt_reformat',
+                request_id: requestId,
+                conversation_id: runtime.conversationId,
+                creative_action: {
+                    type: action.type, preset: action.preset, prompt: action.prompt,
+                    task: action.task, execution_plan: action.execution_plan,
+                    media_refs: action.media_refs, task_request: action.task_request
+                },
+                input_media_assets: action.media_inputs || [],
+                preset_capabilities: creativePresetCapabilitiesPayload(),
+                version,
+                custom_api: readDescribeCustomApi(version),
+                vram_policy: state.vramPolicy,
+                kv_cache_type: state.kvCacheType,
+                n_ctx: currentVlmNctx(version),
+                load_mtp: !!state.mtpEnabled,
+                unload_after_chat: !!runtime.unloadAfterChat,
+                user_did: creativeUserContext().user_did,
+                lang: state.__lang,
+                __lang: state.__lang
+            });
+            if (!isCurrent()) return false;
+            const prompt = String(response?.prompt || '').trim();
+            if (!response?.ok || !response?.validation?.ok || !prompt) {
+                throw new Error(String(response?.details || response?.error
+                    || roleplayDictionaryText('H3 prompt adaptation failed. Generation has been stopped.')));
+            }
+            if (action.prompt !== currentPrompt || action.preset !== targetPreset) {
+                throw new Error(roleplayDictionaryText('The generation settings changed. Please submit again.'));
+            }
+            action.prompt = prompt;
+            action.prompt_target_preset = targetPreset;
+            action.prompt_reformat = { state: 'idle', target_preset: targetPreset, request_id: '', error: '' };
+            if (action.task_request) action.task_request = { ...action.task_request, instruction: prompt };
+            persistCreativeAction(true, {}, runtime);
+            return true;
+        } catch (error) {
+            if (!isCurrent()) return false;
+            const message = String(error?.message || error).slice(0, 2000);
+            action.prompt_reformat = { state: 'failed', target_preset: targetPreset, request_id: '', error: message };
+            action.generation.state = 'failed';
+            action.generation.error = message;
+            persistCreativeAction(true, {}, runtime);
+            return false;
+        }
+    }
+
     async function startCreativeGeneration(ref, runtime = currentConversationRuntime()) {
         const found = isCurrentConversationRuntime(runtime)
             ? syncCreativeActionFromDom(ref)
@@ -19015,7 +19150,20 @@
             const slot = slotSets[kind]?.has(String(binding.slot || '')) ? String(binding.slot) : '';
             if (source && slot) assetSources[slot] = source;
         });
+        const boundCounts = creativeMediaCounts(Object.values(assetSources));
+        if (
+            Object.keys(mediaCounts).some((kind) => boundCounts[kind] !== mediaCounts[kind])
+            || creativeRequiredMediaMessage(requiredMedia, boundCounts)
+        ) {
+            action.generation.state = 'needs_media';
+            action.generation.error = roleplayDictionaryText('An attached input is not bound to this Preset. Generation has been stopped.');
+            persistCreativeAction(true, {}, runtime);
+            return;
+        }
         const api = creativeCanvasApi();
+        if (!await prepareCreativeH3Prompt(ref, action, entry, runtime, attemptToken)) return;
+        const liveAfterPrompt = creativeActionFromRef(ref, runtime.messages);
+        if (liveAfterPrompt?.action !== action || action.generation?._attempt_token !== attemptToken) return;
         const presetNode = api?.buildPresetRunNode?.(entry, {
             id: `describe_vlm_chat_preset_${action.tool_call_id}`,
             prompt: action.prompt,
@@ -19112,6 +19260,16 @@
         const runtime = syncCurrentRuntimeFromState();
         const found = creativeActionFromRef(ref, runtime.messages);
         const runId = String(found?.action?.generation?.run_id || '');
+        const reformat = found?.action?.prompt_reformat;
+        if (!runId && reformat?.state === 'running' && String(reformat.request_id || '').startsWith('creative_h3_prompt')) {
+            const requestId = reformat.request_id;
+            found.action.generation.state = 'canceled';
+            found.action.generation._attempt_token = '';
+            found.action.prompt_reformat = { state: 'idle', target_preset: found.action.preset, request_id: '', error: '' };
+            persistCreativeAction(true, {}, runtime);
+            await notifyBackendChatCancel(runtime.conversationId, requestId);
+            return;
+        }
         if (!found || !runId) return;
         found.action.generation.state = 'cancelling';
         persistCreativeAction(true, {}, runtime);
@@ -19570,6 +19728,20 @@
     function containModalWheel(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
         if (!modal || modal.hidden) return;
+        const historyDialog = conversationHistoryViewer?.dialog;
+        if (historyDialog?.open && historyDialog.contains(evt.target)) {
+            if (!closestScrollableForWheel(evt.target, modal, evt, historyDialog)) {
+                evt.preventDefault();
+                const viewer = conversationHistoryViewer;
+                const list = historyDialog.querySelector('[data-history-list]');
+                if (viewer.ready && !viewer.edit && !viewer.saving && list?.contains(evt.target)) {
+                    if (evt.deltaY > 0 && viewer.windowEnd < viewer.pages - 1) renderConversationHistory(viewer, 1);
+                    else if (evt.deltaY < 0 && viewer.windowStart > 0) renderConversationHistory(viewer, -1);
+                }
+            }
+            evt.stopPropagation();
+            return;
+        }
         const characterLibraryModal = roleplayCharacterLibraryModal();
         if (characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target)) {
             const panel = characterLibraryModal.querySelector('.describe-vlm-chat-character-library-panel');
@@ -19596,6 +19768,12 @@
 
     function containModalTouchStart(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
+        if (conversationHistoryViewer?.dialog?.contains(evt.target)) {
+            const touch = evt.touches?.[0];
+            modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+            evt.stopPropagation();
+            return;
+        }
         const dialog = userSystemPromptTemplateDialog(modal);
         const characterLibraryModal = roleplayCharacterLibraryModal();
         const insideCharacterLibrary = characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target);
@@ -19607,6 +19785,16 @@
 
     function containModalTouchMove(evt) {
         const modal = document.getElementById('describe_vlm_chat_modal');
+        const historyDialog = conversationHistoryViewer?.dialog;
+        if (historyDialog?.contains(evt.target)) {
+            const touch = evt.touches?.[0];
+            const deltaX = modalTouchPoint && touch ? modalTouchPoint.x - touch.clientX : 0;
+            const deltaY = modalTouchPoint && touch ? modalTouchPoint.y - touch.clientY : 0;
+            modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+            if (!closestScrollableForWheel(evt.target, modal, { deltaX, deltaY }, historyDialog)) evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
         const dialog = userSystemPromptTemplateDialog(modal);
         const characterLibraryModal = roleplayCharacterLibraryModal();
         const insideCharacterLibrary = characterLibraryModal && !characterLibraryModal.hidden && characterLibraryModal.contains(evt.target);
@@ -20176,6 +20364,12 @@
             if (requestToken !== runtime.requestToken) return;
             if (event?.type === 'status') {
                 const phase = String(event.phase || '').trim();
+                if (phase === 'creative_h3_prompt_started' || phase === 'creative_h3_prompt_finished') {
+                    const stage = phase === 'creative_h3_prompt_started' ? phase : '';
+                    setConversationBusyStage(runtime, stage);
+                    setConversationStatus(runtime, busyControlLabel(stage));
+                    return;
+                }
                 if (phase === 'waiting_for_gpu') {
                     if (runtime.busyStage !== phase) runtime.gpuWaitResumeStage = runtime.busyStage || '';
                     setConversationBusyStage(runtime, phase);
@@ -20314,7 +20508,7 @@
             roleplay_state_changes: [],
             roleplay_resource_changes: [],
             actions: response?.ok && Array.isArray(response.limited_actions)
-                ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets, runtime)
+                ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets, runtime, images)
                 : [],
             agent_route: response?.agent_route && typeof response.agent_route === 'object'
                 ? response.agent_route

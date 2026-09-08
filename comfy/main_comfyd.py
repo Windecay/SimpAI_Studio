@@ -542,6 +542,22 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[Comfyd] llama.cpp runtime install step failed / llama.cpp 运行环境安装步骤失败: {e}")
 
+def _comfyd_compiler_args(argv):
+    import argparse
+
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    compiler = parser.add_mutually_exclusive_group()
+    compiler.add_argument("--enable-comfy-compiler", action="store_true")
+    compiler.add_argument("--disable-comfy-compiler", action="store_true")
+    options, remaining = parser.parse_known_args(argv)
+    if not options.enable_comfy_compiler:
+        remaining.append("--disable-comfy-compiler")
+    return remaining
+
+
+# Apply before Comfy parses flags so its CUDA graph settings stay consistent.
+sys.argv[1:] = _comfyd_compiler_args(sys.argv[1:])
+
 import comfy.options
 comfy.options.enable_args_parsing()
 

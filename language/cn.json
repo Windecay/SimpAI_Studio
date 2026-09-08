@@ -2121,6 +2121,7 @@
   "Text edited": "文字已编辑",
   "Undo text edit": "撤销文字修改",
   "No matching messages": "没有匹配的消息",
+  "End of conversation history": "已到全文末尾",
   "Discard unsaved text changes?": "放弃尚未保存的文字修改？",
   "Text changes have not been saved. Close anyway?": "文字修改尚未保存，刷新后可能丢失。仍然关闭？",
   "Wait for active tasks before editing history.": "请等待当前任务完成并暂停托管后，再编辑历史消息。",
@@ -2181,5 +2182,10 @@
   "Character": "角色",
   "Present": "在场",
   "Absent": "离场",
-  "User correction: current character states override the previous state assignment.": "用户已手动更正状态归属，以角色当前状态为准，不再沿用此前的状态分配。"
+  "User correction: current character states override the previous state assignment.": "用户已手动更正状态归属，以角色当前状态为准，不再沿用此前的状态分配。",
+  "An attached input could not be restored. Generation has been stopped.": "上传素材未能恢复，已停止生成。",
+  "An attached input is not bound to this Preset. Generation has been stopped.": "上传素材未能绑定到当前 Preset，已停止生成。",
+  "Preparing H3 prompt...": "正在整理 H3 提示词……",
+  "H3 prompt adaptation failed. Generation has been stopped.": "H3 提示词整理失败，已停止生成。",
+  "The generation settings changed. Please submit again.": "生成设置已更改，请重新提交。"
 }
