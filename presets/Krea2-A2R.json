@@ -109,7 +109,7 @@
     "default_aspect_ratio": "origin|Original",
     "default_image_number": 1,
     "default_overwrite_step": 8,
-    "default_prompt": "transform the image to realistic photograph",
+    "default_prompt": "transform the image to realistic photograph. Render the character as a believable real person of the same apparent age. Adapt the head size, head-to-body ratio, eye size and facial proportions to natural, age-appropriate human anatomy. Allow the face shape to change during realistic reconstruction. Keep youthful characters youthful without adding mature or aged facial traits. Preserve the hairstyle, hair color, expression, clothing, pose and overall composition.",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},
     "embeddings_downloads": {},
