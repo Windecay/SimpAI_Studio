@@ -232,6 +232,23 @@ def store_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def check_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate cached content without transferring image data to the browser."""
+    result: dict[str, Any] = {"ok": True}
+    for role in ("image", "mask"):
+        ref = payload.get(f"{role}_ref")
+        if not is_ref(ref):
+            continue
+        digest = ref[len(_REF_PREFIX):]
+        expected = payload.get(f"{role}_sha256")
+        if not _DIGEST_RE.fullmatch(digest) or (expected and expected != digest):
+            continue
+        if resolve_data_url(ref) is not None:
+            result[f"{role}_ref"] = ref
+            result[f"{role}_sha256"] = digest
+    return result
+
+
 def resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Sketch cache resolve payload must be an object.")

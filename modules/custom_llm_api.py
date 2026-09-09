@@ -3,6 +3,7 @@ import re
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -368,6 +369,39 @@ def _responses_content(content):
     return converted
 
 
+def apply_thinking_settings(payload, enabled, *, base_url="", api_format=None):
+    prepared = dict(payload or {})
+    if enabled is None:
+        return prepared
+    enabled = bool(enabled)
+    host = (urllib.parse.urlsplit(base_url).hostname or "").lower()
+    model = str(prepared.get("model") or "").lower()
+    is_responses = normalize_api_format(api_format) == OPENAI_RESPONSES
+    if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
+        prepared["reasoning"] = {"enabled": enabled}
+    elif (
+        host == "dashscope.aliyuncs.com"
+        or host.startswith("dashscope-") and host.endswith(".aliyuncs.com")
+        or host.endswith(".maas.aliyuncs.com")
+    ):
+        prepared["enable_thinking"] = enabled
+    elif host in {"api.deepseek.com", "api.z.ai", "open.bigmodel.cn"}:
+        prepared["thinking"] = {"type": "enabled" if enabled else "disabled"}
+    elif is_responses or host == "api.openai.com":
+        # Older reasoning models cannot turn reasoning off; use their lowest effort.
+        reasoning_model = re.match(r"^(?:o[134](?:-|$)|gpt-[5-9](?:[.-]|$))", model)
+        if host != "api.openai.com" or reasoning_model:
+            legacy = re.match(r"^(?:o[134](?:-|$)|gpt-5(?:-|$))", model)
+            effort = "medium" if enabled else ("low" if legacy else "none")
+            prepared["reasoning_effort"] = effort
+    else:
+        prepared["chat_template_kwargs"] = {
+            **(prepared.get("chat_template_kwargs") or {}),
+            "enable_thinking": enabled,
+        }
+    return prepared
+
+
 def chat_payload_to_responses(payload):
     payload = payload if isinstance(payload, dict) else {}
     instructions = []
@@ -399,6 +433,14 @@ def chat_payload_to_responses(payload):
     for key in ("temperature", "top_p"):
         if payload.get(key) is not None:
             result[key] = payload[key]
+    for key in ("reasoning", "enable_thinking", "thinking"):
+        if key in payload:
+            result[key] = payload[key]
+    if payload.get("reasoning_effort") is not None:
+        result["reasoning"] = {
+            **(result.get("reasoning") or {}),
+            "effort": payload["reasoning_effort"],
+        }
     return result
 
 

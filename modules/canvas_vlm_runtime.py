@@ -24,6 +24,7 @@ from enhanced.vlm import VLM, vlm
 from enhanced.llamacpp_vlm import llamacpp_vlm
 from modules.access_mode import user_can_download_models
 from modules.custom_llm_api import (
+    apply_thinking_settings,
     api_format_supported,
     custom_llm_url,
     extract_response_metadata,
@@ -711,7 +712,6 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
     supports_images = bool(params.get("custom_supports_images", True))
     enable_thinking = _runtime_enable_thinking(params)
-    disable_thinking = enable_thinking is False
     try:
         h3_visual_reference_max_side = max(0, min(int(params.get("h3_visual_reference_max_side") or 0), 4096))
     except Exception:
@@ -722,10 +722,9 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         return {"ok": False, "error": "Custom API settings are incomplete.", "details": "API Base URL and Model are required."}
 
     def prepare_custom_request(request):
-        prepared = dict(request or {})
-        if disable_thinking:
-            prepared["chat_template_kwargs"] = {"enable_thinking": False}
-        return prepared
+        return apply_thinking_settings(
+            request, enable_thinking, base_url=base_url, api_format=api_format,
+        )
 
     two_stage_intent_meta = None
     two_stage_requested = canvas_vlm_agent.two_stage_intent_enabled(payload, params, prompt)

@@ -4123,6 +4123,44 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+function advanceGenerationProgressSpinner() {
+    const angle = (Math.floor(Date.now() / 250) % 8) * 45;
+    const transform = `rotate(${angle}deg)`;
+    gradioApp().querySelectorAll('.loader-container.sai-generation-progress .loader').forEach((node) => {
+        if (elementIsVisible(node) && node.style.transform !== transform) {
+            node.style.transform = transform;
+        }
+    });
+}
+
+function initGenerationProgressSpinner() {
+    if (window.__simpleaiGenerationSpinnerBound) return;
+    window.__simpleaiGenerationSpinnerBound = true;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let timer = 0;
+    const stop = () => {
+        if (timer) window.clearInterval(timer);
+        timer = 0;
+    };
+    const start = () => {
+        stop();
+        if (document.hidden || reducedMotion.matches) return;
+        timer = window.setInterval(() => {
+            if (document.hidden || reducedMotion.matches) return;
+            const active = elementIsVisible(getGradioRootById('stop_button'))
+                || elementIsVisible(getGradioRootById('skip_button'));
+            if (active) advanceGenerationProgressSpinner();
+        }, 250);
+    };
+    document.addEventListener('visibilitychange', start);
+    reducedMotion.addEventListener('change', start);
+    window.addEventListener('pagehide', stop);
+    window.addEventListener('pageshow', start);
+    start();
+}
+
+onUiLoaded(initGenerationProgressSpinner);
+
 function initGeneratingStateRecovery() {
     const STUCK_UI_MS = 22000;
     const NO_PROGRESS_MS = 12000;

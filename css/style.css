@@ -93,6 +93,11 @@ progress {
   gap: 0;
 }
 
+.loader-container.sai-generation-progress .loader {
+  /* script.js advances the angle at 4 Hz; CSS steps still draw every frame. */
+  animation: none;
+}
+
 .loader-container.sai-generation-progress .sai-progress-track {
   position: relative;
   height: 14px;

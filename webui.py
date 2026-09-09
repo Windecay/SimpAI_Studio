@@ -10724,7 +10724,6 @@ with shared.gradio_root:
                         force: true,
                         change: true,
                         cache: true,
-                        cacheWaitMs: 1500,
                         refreshCache: true
                     });
                 }

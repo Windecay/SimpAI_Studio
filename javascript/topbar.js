@@ -2183,7 +2183,10 @@ function syncFinishedGalleryBrowserLocalizedControls() {
 function syncSimpleAIGalleryFrostCheckbox() {
     const root = document.getElementById("gallery_media_switch_row");
     if (!root) return;
-    root.classList.add("simpleai-gallery-switch-with-frost");
+    // Rewriting this class retriggers the body observer on every animation frame.
+    if (!root.classList.contains("simpleai-gallery-switch-with-frost")) {
+        root.classList.add("simpleai-gallery-switch-with-frost");
+    }
     const browserRight = document.querySelector("#gallery_browser_right") || document.querySelector("#finished_gallery_browser_panel [data-gallery-browser-right]");
     const attachTarget = browserRight || root;
     let control = document.querySelector("[data-simpleai-gallery-frost-control]");
@@ -2192,7 +2195,8 @@ function syncSimpleAIGalleryFrostCheckbox() {
         control.className = "simpleai-gallery-frost-control";
         control.setAttribute("data-simpleai-gallery-frost-control", "1");
     }
-    control.title = simpleAIGalleryFrostText("Blur gallery media by default", "默认模糊图库媒体");
+    const title = simpleAIGalleryFrostText("Blur gallery media by default", "默认模糊图库媒体");
+    if (control.title !== title) control.title = title;
     const labelText = simpleAIGalleryFrostText("Blur", "模糊");
     if (
         control.dataset.simpleaiGalleryFrostText !== labelText
@@ -2215,7 +2219,8 @@ function syncSimpleAIGalleryFrostCheckbox() {
         if (browserRight) browserRight.insertBefore(control, browserRight.firstChild);
         else root.appendChild(control);
     }
-    if (input) input.checked = isSimpleAIGalleryFrostEnabled();
+    const enabled = isSimpleAIGalleryFrostEnabled();
+    if (input && input.checked !== enabled) input.checked = enabled;
 }
 
 function setSimpleAIGalleryFrostEnabled(enabled, options) {

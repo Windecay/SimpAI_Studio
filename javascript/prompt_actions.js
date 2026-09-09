@@ -578,7 +578,6 @@
                 // unchanged high-resolution canvases through another input cycle.
                 flushOk = await window.SimpAISketch.flushAll({
                     cache: true,
-                    cacheWaitMs: 1500,
                     refreshCache: true
                 });
             }

@@ -748,14 +748,47 @@
         }
     }
 
-    async function postSketchCachePayload(payload) {
+    async function postSketchCachePayload(payload, reference = null) {
         if (!payload || (!isDataImageUrl(payload.image) && !isDataImageUrl(payload.mask))) return null;
+        let cached = {};
+        if (reference && (reference.image_ref || reference.mask_ref)) {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 10000);
+            try {
+                const response = await fetch(`${SKETCH_CACHE_ENDPOINT}/check`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(reference),
+                    signal: controller.signal
+                });
+                if (!response.ok) return null;
+                const result = await response.json();
+                if (!result?.ok) return null;
+                for (const role of ["image", "mask"]) {
+                    if (result[`${role}_ref`] === reference[`${role}_ref`]) {
+                        cached[`${role}_ref`] = result[`${role}_ref`];
+                        cached[`${role}_sha256`] = result[`${role}_sha256`];
+                    }
+                }
+                sketchPerformanceMark("sketch.cache.reference_checked", {
+                    image_hit: !!cached.image_ref,
+                    mask_hit: !!cached.mask_ref
+                });
+            } finally {
+                window.clearTimeout(timeout);
+            }
+        }
+        const image = !cached.image_ref && isDataImageUrl(payload.image) ? payload.image : "";
+        const mask = !cached.mask_ref && isDataImageUrl(payload.mask) ? payload.mask : "";
+        if (!image && !mask) return { ok: true, ...cached };
         const startedAt = performance.now();
         let responseStatus = 0;
         let succeeded = false;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 120000);
         sketchPerformanceMark("sketch.cache.request_start", {
-            has_image: isDataImageUrl(payload.image),
-            has_mask: isDataImageUrl(payload.mask),
+            has_image: !!image,
+            has_mask: !!mask,
             width: Number(payload.width) || 0,
             height: Number(payload.height) || 0
         });
@@ -764,18 +797,20 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    image: isDataImageUrl(payload.image) ? payload.image : "",
-                    mask: isDataImageUrl(payload.mask) ? payload.mask : "",
+                    image,
+                    mask,
                     width: payload.width,
                     height: payload.height
-                })
+                }),
+                signal: controller.signal
             });
             responseStatus = Number(response.status) || 0;
             if (!response.ok) return null;
             const result = await response.json();
-            succeeded = !!(result && result.ok);
-            return succeeded ? result : null;
+            succeeded = !!(result && result.ok && (!image || result.image_ref) && (!mask || result.mask_ref));
+            return succeeded ? { ...cached, ...result } : null;
         } finally {
+            window.clearTimeout(timeout);
             sketchPerformanceMark("sketch.cache.request_finish", {
                 duration_ms: Math.round((performance.now() - startedAt) * 10) / 10,
                 status: responseStatus,
@@ -2053,7 +2088,7 @@
         let payloadSequence = 0;
         let payloadCacheSnapshot = null;
         let payloadCacheTask = null;
-        let payloadCacheTaskKey = "";
+        let payloadCacheTaskKey = null;
         let payloadLoadFailed = false;
         let payloadLoadTask = null;
 
@@ -2100,21 +2135,6 @@
                 width: payload?.width || 0,
                 height: payload?.height || 0
             };
-        }
-
-        function payloadCacheKey(payload) {
-            const image = String(payload?.image || "");
-            const mask = String(payload?.mask || "");
-            return [
-                payload?.width || 0,
-                payload?.height || 0,
-                image.length,
-                image.slice(0, 80),
-                image.slice(-80),
-                mask.length,
-                mask.slice(0, 80),
-                mask.slice(-80)
-            ].join("|");
         }
 
         function sameSketchPayload(left, right) {
@@ -2165,65 +2185,51 @@
             return reference;
         }
 
-        function waitForPayloadCache(task, maxWaitMs) {
-            const waitMs = Number(maxWaitMs);
-            if (!task || !Number.isFinite(waitMs) || waitMs <= 0) return task;
-            const startedAt = performance.now();
-            return new Promise((resolve) => {
-                let settled = false;
-                const finish = (result, timedOut) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    if (timedOut) {
-                        sketchPerformanceMark("sketch.cache.wait_timeout", {
-                            max_wait_ms: waitMs,
-                            elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10
-                        });
-                    }
-                    resolve(result);
-                };
-                const timer = setTimeout(() => finish(false, true), waitMs);
-                Promise.resolve(task).then(
-                    (result) => finish(result, false),
-                    () => finish(false, false)
-                );
-            });
-        }
-
         async function ensureCachedPayload(payload, options = {}) {
             if (!payload || destroyed) return false;
-            const existingText = options.refresh === true ? "" : cachedReferenceText(payload);
-            if (existingText) {
+            const existingText = cachedReferenceText(payload);
+            if (existingText && options.refresh !== true) {
                 writeInputPayload(existingText, payload, options.write ? options : { change: false });
                 return true;
             }
-            const key = payloadCacheKey(payload);
-            if (payloadCacheTask && payloadCacheTaskKey === key) {
-                return waitForPayloadCache(payloadCacheTask, options.maxWaitMs);
+            if (payloadCacheTask && sameSketchPayload(payloadCacheTaskKey, payload)) {
+                return payloadCacheTask;
             }
+            const key = cloneSketchPayload(payload);
+            const reference = {};
+            for (const role of ["image", "mask"]) {
+                if (payloadCacheSnapshot?.payload[role] === payload[role]) {
+                    reference[`${role}_ref`] = payloadCacheSnapshot.reference[`${role}_ref`];
+                    reference[`${role}_sha256`] = payloadCacheSnapshot.reference[`${role}_sha256`];
+                }
+            }
+            const useInlinePayload = () => {
+                if (destroyed || !sameSketchPayload(lastPayload, payload)) return false;
+                // Cache transport is optional; the generation API accepts the original payload.
+                writeInputPayload(JSON.stringify(payload), payload, { change: false });
+                sketchPerformanceMark("sketch.cache.inline_fallback", { reason: "cache_unavailable" });
+                return true;
+            };
             payloadCacheTaskKey = key;
-            payloadCacheTask = postSketchCachePayload(payload)
+            payloadCacheTask = postSketchCachePayload(payload, reference)
                 .then((result) => {
-                    if (destroyed) return false;
+                    if (destroyed || !sameSketchPayload(lastPayload, payload)) return false;
                     const reference = rememberCachedReference(payload, result);
-                    if (!reference) return false;
-                    if (sameSketchPayload(lastPayload, payload)) {
-                        writeInputPayload(JSON.stringify(reference), payload, { change: false });
-                    }
+                    if (!reference) return useInlinePayload();
+                    writeInputPayload(JSON.stringify(reference), payload, { change: false });
                     return true;
                 })
                 .catch((err) => {
                     console.warn("[SimpAI Sketch] Payload cache failed", err);
-                    return false;
+                    return useInlinePayload();
                 })
                 .finally(() => {
                     if (payloadCacheTaskKey === key) {
                         payloadCacheTask = null;
-                        payloadCacheTaskKey = "";
+                        payloadCacheTaskKey = null;
                     }
                 });
-            return waitForPayloadCache(payloadCacheTask, options.maxWaitMs);
+            return payloadCacheTask;
         }
 
         function serialize(options = {}) {
@@ -2267,7 +2273,6 @@
                 if (options.cache && lastPayload) {
                     return ensureCachedPayload(lastPayload, {
                         write: true,
-                        maxWaitMs: options.cacheWaitMs,
                         refresh: options.refreshCache === true
                     });
                 }
@@ -2277,7 +2282,6 @@
             if (options.cache && lastPayload) {
                 return ensureCachedPayload(lastPayload, {
                     write: true,
-                    maxWaitMs: options.cacheWaitMs,
                     refresh: options.refreshCache === true
                 });
             }
@@ -2391,10 +2395,12 @@
                 width,
                 height
             };
-            payloadCacheSnapshot = cachedReference ? {
-                payload: cloneSketchPayload(lastPayload),
-                reference: cachedReference
-            } : null;
+            if (cachedReference) {
+                payloadCacheSnapshot = {
+                    payload: cloneSketchPayload(lastPayload),
+                    reference: cachedReference
+                };
+            }
             payloadLoadFailed = false;
             valueDirty = false;
             empty.style.display = "none";
@@ -2429,7 +2435,6 @@
                 sourceImageDataUrl = dataUrl;
                 undoStack.length = 0;
                 redoStack.length = 0;
-                payloadCacheSnapshot = null;
                 payloadLoadFailed = false;
                 empty.style.display = "none";
                 updateStageDisplay();
@@ -3030,7 +3035,7 @@
             payloadCacheSnapshot = null;
             payloadLoadFailed = false;
             payloadCacheTask = null;
-            payloadCacheTaskKey = "";
+            payloadCacheTaskKey = null;
             lastExternalValue = "";
             hasImage = false;
             proxyImage.removeAttribute("src");
