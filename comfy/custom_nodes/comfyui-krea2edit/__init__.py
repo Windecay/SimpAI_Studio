@@ -293,6 +293,15 @@ class Krea2EditModelPatch:
                   f"'vae' and 'source_image' connected (the pixel path). Falling back to the "
                   f"latent crop path.", flush=True)
 
+        def prepare_sources(executor, noise, *args, **kwargs):
+            # Encode before prepare_sampling loads the DiT. Loading a VAE from
+            # inside DiT.forward can evict the active model and remove its LoRAs.
+            Hh, Ww = noise.shape[-2:]
+            _fit_encode_image(source_image, vae, Hh, Ww, px_cache, ("a", Hh, Ww), fit_mode)
+            if source_image_b is not None:
+                _fit_encode_image(source_image_b, vae, Hh, Ww, px_cache, ("b", Hh, Ww), fit_mode)
+            return executor(noise, *args, **kwargs)
+
         def wrapper(executor, x, timesteps, context, *wargs, **kwargs):
             # ComfyUI signature drift (2026-07-19, commit c9602625 adds ref_latents):
             #   old: execute(x, t, ctx, attention_mask, transformer_options)
@@ -309,13 +318,11 @@ class Krea2EditModelPatch:
             dm = executor.class_obj  # the SingleStreamDiT instance
             src = src_samples
             if vae is not None and source_image is not None:
-                if not px_cache:
-                    print(f"[krea2edit] pixel path ACTIVE (fit_mode={fit_mode})", flush=True)
                 xx = _to_4d(x)
                 Hh, Ww = xx.shape[-2], xx.shape[-1]
-                lat = mm.process_latent_in(_fit_encode_image(source_image, vae, Hh, Ww, px_cache, ("a", Hh, Ww), fit_mode))
+                lat = mm.process_latent_in(px_cache[("a", Hh, Ww, fit_mode)])
                 if source_image_b is not None:
-                    lat = [lat, mm.process_latent_in(_fit_encode_image(source_image_b, vae, Hh, Ww, px_cache, ("b", Hh, Ww), fit_mode))]
+                    lat = [lat, mm.process_latent_in(px_cache[("b", Hh, Ww, fit_mode)])]
                 src = lat
             v = krea2_edit_forward(dm, x, timesteps, context, src, transformer_options,
                                    ref_boost=ref_boost, ref_boost_a=ref_boost_a,
@@ -329,6 +336,10 @@ class Krea2EditModelPatch:
         comfy.patcher_extension.add_wrapper_with_key(
             comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, "krea2_edit", wrapper, to
         )
+        if vae is not None and source_image is not None:
+            comfy.patcher_extension.add_wrapper_with_key(
+                comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, "krea2_edit_sources", prepare_sources, to
+            )
         return (m,)
 
 

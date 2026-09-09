@@ -1,0 +1,909 @@
+{
+  "1": {
+    "inputs": {
+      "seed": 0
+    },
+    "class_type": "SeedInput",
+    "_meta": {
+      "title": "SeedInput"
+    }
+  },
+  "2": {
+    "inputs": {
+      "prompt": "transform the image to realistic photograph",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 1024,
+      "height": 1024,
+      "cfg": 1,
+      "steps": 8,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 1,
+      "var_number4": 0,
+      "var_number5": 1,
+      "var_number6": 1,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "beta57",
+      "video_duration": 0
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "welcome.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "i2i_inpaint_image"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "pixel_space"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_model"
+    }
+  },
+  "6": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "14": {
+    "inputs": {
+      "samples": [
+        "28",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "15": {
+    "inputs": {
+      "images": [
+        "194",
+        0
+      ]
+    },
+    "class_type": "SaveImageWebsocket",
+    "_meta": {
+      "title": "result_image1"
+    }
+  },
+  "28": {
+    "inputs": {
+      "anything": [
+        "215",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "Clean VRAM Used"
+    }
+  },
+  "31": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_2"
+    }
+  },
+  "32": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_3"
+    }
+  },
+  "33": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 1,
+      "model": [
+        "177",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_1"
+    }
+  },
+  "34": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_4"
+    }
+  },
+  "43": {
+    "inputs": {
+      "image": "welcome.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "i2i_ip_image1"
+    }
+  },
+  "44": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "45": {
+    "inputs": {
+      "mask": [
+        "44",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "90": {
+    "inputs": {
+      "unet_name": "krea2_turbo_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "base_model"
+    }
+  },
+  "104": {
+    "inputs": {
+      "image": "welcome.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "i2i_inpaint_mask"
+    }
+  },
+  "131": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "193",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "163": {
+    "inputs": {
+      "method": "mkl",
+      "strength": [
+        "164",
+        0
+      ],
+      "multithread": true,
+      "image_ref": [
+        "3",
+        0
+      ],
+      "image_target": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "ColorMatch",
+    "_meta": {
+      "title": "Color Match"
+    }
+  },
+  "164": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "var_number4"
+    }
+  },
+  "165": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "172": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "173": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "i2i_model_type"
+    }
+  },
+  "174": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "175": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "173",
+        0
+      ],
+      "b": [
+        "174",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "176": {
+    "inputs": {
+      "unet_name": "placeholder.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "base_model_gguf"
+    }
+  },
+  "177": {
+    "inputs": {
+      "boolean": [
+        "175",
+        0
+      ],
+      "on_true": [
+        "90",
+        0
+      ],
+      "on_false": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "179": {
+    "inputs": {},
+    "class_type": "noneNode",
+    "_meta": {
+      "title": "None"
+    }
+  },
+  "180": {
+    "inputs": {
+      "boolean": [
+        "185",
+        0
+      ],
+      "on_true": [
+        "179",
+        0
+      ],
+      "on_false": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "181": {
+    "inputs": {
+      "boolean": [
+        "45",
+        0
+      ],
+      "on_true": [
+        "179",
+        0
+      ],
+      "on_false": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "184": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "185": {
+    "inputs": {
+      "mask": [
+        "184",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "188": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "191",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_9"
+    }
+  },
+  "189": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "192",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_6"
+    }
+  },
+  "190": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "189",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_7"
+    }
+  },
+  "191": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "190",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_8"
+    }
+  },
+  "192": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_5"
+    }
+  },
+  "193": {
+    "inputs": {
+      "lora_name": "placeholder.safetensors",
+      "strength_model": 0,
+      "model": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "lora_10"
+    }
+  },
+  "194": {
+    "inputs": {
+      "width": [
+        "229",
+        0
+      ],
+      "height": [
+        "230",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "stretch",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu",
+      "image": [
+        "163",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "195": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "i2i_clip_type"
+    }
+  },
+  "196": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "197": {
+    "inputs": {
+      "boolean": [
+        "199",
+        0
+      ],
+      "on_true": [
+        "6",
+        0
+      ],
+      "on_false": [
+        "198",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "198": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "krea2"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "199": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "195",
+        0
+      ],
+      "b": [
+        "196",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "202": {
+    "inputs": {
+      "prompt": [
+        "2",
+        0
+      ],
+      "mode": "2_image",
+      "batch_size": 1,
+      "clip": [
+        "197",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "image1": [
+        "180",
+        0
+      ],
+      "image2": [
+        "181",
+        0
+      ],
+      "width": [
+        "2",
+        6
+      ],
+      "height": [
+        "2",
+        7
+      ]
+    },
+    "class_type": "PainterQwenImageEditPlus",
+    "_meta": {
+      "title": "Krea2 A2R Reference Conditioning"
+    }
+  },
+  "205": {
+    "inputs": {
+      "kv_cache": true,
+      "model": [
+        "165",
+        0
+      ]
+    },
+    "class_type": "SimpAIKrea2OstrisEditModelPatch",
+    "_meta": {
+      "title": "SimpAI Krea2 Ostris Edit Model Patch"
+    }
+  },
+  "215": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "1",
+        0
+      ],
+      "steps": [
+        "2",
+        9
+      ],
+      "cfg": [
+        "2",
+        8
+      ],
+      "sampler_name": [
+        "2",
+        30
+      ],
+      "scheduler": [
+        "2",
+        31
+      ],
+      "start_at_step": 0,
+      "end_at_step": [
+        "2",
+        9
+      ],
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "232",
+        0
+      ],
+      "positive": [
+        "226",
+        0
+      ],
+      "negative": [
+        "227",
+        0
+      ],
+      "latent_image": [
+        "228",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "220": {
+    "inputs": {
+      "image": [
+        "180",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "223": {
+    "inputs": {
+      "noise_mask": true,
+      "positive": [
+        "202",
+        0
+      ],
+      "negative": [
+        "202",
+        1
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "pixels": [
+        "180",
+        0
+      ],
+      "mask": [
+        "233",
+        0
+      ]
+    },
+    "class_type": "InpaintModelConditioning",
+    "_meta": {
+      "title": "InpaintModelConditioning"
+    }
+  },
+  "224": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "104",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "225": {
+    "inputs": {
+      "mask": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "226": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "202",
+        0
+      ],
+      "on_false": [
+        "223",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "227": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "202",
+        1
+      ],
+      "on_false": [
+        "223",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "228": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "202",
+        2
+      ],
+      "on_false": [
+        "223",
+        2
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "229": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "2",
+        6
+      ],
+      "on_false": [
+        "220",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "230": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "2",
+        7
+      ],
+      "on_false": [
+        "220",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "232": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "205",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "Differential Diffusion"
+    }
+  },
+  "233": {
+    "inputs": {
+      "expand": 20,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 5,
+      "lerp_alpha": 1,
+      "decay_factor": 1,
+      "fill_holes": false,
+      "mask": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "GrowMaskWithBlur",
+    "_meta": {
+      "title": "Grow Mask With Blur"
+    }
+  }
+}

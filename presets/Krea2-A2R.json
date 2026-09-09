@@ -1,14 +1,18 @@
 {
-    "supported_tasks": ["image_edit", "multi_image_edit", "image_object_removal", "image_object_transfer"],
+    "supported_tasks": ["image_anime_to_real"],
     "default_engine": {
         "backend_engine": "Comfy",
-        "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+        "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection", "negative_prompt"],
         "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
         "available_aspect_ratios_selection": "Flux",
         "scene_frontend": {
             "version": "m1.1",
-            "theme": ["Krea2 Image Edit"],
-            "theme_title": "Krea2 Image Edit: Upload Canvas, Optional Input Image [Optional Mask]",
+            "theme": ["Krea2 A2R"],
+            "theme_title": "Krea2 A2R Anime-to-Real [Optional reference and mask]",
+            "director_capability": {
+                "min_images": 1,
+                "max_images": 2
+            },
             "disvisible": [
                 "scene_additional_prompt",
                 "scene_additional_prompt_2",
@@ -19,6 +23,9 @@
                 "scene_input_image4",
                 "scene_var_number",
                 "scene_var_number2",
+                "scene_var_number3",
+                "scene_var_number5",
+                "scene_var_number6",
                 "scene_var_number7",
                 "scene_var_number8",
                 "scene_var_number9",
@@ -32,31 +39,19 @@
                 "sam3_mask_video"
             ],
             "task_method": {
-                "Krea2 Image Edit": "krea2_edit_cn"
+                "Krea2 A2R": "krea2_a2r_cn"
             },
-            "var_number3_title": "Krea 2 Conditioning Control",
-            "var_number3_min": 0.3,
-            "var_number3_max": 10.0,
-            "var_number3": {
-                "Krea2 Image Edit": 1.0
+            "prompt": {
+                "Krea2 A2R": "transform the image to realistic photograph. Render the character as a believable real person of the same apparent age. Adapt the head size, head-to-body ratio, eye size and facial proportions to natural, age-appropriate human anatomy. Allow the face shape to change during realistic reconstruction. Keep youthful characters youthful without adding mature or aged facial traits. Preserve the hairstyle, hair color, expression, clothing, pose and overall composition."
+            },
+            "agent_prompt": {
+                "Krea2 A2R": "Write one anime-to-real photograph editing instruction beginning with 'transform the image to realistic photograph'. Preserve the visible character's age, gender presentation, facial features, hair, expression, pose, clothing, composition, background and lighting unless the user explicitly requests a change. Describe only visible details. Do not add people, objects, clothing changes or exposed anatomy. When a second reference is supplied for identity transfer, include 'with the character looking exactly like the one in Figure 2.' Keep the required trigger phrase in English and write any additional instructions in the user's language. Return only the final prompt."
             },
             "var_number4_title": "Match original colors",
             "var_number4_min": 0,
-            "var_number4_max": 1.5,
+            "var_number4_max": 1.0,
             "var_number4": {
-                "Krea2 Image Edit": 1.0
-            },
-            "var_number5_title": "Reference fidelity boost",
-            "var_number5_min": 0.0,
-            "var_number5_max": 10.0,
-            "var_number5": {
-                "Krea2 Image Edit": 1.0
-            },
-            "var_number6_title": "First reference fidelity boost",
-            "var_number6_min": 0.0,
-            "var_number6_max": 10.0,
-            "var_number6": {
-                "Krea2 Image Edit": 1.0
+                "Krea2 A2R": 0.5
             },
             "resolution_control": {
                 "mode": "image_keep_input_area",
@@ -85,12 +80,12 @@
     "default_clip_model": "qwen3vl_4b_fp8_scaled.safetensors",
     "default_loras": [
         [
-            "krea2_identity_edit_v1_2.safetensors",
+            "Krea2_Anything2RealCharacters-V3.safetensors",
             1.0
         ],
         [
-            "krea2filterbypass3.safetensors",
-            0.3
+            "None",
+            1.0
         ],
         [
             "None",
@@ -108,13 +103,13 @@
     "default_cfg_scale": 1.0,
     "default_sample_sharpness": 2.0,
     "default_sampler": "euler",
-    "default_scheduler": "simple",
+    "default_scheduler": "beta57",
     "default_performance": "Speed",
     "default_styles": [],
     "default_aspect_ratio": "origin|Original",
     "default_image_number": 1,
-    "default_overwrite_step": 10,
-    "default_prompt": "",
+    "default_overwrite_step": 8,
+    "default_prompt": "transform the image to realistic photograph",
     "default_prompt_negative": "",
     "checkpoint_downloads": {},
     "embeddings_downloads": {},
@@ -122,8 +117,7 @@
     "vae_downloads": {},
     "model_list": [
         "diffusion_models,krea2_turbo_int8_convrot.safetensors,13492686496,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/diffusion_models/krea2_turbo_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_int8_convrot.safetensors",
-        "loras,krea2_identity_edit_v1_2.safetensors,1828256432,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/krea2_identity_edit_v1_2.safetensors,https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_2.safetensors",
-        "loras,krea2filterbypass3.safetensors,160,0,https://hf-mirror.com/uzumix/krea2filterbypass3.safetensors/resolve/main/krea2filterbypass3.safetensors",
+        "loras,Krea2_Anything2RealCharacters-V3.safetensors,228587720,0,https://modelscope.cn/models/zhouwenbin1994/Krea2_Anything2RealCharacters-V3/resolve/20260823031930/Krea2_Anything2RealCharacters-V3.safetensors,https://huggingface.co/WarmBloodAban/Krea2_Anything2RealCharacters/resolve/main/Krea2_Anything2RealCharacters-V3.safetensors",
         "text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
         "vae,qwen_image_vae.safetensors,253806246,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/vae/qwen_image_vae.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors"
     ]

@@ -270,6 +270,7 @@ PRESET_STORE_ORDER = [
     "Z-imageT",
     "Krea2-Turbo",
     "Krea2-ImageEdit",
+    "Krea2-A2R",
     "Z-TTP",
     "Flux2-Klein",
     "Flux2-KleinEdit",

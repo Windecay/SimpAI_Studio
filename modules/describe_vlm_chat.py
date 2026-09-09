@@ -153,7 +153,7 @@ GENERATION_TASK_ALIASES = {
     "va2v": "video_audio_to_video",
 }
 PRESET_FAMILY_ALIASES = {
-    "krea": ("Krea2-Turbo", "Krea2-ImageEdit"),
+    "krea": ("Krea2-Turbo", "Krea2-ImageEdit", "Krea2-A2R"),
     "h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
     "minimax-h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
     "minimax h3": ("MiniMax-H3(T2V)", "MiniMax-H3(I2V)", "MiniMax-H3(R2V)", "MiniMax-H3(R2C)", "MiniMax-H3(R2I)", "MiniMax-H3(Upscale)"),
@@ -199,7 +199,8 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "For MiniMax-H3(R2V), preserve the attached source order in media_refs. Refer to inputs in the prompt with independently numbered tags such as <Picture 1>, <Video 1>, and <Audio 1>; use only tags listed in the attached media manifest. A reference video's soundtrack remains paired with that video. "
     "MiniMax-H3(R2I) is the still-image text/reference route: use text_to_image when no image ref is supplied, or image_edit/multi_image_edit with one to nine ordered image refs; preserve referenced identity and never add video or audio refs. "
     "For image_face_swap, when two attached inputs are available, include exactly two media refs in this order: the target/base image first, then the source face-identity image. Never invent missing refs; the application will request them. The application prefers the automatic QwenFaceSwap route when its models are ready; it does not require a painted mask. "
-    "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo and image-input editing to Krea2-ImageEdit; do not promise the wrong family member. "
+    "When the user explicitly requests Krea, describe the choice as the Krea family in the reply. The application maps text-to-image to Krea2-Turbo, general image-input editing to Krea2-ImageEdit, and image_anime_to_real to Krea2-A2R; do not promise the wrong family member. "
+    "Krea2-A2R prompts must begin with 'transform the image to realistic photograph'. Keep this trained trigger in English and write any additional instructions in the user's language. "
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
     "Flux2 presets use a multilingual Qwen text encoder. Presets whose task_method ends with `_cn`, or whose text encoder is Qwen, must preserve the user's request language instead of applying the legacy FLUX.1/T5 English-only rule. "
     "Use image_detail_enhance for automatic face, hand, eye, or local detail repair through a Classic Preset Enhance workflow, and include enhance_targets using only face, hand, and eye. "
@@ -383,7 +384,7 @@ SimpAI UI guide skill:
   - For automatic detail repair of hands, faces, or eyes, recommend Enhance / 增强修图. Explain that it can optionally upscale once, then run three region-recognition refinement passes; by default the regions are detected and processed in order: face, hands, eyes. It can be chained after text-to-image generation or used directly with an uploaded image.
   - For background removal / cutout, recommend Removebg.
   - For relighting or matching foreground/background lighting, recommend Relight or Flux2-AngleLight.
-  - For anime-to-real or stylized-to-real character conversion, recommend Flux2-A2R.
+  - For anime-to-real or stylized-to-real character conversion, recommend Flux2-A2R or Krea2-A2R. Krea2-A2R uses the required trigger 'transform the image to realistic photograph'; preserve it when rewriting prompts.
   - For style transfer, recommend StyleTransfer+ with its 110 prompt-style presets. Do not recommend the older SDXL style-transfer preset route.
   - For erasing unwanted areas or cleanup, recommend Eraser or QwenEdit+ with a mask.
   - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展), recommend OneKey-Outpaint first. It uses the Flux1.Fill model for general-purpose image boundary extension across subjects, and is often used to change composition, change aspect ratio, or add missing surrounding elements.
@@ -4091,7 +4092,7 @@ GENERATION_PRESET_PRIORITIES = {
     "image_face_swap": ("QwenFaceSwap", "Swapface"),
     "image_pose_transfer": ("Flux2-KleinPose", "QwenPose"),
     "image_pose_extraction": ("OneKeyPose",),
-    "image_anime_to_real": ("Flux2-A2R", "QwenA2R"),
+    "image_anime_to_real": ("Flux2-A2R", "Krea2-A2R", "QwenA2R"),
     "image_view_synthesis": ("QwenMultiAngle", "OneKeyKontext"),
     "image_depth_estimation": ("Depthstatue", "OneKeyKontext"),
     "image_expression_transfer": ("LivePortrait Exp",),
