@@ -8,6 +8,11 @@
         return context && typeof context.getRunQueuePanel === 'function' ? context.getRunQueuePanel() : null;
     }
 
+    function getProject(context) {
+        const project = context && typeof context.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : {};
+    }
+
     function stateOf(value) {
         return String(value || '').trim().toLowerCase();
     }
@@ -21,7 +26,7 @@
     }
 
     function getRuns(context) {
-        const project = context.project || {};
+        const project = getProject(context);
         return (Array.isArray(project.runs) ? project.runs : [])
             .slice()
             .sort((a, b) => {
@@ -33,7 +38,7 @@
     }
 
     function getRunResultNode(run, context) {
-        const project = context.project || {};
+        const project = getProject(context);
         return context.getNode?.(run?.placeholder_node_id)
             || (Array.isArray(project.nodes) ? project.nodes.find(node => node.type === 'result' && node.producer?.run_id === run?.id) : null)
             || null;
@@ -76,7 +81,7 @@
     }
 
     function schedulerSteps(context) {
-        const scheduler = context.project?.scheduler || {};
+        const scheduler = getProject(context).scheduler || {};
         return Array.isArray(scheduler.steps) ? scheduler.steps : [];
     }
 
@@ -95,7 +100,7 @@
     }
 
     function schedulerSummary(context) {
-        const scheduler = context.project?.scheduler || {};
+        const scheduler = getProject(context).scheduler || {};
         const steps = schedulerSteps(context);
         const state = stateOf(scheduler.state || (steps.length ? 'planned' : 'idle'));
         const activeIndex = Number(scheduler.index || 0);
@@ -250,7 +255,7 @@
     }
 
     function findRun(context, runId) {
-        const project = context.project || {};
+        const project = getProject(context);
         return (Array.isArray(project.runs) ? project.runs : []).find(item => item.id === runId) || null;
     }
 
@@ -297,4 +302,3 @@
         handleAction
     };
 })();
-

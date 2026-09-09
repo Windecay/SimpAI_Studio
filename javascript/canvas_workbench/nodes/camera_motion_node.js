@@ -36,8 +36,37 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createCameraMotionNodeContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            getProjectId: delegate(context, 'getProjectId'),
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            getNode: delegate(context, 'getNode'),
+            isNodeIgnored: delegate(context, 'isNodeIgnored'),
+            isNodeLocked: delegate(context, 'isNodeLocked'),
+            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
+            mutate: delegate(context, 'mutate'),
+            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
+            pushHistory: delegate(context, 'pushHistory'),
+            pushHistoryBatch: delegate(context, 'pushHistoryBatch'),
+            readAssetInfo: delegate(context, 'readAssetInfo'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            scheduleSave: delegate(context, 'scheduleSave'),
+            setSelectedNode: delegate(context, 'setSelectedNode'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
     function getProject(context) {
-        return context?.project && typeof context.project === 'object' ? context.project : { id: 'default', nodes: [], edges: [] };
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
     }
 
     function getNode(id, context) {
@@ -218,7 +247,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         node.status = { state: 'running', message: t('Generating camera reference video...', '正在生成运镜参考视频…') };
         call(context, 'mutate', null);
         const response = await API.generateCameraMotionReference({
-            project_id: getProject(context).id || context?.projectId || 'default',
+            project_id: getProject(context).id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
             node_id: node.id,
             params: Object.assign(defaultParams(), node.params || {})
         });
@@ -255,6 +284,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     window.SimpAICanvasWorkbenchCameraMotionNode = {
+        createCameraMotionNodeContext,
         clearNode,
         createNode,
         defaultParams,

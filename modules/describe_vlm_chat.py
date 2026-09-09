@@ -370,7 +370,7 @@ SimpAI UI guide skill:
   - Upscale (Fast 2x) is a quick model upscale with lower quality and low resource cost. Upscale (1.5x) and Upscale (2x) encode into latent space for inference upscaling and expose redraw-strength control.
 - Editing model boundaries:
   - Flux2-Klein is a fast, resource-light, 4-step distilled model with slightly lower precision. If it does not follow the instruction once, suggest trying again or using a more stable editor.
-  - Krea2-Turbo is a Krea 2 Turbo text-to-image preset for realistic/general images from natural-language prompts. It is not an instruction-editing or reference-image route.
+  - Krea2-Turbo is the Krea 2 Turbo AIO preset: text-to-image, single-image Depth or OpenPose control, image variation, tiled upscale, AnyPaint inpaint/outpaint, and original-model detail enhancement. Control images cannot be combined with variation/upscale or inpaint/outpaint. Style transfer and identity reference are not supported here; instruction editing still uses Krea2-ImageEdit, and anime-to-real uses Krea2-A2R.
   - Bernini-ImageEdit is the Bernini-R still-image editing route for instruction edits, style conversion, replacement, inpainting, and color matching on an input image.
   - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger reference consistency.
   - Nun/Nunchaku presets are 4-bit quantized variants that trade precision for speed and lower resource use. Use fp4 on RTX 50-series or newer GPUs; use int4 on older GPUs.

@@ -5,6 +5,11 @@
         return context && typeof context.getRunHistoryPanel === 'function' ? context.getRunHistoryPanel() : null;
     }
 
+    function getProject(context) {
+        const project = context && typeof context.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : {};
+    }
+
     function getSelectedId(context) {
         return context && typeof context.getRunHistorySelectedId === 'function' ? context.getRunHistorySelectedId() : null;
     }
@@ -16,14 +21,14 @@
     }
 
     function getSortedRuns(context) {
-        const project = context.project || {};
+        const project = getProject(context);
         return (Array.isArray(project.runs) ? project.runs : [])
             .slice()
             .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
     }
 
     function getRunResultNode(run, context) {
-        const project = context.project || {};
+        const project = getProject(context);
         return context.getNode?.(run?.placeholder_node_id)
             || (Array.isArray(project.nodes) ? project.nodes.find(node => node.type === 'result' && node.producer?.run_id === run?.id) : null)
             || null;
@@ -196,7 +201,7 @@
             return;
         }
         const action = button.getAttribute('data-run-history-action');
-        const project = context.project || {};
+        const project = getProject(context);
         const run = (Array.isArray(project.runs) ? project.runs : []).find(item => item.id === getSelectedId(context));
         if (action === 'close') {
             closePanel(context);

@@ -80,6 +80,34 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createQwenTtsNodeContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            getQwenTtsAudioInputLabel: delegate(context, 'getQwenTtsAudioInputLabel'),
+            qwenTtsStylePresets: typeof context.getQwenTtsStylePresets === 'function'
+                ? context.getQwenTtsStylePresets()
+                : context.qwenTtsStylePresets,
+            mutate: delegate(context, 'mutate'),
+            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
+            pushHistory: delegate(context, 'pushHistory'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            setSelectedNode: delegate(context, 'setSelectedNode'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
+    function getProject(context) {
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : { nodes: [] };
+    }
+
     function modeFromNode(node) {
         return node?.qwen_tts_mode || TYPE_MODES[node?.type] || 'voice_design';
     }
@@ -438,7 +466,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             }
         };
         call(context, 'placeNodeAvoidingOverlap', null, node, world);
-        const project = context?.project && typeof context.project === 'object' ? context.project : { nodes: [] };
+        const project = getProject(context);
         if (!Array.isArray(project.nodes)) project.nodes = [];
         project.nodes.push(node);
         call(context, 'setSelectedNode', null, node.id);
@@ -448,6 +476,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     window.SimpAICanvasWorkbenchQwenTtsNode = {
+        createQwenTtsNodeContext,
         MODE_SPECS,
         MODE_TYPES,
         TYPE_MODES,

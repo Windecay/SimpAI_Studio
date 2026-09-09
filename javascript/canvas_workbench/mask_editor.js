@@ -12,6 +12,26 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createMaskEditorContext(source) {
+        const context = source || {};
+        return {
+            applyImageFileToNode: delegate(context, 'applyImageFileToNode'),
+            createThumbnailDataUrl: delegate(context, 'createThumbnailDataUrl'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
+            getNodeImageSrc: delegate(context, 'getNodeImageSrc'),
+            isNodeLocked: delegate(context, 'isNodeLocked'),
+            mutate: delegate(context, 'mutate'),
+            pushHistory: delegate(context, 'pushHistory'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
     async function replaceNodeImage(node, context) {
         if (!node || !['image', 'result'].includes(node.type)) return;
         if (call(context, 'isNodeLocked', false, node)) {
@@ -184,6 +204,7 @@
     }
 
     window.SimpAICanvasWorkbenchMaskEditor = {
+        createMaskEditorContext,
         openMaskEditor,
         replaceNodeImage
     };

@@ -14,8 +14,47 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createSam3VideoMaskNodeContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            getProjectId: delegate(context, 'getProjectId'),
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            canvasOverlayHost: delegate(context, 'canvasOverlayHost'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
+            getNode: delegate(context, 'getNode'),
+            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
+            isNodeIgnored: delegate(context, 'isNodeIgnored'),
+            isNodeLocked: delegate(context, 'isNodeLocked'),
+            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
+            mutate: delegate(context, 'mutate'),
+            notConnectedText: delegate(context, 'notConnectedText'),
+            onEditorClosed: delegate(context, 'onEditorClosed'),
+            onMaskReady: delegate(context, 'onMaskReady'),
+            onMaskState: delegate(context, 'onMaskState'),
+            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
+            portHintText: delegate(context, 'portHintText'),
+            pushHistory: delegate(context, 'pushHistory'),
+            pushHistoryBatch: delegate(context, 'pushHistoryBatch'),
+            readAssetInfo: delegate(context, 'readAssetInfo'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            scheduleSave: delegate(context, 'scheduleSave'),
+            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
+            setSelectedNode: delegate(context, 'setSelectedNode'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
     function getProject(context) {
-        return context?.project && typeof context.project === 'object' ? context.project : { id: 'default', nodes: [], edges: [] };
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
     }
 
     function getNode(id, context) {
@@ -170,7 +209,9 @@
     }
 
     function projectId(context) {
-        return getProject(context).id || context?.projectId || 'default';
+        const project = getProject(context);
+        const currentId = typeof context?.getProjectId === 'function' ? context.getProjectId() : '';
+        return project.id || currentId || 'default';
     }
 
     function setSelectedNode(id, context) {
@@ -836,6 +877,7 @@ ${running
     }
 
     window.SimpAICanvasWorkbenchSam3VideoMaskNode = {
+        createSam3VideoMaskNodeContext,
         createNode,
         defaultParams,
         inputSourceForNode,

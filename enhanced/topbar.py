@@ -4894,6 +4894,8 @@ _AIO_STYLE_TRANSFER_TASK_METHODS = {
 
 
 def get_allowed_ip_types(engine, task_method=None):
+    if task_method == 'krea2_aio_cn':
+        return [modules.flags.cn_cpds, modules.flags.cn_pose]
     ip_list = list(modules.flags.ip_list if engine in ['Fooocus', 'SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image'] else modules.flags.ip_list[:-1])
     if engine in ['Wan', 'Qwen', 'Z-image'] or task_method == 'flux2_aio_cn':
         ip_list = ip_list[1:3] + ip_list[-1:]

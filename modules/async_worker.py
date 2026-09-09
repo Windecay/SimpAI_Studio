@@ -420,7 +420,11 @@ class AsyncTask:
 
         self.cn_tasks = {x: [] for x in ip_list}
         self.cn_task_num = 0
-        for cn_item in args.pop():
+        cn_items = args.pop()
+        if self.params_backend.get('task_method') == 'krea2_aio_cn':
+            # Other presets retain their hidden upload slots when switching to Krea2.
+            cn_items = cn_items[:1]
+        for cn_item in cn_items:
             (cn_img, cn_stop, cn_weight, cn_type) = cn_item
             if cn_img is not None:
                 self.cn_tasks[cn_type].append([cn_img, cn_stop, cn_weight])
@@ -2953,7 +2957,7 @@ def worker():
                                 async_task.params_backend.pop('base_model_gguf', None)
                             else:
                                 async_task.params_backend['base_model_gguf'] = async_task.base_model_name
-                    if async_task.invert_mask_checkbox:
+                    if async_task.invert_mask_checkbox and async_task.task_method != 'krea2_aio_cn':
                         async_task.params_backend['i2i_inpaint_is_invert_mask'] = True
                     if 'cn' in goals:
                         async_task.params_backend['i2i_inpaint_is_mix_ip'] = True

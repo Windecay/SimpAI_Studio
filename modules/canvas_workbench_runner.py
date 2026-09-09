@@ -1360,7 +1360,9 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     # Resolve allowed IP control types matching main UI logic in topbar.update_after_identity_sub
     _engine = str(runtime.get("backend_engine") or "").lower()
     _tm_lower = task_method.lower() if task_method else ""
-    if _engine in ('wan', 'qwen', 'z-image', 'zimage'):
+    if _tm_lower == 'krea2_aio_cn':
+        _default_ip_type = 'Depth'
+    elif _engine in ('wan', 'qwen', 'z-image', 'zimage'):
         _default_ip_type = 'PyraCanny'
     elif _tm_lower in ('il_v_pre_aio', 'chenkin_noob_aio'):
         _default_ip_type = 'ImagePrompt'
@@ -1406,6 +1408,8 @@ def build_classic_task_args_preview(payload, materialized_inputs, state_params):
     # Build ip_ctrls for IP/T2I mode
     # NOTE: Don't load numpy arrays here - use paths for preview, load in build_canvas_async_task_args(load_images=True)
     ip_count = int(preset_node.get("classic_ip_count") or ip_params.get("count") or 1)
+    if _tm_lower == 'krea2_aio_cn':
+        ip_count = 1
     ip_ctrls = []
     # For T2I mode (no input images), input_image_checkbox should be False
     has_input_images = classic_mode != "t2i" and bool(ip_count) and any(

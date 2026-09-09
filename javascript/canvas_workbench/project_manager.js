@@ -9,16 +9,47 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function getProject(context) {
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : {};
+    }
+
     function projectId(context) {
         if (typeof context?.getCurrentProjectId === 'function') {
             const currentId = context.getCurrentProjectId();
             if (currentId) return currentId;
         }
-        return context?.project?.id || context?.projectId || 'default';
+        const project = getProject(context);
+        const currentId = typeof context?.getProjectId === 'function' ? context.getProjectId() : '';
+        return project.id || currentId || 'default';
     }
 
     function formatBytes(context, bytes) {
         return call(context, 'formatBytes', '', bytes);
+    }
+
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createProjectManagerContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            getProjectId: delegate(context, 'getProjectId'),
+            closeContextMenu: delegate(context, 'closeContextMenu'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            deleteProject: delegate(context, 'deleteProject'),
+            formatBytes: delegate(context, 'formatBytes'),
+            getCurrentProjectId: delegate(context, 'getCurrentProjectId'),
+            handleProjectDeleted: delegate(context, 'handleProjectDeleted'),
+            listProjects: delegate(context, 'listProjects'),
+            openProjectJsonPicker: delegate(context, 'openProjectJsonPicker'),
+            saveCurrentProject: delegate(context, 'saveCurrentProject'),
+            showToast: delegate(context, 'showToast'),
+            switchProjectById: delegate(context, 'switchProjectById')
+        };
     }
 
     async function openPanel(context) {
@@ -199,6 +230,7 @@ ${response && !response.ok ? `<div class="sai-inspector-note">${escapeHtml(respo
     }
 
     window.SimpAICanvasWorkbenchProjectManager = {
+        createProjectManagerContext,
         openPanel
     };
 })();

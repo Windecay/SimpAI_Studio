@@ -10,6 +10,32 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createMediaViewerContext(source) {
+        const context = source || {};
+        return {
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            assetMediaKind: delegate(context, 'assetMediaKind'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
+            getNode: delegate(context, 'getNode'),
+            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
+            readAssetInfo: delegate(context, 'readAssetInfo'),
+            readImageInfo: delegate(context, 'readImageInfo'),
+            refreshCompareDom: delegate(context, 'refreshCompareDom'),
+            renderCompareControls: delegate(context, 'renderCompareControls'),
+            renderCompareStageHtml: delegate(context, 'renderCompareStageHtml'),
+            safeAssetDisplaySrc: delegate(context, 'safeAssetDisplaySrc'),
+            showToast: delegate(context, 'showToast'),
+            startComparePositionDrag: delegate(context, 'startComparePositionDrag'),
+            updateCompareParam: delegate(context, 'updateCompareParam')
+        };
+    }
+
     function decodeAssetPathText(value) {
         let text = String(value || '').trim();
         if (!text) return '';
@@ -28,14 +54,43 @@
             .some(value => decodeAssetPathText(value).includes('/canvas_workbench/assets/'));
     }
 
+    function specialNodeImageAsset(node) {
+        if (node?.type === 'pose_studio') return node.pose_studio?.output_asset || null;
+        if (node?.type === 'gaussian_studio') {
+            return node.gaussian_studio?.render_asset || node.gaussian_studio?.output_asset || null;
+        }
+        if (node?.type === 'liveportrait_expression') return node.liveportrait_expression?.output_asset || null;
+        return null;
+    }
+
     function getNodeImageSrc(node) {
         const asset = node?.asset || {};
         if (typeof window.SimpAICanvasWorkbenchAssetNodes?.assetDisplaySrc === 'function') {
             const src = window.SimpAICanvasWorkbenchAssetNodes.assetDisplaySrc(asset);
             if (src) return src;
         }
-        if (hasProjectAssetReference(asset)) return asset.data_url || '';
-        return asset.data_url || asset.preview_url || asset.thumb || '';
+        if (hasProjectAssetReference(asset)) {
+            if (asset.data_url) return asset.data_url;
+        } else {
+            const directSrc = asset.data_url || asset.preview_url || asset.thumb || '';
+            if (directSrc) return directSrc;
+        }
+        const fallback = specialNodeImageAsset(node);
+        if (!fallback) return asset.data_url || asset.preview_url || asset.thumb || '';
+        if (typeof window.SimpAICanvasWorkbenchAssetNodes?.assetDisplaySrc === 'function') {
+            const src = window.SimpAICanvasWorkbenchAssetNodes.assetDisplaySrc(fallback);
+            if (src) return src;
+        }
+        return fallback.data_url || fallback.preview_url || fallback.thumb || '';
+    }
+
+    function nodeHasViewableImage(node, context) {
+        const asset = node?.type === 'result'
+            ? call(context, 'getSelectedResultAsset', null, node)
+            : node?.asset;
+        if (!asset) return false;
+        const fallback = asset.thumb || asset.preview_url || asset.data_url || '';
+        return !!call(context, 'safeAssetDisplaySrc', '', asset, fallback);
     }
 
     function openImageViewer(node, context) {
@@ -245,7 +300,9 @@
     }
 
     window.SimpAICanvasWorkbenchMediaViewers = {
+        createMediaViewerContext,
         getNodeImageSrc,
+        nodeHasViewableImage,
         openAssetViewer,
         openCompareFullscreen,
         openImageViewer,

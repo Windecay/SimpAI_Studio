@@ -11,6 +11,44 @@
         return typeof ctx?.[name] === 'function' ? ctx[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createCompareNodeContext(source) {
+        const context = source || {};
+        return {
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            escapeHtml: delegate(context, 'escapeHtml'),
+            getCompareSourceAsset: delegate(context, 'getCompareSourceAsset'),
+        getCompareSourceNode: delegate(context, 'getCompareSourceNode'),
+        readAssetSize: delegate(context, 'readAssetSize'),
+        renderIconHtml: delegate(context, 'renderIconHtml'),
+        renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+        uid: delegate(context, 'uid')
+    };
+}
+
+    function createNode(world, options, context) {
+        const opts = options || {};
+        const position = world || { x: 0, y: 0 };
+        const size = defaultNodeSize('compare', context) || { w: 560, h: 520 };
+        return {
+            id: call(context, 'uid', 'compare-node', 'compare'),
+            type: 'compare',
+            x: position.x,
+            y: position.y,
+            w: size.w,
+            h: size.h,
+            title: opts.title || 'Image Compare',
+            inputs: { a: null, b: null },
+            params: { position: 50, mode: 'fit' },
+            source: { kind: 'manual_compare' }
+        };
+    }
+
     function getSourceNode(node, slot, context) {
         return call(context, 'getCompareSourceNode', null, node, slot);
     }
@@ -229,6 +267,8 @@ ${renderControls(node)}
     }
 
     window.SimpAICanvasWorkbenchCompareNode = {
+        createCompareNodeContext,
+        createNode,
         sourceSignature,
         imageGeometry,
         viewportSize,

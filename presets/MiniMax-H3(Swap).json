@@ -103,6 +103,7 @@
       "var_number8_max": 60,
       "var_number8": {"MiniMax H3 Auto Face Swap": 0},
       "aspect_ratio": [
+        "origin|Original",
         "640*640",
         "864*480",
         "480*864",
@@ -123,6 +124,7 @@
         "frontend_preprocess": true,
         "preprocess_target": "video",
         "preprocess_fit": "proportional",
+        "preprocess_duration_limit": false,
         "preserve_audio": true
       },
       "image_preprocessor_method": [["-normalization"]],
@@ -152,7 +154,7 @@
   "default_scheduler": "beta57",
   "default_performance": "Speed",
   "default_styles": [],
-  "default_aspect_ratio": "640*640",
+  "default_aspect_ratio": "origin|Original",
   "default_image_number": 1,
   "default_overwrite_step": 8,
   "default_prompt": "subject_definitions:\n<Subject 1> (<Picture 1>): The replacement facial identity. Use the visible face shape, facial proportions, eyes, eyebrows, nose, lips, skin tone, age cues, and distinctive facial features from <Picture 1>; do not transfer its background, pose, expression, framing, lighting, hair, body, or clothing.\n\nsummary:\n[video editing + reference generation + audio reuse] Replace only the automatically detected source face with <Subject 1> from <Picture 1> while preserving the source performance, all content outside the face mask, and the complete original soundtrack.\n\nretention_analysis:\n<Picture 1>: attribute_transfer - transfer only the facial identity and visible facial traits that define <Subject 1>.\nSource video outside the automatic face mask: fully_preserved - preserve hair, ears outside the mask, body, clothing, accessories, other people, background, composition, camera movement, lighting, shadows, reflections, contact, and occlusion.\nSource soundtrack: fully_copy - preserve all dialogue, ambience, music, and sound effects with their original timing.\n\ndetailed_description:\nPreserve the source video's visual style, shot order, timing, and continuity. [Shot 1] Throughout the full source duration, replace only the automatically detected face with <Subject 1> from <Picture 1>. Keep the source expression timing, gaze direction, blinking, lip movement, mouth shape, head pose, scene-relative scale, motion path, contact, and occlusion so the new identity follows the original facial performance naturally. Keep every pixel relationship outside the face mask unchanged and do not alter hair, body, clothing, accessories, other people, background, or scene content. Camera: Preserve the source camera movement, framing, focus behavior, amplitude, and speed. Dialogue and visible text: Preserve all existing dialogue and visible text; add none. Synchronized sound: Preserve the complete source soundtrack and lip synchronization without alteration.\n\noverall_soundscape:\nFully preserve the source video's original dialogue, ambience, music, and sound effects in exact synchronization.\n\nnon_diegetic_music:\nPreserve the source video's existing non-diegetic music; if none exists, N/A.",

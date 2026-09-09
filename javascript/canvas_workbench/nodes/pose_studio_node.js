@@ -16,8 +16,43 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createPoseStudioNodeContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            getProjectId: delegate(context, 'getProjectId'),
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
+            getNode: delegate(context, 'getNode'),
+            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
+            isPoseStudioImageSource: delegate(context, 'isPoseStudioImageSource'),
+            isNodeIgnored: delegate(context, 'isNodeIgnored'),
+            isNodeLocked: delegate(context, 'isNodeLocked'),
+            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
+            mutate: delegate(context, 'mutate'),
+            notConnectedText: delegate(context, 'notConnectedText'),
+            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
+            portHintText: delegate(context, 'portHintText'),
+            pushHistory: delegate(context, 'pushHistory'),
+            readAssetInfo: delegate(context, 'readAssetInfo'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            scheduleSave: delegate(context, 'scheduleSave'),
+            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
+            setSelectedNode: delegate(context, 'setSelectedNode'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
     function getProject(context) {
-        return context?.project && typeof context.project === 'object' ? context.project : { id: 'default', nodes: [], edges: [] };
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
     }
 
     function getNode(id, context) {
@@ -256,7 +291,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return runtimeEditor.open({
             title: node.title || 'Pose Studio',
             context: 'canvas',
-            projectId: getProject(context).id || context?.projectId || 'default',
+            projectId: getProject(context).id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
             node,
             referenceSrc,
             referenceAsset,
@@ -302,6 +337,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     window.SimpAICanvasWorkbenchPoseStudioNode = {
+        createPoseStudioNodeContext,
         createNode,
         inputSourceForNode,
         isImageSource,

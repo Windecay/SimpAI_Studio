@@ -54,6 +54,48 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createTimelineNodeContext(source) {
+        const context = source || {};
+        return {
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            assetMediaKind: delegate(context, 'assetMediaKind'),
+            getNode: delegate(context, 'getNode'),
+            getTimelineSourceAsset: delegate(context, 'getTimelineSourceAsset'),
+            readAssetSize: delegate(context, 'readAssetSize'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            uid: delegate(context, 'uid'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            cloneRunValue: delegate(context, 'cloneRunValue')
+        };
+    }
+
+    function createNode(world, options, context) {
+        const opts = options || {};
+        const position = world || { x: 0, y: 0 };
+        const size = call(context, 'defaultNodeSize', { w: 760, h: 520 }, 'timeline') || { w: 760, h: 520 };
+        const clone = typeof context?.cloneRunValue === 'function'
+            ? context.cloneRunValue
+            : (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
+        return {
+            id: call(context, 'uid', 'timeline-node', 'timeline'),
+            type: 'timeline',
+            x: position.x,
+            y: position.y,
+            w: size.w,
+            h: size.h,
+            title: opts.title || 'Media Timeline',
+            params: { width: 1280, height: 720, aspect: '16:9', fps: 30, duration: 10, background: '#000000', zoom: 1 },
+            tracks: clone(DEFAULT_TRACKS, []).map(track => Object.assign({}, track)),
+            clips: [],
+            source: { kind: 'manual_timeline' }
+        };
+    }
+
     function formatDuration(seconds) {
         if (typeof ASSETS.formatDuration === 'function') return ASSETS.formatDuration(seconds);
         const value = Number(seconds || 0);
@@ -136,6 +178,38 @@
         };
     }
 
+    function clipLayerGeometry(width, height, assetWidth, assetHeight, clip) {
+        const canvasWidth = Math.max(16, Math.round(Number(width || DEFAULT_PARAMS.width)));
+        const canvasHeight = Math.max(16, Math.round(Number(height || DEFAULT_PARAMS.height)));
+        const canvasAspect = Math.max(0.01, canvasWidth / Math.max(1, canvasHeight));
+        const mediaAspect = Number(assetWidth || 0) && Number(assetHeight || 0)
+            ? clamp(Number(assetWidth) / Math.max(1, Number(assetHeight)), 0.05, 20)
+            : canvasAspect;
+        let fitW = mediaAspect >= canvasAspect ? canvasWidth : canvasHeight * mediaAspect;
+        let fitH = mediaAspect >= canvasAspect ? canvasWidth / mediaAspect : canvasHeight;
+        fitW = Math.min(canvasWidth, timelineRoundPixel(fitW, canvasWidth));
+        fitH = Math.min(canvasHeight, timelineRoundPixel(fitH, canvasHeight));
+        const fitX = Math.round((canvasWidth - fitW) / 2);
+        const fitY = Math.round((canvasHeight - fitH) / 2);
+        const scale = Math.max(0.05, Number(clip?.scale || 1));
+        const scaledW = timelineRoundPixel(fitW * scale, fitW);
+        const scaledH = timelineRoundPixel(fitH * scale, fitH);
+        const centerX = Math.round(canvasWidth / 2 + (Number(clip?.x || 0) / 100) * canvasWidth);
+        const centerY = Math.round(canvasHeight / 2 + (Number(clip?.y || 0) / 100) * canvasHeight);
+        const left = Math.round(centerX - scaledW / 2);
+        const top = Math.round(centerY - scaledH / 2);
+        return {
+            fitX,
+            fitY,
+            fitW: scaledW,
+            fitH: scaledH,
+            left,
+            top,
+            centerX: left + scaledW / 2,
+            centerY: top + scaledH / 2
+        };
+    }
+
     function sourceAsset(source, context) {
         if (!source) return null;
         return call(context, 'getTimelineSourceAsset', null, source) || source.asset || null;
@@ -150,6 +224,66 @@
 
     function defaultTrackId(kind) {
         return kind === 'audio' ? 'a1' : 'v1';
+    }
+
+    function clipEnd(clip) {
+        return Number(clip?.start || 0) + Number(clip?.duration || 0);
+    }
+
+    function trackCompatible(clip, trackId, node) {
+        const track = (node?.tracks || []).find(item => item.id === trackId);
+        if (!track) return false;
+        if (clip.kind === 'audio') return track.type === 'audio';
+        return track.type !== 'audio';
+    }
+
+    function clipAvailableDuration(node, clip, context) {
+        if (!node || !clip || clip.kind === 'image') return Infinity;
+        const source = call(context, 'getNode', null, clip.source_node_id);
+        const asset = sourceAsset(source, context) || {};
+        const range = call(context, 'getMediaEditRange', null, asset) || mediaEditRange(asset);
+        const rangeEnd = Number(range.end || asset.duration || 0);
+        const clipIn = Math.max(Number(range.start || 0), Number(clip.in || 0));
+        const available = Math.max(0, rangeEnd - clipIn);
+        return available > 0 ? available : Infinity;
+    }
+
+    function enforceClipMediaBounds(node, clip, context) {
+        if (!node || !clip || clip.kind === 'image') return false;
+        const maxDuration = clipAvailableDuration(node, clip, context);
+        if (!Number.isFinite(maxDuration)) return false;
+        const clampValue = typeof context?.clamp === 'function' ? context.clamp : clamp;
+        const nextDuration = clampValue(Number(clip.duration || 0.05), 0.05, Math.max(0.05, maxDuration));
+        const changed = Math.abs(nextDuration - Number(clip.duration || 0)) > 0.001;
+        if (changed) clip.duration = nextDuration;
+        clip.out = Math.max(Number(clip.in || 0), Number(clip.in || 0) + Number(clip.duration || 0));
+        return changed;
+    }
+
+    function snapTime(node, value, options, context) {
+        const opts = options || {};
+        if (opts.disabled || !node) return value;
+        const clampValue = typeof context?.clamp === 'function' ? context.clamp : clamp;
+        const duration = Math.max(1, Number(node.params?.duration || 1));
+        const threshold = Math.max(0.03, Number(opts.threshold || 0.12));
+        const points = [0, duration, Number(node.params?.playhead || 0)];
+        (node.clips || []).forEach((clip) => {
+            if (!clip || clip.id === opts.excludeClipId) return;
+            if (opts.trackId && clip.track_id !== opts.trackId) return;
+            points.push(Number(clip.start || 0));
+            points.push(clipEnd(clip));
+        });
+        let best = value;
+        let bestDistance = threshold;
+        points.forEach((point) => {
+            if (!Number.isFinite(point)) return;
+            const distance = Math.abs(point - value);
+            if (distance <= bestDistance) {
+                best = point;
+                bestDistance = distance;
+            }
+        });
+        return clampValue(best, 0, duration);
     }
 
     function normalizeParams(params) {
@@ -226,6 +360,82 @@
             next[key] = clipKeyframeValueAt(clip, key, playhead);
         });
         return next;
+    }
+
+    function selectedVisualClip(node) {
+        if (!node || node.type !== 'timeline') return null;
+        const clip = (node.clips || []).find(item => item.id === node.params?.selected_clip_id);
+        return clip && clip.kind !== 'audio' ? clip : null;
+    }
+
+    function transformKeyNames() {
+        return KEYFRAME_PROPS.slice();
+    }
+
+    function isTransformKey(key) {
+        return transformKeyNames().includes(key);
+    }
+
+    function keyframeTime(node) {
+        return clamp(Number(node?.params?.playhead || 0), 0, Math.max(1, Number(node?.params?.duration || 1)));
+    }
+
+    function keyframeIndexAt(clip, time) {
+        const frames = Array.isArray(clip?.keyframes) ? clip.keyframes : [];
+        return frames.findIndex(frame => Math.abs(Number(frame.time || 0) - Number(time || 0)) < KEYFRAME_TIME_EPSILON);
+    }
+
+    function normalizedTransformValue(key, value) {
+        if (key === 'scale') return Math.max(0.05, Number(value || 1));
+        if (key === 'opacity') return clamp(Number(value ?? 1), 0, 1);
+        return Number(value || 0);
+    }
+
+    function keyframeValuesFromClip(clip) {
+        return {
+            x: Number(clip?.x || 0),
+            y: Number(clip?.y || 0),
+            scale: Math.max(0.05, Number(clip?.scale || 1)),
+            rotate: Number(clip?.rotate || 0),
+            opacity: clamp(Number(clip?.opacity ?? 1), 0, 1)
+        };
+    }
+
+    function keyframeValuesAtPlayhead(node, clip, overrides) {
+        const playhead = keyframeTime(node);
+        const effectiveClip = clipAtTime(clip, playhead) || clip;
+        const values = keyframeValuesFromClip(effectiveClip);
+        Object.entries(overrides || {}).forEach(([key, value]) => {
+            if (isTransformKey(key)) values[key] = normalizedTransformValue(key, value);
+        });
+        return values;
+    }
+
+    function syncClipTransformKeyframeAtPlayhead(node, clip, keys, options, context) {
+        if (!node || !clip || clip.kind === 'audio') return false;
+        const transformKeys = (Array.isArray(keys) ? keys : [keys]).filter(isTransformKey);
+        if (!transformKeys.length) return false;
+        const hasKeyframes = Array.isArray(clip.keyframes) && clip.keyframes.length > 0;
+        if (!hasKeyframes && !options?.forceCreate) return false;
+        const playhead = keyframeTime(node);
+        const frames = Array.isArray(clip.keyframes) ? clip.keyframes.slice() : [];
+        const index = keyframeIndexAt(clip, playhead);
+        const values = index >= 0 ? Object.assign({}, frames[index].values || {}) : {};
+        transformKeys.forEach((key) => {
+            values[key] = normalizedTransformValue(key, clip[key]);
+        });
+        const frame = {
+            id: index >= 0
+                ? frames[index].id
+                : (typeof context?.uid === 'function' ? context.uid('kf') : `kf_${frames.length + 1}`),
+            time: Math.round(playhead * 1000) / 1000,
+            values,
+            easing: index >= 0 ? (frames[index].easing || 'linear') : 'linear'
+        };
+        if (index >= 0) frames[index] = frame;
+        else frames.push(frame);
+        clip.keyframes = frames.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+        return true;
     }
 
     function clipKeyframeAtPlayhead(clip, playhead) {
@@ -900,6 +1110,8 @@ ${renderRuler(node)}
     }
 
     window.SimpAICanvasWorkbenchMediaTimeline = {
+        createTimelineNodeContext,
+        createNode,
         DEFAULT_PARAMS,
         DEFAULT_TRACKS,
         SIZE_PRESETS,
@@ -925,6 +1137,21 @@ ${renderRuler(node)}
         normalizeKeyframes,
         clipAtTime,
         effectiveClipIn,
-        KEYFRAME_PROPS
+        KEYFRAME_PROPS,
+        selectedVisualClip,
+        transformKeyNames,
+        isTransformKey,
+        keyframeTime,
+        keyframeIndexAt,
+        normalizedTransformValue,
+        keyframeValuesFromClip,
+        keyframeValuesAtPlayhead,
+        syncClipTransformKeyframeAtPlayhead,
+        clipLayerGeometry,
+        clipEnd,
+        trackCompatible,
+        clipAvailableDuration,
+        enforceClipMediaBounds,
+        snapTime
     };
 })();

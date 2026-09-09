@@ -7340,9 +7340,11 @@ with shared.gradio_root:
 
                                 return styles + type_updates + stop_updates + weight_updates
 
+                            ip_image_columns = []
                             for image_count in range(modules.config.default_controlnet_image_count):
                                 image_count += 1
-                                with gr.Column(elem_classes=['ip_image_cell'], min_width=0):
+                                with gr.Column(elem_classes=['ip_image_cell'], min_width=0) as ip_image_column:
+                                    ip_image_columns.append(ip_image_column)
                                     ip_image_elem_id = f'ip_image_{image_count}'
                                     ip_image_elem_ids.append(ip_image_elem_id)
                                     ip_image = gr.Image(label='Image', sources=['upload'], type='numpy', image_mode='RGBA', show_label=False, height=300, value=modules.config.default_ip_images[image_count], elem_id=ip_image_elem_id, buttons=["download", "fullscreen"])
@@ -12535,6 +12537,23 @@ with shared.gradio_root:
             sanitized.append(dropdown_update(choices=allowed, value=next_value))
         return sanitized
 
+    def _refresh_krea2_aio_inputs(state_params):
+        is_krea2 = isinstance(state_params, dict) and state_params.get('task_method') == 'krea2_aio_cn'
+        updates = [gr_update(visible=not is_krea2 or index == 0) for index in range(len(ip_image_columns))]
+        updates += [gr_update(visible=not is_krea2, **({'value': False} if is_krea2 else {})) for _ in range(3)]
+        return updates
+
+    state_topbar.change(
+        _refresh_krea2_aio_inputs, inputs=state_topbar,
+        outputs=ip_image_columns + [mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, ip_auto_detect],
+        queue=False, show_progress=False,
+    )
+    shared.gradio_root.load(
+        _refresh_krea2_aio_inputs, inputs=state_topbar,
+        outputs=ip_image_columns + [mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, ip_auto_detect],
+        queue=False, show_progress=False,
+    )
+
     def _refresh_identity_admin_surface(state_params):
         try:
             user = state_params.get("user", None) if isinstance(state_params, dict) else None
@@ -13644,6 +13663,11 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_node_render_controller.js"),
         webpath("javascript/canvas_workbench/canvas_node_renderer.js"),
         webpath("javascript/canvas_workbench/canvas_asset_node_renderer.js"),
+        webpath("javascript/canvas_workbench/canvas_node_layout.js"),
+        webpath("javascript/canvas_workbench/canvas_viewport_render_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_node_spatial_index.js"),
+        webpath("javascript/canvas_workbench/canvas_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_result_preview.js"),
         webpath("javascript/canvas_workbench/canvas_lifecycle_controller.js"),
         webpath("javascript/canvas_workbench/canvas_action_controller.js"),
         webpath("javascript/canvas_workbench/canvas_click_controller.js"),
@@ -13653,6 +13677,11 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_agent_text_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_text_nodes.js"),
         webpath("javascript/canvas_workbench/canvas_text_node_renderer.js"),
+        webpath("javascript/canvas_workbench/canvas_text_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_aux_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_mask_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_result_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_vlm_node.js"),
         webpath("javascript/canvas_workbench/canvas_vlm_node_view.js"),
         webpath("javascript/canvas_workbench/canvas_node_param_controller.js"),

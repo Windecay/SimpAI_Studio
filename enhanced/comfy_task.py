@@ -18,6 +18,7 @@ AIO_UOV_PREVIEW_NODE_CLASS_TYPES = {
     "SimpAIAIOUOVFlux2",
     "SimpAIAIOUOVAnima",
     "SimpAIAIOUOVChenkin",
+    "SimpAIAIOUOVKrea2",
 }
 
 
@@ -39,6 +40,7 @@ def _register_runtime_preview_nodes():
         "SimpAIAIOInpaintWan",
         "SimpAIAIOInpaintZImage",
         "SimpAIAIOInpaintAnima",
+        "SimpAIAIOInpaintKrea2",
     })
     # Dynamic UltimateSDUpscale events use the outer AIO node as display_node.
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update(AIO_UOV_PREVIEW_NODE_CLASS_TYPES)

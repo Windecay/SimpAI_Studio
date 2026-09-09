@@ -100,6 +100,27 @@ _GRADIO_CONNECTION_RELOAD_PATCH_CACHE: dict[tuple[str, int, int], str] = {}
 _GRADIO_JS_PATCH_CACHE: dict[tuple[object, ...], str] = {}
 _GRADIO_JS_PATCH_READER_CACHE: dict[str, Callable[[Path], str | None]] | None = None
 _BLOCK_GET_CONFIG_COMPAT_SENTINEL = "_simpai_gradio6_block_get_config_compat"
+_HEARTBEAT_ORIGINAL = "this.heartbeat_event = this.stream(heartbeat_url);"
+_HEARTBEAT_CLOSE_ORIGINAL = "    this.closed = true;\n    close_stream(this.stream_status, this.abort_controller);"
+
+
+def _asset_needs_heartbeat_patch(text: str) -> bool:
+    return _HEARTBEAT_ORIGINAL in text and _HEARTBEAT_CLOSE_ORIGINAL in text
+
+
+def _patch_heartbeat_asset(text: str) -> str:
+    if not _asset_needs_heartbeat_patch(text):
+        return text
+    helper = Path(__file__).with_name("heartbeat_transport.js").read_text(encoding="utf-8")
+    return helper + "\n" + text.replace(
+        _HEARTBEAT_ORIGINAL,
+        "this.heartbeat_event = simpleaiGradioHeartbeat(this, heartbeat_url);",
+        1,
+    ).replace(
+        _HEARTBEAT_CLOSE_ORIGINAL,
+        "    this.heartbeat_event?.close();\n" + _HEARTBEAT_CLOSE_ORIGINAL,
+        1,
+    )
 
 
 def _env_flag_enabled(name: str) -> bool:
@@ -598,6 +619,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
         app_tree_disabled = _app_tree_patch_disabled()
         image_drop_disabled = _image_drop_patch_disabled()
         connection_reload_disabled = _connection_reload_patch_disabled()
+        heartbeat_disabled = _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
         cache_key = (
             str(path),
             int(stat.st_mtime_ns),
@@ -605,6 +627,7 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
             app_tree_disabled,
             image_drop_disabled,
             connection_reload_disabled,
+            heartbeat_disabled,
         )
         cached = _GRADIO_JS_PATCH_CACHE.get(cache_key)
         if cached is not None:
@@ -617,6 +640,8 @@ def _read_patched_gradio_js_asset(path: Path) -> str | None:
             patched = _patch_image_drop_asset(patched)
         if not connection_reload_disabled:
             patched = _patch_connection_reload_asset(patched)
+        if not heartbeat_disabled:
+            patched = _patch_heartbeat_asset(patched)
         if patched == text:
             return None
         _GRADIO_JS_PATCH_CACHE.clear()
@@ -630,7 +655,9 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
     app_tree_disabled = _app_tree_patch_disabled()
     image_drop_disabled = _image_drop_patch_disabled()
     connection_reload_disabled = _connection_reload_patch_disabled()
-    if app_tree_disabled and image_drop_disabled and connection_reload_disabled:
+    if app_tree_disabled and image_drop_disabled and connection_reload_disabled and _env_flag_enabled(
+        "SIMPAI_DISABLE_GRADIO_ASSET_PATCHES"
+    ):
         return {}
 
     try:
@@ -651,8 +678,12 @@ def _discover_gradio_js_patch_readers() -> dict[str, Callable[[Path], str | None
         needs_connection_reload = (
             not connection_reload_disabled and _asset_needs_connection_reload_patch(text)
         )
+        needs_heartbeat = (
+            not _env_flag_enabled("SIMPAI_DISABLE_GRADIO_ASSET_PATCHES")
+            and _asset_needs_heartbeat_patch(text)
+        )
         patch_count = sum((needs_app_tree, needs_image_drop, needs_connection_reload))
-        if patch_count > 1:
+        if patch_count > 1 or needs_heartbeat:
             readers[path.name] = _read_patched_gradio_js_asset
         elif needs_app_tree:
             readers[path.name] = _read_patched_app_tree_asset

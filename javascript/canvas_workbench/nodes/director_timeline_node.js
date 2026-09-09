@@ -60,6 +60,34 @@
     };
     const FORMATS = ['Wan', 'LTXV', 'LTXV TA2V', 'Custom'];
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createDirectorTimelineNodeContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
+            getNode: delegate(context, 'getNode'),
+            isNodeIgnored: delegate(context, 'isNodeIgnored'),
+            mutate: delegate(context, 'mutate'),
+            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
+            pushHistory: delegate(context, 'pushHistory'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
+            setSelectedNode: delegate(context, 'setSelectedNode'),
+            showToast: delegate(context, 'showToast')
+        };
+    }
+
+    function getProject(context) {
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : { nodes: [] };
+    }
+
     function numberValue(value, fallback, min, max) {
         const parsed = Number(value);
         const base = Number.isFinite(parsed) ? parsed : fallback;
@@ -673,7 +701,7 @@ ${renderTimelinePreview(timeline, node, context)}
             }
         };
         if (typeof context?.placeNodeAvoidingOverlap === 'function') context.placeNodeAvoidingOverlap(node, world);
-        const project = context?.project && typeof context.project === 'object' ? context.project : { nodes: [] };
+        const project = getProject(context);
         if (!Array.isArray(project.nodes)) project.nodes = [];
         project.nodes.push(node);
         if (typeof context?.setSelectedNode === 'function') context.setSelectedNode(node.id);
@@ -749,6 +777,7 @@ ${renderTimelinePreview(timeline, node, context)}
         MAX_AUDIO_REFS,
         MAX_VIDEO_REFS,
         MEDIA_KIND_GROUPS,
+        createDirectorTimelineNodeContext,
         defaultTimeline,
         normalizeTimeline,
         promptOverrideForTimeline,

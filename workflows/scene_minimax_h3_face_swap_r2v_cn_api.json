@@ -441,7 +441,7 @@
       "length": ["7", 1],
       "source_video": ["97", 0],
       "audio_vae": ["6", 0],
-      "source_audio": ["95", 0]
+      "source_audio": ["105", 0]
     },
     "class_type": "SimpAIMiniMaxH3VideoUpscaleLatent",
     "_meta": {"title": "H3 Detected Face Crop AV Latent"}
@@ -569,8 +569,8 @@
   },
   "90": {
     "inputs": {
-      "generation_width": ["1", 6],
-      "generation_height": ["1", 7],
+      "generation_width": ["91", 0],
+      "generation_height": ["91", 1],
       "aspect_ratio_preservation": "keep_input",
       "image": ["89", 1]
     },
@@ -696,6 +696,15 @@
     },
     "class_type": "SimpAIFaceTrack",
     "_meta": {"title": "SimpAI Face Track"}
+  },
+  "105": {
+    "inputs": {
+      "audio": ["95", 0],
+      "source_fps": ["49", 3],
+      "frame_count": ["49", 1]
+    },
+    "class_type": "SimpAIH3SourceAudioTiming",
+    "_meta": {"title": "Align Source Audio to H3 Internal Timeline"}
   },
   "103": {
     "inputs": {

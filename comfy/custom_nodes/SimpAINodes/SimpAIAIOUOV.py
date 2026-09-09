@@ -240,6 +240,19 @@ SimpAIAIOUOVZImage = _family_node("SimpAIAIOUOVZImage", "z_image")
 SimpAIAIOUOVFlux2 = _family_node("SimpAIAIOUOVFlux2", "flux2")
 
 
+class SimpAIAIOUOVKrea2(_SimpAIAIOUOVBase):
+    FAMILY = "krea2"
+
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
+               sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+        if uov.get("mix_reference", False):
+            raise ValueError("Krea2 AIO does not support mixing control images with vary or upscale.")
+        return super().expand(
+            model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
+            sampler_name, scheduler, progress_node_id, denoise,
+        )
+
+
 class SimpAIAIOUOVAnima(_SimpAIAIOUOVBase):
     FAMILY = "anima"
 
@@ -335,6 +348,7 @@ NODE_CLASS_MAPPINGS = {
         SimpAIAIOUOVWan,
         SimpAIAIOUOVZImage,
         SimpAIAIOUOVFlux2,
+        SimpAIAIOUOVKrea2,
         SimpAIAIOUOVAnima,
         SimpAIAIOUOVChenkin,
     )

@@ -13211,6 +13211,58 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     .sai-media-browser-detail {
         display: none;
     }
+
+    .sai-media-browser-panel .sai-media-browser-output-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 28px;
+        align-items: center;
+    }
+
+    .sai-media-browser-panel .sai-media-browser-output-controls .sai-media-browser-segment {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .sai-media-browser-panel .sai-media-browser-output-controls select {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+
+    .sai-media-browser-panel .sai-media-browser-output-controls input {
+        grid-column: 1;
+        width: 100%;
+    }
+
+    .sai-media-browser-panel .sai-media-browser-output-controls button[data-media-browser-action="search"] {
+        grid-column: 2;
+        width: 28px;
+    }
+}
+
+@media (max-width: 720px) {
+    .sai-media-browser-node .sai-media-browser-output-controls {
+        grid-template-columns: minmax(0, 1fr) 28px;
+    }
+
+    .sai-media-browser-node .sai-media-browser-output-controls .sai-media-browser-segment {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .sai-media-browser-node .sai-media-browser-output-controls select {
+        grid-column: 1 / -1;
+    }
+
+    .sai-media-browser-node .sai-media-browser-output-controls input {
+        grid-column: 1;
+    }
+
+    .sai-media-browser-node .sai-media-browser-output-controls button[data-media-browser-action="search"] {
+        grid-column: 2;
+    }
 }
 
 .sai-canvas-node-pose_studio .sai-node-kind {

@@ -9,6 +9,31 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function getProject(context) {
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : {};
+    }
+
+    function createNodeBrowserContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            closeContextMenu: delegate(context, 'closeContextMenu'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
+            getNode: delegate(context, 'getNode'),
+            focusNode: delegate(context, 'focusNode'),
+            readAssetSize: delegate(context, 'readAssetSize'),
+            renderIconHtml: delegate(context, 'renderIconHtml')
+        };
+    }
+
     function iconForNode(node, context) {
         const type = String(node?.type || '');
         const custom = {
@@ -54,7 +79,7 @@
 
     function openNodeSearchPanel(context) {
         call(context, 'closeContextMenu', null);
-        const project = context?.project || { nodes: [] };
+        const project = getProject(context);
         const modal = document.createElement('div');
         modal.className = 'sai-canvas-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
@@ -185,6 +210,7 @@
     }
 
     window.SimpAICanvasWorkbenchNodeBrowser = {
+        createNodeBrowserContext,
         openCanvasManual,
         openNodeSearchPanel
     };

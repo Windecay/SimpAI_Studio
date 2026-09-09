@@ -9,6 +9,54 @@
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
     }
 
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createStyleSelectorNodeContext(source) {
+        const context = source || {};
+        return {
+            applyStyleSelectorToPreset: delegate(context, 'applyStyleSelectorToPreset'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            getNode: delegate(context, 'getNode'),
+            isNodeLocked: delegate(context, 'isNodeLocked'),
+            mutate: delegate(context, 'mutate'),
+            nowIso: delegate(context, 'nowIso'),
+            pushHistory: delegate(context, 'pushHistory'),
+            pushHistoryBatch: delegate(context, 'pushHistoryBatch'),
+            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
+            scheduleSave: delegate(context, 'scheduleSave'),
+            showToast: delegate(context, 'showToast'),
+            styleSelectorTargetLabel: delegate(context, 'styleSelectorTargetLabel'),
+            uid: delegate(context, 'uid')
+        };
+    }
+
+    function createNode(world, options, context) {
+        const opts = options || {};
+        const position = world || { x: 0, y: 0 };
+        const size = call(context, 'defaultNodeSize', { w: 390, h: 560 }, 'style_selector') || { w: 390, h: 560 };
+        return {
+            id: call(context, 'uid', 'style_selector-node', 'style_selector'),
+            type: 'style_selector',
+            x: Math.round(Number(position?.x || 0)),
+            y: Math.round(Number(position?.y || 0)),
+            w: size.w,
+            h: size.h,
+            title: opts.title || 'Style Selector',
+            style_selector: {
+                selected_name: '',
+                prompt: '',
+                negative: '',
+                target_preset_id: opts.targetPresetId || '',
+                search: ''
+            },
+            text: { value: '', updated_at: call(context, 'nowIso', new Date().toISOString()) },
+            source: { kind: opts.source_kind || 'style_transfer_selector' }
+        };
+    }
+
     function catalogItems() {
         const items = window.SimpAIStyleTransferCatalog?.items;
         return Array.isArray(items) ? items.filter(item => item && item.name) : [];
@@ -166,6 +214,8 @@ ${getNegative(node) ? `<div class="sai-inspector-section">
 
     window.SimpAICanvasWorkbenchStyleSelectorNode = {
         catalogItems,
+        createStyleSelectorNodeContext,
+        createNode,
         getNegative,
         getPrompt,
         renderInspector,

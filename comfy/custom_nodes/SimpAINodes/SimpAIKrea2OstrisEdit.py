@@ -17,13 +17,17 @@ from comfy.ldm.krea2.model import SingleStreamDiT
 from comfy.ldm.modules.attention import optimized_attention_masked
 
 
-def _pack_refs(dit, ref_latents, batch_size, device, dtype):
+def _pack_refs(dit, ref_latents, batch_size, device, dtype, target_grid=None):
     tokens, positions = [], []
     for index, ref in enumerate(ref_latents, 1):
         if ref.ndim == 5:
             ref = ref.movedim(2, 1).flatten(0, 1)
         ref = comfy.utils.repeat_to_batch_size(ref.to(device=device, dtype=dtype), batch_size)
-        tok, pos, _, _ = dit.process_img(ref, index=index)
+        tok, pos, height, width = dit.process_img(ref, index=index)
+        if target_grid is not None:
+            # AnyPaint references cover the complete target canvas at a lower resolution.
+            pos[..., 1] = (pos[..., 1] + 0.5) * (target_grid[0] / height) - 0.5
+            pos[..., 2] = (pos[..., 2] + 0.5) * (target_grid[1] / width) - 0.5
         tokens.append(tok)
         positions.append(pos)
     return torch.cat(tokens, dim=1), torch.cat(positions, dim=1)
@@ -62,9 +66,9 @@ def _block_kv(block, x, vec, freqs, transformer_options, capture=None, cached=No
     return x + postgate * block.mlp((1 + postscale) * block.postnorm(x) + postshift)
 
 
-def _precompute_ref_kv(dit, x, timesteps, ref_latents, transformer_options):
+def _precompute_ref_kv(dit, x, timesteps, ref_latents, transformer_options, target_grid=None):
     batch_size = x.shape[0] * (x.shape[2] if x.ndim == 5 else 1)
-    tokens, positions = _pack_refs(dit, ref_latents, batch_size, x.device, x.dtype)
+    tokens, positions = _pack_refs(dit, ref_latents, batch_size, x.device, x.dtype, target_grid)
     hidden = dit.first(tokens)
     t0 = dit.tmlp(
         timestep_embedding(torch.zeros_like(timesteps), dit.tdim)
@@ -96,8 +100,15 @@ def _forward_cached(dit, x, timesteps, context, ref_kv, transformer_options):
     context = dit.txtfusion(context, mask=None, transformer_options=transformer_options)
     context = dit.txtmlp(context)
     text_length, image_length = context.shape[1], image.shape[1]
-    hidden = torch.cat((context, image), dim=1)
     text_pos = torch.zeros(batch_size, text_length, 3, device=x.device, dtype=torch.float32)
+    for patch in transformer_options.get("patches", {}).get("post_input", []):
+        patched = patch({
+            "img": image, "txt": context, "img_ids": image_pos, "txt_ids": text_pos,
+            "transformer_options": transformer_options,
+        })
+        image, context = patched["img"], patched["txt"]
+        image_pos, text_pos = patched["img_ids"], patched["txt_ids"]
+    hidden = torch.cat((context, image), dim=1)
     freqs = dit.pe_embedder(torch.cat((text_pos, image_pos), dim=1))
     options = transformer_options.copy()
     options.update(
@@ -120,6 +131,8 @@ def _forward_cached(dit, x, timesteps, context, ref_kv, transformer_options):
 
 
 class SimpAIKrea2OstrisEditModelPatch:
+    REGISTER_REFERENCE = False
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -163,7 +176,10 @@ class SimpAIKrea2OstrisEditModelPatch:
 
             dit = executor.class_obj
             batch_size = x.shape[0] * (x.shape[2] if x.ndim == 5 else 1)
-            key = (batch_size, x.device, x.dtype)
+            target_grid = None
+            if self.REGISTER_REFERENCE:
+                target_grid = tuple((size + dit.patch - 1) // dit.patch for size in x.shape[-2:])
+            key = (batch_size, x.device, x.dtype, target_grid)
             ref_kv = None
             for entry in state["caches"]:
                 if entry["key"] == key and len(entry["refs"]) == len(ref_latents):
@@ -175,7 +191,10 @@ class SimpAIKrea2OstrisEditModelPatch:
                         ref_kv = entry["kv"]
                         break
             if ref_kv is None:
-                ref_kv = _precompute_ref_kv(dit, x, timesteps, ref_latents, options)
+                if target_grid is None:
+                    ref_kv = _precompute_ref_kv(dit, x, timesteps, ref_latents, options)
+                else:
+                    ref_kv = _precompute_ref_kv(dit, x, timesteps, ref_latents, options, target_grid)
                 if state["active"]:
                     state["caches"].append({
                         "key": key,

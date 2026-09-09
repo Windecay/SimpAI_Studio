@@ -54,8 +54,13 @@
         if (ref?.role) item.roles.add(ref.role);
     }
 
+    function getProject(context) {
+        const project = typeof context?.getProject === 'function' ? context.getProject() : null;
+        return project && typeof project === 'object' ? project : {};
+    }
+
     function collectProjectAssetReferences(context) {
-        const project = context?.project || { nodes: [], runs: [] };
+        const project = getProject(context);
         const map = new Map();
         (Array.isArray(project.nodes) ? project.nodes : []).forEach((node) => {
             addAssetReference(map, node.asset, { node, role: `${node.type}:main`, fallback: `${node.id}:asset` }, context);
@@ -77,11 +82,39 @@
     }
 
     function projectId(context) {
-        return context?.project?.id || context?.projectId || 'default';
+        const project = getProject(context);
+        const currentId = typeof context?.getProjectId === 'function' ? context.getProjectId() : '';
+        return project.id || currentId || 'default';
     }
 
     function formatBytes(context, bytes) {
         return call(context, 'formatBytes', '', bytes);
+    }
+
+    function delegate(context, name) {
+        if (typeof context?.[name] !== 'function') return undefined;
+        return (...args) => context[name](...args);
+    }
+
+    function createAssetManagerContext(source) {
+        const context = source || {};
+        return {
+            getProject: delegate(context, 'getProject'),
+            getProjectId: delegate(context, 'getProjectId'),
+            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            centerViewportOnWorld: delegate(context, 'centerViewportOnWorld'),
+            cloneValue: delegate(context, 'cloneValue'),
+            closeContextMenu: delegate(context, 'closeContextMenu'),
+            defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            deleteAssets: delegate(context, 'deleteAssets'),
+            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
+            formatBytes: delegate(context, 'formatBytes'),
+            listAssets: delegate(context, 'listAssets'),
+            locateNode: delegate(context, 'locateNode'),
+            openAssetViewer: delegate(context, 'openAssetViewer'),
+            readAssetSize: delegate(context, 'readAssetSize'),
+            showToast: delegate(context, 'showToast')
+        };
     }
 
     function assetDisplaySrc(context, asset) {
@@ -244,6 +277,7 @@ ${disk.ok ? `<div class="sai-inspector-note">${escapeHtml(t('Scanned {count} fil
     window.SimpAICanvasWorkbenchAssetManager = {
         collectProjectAssetReferences,
         copyAssetPath,
+        createAssetManagerContext,
         getAssetIdentity,
         normalizeAssetPath,
         openPanel

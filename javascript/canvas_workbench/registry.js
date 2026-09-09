@@ -204,6 +204,7 @@
         'default': ['ImagePrompt', 'PyraCanny', 'Depth', 'FaceSwap', 'OpenPose'],
         'wan_qwen_zimage': ['PyraCanny', 'Depth', 'OpenPose'],
         'il_v_pre': ['ImagePrompt', 'PyraCanny', 'Depth', 'OpenPose'],
+        'krea2': ['Depth', 'OpenPose'],
     };
     const CLASSIC_UOV_METHODS_DEFAULT = [
         'Disabled',
@@ -246,7 +247,8 @@
         'nun_fp4_aio': ['Nun_fp4', 'None'],
         'wan_aio_cn': ['VACE'],
         'qwen_aio_cn': ['Qwen_Inpaint'],
-        'z_image_turbo_aio_cn': ['LanPaint', 'None']
+        'z_image_turbo_aio_cn': ['LanPaint', 'None'],
+        'krea2_aio_cn': ['AnyPaint', 'None']
     };
 
     const DEFAULT_NODE_SIZES = {
