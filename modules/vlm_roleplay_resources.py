@@ -33,6 +33,26 @@ def source_page(task):
     return source[start:end], end
 
 
+def resolve_evidence(source, value):
+    evidence = _text(value)
+    if evidence and evidence in source:
+        return evidence
+    pieces = re.split(r"\.{3,}|…+", evidence)
+    if not 2 <= len(pieces) <= 8 or any(len(piece.strip()) < 6 for piece in pieces):
+        return ""
+    start, cursor = None, 0
+    for piece in pieces:
+        piece = piece.strip()
+        index = source.find(piece, cursor)
+        if index < 0:
+            return ""
+        if start is None:
+            start = index
+        cursor = index + len(piece)
+    # Check omitted context too; a shortened quotation must not hide uncertainty.
+    return source[start:cursor]
+
+
 def evidence_is_uncertain(source, evidence):
     index = source.find(evidence)
     if index < 0:
@@ -67,10 +87,21 @@ def evidence_is_transient_lore(source, evidence):
     sentence = source[start + 1:index + len(evidence)]
     return bool(
         re.search(r"承诺|约定|归还|获得|收进|穿上|换上|受伤|点头|喝水|此刻|这一回合|"
-                  r"\b(?:promise|outfit|wounded)\b", sentence, re.I)
+                  r"猛地|扑出|横扫|冷笑|来战|目前|当前|战斗挑战|"
+                  r"\b(?:promise|outfit|wounded|lunged|taunted|currently)\b", sentence, re.I)
         and not re.search(r"规则|规定|禁令|法则|风俗|习俗|传统|永远|总是|每逢|每当|"
                           r"\b(?:rule|law|custom|tradition)\b", sentence, re.I)
     )
+
+
+def evidence_is_unsupported_generalization(evidence, content):
+    single_event = re.search(r"上一位|上一个|上一次|这一次|这次|那是|这块|这片|这个|那片", evidence)
+    generality = (
+        r"总是|每当|每逢|任何|所有|通常|都会|会(?:留下|产生|导致|触发|出现|变成|生成)"
+        r"|\b(?:always|whenever|every|will)\b"
+    )
+    return bool(single_event and re.search(generality, content, re.I)
+                and not re.search(r"规则|规定|法则|" + generality, evidence, re.I))
 
 
 def chapter_intent(user_message, assistant_reply=""):
@@ -238,15 +269,21 @@ def prompt_contract(plan, session, lang="cn"):
         "memory: durable promises, results, possessions, relationships; world_book: reusable established lore ONLY. "
         "Quote exact source evidence for each write. Hypotheticals, denied events, temporary actions are NOT new facts. "
         "A guessed key/power/location or an unconfirmed possible use is NOT world lore; return unchanged. "
+        "Do not generalize one fight, repeated taunts, or current attack descriptions into a permanent "
+        "combat style. Repetition in recent dialogue does not establish a world rule. "
+        "One object's origin or a single trace does not establish a repeatable world mechanism. "
         "Possession/return of a key and personal promises belong ONLY in memory, never world_book. "
-        "Do NOT duplicate existing facts with new wording: use unchanged plus existing_ids. Preserve private knowledge.",
+        "Do NOT duplicate existing facts with new wording: use unchanged plus existing_ids. "
+        "Confirming or recalling an existing promise/rule/wound is unchanged, not a new memory. Preserve private knowledge.",
         "chapter: write a cumulative summary for the task's chapter_id, keeping established events and unresolved goals. "
         "Keep the current objective in the summary unless the source explicitly completes or replaces it. "
         "Routine rest/travel and side promises must not erase the main objective. "
         "Never output new_chapter/status/title or state patches. The application handles transitions.",
-        "Every task needs writes OR a review with status=unchanged and a specific reason. "
-        "Required chapters need summaries. Required memory/world duplicates need valid existing_ids. "
-        "Otherwise use status=unresolved. Empty JSON or written without data is incomplete.",
+        "Every task needs writes OR status=unchanged with a specific reason. For required=false memory/world "
+        "tasks, NO durable fact means unchanged with existing_ids=[], NOT unresolved, even if the store is empty. "
+        "Required chapters need summaries; required memory/world duplicates need valid existing_ids. "
+        "Unresolved means uncertain evidence or an unfulfilled required task, never merely no new lore. "
+        "Empty JSON or written without data is incomplete.",
         "Output shape (use real IDs, omit unused categories): "
         '{"memories":[{"task_id":"","text":"","evidence":"","importance":0.8}],'
         '"world_book_updates":[{"task_id":"","op":"add","title":"","content":"","keys":[],"evidence":""}],'
@@ -255,9 +292,14 @@ def prompt_contract(plan, session, lang="cn"):
         "Requested tasks:\n" + json.dumps(task_rows, ensure_ascii=False),
         "Original task sources:\n" + json.dumps(sources, ensure_ascii=False),
     ]
+    prompt = "\n\n".join(header)
+    chapter_count = max(1, sum(
+        item["id"] in chapter_ids for item in session.get("chapters", {}).get("items", [])
+    ))
+    summary_limit = max(120, min(800, (5100 - len(prompt) - 450) // chapter_count))
     optional = [
         "Chapter summaries before this turn:\n" + json.dumps([
-            {"id": item["id"], "summary": _text(item.get("summary"), 800),
+            {"id": item["id"], "summary": _text(item.get("summary"), summary_limit),
              "goal": _text(item.get("goal"), 240) or next(iter(re.findall(
                  r"(?:当前|本章)?目标(?:是|为|[:：])\s*([^。！？\n]{1,160})",
                  _text(item.get("summary")),
@@ -280,7 +322,6 @@ def prompt_contract(plan, session, lang="cn"):
                         "Current scene:\n" + json.dumps(session.get("story_state", {}).get("scene", {}), ensure_ascii=False))
     # The llama.cpp stateless runtime keeps at most 6000 characters at n_ctx=8192.
     # Keep task IDs and source pages intact; only optional context uses the remainder.
-    prompt = "\n\n".join(header)
     for block in optional:
         if len(prompt) + len(block) + 2 <= 5100:
             prompt += "\n\n" + block
@@ -304,15 +345,24 @@ def validate_response(plan, response, session):
             task = tasks.get(row.get("task_id"))
             if not task or task["kind"] != kind or not _text(row.get(content_key)):
                 continue
-            if kind != "chapter" and (not _text(row.get("evidence"))
-                                     or _text(row["evidence"]) not in source_page(task)[0]):
+            source = source_page(task)[0]
+            evidence = resolve_evidence(source, row.get("evidence")) if kind != "chapter" else ""
+            if kind != "chapter" and not evidence:
                 issues.append({"task_id": task["id"], "reason": "evidence_must_quote_exact_source"})
                 continue
-            if kind != "chapter" and evidence_is_uncertain(source_page(task)[0], _text(row["evidence"])):
+            if kind != "chapter" and evidence_is_uncertain(source, evidence):
                 issues.append({"task_id": task["id"], "reason": "hypothetical_is_not_an_established_fact_use_unchanged"})
                 continue
-            if kind == "world_book" and evidence_is_transient_lore(source_page(task)[0], _text(row["evidence"])):
+            if kind == "world_book" and evidence_is_transient_lore(source, evidence):
                 issues.append({"task_id": task["id"], "reason": "personal_event_is_not_reusable_lore_use_unchanged"})
+                continue
+            if kind == "world_book" and evidence_is_transient_lore(
+                _text(row["content"]), _text(row["content"]),
+            ):
+                issues.append({"task_id": task["id"], "reason": "temporary_content_is_not_reusable_lore_use_unchanged"})
+                continue
+            if kind == "world_book" and evidence_is_unsupported_generalization(evidence, _text(row["content"])):
+                issues.append({"task_id": task["id"], "reason": "single_event_is_not_a_world_rule_use_unchanged"})
                 continue
             if kind == "world_book" and row.get("op", "add") not in {"add", "update", "set"}:
                 continue
@@ -331,6 +381,17 @@ def validate_response(plan, response, session):
                 store = session.get("memory_store", {}).get("items", []) if kind == "memory" else session.get("world_book", {}).get("entries", [])
                 existing = next((item for item in store if item["id"] == clean.get("id")
                                  or _key(item.get(content_key)) == _key(clean[content_key])), None)
+                if kind == "world_book" and not existing and not clean.get("id"):
+                    content = _key(clean[content_key])
+                    extensions = [
+                        item for item in store
+                        if len(_key(item.get(content_key)).rstrip("。.")) >= 12
+                        and content.startswith(_key(item.get(content_key)).rstrip("。."))
+                    ]
+                    if len(extensions) == 1:
+                        existing = extensions[0]
+                        clean["id"] = existing["id"]
+                        clean["op"] = "update"
                 if existing:
                     # Content edits must not silently change who can read existing private information.
                     for key in ("known_by", "visible_to", "visibility"):
@@ -408,8 +469,19 @@ def verify_commit(plan, report, session):
             outcomes[task["id"]] = {"status": "pending", "reason": "source_continues"}
         elif task["id"] not in outcomes:
             pending.append(copy.deepcopy(task))
+    issue_reasons = {
+        issue["task_id"]: issue["reason"]
+        for issue in report.get("issues", [])
+        if issue.get("task_id") and issue.get("reason")
+    }
     rows = [{"task_id": task["id"], "kind": task["kind"],
-             **outcomes.get(task["id"], {"status": "pending", "reason": "write_not_verified"})}
+             **outcomes.get(task["id"], {
+                 "status": "pending",
+                 "reason": (
+                     "write_not_verified" if task["id"] in report["expected"]
+                     else issue_reasons.get(task["id"], "review_missing_or_invalid")
+                 ),
+             })}
             for task in plan["tasks"]]
     session["story_state"]["resource_review"] = {
         "pending": pending, "last_checked_turn_id": plan["turn_id"], "outcomes": rows,

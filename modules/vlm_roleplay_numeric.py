@@ -224,7 +224,9 @@ def parse_settlement(text: Any, session: Any, catalog: list[dict], user_message:
                 report["issues"].append({"target_entity_id": entity_id, "reason": "numeric_bucket_invalid"})
                 continue
             for entry in entries[:rp.MAX_CHARACTER_STATE_FIELDS]:
-                field_id = entry if bucket == "unchanged" else entry.get("field_id") if isinstance(entry, dict) else None
+                if entry in (None, "", {}, []):
+                    continue
+                field_id = entry.get("field_id") if isinstance(entry, dict) else entry if bucket == "unchanged" else None
                 key = (entity_type, entity_id, field_id) if isinstance(field_id, str) else None
                 if key not in expected or key in seen:
                     report["issues"].append({"target_entity_id": entity_id, "field_id": field_id,

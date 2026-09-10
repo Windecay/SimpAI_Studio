@@ -349,6 +349,60 @@ def strip_reasoning_text(text):
     return output.strip()
 
 
+def extract_stream_reasoning_delta(event):
+    if not isinstance(event, dict):
+        return ""
+    if event.get("type") in {
+        "response.reasoning_summary_text.delta", "response.reasoning_text.delta",
+    }:
+        value = event.get("delta")
+        return value if isinstance(value, str) else ""
+    choices = event.get("choices") or []
+    choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+    delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
+    value = delta.get("reasoning_content") or delta.get("reasoning")
+    return value if isinstance(value, str) else ""
+
+
+def extract_response_reasoning_text(response):
+    if not isinstance(response, dict):
+        return ""
+    parts = []
+    for item in response.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "reasoning":
+            continue
+        content = item.get("summary") or item.get("content") or []
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            parts.extend(
+                part["text"] for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+                and part.get("type") in {"summary_text", "reasoning_text", "text"}
+            )
+    choices = response.get("choices") or []
+    choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    text = message.get("reasoning_content") or message.get("reasoning")
+    if isinstance(text, str):
+        parts.append(text)
+    if not parts and isinstance(message.get("content"), str):
+        parts.extend(re.findall(r"(?is)<think\b[^>]*>(.*?)</think>", message["content"]))
+    return "\n\n".join(part for part in parts if part.strip()).strip()
+
+
+def extract_reasoning_display_metadata(response, streamed_reasoning=""):
+    text = extract_response_reasoning_text(response) or str(streamed_reasoning or "").strip()
+    if text:
+        return {"reasoning_text": text, "reasoning_text_status": "available"}
+    response = response if isinstance(response, dict) else {}
+    encrypted = any(
+        isinstance(item, dict) and item.get("type") == "reasoning" and item.get("encrypted_content")
+        for item in response.get("output") or []
+    )
+    return {"reasoning_text_status": "encrypted_only" if encrypted else "not_returned"}
+
+
 def _responses_content(content):
     if not isinstance(content, list):
         return content
@@ -399,6 +453,8 @@ def apply_thinking_settings(payload, enabled, *, base_url="", api_format=None):
             **(prepared.get("chat_template_kwargs") or {}),
             "enable_thinking": enabled,
         }
+    if is_responses and enabled and ("reasoning_effort" in prepared or "reasoning" in prepared):
+        prepared["reasoning"] = {**(prepared.get("reasoning") or {}), "summary": "auto"}
     return prepared
 
 
@@ -498,6 +554,17 @@ def extract_response_text(response):
     return str(content or choice_text or "")
 
 
+def extract_stream_completion_response(event):
+    if not isinstance(event, dict):
+        return None
+    if event.get("type") not in {
+        "response.completed", "response.incomplete", "response.failed",
+    }:
+        return None
+    response = event.get("response")
+    return response if isinstance(response, dict) else None
+
+
 def extract_response_metadata(response):
     if not isinstance(response, dict):
         return {"output_limited": False}
@@ -539,4 +606,15 @@ def extract_response_metadata(response):
         metadata["incomplete_details"] = incomplete_details
     if isinstance(response.get("usage"), dict):
         metadata["usage"] = response["usage"]
+        usage = response["usage"]
+        for key in ("output_tokens_details", "completion_tokens_details"):
+            details = usage.get(key)
+            if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
+                metadata["reasoning_tokens"] = details["reasoning_tokens"]
+                break
+    reasoning = response.get("reasoning")
+    if isinstance(reasoning, dict):
+        metadata["reasoning"] = {
+            key: reasoning[key] for key in ("effort", "summary") if key in reasoning
+        }
     return metadata

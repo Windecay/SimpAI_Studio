@@ -231,6 +231,19 @@ def javascript_html():
     canvas_workbench_canvas_batch_any_node_factory_path = webpath('javascript/canvas_workbench/canvas_batch_any_node_factory.js')
     canvas_workbench_canvas_mask_node_factory_path = webpath('javascript/canvas_workbench/canvas_mask_node_factory.js')
     canvas_workbench_canvas_result_node_factory_path = webpath('javascript/canvas_workbench/canvas_result_node_factory.js')
+    canvas_workbench_canvas_media_node_factory_path = webpath('javascript/canvas_workbench/canvas_media_node_factory.js')
+    canvas_workbench_canvas_input_node_factory_path = webpath('javascript/canvas_workbench/canvas_input_node_factory.js')
+    canvas_workbench_canvas_upload_node_factory_path = webpath('javascript/canvas_workbench/canvas_upload_node_factory.js')
+    canvas_workbench_canvas_batch_item_factory_path = webpath('javascript/canvas_workbench/canvas_batch_item_factory.js')
+    canvas_workbench_canvas_config_node_factory_path = webpath('javascript/canvas_workbench/canvas_config_node_factory.js')
+    canvas_workbench_canvas_xyz_matrix_node_factory_path = webpath('javascript/canvas_workbench/canvas_xyz_matrix_node_factory.js')
+    canvas_workbench_canvas_group_factory_path = webpath('javascript/canvas_workbench/canvas_group_factory.js')
+    canvas_workbench_canvas_run_record_factory_path = webpath('javascript/canvas_workbench/canvas_run_record_factory.js')
+    canvas_workbench_canvas_batch_job_factory_path = webpath('javascript/canvas_workbench/canvas_batch_job_factory.js')
+    canvas_workbench_canvas_edge_factory_path = webpath('javascript/canvas_workbench/canvas_edge_factory.js')
+    canvas_workbench_canvas_project_patch_factory_path = webpath('javascript/canvas_workbench/canvas_project_patch_factory.js')
+    canvas_workbench_canvas_asset_factory_path = webpath('javascript/canvas_workbench/canvas_asset_factory.js')
+    canvas_workbench_canvas_special_node_patch_factory_path = webpath('javascript/canvas_workbench/canvas_special_node_patch_factory.js')
     canvas_workbench_canvas_vlm_node_path = webpath('javascript/canvas_workbench/canvas_vlm_node.js')
     canvas_workbench_canvas_vlm_node_view_path = webpath('javascript/canvas_workbench/canvas_vlm_node_view.js')
     canvas_workbench_canvas_node_param_path = webpath('javascript/canvas_workbench/canvas_node_param_controller.js')
@@ -407,6 +420,19 @@ def javascript_html():
             canvas_workbench_canvas_batch_any_node_factory_path,
             canvas_workbench_canvas_mask_node_factory_path,
             canvas_workbench_canvas_result_node_factory_path,
+            canvas_workbench_canvas_media_node_factory_path,
+            canvas_workbench_canvas_input_node_factory_path,
+            canvas_workbench_canvas_upload_node_factory_path,
+            canvas_workbench_canvas_batch_item_factory_path,
+            canvas_workbench_canvas_config_node_factory_path,
+            canvas_workbench_canvas_xyz_matrix_node_factory_path,
+            canvas_workbench_canvas_group_factory_path,
+            canvas_workbench_canvas_run_record_factory_path,
+            canvas_workbench_canvas_batch_job_factory_path,
+            canvas_workbench_canvas_edge_factory_path,
+            canvas_workbench_canvas_project_patch_factory_path,
+            canvas_workbench_canvas_asset_factory_path,
+            canvas_workbench_canvas_special_node_patch_factory_path,
             canvas_workbench_canvas_vlm_node_path,
             canvas_workbench_canvas_vlm_node_view_path,
             canvas_workbench_canvas_node_param_path,

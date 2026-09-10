@@ -1985,7 +1985,9 @@
                     location: String(sceneSource.location || '').slice(0, 500),
                     time: String(sceneSource.time || '').slice(0, 200),
                     weather: String(sceneSource.weather || '').slice(0, 200),
-                    present_character_ids: cleanList(sceneSource.present_character_ids, 20),
+                    present_character_ids: Object.prototype.hasOwnProperty.call(sceneSource, 'present_character_ids')
+                        ? cleanList(sceneSource.present_character_ids, 20)
+                        : [activeCharacterId],
                     current_event: String(sceneSource.current_event || '').slice(0, 1000),
                     scene_goal: String(sceneSource.scene_goal || '').slice(0, 1000)
                 },
@@ -2943,7 +2945,7 @@
                 .map((id) => String(id || '').trim())
                 .filter((id) => id && normalized.characters?.[id])
             : [];
-        const allowedIds = new Set(presentIds.length ? presentIds : (activeId ? [activeId] : []));
+        const allowedIds = new Set(presentIds);
         const candidates = [
             preferredId,
             runtime?.roleplayReplySpeakerId,
@@ -2954,6 +2956,42 @@
             if (allowedIds.has(candidate) && normalized.characters?.[candidate]) return candidate;
         }
         return '';
+    }
+
+    function roleplayNeedsCharacterSetup(value) {
+        const session = normalizeRoleplaySession(value);
+        const fields = [
+            'name', 'identity', 'appearance', 'background', 'personality',
+            'speech_style', 'first_message', 'image_prompt', 'avatar_asset_id',
+            'reference_asset_ids', 'behavior_rules', 'example_dialogues'
+        ];
+        return !Object.values(session.characters || {}).some((card) => fields.some((field) =>
+            Array.isArray(card[field]) ? card[field].length > 0 : !!String(card[field] || '').trim()
+        ));
+    }
+
+    function ensureRoleplaySceneReady(runtime, modal, confirmEntry = false) {
+        const session = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
+        if (roleplayReplySpeakerIdForRuntime(runtime, session)) return true;
+        const message = localText(
+            'No character is present. Add a character to the scene before continuing.',
+            '当前没有在场角色，请让一个角色入场后继续。'
+        );
+        const id = session.active_character_id;
+        const card = session.characters?.[id];
+        if (!confirmEntry || !card || !isCurrentConversationRuntime(runtime)) {
+            setConversationStatus(runtime, message, true);
+            return false;
+        }
+        const name = String(card.name || localText('the current character', '当前角色'));
+        if (!window.confirm(localText(
+            `No character is present. Bring ${name} into the scene and continue?`,
+            `当前没有在场角色。让「${name}」入场后继续吗？`
+        ))) {
+            setConversationStatus(runtime, message, true);
+            return false;
+        }
+        return setRoleplayParticipantPresence(runtime, modal, id, 'present');
     }
 
     function renderRoleplayParticipantSummary(runtime) {
@@ -7180,7 +7218,6 @@
             let presentIds = Array.isArray(session.story_state.scene.present_character_ids)
                 ? session.story_state.scene.present_character_ids.map((value) => String(value || '').trim()).filter(Boolean)
                 : [];
-            if (!presentIds.length && session.active_character_id) presentIds = [String(session.active_character_id).trim()];
             const presentSet = new Set(presentIds);
             if (nextStatus === 'present') {
                 presentSet.add(id);
@@ -12074,7 +12111,11 @@
         const tokensPerSecond = Math.max(0, Number(source.tokens_per_second) || (
             outputTokens && elapsedSeconds ? outputTokens / elapsedSeconds : 0
         ));
-        if (!outputLimited && !status && !reason && !outputTokens && !tokensPerSecond) return null;
+        const reasoningText = typeof source.reasoning_text === 'string' ? source.reasoning_text : '';
+        const reasoningTokens = source.reasoning_tokens ?? usage.output_tokens_details?.reasoning_tokens
+            ?? usage.completion_tokens_details?.reasoning_tokens;
+        if (!outputLimited && !status && !reason && !outputTokens && !tokensPerSecond && !reasoningText
+            && reasoningTokens == null && source.thinking_requested !== true) return null;
         return {
             output_limited: outputLimited,
             status,
@@ -12084,8 +12125,30 @@
             max_tokens: maxTokens,
             output_tokens: outputTokens,
             elapsed_seconds: elapsedSeconds,
-            tokens_per_second: tokensPerSecond
+            tokens_per_second: tokensPerSecond,
+            reasoning_text: reasoningText,
+            reasoning_text_status: ['available', 'encrypted_only', 'not_returned'].includes(source.reasoning_text_status)
+                ? source.reasoning_text_status : '',
+            reasoning_tokens: Number.isFinite(reasoningTokens) ? Math.max(0, Math.round(reasoningTokens)) : null,
+            thinking_requested: source.thinking_requested === true
         };
+    }
+
+    function completionReasoningHtml(completion, id = '') {
+        const text = completion?.reasoning_text;
+        if (!text) {
+            if (!completion?.thinking_requested && !(completion?.reasoning_tokens > 0)) return '';
+            const tokens = completion?.reasoning_tokens;
+            const status = completion?.reasoning_text_status === 'encrypted_only'
+                ? localText('The API returned only encrypted reasoning data.', '接口仅返回加密思考数据。')
+                : tokens === 0
+                    ? localText('The API reported 0 reasoning tokens and returned no thinking text.', '接口报告思考用量为 0 Token，未返回思考文本。')
+                    : localText('The API did not return readable thinking text.', '接口未返回可读的思考文本。');
+            const usage = Number.isFinite(tokens) && tokens > 0
+                ? localText(`Reasoning: ${tokens} tokens. `, `思考用量：${tokens} Token。`) : '';
+            return `<div class="describe-vlm-chat-reasoning-status">${escapeHtml(usage + status)}</div>`;
+        }
+        return `<details class="describe-vlm-chat-reasoning" data-reasoning-id="${escapeHtml(id)}"><summary>${escapeHtml(localText('Thinking', '思考内容'))}</summary><div class="describe-vlm-chat-reasoning-text">${escapeHtml(text)}</div></details>`;
     }
 
     function normalizeResponseSource(value, fallback = {}) {
@@ -15421,6 +15484,9 @@
         if (normalized === 'roleplay_target_repair_started') {
             return localText('Checking which character the changes belong to...', '正在核对状态变化所属的角色……');
         }
+        if (normalized === 'roleplay_evidence_repair_started') {
+            return localText('Checking source evidence for state changes...', '正在核对状态更新的原文依据……');
+        }
         if (normalized === 'roleplay_director_started') {
             return localText(
                 'Updating story state. New messages can be sent when this finishes.',
@@ -15448,11 +15514,15 @@
     function roleplayDirectorOutcomeText(director = {}) {
         const status = String(director.status || '').trim().toLowerCase();
         const review = director.resource_review || {};
-        const targetCount = Number(director.target_review?.pending_count || 0);
-        const targetNote = targetCount > 0 ? localText(
+        const evidenceCount = Number(director.target_review?.evidence_pending_count || 0);
+        const targetCount = Math.max(0, Number(director.target_review?.pending_count || 0) - evidenceCount);
+        const targetNote = [targetCount > 0 ? localText(
             `${targetCount} state changes still have unclear targets and were not written. Check the affected characters' states and edit them manually as needed.`,
             `${targetCount} 项状态变化仍无法确认所属角色，未写入。请核对相关角色的状态，必要时手动修改。`
-        ) : '';
+        ) : '', evidenceCount > 0 ? localText(
+            `${evidenceCount} state changes lack verified source evidence and were not written. Check the character states.`,
+            `${evidenceCount} 项状态变化的原文依据未能通过核对，未写入，请检查角色状态。`
+        ) : ''].filter(Boolean).join(' ');
         if (Number(review.pending_count) > 0 && ['partial', 'state_update_pending'].includes(status)) {
             const labels = { memory: 'Memory', world_book: 'World book', chapter: 'Chapters' };
             const kinds = [...new Set((review.outcomes || []).filter(item => item.status === 'pending').map(item => item.kind))];
@@ -19331,6 +19401,9 @@
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
         const speakerCardStates = captureRoleplaySpeakerCardStates(log);
+        const openReasoningIds = new Set(Array.from(
+            log.querySelectorAll('.describe-vlm-chat-reasoning[open]')
+        ).map(element => element.dataset.reasoningId));
         renderCreativePreferenceMount(modal);
         const previousScrollTop = log.scrollTop;
         const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
@@ -19444,6 +19517,7 @@
     <button type="button" class="is-danger" data-describe-vlm-chat-delete="${messageIndex}" title="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}" aria-label="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}"><i class="fa-solid fa-trash"></i></button>
   </span></div>
   ${renderMessageImages(message.images, message.media_assets)}
+  ${role === 'assistant' && !pending ? completionReasoningHtml(completion, `${message.id}:${activeVariant?.id || ''}`) : ''}
   ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
   ${stateChangesHtml}
   ${resourceChangesHtml}
@@ -19451,6 +19525,9 @@
   ${actionHtml}
 </div>`;
         }).join('');
+        log.querySelectorAll('.describe-vlm-chat-reasoning').forEach(element => {
+            element.open = openReasoningIds.has(element.dataset.reasoningId);
+        });
         renderRoleplayInlineGenerationResults(modal);
         if (oldAnchor && Number.isFinite(oldAnchorTop)) {
             const newAnchorCard = Array.from(log.querySelectorAll('[data-describe-vlm-chat-generation-ref]')).find((node) => node.getAttribute('data-describe-vlm-chat-generation-ref') === anchorRef);
@@ -20011,11 +20088,9 @@
         const modal = ensureModal();
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const selectedMode = normalizeChatMode(modal.querySelector('[data-describe-vlm-chat-mode]')?.value || runtime.chatMode);
-        const roleplayRequestKindValue = selectedMode === 'roleplay'
+        let roleplayRequestKindValue = selectedMode === 'roleplay'
             ? String(options.roleplayRequestKind || 'character').trim().toLowerCase()
             : '';
-        const roleplayTextStream = selectedMode === 'roleplay'
-            && ['character', 'character_reply', 'reply'].includes(roleplayRequestKindValue);
         const systemPromptField = modal.querySelector('[data-describe-vlm-chat-system]');
         const templatePicker = modal.querySelector('[data-describe-vlm-chat-template]');
         const userTemplateDialog = userSystemPromptTemplateDialog(modal);
@@ -20061,6 +20136,13 @@
             syncRoleplayAgentRoutingFromVisibleForm(modal, runtime);
             syncRoleplaySessionFromVisibleFormForSend(modal, runtime);
         }
+        if (selectedMode === 'roleplay'
+            && ['character', 'character_reply', 'reply'].includes(roleplayRequestKindValue)
+            && roleplayNeedsCharacterSetup(runtime.roleplaySession)) {
+            roleplayRequestKindValue = 'character_setup';
+        }
+        const roleplayTextStream = selectedMode === 'roleplay'
+            && ['character', 'character_reply', 'reply'].includes(roleplayRequestKindValue);
         applyConversationRuntime(runtime);
         saveChatSettings();
         const hasMessageOverride = typeof options.messageOverride === 'string';
@@ -20083,6 +20165,7 @@
         if (selectedMode === 'roleplay' && !options.roleplayAutoplay && !hasMessageOverride) {
             pauseRoleplayForUserInput(runtime);
         }
+        if (roleplayTextStream && !ensureRoleplaySceneReady(runtime, modal, !options.roleplayAutoplay)) return;
         const directRun = selectedMode === 'creative' ? parseCreativeRunCommand(typed) : null;
         const directRunPrompt = directRun
             ? String(directRun.prompt || readComponentValue('positive_prompt') || '').trim()
@@ -20387,12 +20470,14 @@
                     || phase === 'roleplay_numeric_settlement_started'
                     || phase === 'roleplay_state_field_repair_started'
                     || phase === 'roleplay_target_repair_started'
+                    || phase === 'roleplay_evidence_repair_started'
                     || phase === 'roleplay_resource_update_started'
                     || phase === 'roleplay_state_commit_started') {
                     setConversationBusyStage(runtime, phase);
                     setConversationStatus(runtime, phase === 'roleplay_numeric_settlement_started'
                         || phase === 'roleplay_state_field_repair_started'
                         || phase === 'roleplay_target_repair_started'
+                        || phase === 'roleplay_evidence_repair_started'
                         ? busyControlLabel(phase)
                         : phase === 'roleplay_director_started'
                         ? localText(
@@ -20556,6 +20641,9 @@
             }
         }
         if (selectedMode === 'roleplay') {
+            if (response?.roleplay_character_setup) {
+                assistant.roleplay_speaker_id = response.roleplay_character_setup.character_id;
+            }
             const speakerId = String(assistant.roleplay_speaker_id || '').trim();
             assistant.roleplay_speaker_name = String(
                 runtime.roleplaySession?.characters?.[speakerId]?.name
@@ -20666,6 +20754,10 @@
                 'The selected Custom API has image input disabled; text was sent without images.',
                 '当前 Custom API 未启用图像输入，本次仅发送文字。'
             ));
+        } else if (selectedMode === 'roleplay' && response?.roleplay_character_setup) {
+            setConversationStatus(runtime, response.roleplay_character_setup.complete
+                ? localText('Character created.', '角色已创建。')
+                : localText('Waiting for a character name.', '等待确定角色名字。'));
         } else if (selectedMode === 'roleplay' && response?.roleplay_state_version !== undefined) {
             const route = response?.roleplay_agent_route && typeof response.roleplay_agent_route === 'object'
                 ? response.roleplay_agent_route
@@ -20826,7 +20918,8 @@
                 .map((id) => String(id || '').trim())
                 .filter((id) => id && session.characters?.[id])
             : [];
-        if (mode === 'current' || !presentIds.length) return currentId ? [currentId] : [];
+        if (!presentIds.length) return [];
+        if (mode === 'current') return currentId ? [currentId] : [];
         if (mode === 'multi') {
             return presentIds.slice(0, 3);
         }
@@ -20912,7 +21005,7 @@
             return [];
         }
         const speakers = Array.isArray(plan.speakers)
-            ? plan.speakers.map((id) => String(id || '').trim()).filter((id) => session.characters?.[id]).slice(0, 3)
+            ? plan.speakers.map((id) => String(id || '').trim()).filter((id) => presentIds.includes(id)).slice(0, 3)
             : [];
         return speakers.length ? speakers : (currentId ? [currentId] : []);
     }
@@ -20924,6 +21017,14 @@
         target.roleplaySession = session;
         const current = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
         if (current.phase === 'running') return false;
+        if (roleplayNeedsCharacterSetup(session)) {
+            setConversationStatus(target, localText(
+                'Talk with the assistant to name your character before starting autoplay.',
+                '请先通过对话确定角色名字，再开始托管。'
+            ), false);
+            return false;
+        }
+        if (!ensureRoleplaySceneReady(target, document.getElementById('describe_vlm_chat_modal'), true)) return false;
         const configuredTarget = Math.max(1, Math.min(100, Math.round(Number(session.autoplay_config.target_turns) || 5)));
         const continuous = !stepOnly && !!session.autoplay_config.continuous;
         const shouldResetCompletedTurns = !stepOnly && (
@@ -20949,6 +21050,11 @@
         while (true) {
             const live = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (live.phase !== 'running' || (!live.continuous && live.completed_turns >= targetTurns)) break;
+            if (!ensureRoleplaySceneReady(target, document.getElementById('describe_vlm_chat_modal'))) {
+                updateRoleplayAutoplayState(target, { phase: 'paused', reason: 'no_present_characters' },
+                    localText('Autoplay paused: no character is present.', '托管已暂停：当前没有在场角色。'));
+                break;
+            }
             const proxyText = await requestRoleplayPlayerProxy(target);
             const afterProxy = normalizeRoleplayAutoplayState(target.roleplayAutoplayState);
             if (!proxyText || afterProxy.phase !== 'running') break;
@@ -20971,7 +21077,7 @@
                 const speakerId = String(speakerIds[speakerIndex] || '').trim();
                 const liveSession = normalizeRoleplaySession(target.roleplaySession, target.conversationId);
                 const livePresentIds = liveSession.story_state?.scene?.present_character_ids || [];
-                if (livePresentIds.length && !livePresentIds.includes(speakerId)) break;
+                if (!livePresentIds.includes(speakerId)) break;
                 response = await sendMessage({
                     messageOverride: proxyText,
                     roleplayRequestKind: 'character',
@@ -21038,7 +21144,10 @@
     function startRoleplayAutoplay(stepOnly = false) {
         const runtime = syncCurrentRuntimeFromState();
         if (normalizeChatMode(runtime.chatMode) !== 'roleplay') return false;
-        applyRoleplayForm(document.getElementById('describe_vlm_chat_modal'), runtime);
+        // Hidden settings can predate the latest character reply or setup result.
+        if (runtime.roleplayPanelOpen || state.roleplayPanelOpen) {
+            applyRoleplayForm(document.getElementById('describe_vlm_chat_modal'), runtime);
+        }
         runRoleplayAutoplay(runtime, { stepOnly }).catch((error) => {
             updateRoleplayAutoplayState(runtime, {
                 phase: 'error',

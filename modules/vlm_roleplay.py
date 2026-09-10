@@ -1526,7 +1526,26 @@ def _compact_state_text(value: Any) -> str:
     )
 
 
+def _discard_obsolete_uninjured_state(existing: Any, incoming: Any) -> str:
+    incoming_text = _text(incoming, MAX_RUNTIME_STATE_TEXT)
+    injury_text = re.sub(
+        r"(?:没有|并未|未曾|未|无|不|没)(?:明显|任何|新的|新增)?(?:受伤|流血|出血|擦伤|伤口)"
+        r"|\b(?:not|never)\s+(?:injured|wounded|bleeding)\b|\b(?:uninjured|unharmed)\b",
+        "", incoming_text, flags=re.IGNORECASE,
+    )
+    if re.search(r"擦伤|划伤|割伤|刺伤|受伤|流血|出血|骨折|伤口|\b(?:injured|wounded|bleeding|fracture)\b",
+                 injury_text, re.IGNORECASE):
+        obsolete = {"未受伤", "没有受伤", "毫发无伤", "uninjured", "unharmed", "not injured"}
+        existing = "".join(
+            part for part in re.split(r"(?<=[，,；;。.\n])", _text(existing, MAX_RUNTIME_STATE_TEXT))
+            if re.sub(r"[\s，,；;。.\n]+$", "", part).strip().casefold() not in obsolete
+        )
+    return _text(existing, MAX_RUNTIME_STATE_TEXT)
+
+
 def _merge_state_text(existing: Any, incoming: Any) -> str:
+    existing = _discard_obsolete_uninjured_state(existing, incoming)
+    incoming = _discard_obsolete_uninjured_state(incoming, incoming)
     existing_segments = _unique_state_text_segments(existing)
     incoming_segments = _unique_state_text_segments(incoming)
     if not incoming_segments:
@@ -3493,6 +3512,9 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
     character = characters[active_character_id]
     persona = default_persona(source.get("persona") or source.get("player_persona"))
     state = normalize_story_state(source.get("story_state") or source.get("state"))
+    original_scene = _dict(_dict(source.get("story_state") or source.get("state")).get("scene"))
+    if "present_character_ids" not in original_scene:
+        state["scene"]["present_character_ids"] = [active_character_id]
     for character_id in characters:
         state["characters"].setdefault(character_id, _normalize_character_runtime(
             source.get("character_runtime") if character_id == primary_character["id"] else None
@@ -3527,6 +3549,64 @@ def default_roleplay_session(value: Any = None) -> dict[str, Any]:
         "updated_at": _text(source.get("updated_at"), 80) or _now(),
     }
     session["active_chapter_id"] = session["chapters"]["active_id"]
+    return session
+
+
+def needs_character_setup(value: Any = None) -> bool:
+    session = default_roleplay_session(value)
+    fields = (
+        "name", "identity", "appearance", "background", "personality",
+        "speech_style", "first_message", "image_prompt", "avatar_asset_id",
+        "reference_asset_ids", "behavior_rules", "example_dialogues",
+    )
+    return not any(
+        card.get(field)
+        for card in session["characters"].values()
+        for field in fields
+    )
+
+
+def build_character_setup_prompt(lang: Any = "cn") -> str:
+    return "\n".join([
+        "You are helping the user create the assistant's roleplay character through conversation.",
+        "First establish the ASSISTANT character's name, never confuse it with the player's name.",
+        "If the user supplies a name for you, accept it. If they ask you to decide or start a story, "
+        "choose a fitting name. Otherwise ask a short naming question with two or three suggestions.",
+        "Once a name is agreed or delegated, set character.name and speak as that character. "
+        "Your name will immediately become the assistant display name and saved character name.",
+        "Include only character details explicitly agreed or delegated by the user. "
+        "Do not invent player data, runtime state, memories, or other characters.",
+        "Ask at most one or two questions per reply. Do not mention JSON or internal processing.",
+        "Return one JSON object, no markdown: "
+        '{"reply":"visible conversational reply","character":{"name":"","identity":"",'
+        '"appearance":"","background":"","personality":"","speech_style":""}}',
+        "Leave character.name empty while awaiting the user's naming choice.",
+        "Reply in English." if lang == "en" else "Reply in Chinese.",
+    ])
+
+
+def apply_character_setup(value: Any, proposal: Any) -> dict[str, Any]:
+    session = normalize_roleplay_session(value)
+    if not needs_character_setup(session):
+        return session
+    data = _dict(proposal)
+    name = data.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+        return session
+    card = session["characters"][session["active_character_id"]]
+    card["name"] = name.strip()
+    for field in ("identity", "appearance", "background", "personality", "speech_style"):
+        if isinstance(data.get(field), str):
+            card[field] = _text(data[field])
+    card["revision"] += 1
+    card["updated_at"] = _now()
+    session["character"] = card
+    present = session["story_state"]["scene"]["present_character_ids"]
+    if card["id"] not in present:
+        present.append(card["id"])
+    session["state_version"] += 1
+    session["story_state"]["state_version"] = session["state_version"]
+    session["updated_at"] = _now()
     return session
 
 
@@ -4896,7 +4976,7 @@ def build_speaker_plan_prompt(
     present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
     candidate_ids = [
         character_id
-        for character_id in (present_ids or [current_id])
+        for character_id in present_ids
         if character_id in normalized.get("characters", {})
     ]
     candidate_ids = candidate_ids[:MAX_ROLEPLAY_CHARACTERS]
@@ -4957,11 +5037,11 @@ def parse_speaker_plan_response(
     present_ids = _clean_string_list(scene.get("present_character_ids"), MAX_ROLEPLAY_CHARACTERS)
     allowed_ids = [
         character_id
-        for character_id in (present_ids or [current_id])
+        for character_id in present_ids
         if character_id in normalized.get("characters", {})
     ]
     allowed_ids = list(dict.fromkeys(allowed_ids))
-    fallback = [current_id] if current_id in normalized.get("characters", {}) else allowed_ids[:1]
+    fallback = [current_id] if current_id in allowed_ids else allowed_ids[:1]
     if mode == "current" or not present_ids:
         fallback = fallback[:1]
     elif mode == "multi":
@@ -7267,8 +7347,8 @@ def _director_character_is_named_subject(
     return False
 
 
-_DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE = re.compile(
-    r"^([\u3400-\u9fff]{2,10}?)(?=\s*[，,:：]?\s*(?:正(?:在)?|仍(?:然)?|已经|已然|最终|终于|随后|随即|"
+_DIRECTOR_CURRENT_ACTION_PREDICATE = (
+    r"(?:正(?:在)?|仍(?:然)?|已经|已然|最终|终于|随后|随即|"
     r"突然|缓缓|慢慢|开始|继续|"
     r"靠(?:在|着|向)|倚(?:在|着)|站(?:在|着|起|到)|坐(?:在|着|下|到)|蹲(?:在|下|着)|"
     r"跪(?:在|下|着)|躺(?:在|下|着)|趴(?:在|下|着)|抱(?:着|住|紧|起)|搂(?:着|住)|"
@@ -7276,7 +7356,10 @@ _DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE = re.compile(
     r"跑(?:向|到|进|出|开)|冲(?:向|到|进|出)|退(?:到|向|后|开)|推(?:着|开|向)|拉(?:着|住|起|开|向)|"
     r"抬(?:起|手|头)|低(?:下|头)|转(?:身|头|向)|伸(?:出|手|向)|收(?:回|起)|闭(?:上|眼)|睁(?:开|眼)|"
     r"举(?:起|着)|放(?:下|开)|挡(?:在|住)|扶(?:着|住|起)|贴(?:着|近|在)|扑(?:向|到)|离开|进入|返回|"
-    r"停(?:在|下)|说(?:道|着)|问(?:道|着)|回答))",
+    r"停(?:在|下)|说(?:道|着)|问(?:道|着)|回答|颔首|点头|摇头|微笑|凝视|注视|垂(?:下|眸|头|手))"
+)
+_DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE = re.compile(
+    r"^([\u3400-\u9fff]{2,10}?)(?=\s*[，,:：]?\s*" + _DIRECTOR_CURRENT_ACTION_PREDICATE + ")",
     re.IGNORECASE,
 )
 _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS = {
@@ -7333,10 +7416,23 @@ def _director_current_action_actor(
     if len(distinct) > 1:
         return {"entity_type": "ambiguous", "entity_id": "", "name": ""}
 
+    source = re.sub(
+        r"^(?:(?:微微|缓缓|慢慢|轻轻|静静|默默|紧紧|小心|谨慎|快速|迅速)(?:地)?)+",
+        "", source,
+    )
+    if re.match(_DIRECTOR_CURRENT_ACTION_PREDICATE, source, re.IGNORECASE):
+        return {}
     match = _DIRECTOR_CURRENT_ACTION_SUBJECT_MARKER_RE.match(source)
     if match:
         subject = _text(match.group(1), 80)
-        if subject and subject not in _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS:
+        implicit_subject = subject in _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS or any(
+            subject.startswith(prefix) and re.fullmatch(
+                r"(?:依旧|仍然|平静|沉静|平稳|缓缓|慢慢|轻轻|静静|默默|紧紧|小心|谨慎|快速|迅速)+(?:地)?",
+                subject[len(prefix):],
+            )
+            for prefix in _DIRECTOR_CURRENT_ACTION_IMPLICIT_SUBJECTS
+        )
+        if subject and not implicit_subject:
             return {"entity_type": "unknown", "entity_id": "", "name": subject}
     return {}
 
@@ -8692,8 +8788,10 @@ def _director_instruction_is_read_only(value: Any) -> bool:
     ):
         return True
     resource_query = bool(re.search(
-        r"(?:查询|查一下|检索|读取|查看|回忆|还记得|记得吗|之前记下|刚才记下|根据记忆|"
-        r"根据世界书|根据设定)[^。！？!?；;\n]{0,48}(?:记忆|记录|约定|内容|世界书|设定|资料)?",
+        r"(?:^|[。！？!?；;\n])\s*(?:(?:请|帮我|请帮我)\s*)?"
+        r"(?:(?:查询|查一下|检索|读取|查看|回忆|还记得|记得吗|之前记下|刚才记下)"
+        r"[^。！？!?；;\n]{0,48}(?:记忆|记录|约定|内容|世界书|设定|资料|状态)"
+        r"|根据(?:记忆|世界书|设定))",
         source,
         re.IGNORECASE,
     ))
@@ -9088,6 +9186,24 @@ def _synthesize_numeric_state_patches(
     return result, warnings
 
 
+def director_non_state_dialogue_reason(patch: dict[str, Any]) -> str:
+    field = _text(patch.get("field") or patch.get("path"), 200).split(".")[-1]
+    value_text = _director_patch_raw_value_text(patch)
+    if field not in {"state_text", "condition", "appearance"}:
+        return ""
+    if re.search(
+        r"(?:我|老子|本人).{0,12}(?:要|会|非得|定要).{0,40}(?:你|您)|"
+        r"\bI(?:['’]ll| will| am going to)\b.{0,100}\byou\b",
+        value_text, re.I,
+    ):
+        return "director_threat_is_not_current_state"
+    if re.search(r"[?？][\"”’']?$", value_text.strip()) and re.search(
+        r"你|您|\byou\b", value_text, re.I,
+    ):
+        return "director_question_is_not_current_state"
+    return ""
+
+
 def _director_patch_target(
     normalized: dict[str, Any],
     patch: dict[str, Any],
@@ -9103,6 +9219,9 @@ def _director_patch_target(
         return [], {}, ["director_evidence_invalid_rejected"]
     if patch.get("_director_scene_roster_invalid"):
         return [], {}, ["director_scene_roster_invalid_rejected"]
+    dialogue_reason = director_non_state_dialogue_reason(patch)
+    if dialogue_reason:
+        return [], {}, [dialogue_reason]
     bound_target = (
         (patch.get("target_entity_type"), patch.get("target_entity_id"))
         if patch.get("_director_bound_target") else None
@@ -9489,7 +9608,12 @@ def _director_resolve_patch_target(
     if requested_type != "character" or requested_id != speaker or requested_field not in DIRECTOR_CONDITION_FIELDS:
         return path, target, warnings
 
-    patch_text = _director_patch_value_text(patch)
+    # The evidence may include dialogue addressed to somebody else.
+    # Resolve this condition's subject from the proposed condition itself.
+    patch_text = (
+        _director_patch_raw_value_text(patch)
+        if patch.get("_director_bound_target") else _director_patch_value_text(patch)
+    )
     group_effects = [
         effect
         for effect in _extract_numeric_effects(
@@ -9532,6 +9656,21 @@ def _director_resolve_patch_target(
     if len(other_entity_ids) == 1 and player_id in other_entity_ids and requested_field != "current_action":
         if requested_id in mentions and not player_condition:
             return path, target, warnings
+        if patch.get("_director_bound_target") and not player_condition:
+            persona = normalized.get("persona", {})
+            aliases = sorted({
+                player_id, *_director_name_aliases(persona.get("name")),
+                "玩家", "你", "您", "you", "your",
+            }, key=len, reverse=True)
+            player_subject = re.search(
+                r"(?:^|[。！？!?；;，,\n])\s*(?:"
+                + "|".join(re.escape(alias) for alias in aliases if alias)
+                + r")(?:的|\b|(?=[\u3400-\u9fff]))",
+                patch_text, re.IGNORECASE,
+            )
+            # Mentioning a recipient in a bound NPC snapshot does not change its owner.
+            if not player_subject:
+                return path, target, warnings
         warnings.append("director_target_reassigned_to_player")
         target = {"entity_type": "player", "entity_id": player_id, "field": requested_field}
         return ["player_state", requested_field], target, warnings
@@ -9564,8 +9703,9 @@ def _set_path(
     if not isinstance(target, dict) or path[-1] in {"schema", "version", "state_version", "updated_at"}:
         return False
     previous = copy.deepcopy(target.get(path[-1]))
-    if path[-1] == "state_text" and incremental_runtime_state and not replace:
-        value = _merge_state_text(target.get(path[-1]), value)
+    if path[-1] == "state_text" and incremental_runtime_state:
+        value = (_discard_obsolete_uninjured_state(value, value) if replace
+                 else _merge_state_text(target.get(path[-1]), value))
     elif path[-1] == "condition" and incremental_runtime_state and not replace:
         value = _merge_string_list(target.get(path[-1]), value if isinstance(value, list) else [value])
     elif isinstance(value, str):

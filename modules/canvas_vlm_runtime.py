@@ -28,7 +28,10 @@ from modules.custom_llm_api import (
     api_format_supported,
     custom_llm_url,
     extract_response_metadata,
+    extract_reasoning_display_metadata,
     extract_response_text,
+    extract_stream_completion_response,
+    extract_stream_reasoning_delta,
     extract_stream_text_delta,
     models_url,
     prepare_completion_request,
@@ -841,10 +844,21 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     })
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
+    logger.info(
+        "Custom VLM request: model=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s",
+        model, api_format, stream_enabled, enable_thinking,
+        {
+            key: request_payload[key]
+            for key in ("reasoning", "reasoning_effort", "enable_thinking", "thinking", "chat_template_kwargs")
+            if key in request_payload
+        },
+    )
     main_started = time.monotonic()
+    streamed_reasoning = ""
     if stream_enabled:
         streamed_parts = []
         streamed_meta = {}
+        terminal_response = None
         last_stream_event = {}
         try:
             stream_url, stream_request_payload = prepare_completion_request(base_url, api_format, request_payload)
@@ -857,6 +871,10 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 if not isinstance(event, dict) or event.get("_done"):
                     continue
                 last_stream_event = event
+                completed = extract_stream_completion_response(event)
+                if completed is not None:
+                    terminal_response = completed
+                streamed_reasoning += extract_stream_reasoning_delta(event)
                 delta = extract_stream_text_delta(event)
                 if delta:
                     streamed_parts.append(delta)
@@ -870,7 +888,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                         streamed_meta["finish_reason"] = finish_reason
             text_from_stream = "".join(streamed_parts)
             if not text_from_stream and last_stream_event:
-                text_from_stream = canvas_extract_openai_text(last_stream_event)
+                text_from_stream = canvas_extract_openai_text(terminal_response or last_stream_event)
                 if text_from_stream:
                     stream_callback(text_from_stream)
             response = {
@@ -880,6 +898,13 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 }],
             }
             response.update({key: value for key, value in streamed_meta.items() if key != "finish_reason"})
+            # Responses stores usage and reasoning metadata inside its terminal event.
+            if terminal_response is not None:
+                response = dict(terminal_response)
+                if text_from_stream and not canvas_extract_openai_text(response):
+                    response["output_text"] = text_from_stream
+                if response.get("status") == "failed":
+                    raise RuntimeError("Custom API returned a failed Responses completion.")
         except Exception as exc:
             logger.exception("Custom VLM streaming request failed")
             return {
@@ -902,7 +927,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     main_elapsed = time.monotonic() - main_started
     _canvas_vlm_add_timing(params, "custom_main_api_call", main_elapsed)
     completion = extract_response_metadata(response)
-    completion.update({"api_format": api_format, "max_tokens": max_tokens})
+    completion.update({
+        "api_format": api_format, "max_tokens": max_tokens,
+        "thinking_requested": enable_thinking,
+    })
+    completion.update(extract_reasoning_display_metadata(response, streamed_reasoning))
     completion = _canvas_vlm_enrich_completion(completion, main_elapsed)
     text = canvas_extract_openai_text(response).strip()
 
@@ -1021,7 +1050,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         response_params["base_url"] = base_url
     usage = completion.get("usage") if isinstance(completion.get("usage"), dict) else {}
     logger.info(
-        "Custom VLM completion: status=%s, finish_reason=%s, reason=%s, output_limited=%s, max_tokens=%s, result_chars=%s, input_tokens=%s, output_tokens=%s, total_tokens=%s",
+        "Custom VLM completion: status=%s, finish_reason=%s, reason=%s, output_limited=%s, max_tokens=%s, result_chars=%s, input_tokens=%s, output_tokens=%s, total_tokens=%s, thinking_requested=%s, reasoning_tokens=%s, reasoning=%s, reasoning_text_status=%s, reasoning_text_chars=%s",
         completion.get("status"),
         completion.get("finish_reason"),
         completion.get("reason"),
@@ -1031,6 +1060,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
         usage.get("input_tokens", usage.get("prompt_tokens")),
         usage.get("output_tokens", usage.get("completion_tokens")),
         usage.get("total_tokens"),
+        completion.get("thinking_requested"),
+        completion.get("reasoning_tokens"),
+        completion.get("reasoning"),
+        completion.get("reasoning_text_status"),
+        len(completion.get("reasoning_text") or ""),
     )
     _canvas_vlm_add_timing(params, "custom_total", time.monotonic() - custom_started)
     timings = _canvas_vlm_timing_snapshot(params)

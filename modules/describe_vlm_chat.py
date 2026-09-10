@@ -1435,6 +1435,10 @@ def _prompt_options_from_payload(payload, lang):
     roleplay_session = vlm_roleplay.normalize_roleplay_session(
         payload.get("roleplay_session") or payload.get("roleplay") or {}
     ) if chat_mode == "roleplay" else {}
+    roleplay_request_kind = _clean_text(payload.get("roleplay_request_kind")) or "character"
+    if chat_mode == "roleplay" and roleplay_request_kind in {"character", "character_reply", "reply"}:
+        if vlm_roleplay.needs_character_setup(roleplay_session):
+            roleplay_request_kind = "character_setup"
     raw_agent_routing = payload.get("agent_routing")
     if not isinstance(raw_agent_routing, dict) and roleplay_session:
         raw_agent_routing = roleplay_session.get("agent_routing")
@@ -1472,7 +1476,7 @@ def _prompt_options_from_payload(payload, lang):
         "roleplay_session": roleplay_session,
         "agent_routing": agent_routing,
         "roleplay_user_did": _clean_text(payload.get("user_did") or payload.get("__user_did")),
-        "roleplay_request_kind": _clean_text(payload.get("roleplay_request_kind")) or "character",
+        "roleplay_request_kind": roleplay_request_kind,
         "roleplay_turn_intent": vlm_roleplay.normalize_roleplay_turn_intent(
             payload.get("roleplay_turn_intent"),
             roleplay_session.get("story_state", {}).get("player_state", {})
@@ -1774,7 +1778,9 @@ def _describe_chat_system_prompt(options, lang):
     if chat_mode == "roleplay":
         roleplay_session = options.get("roleplay_session") or {}
         roleplay_request_kind = str(options.get("roleplay_request_kind") or "character").strip().lower()
-        if roleplay_request_kind in {"visual_reformat", "roleplay_visual_reformat", "scene_prompt_reformat"}:
+        if roleplay_request_kind == "character_setup":
+            sections.append(vlm_roleplay.build_character_setup_prompt(lang))
+        elif roleplay_request_kind in {"visual_reformat", "roleplay_visual_reformat", "scene_prompt_reformat"}:
             sections.append(
                 vlm_roleplay.build_visual_reformat_prompt(
                     roleplay_session,
@@ -2696,9 +2702,15 @@ def _run_roleplay_director(
                 )
             return failure
         def parse_state(text):
-            return vlm_roleplay_targets.decode_response(
+            decoded = vlm_roleplay_targets.decode_response(
                 text, normalized_session, target_table, user_message, assistant_reply,
             )
+            if decoded.get("reference_issues"):
+                _roleplay_trace(
+                    "[RoleplayDirector] evidence_references request_id=%s issues=%s",
+                    request_id, _roleplay_log_value(decoded["reference_issues"], 3000),
+                )
+            return decoded
 
         def review_prompt(reason, previous):
             return vlm_roleplay_targets.build_prompt(
@@ -2820,7 +2832,9 @@ def _run_roleplay_director(
         ) if parsed.get("ok") else []
         if failed_targets:
             ensure_active()
-            emit_status("roleplay_target_repair_started")
+            emit_status("roleplay_evidence_repair_started" if all(
+                item.get("kind") == "evidence" for item in failed_targets
+            ) else "roleplay_target_repair_started")
             target_text = ""
             target_result = None
             try:
@@ -2832,7 +2846,8 @@ def _run_roleplay_director(
                     ),
                     "user_system_prompt": (
                         "Return only corrections with patch_id, target_ref, evidence_id, or uncertain=true. "
-                        "Select from this request's table. Do not generate new state patches."
+                        "For kind=evidence keep the original target. "
+                        "Select from this request's tables. Do not generate new state patches."
                     ),
                     "conversation_id": f"{conversation_id}:roleplay_target_repair:{request_id}",
                     "temperature": 0.0,
@@ -3063,6 +3078,11 @@ def _run_roleplay_director(
                 resource_report = vlm_roleplay_resources.validate_response(
                     resource_plan, resource_parsed, resource_session,
                 )
+                _roleplay_trace(
+                    "[RoleplayDirector] resource_validation request_id=%s attempt=initial missing=%s issues=%s",
+                    request_id, _roleplay_log_value(resource_report["missing"], 1000),
+                    _roleplay_log_value(resource_report["issues"], 1500),
+                )
                 if resource_report["missing"]:
                     ensure_active()
                     emit_status("roleplay_resource_update_started")
@@ -3085,6 +3105,11 @@ def _run_roleplay_director(
                         retry_report = vlm_roleplay_resources.validate_response(
                             retry_plan, retry_response, resource_session,
                         )
+                        _roleplay_trace(
+                            "[RoleplayDirector] resource_validation request_id=%s attempt=retry missing=%s issues=%s",
+                            request_id, _roleplay_log_value(retry_report["missing"], 1000),
+                            _roleplay_log_value(retry_report["issues"], 1500),
+                        )
                         for key in ("memories", "world_book_updates"):
                             resource_report["accepted"][key].extend(retry_report["accepted"][key])
                         resource_report["accepted"]["chapter_update"]["summaries"].extend(
@@ -3092,6 +3117,11 @@ def _run_roleplay_director(
                         )
                         resource_report["expected"].update(retry_report["expected"])
                         resource_report["outcomes"].update(retry_report["outcomes"])
+                        retried_ids = {item["id"] for item in retry_plan["tasks"]}
+                        resource_report["issues"] = [
+                            issue for issue in resource_report["issues"]
+                            if issue.get("task_id") not in retried_ids
+                        ] + retry_report["issues"]
                         resource_report["missing"] = retry_report["missing"]
                 for key in (
                     "memories",
@@ -3205,7 +3235,8 @@ def _run_roleplay_director(
             return applied
         if any(
             warning == "invalid_or_locked_patch"
-            or str(warning).endswith(("_rejected", "_blocked", "_unknown", "_not_mentioned"))
+            or (warning != "director_fact_evidence_rejected"
+                and str(warning).endswith(("_rejected", "_blocked", "_unknown", "_not_mentioned")))
             for warning in applied.get("warnings", [])
         ):
             incomplete_stages.append("state_validation")
@@ -6053,6 +6084,37 @@ def run_describe_vlm_chat(payload, stream_callback=None):
         return _describe_vlm_chat_failure(built, "payload_build")
 
     runtime_payload = built["runtime_payload"]
+    params = runtime_payload.get("params") or {}
+    if params.get("describe_roleplay_enabled") and params.get("roleplay_request_kind") == "character_setup":
+        if not vlm_roleplay.needs_character_setup(params.get("roleplay_session")):
+            return _describe_vlm_chat_failure({
+                "ok": False, "error": "roleplay_character_already_configured",
+                "details": "The character already exists." if _payload_lang(payload) == "en" else "角色已经建立，请继续角色对话。",
+            }, "roleplay_setup_check")
+    if params.get("describe_roleplay_enabled") and params.get("roleplay_request_kind") in {
+        "player_proxy", "proxy", "autoplay_player", "speaker_plan", "roleplay_speaker_plan", "autoplay_speaker_plan",
+    } and vlm_roleplay.needs_character_setup(params.get("roleplay_session")):
+        return _describe_vlm_chat_failure({
+            "ok": False, "error": "roleplay_character_setup_required",
+            "details": (
+                "Name your character through conversation before starting autoplay."
+                if _payload_lang(payload) == "en" else "请先通过对话确定角色名字，再开始托管。"
+            ),
+        }, "roleplay_setup_check")
+    if params.get("describe_roleplay_enabled") and params.get("roleplay_request_kind", "character") in {
+        "character", "character_reply", "reply", "player_proxy", "proxy", "autoplay_player",
+    }:
+        session = vlm_roleplay.normalize_roleplay_session(params.get("roleplay_session"))
+        present = vlm_roleplay._director_present_character_ids(session)
+        if not present:
+            return _describe_vlm_chat_failure({
+                "ok": False, "error": "roleplay_no_present_characters",
+                "details": (
+                    "No character is present. Add a character to the scene before continuing."
+                    if _payload_lang(payload) == "en" else "当前没有在场角色，请让一个角色入场后继续。"
+                ),
+                "conversation_id": conversation_id, "request_id": request_id,
+            }, "roleplay_presence_check")
     roleplay_context = built.get("roleplay_context") if isinstance(built.get("roleplay_context"), dict) else {}
     if is_describe_vlm_chat_cancelled(conversation_id, request_id):
         clear_describe_vlm_chat_cancel(conversation_id, request_id)
@@ -6066,6 +6128,8 @@ def run_describe_vlm_chat(payload, stream_callback=None):
         }, "cancel_check")
     structured_stream_preview = None
     effective_stream_callback = stream_callback
+    if params.get("roleplay_request_kind") == "character_setup":
+        effective_stream_callback = None
     chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
     preview_classes = {
         "creative": _CreativeStreamPreview,
@@ -6140,6 +6204,35 @@ def run_describe_vlm_chat(payload, stream_callback=None):
 
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
     roleplay_request_kind = str(params.get("roleplay_request_kind") or payload.get("roleplay_request_kind") or "").strip().lower()
+
+    if params.get("describe_roleplay_enabled") and roleplay_request_kind == "character_setup":
+        data = _extract_json_object(result.get("text") or result.get("raw_text") or "")
+        card = data.get("character") if isinstance(data, dict) else None
+        if (
+            not isinstance(data, dict) or not isinstance(data.get("reply"), str) or not data["reply"].strip()
+            or not isinstance(card, dict) or not isinstance(card.get("name"), str)
+            or len(card["name"].strip()) > 200
+        ):
+            return _describe_vlm_chat_failure({
+                "ok": False, "error": "roleplay_character_setup_invalid",
+                "details": (
+                    "Character setup could not be read. Please retry; your character has not changed."
+                    if _payload_lang(payload) == "en" else "未能读取角色创建结果，请重试；角色资料未被修改。"
+                ),
+            }, "roleplay_setup_parse")
+        session = vlm_roleplay.apply_character_setup(params.get("roleplay_session"), data.get("character"))
+        response = dict(result)
+        response.update({
+            "text": data["reply"].strip(), "raw_text": "",
+            "limited_actions": [], "agent_actions": [],
+            "roleplay_session": session,
+            "roleplay_state_version": session["state_version"],
+            "roleplay_character_setup": {
+                "complete": not vlm_roleplay.needs_character_setup(session),
+                "character_id": session["active_character_id"],
+            },
+        })
+        return _attach_response_source(response, result)
 
     if request_kind in {"roleplay_speaker_plan", "speaker_plan"} or roleplay_request_kind in {
         "speaker_plan",

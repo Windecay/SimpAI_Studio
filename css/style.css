@@ -5846,6 +5846,36 @@ html.describe-vlm-chat-resizing * {
   .describe-vlm-history-dialog [data-history-list] { padding-inline: 10px; }
 }
 
+.describe-vlm-chat-reasoning {
+  min-width: 0;
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.describe-vlm-chat-reasoning summary {
+  cursor: pointer;
+  padding: 5px 0;
+  opacity: 0.8;
+}
+
+.describe-vlm-chat-reasoning-status {
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-reasoning-text {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
+  border-inline-start: 2px solid currentColor;
+}
+
 .describe-vlm-chat-completion-warning {
   display: flex;
   align-items: flex-start;
