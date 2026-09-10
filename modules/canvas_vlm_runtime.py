@@ -27,6 +27,7 @@ from modules.custom_llm_api import (
     apply_thinking_settings,
     api_format_supported,
     custom_llm_url,
+    empty_output_limit_error,
     extract_response_metadata,
     extract_reasoning_display_metadata,
     extract_response_text,
@@ -727,6 +728,7 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     def prepare_custom_request(request):
         return apply_thinking_settings(
             request, enable_thinking, base_url=base_url, api_format=api_format,
+            provider=params.get("custom_provider") or "",
         )
 
     two_stage_intent_meta = None
@@ -845,8 +847,8 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     logger.info(
-        "Custom VLM request: model=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s",
-        model, api_format, stream_enabled, enable_thinking,
+        "Custom VLM request: model=%s, provider=%s, api_format=%s, stream=%s, thinking_requested=%s, thinking_parameters=%s",
+        model, params.get("custom_provider") or "custom", api_format, stream_enabled, enable_thinking,
         {
             key: request_payload[key]
             for key in ("reasoning", "reasoning_effort", "enable_thinking", "thinking", "chat_template_kwargs")
@@ -1082,8 +1084,10 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             "local_signal_level": two_stage_intent_meta.get("local_signal_level") or "",
             "locks": two_stage_intent_meta.get("locks") or {},
         }
+    output_error = empty_output_limit_error(text, completion) if not agent_actions else {}
     return {
-        "ok": True,
+        "ok": not bool(output_error),
+        **output_error,
         "text": display_text,
         "raw_text": text if display_text != text else "",
         "agent_actions": agent_actions,

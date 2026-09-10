@@ -423,15 +423,22 @@ def _responses_content(content):
     return converted
 
 
-def apply_thinking_settings(payload, enabled, *, base_url="", api_format=None):
+def apply_thinking_settings(payload, enabled, *, base_url="", api_format=None, provider=""):
     prepared = dict(payload or {})
     if enabled is None:
         return prepared
     enabled = bool(enabled)
     host = (urllib.parse.urlsplit(base_url).hostname or "").lower()
+    provider = str(provider or "").strip().lower()
+    is_ollama = provider in {"ollama", "ollama_local", "ollama_cloud"} or (
+        provider in {"", "custom"} and (host == "ollama.com" or host.endswith(".ollama.com"))
+    )
     model = str(prepared.get("model") or "").lower()
     is_responses = normalize_api_format(api_format) == OPENAI_RESPONSES
-    if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
+    if is_ollama:
+        # Ollama's OpenAI adapter maps "none" to think=false, including model aliases.
+        prepared["reasoning_effort"] = "medium" if enabled else "none"
+    elif host == "openrouter.ai" or host.endswith(".openrouter.ai"):
         prepared["reasoning"] = {"enabled": enabled}
     elif (
         host == "dashscope.aliyuncs.com"
@@ -453,9 +460,32 @@ def apply_thinking_settings(payload, enabled, *, base_url="", api_format=None):
             **(prepared.get("chat_template_kwargs") or {}),
             "enable_thinking": enabled,
         }
-    if is_responses and enabled and ("reasoning_effort" in prepared or "reasoning" in prepared):
+    if is_responses and enabled and not is_ollama and ("reasoning_effort" in prepared or "reasoning" in prepared):
         prepared["reasoning"] = {**(prepared.get("reasoning") or {}), "summary": "auto"}
     return prepared
+
+
+def empty_output_limit_error(text, completion):
+    completion = completion if isinstance(completion, dict) else {}
+    if str(text or "").strip() or not completion.get("output_limited"):
+        return {}
+    has_reasoning = (
+        completion.get("reasoning_text_status") in {"available", "encrypted_only"}
+        or bool(completion.get("reasoning_text"))
+        or isinstance(completion.get("reasoning_tokens"), (int, float))
+        and completion["reasoning_tokens"] > 0
+    )
+    if has_reasoning:
+        detail = (
+            "The API reached its output limit with reasoning but no answer. Thinking was requested off; check the provider's thinking support."
+            if completion.get("thinking_requested") is False else
+            "The API reached its output limit with reasoning but no answer. Disable thinking or increase the output limit."
+        )
+        return {"error": "reasoning_output_limit", "details": detail}
+    return {
+        "error": "empty_response_output_limit",
+        "details": "The API reached its output limit without a usable answer. Check the model settings or increase the output limit.",
+    }
 
 
 def chat_payload_to_responses(payload):

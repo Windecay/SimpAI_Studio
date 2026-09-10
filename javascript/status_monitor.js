@@ -249,7 +249,9 @@
         channel: null,
         supported: false,
         inited: false,
-        suppress: false
+        suppress: false,
+        pendingItems: new Map(),
+        clearRevision: 0
     };
 
     const CANVAS_WORKBENCH_MIN_LOADING_MS = 720;
@@ -824,31 +826,52 @@
         return URL.createObjectURL(previewBlob);
     }
 
+    async function receiveTransferItem(remote) {
+        if (!remote || !remote.blob) return null;
+        const id = typeof remote.id === 'number' ? remote.id : Number(remote.id);
+        if (!Number.isFinite(id)) return null;
+        if (transferState.items.some(x => x.id === id) || transferSync.pendingItems.has(id)) return null;
+
+        // Reserve the id before decoding; other tabs can reply while the preview is pending.
+        const pending = {};
+        transferSync.pendingItems.set(id, pending);
+        try {
+            const blob = remote.blob;
+            const type = remote.type || blob.type || 'image/png';
+            const name = remote.name || `image_${Date.now()}.png`;
+            const previewUrl = await createTransferPreviewUrl(blob);
+            if (transferSync.pendingItems.get(id) !== pending || transferState.items.some(x => x.id === id)) {
+                URL.revokeObjectURL(previewUrl);
+                return null;
+            }
+            const item = { id, blob, type, name, previewUrl };
+            transferState.items.unshift(item);
+            if (!transferState.selectedId) transferState.selectedId = id;
+            transferState.nextId = Math.max(transferState.nextId, id + 1);
+            return item;
+        } finally {
+            if (transferSync.pendingItems.get(id) === pending) transferSync.pendingItems.delete(id);
+        }
+    }
+
     async function applyRemoteTransferState(snapshot) {
         if (!snapshot || typeof snapshot !== 'object') return;
         const remoteItems = Array.isArray(snapshot.items) ? snapshot.items : [];
         const remoteSelectedId = snapshot.selectedId ?? null;
         const remoteExpanded = !!snapshot.expanded;
+        const wasEmpty = !transferState.items.length;
+        const clearRevision = transferSync.clearRevision;
+
+        for (const remote of remoteItems) {
+            if (transferSync.clearRevision !== clearRevision) return;
+            await receiveTransferItem(remote);
+        }
+        if (transferSync.clearRevision !== clearRevision) return;
 
         transferSync.suppress = true;
         try {
-            const wasEmpty = !transferState.items.length;
             if (wasEmpty) {
                 setTransferExpanded(remoteExpanded, false);
-            }
-
-            for (const remote of remoteItems) {
-                if (!remote || !remote.blob) continue;
-                const id = typeof remote.id === 'number' ? remote.id : Number(remote.id);
-                if (!Number.isFinite(id)) continue;
-                if (transferState.items.some(x => x.id === id)) continue;
-                const blob = remote.blob;
-                const type = remote.type || blob.type || 'image/png';
-                const name = remote.name || `image_${Date.now()}.png`;
-                const previewUrl = await createTransferPreviewUrl(blob);
-                transferState.items.unshift({ id, blob, type, name, previewUrl });
-                if (!transferState.selectedId) transferState.selectedId = id;
-                transferState.nextId = Math.max(transferState.nextId, id + 1);
             }
 
             if (wasEmpty && remoteSelectedId !== null) {
@@ -870,22 +893,13 @@
     }
 
     async function applyRemoteTransferAdd(remote) {
-        if (!remote || !remote.blob) return;
-        const id = typeof remote.id === 'number' ? remote.id : Number(remote.id);
-        if (!Number.isFinite(id)) return;
-        if (transferState.items.some(x => x.id === id)) return;
+        const item = await receiveTransferItem(remote);
+        if (!item || !transferState.items.includes(item)) return;
 
         transferSync.suppress = true;
         try {
-            const blob = remote.blob;
-            const type = remote.type || blob.type || 'image/png';
-            const name = remote.name || `image_${Date.now()}.png`;
-            const previewUrl = await createTransferPreviewUrl(blob);
-            transferState.items.unshift({ id, blob, type, name, previewUrl });
-            if (!transferState.selectedId) transferState.selectedId = id;
-            transferState.nextId = Math.max(transferState.nextId, id + 1);
             renderTransferGrid();
-            notifyTransferChange('remote_add', { item: snapshotTransferItem(transferState.items.find(x => x.id === id)) });
+            notifyTransferChange('remote_add', { item: snapshotTransferItem(item) });
         } finally {
             transferSync.suppress = false;
         }
@@ -894,7 +908,7 @@
     function applyRemoteTransferRemove(idRaw) {
         const id = typeof idRaw === 'number' ? idRaw : Number(idRaw);
         if (!Number.isFinite(id)) return;
-        if (!transferState.items.some(x => x.id === id)) return;
+        if (!transferState.items.some(x => x.id === id) && !transferSync.pendingItems.has(id)) return;
 
         transferSync.suppress = true;
         try {
@@ -956,6 +970,7 @@
             const data = evt ? evt.data : null;
             if (!data || typeof data !== 'object') return;
             if (data.senderId && data.senderId === transferSync.tabId) return;
+            if (data.targetId && data.targetId !== transferSync.tabId) return;
 
             const kind = data.kind;
             if (kind === 'transfer_state_request') {
@@ -964,6 +979,7 @@
                 postTransferSyncMessage({
                     kind: 'transfer_state',
                     requestId,
+                    targetId: data.senderId,
                     snapshot: {
                         items: transferState.items.filter(x => x && x.blob).map(x => ({ id: x.id, blob: x.blob, type: x.type, name: x.name })),
                         selectedId: transferState.selectedId,
@@ -974,11 +990,11 @@
             }
             if (kind === 'transfer_state') {
                 const snapshot = data.snapshot;
-                applyRemoteTransferState(snapshot);
+                applyRemoteTransferState(snapshot).catch(err => console.warn('Transfer state sync failed:', err));
                 return;
             }
             if (kind === 'transfer_add') {
-                applyRemoteTransferAdd(data.item);
+                applyRemoteTransferAdd(data.item).catch(err => console.warn('Transfer image sync failed:', err));
                 return;
             }
             if (kind === 'transfer_remove') {
@@ -2834,6 +2850,7 @@
     }
 
     function removeTransferItem(id) {
+        transferSync.pendingItems.delete(id);
         for (const item of transferState.items) {
             if (item.id === id) {
                 try {
@@ -2856,6 +2873,8 @@
     }
 
     function clearTransferItems() {
+        transferSync.clearRevision++;
+        transferSync.pendingItems.clear();
         for (const item of transferState.items) {
             try {
                 if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);

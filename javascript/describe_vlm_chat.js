@@ -9102,7 +9102,7 @@
     }
 
     function describeVlmChatFailure(response) {
-        const detail = String(response?.details || response?.error || '').trim()
+        const detail = roleplayDictionaryText(String(response?.details || response?.error || '').trim())
             || t('The VLM chat request failed.', 'VLM 对话请求失败。');
         if (response?.cancelled) return detail;
         const stageLabels = {

@@ -1,4 +1,13 @@
 {
+  "MiniMax-H3(Transition)": "MiniMax-H3视频过渡",
+  "MiniMax H3 Video Transition": "MiniMax H3 视频过渡",
+  "Preceding Video (Source)": "前段视频（原片）",
+  "Following Video (Source)": "后段视频（原片）",
+  "Reference Video (Optional)": "参考视频（可选）",
+  "Inserted Transition Duration(s)": "新增过渡时长（秒）",
+  "Transition Overlap Per Side(s)": "每侧渐变重绘时长（秒）",
+  "Include Both Source Videos": "包含前后原片",
+  "subject_definitions:\nThe visible subjects and environment retain their identity and appearance from the supplied transition boundaries.\n\nsummary:\n[video editing] Create a continuous transition from the preceding video's ending to the following video's opening.\n\nretention_analysis:\nPreserve the existing subject identities, spatial relationships, motion directions and visual style. The source boundaries are initial-latent data, not numbered references.\n\ndetailed_description:\n[Shot 1] Continue from the preceding video's ending action without stopping or restarting. Carry subject position, support, pose, facing and momentum forward through a physically plausible movement, gradually arriving at the following video's opening position, pose and motion. Preserve contacts and occlusion relationships. Adjust composition and lighting smoothly as needed. Do not introduce unrelated subjects, objects, sudden pose changes or frozen frames. Camera: Continue the incoming camera direction and speed, then arrive smoothly at the outgoing camera state. Dialogue and visible text: None. Synchronized sound: Restrained ambience and sounds corresponding to visible movement in the transition only.\n\noverall_soundscape:\nNatural, restrained ambience. No new speech.\n\nnon_diegetic_music:\nN/A": "subject_definitions:\n主体和环境保持前后过渡边界中已有的身份与外观。\n\nsummary:\n[video editing] 从前段视频结尾连续过渡到后段视频开头。\n\nretention_analysis:\n保持主体身份、空间关系、运动方向和视觉风格。前后原片用于初始 latent 边界，不属于带编号的参考素材。\n\ndetailed_description:\n[Shot 1] 延续前段结尾的动作，不停顿、不重新开始。让主体的位置、支撑关系、姿态、朝向和运动惯性通过合理的连续动作，自然到达后段开头的位置、姿态和运动状态。保持接触与遮挡关系，按需要平滑调整构图与光照。不引入无关主体或物体，不突然改变姿态，不出现静止帧。Camera: 延续前段运镜方向与速度，平滑到达后段的镜头状态。Dialogue and visible text: 无。Synchronized sound: 仅为过渡区域生成克制的环境声和与可见动作相符的声音。\n\noverall_soundscape:\n自然、克制的环境声。不新增对白。\n\nnon_diegetic_music:\nN/A",
   "GeneralAPIImage":"通用 API 生图",
   "API": "API",
   "Local": "本地",
@@ -2192,5 +2201,8 @@
   "An attached input is not bound to this Preset. Generation has been stopped.": "上传素材未能绑定到当前 Preset，已停止生成。",
   "Preparing H3 prompt...": "正在整理 H3 提示词……",
   "H3 prompt adaptation failed. Generation has been stopped.": "H3 提示词整理失败，已停止生成。",
-  "The generation settings changed. Please submit again.": "生成设置已更改，请重新提交。"
+  "The generation settings changed. Please submit again.": "生成设置已更改，请重新提交。",
+  "The API reached its output limit with reasoning but no answer. Thinking was requested off; check the provider's thinking support.": "接口返回了思考内容，但达到输出上限仍未生成正文。已请求关闭思考，请检查服务端是否支持并执行该设置。",
+  "The API reached its output limit with reasoning but no answer. Disable thinking or increase the output limit.": "接口返回了思考内容，但达到输出上限仍未生成正文。请关闭思考或提高输出上限。",
+  "The API reached its output limit without a usable answer. Check the model settings or increase the output limit.": "接口达到输出上限，但没有可用正文。请检查模型设置或提高输出上限。"
 }
