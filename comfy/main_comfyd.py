@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import platform
@@ -543,8 +544,6 @@ if __name__ == "__main__":
         print(f"[Comfyd] llama.cpp runtime install step failed / llama.cpp 运行环境安装步骤失败: {e}")
 
 def _comfyd_compiler_args(argv):
-    import argparse
-
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     compiler = parser.add_mutually_exclusive_group()
     compiler.add_argument("--enable-comfy-compiler", action="store_true")
@@ -670,7 +669,7 @@ if __name__ == "__main__":
             os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8"
 
     if "rocm" in cuda_malloc.get_torch_version_noimport():
-        os.environ['OCL_SET_SVM_SIZE'] = '262144'  # set at the request of AMD
+        os.environ['OCL_SET_SVM_SIZE'] = '4194304'  # 4TB. Much larger than the ROCM 64GB/256GB defaults for Aimdos liberal VA use
 
 
 def handle_comfyui_manager_unavailable():
@@ -763,9 +762,9 @@ def execute_prestartup_script():
         return False
 
     node_paths = folder_paths.get_folder_paths("custom_nodes")
+    node_prestartup_times = []
     for custom_node_path in node_paths:
         possible_modules = os.listdir(custom_node_path)
-        node_prestartup_times = []
 
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
