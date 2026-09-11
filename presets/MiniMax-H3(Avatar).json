@@ -73,6 +73,9 @@
     }
   },
   "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "previous_default_models": [
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+  ],
   "default_refiner": "None",
   "default_refiner_switch": 0.5,
   "default_upscale_model": "default",

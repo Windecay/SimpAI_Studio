@@ -6404,11 +6404,45 @@ function sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod) {
     return themeText.includes("sam3") || inputsExplicitlyEnabled;
 }
 
+function syncSceneVideoSlotLabels(state) {
+    const labels = state?.__scene_video_slot_labels ?? state?.scene_frontend?.video_slot_labels ?? {};
+    const defaults = {
+        scene_video: "Video (Upload)",
+        scene_reference_video: "Reference Video (Upload)",
+        scene_reference_video2: "Additional Reference Video (Upload)"
+    };
+    Object.entries(defaults).forEach(([id, fallback]) => {
+        const root = document.getElementById(id);
+        const label = root?.querySelector('[data-testid="block-label"], .label-wrap, label');
+        if (!label || !document.createTreeWalker) return;
+        const walker = document.createTreeWalker(label, 4);
+        let text;
+        while ((text = walker.nextNode())) {
+            if (!String(text.textContent || "").trim()) continue;
+            const key = labels[id] || fallback;
+            const translated = String(state?.__lang || "en").toLowerCase() === "en" ? key : topbarTranslateText(key);
+            if (text.textContent !== translated) text.textContent = translated;
+            (text.parentElement || label).setAttribute("data-original-text", key);
+            break;
+        }
+    });
+}
+
+function syncSceneSourceVideoLayout(isScene, state) {
+    const panel = document.getElementById("scene_panel");
+    const slots = state?.__scene_video_source_slots ?? state?.scene_frontend?.video_source_slots;
+    const paired = !!(isScene && Array.isArray(slots)
+        && slots.includes("scene_video") && slots.includes("scene_reference_video"));
+    panel?.classList.toggle("simpai-source-videos-first", paired);
+}
+
 function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisible, langSource) {
     const themeText = String(theme || "").toLowerCase();
     const taskText = String(taskMethod || "").toLowerCase();
     const hidden = sceneDisvisibleSetFromValue(disvisible);
     const sceneFrontend = langSource && typeof langSource === "object" ? langSource.scene_frontend : null;
+    syncSceneVideoSlotLabels(langSource);
+    syncSceneSourceVideoLayout(isScene, langSource);
     const sam3Decision = sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod);
     const showCamera = !!(isScene && themeText.includes("multiangle") && !hidden.has("camera_control_accordion"));
     const showLight = !!(isScene && (themeText.includes("anglelight") || themeText.includes("lightning")) && !hidden.has("anglelight_control_accordion"));

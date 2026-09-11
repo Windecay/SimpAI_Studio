@@ -1,5 +1,11 @@
 {
+  "MiniMax H3 Video Transition [Upload two videos to generate a transition between them]": "MiniMax H3 Video Transition [Upload two videos to generate a transition between them]",
   "GeneralAPIImage":"General API Image",
+  "Mask feathering": "Mask feathering",
+  "MiniMax-H3(Swap-SAM3)": "MiniMax-H3 SAM3 Face Swap",
+  "MiniMax-H3(Swap-SAM3)\u2B07": "MiniMax-H3 SAM3 Face Swap\u2B07",
+  "MiniMax H3 SAM3 Face Swap": "MiniMax H3 SAM3 Face Swap",
+  "MiniMax H3 SAM3 Face Swap Tools": "MiniMax H3 SAM3 Face Swap Tools",
   "API": "API",
   "Local": "Local",
   "Source": "Source",

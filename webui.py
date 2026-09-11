@@ -4775,7 +4775,7 @@ with shared.gradio_root:
                             gr.HTML(value=sam3_video_mask.get_viewer_html(), elem_id="sam3_video_mask_html")
                             sam3_original_video_path = gr.State(None)
                             sam3_original_mask_path = gr.State(None)
-                            with gr.Row():
+                            with gr.Row(elem_id="sam3_video_previews"):
                                 sam3_input_video = gr.Video(label="Video (Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_input_video")
                                 sam3_mask_video = gr.Video(label="Mask Video (Preview / Upload)", show_label=True, sources=["upload"], height=300, elem_id="sam3_output_mask_video")
                             sam3_mask_upload_file = gr.File(

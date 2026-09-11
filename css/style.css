@@ -9209,6 +9209,7 @@ button.describe-vlm-chat-roleplay-participant-chip {
   display: grid;
   gap: 10px;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .describe-vlm-chat-character-library-assets {
@@ -9241,6 +9242,74 @@ button.describe-vlm-chat-roleplay-participant-chip {
   gap: 12px;
   padding-top: 13px;
   border-top: 1px solid rgba(148, 163, 184, 0.20);
+}
+
+.describe-vlm-chat-character-library-image-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
+  gap: 6px;
+  align-items: end;
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-image-settings label {
+  min-width: 0;
+}
+
+.describe-vlm-chat-character-library-image-settings label > span {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.describe-vlm-chat-character-library-image-settings select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 6px;
+  border: 1px solid #57606b;
+  border-radius: 5px;
+  background: #171b21;
+  color: #e2e8f0;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.describe-vlm-chat-character-library-image-settings button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #57606b;
+  border-radius: 5px;
+  background: #30363e;
+  color: #d5dce5;
+}
+
+.describe-vlm-chat-character-library-image-settings :is(select, button):focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 1px;
+}
+
+.describe-vlm-chat-character-library-image-settings :disabled,
+[data-roleplay-character-library-generate-image]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.describe-vlm-chat-character-library-generated-preset {
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 480px) {
+  .describe-vlm-chat-character-library-image-settings {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .describe-vlm-chat-character-library-image-settings label:first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .describe-vlm-chat-character-library-visual-prompt-grid textarea[data-roleplay-character-library-image-prompt] {
@@ -9307,6 +9376,14 @@ button.describe-vlm-chat-roleplay-participant-chip {
 }
 
 @media (max-width: 760px) {
+  .describe-vlm-chat-character-library-image-settings {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .describe-vlm-chat-character-library-image-settings label:first-child {
+    grid-column: 1 / -1;
+  }
+
   .describe-vlm-chat-character-library-main {
     padding: 14px 14px 22px;
   }
@@ -10814,7 +10891,9 @@ button.describe-vlm-chat-roleplay-participant-chip {
 
     #scene_reference_videos {
         display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-columns: none !important;
+        grid-auto-flow: column !important;
+        grid-auto-columns: minmax(0, 1fr) !important;
         gap: 8px !important;
         align-items: start !important;
     }
@@ -21174,6 +21253,42 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 
 button[aria-label="Edit"][title="Edit"] {
     display: none !important;
+}
+
+/* Keep source-video pairs together without moving Gradio-owned components. */
+html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not([hidden]):not(.hidden):not(.simpai-force-hidden):not([style*="display: none"]) {
+    display: flex !important;
+    flex-direction: column;
+    flex-wrap: nowrap !important;
+}
+
+#scene_panel.simpai-source-videos-first > * {
+    flex: 0 0 auto !important;
+}
+
+#scene_panel.simpai-source-videos-first > :has(~ #scene_video),
+#scene_panel.simpai-source-videos-first > #scene_video,
+#scene_panel.simpai-source-videos-first > #scene_video_placeholder {
+    order: -2;
+}
+
+#scene_panel.simpai-source-videos-first > #scene_reference_videos {
+    order: -1;
+}
+
+#sam3_video_previews {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    align-items: start !important;
+}
+
+#sam3_video_previews > :is(#sam3_input_video, #sam3_output_mask_video) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
 }
 
 #sam3_input_video,

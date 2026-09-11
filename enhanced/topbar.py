@@ -1560,7 +1560,8 @@ def _build_canvas_scene_schema(scene_frontend):
         return True
 
     upload_slots = [
-        {"key": key, "label": label, "visible": _slot_visible(key), "interactive": key not in disinteractive}
+        {"key": key, "label": (scene_frontend.get("video_slot_labels") or {}).get(key, label),
+         "visible": _slot_visible(key), "interactive": key not in disinteractive}
         for key, label in slot_defs
     ]
 
@@ -1675,6 +1676,7 @@ def _build_canvas_scene_schema(scene_frontend):
         "image_preprocessor_method": scene_frontend.get("image_preprocessor_method", []),
         "disable_canvas_mask": _resolve_scene_canvas_mask_disabled(scene_frontend, default_theme),
         "upload_slots": upload_slots,
+        "video_source_slots": list(scene_frontend.get("video_source_slots") or []),
         "params": params,
         "per_theme": per_theme,
     }
@@ -2801,6 +2803,8 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video2_trim_payload,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
+        if "minimax_h3_transition" in str(scene_task_method_value):
+            video_effective = scene_video_effective
         if scene_task_method_value == "wan_scail2_sam3_cn":
             mask_path = _clean_scene_reference_video_path(sam3_mask_video)
             if not mask_path or not os.path.isfile(mask_path):
@@ -2813,7 +2817,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                 mask_path,
                 os.path.getsize(mask_path),
             )
-        if scene_task_method_value == "minimax_h3_mask_r2v_cn":
+        if scene_task_method_value in ("minimax_h3_mask_r2v_cn", "minimax_h3_mask_r2v_face_swap_cn"):
             lang = normalize_ui_lang(state_params.get("__lang"))
             source_path = _clean_scene_reference_video_path(video_effective)
             if not source_path or not os.path.isfile(source_path):
@@ -2825,6 +2829,16 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                 if lang == "cn":
                     raise gr.Error("SAM3 蒙版视频无效，请重新生成或上传后再生成。")
                 raise gr.Error("The SAM3 mask video is missing or invalid. Please regenerate or upload it again.")
+            if scene_task_method_value == "minimax_h3_mask_r2v_face_swap_cn":
+                replacement_image = (
+                    scene_canvas_image.get("image")
+                    if isinstance(scene_canvas_image, dict)
+                    else scene_canvas_image
+                )
+                if replacement_image is None:
+                    if lang == "cn":
+                        raise gr.Error("SAM3 手动换脸需要一张人脸参考图，请上传后再生成。")
+                    raise gr.Error("SAM3 face swap requires one face reference image. Please upload it before generating.")
             logger.info(
                 "[Generate][H3MaskEdit] source_ready=%s source_size=%s mask_ready=%s mask_size=%s",
                 source_path,
@@ -4622,6 +4636,8 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __scene_aspect_ratios=scene_aspect_ratios,
         __scene_control_props=_build_scene_control_props(scene_frontend, scene_theme),
         __scene_task_method=str(scene_task_method or ""),
+        __scene_video_source_slots=list(scene_frontend.get("video_source_slots") or []),
+        __scene_video_slot_labels=dict(scene_frontend.get("video_slot_labels") or {}),
         __scene_canvas_mask_disabled=_resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme),
         __resolution_control_profile=_resolve_resolution_control_profile(scene_frontend, scene_theme),
         __nav_name_list=filtered_nav_name_list_str,  # 使用过滤后的预设列表

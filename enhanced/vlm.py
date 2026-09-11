@@ -2221,6 +2221,11 @@ class VLM:
             prompt_actions.normalize_media_path(value)
             for value in (resolved_video_path, resolved_first_frame_path)
         ]
+        if resource_context.get("is_video_transition"):
+            video_sources.extend(
+                prompt_actions.normalize_media_path(item.get("path"))
+                for item in resource_context.get("transition_sources") or []
+            )
         video_source_available = any(path and os.path.exists(path) for path in video_sources)
         wants_video = (
             media_policy in {"main_video_auto", "main_video_required"}

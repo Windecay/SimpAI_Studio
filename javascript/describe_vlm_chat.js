@@ -5327,7 +5327,62 @@
         if (!Object.prototype.hasOwnProperty.call(workspace, 'agentDraftUndo')) workspace.agentDraftUndo = null;
         if (!Object.prototype.hasOwnProperty.call(workspace, 'savedDraftKey')) workspace.savedDraftKey = '';
         if (!Object.prototype.hasOwnProperty.call(workspace, 'dirty')) workspace.dirty = false;
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'imagePreset')) workspace.imagePreset = '';
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'imageParameterProfile')) workspace.imageParameterProfile = '';
+        if (!Object.prototype.hasOwnProperty.call(workspace, 'presetLoading')) workspace.presetLoading = false;
         return workspace;
+    }
+
+    function roleplayCharacterLibraryImagePresets() {
+        return state.creativePresetCatalog.filter((entry) => creativePresetHasTaskRoute(entry, 'text_to_image', []));
+    }
+
+    function renderRoleplayCharacterLibraryPresetControls(modal) {
+        const presetSelect = modal?.querySelector('[data-roleplay-character-library-image-preset]');
+        const profileSelect = modal?.querySelector('[data-roleplay-character-library-image-profile]');
+        if (!presetSelect || !profileSelect) return;
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        const entries = roleplayCharacterLibraryImagePresets();
+        if (!workspace.imagePreset && entries.length) {
+            workspace.imagePreset = (roleplayPreferredPresetEntry({ roleplay_character_image: true }, 'text_to_image')
+                || creativeCompatiblePresetEntry('text_to_image', []) || entries[0]).name;
+        }
+        const selected = String(workspace.imagePreset || '');
+        const entry = entries.find((item) => item.name === selected);
+        const missing = selected && !entry;
+        const unavailable = roleplayDictionaryText('Selected image Preset is unavailable.');
+        presetSelect.innerHTML = [
+            ...entries.map((item) => `<option value="${escapeHtml(item.name)}" ${item.name === selected ? 'selected' : ''}>${escapeHtml(item.display_name || item.name)}</option>`),
+            ...(missing ? [`<option value="${escapeHtml(selected)}" selected disabled>${escapeHtml(`${selected} (${unavailable})`)}</option>`] : []),
+            ...(!selected && !entries.length ? [`<option value="" selected>${escapeHtml(roleplayDictionaryText(workspace.presetLoading ? 'Loading image Presets...' : 'No text-to-image Preset is available.'))}</option>`] : [])
+        ].join('');
+        presetSelect.title = selected;
+        profileSelect.innerHTML = creativeParameterProfileOptions(selected, workspace.imageParameterProfile, {
+            includeAll: true, selectedPreset: selected, allowedPresets: entries.map((item) => item.name)
+        });
+        profileSelect.title = profileSelect.selectedOptions?.[0]?.textContent || '';
+        const running = workspace.generationTimer != null;
+        const disabled = workspace.imageGenerationPreparing || workspace.presetLoading || running;
+        presetSelect.disabled = disabled || !entries.length;
+        profileSelect.disabled = disabled || !entries.length;
+        const refresh = modal.querySelector('[data-roleplay-character-library-refresh-presets]');
+        if (refresh) refresh.disabled = disabled;
+        const generate = modal.querySelector('[data-roleplay-character-library-generate-image]');
+        if (generate) generate.disabled = disabled || !entry;
+    }
+
+    async function loadRoleplayCharacterLibraryPresets(modal, force = false) {
+        const workspace = roleplayCharacterLibraryWorkspaceState();
+        if (workspace.presetLoading) return;
+        workspace.presetLoading = true;
+        renderRoleplayCharacterLibraryPresetControls(modal);
+        try {
+            if (force && state.creativePresetCatalogPromise) await state.creativePresetCatalogPromise;
+            await ensureCreativePresetCatalog({ force });
+        } finally {
+            workspace.presetLoading = false;
+            renderRoleplayCharacterLibraryPresetControls(modal);
+        }
     }
 
     function emptyRoleplayCharacterLibraryCard() {
@@ -5874,7 +5929,9 @@
         mount.dataset.generationRef = generationRef;
         mount.dataset.generationRenderKey = generationRenderKey;
         mount.hidden = false;
+        const routeLabel = [found.action.preset, found.action.parameter_profile].filter(Boolean).join(' · ');
         mount.innerHTML = `<div class="describe-vlm-chat-character-library-generated-head"><span>${escapeHtml(localText('Generated image', '生成图片'))}</span><b>${escapeHtml(creativeStateLabel(generation))}</b></div>
+  <small class="describe-vlm-chat-character-library-generated-preset">${escapeHtml(`${roleplayDictionaryText('Image Preset')}: ${routeLabel}`)}</small>
   ${progress && CREATIVE_ACTIVE_STATES.has(currentState) ? `<progress max="100" value="${progress}"></progress>` : ''}
   ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
   ${rows ? `<div class="describe-vlm-chat-character-library-generated-grid">${rows}</div>` : ''}`;
@@ -5888,13 +5945,16 @@
                 }
                 const mainRect = main.getBoundingClientRect();
                 const mountRect = mount.getBoundingClientRect();
+                const footerRect = main.querySelector('.describe-vlm-chat-character-library-editor-actions')?.getBoundingClientRect();
+                const visibleBottom = footerRect && footerRect.top > mainRect.top
+                    ? Math.min(mainRect.bottom, footerRect.top) : mainRect.bottom;
                 const edge = 16;
-                const tallCard = mountRect.height >= main.clientHeight - edge * 2;
+                const tallCard = mountRect.height >= visibleBottom - mainRect.top - edge * 2;
                 let delta = 0;
                 if (tallCard || mountRect.top < mainRect.top + edge) {
                     delta = mountRect.top - (mainRect.top + edge);
-                } else if (mountRect.bottom > mainRect.bottom - edge) {
-                    delta = mountRect.bottom - (mainRect.bottom - edge);
+                } else if (mountRect.bottom > visibleBottom - edge) {
+                    delta = mountRect.bottom - (visibleBottom - edge);
                 }
                 if (delta) {
                     const maxScrollTop = Math.max(0, main.scrollHeight - main.clientHeight);
@@ -5981,6 +6041,7 @@
         renderRoleplayCharacterLibraryList(modal);
         renderRoleplayCharacterLibraryEditor(modal);
         renderRoleplayCharacterLibraryAgentReview(modal);
+        renderRoleplayCharacterLibraryPresetControls(modal);
         const deleteButton = modal.querySelector('[data-roleplay-character-library-delete]');
         if (deleteButton) deleteButton.disabled = !roleplayCharacterLibraryWorkspaceState().selectedId;
         syncRoleplayCharacterLibrarySaveState(modal);
@@ -6041,7 +6102,13 @@
             <div class="describe-vlm-chat-character-library-visual-top-tools">
               <div class="describe-vlm-chat-character-library-assets" data-roleplay-character-library-assets></div>
               <label><span>${escapeHtml(localText('Image analysis request', '图片分析要求'))}</span><textarea data-roleplay-character-library-image-request rows="2" placeholder="${escapeHtml(localText('Optional: keep the outfit, change the pose, use a clean studio background...', '可选：保留服装、改变姿势、使用干净的棚拍背景……'))}"></textarea></label>
-              <div class="describe-vlm-chat-character-library-prompt-actions"><button type="button" data-roleplay-character-library-describe-image><i class="fa-solid fa-eye"></i><span>${escapeHtml(localText('Image to prompt', '从图片生成提示词'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize-visual><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize prompt', '智能优化提示词'))}</span></button><button type="button" data-roleplay-character-library-generate-image><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Prompt to image', '根据提示词生成图片'))}</span></button></div>
+              <div class="describe-vlm-chat-character-library-prompt-actions"><button type="button" data-roleplay-character-library-describe-image><i class="fa-solid fa-eye"></i><span>${escapeHtml(localText('Image to prompt', '从图片生成提示词'))}</span></button><button type="button" data-roleplay-character-library-agent-optimize-visual><i class="fa-solid fa-sliders"></i><span>${escapeHtml(localText('AI optimize prompt', '智能优化提示词'))}</span></button></div>
+              <div class="describe-vlm-chat-character-library-image-settings">
+                <label><span>${escapeHtml(roleplayDictionaryText('Image Preset'))}</span><select data-roleplay-character-library-image-preset></select></label>
+                <label><span>${escapeHtml(roleplayDictionaryText('Private parameter profile'))}</span><select data-roleplay-character-library-image-profile></select></label>
+                <button type="button" data-roleplay-character-library-refresh-presets title="${escapeHtml(roleplayDictionaryText('Refresh image Presets'))}" aria-label="${escapeHtml(roleplayDictionaryText('Refresh image Presets'))}"><i class="fa-solid fa-rotate"></i></button>
+              </div>
+              <div class="describe-vlm-chat-character-library-prompt-actions"><button type="button" data-roleplay-character-library-generate-image><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Prompt to image', '根据提示词生成图片'))}</span></button></div>
             </div>
           </div>
           <div class="describe-vlm-chat-character-library-visual-prompt-grid">
@@ -6076,6 +6143,7 @@
         renderRoleplayCharacterLibraryWorkspace(modal);
         ensureRoleplayCharacterLibrary(modal).then(() => renderRoleplayCharacterLibraryWorkspace(modal));
         loadRoleplayReferenceLibrary(modal).then(() => renderRoleplayCharacterLibraryWorkspace(modal));
+        loadRoleplayCharacterLibraryPresets(modal, true);
     }
 
     function closeRoleplayCharacterLibrary() {
@@ -6498,7 +6566,7 @@
 
     async function generateRoleplayCharacterLibraryImage(modal) {
         const workspace = roleplayCharacterLibraryWorkspaceState();
-        if (!workspace.draft || workspace.busy) return false;
+        if (!workspace.draft || workspace.busy || workspace.presetLoading || workspace.generationTimer) return false;
         readRoleplayCharacterLibraryForm(modal);
         const card = normalizeRoleplayCharacterLibraryCard(workspace.draft);
         if (![card.name, card.identity, card.background, card.personality, card.image_prompt].some(Boolean)) {
@@ -6506,9 +6574,20 @@
             return false;
         }
         workspace.busy = true;
+        const selectedPreset = workspace.imagePreset;
+        const selectedProfile = workspace.imageParameterProfile;
+        workspace.imageGenerationPreparing = true;
+        renderRoleplayCharacterLibraryPresetControls(modal);
         setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', true);
         roleplayCharacterLibraryFeedback(modal, localText('Preparing the character image...', '正在准备角色图片……'));
         try {
+            await ensureCreativePresetCatalog({ force: true });
+            const entry = roleplayCharacterLibraryImagePresets().find((item) => item.name === selectedPreset);
+            if (!entry) throw new Error(roleplayDictionaryText('Selected image Preset is unavailable.'));
+            const parameterProfile = creativeParameterProfileEntry(selectedProfile, selectedPreset);
+            if (selectedProfile && !parameterProfile) {
+                throw new Error(roleplayDictionaryText('The selected private parameter profile is no longer available.'));
+            }
             const session = roleplayCharacterLibrarySession(card);
             const response = await postJson('/describe-image/vlm-roleplay/character-image-action', {
                 session,
@@ -6525,6 +6604,12 @@
             stopRoleplayCharacterLibraryRenderTimer();
             const action = Object.assign({}, response.action, {
                 type: 'generate_image',
+                preset: selectedPreset,
+                preset_source: 'user',
+                parameter_profile: selectedProfile,
+                parameter_profile_preset: selectedPreset,
+                execution_plan: { preset: selectedPreset, theme: parameterProfile?.scene_theme || '' },
+                task_request: { ...response.action.task_request, preset_hint: selectedPreset },
                 tool_call_id: uid('roleplay_character_library_image'),
                 generation: { state: 'queued', assets: [] }
             });
@@ -6564,9 +6649,11 @@
             return false;
         } finally {
             workspace.busy = false;
+            workspace.imageGenerationPreparing = false;
             if (!workspace.generationTimer) {
                 setRoleplayActionBusy(modal, '[data-roleplay-character-library-generate-image]', false);
             }
+            renderRoleplayCharacterLibraryPresetControls(modal);
         }
     }
 
@@ -17548,7 +17635,10 @@
         const includeAll = !!config.includeAll;
         const selectedPreset = String(config.selectedPreset || preset || '').trim().toLowerCase();
         const rows = state.creativeParameterProfiles.filter((item) => (
-            includeAll || String(item.preset || '').toLowerCase() === wantedPreset
+            (includeAll || String(item.preset || '').toLowerCase() === wantedPreset)
+            && (!Array.isArray(config.allowedPresets) || config.allowedPresets.some((name) => (
+                String(name).toLowerCase() === String(item.preset).toLowerCase()
+            )))
         ));
         const options = [
             `<option value="">${escapeHtml(localText('Preset defaults', '使用 Preset 默认参数'))}</option>`,
@@ -21237,6 +21327,25 @@
     }
 
     document.addEventListener('change', (evt) => {
+        const imageSetting = evt.target.closest?.('[data-roleplay-character-library-image-preset], [data-roleplay-character-library-image-profile]');
+        if (imageSetting) {
+            const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
+            const workspace = roleplayCharacterLibraryWorkspaceState();
+            if (workspace.busy || workspace.presetLoading || workspace.generationTimer) return;
+            if (imageSetting.matches('[data-roleplay-character-library-image-preset]')) {
+                workspace.imagePreset = imageSetting.value;
+                workspace.imageParameterProfile = '';
+            } else {
+                const option = imageSetting.selectedOptions?.[0];
+                workspace.imageParameterProfile = option?.getAttribute('data-profile-name') || '';
+                if (workspace.imageParameterProfile) {
+                    const profilePreset = option.getAttribute('data-preset') || workspace.imagePreset;
+                    workspace.imagePreset = creativePresetEntry(profilePreset)?.name || profilePreset;
+                }
+            }
+            renderRoleplayCharacterLibraryPresetControls(modal);
+            return;
+        }
         const contextSelect = evt.target.closest?.('[data-describe-vlm-chat-roleplay-context-select]');
         if (contextSelect) {
             const viewer = contextSelect.closest('[data-describe-vlm-chat-roleplay-context-viewer]');
@@ -21348,6 +21457,10 @@
         }
         const characterLibraryModal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
         if (characterLibraryModal && !characterLibraryModal.hidden) {
+            if (evt.target.closest('[data-roleplay-character-library-refresh-presets]')) {
+                loadRoleplayCharacterLibraryPresets(characterLibraryModal, true);
+                return;
+            }
             if (evt.target.closest('[data-roleplay-character-library-close]')) {
                 closeRoleplayCharacterLibrary();
                 return;

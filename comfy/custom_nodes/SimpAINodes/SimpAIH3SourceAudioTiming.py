@@ -12,11 +12,16 @@ def _fit_samples(waveform, count):
 
 
 def align_source_audio(audio, source_fps, frame_count):
+    return retime_audio(audio, source_fps, 24.0, frame_count)
+
+
+def retime_audio(audio, source_fps, target_fps, frame_count):
     if audio is None:
         return None
     fps = float(source_fps)
     count = int(frame_count)
-    if not math.isfinite(fps) or fps <= 0 or count <= 0:
+    target_fps = float(target_fps)
+    if not math.isfinite(fps) or fps <= 0 or count <= 0 or not math.isfinite(target_fps) or target_fps <= 0:
         raise ValueError("H3 audio timing requires positive source FPS and frame count.")
     waveform = audio.get("waveform")
     sample_rate = int(audio.get("sample_rate", 0))
@@ -25,13 +30,13 @@ def align_source_audio(audio, source_fps, frame_count):
     if waveform.shape[-1] == 0:
         return None
     source_samples = max(1, round(count / fps * sample_rate))
-    target_samples = max(1, round(count / 24.0 * sample_rate))
-    if fps == 24.0:
+    target_samples = max(1, round(count / target_fps * sample_rate))
+    if fps == target_fps:
         if waveform.shape[-1] == target_samples:
             return audio
         return {**audio, "waveform": _fit_samples(waveform, target_samples)}
 
-    rate = 24.0 / fps
+    rate = target_fps / fps
     if not 0.1 <= rate <= 10.0:
         raise ValueError("Source FPS is outside AudioSpeedShift's supported speed range.")
     import nodes
@@ -50,7 +55,7 @@ def align_source_audio(audio, source_fps, frame_count):
         outputs.append(_fit_samples(shifted["waveform"], target_samples))
     logging.info(
         "[H3 Audio Timing] source_fps=%s frames=%s speed=%s source_seconds=%.6f drive_seconds=%.6f",
-        fps, count, rate, count / fps, count / 24.0,
+        fps, count, rate, count / fps, count / target_fps,
     )
     return {**audio, "waveform": torch.cat(outputs, dim=0), "sample_rate": sample_rate}
 

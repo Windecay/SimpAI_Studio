@@ -1,0 +1,109 @@
+{
+  "supported_tasks": ["video_edit"],
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["Basic"],
+      "theme_title": "MiniMax H3 Video Transition [Upload two videos to generate a transition between them]",
+      "theme_labels": {"Basic": {"en": "Basic", "zh": "\u57fa\u7840"}},
+      "task_method": {"Basic": "minimax_h3_transition_r2v_cn"},
+      "prompt_compiler": {"Basic": "minimax_h3_ref2va"},
+      "disable_canvas_mask": true,
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "scene_reference_video", "scene_audio2", "scene_audio3", "minimax_h3_storyboard_control"],
+      "video_slot_labels": {
+        "scene_video": "Preceding Video (Source)",
+        "scene_reference_video": "Following Video (Source)"
+      },
+      "video_source_slots": ["scene_video", "scene_reference_video"],
+      "director_capability": {
+        "director_supported": false,
+        "image_policy": "optional", "audio_policy": "optional", "video_policy": "required",
+        "min_images": 0, "max_images": 9, "max_audios": 3, "min_videos": 2, "max_videos": 2,
+        "image_modes": ["none", "reference_set"],
+        "video_modes": ["explicit"], "duration_strategy": "shot", "audio_output": "generated",
+        "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_additional_prompt", "scene_additional_prompt_2", "scene_var_number", "scene_var_number2",
+        "scene_var_number6", "scene_var_number7", "scene_var_number8",
+        "scene_var_number9", "scene_var_number10", "scene_switch_option2", "scene_switch_option3",
+        "scene_switch_option4", "scene_refiner_model", "scene_reference_video2",
+        "sam3_input_video", "sam3_mask_video", "scene_batch"
+      ],
+      "prompt": {
+        "Basic": "subject_definitions:\nThe visible subjects and environment retain their identity and appearance from the supplied transition boundaries. Use any supplied reference pictures for compatible subject, object and appearance details in the inserted middle.\n\nsummary:\n[video editing + audio reuse] Create a continuous audiovisual transition from the preceding video's ending to the following video's opening.\n\nretention_analysis:\nPreserve subject identities, spatial relationships, motion directions and visual style. Preserve both boundary soundtracks and their timing. The source boundaries are initial-latent data, not numbered references. Optional pictures and standalone audio guide the inserted middle without replacing either source boundary or its soundtrack.\n\ndetailed_description:\n[Shot 1] Continue the preceding video's ending action without stopping or restarting. Carry position, support, pose, facing and momentum through physically plausible movement into the following video's opening state. Incorporate compatible reference-picture details while preserving contacts and occlusion. Adjust composition and lighting smoothly. Do not introduce unrelated objects, sudden pose changes or frozen frames. Camera: Continue the incoming direction and speed, arriving smoothly at the outgoing camera state. Dialogue and visible text: Preserve boundary speech and explicitly requested words; do not invent dialogue or visible text. Synchronized sound: Continue the preceding boundary sound naturally toward the following boundary. Use any standalone audio as a sound-character and rhythm reference for the inserted middle. Keep visible actions synchronized with sound.\n\noverall_soundscape:\nExtend boundary ambience and ongoing sounds across the middle. Incorporate any supplied audio reference without restarting sound events or replacing boundary tracks. With no audio, use restrained sounds matching visible actions. No invented speech.\n\nnon_diegetic_music:\nContinue existing boundary music. When a standalone reference provides music, use its character and rhythm for the middle and transition naturally into the following clip. Otherwise do not add unrelated music."
+      },
+      "agent_prompt": {
+        "Basic": "Write an H3 transition prompt from the two chronological source contact sheets and any supplied reference pictures. The media note identifies which visual inputs show the preceding video's tail and the following video's head; these sheets are analysis-only boundary evidence, never numbered pictures or videos. Separately uploaded pictures and standalone audio are optional references, numbered independently as <Picture N> and <Audio N> using only the supplied inventory. Define what each reference contributes to the inserted middle: subject identity, object or appearance details, voice, sound character or rhythm. Reference details must remain compatible with both source boundaries; do not replace or replay either original clip. Describe a continuous physical path between the observed states, including position, support, pose, facing, velocity, contacts, occlusion, camera direction and lighting. The requested duration is the newly inserted middle. The workflow supplies source tail/head soundtracks as timed audio-latent conditions, not numbered audio references. Standalone audio guides generation and is not automatically copied over the final soundtrack; describe it as a reference, not a guaranteed exact copy. You see pictures and contact sheets, not audible audio. Follow user-provided audio roles, words and timing without claiming to hear unknown words, instruments or melodies. Preserve boundary speech and timing; do not invent dialogue, add unrelated music, force silence or restart ongoing sound."
+      },
+      "overwrite_step": {"Basic": 8},
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50,
+      "video_duration_title": "Inserted Transition Duration(s)",
+      "video_duration_min": 0.2,
+      "video_duration_max": 30,
+      "video_duration": {"Basic": 5},
+      "var_number5_title": "Transition Overlap Per Side(s)",
+      "var_number5_min": 0.1,
+      "var_number5_max": 3,
+      "var_number5": {"Basic": 0.75},
+      "var_number3_title": "Video Shift",
+      "var_number3_min": 0.01,
+      "var_number3_max": 100,
+      "var_number3": {"Basic": 12},
+      "var_number4_title": "Audio Shift",
+      "var_number4_min": 0.01,
+      "var_number4_max": 100,
+      "var_number4": {"Basic": 3},
+      "switch_option1_title": "Include Both Source Videos",
+      "switch_option1": {"Basic": true},
+      "aspect_ratio": ["origin|Original", "640|1:1", "720|1:1", "832|1:1", "960|1:1", "1024|1:1", "1280|1:1"],
+      "resolution_control": {
+        "mode": "video_keep_input_area", "source": "scene_video",
+        "base_width": 640, "base_height": 640, "quantize": 32, "interactive": true,
+        "frontend_preprocess": false, "preprocess_fit": "proportional",
+        "preprocess_duration_limit": false, "preserve_audio": true
+      },
+      "image_preprocessor_method": [["-normalization"]]
+    }
+  },
+  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "previous_default_models": [
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+  ],
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  "default_loras": [["minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", 1.0], ["None", 1], ["None", 1], ["None", 1], ["None", 1]],
+  "default_cfg_scale": 1,
+  "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+  "default_sample_sharpness": 2,
+  "default_sampler": "er_sde",
+  "default_scheduler": "beta57",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_image_number": 1,
+  "default_overwrite_step": 8,
+  "default_prompt": "subject_definitions:\nThe visible subjects and environment retain their identity and appearance from the supplied transition boundaries. Use any supplied reference pictures for compatible subject, object and appearance details in the inserted middle.\n\nsummary:\n[video editing + audio reuse] Create a continuous audiovisual transition from the preceding video's ending to the following video's opening.\n\nretention_analysis:\nPreserve subject identities, spatial relationships, motion directions and visual style. Preserve both boundary soundtracks and their timing. The source boundaries are initial-latent data, not numbered references. Optional pictures and standalone audio guide the inserted middle without replacing either source boundary or its soundtrack.\n\ndetailed_description:\n[Shot 1] Continue the preceding video's ending action without stopping or restarting. Carry position, support, pose, facing and momentum through physically plausible movement into the following video's opening state. Incorporate compatible reference-picture details while preserving contacts and occlusion. Adjust composition and lighting smoothly. Do not introduce unrelated objects, sudden pose changes or frozen frames. Camera: Continue the incoming direction and speed, arriving smoothly at the outgoing camera state. Dialogue and visible text: Preserve boundary speech and explicitly requested words; do not invent dialogue or visible text. Synchronized sound: Continue the preceding boundary sound naturally toward the following boundary. Use any standalone audio as a sound-character and rhythm reference for the inserted middle. Keep visible actions synchronized with sound.\n\noverall_soundscape:\nExtend boundary ambience and ongoing sounds across the middle. Incorporate any supplied audio reference without restarting sound events or replacing boundary tracks. With no audio, use restrained sounds matching visible actions. No invented speech.\n\nnon_diegetic_music:\nContinue existing boundary music. When a standalone reference provides music, use its character and rhythm for the middle and transition naturally into the following clip. Otherwise do not add unrelated music.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+    "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors"
+  ]
+}

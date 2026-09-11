@@ -587,6 +587,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     ).strip()
     masked_video_edit = _prompt_action_masked_video_edit(task_method)
     automatic_face_mask = _prompt_action_automatic_face_mask(task_method)
+    video_transition = "minimax_h3_transition" in task_method.lower()
     declared_capability = prompt_action_capability_from_state(data) if scene_mode else {}
     capability = copy.deepcopy(declared_capability)
     media_profile = _prompt_action_media_profile(data) if scene_mode else {}
@@ -730,7 +731,8 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         and (not scene_mode or "scene_reference_video" not in hidden)
     )
     reference_video2_allowed = (
-        video_policy != "forbidden"
+        not video_transition
+        and video_policy != "forbidden"
         and (not scene_mode or "scene_reference_video2" not in hidden)
     )
     main_video_path = (original_video or video_component) if main_video_allowed and video_component else ""
@@ -861,6 +863,13 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         video_descriptors = []
         first_frame = ""
 
+    if video_transition:
+        video_path = ""
+        video_source = ""
+        video_reference_index = 0
+        video_descriptors = []
+        first_frame = ""
+
     selected_video_descriptor = next(
         (
             item for item in video_descriptors
@@ -979,6 +988,17 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
         })
         if video_path:
             context["video_source"] = "masked_source_video"
+    if video_transition:
+        context.update({
+            "is_video_transition": True,
+            "transition_sources_present": bool(main_video_path and reference_video_path),
+            "transition_sources": [
+                {"slot": "scene_video", "path": main_video_path, "edge": "tail", "role": "preceding source"},
+                {"slot": "scene_reference_video", "path": reference_video_path, "edge": "head", "role": "following source"},
+            ],
+            "reference_video_present": False,
+            "motion_picture_index": 0,
+        })
     return images, context
 
 
@@ -1151,7 +1171,7 @@ def _load_first_frame(path):
         return None
 
 
-def _read_video_frames(video_path, first_frame_path, max_frames):
+def _read_video_frames(video_path, first_frame_path, max_frames, edge="", window_seconds=1.5):
     source = normalize_media_path(video_path)
     max_frames = max(1, min(int(max_frames or PROMPT_ACTION_VIDEO_FRAMES), 16))
     meta = {
@@ -1175,10 +1195,17 @@ def _read_video_frames(video_path, first_frame_path, max_frames):
                 frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
                 fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
                 if frame_count > 0:
-                    requested = min(max_frames, frame_count)
+                    start_index, end_index = 0, max(0, frame_count - 1)
+                    if edge in ("head", "tail") and fps > 0:
+                        window = min(frame_count, max(2, round(window_seconds * fps)))
+                        if edge == "tail":
+                            start_index = max(0, frame_count - window)
+                        else:
+                            end_index = window - 1
+                    requested = min(max_frames, end_index - start_index + 1)
                     indices = sorted({
                         int(round(value))
-                        for value in np.linspace(0, max(0, frame_count - 1), requested)
+                        for value in np.linspace(start_index, end_index, requested)
                     })
                     for frame_index in indices:
                         capture.set(cv2.CAP_PROP_POS_FRAMES, int(frame_index))
@@ -1333,6 +1360,19 @@ def prepare_prompt_action_media(
     if not use_video:
         return images, media_meta
 
+    if media_meta.get("is_video_transition"):
+        media_meta.update(video_count=0, video_descriptors=[], video_reference_index=0,
+                          video_source="", reference_video_present=False, reference_video_content_available=False)
+        visuals = []
+        for item in media_meta.get("transition_sources") or []:
+            frames, times, details = _read_video_frames(item["path"], "", 6, edge=item["edge"])
+            sheet = _build_contact_sheet(frames, times)
+            if sheet is not None:
+                images.append(sheet)
+                visuals.append({**item, "visual_index": len(images), "sampled_frames": len(frames)})
+        media_meta["transition_source_visuals"] = visuals
+        return images, media_meta
+
     visual_mode = str(opts.get("video_frame_mode") or media_meta.get("video_frame_mode") or "contact_sheet").strip().lower()
     video_role = str(media_meta.get("video_role") or "").strip().lower()
     mask_path = normalize_media_path(media_meta.get("temporal_mask_path"))
@@ -1393,6 +1433,41 @@ def _prompt_action_role_label(role):
 
 def prompt_action_media_note(media_meta):
     meta = media_meta if isinstance(media_meta, dict) else {}
+    if meta.get("is_video_transition"):
+        notes = [
+            "The two video uploads are transition source evidence, never numbered H3 references. "
+            "Do not call either source <Video N> or <Picture N>. Read each contact sheet chronologically. "
+            "Infer visible boundary pose, position, facing, velocity, camera movement and lighting; "
+            "describe a continuous path connecting them without restarting either source or inventing unheard dialogue. "
+            "The workflow supplies available source tail/head soundtracks as timed audio-latent conditions, "
+            "not numbered <Audio N> references. You see contact sheets, not audible audio. Request continuity "
+            "of any supplied ambience, ongoing sounds and music toward the following boundary without "
+            "claiming to hear specific words, instruments or melodies. Preserve boundary speech and timing."
+        ]
+        for position, item in enumerate(meta.get("image_descriptors") or [], 1):
+            if item.get("analysis_only"):
+                notes.append(f"Visual input {position} is an analysis-only image, not a numbered reference.")
+                continue
+            notes.append(
+                f"Visual input {position} is reference picture <Picture {item['index']}> "
+                f"({_prompt_action_role_label(item.get('role'))}). Use compatible details in the inserted middle "
+                "while preserving the two source boundaries."
+            )
+        for index in range(int(meta.get("audio_count") or 0)):
+            notes.append(
+                f"<Audio {index + 1}> is a separately uploaded audio reference for the generated middle, "
+                "not either source video's soundtrack. It guides generation rather than automatically "
+                "replacing the final audio. Its content has not been heard; follow the user's stated role "
+                "without inventing words, instruments or melodies."
+            )
+        for item in meta.get("transition_source_visuals") or []:
+            notes.append(
+                f"Visual input {item['visual_index']} shows the {item['edge']} of the {item['role']} video "
+                f"({item['sampled_frames']} chronological frames), for analysis only."
+            )
+        if len(meta.get("transition_source_visuals") or []) < 2:
+            notes.append("Both boundary contact sheets were not decoded; do not claim to have observed both ends.")
+        return "\n".join(notes)
     video_parts = []
     image_parts = []
     descriptors = meta.get("image_descriptors") if isinstance(meta.get("image_descriptors"), list) else []

@@ -2946,6 +2946,15 @@
 
     function setFileInputFromFile(fileInput, file) {
         if (!fileInput || !file) return false;
+        if (fileInput.disabled) return false;
+        const accepted = String(fileInput.accept || '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean);
+        const mime = String(file.type || '').toLowerCase();
+        const name = String(file.name || '').toLowerCase();
+        if (accepted.length && !accepted.some(value =>
+            value === '*/*'
+            || (value.startsWith('.') ? name.endsWith(value)
+                : value.endsWith('/*') ? mime.startsWith(value.slice(0, -1)) : mime === value)
+        )) return false;
         try {
             const dt = new DataTransfer();
             dt.items.add(file);
@@ -3047,39 +3056,28 @@
 
     function findFileInputForDropEvent(evt) {
         try {
-            const root = gradioApp && gradioApp();
-            if (!root) return null;
-            let el = evt && evt.target ? evt.target : null;
-            for (let i = 0; i < 10 && el; i++) {
-                if (el.querySelector) {
-                    const input = el.querySelector('input[type="file"]');
-                    if (input) return input;
-                }
-                el = el.parentElement;
-            }
+            const target = evt?.target?.nodeType === 3 ? evt.target.parentElement : evt?.target;
+            const componentSelector = '.block, .gradio-image, .gradio-video, .gradio-file, .image-container, .upload-container';
+            const host = target?.closest?.(componentSelector);
+            if (!host) return null;
+            const hiddenSelector = '.sai-gradio-hidden-bridge, [hidden], [aria-hidden="true"], .simpai-mounted-hidden, .simpai-force-hidden, .hidden, .hide';
+            if (host.closest(hiddenSelector)) return null;
+            const style = window.getComputedStyle(host);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return null;
+            const rect = host.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return null;
+            if (Number.isFinite(evt.clientX) && Number.isFinite(evt.clientY)
+                && (evt.clientX < rect.left || evt.clientX > rect.right
+                    || evt.clientY < rect.top || evt.clientY > rect.bottom)) return null;
+            const ownerSelector = '.block, .gradio-image, .gradio-video, .gradio-file';
+            const owner = host.closest(ownerSelector) || host;
 
-            const x = typeof evt.clientX === 'number' ? evt.clientX : null;
-            const y = typeof evt.clientY === 'number' ? evt.clientY : null;
-            if (x === null || y === null) return null;
-
-            const inputs = Array.from(root.querySelectorAll('input[type="file"]'));
-            if (!inputs.length) return null;
-
-            let best = null;
-            let bestDist = Infinity;
-            for (const input of inputs) {
-                const rect = input.getBoundingClientRect();
-                const cx = clamp(x, rect.left, rect.right);
-                const cy = clamp(y, rect.top, rect.bottom);
-                const dx = x - cx;
-                const dy = y - cy;
-                const dist = (dx * dx) + (dy * dy);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = input;
-                }
-            }
-            return best;
+            // A panel or a nearby hidden bridge is never an implicit upload target.
+            return Array.from(host.querySelectorAll('input[type="file"]')).find(input =>
+                !input.disabled
+                && !input.parentElement?.closest(hiddenSelector)
+                && (input.closest(ownerSelector) || input.closest(componentSelector)) === owner
+            ) || null;
         } catch (e) {
             return null;
         }

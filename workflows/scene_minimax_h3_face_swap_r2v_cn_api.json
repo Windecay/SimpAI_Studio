@@ -12,7 +12,7 @@
       "width": 640,
       "height": 640,
       "cfg": 1,
-      "steps": 8,
+      "steps": 6,
       "var_number": 0,
       "var_number2": 0,
       "var_number3": 12.0,
@@ -21,7 +21,7 @@
       "var_number6": 0,
       "var_number7": 5,
       "var_number8": 0,
-      "var_number9": 0,
+      "var_number9": 64,
       "var_number10": 0,
       "switch_option1": false,
       "switch_option2": false,
@@ -32,7 +32,7 @@
       "clip_type": 1,
       "negative_prompt": "",
       "sampler": "er_sde",
-      "scheduler": "beta57",
+      "scheduler": "simple",
       "video_duration": 0,
       "ip_image4": "None",
       "ip_image5": "None",
@@ -289,7 +289,7 @@
       "frame_load_cap": 0,
       "skip_first_frames": 0,
       "select_every_nth": 1,
-      "duration": 0,
+      "duration": ["1", 32],
       "load_audio": true
     },
     "class_type": "SimpAIOptionalVideoPath",
@@ -428,9 +428,10 @@
   "73": {
     "inputs": {
       "stitcher": ["89", 0],
-      "inpainted_image": ["72", 0]
+      "inpainted_image": ["72", 0],
+      "feather_pixels": ["1", 18]
     },
-    "class_type": "InpaintStitchImproved",
+    "class_type": "SimpAIFaceOuterStitch",
     "_meta": {"title": "Stitch H3 Face Back to Source Video"}
   },
   "75": {
@@ -466,7 +467,7 @@
   "80": {
     "inputs": {
       "samples": ["76", 0],
-      "mask": ["77", 0]
+      "mask": ["106", 0]
     },
     "class_type": "SetLatentNoiseMask",
     "_meta": {"title": "Apply Automatic Face Mask to H3 Video Latent"}
@@ -548,7 +549,7 @@
       "mask_fill_holes": false,
       "mask_expand_pixels": ["92", 0],
       "mask_invert": false,
-      "mask_blend_pixels": 64,
+      "mask_blend_pixels": ["1", 18],
       "mask_hipass_filter": 0,
       "extend_for_outpainting": false,
       "extend_up_factor": 1,
@@ -692,7 +693,7 @@
       "images": ["49", 0],
       "fps": ["49", 3],
       "mask_expand": ["92", 0],
-      "mask_blend": 64
+      "mask_blend": ["1", 18]
     },
     "class_type": "SimpAIFaceTrack",
     "_meta": {"title": "SimpAI Face Track"}
@@ -713,5 +714,10 @@
     },
     "class_type": "ComfyMathExpression",
     "_meta": {"title": "Load FPS Override as Float"}
+  },
+  "106": {
+    "inputs": {"mask": ["77", 0]},
+    "class_type": "SimpAIFaceGenerationMask",
+    "_meta": {"title": "Solidify Face Generation Core"}
   }
 }

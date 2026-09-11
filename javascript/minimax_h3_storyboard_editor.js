@@ -2168,6 +2168,7 @@
 
     function currentSceneInventory(source) {
         const hidden = sceneHiddenSlots(source);
+        const sourceSlots = new Set(languageState(source).scene_frontend?.video_source_slots || []);
         const imageSlots = [
             { id: 'scene_canvas', slot: 'scene_canvas_image', label_en: 'Upload and canvas (1)', label_cn: '\u4e0a\u4f20\u548c\u753b\u5e03 (1)', info: sceneCanvasMediaInfo },
             { id: 'scene_input_image1', slot: 'scene_input_image1', label_en: 'Prompt image (2)', label_cn: '\u63d0\u793a\u56fe (2)' },
@@ -2190,7 +2191,7 @@
             return info.available ? [Object.assign({}, item, { preview: info.preview })] : [];
         });
         const videoRefs = videoSlots.flatMap((item) => {
-            if (hidden.has(item.slot)) return [];
+            if (hidden.has(item.slot) || sourceSlots.has(item.slot)) return [];
             const info = sceneMediaInfo(item.id, 'video');
             return info.available ? [Object.assign({}, item, { preview: info.preview })] : [];
         });
@@ -2217,6 +2218,7 @@
             mode: sceneModeFromSource(source, inventory, sceneThemeText),
             duration: Math.max(0.3, fieldNumber('scene_video_duration', 5)),
             inventory,
+            is_video_transition: (languageState(source).scene_frontend?.video_source_slots || []).length === 2,
             langState: languageState(source)
         };
     }
@@ -3320,13 +3322,14 @@
                     ? options.inventory.image_refs.map((item) => cleanText(item?.slot)).filter(Boolean)
                     : [];
                 const preferredVideoSlot = preferredStoryboardVideoSlot(response?.state, options.inventory);
+                const useVideo = !!preferredVideoSlot || !!options.is_video_transition;
                 if (response?.kind === 'cell') {
                     return root.runSimpleAIPromptActionDirect('smart_expand', response.input, {
                         language,
                         target_kind: 'natural',
                         instruction: response.instruction,
                         use_scene_agent_prompt: false,
-                        use_video: !!preferredVideoSlot,
+                        use_video: useVideo,
                         preferred_video_slot: preferredVideoSlot,
                         skip_prompt_compiler_validation: true,
                         expected_generation_image_slots: expectedGenerationImageSlots
@@ -3335,7 +3338,7 @@
                 return root.runSimpleAIPromptActionDirect('smart_expand', response.prompt, {
                     language,
                     h3_storyboard_form: true,
-                    use_video: !!preferredVideoSlot,
+                    use_video: useVideo,
                     preferred_video_slot: preferredVideoSlot,
                     expected_generation_image_slots: expectedGenerationImageSlots
                 });
