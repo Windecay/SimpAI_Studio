@@ -19,6 +19,12 @@
     const DIALOGUE_DIGITS_PER_SECOND = 3.5;
     const DIALOGUE_PAUSE_SECONDS = 0.06;
     const DIALOGUE_HEADROOM_SECONDS = 0.18;
+    const NO_SUBTITLES_EN = 'No dialogue subtitles, captions, or other text overlays appear on screen. Dialogue is conveyed through audio only.';
+    const NO_SUBTITLES_CN = '画面不显示对白字幕、台词文字或其他叠加文字，对白只通过声音呈现。';
+    const NO_ADDED_DIALOGUE_EN = 'No additional dialogue is introduced.';
+    const NO_ADDED_DIALOGUE_CN = '本镜头不新增对白。';
+    const NO_ADDED_SOUND_EN = 'No additional sound effects are introduced.';
+    const NO_ADDED_SOUND_CN = '本镜头不新增音效。';
     const SHOT_TEMPLATES = Object.freeze({
         one_take: Object.freeze({
             id: 'one_take',
@@ -612,10 +618,15 @@
     }
 
     function dialogueTextForTiming(value) {
-        const sourceText = cleanText(value);
+        const sourceText = stripDefaultSubtitleInstruction(value);
         if (!sourceText) return '';
+        if ([NO_ADDED_DIALOGUE_EN, NO_ADDED_DIALOGUE_CN].includes(sourceText)) return '';
+        const spoken = Array.from(sourceText.matchAll(/<d\b[^>]*>([\s\S]*?)<\/d>/gi));
+        if (spoken.length) {
+            return spoken.map((match) => match[1].replace(/^\s*\[[^\]\n]+\]\s*/, '').trim()).join(' ');
+        }
         const hasSpokenLabel = /Dialogue|\u5bf9\u767d/i.test(sourceText);
-        const hasVisibleTextLabel = /visible\s+text|visual\s+text|\u753b\u9762\u6587\u5b57/i.test(sourceText);
+        const hasVisibleTextLabel = /visible\s+text|visual\s+text|(?:display|sign|screen)\s+(?:reads|says)|画面文字|画面中可见文字|屏幕文字|招牌(?:写着|文字)/i.test(sourceText);
         if (hasVisibleTextLabel && !hasSpokenLabel) return '';
         let text = sourceText;
         if (!text) return '';
@@ -1044,6 +1055,7 @@
             camera: cleanText(source.camera ?? ''),
             dialogue: cleanText(source.dialogue ?? source.text ?? ''),
             sound: cleanText(source.sound ?? source.audio ?? ''),
+            narrative: source.narrative === true,
             reference_binding: normalizeShotBinding(source.reference_binding ?? source.referenceBinding ?? '')
         };
     }
@@ -1061,6 +1073,7 @@
             subject_definitions: '',
             summary: '',
             retention_analysis: '',
+            timeline_preamble: '',
             prompt_snapshot: ''
         };
     }
@@ -1094,10 +1107,31 @@
                 : (match[4] !== undefined
                     ? Number(match[4])
                     : (Number(match[2] || 0) * 60 + Number(match[3] || starts[index] || index)));
-            const body = cleanText(text.slice(startIndex, endIndex));
+            const body = stripDefaultSubtitleInstruction(text.slice(startIndex, endIndex)).replace(/^\s*,\s*/, '');
+            const spokenRanges = Array.from(body.matchAll(/<d\b[^>]*>[\s\S]*?<\/d>/gi));
+            let inDialogueField = false;
             const fieldMatches = Array.from(body.matchAll(
                 /(?:Camera|Dialogue and visible text|Synchronized sound|\u8fd0\u955c|\u955c\u5934\u8fd0\u52a8|\u76f8\u673a\u8fd0\u52a8|\u5bf9\u767d\s*[\/\uff0f]\s*\u753b\u9762\u6587\u5b57|\u5bf9\u767d\u4e0e\u753b\u9762\u6587\u5b57|\u5bf9\u767d\u6216\u753b\u9762\u6587\u5b57|\u5bf9\u767d|\u753b\u9762\u6587\u5b57|\u540c\u6b65\u58f0\u97f3|\u73af\u5883\u58f0\u97f3|\u58f0\u97f3)\s*[:\uff1a]\s*/gi
-            ));
+            )).filter((fieldMatch) => {
+                // Spoken words and nested visible-text labels are field content, not new columns.
+                if (spokenRanges.some((range) => fieldMatch.index >= range.index && fieldMatch.index < range.index + range[0].length)) return false;
+                if (inDialogueField && /^画面文字\s*[:：]/.test(fieldMatch[0])) return false;
+                inDialogueField = /^(?:Dialogue|对白|画面文字)/i.test(fieldMatch[0]);
+                return true;
+            });
+            if (!fieldMatches.length) {
+                // Our label-free export keeps one narrative line per editable column.
+                // Other official prose stays intact instead of guessing sentence ownership.
+                const lines = (body.match(/(?:<d\b[^>]*>[\s\S]*?<\/d>|[^\n])+/gi) || []).map(cleanText).filter(Boolean);
+                if (lines.length === 4) {
+                    return normalizeShot({
+                        start: seconds, description: lines[0], camera: lines[1],
+                        dialogue: [NO_ADDED_DIALOGUE_EN, NO_ADDED_DIALOGUE_CN].includes(lines[2]) ? '' : lines[2],
+                        sound: [NO_ADDED_SOUND_EN, NO_ADDED_SOUND_CN].includes(lines[3]) ? '' : lines[3]
+                    }, index, starts);
+                }
+                return normalizeShot({ start: seconds, description: body, narrative: true }, index, starts);
+            }
             const description = fieldMatches.length ? cleanText(body.slice(0, fieldMatches[0].index)) : body;
             const parsedBody = {
                 description: description.replace(
@@ -1110,7 +1144,7 @@
             };
             fieldMatches.forEach((fieldMatch, fieldIndex) => {
                 const fieldName = String(fieldMatch[0] || '').replace(/\s*[:\uff1a]\s*$/, '').toLowerCase();
-                const valueStart = fieldMatch.index + fieldMatch[0].length;
+                const valueStart = fieldMatch.index + (fieldName === '画面文字' ? 0 : fieldMatch[0].length);
                 const valueEnd = fieldIndex + 1 < fieldMatches.length ? fieldMatches[fieldIndex + 1].index : body.length;
                 const key = fieldName === 'camera' || /\u8fd0\u955c|\u955c\u5934\u8fd0\u52a8|\u76f8\u673a\u8fd0\u52a8/.test(fieldName)
                     ? 'camera'
@@ -1140,6 +1174,7 @@
             subject_definitions: cleanText(sections.subject_definitions || ''),
             summary: cleanText(sections.summary || ''),
             retention_analysis: cleanText(sections.retention_analysis || ''),
+            timeline_preamble: cleanText(timeline.split(/\[Shot\s+\d+\]/i)[0]),
             prompt_snapshot: text
         }), options);
     }
@@ -1164,6 +1199,7 @@
             subject_definitions: cleanText(source.subject_definitions ?? source.subjectDefinitions ?? ''),
             summary: cleanText(source.summary ?? ''),
             retention_analysis: cleanText(source.retention_analysis ?? source.retentionAnalysis ?? ''),
+            timeline_preamble: cleanText(source.timeline_preamble || ''),
             prompt_snapshot: cleanText(source.prompt_snapshot ?? source.promptSnapshot ?? '')
         }), opts);
     }
@@ -1199,8 +1235,8 @@
         return cleanText(text).replace(/\s{2,}/g, ' ');
     }
 
-    function shotDescriptionForEditor(value) {
-        return stripShotSubjectBindings(value);
+    function shotDescriptionForEditor(value, narrative) {
+        return narrative ? cleanText(value) : stripShotSubjectBindings(value);
     }
 
     function mergeShotDescription(existingValue, editedValue) {
@@ -1222,7 +1258,7 @@
     function timelineShotStatus(shot, mode) {
         const fields = {
             description: normalizeMode(mode) === MODE_REF2VA
-                ? shotDescriptionForEditor(shot?.description)
+                ? shotDescriptionForEditor(shot?.description, shot?.narrative)
                 : cleanText(shot?.description),
             camera: cleanText(shot?.camera),
             dialogue: cleanText(shot?.dialogue),
@@ -1237,30 +1273,106 @@
         };
     }
 
+    function stripDefaultSubtitleInstruction(value) {
+        return cleanText(value).split(/(<d\b[^>]*>[\s\S]*?<\/d>)/gi)
+            .map((part, index) => index % 2 ? part : part.split(NO_SUBTITLES_EN).join('').split(NO_SUBTITLES_CN).join(''))
+            .join('').trim();
+    }
+
+    function formatShotDialogue(value, lang) {
+        let text = stripDefaultSubtitleInstruction(value);
+        // Explicit scene text remains visual; unmarked input is treated as spoken dialogue.
+        if (!text || !dialogueTextForTiming(text)) {
+            if (/^(?:画面文字|屏幕文字|visible text)\s*[:：]/i.test(text)) {
+                const words = text.replace(/^[^:：]+[:：]\s*/, '').replace(/^["“]|["”]$/g, '');
+                return t(`The scene contains the visible text "${words}".`, `画面中可见文字 "${words}"。`, lang);
+            }
+            return /visible\s+text|visual\s+text|(?:display|sign|screen)\s+(?:reads|says)|画面文字|画面中可见文字|屏幕文字|招牌/i.test(text)
+                ? text : '';
+        }
+        if (!/<d\b/i.test(text)) {
+            const parts = /^\(\s*S\d+/i.test(text)
+                ? text.split(/(?=\(\s*S\d+(?:\s*,\s*S\d+)*\s*\))|(?:\r?\n)(?=\s*S\d+\s*[:：])/i)
+                : text.split(/\r?\n(?=\s*(?:S\d+\s*[:：]|\(\s*S\d+))/i);
+            text = parts
+                .filter((part) => part.trim())
+                .map((part) => {
+                    let words = part.trim();
+                    const delivery = words.match(/^(.{1,200}?\b(?:says(?: in an off-screen voiceover)?|asks|shouts|whispers|replies|sings)\s*[:,]\s*|.{1,60}?(?:说|问|喊道|说道)\s*[:：]\s*)/i);
+                    if (delivery) words = words.slice(delivery[0].length);
+                    const speaker = (delivery?.[0] || words).match(delivery
+                        ? /\(\s*(S\d+(?:\s*,\s*S\d+)*)\s*\)/i
+                        : /^(?:\(\s*(S\d+(?:\s*,\s*S\d+)*)\s*\)\s*[:：]?|(S\d+)\s*[:：])\s*/i);
+                    if (speaker && !delivery) words = words.slice(speaker[0].length);
+                    const explicitLanguage = words.match(/^(\[[^\]\n]+\])\s*/);
+                    if (explicitLanguage) words = words.slice(explicitLanguage[0].length);
+                    const language = explicitLanguage?.[1] || (
+                        /[\u3040-\u30ff]/.test(words) ? '[日本語]'
+                            : /[\uac00-\ud7af]/.test(words) ? '[한국어]'
+                                : /[\u3400-\u4dbf\u4e00-\u9fff]/.test(words) ? '[中文]'
+                                    : '[English]'
+                    );
+                    const id = speaker ? (speaker[1] || speaker[2]).replace(/\s/g, '').toUpperCase() : 'S1';
+                    const prefix = delivery
+                        ? (speaker ? delivery[0] : delivery[0].replace(/\b(says|asks|shouts|whispers|replies|sings)\b|(说|问|喊道|说道)/i, `(${id}) $&`))
+                        : `(${id}) `;
+                    const closedLips = /says in an off-screen voiceover/i.test(prefix)
+                        ? t(" The corresponding on-screen character's lips remain completely closed.", ' 对应画面人物始终闭嘴，不做口型。', lang)
+                        : '';
+                    return `${prefix}<d>${language}${words}</d>${closedLips}`;
+                }).join(' ');
+        } else if (!/\(\s*S\d+(?:\s*,\s*S\d+)*\s*\)/i.test(text) && !/<Audio\s+\d+>/i.test(text)) {
+            text = `(S1) ${text}`;
+        }
+        return text.replace(/(^|<\/d>\s*)(\(\s*S\d+(?:\s*,\s*S\d+)*\s*\))\s*(?=<d\b)/gi,
+            (match, prefix, speaker) => `${prefix}${t(`The speaker ${speaker} says: `, `说话人 ${speaker} 说：`, lang)}`);
+    }
+
+    function narrativeSentence(value, lang) {
+        const singlePicture = validPictureNumbers(value, Number.POSITIVE_INFINITY).length === 1;
+        const text = cleanText(value).split(/(<d\b[^>]*>[\s\S]*?<\/d>)/gi)
+            .map((part, index) => {
+                if (index % 2) return part;
+                let prose = part;
+                for (const placeholder of [NO_ADDED_DIALOGUE_EN, NO_ADDED_DIALOGUE_CN, NO_ADDED_SOUND_EN, NO_ADDED_SOUND_CN]) {
+                    prose = prose.split(placeholder).join('');
+                }
+                prose = prose.replace(/\r?\n/g, ' ');
+                if (singlePicture && !isEnglish(lang)) {
+                    prose = prose.replace(
+                        /(^|[。！？]\s*)(<Picture\s+\d+>)\s*(?!中|所示)(?=([\u3400-\u9fff]|\(\s*S\d))/g,
+                        (match, prefix, picture, next) => `${prefix}${picture} 中的主体${next.startsWith('(') ? ' ' : ''}`
+                    );
+                } else if (singlePicture) {
+                    prose = prose.replace(/^(<Picture\s+\d+>)\s*(?=\(\s*S\d)/, 'The subject in $1 ');
+                }
+                return prose;
+            }).join('').trim();
+        if (!text || /[.!?。！？](?:["'”’])?(?:<\/d>)?$/.test(text)) return text;
+        return `${text}${t('.', '。', lang)}`;
+    }
+
     function shotBody(shot, options) {
         const lang = options?.langState;
-        const description = cleanText(shot.description);
-        const camera = cleanText(shot.camera) || t(
-            'Static camera with no movement, holding the subject and setting clearly.',
-            '\u56fa\u5b9a\u673a\u4f4d\uff0c\u65e0\u955c\u5934\u8fd0\u52a8\uff0c\u4fdd\u6301\u4e3b\u4f53\u548c\u573a\u666f\u6e05\u6670\u3002',
+        const description = stripDefaultSubtitleInstruction(shot.description);
+        const camera = cleanText(shot.camera) || (shot.narrative ? '' : t(
+            'The camera holds a static shot, keeping the subject and setting clearly visible.',
+            '镜头采用固定机位，保持主体和场景清晰。',
             lang
-        );
-        const dialogue = cleanText(shot.dialogue) || t('None', '\u65e0', lang);
-        const sound = cleanText(shot.sound) || t('Silence', '\u9759\u97f3', lang);
-        return [
-            description,
-            `Camera: ${camera}`,
-            `Dialogue and visible text: ${dialogue}`,
-            `Synchronized sound: ${sound}`
-        ].filter(Boolean).join('\n').trim();
+        ));
+        const dialogue = formatShotDialogue(shot.dialogue, lang);
+        const sound = cleanText(shot.sound);
+        return [description, camera, dialogue, sound]
+            .map((part) => narrativeSentence(part, lang)).filter(Boolean).join(' ');
     }
 
     function timelineText(state, options) {
         const intervals = timelineIntervals(state, options);
         return state.shots.map((shot, index) => {
             const interval = intervals[index] || { start: 0, end: finiteNumber(options?.duration, 5) };
-            const marker = `[Shot ${index + 1}] ${formatPromptRange(interval.start, interval.end)}`;
-            return `${marker} ${shotBody(shot, options)}`.trim();
+            const marker = index === 0 ? '[Shot 1]' : `[Shot ${index + 1}] At ${formatSeconds(interval.start)},`;
+            const constraint = index === 0 ? t(NO_SUBTITLES_EN, NO_SUBTITLES_CN, options?.langState) : '';
+            return `${marker} ${[shotBody(shot, options), constraint].filter(Boolean).join(' ')}`.trim();
         }).join('\n');
     }
 
@@ -1607,7 +1719,8 @@
 
     function normalizeRef2VAShot(shot) {
         return Object.assign({}, shot, {
-            description: stripShotIdentityBoilerplateWithReferences(shotDescriptionForEditor(shot?.description)),
+            description: shot?.narrative ? cleanText(shot.description)
+                : stripShotIdentityBoilerplateWithReferences(shotDescriptionForEditor(shot?.description)),
             reference_binding: 'none'
         });
     }
@@ -1771,7 +1884,7 @@
                 `subject_definitions: ${subjects}`,
                 `summary: ${summary}`,
                 `retention_analysis: ${retention}`,
-                `detailed_description: ${timeline}`,
+                `detailed_description: ${[state.timeline_preamble, timeline].filter(Boolean).join('\n')}`,
                 `overall_soundscape: ${soundscape}`,
                 `non_diegetic_music: ${music}`
             ].join('\n\n');
@@ -1884,7 +1997,7 @@
 
     function setStoryboardTargetValue(state, target, value) {
         if (target?.scope === 'shot' && state.shots?.[target.index]) {
-            state.shots[target.index][target.field] = target.field === 'description'
+            state.shots[target.index][target.field] = target.field === 'description' && !state.shots[target.index].narrative
                 ? mergeShotDescription(state.shots[target.index].description, value)
                 : cleanText(value);
             return true;
@@ -1918,6 +2031,16 @@
         const starts = defaultShotStarts(options?.duration);
         const shots = previous.shots.map((previousShot, index) => {
             const optimizedShot = optimized.shots[index] || {};
+            if (optimizedShot.narrative && cleanText(optimizedShot.description)) {
+                return normalizeShot({
+                    ...optimizedShot,
+                    description: preserveFieldReferenceBindings(
+                        [previousShot.description, previousShot.camera, previousShot.dialogue, previousShot.sound].join(' '),
+                        sanitizeOptimizedSubjectLanguage(optimizedShot.description),
+                        options
+                    )
+                }, index, starts);
+            }
             const optimizedDescription = cleanText(optimizedShot.description);
             const description = optimizedDescription
                 ? sanitizeOptimizedSubjectLanguage(optimizedDescription)
@@ -1975,7 +2098,8 @@
                 cleanText(optimized.retention_analysis) || cleanText(previous.retention_analysis),
                 options
             ),
-            prompt_snapshot: cleanText(optimized.prompt_snapshot)
+            prompt_snapshot: cleanText(optimized.prompt_snapshot),
+            timeline_preamble: cleanText(optimized.timeline_preamble || previous.timeline_preamble)
         }), options);
     }
 
@@ -1998,7 +2122,11 @@
             kind: 'cell',
             target: Object.assign({}, target, { label, current_value: currentValue }),
             input,
-            instruction: requestInstruction,
+            instruction: requestInstruction + (target?.field === 'dialogue' ? t(
+                ' Preserve exact spoken words inside <d>[Language]...</d> with stable speaker IDs such as (S1). By default, dialogue is audio-only: state outside <d> that no dialogue subtitles, captions, or text overlays appear. Include visible text only when explicitly requested.',
+                ' 实际台词保持原文，使用 (S1) 等固定说话人标签及 <d>[语言]台词</d> 格式。默认对白只通过声音呈现，在 <d> 外声明不显示对白字幕、台词文字或其他叠加文字。仅在用户明确要求时加入画面文字。',
+                lang
+            ) : ''),
             user_instruction: instruction,
             prompt,
             state: normalize(state, options),
@@ -2300,7 +2428,7 @@
         const interval = timelineIntervals(state, options)[index] || { start: 0, end: finiteNumber(options?.duration, 5), duration: 0 };
         const dialogue = dialogueTiming(shot.dialogue, interval.duration, options);
         const total = Math.max(MIN_SHOT_DURATION, finiteNumber(options?.duration, 5));
-        const descriptionValue = state.mode === MODE_REF2VA ? shotDescriptionForEditor(shot.description) : shot.description;
+        const descriptionValue = state.mode === MODE_REF2VA ? shotDescriptionForEditor(shot.description, shot.narrative) : shot.description;
         return `<tr data-h3sb-shot-row="${index}">
   <td class="sai-h3sb-shot-cell"><div class="sai-h3sb-shot-label"><button type="button" class="sai-h3sb-drag-handle" draggable="true" data-h3sb-row-drag aria-label="${escapeHtml(t(`Reorder shot ${index + 1}`, `\u8c03\u6574\u955c\u5934 ${index + 1} \u987a\u5e8f`, lang))}" title="${escapeHtml(t('Drag to reorder', '\u62d6\u52a8\u8c03\u6574\u987a\u5e8f', lang))}"><i class="fa-solid fa-grip-lines"></i></button><span class="sai-h3sb-shot-number"><span class="sai-h3sb-shot-kicker">${escapeHtml(t('Shot', '\u955c\u5934', lang))}</span><strong>${String(index + 1).padStart(2, '0')}</strong></span></div></td>
   <td><div class="sai-h3sb-time-fields"><div class="sai-h3sb-time-range"><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(formatPromptSeconds(interval.start))}" data-h3sb-shot-field="start" aria-label="${escapeHtml(t('Shot start time', '\u955c\u5934\u5f00\u59cb\u65f6\u95f4', lang))}" ${index === 0 ? 'disabled' : ''}><span class="sai-h3sb-time-separator">-</span><output data-h3sb-time-view="end">${escapeHtml(formatPromptSeconds(interval.end))}</output></div><label class="sai-h3sb-time-duration-line"><span class="sai-h3sb-time-caption">${escapeHtml(t('Duration', '\u65f6\u957f', lang))}</span><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(formatPromptSeconds(interval.duration))}" data-h3sb-shot-field="duration" aria-label="${escapeHtml(t('Shot duration', '\u955c\u5934\u65f6\u957f', lang))}"></label></div></td>
@@ -2801,7 +2929,7 @@
             if (!state.shots[index]) return;
             if (field === 'start' || field === 'duration') return;
             beginTextEdit(target);
-            state.shots[index][field] = field === 'description' && state.mode === MODE_REF2VA
+            state.shots[index][field] = field === 'description' && state.mode === MODE_REF2VA && !state.shots[index].narrative
                 ? mergeShotDescription(state.shots[index].description, target.value)
                 : target.value;
             if (field === 'camera') {

@@ -1031,8 +1031,6 @@ class PromptServer():
         @routes.get("/object_info")
         async def get_object_info(request):
             refresh_requested = str(request.query.get("refresh", "")).strip().lower() in {"1", "true", "yes"}
-            if self._object_info_snapshot is not None and not refresh_requested:
-                return web.json_response(self._object_info_snapshot)
 
             refresh_task = self._object_info_refresh_task
             if refresh_requested and refresh_task is not None and not refresh_task.done():
