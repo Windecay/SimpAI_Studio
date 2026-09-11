@@ -408,6 +408,23 @@ def update_runtime_packages() -> int:
     return 0
 
 
+def update_runtime_packages_after_sync() -> int:
+    # Source sync can replace this script while its old module remains loaded.
+    command = [sys.executable]
+    if sys.flags.no_user_site:
+        command.append("-s")
+    command.extend([str(STUDIO_ROOT / "simpleai_update.py"), "--mode", "packages"])
+    try:
+        result = subprocess.run(command, cwd=STUDIO_ROOT, check=False, timeout=1800)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(
+            f"源码已更新，但依赖更新进程未能完成: {exc} / "
+            f"Source updated, but the dependency update process did not complete: {exc}"
+        )
+        return DEPENDENCY_UPDATE_FAILED
+    return result.returncode
+
+
 def refresh_root_requirements() -> int:
     print_header("刷新项目根 requirements.txt / Refresh root requirements.txt")
     if not ROOT_REQUIREMENTS_FILE.is_file():
@@ -502,7 +519,7 @@ def update_from_latest_zip(args: argparse.Namespace) -> int:
         else:
             print("已跳过启动依赖更新。 / Runtime dependency update was skipped.")
         return 0
-    return update_runtime_packages()
+    return update_runtime_packages_after_sync()
 
 
 def git_available() -> bool:
@@ -667,7 +684,7 @@ def run_git_mode(args: argparse.Namespace, ref: str | None = None, *, prompt_bac
     if result == 2 and prompt_backup:
         return offer_latest_zip_fallback(args)
     if result == 0 and not getattr(args, "skip_package_update", False):
-        return update_runtime_packages()
+        return update_runtime_packages_after_sync()
     return result
 
 

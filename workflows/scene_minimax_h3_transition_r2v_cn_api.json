@@ -93,7 +93,7 @@
   "43": {"class_type": "easy ifElse", "_meta": {"title": "H3 Model Loader"}, "inputs": {"boolean": ["42", 0], "on_true": ["3", 0], "on_false": ["40", 0]}},
   "44": {
     "class_type": "BlockSparseAttention", "_meta": {"title": "MiniMax H3 SLA"},
-    "inputs": {"model": ["43", 0], "selection": "top-k (SLA)", "selection.keep_percent": 10.0,
+    "inputs": {"model": ["43", 0], "selection": "sla", "selection.keep_percent": 10.0,
       "start_percent": 0.0, "end_percent": 1.0, "min_tokens": 8192, "dense_blocks": "",
       "extra_tokens": 0, "sink_conditioning": "exact_kv", "verbose": true}
   },
