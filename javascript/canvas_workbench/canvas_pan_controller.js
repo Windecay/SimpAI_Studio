@@ -15,6 +15,23 @@
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         let panState = null;
 
+        function applyProjectViewportPatch(project, viewportPatch) {
+            const patch = call('buildProjectViewportPatch', project, { viewportPatch });
+            if (patch && typeof patch === 'object'
+                && patch.viewport
+                && typeof patch.viewport === 'object'
+                && !Array.isArray(patch.viewport)) {
+                Object.assign(project, patch);
+                return;
+            }
+            const currentViewport = project?.viewport
+                && typeof project.viewport === 'object'
+                && !Array.isArray(project.viewport)
+                ? project.viewport
+                : {};
+            Object.assign(project, { viewport: Object.assign({}, currentViewport, viewportPatch || {}) });
+        }
+
         function startPan(evt) {
             call('hideCanvasTooltip');
             call('hideHoverPreview');
@@ -45,9 +62,10 @@
             if (!panState || !evt || evt.pointerId !== panState.pointerId) return;
             evt.preventDefault?.();
             const project = getProject();
-            project.viewport = project.viewport || {};
-            project.viewport.x = Math.round(panState.startX + evt.clientX - panState.startClientX);
-            project.viewport.y = Math.round(panState.startY + evt.clientY - panState.startClientY);
+            applyProjectViewportPatch(project, {
+                x: Math.round(panState.startX + evt.clientX - panState.startClientX),
+                y: Math.round(panState.startY + evt.clientY - panState.startClientY)
+            });
             call('preferSvgEdgesForViewportInteraction', 5000);
             call('applyViewport');
             call('updateMinimapForViewportInteraction');

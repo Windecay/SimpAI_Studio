@@ -15,6 +15,12 @@
             ? scope.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const buildTimelineKeyframesPatch = (clip, keyframes) => typeof scope.buildTimelineKeyframesPatch === 'function'
+            ? scope.buildTimelineKeyframesPatch(clip, keyframes)
+            : { keyframes: Array.isArray(keyframes) ? keyframes.slice() : [] };
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
+            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+            : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         let dragState = null;
 
         function startTimelineKeyframeDrag(node, marker, evt) {
@@ -71,8 +77,8 @@
             const pct = clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
             const nextTime = Math.round(clamp(pct * state.duration, state.clipStart, state.clipEnd) * 1000) / 1000;
             frames[index] = Object.assign({}, frames[index], { time: nextTime });
-            clip.keyframes = frames.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-            node.params = Object.assign({}, node.params || {}, { selected_clip_id: clip.id, playhead: nextTime });
+            Object.assign(clip, buildTimelineKeyframesPatch(clip, frames));
+            Object.assign(node, buildTimelineParamsPatch(node, { selected_clip_id: clip.id, playhead: nextTime }));
             call('refreshTimelineKeyframeMarkersDom', state.nodeEl, node, clip);
             call('refreshTimelinePlayheadDom', state.nodeEl, node);
             call('refreshTimelinePreviewDom', state.nodeEl, node);

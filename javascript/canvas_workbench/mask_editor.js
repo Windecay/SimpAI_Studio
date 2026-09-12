@@ -25,6 +25,7 @@
             detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
             ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
             getNodeImageSrc: delegate(context, 'getNodeImageSrc'),
+            buildMediaNodeStatePatch: delegate(context, 'buildMediaNodeStatePatch'),
             isNodeLocked: delegate(context, 'isNodeLocked'),
             mutate: delegate(context, 'mutate'),
             pushHistory: delegate(context, 'pushHistory'),
@@ -182,7 +183,7 @@
             const dataUrl = canvas.toDataURL('image/png');
             call(context, 'createThumbnailDataUrl', Promise.resolve(''), dataUrl, 720).then((thumb) => {
                 call(context, 'pushHistory', null, 'Save mask');
-                node.mask = {
+                const mask = {
                     kind: 'canvas_mask',
                     asset_id: uid('mask'),
                     name: `${node.title || node.id || 'image'}.mask.png`,
@@ -193,6 +194,10 @@
                     thumb,
                     updated_at: nowIso()
                 };
+                const patch = call(context, 'buildMediaNodeStatePatch', {}, node, { mask });
+                Object.assign(node, patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'mask')
+                    ? patch
+                    : { mask });
                 modal.remove();
                 call(context, 'mutate', null);
                 call(context, 'showToast', null, t('Mask saved to image node.', 'Mask 已保存到图片节点'));

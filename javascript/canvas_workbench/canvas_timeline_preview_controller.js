@@ -15,6 +15,9 @@
             ? scope.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const buildTimelineClipPatch = (fields) => typeof scope.buildTimelineClipPatch === 'function'
+            ? scope.buildTimelineClipPatch(fields)
+            : Object.assign({}, fields || {});
         let dragState = null;
 
         function startTimelinePreviewDrag(node, clipId, evt, modeName) {
@@ -74,21 +77,23 @@
             const cropDx = ((evt.clientX - dragState.startClientX) / Math.max(1, layerRect.width)) * 100;
             const cropDy = ((evt.clientY - dragState.startClientY) / Math.max(1, layerRect.height)) * 100;
             let transformKeys = [];
+            const clipPatch = {};
             if (dragState.mode === 'scale') {
-                clip.scale = Math.max(0.05, dragState.startScale + dx / 80 + dy / 80);
+                clipPatch.scale = Math.max(0.05, dragState.startScale + dx / 80 + dy / 80);
                 transformKeys = ['scale'];
             } else if (dragState.mode === 'rotate') {
-                clip.rotate = dragState.startRotate + dx * 1.8;
+                clipPatch.rotate = dragState.startRotate + dx * 1.8;
                 transformKeys = ['rotate'];
-            } else if (dragState.mode === 'left') clip.crop_left = clamp(dragState.startCropLeft + cropDx, 0, 95);
-            else if (dragState.mode === 'right') clip.crop_right = clamp(dragState.startCropRight - cropDx, 0, 95);
-            else if (dragState.mode === 'top') clip.crop_top = clamp(dragState.startCropTop + cropDy, 0, 95);
-            else if (dragState.mode === 'bottom') clip.crop_bottom = clamp(dragState.startCropBottom - cropDy, 0, 95);
+            } else if (dragState.mode === 'left') clipPatch.crop_left = clamp(dragState.startCropLeft + cropDx, 0, 95);
+            else if (dragState.mode === 'right') clipPatch.crop_right = clamp(dragState.startCropRight - cropDx, 0, 95);
+            else if (dragState.mode === 'top') clipPatch.crop_top = clamp(dragState.startCropTop + cropDy, 0, 95);
+            else if (dragState.mode === 'bottom') clipPatch.crop_bottom = clamp(dragState.startCropBottom - cropDy, 0, 95);
             else {
-                clip.x = dragState.startX + dx;
-                clip.y = dragState.startY + dy;
+                clipPatch.x = dragState.startX + dx;
+                clipPatch.y = dragState.startY + dy;
                 transformKeys = ['x', 'y'];
             }
+            Object.assign(clip, buildTimelineClipPatch(clipPatch));
             if (transformKeys.length) {
                 call('syncTimelineClipTransformKeyframeAtPlayhead', node, clip, transformKeys);
                 if (maskGeometrySnapshot) call('remapTimelineClipMaskForGeometryChange', node, clip, maskGeometrySnapshot);

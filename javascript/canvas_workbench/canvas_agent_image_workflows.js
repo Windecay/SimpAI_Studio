@@ -6,7 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
         const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
         const getMaxExtraImageReferences = () => Math.max(0, Number(call('getMaxExtraImageReferences', 0) || 0));
         const refreshPresetCatalog = (...args) => call('refreshPresetCatalog', null, ...args);
@@ -248,8 +247,7 @@
                 const presetName = selectedPresetName;
                 const newWorkflowKey = workflowKey || (opts.sourceVlmNodeId ? vlmCanvasAgentWorkflowKey(opts.sourceVlmNodeId, 't2i', presetName) : '');
                 generator = markCanvasAgentCreatedNode(addPresetNode(selectedEntry, canvasAgentWorkflowPresetPosition(ownerNode || null), {
-                    collapsed: true,
-                    source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                    collapsed: true
                 }));
                 applyCanvasAgentPresetDefaultsToGenerator(generator, selectedEntry);
                 tagCanvasAgentWorkflowPreset(generator, {
@@ -429,8 +427,7 @@
             const editPresetName = normalizePresetName(editEntry?.name || editEntry?.display_name || '');
             const editWorkflowKey = opts.workflowKey || (opts.sourceVlmNodeId ? vlmCanvasAgentWorkflowKey(opts.sourceVlmNodeId, 'edit', `${editPresetName}:${target.id || ''}`) : '');
             const editor = markCanvasAgentCreatedNode(addPresetNode(editEntry, canvasAgentWorkflowPresetPosition(target), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                collapsed: true
             }));
             applyCanvasAgentPresetDefaultsToGenerator(editor, editEntry);
             tagCanvasAgentWorkflowPreset(editor, {

@@ -15,6 +15,9 @@
             ? scope.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
+            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+            : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         let dragState = null;
 
         function startTimelinePlayheadDrag(node, evt) {
@@ -42,7 +45,7 @@
             const rect = dragState.lane.getBoundingClientRect();
             const duration = Math.max(1, Number(node.params?.duration || 1));
             const pct = clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
-            node.params = Object.assign({}, node.params || {}, { playhead: pct * duration });
+            Object.assign(node, buildTimelineParamsPatch(node, { playhead: pct * duration }));
             call('refreshTimelinePlayheadDom', dragState.nodeEl, node);
             call('refreshTimelinePreviewDom', dragState.nodeEl, node);
         }

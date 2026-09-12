@@ -87,13 +87,13 @@
 
     function createQwenTtsNodeContext(source) {
         const context = source || {};
-        return {
+        const result = {
             getProject: delegate(context, 'getProject'),
             defaultNodeSize: delegate(context, 'defaultNodeSize'),
+            buildQwenTtsStatePatch: delegate(context, 'buildQwenTtsStatePatch'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
             getQwenTtsAudioInputLabel: delegate(context, 'getQwenTtsAudioInputLabel'),
-            qwenTtsStylePresets: typeof context.getQwenTtsStylePresets === 'function'
-                ? context.getQwenTtsStylePresets()
-                : context.qwenTtsStylePresets,
+            qwenTtsStylePresets: context.qwenTtsStylePresets,
             mutate: delegate(context, 'mutate'),
             placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
             pushHistory: delegate(context, 'pushHistory'),
@@ -101,11 +101,30 @@
             setSelectedNode: delegate(context, 'setSelectedNode'),
             showToast: delegate(context, 'showToast')
         };
+        if (typeof context.getQwenTtsStylePresets === 'function') {
+            Object.defineProperty(result, 'qwenTtsStylePresets', {
+                configurable: true,
+                enumerable: true,
+                get: () => context.getQwenTtsStylePresets()
+            });
+        }
+        return result;
     }
 
     function getProject(context) {
         const project = typeof context?.getProject === 'function' ? context.getProject() : null;
         return project && typeof project === 'object' ? project : { nodes: [] };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
     }
 
     function modeFromNode(node) {
@@ -448,6 +467,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const opts = options || {};
         if (opts.history !== false) call(context, 'pushHistory', null, t(`Add ${spec.title} node`, `添加 ${spec.title} 节点`));
         const size = call(context, 'defaultNodeSize', { w: 360, h: normalizedMode === 'dialogue' ? 660 : 560 }, spec.type);
+        const fallbackState = {
+            params: Object.assign(defaultParams(normalizedMode), opts.params || {}),
+            audio_inputs: Object.assign({}, opts.audio_inputs || {}),
+            source: { kind: 'qwen_tts', mode: normalizedMode, module: 'enhanced.webui_qwen_tts' },
+            status: {
+                state: 'idle',
+                message: spec.description
+            }
+        };
         const node = {
             id: uid('qwentts'),
             type: spec.type,
@@ -457,18 +485,18 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             w: size.w,
             h: size.h,
             title: opts.title || spec.title,
-            params: Object.assign(defaultParams(normalizedMode), opts.params || {}),
-            audio_inputs: {},
-            source: { kind: 'qwen_tts', mode: normalizedMode, module: 'enhanced.webui_qwen_tts' },
-            status: {
-                state: 'idle',
-                message: spec.description
-            }
+            ...fallbackState
         };
+        Object.assign(node, call(context, 'buildQwenTtsStatePatch', fallbackState, node, {
+            defaultParams: defaultParams(normalizedMode),
+            initialParams: opts.params,
+            initialAudioInputs: opts.audio_inputs,
+            initialSource: fallbackState.source,
+            status: fallbackState.status
+        }));
         call(context, 'placeNodeAvoidingOverlap', null, node, world);
         const project = getProject(context);
-        if (!Array.isArray(project.nodes)) project.nodes = [];
-        project.nodes.push(node);
+        appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t(`${spec.title} node added`, `已添加 ${spec.title} 节点`));

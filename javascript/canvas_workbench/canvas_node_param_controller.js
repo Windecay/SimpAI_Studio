@@ -4,6 +4,7 @@
     function createCanvasNodeParamController(context) {
         const scope = context || {};
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
         const getNode = (id) => call('getNode', null, id);
         const getInspector = () => call('getInspector', null);
         const getSelectedNodeId = () => call('getSelectedNodeId', null);
@@ -11,6 +12,9 @@
             const value = call('getClassicOutpaintDirs', []);
             return Array.isArray(value) ? value : [];
         })();
+        const buildNodeParamsPatch = (node, options) => call('buildNodeParamsPatch', {}, node, options) || {};
+        const buildNodeFieldPatch = (node, key, value) => call('buildNodeFieldPatch', {}, node, key, value) || {};
+        const buildClassicNodeStatePatch = (node, options) => call('buildClassicNodeStatePatch', {}, node, options) || {};
 
         function fieldValue(field) {
             return field?.type === 'checkbox' ? !!field.checked : field?.value;
@@ -20,15 +24,16 @@
             const node = getNode(nodeId);
             if (!node || call('isNodeLocked', false, node)) return;
             call('pushHistoryBatch', undefined, `node-param:${nodeId}:${key}`, 'Edit node parameter');
-            node.params = node.params || {};
+            const paramsPatch = {};
             if (inputType === 'checkbox') {
-                node.params[key] = !!value;
+                paramsPatch[key] = !!value;
             } else if (inputType === 'number') {
                 const parsed = Number(value);
-                node.params[key] = Number.isFinite(parsed) ? parsed : value;
+                paramsPatch[key] = Number.isFinite(parsed) ? parsed : value;
             } else {
-                node.params[key] = value;
+                paramsPatch[key] = value;
             }
+            Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
             if (key === 'seed_random') {
                 call('mutate', undefined, { inspector: true });
                 return;
@@ -38,9 +43,12 @@
 
         function updateClassicOutpaintParam(node, key, field, options = {}) {
             if (!node || node.type !== 'classic' || !key || field?.type !== 'checkbox') return false;
-            node.params = node.params || {};
-            node.params[key] = !!field.checked;
-            node.params.outpaint_selections = classicOutpaintDirs.filter(dir => !!node.params[`outpaint_${dir.toLowerCase()}`]);
+            const currentParams = node.params && typeof node.params === 'object' && !Array.isArray(node.params) ? node.params : {};
+            const nextParams = Object.assign({}, currentParams, { [key]: !!field.checked });
+            const outpaintSelections = classicOutpaintDirs.filter(dir => !!nextParams[`outpaint_${dir.toLowerCase()}`]);
+            Object.assign(node, buildNodeParamsPatch(node, {
+                paramsPatch: { [key]: !!field.checked, outpaint_selections: outpaintSelections }
+            }));
             if (options.scheduleSave !== false) call('scheduleSave');
             return true;
         }
@@ -187,7 +195,9 @@
                 invoke('syncTwinParamInputs', classicParam, '[data-classic-param]');
                 if (changeEvent && key === 'ip_count') {
                     invoke('pushHistory', 'Change classic IP count');
-                    node.classic_ip_count = Math.max(1, Math.min(4, Number(classicParam.value) || 1));
+                    Object.assign(node, buildClassicNodeStatePatch(node, {
+                        classicIpCount: Math.max(1, Math.min(4, Number(classicParam.value) || 1))
+                    }));
                     invoke('mutate');
                 }
                 return true;
@@ -200,9 +210,12 @@
             }
             const paramKey = nodeParam.getAttribute('data-node-param');
             if (inputEvent && paramKey && paramKey.startsWith('outpaint_') && nodeParam.type === 'checkbox') {
-                node.params = node.params || {};
-                node.params[paramKey] = !!nodeParam.checked;
-                node.params.outpaint_selections = classicOutpaintDirs.filter(dir => !!node.params[`outpaint_${dir.toLowerCase()}`]);
+                const currentParams = node.params && typeof node.params === 'object' && !Array.isArray(node.params) ? node.params : {};
+                const nextParams = Object.assign({}, currentParams, { [paramKey]: !!nodeParam.checked });
+                const outpaintSelections = classicOutpaintDirs.filter(dir => !!nextParams[`outpaint_${dir.toLowerCase()}`]);
+                Object.assign(node, buildNodeParamsPatch(node, {
+                    paramsPatch: { [paramKey]: !!nodeParam.checked, outpaint_selections: outpaintSelections }
+                }));
                 return true;
             }
             return handleNodeParamFieldChange(node, nodeParam, { scheduleOutpaint: changeEvent });
@@ -232,12 +245,48 @@
                 return true;
             }
             if (node?.type === 'classic' && paramKey.startsWith('outpaint_') && field.type === 'checkbox') {
-                node.params = node.params || {};
-                node.params[paramKey] = !!field.checked;
-                node.params.outpaint_selections = classicOutpaintDirs.filter(dir => !!node.params[`outpaint_${dir.toLowerCase()}`]);
+                const currentParams = node.params && typeof node.params === 'object' && !Array.isArray(node.params) ? node.params : {};
+                const nextParams = Object.assign({}, currentParams, { [paramKey]: !!field.checked });
+                const outpaintSelections = classicOutpaintDirs.filter(dir => !!nextParams[`outpaint_${dir.toLowerCase()}`]);
+                Object.assign(node, buildNodeParamsPatch(node, {
+                    paramsPatch: { [paramKey]: !!field.checked, outpaint_selections: outpaintSelections }
+                }));
                 return true;
             }
             updateNodeParam(nodeId, paramKey, fieldValue(field), field.type);
+            return true;
+        }
+
+        function handleInspectorNodeFieldChange(field) {
+            if (!field) return false;
+            const nodeId = getSelectedNodeId();
+            const node = getNode(nodeId);
+            const fieldName = field.getAttribute?.('data-inspector-node-field');
+            if (!node || !fieldName) return false;
+            if (call('isNodeLocked', false, node)) {
+                field.value = node[fieldName] || '';
+                call('showToast', undefined, t('Locked node cannot be edited', '锁定节点无法编辑'));
+                return true;
+            }
+            call('pushHistoryBatch', undefined, `node-field:${node.id}:${fieldName}`, t('Edit node field', '编辑节点字段'));
+            const patch = buildNodeFieldPatch(node, fieldName, field.value);
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, fieldName)) {
+                Object.assign(node, patch);
+            } else {
+                Object.assign(node, { [fieldName]: field.value });
+            }
+            call('scheduleSave');
+            call('renderNodes');
+            call('renderEdges');
+            return true;
+        }
+
+        function bindInspectorNodeFieldEvents() {
+            const inspector = getInspector();
+            if (!inspector || typeof inspector.querySelectorAll !== 'function') return false;
+            inspector.querySelectorAll('[data-inspector-node-field]').forEach((field) => {
+                field.addEventListener('input', () => handleInspectorNodeFieldChange(field));
+            });
             return true;
         }
 
@@ -257,6 +306,8 @@
             handleNodeParamFieldChange,
             handleNodeParamEvent,
             handleInspectorParamFieldChange,
+            handleInspectorNodeFieldChange,
+            bindInspectorNodeFieldEvents,
             bindInspectorParamEvents
         };
     }

@@ -13,6 +13,9 @@
         };
         const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
         const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
+        const cloneRunValue = typeof scope.cloneRunValue === 'function'
+            ? scope.cloneRunValue
+            : (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
         const getVlmVersionChoices = (...args) => {
             const choices = call('getVlmVersionChoices', [], ...args);
             return Array.isArray(choices) ? choices : [];
@@ -100,6 +103,190 @@
                 },
                 source: { kind: 'vlm_agent', module: 'enhanced.vlm' }
             };
+        }
+
+        function buildVlmNodeSizePatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const hasMode = Object.prototype.hasOwnProperty.call(config, 'mode');
+            const mode = hasMode ? config.mode : (node.params?.mode || 'single');
+            const isChat = mode === 'chat';
+            const chatWidth = Number(VLM_CHAT_NODE_SIZE.w || 0);
+            const chatHeight = Number(VLM_CHAT_NODE_SIZE.h || 0);
+            const singleWidth = Number(VLM_SINGLE_NODE_SIZE.w || 0);
+            const singleHeight = Number(VLM_SINGLE_NODE_SIZE.h || 0);
+            const currentWidth = Number(node.w);
+            const currentHeight = Number(node.h);
+            const patch = {};
+
+            if (hasMode) {
+                const targetWidth = isChat ? chatWidth : singleWidth;
+                const targetHeight = isChat ? chatHeight : singleHeight;
+                if (!currentWidth || currentWidth < targetWidth) patch.w = targetWidth;
+                if (!currentHeight || currentHeight < targetHeight) patch.h = targetHeight;
+                return patch;
+            }
+
+            if (isChat) {
+                if (!currentWidth || currentWidth <= singleWidth) patch.w = chatWidth;
+                if (!currentHeight || currentHeight <= singleHeight) patch.h = chatHeight;
+            } else {
+                if (!currentWidth) patch.w = singleWidth;
+                if (!currentHeight) patch.h = singleHeight;
+            }
+            return patch;
+        }
+
+        function buildVlmModelUnknownStatus(version, message) {
+            return {
+                state: 'unknown',
+                ready: false,
+                version: version || '',
+                message: message || ''
+            };
+        }
+
+        function buildVlmModelCheckingStatus(message) {
+            return {
+                state: 'checking',
+                message
+            };
+        }
+
+        function buildVlmParamsPatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const base = hasOwn('params') ? config.params : node.params;
+            const params = cloneRunValue(isRecord(base) ? base : {}, {});
+            const paramsPatch = isRecord(config.paramsPatch) ? config.paramsPatch : {};
+            Object.assign(params, cloneRunValue(paramsPatch, {}));
+            const deleteKeys = Array.isArray(config.deleteKeys) ? config.deleteKeys : [];
+            deleteKeys.forEach((key) => {
+                const name = String(key || '').trim();
+                if (name) delete params[name];
+            });
+            return { params: cloneRunValue(params, {}) };
+        }
+
+        function buildVlmTextPatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const base = hasOwn('text') ? config.text : node.text;
+            const text = cloneRunValue(isRecord(base) ? base : {}, {});
+            if (isRecord(config.textPatch)) Object.assign(text, cloneRunValue(config.textPatch, {}));
+            return { text: cloneRunValue(text, {}) };
+        }
+
+        function buildVlmLastResponsePatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const base = hasOwn('response') ? config.response : node.last_response;
+            const response = cloneRunValue(isRecord(base) ? base : {}, {});
+            if (isRecord(config.responsePatch)) Object.assign(response, cloneRunValue(config.responsePatch, {}));
+            return { last_response: cloneRunValue(response, {}) };
+        }
+
+        function buildVlmCustomModelChoicesPatch(node, choices) {
+            if (!node || node.type !== 'vlm') return {};
+            return {
+                custom_model_choices: cloneRunValue(Array.isArray(choices) ? choices : [], [])
+            };
+        }
+
+        function buildVlmImageInputsPatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const base = hasOwn('imageInputs') ? config.imageInputs : node.image_inputs;
+            const imageInputs = cloneRunValue(isRecord(base) ? base : {}, {});
+            const imageInputsPatch = isRecord(config.imageInputsPatch) ? config.imageInputsPatch : {};
+            Object.assign(imageInputs, cloneRunValue(imageInputsPatch, {}));
+            const deleteKeys = Array.isArray(config.deleteKeys) ? config.deleteKeys : [];
+            deleteKeys.forEach((key) => {
+                const name = String(key || '').trim();
+                if (name) delete imageInputs[name];
+            });
+            return { image_inputs: cloneRunValue(imageInputs, {}) };
+        }
+
+        function buildVlmRunStatusPatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const cloneRecord = (value) => isRecord(value) ? cloneRunValue(value, {}) : {};
+            let status = hasOwn('status') ? cloneRecord(config.status) : cloneRecord(node.status);
+
+            if (hasOwn('state')) status.state = cloneRunValue(config.state, '');
+            if (hasOwn('message')) status.message = cloneRunValue(config.message, '');
+            if (isRecord(config.statusPatch)) Object.assign(status, cloneRunValue(config.statusPatch, {}));
+            (Array.isArray(config.deleteKeys) ? config.deleteKeys : []).forEach((key) => {
+                const name = String(key || '').trim();
+                if (name) delete status[name];
+            });
+            return { status: cloneRunValue(status, {}) };
+        }
+
+        function buildVlmModelStatusPatch(node, options) {
+            if (!node || node.type !== 'vlm') return {};
+            const config = options || {};
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+            const cloneRecord = (value) => isRecord(value) ? cloneRunValue(value, {}) : {};
+            const mergeStatus = (current, patch) => Object.assign({}, cloneRecord(current), cloneRecord(patch));
+            let status = cloneRecord(node.vlm_model_status);
+
+            if (hasOwn('response')) {
+                const response = config.response;
+                if (response?.ok) {
+                    const visionMissingMessage = response.ready && response.vision_status === 'missing'
+                        ? t(
+                            'VLM model files are ready, but the vision model (mmproj) is missing; image input is unavailable.',
+                            'VLM 模型文件已就绪，但缺少视觉模型（mmproj），当前无法输入图像。'
+                        )
+                        : '';
+                    status = {
+                        state: response.state || (response.ready ? 'ready' : 'missing'),
+                        ready: !!response.ready,
+                        version: response.version || node.params?.version || '',
+                        model: response.model || '',
+                        vision_expected: !!response.vision_expected,
+                        vision_available: !!response.vision_available,
+                        vision_status: response.vision_status || 'text_only',
+                        vision_file: response.vision_file || '',
+                        missing_count: Number(response.missing_count || 0),
+                        missing_models: cloneRunValue(response.missing_models || [], []),
+                        can_download: response.can_download !== false,
+                        checked_at: response.checked_at || nowIso(),
+                        message: visionMissingMessage || response.message || ''
+                    };
+                } else {
+                    status = {
+                        state: 'error',
+                        ready: false,
+                        missing_count: 0,
+                        checked_at: nowIso(),
+                        message: response?.details || response?.error || 'VLM model check failed.'
+                    };
+                }
+            } else if (hasOwn('status')) {
+                status = cloneRecord(config.status);
+            }
+
+            if (hasOwn('statusPatch')) status = mergeStatus(status, config.statusPatch);
+            return { vlm_model_status: cloneRunValue(status, {}) };
+        }
+
+        function applyVlmModelStatus(node, response) {
+            if (!node || node.type !== 'vlm') return;
+            Object.assign(node, buildVlmModelStatusPatch(node, { response }));
         }
 
         function getVlmCustomKeyInput(node) {
@@ -288,11 +475,13 @@
                     || vlmSystemPromptTemplates.find(item => String(item.content || '').trim() === currentTextTrimmed);
                 const shouldClearPrompt = !!matchedTemplate && String(matchedTemplate.content || '').trim() === currentTextTrimmed;
                 pushHistoryBatch(`vlm:${node.id}:system_prompt_template`, 'Clear VLM system prompt template');
-                node.params = Object.assign({}, params, {
+                Object.assign(node, buildVlmParamsPatch(node, {
+                    paramsPatch: {
                     system_prompt: shouldClearPrompt ? '' : currentText,
                     system_prompt_template_id: '',
                     system_prompt_template_name: ''
-                });
+                    }
+                }));
                 syncVlmSystemPromptTemplateDom(node, scope);
                 if (shouldClearPrompt) {
                     refreshVlmChatReadabilityDom(node, scope);
@@ -309,11 +498,13 @@
                 return;
             }
             pushHistoryBatch(`vlm:${node.id}:system_prompt_template`, 'Select VLM system prompt template');
-            node.params = Object.assign({}, node.params || {}, {
-                system_prompt: template.content,
-                system_prompt_template_id: template.id,
-                system_prompt_template_name: template.name
-            });
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: {
+                    system_prompt: template.content,
+                    system_prompt_template_id: template.id,
+                    system_prompt_template_name: template.name
+                }
+            }));
             syncVlmSystemPromptTemplateDom(node, scope);
             refreshVlmChatReadabilityDom(node, scope);
             scheduleSave();
@@ -330,88 +521,90 @@
             if (!node || node.type !== 'vlm' || !key) return;
             if (isNodeLocked(node)) return;
             pushHistoryBatch(`vlm:${nodeId}:${key}`, 'Edit VLM parameter');
-            node.params = node.params || {};
             if (key === 'keep_model_loaded') {
-                node.params.keep_model_loaded = !!value;
-                node.params.free_after = !value;
+                Object.assign(node, buildVlmParamsPatch(node, {
+                    paramsPatch: {
+                        keep_model_loaded: !!value,
+                        free_after: !value
+                    }
+                }));
                 mutate({ inspector: true });
                 return;
             }
+            const paramsPatch = {};
+            const deleteKeys = [];
             if (inputType === 'checkbox') {
-                node.params[key] = !!value;
+                paramsPatch[key] = !!value;
             } else if (inputType === 'number' || inputType === 'range') {
                 const parsed = Number(value);
-                if (key === 'chat_font_size') node.params[key] = Number.isFinite(parsed) ? Math.min(24, Math.max(11, Math.round(parsed))) : value;
-                else if (key === 'max_history') node.params[key] = Number.isFinite(parsed) ? Math.min(80, Math.max(1, Math.round(parsed))) : value;
-                else if (key === 'context_chars') node.params[key] = clampVlmChatContextBudget(parsed, node.params);
-                else node.params[key] = Number.isFinite(parsed) ? parsed : value;
+                if (key === 'chat_font_size') paramsPatch[key] = Number.isFinite(parsed) ? Math.min(24, Math.max(11, Math.round(parsed))) : value;
+                else if (key === 'max_history') paramsPatch[key] = Number.isFinite(parsed) ? Math.min(80, Math.max(1, Math.round(parsed))) : value;
+                else if (key === 'context_chars') paramsPatch[key] = clampVlmChatContextBudget(parsed, node.params || {});
+                else paramsPatch[key] = Number.isFinite(parsed) ? parsed : value;
             } else {
-                node.params[key] = value;
+                paramsPatch[key] = value;
             }
+            let nextParams = buildVlmParamsPatch(node, { paramsPatch }).params || {};
             if (key === 'system_prompt') {
-                const matchedId = vlmSystemPromptTemplateIdForContent(node.params.system_prompt);
+                const matchedId = vlmSystemPromptTemplateIdForContent(nextParams.system_prompt);
                 const matched = findVlmSystemPromptTemplate(matchedId);
-                node.params.system_prompt_template_id = matchedId;
-                node.params.system_prompt_template_name = matched?.name || '';
+                paramsPatch.system_prompt_template_id = matchedId;
+                paramsPatch.system_prompt_template_name = matched?.name || '';
             }
             if (key === 'agent_mode') {
-                node.params.agent_mode = normalizeVlmAgentMode(node.params);
-                delete node.params.agent_raw_mode;
-                delete node.params.agent_use_skills;
-                delete node.params.agent_use_canvas_context;
-                delete node.params.agent_action_hints;
+                paramsPatch.agent_mode = normalizeVlmAgentMode(nextParams);
+                deleteKeys.push('agent_raw_mode', 'agent_use_skills', 'agent_use_canvas_context', 'agent_action_hints');
                 mutate({ inspector: true });
+                Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
                 return;
             }
             if (key === 'agent_raw_mode' || key === 'agent_use_skills' || key === 'agent_use_canvas_context' || key === 'agent_action_hints') {
-                node.params.agent_mode = normalizeVlmAgentMode(node.params);
-                delete node.params.agent_raw_mode;
-                delete node.params.agent_use_skills;
-                delete node.params.agent_use_canvas_context;
-                delete node.params.agent_action_hints;
+                paramsPatch.agent_mode = normalizeVlmAgentMode(nextParams);
+                deleteKeys.push('agent_raw_mode', 'agent_use_skills', 'agent_use_canvas_context', 'agent_action_hints');
                 mutate({ inspector: true });
+                Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
                 return;
             }
             if (key === 'version') {
                 if (value === 'Custom') {
-                    const provider = getVlmCustomProvider(node.params.custom_provider || 'openai');
-                    node.params.custom_provider = node.params.custom_provider || provider.key || 'openai';
-                    node.params.custom_api_name = node.params.custom_api_name || provider.label || 'OpenAI';
-                    node.params.custom_api_format = node.params.custom_api_format || provider.format || 'openai_compatible';
-                    node.params.custom_base_url = node.params.custom_base_url || provider.baseUrl || '';
-                    node.params.custom_supports_images = node.params.custom_supports_images !== false;
-                    node.params.custom_api_collapsed = false;
+                    const provider = getVlmCustomProvider(nextParams.custom_provider || 'openai');
+                    paramsPatch.custom_provider = nextParams.custom_provider || provider.key || 'openai';
+                    paramsPatch.custom_api_name = nextParams.custom_api_name || provider.label || 'OpenAI';
+                    paramsPatch.custom_api_format = nextParams.custom_api_format || provider.format || 'openai_compatible';
+                    paramsPatch.custom_base_url = nextParams.custom_base_url || provider.baseUrl || '';
+                    paramsPatch.custom_supports_images = nextParams.custom_supports_images !== false;
+                    paramsPatch.custom_api_collapsed = false;
+                    nextParams = buildVlmParamsPatch(node, { paramsPatch }).params || {};
                 }
-                node.params.context_chars = clampVlmChatContextBudget(node.params.context_chars ?? VLM_CHAT_DEFAULT_CONTEXT_CHARS, node.params);
-                node.vlm_model_status = {
-                    state: 'unknown',
-                    ready: false,
-                    version: value,
-                    message: 'Model changed. Check files before running.'
-                };
+                paramsPatch.context_chars = clampVlmChatContextBudget(nextParams.context_chars ?? VLM_CHAT_DEFAULT_CONTEXT_CHARS, nextParams);
+                Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
+                Object.assign(node, buildVlmModelStatusPatch(node, {
+                    status: buildVlmModelUnknownStatus(value, 'Model changed. Check files before running.')
+                }));
                 mutate({ inspector: true });
                 return;
             }
             if (key === 'custom_provider') {
                 const provider = getVlmCustomProvider(value);
-                node.params.custom_api_name = value === 'custom' ? (node.params.custom_api_name || provider.label) : provider.label;
-                node.params.custom_base_url = value === 'custom' ? (node.params.custom_base_url || provider.baseUrl || '') : (provider.baseUrl || '');
-                node.params.custom_api_format = provider.format || 'openai_compatible';
-                node.params.custom_supports_images = provider.supportsImages !== false;
-                node.custom_model_choices = [];
+                paramsPatch.custom_api_name = value === 'custom' ? (nextParams.custom_api_name || provider.label) : provider.label;
+                paramsPatch.custom_base_url = value === 'custom' ? (nextParams.custom_base_url || provider.baseUrl || '') : (provider.baseUrl || '');
+                paramsPatch.custom_api_format = provider.format || 'openai_compatible';
+                paramsPatch.custom_supports_images = provider.supportsImages !== false;
+                Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
+                Object.assign(node, buildVlmCustomModelChoicesPatch(node, []));
                 mutate({ inspector: true });
                 return;
             }
             if (key === 'mode') {
                 const defaultPrompt = 'Write a detailed caption and generation prompt for this image. Output only the result.';
-                if (value === 'chat' && node.params.prompt === defaultPrompt) node.params.prompt = '';
-                if (value === 'chat' && !node.params.agent_mode) node.params.agent_mode = normalizeVlmAgentMode(node.params);
-                const defaults = value === 'chat' ? VLM_CHAT_NODE_SIZE : VLM_SINGLE_NODE_SIZE;
-                node.w = Math.max(Number(node.w || 0), Number(defaults.w || 0));
-                node.h = Math.max(Number(node.h || 0), Number(defaults.h || 0));
+                if (value === 'chat' && nextParams.prompt === defaultPrompt) paramsPatch.prompt = '';
+                if (value === 'chat' && !nextParams.agent_mode) paramsPatch.agent_mode = normalizeVlmAgentMode(nextParams);
+                Object.assign(node, buildVlmNodeSizePatch(node, { mode: value }));
+                Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
                 mutate({ inspector: true });
                 return;
             }
+            Object.assign(node, buildVlmParamsPatch(node, { paramsPatch, deleteKeys }));
             scheduleSave();
         }
 
@@ -433,6 +626,17 @@
 
         return {
             buildVlmNode,
+            buildVlmNodeSizePatch,
+            buildVlmModelUnknownStatus,
+            buildVlmModelCheckingStatus,
+            buildVlmParamsPatch,
+            buildVlmTextPatch,
+            buildVlmLastResponsePatch,
+            buildVlmCustomModelChoicesPatch,
+            buildVlmImageInputsPatch,
+            buildVlmRunStatusPatch,
+            buildVlmModelStatusPatch,
+            applyVlmModelStatus,
             getVlmCustomKeyInput,
             getVlmCustomKeyValue,
             setVlmCustomKeyValue,

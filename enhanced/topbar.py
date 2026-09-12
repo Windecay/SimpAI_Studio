@@ -2775,7 +2775,14 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                     mask[:, :, 2] = alpha
             scene_canvas_image['mask'] = util.resize_image_by_max_area(util.HWC3(mask), max_area=1024 * 1024) if resize_image_flag else mask
 
-        scene_video_effective = _effective_scene_video(scene_video, scene_original_video_path, scene_video_trim_payload)
+        region_selector = scene_frontend.get("temporal_region_control", {})
+        if region_selector and scene_video_trim_payload:
+            if normalize_ui_lang(state_params.get("__lang")) in ("cn", "zh"):
+                raise gr.Error("当前预览已裁剪，请重新上传完整视频后选择重建区间。")
+            raise gr.Error("This preview was trimmed. Upload the complete video again before selecting a rebuild interval.")
+        scene_video_effective = _effective_scene_video(
+            scene_video, scene_original_video_path,
+            None if region_selector else scene_video_trim_payload)
         try:
             from enhanced import sam3_video_mask as _sam3_video_mask
 
@@ -2803,6 +2810,8 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video2_trim_payload,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
+        if region_selector:
+            video_effective = scene_video_effective
         if "minimax_h3_transition" in str(scene_task_method_value):
             video_effective = scene_video_effective
         if scene_task_method_value == "wan_scail2_sam3_cn":
@@ -4264,7 +4273,8 @@ def _coerce_scene_default_number(value, minimum=None, maximum=None, step=None):
             number = max(number, float(minimum))
         if maximum is not None:
             number = min(number, float(maximum))
-        if step == 1 or all(isinstance(v, int) and not isinstance(v, bool) for v in (minimum, maximum) if v is not None):
+        # An explicit fractional step takes precedence over integer-looking bounds.
+        if step == 1 or (step is None and all(isinstance(v, int) and not isinstance(v, bool) for v in (minimum, maximum) if v is not None)):
             return int(round(number))
         return number
     except Exception:
@@ -4637,6 +4647,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __scene_control_props=_build_scene_control_props(scene_frontend, scene_theme),
         __scene_task_method=str(scene_task_method or ""),
         __scene_video_source_slots=list(scene_frontend.get("video_source_slots") or []),
+        __scene_temporal_region_control=dict(scene_frontend.get("temporal_region_control") or {}),
         __scene_video_slot_labels=dict(scene_frontend.get("video_slot_labels") or {}),
         __scene_canvas_mask_disabled=_resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme),
         __resolution_control_profile=_resolve_resolution_control_profile(scene_frontend, scene_theme),

@@ -10,6 +10,32 @@
             return call('getProject', {}, []) || {};
         }
 
+        function touchProject(project) {
+            const timestamp = call('nowIso', new Date().toISOString(), []);
+            const patch = call('buildProjectUpdatedAtPatch', { updated_at: timestamp }, project, {
+                nowIso: () => timestamp
+            });
+            if (patch && typeof patch === 'object') Object.assign(project, patch);
+            return project;
+        }
+
+        function applyProjectStorage(project, storage, options) {
+            const fallback = {
+                storage: storage && typeof storage === 'object' && !Array.isArray(storage) ? storage : {}
+            };
+            const patch = call('buildProjectStoragePatch', null, project, storage, options || {});
+            const usablePatch = patch
+                && typeof patch === 'object'
+                && Object.prototype.hasOwnProperty.call(patch, 'storage')
+                && patch.storage
+                && typeof patch.storage === 'object'
+                && !Array.isArray(patch.storage)
+                ? patch
+                : fallback;
+            Object.assign(project, usablePatch);
+            return project;
+        }
+
         function projectId() {
             return getProject().id || call('getDefaultProjectId', 'default', []) || 'default';
         }
@@ -80,6 +106,11 @@
 
         function buildProjectStorageInfo(key, storageScope, migrated) {
             const nextScope = storageScope || call('getStorageScope', {}, []);
+            const factoryPatch = call('buildProjectStorageInfoPatch', null, key, nextScope, {
+                t,
+                migrated: !!migrated
+            });
+            if (factoryPatch && typeof factoryPatch === 'object') return factoryPatch;
             if (typeof scope.projectStoreBuildProjectStorageInfo === 'function') {
                 return scope.projectStoreBuildProjectStorageInfo(key, nextScope, migrated);
             }
@@ -103,11 +134,11 @@
             const currentProject = getProject();
             const storageScope = call('getStorageScope', {}, []);
             const cacheKey = call('setActiveBrowserCacheProject', call('getStorageKey', '', []), projectId(), storageScope);
-            currentProject.storage = Object.assign(
+            applyProjectStorage(currentProject, Object.assign(
                 {},
                 currentProject.storage || {},
                 buildProjectStorageInfo(cacheKey, storageScope, currentProject.storage?.migrated_from_legacy)
-            );
+            ));
             const attempts = [
                 { stripAllMaterializedDataUrls: true, maxInlineDataUrlChars: 1800000 },
                 { stripAllMaterializedDataUrls: true, maxInlineDataUrlChars: 260000, runHistoryLimit: 4 },
@@ -140,10 +171,10 @@
                 const persistToDisk = opts.persist === true || (!silent && opts.persist !== false);
                 syncStorageScope({ silent: true });
                 let currentProject = getProject();
-                currentProject.updated_at = call('nowIso', new Date().toISOString(), []);
+                touchProject(currentProject);
                 const storageScope = call('getStorageScope', {}, []);
                 const storageKey = call('getStorageKey', '', []);
-                currentProject.storage = buildProjectStorageInfo(storageKey, storageScope);
+                applyProjectStorage(currentProject, buildProjectStorageInfo(storageKey, storageScope));
                 await call('materializeInlineProjectAssets', null, []);
                 const cached = saveProjectToBrowserCache({ reason: 'save_project_start', persistToDisk });
                 if (!persistToDisk) {
@@ -171,7 +202,7 @@
                         currentProject = call('sanitizeProject', directResult.project, directResult.project) || directResult.project;
                         call('setProject', null, currentProject);
                     }
-                    if (directResult.storage && typeof directResult.storage === 'object') currentProject.storage = directResult.storage;
+                    if (directResult.storage && typeof directResult.storage === 'object') applyProjectStorage(currentProject, directResult.storage);
                     call('syncCanvasProjectAssetRoot', null, currentProject);
                     saveProjectToBrowserCache({ reason: 'direct_backend_save_ok' });
                     if (!silent) {
@@ -193,9 +224,9 @@
                 const result = await call('sendCanvasBridgeRequest', null, 'save_project', projectPayload, 45000);
                 if (!result || !result.ok) {
                     const error = result && result.error ? `：${result.error}` : '';
-                    currentProject.storage = Object.assign({}, currentProject.storage || buildProjectStorageInfo(storageKey, storageScope), {
+                    applyProjectStorage(currentProject, Object.assign({}, currentProject.storage || buildProjectStorageInfo(storageKey, storageScope), {
                         location: t('{location} (pending sync, browser cache only)', '{location}（待同步，浏览器仅作缓存）').replace('{location}', storageScope.location)
-                    });
+                    }));
                     if (!silent) {
                         call('showToast', null, t('Directory is not confirmed; saved to browser cache{error}', '目录暂未确认，已保存到浏览器缓存{error}')
                             .replace('{error}', error));
@@ -207,7 +238,7 @@
                     currentProject = call('sanitizeProject', result.project, result.project) || result.project;
                     call('setProject', null, currentProject);
                 }
-                if (result.storage && typeof result.storage === 'object') currentProject.storage = result.storage;
+                if (result.storage && typeof result.storage === 'object') applyProjectStorage(currentProject, result.storage);
                 call('syncCanvasProjectAssetRoot', null, currentProject);
                 saveProjectToBrowserCache({ reason: 'bridge_backend_save_ok' });
                 if (!silent) {
@@ -237,8 +268,8 @@
             const currentStorageScope = call('getCurrentStorageScope', nextScope, []);
             if (opts.saveCurrent !== false && currentProject && currentProject.nodes) {
                 try {
-                    currentProject.updated_at = call('nowIso', new Date().toISOString(), []);
-                    currentProject.storage = buildProjectStorageInfo(currentStorageKey, currentStorageScope);
+                    touchProject(currentProject);
+                    applyProjectStorage(currentProject, buildProjectStorageInfo(currentStorageKey, currentStorageScope));
                     saveProjectToBrowserCache({ reason: 'storage_scope_switch_save_current' });
                 } catch (err) {
                     if (typeof scope.warn === 'function') scope.warn('[SimpAI Canvas] failed to save before scope switch:', err);
@@ -306,7 +337,7 @@
             if (directLoad && directLoad.ok) {
                 const fallback = call('createDefaultProject', {}, []);
                 const incoming = call('sanitizeProject', fallback, directLoad.project || fallback) || fallback;
-                if (directLoad.storage && typeof directLoad.storage === 'object') incoming.storage = directLoad.storage;
+                if (directLoad.storage && typeof directLoad.storage === 'object') applyProjectStorage(incoming, directLoad.storage);
                 return applyBackendProject(incoming, opts, directLoad.found !== false, true);
             }
             if (!call('isCanvasBridgeReady', false, [])) {
@@ -330,7 +361,7 @@
             if (!result.project || typeof result.project !== 'object') return false;
             const fallback = call('createDefaultProject', {}, []);
             const incoming = call('sanitizeProject', fallback, result.project) || fallback;
-            if (result.storage && typeof result.storage === 'object') incoming.storage = result.storage;
+            if (result.storage && typeof result.storage === 'object') applyProjectStorage(incoming, result.storage);
             return applyBackendProject(incoming, opts, result.found !== false, false);
         }
 

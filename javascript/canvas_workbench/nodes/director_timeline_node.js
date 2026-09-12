@@ -65,6 +65,19 @@
         return (...args) => context[name](...args);
     }
 
+    function appendProjectNode(project, node, context) {
+        const patch = typeof context?.buildProjectNodeAppendPatch === 'function'
+            ? context.buildProjectNodeAppendPatch(project, node)
+            : null;
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
+    }
+
     function createDirectorTimelineNodeContext(source) {
         const context = source || {};
         return {
@@ -78,6 +91,8 @@
             pushHistory: delegate(context, 'pushHistory'),
             renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
             serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
+            buildDirectorTimelineStatePatch: delegate(context, 'buildDirectorTimelineStatePatch'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
             setSelectedNode: delegate(context, 'setSelectedNode'),
             showToast: delegate(context, 'showToast')
         };
@@ -684,6 +699,30 @@ ${renderTimelinePreview(timeline, node, context)}
         const opts = options || {};
         if (opts.history !== false && typeof context?.pushHistory === 'function') context.pushHistory('Add Director Timeline node');
         const size = typeof context?.defaultNodeSize === 'function' ? context.defaultNodeSize('director_timeline') : { w: 880, h: 620 };
+        const defaultStatus = {
+            state: 'idle',
+            message: t('Build prompt_override and media references for video workflows.', '为视频工作流生成 prompt_override 和媒体引用。')
+        };
+        const defaultState = {
+            director: normalizeTimeline(opts.director || defaultTimeline()),
+            media_inputs: Object.assign({}, opts.media_inputs || {}),
+            source: { kind: 'director_timeline', schema: SCHEMA },
+            status: defaultStatus
+        };
+        const state = typeof context?.buildDirectorTimelineStatePatch === 'function'
+            ? context.buildDirectorTimelineStatePatch({}, {
+                defaults: {
+                    director: defaultTimeline(),
+                    media_inputs: {},
+                    source: defaultState.source,
+                    status: defaultStatus
+                },
+                initialState: {
+                    director: defaultState.director,
+                    media_inputs: defaultState.media_inputs
+                }
+            })
+            : defaultState;
         const node = {
             id: uid('director'),
             type: 'director_timeline',
@@ -692,18 +731,11 @@ ${renderTimelinePreview(timeline, node, context)}
             w: size.w,
             h: size.h,
             title: opts.title || t('Director Timeline', '导演时间轴'),
-            director: normalizeTimeline(opts.director || defaultTimeline()),
-            media_inputs: Object.assign({}, opts.media_inputs || {}),
-            source: { kind: 'director_timeline', schema: SCHEMA },
-            status: {
-                state: 'idle',
-                message: t('Build prompt_override and media references for video workflows.', '为视频工作流生成 prompt_override 和媒体引用。')
-            }
+            ...state
         };
         if (typeof context?.placeNodeAvoidingOverlap === 'function') context.placeNodeAvoidingOverlap(node, world);
         const project = getProject(context);
-        if (!Array.isArray(project.nodes)) project.nodes = [];
-        project.nodes.push(node);
+        appendProjectNode(project, node, context);
         if (typeof context?.setSelectedNode === 'function') context.setSelectedNode(node.id);
         if (opts.render !== false && typeof context?.mutate === 'function') context.mutate();
         if (opts.toast !== false && typeof context?.showToast === 'function') context.showToast(t('Director Timeline node added', '已添加导演时间轴节点'));

@@ -8,6 +8,15 @@
     function createCanvasRunStatusController(context) {
         const scope = context || {};
         const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
+        const cloneRunValue = typeof scope.cloneRunValue === 'function'
+            ? scope.cloneRunValue
+            : (value, fallback) => {
+                try {
+                    return JSON.parse(JSON.stringify(value ?? fallback));
+                } catch (err) {
+                    return fallback;
+                }
+            };
         const escapeHtml = typeof scope.escapeHtml === 'function'
             ? scope.escapeHtml
             : (value) => String(value ?? '').replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char]));
@@ -53,6 +62,56 @@
             endpoint: '',
             updatedAt: 0
         };
+
+        function buildCanvasRunStatus(state, message, options) {
+            const config = options || {};
+            const status = {
+                state,
+                message: message || ''
+            };
+            if (Object.prototype.hasOwnProperty.call(config, 'queuePosition')) {
+                status.queue_position = config.queuePosition;
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'step')) {
+                status.step = config.step;
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'totalSteps')) {
+                status.total_steps = config.totalSteps;
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'percent')) {
+                status.percent = clampValue(Number(config.percent ?? 0), 0, 1);
+            }
+            return status;
+        }
+
+        function mergeCanvasRunStatus(previous, state, message, options) {
+            return Object.assign({}, previous || {}, buildCanvasRunStatus(state, message, options));
+        }
+
+        function buildCanvasNodeStatusPatch(node, options) {
+            if (!node) return {};
+            const config = options || {};
+            const hasOwn = (key) => Object.prototype.hasOwnProperty.call(config, key);
+            const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+
+            if (hasOwn('status')) {
+                return { status: cloneRunValue(config.status, config.status) };
+            }
+
+            if (!hasOwn('state') && !hasOwn('message') && !isRecord(config.statusPatch) && !Array.isArray(config.deleteKeys)) {
+                return { status: cloneRunValue(node.status, node.status) };
+            }
+
+            const status = isRecord(node.status) ? cloneRunValue(node.status, {}) : {};
+            if (hasOwn('state')) status.state = cloneRunValue(config.state, '');
+            if (hasOwn('message')) status.message = cloneRunValue(config.message, '');
+            if (isRecord(config.statusPatch)) Object.assign(status, cloneRunValue(config.statusPatch, {}));
+            (Array.isArray(config.deleteKeys) ? config.deleteKeys : []).forEach((key) => {
+                const name = String(key || '').trim();
+                if (name) delete status[name];
+            });
+            return { status: cloneRunValue(status, {}) };
+        }
 
         function isRunQueueActiveState(state) {
             const normalized = String(state || '').toLowerCase();
@@ -365,6 +424,9 @@
         }
 
         return {
+            buildCanvasRunStatus,
+            mergeCanvasRunStatus,
+            buildCanvasNodeStatusPatch,
             isRunQueueActiveState,
             runQueueRunResultNode,
             runQueueRunPercent,

@@ -44,6 +44,23 @@
         let staticDirty = true;
         let dragState = null;
 
+        function applyProjectViewportPatch(project, viewportPatch) {
+            const patch = call('buildProjectViewportPatch', project, { viewportPatch });
+            if (patch && typeof patch === 'object'
+                && patch.viewport
+                && typeof patch.viewport === 'object'
+                && !Array.isArray(patch.viewport)) {
+                Object.assign(project, patch);
+                return;
+            }
+            const currentViewport = project?.viewport
+                && typeof project.viewport === 'object'
+                && !Array.isArray(project.viewport)
+                ? project.viewport
+                : {};
+            Object.assign(project, { viewport: Object.assign({}, currentViewport, viewportPatch || {}) });
+        }
+
         function invalidateMinimapStaticCache() {
             staticDirty = true;
         }
@@ -242,8 +259,10 @@ ${renderMinimapNodeRects(nextCache.records)}
             if (!viewport) return;
             const rect = viewport.getBoundingClientRect();
             const zoom = project.viewport.zoom || 1;
-            project.viewport.x = Math.round(rect.width / 2 - worldX * zoom);
-            project.viewport.y = Math.round(rect.height / 2 - worldY * zoom);
+            applyProjectViewportPatch(project, {
+                x: Math.round(rect.width / 2 - worldX * zoom),
+                y: Math.round(rect.height / 2 - worldY * zoom)
+            });
             call('preferSvgEdgesForViewportInteraction', 5000);
             call('applyViewport');
             call('renderStatus');

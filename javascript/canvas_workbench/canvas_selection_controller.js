@@ -6,6 +6,22 @@
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
         const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
+        const applyNodeLayoutPatch = (node, options) => {
+            const patch = call('buildNodeLayoutPatch', node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        };
+        const applyNodeFlagPatch = (node, flag, value) => {
+            if (flag === 'collapsed') {
+                applyNodeLayoutPatch(node, { collapsed: value });
+                return;
+            }
+            const patch = call('buildNodeFlagPatch', node, { [flag]: value });
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, flag)) {
+                Object.assign(node, patch);
+                return;
+            }
+            Object.assign(node, { [flag]: !!value });
+        };
         const setTimer = typeof scope.setTimeout === 'function'
             ? scope.setTimeout
             : (typeof setTimeout === 'function' ? setTimeout : (() => 0));
@@ -177,7 +193,7 @@
                 ? t('Toggle node lock', '切换节点锁定')
                 : (flag === 'ignored' ? t('Toggle node skip', '切换节点跳过') : t('Toggle node collapse', '切换节点折叠')));
             nodes.forEach((node) => {
-                node[flag] = nextValue;
+                applyNodeFlagPatch(node, flag, nextValue);
             });
             call('mutate');
             const label = flag === 'locked'
@@ -201,10 +217,18 @@
             return movable;
         }
 
-        function snapIfNeeded(node) {
-            if (!getProject().settings?.snap) return;
-            node.x = call('snapCanvasCoord', node.x);
-            node.y = call('snapCanvasCoord', node.y);
+        function applyPositionPatch(node, position) {
+            const next = position || {};
+            const layout = {};
+            const hasX = Object.prototype.hasOwnProperty.call(next, 'x');
+            const hasY = Object.prototype.hasOwnProperty.call(next, 'y');
+            if (hasX) layout.x = next.x;
+            if (hasY) layout.y = next.y;
+            if (getProject().settings?.snap) {
+                layout.x = call('snapCanvasCoord', hasX ? layout.x : node.x);
+                layout.y = call('snapCanvasCoord', hasY ? layout.y : node.y);
+            }
+            applyNodeLayoutPatch(node, layout);
         }
 
         function alignSelectedNodes(kind) {
@@ -219,13 +243,14 @@
             const centerY = (minY + maxY) / 2;
             call('pushHistory', t('Align nodes', '对齐节点'));
             rects.forEach(({ node, rect }) => {
-                if (kind === 'left') node.x = minX;
-                else if (kind === 'right') node.x = maxX - rect.w;
-                else if (kind === 'center-x') node.x = Math.round(centerX - rect.w / 2);
-                else if (kind === 'top') node.y = minY;
-                else if (kind === 'bottom') node.y = maxY - rect.h;
-                else if (kind === 'center-y') node.y = Math.round(centerY - rect.h / 2);
-                snapIfNeeded(node);
+                const next = {};
+                if (kind === 'left') next.x = minX;
+                else if (kind === 'right') next.x = maxX - rect.w;
+                else if (kind === 'center-x') next.x = Math.round(centerX - rect.w / 2);
+                else if (kind === 'top') next.y = minY;
+                else if (kind === 'bottom') next.y = maxY - rect.h;
+                else if (kind === 'center-y') next.y = Math.round(centerY - rect.h / 2);
+                applyPositionPatch(node, next);
             });
             call('mutate');
         }
@@ -245,9 +270,9 @@
             let cursor = start;
             items.forEach((item, index) => {
                 if (index > 0) cursor += gap;
-                if (axis === 'x') item.node.x = Math.round(cursor);
-                else item.node.y = Math.round(cursor);
-                snapIfNeeded(item.node);
+                applyPositionPatch(item.node, axis === 'x'
+                    ? { x: Math.round(cursor) }
+                    : { y: Math.round(cursor) });
                 cursor += axis === 'x' ? item.rect.w : item.rect.h;
             });
             call('mutate');

@@ -278,6 +278,7 @@
             editableTextControlFromTarget,
             onTextControlContextMenu,
             openTextControlContextMenu,
+            dispatchTextControlInput,
             textControlIsReadonly,
             textControlSelection,
             textControlValue

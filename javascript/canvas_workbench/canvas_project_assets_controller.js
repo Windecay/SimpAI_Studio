@@ -10,6 +10,23 @@
             return call('getProject', {}, []) || {};
         }
 
+        function applyProjectStoragePatch(projectLike, storage) {
+            const nextStorage = storage
+                && typeof storage === 'object'
+                && !Array.isArray(storage)
+                ? storage
+                : {};
+            const patch = call('buildProjectStoragePatch', null, projectLike, nextStorage);
+            if (patch && typeof patch === 'object'
+                && patch.storage
+                && typeof patch.storage === 'object'
+                && !Array.isArray(patch.storage)) {
+                Object.assign(projectLike, patch);
+                return;
+            }
+            Object.assign(projectLike, { storage: nextStorage });
+        }
+
         function decodeCanvasAssetPathText(value) {
             let text = String(value || '').trim();
             if (!text) return '';
@@ -217,9 +234,10 @@
             const currentProject = project();
             const storageScope = call('getStorageScope', {}, []);
             const storageKey = call('getStorageKey', '', []);
-            currentProject.storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope), {
+            const storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope), {
                 asset_root: rootText
             });
+            applyProjectStoragePatch(currentProject, storage);
             call('setProject', null, currentProject);
             return true;
         }
@@ -272,9 +290,10 @@
                 if (!rootText) return false;
                 canvasProjectAssetCatalog = Array.isArray(response?.assets) ? response.assets : [];
                 setCanvasProjectAssetRoot(rootText);
-                currentProject.storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, call('getStorageKey', '', []), call('getStorageScope', {}, [])), {
+                const storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, call('getStorageKey', '', []), call('getStorageScope', {}, [])), {
                     asset_root: rootText
                 });
+                applyProjectStoragePatch(currentProject, storage);
                 call('setProject', null, currentProject);
                 const normalizedAssets = normalizeProjectAssetReferences(currentProject);
                 if (normalizedAssets) call('saveProjectToBrowserCache', null);

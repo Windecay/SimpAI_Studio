@@ -4,6 +4,150 @@
     const RUNNABLE_TYPES = new Set(['preset', 'classic', 'wd14', 'vlm', 'translation', 'timeline', 'qwen_tts_voice_design', 'qwen_tts_voice_clone', 'qwen_tts_custom_voice', 'qwen_tts_dialogue']);
     const TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped']);
 
+    function cloneSchedulerValue(value, fallback) {
+        try {
+            return JSON.parse(JSON.stringify(value ?? fallback));
+        } catch (err) {
+            return fallback;
+        }
+    }
+
+    function schedulerTimestamp(options) {
+        return typeof options?.nowIso === 'function' ? options.nowIso() : new Date().toISOString();
+    }
+
+    function buildSchedulerBlockedState(options) {
+        const config = options || {};
+        const plan = config.plan || {};
+        const steps = Array.isArray(config.steps) ? config.steps : (Array.isArray(plan.steps) ? plan.steps : []);
+        const startedAt = config.startedAt !== undefined ? config.startedAt : schedulerTimestamp(config);
+        const updatedAt = config.updatedAt !== undefined ? config.updatedAt : schedulerTimestamp(config);
+        const state = {
+            state: 'blocked',
+            mode: config.mode || plan.mode || 'selected',
+            version: plan.version || 1,
+            total: config.total ?? steps.length,
+            index: config.index ?? 0,
+            started_at: startedAt,
+            updated_at: updatedAt,
+            steps: cloneSchedulerValue(steps, []),
+            warnings: cloneSchedulerValue(config.warnings ?? plan.warnings ?? [], []),
+            cycles: cloneSchedulerValue(config.cycles ?? plan.cycles ?? [], []),
+            error: config.error || ''
+        };
+        if (Object.prototype.hasOwnProperty.call(config, 'currentNodeId')) state.current_node_id = config.currentNodeId || '';
+        if (Object.prototype.hasOwnProperty.call(config, 'currentTitle')) state.current_title = config.currentTitle || '';
+        return state;
+    }
+
+    function buildSchedulerWaitingState(options) {
+        const config = options || {};
+        const plan = config.plan || {};
+        const steps = Array.isArray(config.steps) ? config.steps : (Array.isArray(plan.steps) ? plan.steps : []);
+        const startedAt = config.startedAt !== undefined ? config.startedAt : schedulerTimestamp(config);
+        const updatedAt = config.updatedAt !== undefined ? config.updatedAt : schedulerTimestamp(config);
+        return {
+            state: 'waiting',
+            mode: config.mode || plan.mode || 'selected',
+            version: plan.version || 1,
+            total: config.total ?? steps.length,
+            index: config.index ?? 0,
+            started_at: startedAt,
+            updated_at: updatedAt,
+            current_node_id: config.currentNodeId || '',
+            current_title: config.currentTitle || '',
+            waiting_source_ids: cloneSchedulerValue(config.waitingSourceIds || [], []),
+            steps: cloneSchedulerValue(steps, []),
+            warnings: cloneSchedulerValue(config.warnings ?? plan.warnings ?? [], []),
+            error: config.error || ''
+        };
+    }
+
+    function buildSchedulerRunningState(options) {
+        const config = options || {};
+        const plan = config.plan || {};
+        const steps = Array.isArray(config.steps) ? config.steps : (Array.isArray(plan.steps) ? plan.steps : []);
+        return {
+            state: 'running',
+            mode: config.mode || plan.mode || 'selected',
+            version: plan.version || 1,
+            total: config.total ?? steps.length,
+            index: config.index ?? 0,
+            started_at: config.startedAt !== undefined ? config.startedAt : schedulerTimestamp(config),
+            steps: cloneSchedulerValue(steps, [])
+        };
+    }
+
+    function buildSchedulerResetPatch(options) {
+        return {
+            state: 'idle',
+            error: '',
+            warnings: [],
+            steps: [],
+            current_node_id: '',
+            current_title: '',
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerResumePatch(options) {
+        return {
+            state: 'idle',
+            error: '',
+            waiting_source_ids: [],
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerStepStartPatch(step, index, options) {
+        return {
+            state: 'running',
+            index,
+            current_node_id: step?.node_id || '',
+            current_title: step?.title || '',
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerStepEndPatch(index, options) {
+        return {
+            index,
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerErrorPatch(step, error, options) {
+        return {
+            state: 'failed',
+            failed_node_id: step?.node_id || '',
+            error: error?.error || error?.message || String(error),
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerFinishedPatch(options) {
+        return {
+            state: 'finished',
+            finished_at: schedulerTimestamp(options || {}),
+            updated_at: schedulerTimestamp(options || {})
+        };
+    }
+
+    function buildSchedulerStepStatePatch(step, options) {
+        const config = options || {};
+        const patch = {};
+        if (Object.prototype.hasOwnProperty.call(config, 'state')) {
+            patch.state = config.state;
+        }
+        if (Object.prototype.hasOwnProperty.call(config, 'error')) {
+            patch.error = config.error?.error || config.error?.message || String(config.error ?? '');
+        }
+        if (Object.prototype.hasOwnProperty.call(config, 'result')) {
+            patch.result = cloneSchedulerValue(config.result, null);
+        }
+        return patch;
+    }
+
     function nodeLabel(node) {
         return node?.title || node?.preset?.name || node?.id || 'node';
     }
@@ -412,23 +556,21 @@
         if (typeof h.onStart === 'function') h.onStart(plan);
         for (let index = 0; index < plan.steps.length; index += 1) {
             const step = plan.steps[index];
-            step.state = 'running';
+            Object.assign(step, buildSchedulerStepStatePatch(step, { state: 'running' }));
             if (typeof h.onStepStart === 'function') h.onStepStart(step, index, plan);
             try {
                 const result = await h.runNode(step.node_id, step, index, plan);
                 if (result && result.ok === false) {
-                    step.state = 'failed';
-                    step.error = result.error || result.message || 'step failed';
+                    const error = result.error || result.message || 'step failed';
+                    Object.assign(step, buildSchedulerStepStatePatch(step, { state: 'failed', error }));
                     if (typeof h.onStepEnd === 'function') h.onStepEnd(step, index, plan, result);
                     if (typeof h.onError === 'function') h.onError(step, result, plan);
                     return { ok: false, failed_step: step, error: step.error, plan };
                 }
-                step.state = 'finished';
-                step.result = result || null;
+                Object.assign(step, buildSchedulerStepStatePatch(step, { state: 'finished', result: result || null }));
                 if (typeof h.onStepEnd === 'function') h.onStepEnd(step, index, plan, result);
             } catch (err) {
-                step.state = 'failed';
-                step.error = err?.message || String(err);
+                Object.assign(step, buildSchedulerStepStatePatch(step, { state: 'failed', error: err }));
                 if (typeof h.onError === 'function') h.onError(step, err, plan);
                 return { ok: false, failed_step: step, error: step.error, plan };
             }
@@ -438,6 +580,16 @@
     }
 
     window.SimpAICanvasWorkbenchScheduler = {
+        buildSchedulerBlockedState,
+        buildSchedulerWaitingState,
+        buildSchedulerRunningState,
+        buildSchedulerResetPatch,
+        buildSchedulerResumePatch,
+        buildSchedulerStepStartPatch,
+        buildSchedulerStepEndPatch,
+        buildSchedulerErrorPatch,
+        buildSchedulerFinishedPatch,
+        buildSchedulerStepStatePatch,
         buildPlan,
         runPlan,
         isRunnable,

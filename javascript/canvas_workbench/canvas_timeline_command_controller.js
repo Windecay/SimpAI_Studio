@@ -20,15 +20,88 @@
         const normalizeTimelineNode = (node) => call('normalizeTimelineNode', undefined, node);
         const mutateTimeline = () => call('mutate', undefined, { inspector: true });
         const toast = (message) => call('showToast', undefined, message);
+        const buildTimelineParamsPatch = (node, paramsPatch) => call(
+            'buildTimelineParamsPatch',
+            { params: Object.assign({}, node?.params || {}, paramsPatch || {}) },
+            node,
+            paramsPatch
+        );
+        const buildTimelineTracksPatch = (node, tracks) => call(
+            'buildTimelineTracksPatch',
+            { tracks: Array.isArray(tracks) ? tracks.slice() : [] },
+            node,
+            tracks
+        );
+        const buildTimelineKeyframesPatch = (clip, keyframes) => call(
+            'buildTimelineKeyframesPatch',
+            { keyframes: Array.isArray(keyframes) ? keyframes.slice() : [] },
+            clip,
+            keyframes
+        );
+        const buildTimelineClipResetPatch = (clip, tool) => call(
+            'buildTimelineClipResetPatch',
+            tool === 'crop'
+                ? {
+                    values: { crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0 },
+                    remove: []
+                }
+                : tool === 'mask'
+                    ? { values: {}, remove: ['mask', 'mask_asset', 'mask_data_url'] }
+                    : {
+                        values: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 },
+                        remove: []
+                    },
+            clip,
+            tool
+        );
+        const buildTimelineClipDeletePatch = (node, clipId) => call(
+            'buildTimelineClipDeletePatch',
+            {
+                clips: (node?.clips || []).filter(clip => clip?.id !== clipId),
+                params: Object.assign({}, node?.params || {}, node?.params?.selected_clip_id === clipId
+                    ? { selected_clip_id: (node?.clips || []).find(clip => clip?.id !== clipId)?.id || '' }
+                    : {})
+            },
+            node,
+            clipId
+        );
+        const buildProjectTimelineClipEdgeDeletePatch = (project, nodeId, clipId) => call(
+            'buildProjectTimelineClipEdgeDeletePatch',
+            {
+                edges: (Array.isArray(project?.edges) ? project.edges : []).filter(edge => !(
+                    edge?.type === 'timeline'
+                    && edge?.to === nodeId
+                    && edge?.slot === clipId
+                ))
+            },
+            project,
+            nodeId,
+            clipId
+        ) || {
+            edges: (Array.isArray(project?.edges) ? project.edges : []).filter(edge => !(
+                edge?.type === 'timeline'
+                && edge?.to === nodeId
+                && edge?.slot === clipId
+            ))
+        };
+
+        function applyTimelineClipPatch(clip, patch) {
+            if (!clip || !patch) return clip;
+            Object.assign(clip, patch.values || patch);
+            (Array.isArray(patch.remove) ? patch.remove : []).forEach((key) => {
+                if (key) delete clip[key];
+            });
+            return clip;
+        }
 
         function selectTimelineClip(node, clipId, options) {
             if (!node || node.type !== 'timeline' || !clipId) return null;
             const clip = (node.clips || []).find(item => item.id === clipId);
             if (!clip) return null;
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 selected_clip_id: clip.id,
                 playhead: clamp(Number(node.params?.playhead ?? clip.start), 0, Number(node.params?.duration || 1))
-            });
+            }));
             call('setSelectedNodeId', undefined, node.id);
             call('setSelectedNodeIds', undefined, [node.id]);
             call('setSelectedEdgeId', undefined, null);
@@ -48,7 +121,7 @@
             const copy = tracks.slice();
             const [track] = copy.splice(index, 1);
             copy.splice(next, 0, track);
-            node.tracks = copy;
+            Object.assign(node, buildTimelineTracksPatch(node, copy));
             call('mutate', undefined, { inspector: true });
         }
 
@@ -156,21 +229,8 @@
             }
             const tool = ['transform', 'crop', 'mask'].includes(node.params?.preview_tool) ? node.params.preview_tool : 'transform';
             call('pushHistory', undefined, `Reset timeline ${tool}`);
-            if (tool === 'crop') {
-                clip.crop_left = 0;
-                clip.crop_right = 0;
-                clip.crop_top = 0;
-                clip.crop_bottom = 0;
-            } else if (tool === 'mask') {
-                delete clip.mask;
-                delete clip.mask_asset;
-                delete clip.mask_data_url;
-            } else {
-                clip.x = 0;
-                clip.y = 0;
-                clip.scale = 1;
-                clip.rotate = 0;
-                clip.opacity = 1;
+            applyTimelineClipPatch(clip, buildTimelineClipResetPatch(clip, tool));
+            if (tool === 'transform') {
                 call('syncTimelineClipTransformKeyframeAtPlayhead', undefined, node, clip, ['x', 'y', 'scale', 'rotate', 'opacity']);
             }
             normalizeTimelineNode(node);
@@ -196,7 +256,7 @@
             call('pushHistoryBatch', undefined, `timeline-keyframe:${node.id}:${clip.id}`, index >= 0 ? 'Update timeline keyframe' : 'Add timeline keyframe');
             if (index >= 0) frames[index] = frame;
             else frames.push(frame);
-            clip.keyframes = frames.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+            Object.assign(clip, buildTimelineKeyframesPatch(clip, frames));
             normalizeTimelineNode(node);
             mutateTimeline();
             toast(index >= 0
@@ -219,7 +279,7 @@
                 return false;
             }
             call('pushHistoryBatch', undefined, `timeline-keyframe:${node.id}:${clip.id}`, 'Delete timeline keyframe');
-            clip.keyframes = next;
+            Object.assign(clip, buildTimelineKeyframesPatch(clip, next));
             normalizeTimelineNode(node);
             mutateTimeline();
             toast(call('t', 'Keyframe deleted.', '关键帧已删除'));
@@ -235,10 +295,10 @@
             }
             const playhead = clamp(Number(time || 0), 0, Math.max(1, Number(node.params?.duration || 1)));
             call('pushHistoryBatch', undefined, `timeline-keyframe-jump:${node.id}:${clip.id}`, 'Jump to timeline keyframe');
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 selected_clip_id: clip.id,
                 playhead
-            });
+            }));
             normalizeTimelineNode(node);
             mutateTimeline();
             return true;
@@ -262,7 +322,7 @@
             const next = allowed.includes(easing) ? easing : 'linear';
             call('pushHistoryBatch', undefined, `timeline-keyframe-easing:${node.id}:${clip.id}`, 'Change timeline keyframe easing');
             frames[index] = Object.assign({}, frames[index], { easing: next });
-            clip.keyframes = frames;
+            Object.assign(clip, buildTimelineKeyframesPatch(clip, frames));
             normalizeTimelineNode(node);
             mutateTimeline();
             toast(`Keyframe easing: ${next.replace(/_/g, ' ')}`);
@@ -353,10 +413,10 @@
             if (!node || node.type !== 'timeline' || isNodeLocked(node)) return false;
             const playhead = Math.max(1, Number(node.params?.playhead || 0));
             call('pushHistory', undefined, 'Trim timeline duration to playhead');
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 duration: playhead,
                 playhead: clamp(Number(node.params?.playhead || 0), 0, playhead)
-            });
+            }));
             normalizeTimelineNode(node);
             mutateTimeline();
             return true;
@@ -366,10 +426,10 @@
             if (!node || node.type !== 'timeline' || isNodeLocked(node)) return false;
             const duration = Math.max(1, Number(call('timelineDuration', 1, node)) || 1);
             call('pushHistory', undefined, 'Fit timeline duration to content');
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 duration,
                 playhead: clamp(Number(node.params?.playhead || 0), 0, duration)
-            });
+            }));
             normalizeTimelineNode(node);
             mutateTimeline();
             return true;
@@ -381,12 +441,12 @@
             const width = Math.max(16, Number(node.params?.width || 1280));
             const height = Math.max(16, Number(node.params?.height || 720));
             call('pushHistory', undefined, 'Swap timeline size');
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 width: height,
                 height: width,
                 aspect: `${height}:${width}`,
                 size_preset: `${height}x${width}`
-            });
+            }));
             call('remapTimelineMasksAfterCanvasResize', undefined, node, maskGeometrySnapshot);
             normalizeTimelineNode(node);
             mutateTimeline();
@@ -398,13 +458,9 @@
             const clip = (node.clips || []).find(item => item.id === clipId);
             if (!clip) return false;
             const project = call('getProject', null) || {};
-            const edges = Array.isArray(project.edges) ? project.edges : [];
             call('pushHistory', undefined, 'Delete timeline clip');
-            node.clips = node.clips.filter(item => item.id !== clipId);
-            project.edges = edges.filter(edge => !(edge.type === 'timeline' && edge.to === node.id && edge.slot === clipId));
-            if (node.params?.selected_clip_id === clipId) {
-                node.params.selected_clip_id = node.clips[0]?.id || '';
-            }
+            Object.assign(node, buildTimelineClipDeletePatch(node, clipId));
+            Object.assign(project, buildProjectTimelineClipEdgeDeletePatch(project, node.id, clipId));
             mutateTimeline();
             return true;
         }

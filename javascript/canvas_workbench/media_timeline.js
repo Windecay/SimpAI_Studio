@@ -59,6 +59,14 @@
         return (...args) => context[name](...args);
     }
 
+    function cloneTimelineValue(value, fallback) {
+        try {
+            return JSON.parse(JSON.stringify(value ?? fallback));
+        } catch (err) {
+            return fallback;
+        }
+    }
+
     function createTimelineNodeContext(source) {
         const context = source || {};
         return {
@@ -253,10 +261,12 @@
         const maxDuration = clipAvailableDuration(node, clip, context);
         if (!Number.isFinite(maxDuration)) return false;
         const clampValue = typeof context?.clamp === 'function' ? context.clamp : clamp;
-        const nextDuration = clampValue(Number(clip.duration || 0.05), 0.05, Math.max(0.05, maxDuration));
+        const patch = typeof context?.buildTimelineClipMediaBoundsPatch === 'function'
+            ? context.buildTimelineClipMediaBoundsPatch(clip, maxDuration, clampValue)
+            : buildTimelineClipMediaBoundsPatch(clip, maxDuration, clampValue);
+        const nextDuration = Number(patch?.duration || 0.05);
         const changed = Math.abs(nextDuration - Number(clip.duration || 0)) > 0.001;
-        if (changed) clip.duration = nextDuration;
-        clip.out = Math.max(Number(clip.in || 0), Number(clip.in || 0) + Number(clip.duration || 0));
+        Object.assign(clip, patch && typeof patch === 'object' ? patch : { duration: nextDuration });
         return changed;
     }
 
@@ -434,7 +444,11 @@
         };
         if (index >= 0) frames[index] = frame;
         else frames.push(frame);
-        clip.keyframes = frames.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+        const keyframes = frames.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+        const patch = typeof context?.buildTimelineKeyframesPatch === 'function'
+            ? context.buildTimelineKeyframesPatch(clip, keyframes)
+            : { keyframes };
+        Object.assign(clip, patch && typeof patch === 'object' ? patch : { keyframes });
         return true;
     }
 
@@ -443,14 +457,14 @@
         return normalizeKeyframes(clip).some(frame => Math.abs(Number(frame.time || 0) - time) < KEYFRAME_TIME_EPSILON);
     }
 
-    function normalizeNode(node) {
-        if (!node) return null;
-        node.params = normalizeParams(node.params);
-        node.tracks = Array.isArray(node.tracks) && node.tracks.length
+    function buildTimelineNodeStatePatch(node) {
+        if (!node) return {};
+        const params = normalizeParams(node.params);
+        const tracks = Array.isArray(node.tracks) && node.tracks.length
             ? node.tracks.map(track => Object.assign({}, track))
             : DEFAULT_TRACKS.map(track => Object.assign({}, track));
-        const trackIds = new Set(node.tracks.map(track => track.id));
-        node.clips = Array.isArray(node.clips) ? node.clips.map((clip, index) => {
+        const trackIds = new Set(tracks.map(track => track.id));
+        const clips = Array.isArray(node.clips) ? node.clips.map((clip, index) => {
             const kind = ['video', 'audio', 'image'].includes(clip.kind) ? clip.kind : 'image';
             const trackId = trackIds.has(clip.track_id) ? clip.track_id : defaultTrackId(kind);
             const start = Math.max(0, Number(clip.start || 0));
@@ -483,10 +497,30 @@
             next.keyframes = normalizeKeyframes(next);
             return next;
         }) : [];
-        node.params.playhead = clamp(Number(node.params.playhead || 0), 0, node.params.duration);
-        if (!node.clips.some(clip => clip.id === node.params.selected_clip_id)) {
-            node.params.selected_clip_id = node.clips[0]?.id || '';
+        params.playhead = clamp(Number(params.playhead || 0), 0, params.duration);
+        if (!clips.some(clip => clip.id === params.selected_clip_id)) {
+            params.selected_clip_id = clips[0]?.id || '';
         }
+        return { params, tracks, clips };
+    }
+
+    function buildTimelineClipMediaBoundsPatch(clip, maxDuration, clampValue) {
+        const clampFn = typeof clampValue === 'function' ? clampValue : clamp;
+        const nextDuration = clampFn(
+            Number(clip?.duration || 0.05),
+            0.05,
+            Math.max(0.05, Number(maxDuration || 0.05))
+        );
+        const clipIn = Number(clip?.in || 0);
+        return {
+            duration: nextDuration,
+            out: Math.max(clipIn, clipIn + nextDuration)
+        };
+    }
+
+    function normalizeNode(node) {
+        if (!node) return null;
+        Object.assign(node, buildTimelineNodeStatePatch(node));
         return node;
     }
 
@@ -565,6 +599,198 @@
             crop_bottom: 0,
             mask: null,
             mask_data_url: ''
+        };
+    }
+
+    function createFallbackClipFromSource(source, options, context) {
+        const opts = options || {};
+        return {
+            id: opts.id || call(context, 'uid', `clip_${Date.now().toString(36)}`, 'clip'),
+            source_node_id: source?.id,
+            title: source?.title || 'Clip',
+            kind: 'image',
+            track_id: opts.track_id || 'v1',
+            start: Number.isFinite(Number(opts.start)) ? Number(opts.start) : 0,
+            duration: 4
+        };
+    }
+
+    function buildTimelineClipPatch(fields) {
+        return cloneTimelineValue(fields || {}, {});
+    }
+
+    function buildTimelineClipMaskPatch(clip, options) {
+        const config = options || {};
+        const previousMask = clip?.mask && typeof clip.mask === 'object' ? clip.mask : {};
+        const mask = Object.assign({}, previousMask, cloneTimelineValue(config.maskPatch || {}, {}));
+        if (config.dataUrl !== undefined) mask.data_url = config.dataUrl;
+        if (config.width !== undefined) mask.width = config.width;
+        if (config.height !== undefined) mask.height = config.height;
+        const patch = { mask };
+        if (config.maskDataUrl !== undefined) patch.mask_data_url = config.maskDataUrl;
+        else if (config.dataUrl !== undefined) patch.mask_data_url = config.dataUrl;
+        return patch;
+    }
+
+    function buildTimelineClipMaskPointPatch(clip, target, point) {
+        const mask = cloneTimelineValue(clip?.mask && typeof clip.mask === 'object' ? clip.mask : {}, {});
+        const nextPoint = cloneTimelineValue(point, point);
+        if (target?.kind === 'pending') {
+            const pending = mask.pending_pen && typeof mask.pending_pen === 'object'
+                ? mask.pending_pen
+                : null;
+            const points = Array.isArray(pending?.points) ? pending.points.slice() : [];
+            const pointIndex = Number(target.pointIndex);
+            if (pending && Number.isInteger(pointIndex) && points[pointIndex] !== undefined) {
+                points[pointIndex] = nextPoint;
+                mask.pending_pen = Object.assign({}, pending, { points });
+            }
+        } else {
+            const strokes = Array.isArray(mask.strokes) ? mask.strokes.slice() : [];
+            let strokeIndex = Number(target?.strokeIndex);
+            if (!Number.isInteger(strokeIndex)) {
+                strokeIndex = (Array.isArray(clip?.mask?.strokes) ? clip.mask.strokes : [])
+                    .findIndex(stroke => stroke?.points === target?.points);
+            }
+            const pointIndex = Number(target?.pointIndex);
+            const stroke = strokes[strokeIndex];
+            const points = Array.isArray(stroke?.points) ? stroke.points.slice() : [];
+            if (stroke && Number.isInteger(strokeIndex) && Number.isInteger(pointIndex) && points[pointIndex] !== undefined) {
+                points[pointIndex] = nextPoint;
+                strokes[strokeIndex] = Object.assign({}, stroke, { points });
+                mask.strokes = strokes;
+            }
+        }
+        return { mask };
+    }
+
+    function buildTimelineClipAppendPatch(timeline, clip) {
+        const clips = Array.isArray(timeline?.clips) ? timeline.clips.slice() : [];
+        clips.push(clip);
+        return {
+            clips,
+            params: Object.assign({}, timeline?.params || {}, {
+                duration: Math.max(
+                    Number(timeline?.params?.duration || 1),
+                    Number(clip?.start || 0) + Number(clip?.duration || 0)
+                )
+            })
+        };
+    }
+
+    function buildTimelineParamsPatch(timeline, paramsPatch) {
+        return {
+            params: Object.assign(
+                {},
+                timeline?.params || {},
+                cloneTimelineValue(paramsPatch || {}, {})
+            )
+        };
+    }
+
+    function buildTimelineSourcePatch(timeline, sourcePatch) {
+        return {
+            source: Object.assign(
+                {},
+                timeline?.source || {},
+                cloneTimelineValue(sourcePatch || {}, {})
+            )
+        };
+    }
+
+    function buildTimelineDebugPatch(timeline, debugPatch) {
+        return {
+            timeline_debug: Object.assign(
+                {},
+                timeline?.timeline_debug || {},
+                cloneTimelineValue(debugPatch || {}, {})
+            )
+        };
+    }
+
+    function buildTimelineParamUpdatePatch(timeline, key, value, inputType) {
+        const params = Object.assign({}, timeline?.params || {});
+        if (key === 'size_preset') {
+            params.size_preset = value;
+            if (value && value !== 'custom') {
+                const match = String(value).match(/^(\d+)x(\d+)$/i);
+                if (match) {
+                    params.width = Number(match[1]);
+                    params.height = Number(match[2]);
+                    params.aspect = `${match[1]}:${match[2]}`;
+                }
+            }
+        } else if (key === 'fps_preset') {
+            params.fps_preset = value;
+            if (value && value !== 'custom') params.fps = Number(value);
+        } else if (inputType === 'number' || inputType === 'range') {
+            const parsed = Number(value);
+            params[key] = Number.isFinite(parsed) ? parsed : value;
+            if (key === 'width' || key === 'height') params.size_preset = 'custom';
+            if (key === 'fps') params.fps_preset = 'custom';
+        } else {
+            params[key] = value;
+        }
+        if (key === 'preview_tool' && value === 'mask') params.mask_mode = 'pen';
+        return { params };
+    }
+
+    function buildTimelineClipParamUpdatePatch(clip, key, value, inputType) {
+        const nextValue = inputType === 'number' || inputType === 'range'
+            ? (Number.isFinite(Number(value)) ? Number(value) : value)
+            : value;
+        const nextClip = Object.assign({}, clip || {}, { [key]: nextValue });
+        const patch = { [key]: nextValue };
+        if (key === 'opacity') patch.opacity = clamp(Number(nextClip.opacity ?? 1), 0, 1);
+        if (key === 'volume') patch.volume = clamp(Number(nextClip.volume ?? 1), 0, 2);
+        if (key === 'scale') patch.scale = Math.max(0.05, Number(nextClip.scale ?? 1));
+        if (key === 'rotate') patch.rotate = Number(nextClip.rotate || 0);
+        if (key === 'start') patch.start = Math.max(0, Number(nextClip.start || 0));
+        if (key === 'duration') patch.duration = Math.max(0.05, Number(nextClip.duration || 0.05));
+        if (key && key.startsWith('crop_')) patch[key] = clamp(Number(nextClip[key] || 0), 0, 95);
+        return patch;
+    }
+
+    function buildTimelineTracksPatch(timeline, tracks) {
+        return {
+            tracks: cloneTimelineValue(Array.isArray(tracks) ? tracks : (timeline?.tracks || []), [])
+        };
+    }
+
+    function buildTimelineKeyframesPatch(clip, keyframes) {
+        const frames = Array.isArray(keyframes) ? keyframes.slice() : (Array.isArray(clip?.keyframes) ? clip.keyframes.slice() : []);
+        frames.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+        return { keyframes: cloneTimelineValue(frames, []) };
+    }
+
+    function buildTimelineClipResetPatch(clip, tool) {
+        const values = {};
+        const remove = [];
+        if (tool === 'crop') {
+            values.crop_left = 0;
+            values.crop_right = 0;
+            values.crop_top = 0;
+            values.crop_bottom = 0;
+        } else if (tool === 'mask') {
+            remove.push('mask', 'mask_asset', 'mask_data_url');
+        } else {
+            values.x = 0;
+            values.y = 0;
+            values.scale = 1;
+            values.rotate = 0;
+            values.opacity = 1;
+        }
+        return { values, remove };
+    }
+
+    function buildTimelineClipDeletePatch(timeline, clipId) {
+        const clips = (Array.isArray(timeline?.clips) ? timeline.clips : [])
+            .filter(clip => clip?.id !== clipId);
+        const params = Object.assign({}, timeline?.params || {});
+        if (params.selected_clip_id === clipId) params.selected_clip_id = clips[0]?.id || '';
+        return {
+            clips: cloneTimelineValue(clips, []),
+            params
         };
     }
 
@@ -1116,6 +1342,8 @@ ${renderRuler(node)}
         DEFAULT_TRACKS,
         SIZE_PRESETS,
         FPS_PRESETS,
+        buildTimelineNodeStatePatch,
+        buildTimelineClipMediaBoundsPatch,
         normalizeNode,
         normalizeParams,
         timelineDuration,
@@ -1127,6 +1355,20 @@ ${renderRuler(node)}
         assetMediaKind,
         defaultTrackId,
         createClipFromSource,
+        createFallbackClipFromSource,
+        buildTimelineClipPatch,
+        buildTimelineClipMaskPatch,
+        buildTimelineClipMaskPointPatch,
+         buildTimelineClipAppendPatch,
+         buildTimelineParamsPatch,
+         buildTimelineSourcePatch,
+         buildTimelineDebugPatch,
+         buildTimelineParamUpdatePatch,
+        buildTimelineClipParamUpdatePatch,
+        buildTimelineTracksPatch,
+        buildTimelineKeyframesPatch,
+        buildTimelineClipResetPatch,
+        buildTimelineClipDeletePatch,
         renderNodeHtml,
         renderInspector,
         serializeTimeline,

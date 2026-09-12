@@ -6,7 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
         const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
         const chooseCanvasAgentPresetEntry = (...args) => call('chooseCanvasAgentPresetEntry', { entry: null, checked: [] }, ...args);
         const resolveCanvasAgentPrompt = (...args) => call('resolveCanvasAgentPrompt', null, ...args);
@@ -120,9 +119,8 @@
                 return;
             }
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(null), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_audio_mode: 'generate' }
-            }));
+                collapsed: true
+            }), { sourcePatch: { agent_audio_mode: 'generate' } });
             if (!prepareCanvasAgentGenerator(node, resolved.prompt)) return;
             setCanvasAgentRunInfo({
                 token: uid('agent_run'),
@@ -190,16 +188,11 @@
                     text: String(decisionForm.text || resolved.prompt || '').trim(),
                     instruct: String(decisionForm.instruct || '').trim()
                 }
-            }));
+            }), { sourcePatch: { agent_audio_mode: 'qwen_tts_voice_design' } });
             if (!node) {
                 setCanvasAgentMessage(t('Qwen TTS node could not be created.', '无法创建 Qwen TTS 节点。'));
                 return;
             }
-            node.source = Object.assign({}, node.source || {}, {
-                kind: 'canvas_agent_created',
-                created_at: nowIso(),
-                agent_audio_mode: 'qwen_tts_voice_design'
-            });
             setCanvasAgentRunInfo({
                 token: uid('agent_run'),
                 stage: 'Submitting Qwen TTS voice design',
@@ -282,9 +275,8 @@
                 return;
             }
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_audio_mode: 'edit' }
-            }));
+                collapsed: true
+            }), { sourcePatch: { agent_audio_mode: 'edit' } });
             applyCanvasAgentPromptToGenerator(node, resolved.prompt);
             const slot = findCanvasAgentUploadSlotForTarget(node, target, slotPreview?.key);
             if (!slot) {

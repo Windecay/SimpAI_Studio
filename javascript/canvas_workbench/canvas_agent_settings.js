@@ -30,6 +30,26 @@
             return call('getAgentState', null) || {};
         }
 
+        function applyProjectSettingsMergePatch(project, updates) {
+            const defaultSettings = getDefaultProjectSettings();
+            const currentSettings = project?.settings
+                && typeof project.settings === 'object'
+                && !Array.isArray(project.settings)
+                ? project.settings
+                : (defaultSettings && typeof defaultSettings === 'object' && !Array.isArray(defaultSettings)
+                    ? defaultSettings
+                    : {});
+            const patch = call('buildProjectSettingsMergePatch', null, { settings: currentSettings }, updates);
+            if (patch && typeof patch === 'object'
+                && patch.settings
+                && typeof patch.settings === 'object'
+                && !Array.isArray(patch.settings)) {
+                Object.assign(project, patch);
+                return;
+            }
+            Object.assign(project, { settings: Object.assign({}, currentSettings, updates || {}) });
+        }
+
         function getCanvasAgentSettings() {
             const project = getProject();
             const defaults = getDefaultSettings();
@@ -104,7 +124,6 @@
         function setCanvasAgentSettingsPatch(patch, options) {
             if (!patch || typeof patch !== 'object') return;
             const project = getProject();
-            if (!project.settings || typeof project.settings !== 'object') project.settings = Object.assign({}, getDefaultProjectSettings());
             if (!options?.silentHistory) call('pushHistoryBatch', null, 'canvas-agent-settings', 'Canvas Agent settings');
             const agentState = getAgentState();
             if (patch.enabled === false && agentState.pendingDecision?.resolve) {
@@ -113,7 +132,9 @@
                 agentState.currentRun = null;
                 agentState.busy = false;
             }
-            project.settings.canvasAgent = Object.assign({}, getCanvasAgentSettings(), patch);
+            applyProjectSettingsMergePatch(project, {
+                canvasAgent: Object.assign({}, getCanvasAgentSettings(), patch)
+            });
             call('scheduleSave', null);
             call('renderCanvasAgentPanel', null);
             call('renderCanvasSettingsPanel', null);
@@ -123,8 +144,9 @@
         function setCanvasAgentLayoutPatch(patch, options) {
             if (!patch || typeof patch !== 'object') return;
             const project = getProject();
-            if (!project.settings || typeof project.settings !== 'object') project.settings = Object.assign({}, getDefaultProjectSettings());
-            project.settings.canvasAgent = Object.assign({}, getCanvasAgentSettings(), patch);
+            applyProjectSettingsMergePatch(project, {
+                canvasAgent: Object.assign({}, getCanvasAgentSettings(), patch)
+            });
             call('scheduleSave', null);
             if (options?.render !== false) call('renderCanvasAgentPanel', null);
         }

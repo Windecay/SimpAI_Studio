@@ -41,12 +41,17 @@
         return (...args) => context[name](...args);
     }
 
+    function buildStatus(state, message, context) {
+        return call(context, 'buildCanvasRunStatus', { state, message }, state, message);
+    }
+
     function createCameraMotionNodeContext(source) {
         const context = source || {};
         return {
             getProject: delegate(context, 'getProject'),
             getProjectId: delegate(context, 'getProjectId'),
             assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
+            buildCanvasRunStatus: delegate(context, 'buildCanvasRunStatus'),
             defaultNodeSize: delegate(context, 'defaultNodeSize'),
             getNode: delegate(context, 'getNode'),
             isNodeIgnored: delegate(context, 'isNodeIgnored'),
@@ -60,13 +65,29 @@
             renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
             scheduleSave: delegate(context, 'scheduleSave'),
             setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast')
+            showToast: delegate(context, 'showToast'),
+            buildCameraMotionParamsPatch: delegate(context, 'buildCameraMotionParamsPatch'),
+            buildCameraMotionSourcePatch: delegate(context, 'buildCameraMotionSourcePatch'),
+            buildCameraMotionStatePatch: delegate(context, 'buildCameraMotionStatePatch'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
+            buildVideoResponseAsset: delegate(context, 'buildVideoResponseAsset')
         };
     }
 
     function getProject(context) {
         const project = typeof context?.getProject === 'function' ? context.getProject() : null;
         return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
     }
 
     function getNode(id, context) {
@@ -193,12 +214,14 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const current = Object.assign(defaultParams(), node.params || {})[key];
         if (String(current) === String(next)) return;
         call(context, 'pushHistoryBatch', null, `camera_motion:${nodeId}:${key}`, 'Edit Uni3C camera motion parameter');
-        node.params = Object.assign(defaultParams(), node.params || {}, { [key]: next });
+        const nextParams = Object.assign(defaultParams(), node.params || {}, { [key]: next });
+        const statePatch = { params: nextParams };
         const hadAsset = !!node.asset;
         if (hadAsset) {
-            node.asset = null;
-            node.status = { state: 'idle', message: t('Settings changed. Generate a new reference video.', '参数已变化，请重新生成参考视频。') };
+            statePatch.asset = null;
+            statePatch.status = buildStatus('idle', t('Settings changed. Generate a new reference video.', '参数已变化，请重新生成参考视频。'), context);
         }
+        Object.assign(node, call(context, 'buildCameraMotionStatePatch', statePatch, node, { statePatch }));
         call(context, 'scheduleSave', null);
         if (hadAsset || refreshTimers.has(nodeId)) {
             if (refreshTimers.has(nodeId)) window.clearTimeout(refreshTimers.get(nodeId));
@@ -213,6 +236,8 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const opts = options || {};
         if (opts.history !== false) call(context, 'pushHistory', null, 'Add Uni3C camera motion node');
         const size = call(context, 'defaultNodeSize', { w: 380, h: 680 }, 'camera_motion');
+        const defaultSource = { kind: 'camera_motion_reference', module: 'enhanced.camera_motion_reference' };
+        const defaultStatus = { state: 'idle', message: t('Set the motion and generate a reference video.', '设置运镜参数后生成参考视频。') };
         const node = {
             id: uid('camotion'),
             type: 'camera_motion',
@@ -223,13 +248,27 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             title: opts.title || t('Uni3C Camera Motion', 'Uni3C 运镜'),
             params: Object.assign(defaultParams(), opts.params || {}),
             asset: opts.asset || null,
-            source: Object.assign({ kind: 'camera_motion_reference', module: 'enhanced.camera_motion_reference' }, opts.source || {}),
-            status: opts.status || { state: 'idle', message: t('Set the motion and generate a reference video.', '设置运镜参数后生成参考视频。') }
+            source: Object.assign(defaultSource, opts.source || {}),
+            status: opts.status || defaultStatus
         };
+        const initialState = {
+            params: node.params,
+            asset: node.asset,
+            source: node.source,
+            status: node.status
+        };
+        Object.assign(node, call(context, 'buildCameraMotionStatePatch', initialState, node, {
+            defaults: {
+                params: defaultParams(),
+                asset: null,
+                source: defaultSource,
+                status: defaultStatus
+            },
+            initialState
+        }));
         call(context, 'placeNodeAvoidingOverlap', null, node, world);
         const project = getProject(context);
-        if (!Array.isArray(project.nodes)) project.nodes = [];
-        project.nodes.push(node);
+        appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t('Uni3C Camera Motion node added', '已添加 Uni3C 运镜节点'));
@@ -244,7 +283,10 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         if (typeof API.generateCameraMotionReference !== 'function') return { ok: false, error: 'camera motion API is unavailable' };
 
         call(context, 'pushHistory', null, 'Generate Uni3C camera motion reference');
-        node.status = { state: 'running', message: t('Generating camera reference video...', '正在生成运镜参考视频…') };
+        const runningPatch = {
+            status: buildStatus('running', t('Generating camera reference video...', '正在生成运镜参考视频…'), context)
+        };
+        Object.assign(node, call(context, 'buildCameraMotionStatePatch', runningPatch, node, { statePatch: runningPatch }));
         call(context, 'mutate', null);
         const response = await API.generateCameraMotionReference({
             project_id: getProject(context).id || (typeof context?.getProjectId === 'function' ? context.getProjectId() : '') || 'default',
@@ -255,19 +297,33 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         if (!current) return response || { ok: false, error: 'node was removed' };
         if (response?.ok) {
             const ref = response.reference_video || response.asset_ref || {};
-            current.params = Object.assign(defaultParams(), response.settings || current.params || {});
-            current.asset = Object.assign({}, ref, {
-                kind: ref.kind || 'generated_camera_motion_reference',
-                mime: ref.mime || 'video/mp4',
-                camera_motion_settings: Object.assign({}, response.settings || current.params || {})
+            const responseSettings = response.settings;
+            const settings = Object.assign(defaultParams(), responseSettings || current.params || {});
+            const persistedSettings = responseSettings || settings;
+            const generatedAsset = call(context, 'buildVideoResponseAsset', null, {
+                assetRef: ref,
+                kind: 'generated_camera_motion_reference',
+                mime: 'video/mp4',
+                metadata: { camera_motion_settings: persistedSettings }
             });
-            current.source = Object.assign({}, current.source || {}, { settings: Object.assign({}, response.settings || current.params || {}) });
-            current.status = { state: 'finished', message: t('Camera reference video generated.', '运镜参考视频已生成。') };
+            const successPatch = {
+                params: settings,
+                asset: generatedAsset,
+                source: { settings: persistedSettings },
+                status: buildStatus('finished', t('Camera reference video generated.', '运镜参考视频已生成。'), context)
+            };
+            Object.assign(current, call(context, 'buildCameraMotionStatePatch', successPatch, current, {
+                statePatch: successPatch,
+                sourceSettings: persistedSettings
+            }));
             call(context, 'setSelectedNode', null, current.id);
             call(context, 'mutate', null);
             call(context, 'showToast', null, t('Camera reference video generated', '运镜参考视频已生成'));
         } else {
-            current.status = { state: 'failed', message: response?.details || response?.error || t('Camera reference generation failed.', '运镜参考视频生成失败。') };
+            const failurePatch = {
+                status: buildStatus('failed', response?.details || response?.error || t('Camera reference generation failed.', '运镜参考视频生成失败。'), context)
+            };
+            Object.assign(current, call(context, 'buildCameraMotionStatePatch', failurePatch, current, { statePatch: failurePatch }));
             call(context, 'mutate', null);
             call(context, 'showToast', null, `${t('Camera reference failed', '运镜参考生成失败')}：${current.status.message}`);
         }
@@ -277,8 +333,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     function clearNode(node, context) {
         if (!node || node.type !== 'camera_motion' || call(context, 'isNodeLocked', false, node)) return false;
         call(context, 'pushHistory', null, 'Clear Uni3C camera motion reference');
-        node.asset = null;
-        node.status = { state: 'idle', message: t('Reference cleared. Generate a new video when needed.', '参考视频已清除，需要时可重新生成。') };
+        const clearPatch = {
+            asset: null,
+            status: buildStatus('idle', t('Reference cleared. Generate a new video when needed.', '参考视频已清除，需要时可重新生成。'), context)
+        };
+        Object.assign(node, call(context, 'buildCameraMotionStatePatch', clearPatch, node, { statePatch: clearPatch }));
         call(context, 'mutate', null);
         return true;
     }

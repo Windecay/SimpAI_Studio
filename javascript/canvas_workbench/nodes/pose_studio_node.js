@@ -46,13 +46,28 @@
             scheduleSave: delegate(context, 'scheduleSave'),
             serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
             setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast')
+            showToast: delegate(context, 'showToast'),
+            buildAssetReference: delegate(context, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
+            buildPoseStudioStatePatch: delegate(context, 'buildPoseStudioStatePatch'),
+            buildPoseStudioConfirmPatch: delegate(context, 'buildPoseStudioConfirmPatch')
         };
     }
 
     function getProject(context) {
         const project = typeof context?.getProject === 'function' ? context.getProject() : null;
         return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
     }
 
     function getNode(id, context) {
@@ -149,15 +164,18 @@
         return call(context, 'portHintText', t('Double-click', '双击'));
     }
 
-    function poseState(node) {
-        node.pose_studio = Object.assign({
+    function poseState(node, context) {
+        const fallback = {
+            pose_studio: Object.assign({
             pose_data: {},
             editor_state: {},
             reference_asset: null,
             output_asset: null,
             updated_at: ''
-        }, node.pose_studio || {});
-        return node.pose_studio;
+            }, node?.pose_studio || {})
+        };
+        const patch = call(context, 'buildPoseStudioStatePatch', fallback, node);
+        return patch?.pose_studio || fallback.pose_studio;
     }
 
     function hasStoredPose(data) {
@@ -185,7 +203,7 @@
     }
 
     function renderNodeHtml(node, context) {
-        const state = poseState(node);
+        const state = poseState(node, context);
         const source = inputSourceForNode(node, context);
         const asset = node.asset || state.output_asset || {};
         const src = assetDisplaySrc(asset, context);
@@ -216,7 +234,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function renderInspector(node, context) {
         const source = inputSourceForNode(node, context);
-        const info = readAssetInfo(node.asset || poseState(node).output_asset || {}, context);
+        const info = readAssetInfo(node.asset || poseState(node, context).output_asset || {}, context);
         return `
 <div class="sai-inspector-section">
   <h3>${escapeHtml(node.title || 'Pose Studio')}</h3>
@@ -247,21 +265,29 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             title: opts.title || 'Pose Studio',
             input_node_id: opts.input_node_id || null,
             asset: opts.asset || null,
-            pose_studio: Object.assign({
-                pose_data: {},
-                editor_state: {},
-                reference_asset: opts.reference_asset || null,
-                output_asset: opts.asset || null,
-                updated_at: ''
-            }, opts.pose_studio || {}),
+            pose_studio: opts.pose_studio || {},
             source: { kind: 'pose_studio', module: 'ui.services.pose_studio' },
             status: {
                 state: opts.asset ? 'finished' : 'idle',
                 message: opts.asset ? t('Pose image ready.', '姿势图已就绪。') : t('Open Pose Studio to export a pose image.', '打开 Pose Studio 导出姿势图。')
             }
         };
+        Object.assign(node, call(context, 'buildPoseStudioStatePatch', {
+            pose_studio: Object.assign({
+                pose_data: {},
+                editor_state: {},
+                reference_asset: opts.reference_asset || null,
+                output_asset: opts.asset || null,
+                updated_at: ''
+            }, opts.pose_studio || {})
+        }, node, {
+            initialState: {
+                reference_asset: opts.reference_asset || null,
+                output_asset: opts.asset || null
+            }
+        }));
         call(context, 'placeNodeAvoidingOverlap', null, node, world || { x: node.x, y: node.y });
-        if (Array.isArray(project.nodes)) project.nodes.push(node);
+        appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t('Pose Studio node added', '已添加 Pose Studio 节点'));
@@ -275,7 +301,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             call(context, 'showToast', null, 'Pose Studio editor is not loaded.');
             return null;
         }
-        const state = poseState(node);
+        const state = poseState(node, context);
         const referenceSource = inputSourceForNode(node, context);
         const referenceAsset = sourceAssetForNode(node, context) || state.reference_asset || null;
         const referenceAssetSource = referenceSource
@@ -306,22 +332,19 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             onConfirm: (response) => {
                 call(context, 'pushHistory', null, 'Update Pose Studio output');
                 const current = getNode(node.id, context) || node;
-                const nextState = poseState(current);
-                current.asset = response.pose_image || response.asset_ref || null;
-                nextState.output_asset = current.asset;
-                nextState.pose_data = response.pose_data || nextState.pose_data || {};
-                nextState.editor_state = response.editor_state || nextState.editor_state || {};
-                nextState.reference_asset = response.reference_asset || referenceAsset || null;
-                nextState.updated_at = response.exported_at || new Date().toISOString();
-                current.source = Object.assign({}, current.source || {}, {
-                    kind: 'pose_studio',
-                    module: 'ui.services.pose_studio',
-                    reference_node_id: inputSourceForNode(current, context)?.id || ''
-                });
-                current.status = {
-                    state: 'finished',
-                    message: t('Pose image exported.', '姿势图已导出。')
-                };
+                Object.assign(current, call(context, 'buildPoseStudioConfirmPatch', {}, current, {
+                    response,
+                    referenceAsset,
+                    sourcePatch: {
+                        kind: 'pose_studio',
+                        module: 'ui.services.pose_studio',
+                        reference_node_id: inputSourceForNode(current, context)?.id || ''
+                    },
+                    status: {
+                        state: 'finished',
+                        message: t('Pose image exported.', '姿势图已导出。')
+                    }
+                }));
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null);
             }
@@ -330,7 +353,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function isSource(node, context) {
         if (!node || node.type !== 'pose_studio') return false;
-        const asset = node.asset || poseState(node).output_asset || {};
+        const asset = node.asset || poseState(node, context).output_asset || {};
         const mime = String(asset.mime || '').toLowerCase();
         const hasAsset = !!(asset.path || asset.preview_url || asset.data_url || asset.thumb || asset.asset_id || asset.asset_relative_path || asset.relative_path);
         return hasAsset && (!mime || mime.startsWith('image/'));

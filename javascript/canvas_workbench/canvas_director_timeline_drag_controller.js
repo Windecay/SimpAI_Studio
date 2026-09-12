@@ -94,7 +94,10 @@
             segment.unit = 'seconds';
             director.segments[state.index] = segment;
             const normalized = call('normalizeTimeline', director);
-            if (normalized) node.director = normalized;
+            const statePatch = normalized
+                ? call('buildDirectorTimelineStatePatch', node, { directorPatch: normalized })
+                : null;
+            if (statePatch && typeof statePatch === 'object') Object.assign(node, statePatch);
             call('updateDirectorStatus', node);
             call('mutate', { inspector: call('getSelectedNodeId') === node.id });
             evt.preventDefault();

@@ -10829,6 +10829,25 @@ with shared.gradio_root:
             }
             return args;
         }""" % _models_payload_submit_body([model_params_state, models_js_payload, params_backend, state_topbar])
+        scene_batch_generation_inputs = [
+            scene_batch_folder, scene_batch_files, scene_batch_target, seed_random, image_seed, params_backend, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2,
+            scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6,
+            scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps,
+            scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio,
+            image_number, scene_video, scene_audio, scene_original_video_path, active_video_source,
+            sam3_input_video, sam3_original_video_path, sam3_mask_video,
+            overwrite_step, overwrite_width, overwrite_height, resolution_edit_mode, resolution_original_input_checkbox,
+            scene_video_duration,
+            scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
+            scene_reference_video, scene_reference_video_original_path, scene_reference_video_trim_payload,
+            scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload,
+            scene_audio2, scene_audio3, scene_video_trim_payload
+        ] + scene_generation_model_ctrls + ctrls + [model_params_state, resolution_multiplier, resolution_quantize_step, state_topbar]
+        scene_batch_region_indices = {
+            "scene_var_number5": scene_batch_generation_inputs.index(scene_var_number5),
+            "scene_var_number6": scene_batch_generation_inputs.index(scene_var_number6),
+            "scene_var_number7": scene_batch_generation_inputs.index(scene_var_number7),
+        }
         scene_batch_evt = scene_batch_start.click(
             fn=_start_scene_batch,
             inputs=[model_params_state, models_js_payload, params_backend, state_topbar],
@@ -10844,20 +10863,8 @@ with shared.gradio_root:
             show_progress=False,
         ).then(
             fn=batch_run_scene_fn,
-            inputs=[
-                scene_batch_folder, scene_batch_files, scene_batch_target, seed_random, image_seed, params_backend, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2,
-                scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6,
-                scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps,
-                scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio,
-                image_number, scene_video, scene_audio, scene_original_video_path, active_video_source,
-                sam3_input_video, sam3_original_video_path, sam3_mask_video,
-                overwrite_step, overwrite_width, overwrite_height, resolution_edit_mode, resolution_original_input_checkbox,
-                scene_video_duration,
-                scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
-                scene_reference_video, scene_reference_video_original_path, scene_reference_video_trim_payload,
-                scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload,
-                scene_audio2, scene_audio3, scene_video_trim_payload
-            ] + scene_generation_model_ctrls + ctrls + [model_params_state, resolution_multiplier, resolution_quantize_step, state_topbar],
+            inputs=scene_batch_generation_inputs,
+            js="(...args) => window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args" % json.dumps(scene_batch_region_indices),
             outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button, generate_button, state_is_generating, scene_batch_status, scene_batch_id],
             show_progress=False
         )
@@ -11809,6 +11816,11 @@ with shared.gradio_root:
             scene_audio2, scene_audio3,
         ]
         scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
+        scene_region_submit_indices = {
+            "scene_var_number5": scene_generation_inputs.index(scene_var_number5),
+            "scene_var_number6": scene_generation_inputs.index(scene_var_number6),
+            "scene_var_number7": scene_generation_inputs.index(scene_var_number7),
+        }
         scene_generation_sync_js = """(...args) => {
             try {
                 if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
@@ -11818,8 +11830,8 @@ with shared.gradio_root:
             } catch (e) {
                 console.warn("[UI-TRACE] scene_mode_checkbox_submit_sync_failed", e);
             }
-            return args;
-        }""" % scene_switch_option3_input_index
+            return window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args;
+        }""" % (scene_switch_option3_input_index, json.dumps(scene_region_submit_indices))
 
         uov_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
             .then(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_batch"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_batch");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: !(state && state.__skip_gallery_browser_refresh_once), syncSwitch:false});}')
@@ -13628,6 +13640,7 @@ def _canvas_workbench_standalone_html(request: Request):
     system_params_json = json.dumps(params, ensure_ascii=False)
 
     css_paths = [
+        webpath("css/video_region_selector.css"),
         webpath("css/style.css"),
         webpath("css/fa_all.min_6.5.2.css"),
         webpath("css/font_awesome_fix.css"),
@@ -13636,6 +13649,7 @@ def _canvas_workbench_standalone_html(request: Request):
     ]
     script_paths = [
         webpath("javascript/simpleai_i18n.js"),
+        webpath("javascript/video_region_selector.js"),
         webpath("javascript/canvas_workbench/utils.js"),
         webpath("javascript/canvas_workbench/api.js"),
         webpath("javascript/model_browser.js"),
@@ -13669,31 +13683,62 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_result_preview.js"),
         webpath("javascript/canvas_workbench/canvas_lifecycle_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_lifecycle_context.js"),
         webpath("javascript/canvas_workbench/canvas_action_controller.js"),
         webpath("javascript/canvas_workbench/canvas_click_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_control_context.js"),
         webpath("javascript/canvas_workbench/canvas_agent_references.js"),
-        webpath("javascript/canvas_workbench/canvas_agent_decision.js"),
-        webpath("javascript/canvas_workbench/canvas_agent_prompt_rewrite.js"),
-        webpath("javascript/canvas_workbench/canvas_agent_text_workflows.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_target_context.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_action_context.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_action_execution.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_decision.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_preset_runtime.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_prompt_rewrite.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_prompt_resolver.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_text_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_text_nodes.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_context.js"),
         webpath("javascript/canvas_workbench/canvas_text_node_renderer.js"),
         webpath("javascript/canvas_workbench/canvas_text_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_aux_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_batch_any_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_mask_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_result_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_media_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_input_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_upload_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_item_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_config_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_xyz_matrix_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_group_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_run_record_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_job_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_edge_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_project_patch_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_asset_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_special_node_patch_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_patch_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_vlm_chat_state_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_factory_context.js"),
         webpath("javascript/canvas_workbench/canvas_vlm_node.js"),
         webpath("javascript/canvas_workbench/canvas_vlm_node_view.js"),
+        webpath("javascript/canvas_workbench/canvas_node_view_context.js"),
         webpath("javascript/canvas_workbench/canvas_node_param_controller.js"),
         webpath("javascript/canvas_workbench/canvas_inspector_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_node_interaction_context.js"),
         webpath("javascript/canvas_workbench/canvas_vlm_chat.js"),
-        webpath("javascript/canvas_workbench/canvas_agent_image_workflows.js"),
+         webpath("javascript/canvas_workbench/canvas_vlm_chat_context.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_workflow_layout.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_sam3_workflow.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_media_connections.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_image_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_video_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_video_tools.js"),
         webpath("javascript/canvas_workbench/canvas_agent_image_tools.js"),
         webpath("javascript/canvas_workbench/canvas_agent_audio_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_audio_tools.js"),
         webpath("javascript/canvas_workbench/canvas_agent_tool_dispatch.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_media_context.js"),
         webpath("javascript/canvas_workbench/canvas_agent_panel_views.js"),
         webpath("javascript/canvas_workbench/canvas_settings_views.js"),
         webpath("javascript/canvas_workbench/canvas_settings_controller.js"),
@@ -13704,34 +13749,51 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_project_actions_controller.js"),
         webpath("javascript/canvas_workbench/canvas_project_assets_controller.js"),
         webpath("javascript/canvas_workbench/canvas_backend_request_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_qwen_tts_presets_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_backend_context.js"),
         webpath("javascript/canvas_workbench/canvas_project_persistence_controller.js"),
         webpath("javascript/canvas_workbench/canvas_bridge_transport.js"),
-        webpath("javascript/canvas_workbench/canvas_qwen_tts_presets_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_project_context.js"),
         webpath("javascript/canvas_workbench/canvas_tooltip_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_hover_preview_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_preview_select_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_danbooru_autocomplete_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_vlm_chat_image_preview_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_template_library_defaults.js"),
+         webpath("javascript/canvas_workbench/canvas_hover_preview_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_preview_select_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_danbooru_autocomplete_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_input_preview_context.js"),
+         webpath("javascript/canvas_workbench/canvas_vlm_chat_image_preview_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_vlm_chat_input_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_vlm_context.js"),
+         webpath("javascript/canvas_workbench/canvas_template_library_defaults.js"),
         webpath("javascript/canvas_workbench/canvas_template_library_api.js"),
         webpath("javascript/canvas_workbench/canvas_template_library_data.js"),
         webpath("javascript/canvas_workbench/canvas_template_library_views.js"),
-        webpath("javascript/canvas_workbench/canvas_confirm_dialog.js"),
-        webpath("javascript/canvas_workbench/canvas_template_library_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_confirm_dialog.js"),
+         webpath("javascript/canvas_workbench/canvas_template_library_controller.js"),
+         webpath("javascript/canvas_workbench/canvas_template_context.js"),
+         webpath("javascript/canvas_workbench/canvas_outpaint_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_ui_context.js"),
         webpath("javascript/canvas_workbench/canvas_agent_panel_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_panel_context.js"),
         webpath("javascript/canvas_workbench/canvas_agent_instruction_planner.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_prompt_context.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_prompt_bootstrap_context.js"),
         webpath("javascript/canvas_workbench/canvas_agent_vlm_instruction.js"),
+        webpath("javascript/canvas_workbench/canvas_agent_instruction_context.js"),
         webpath("javascript/canvas_workbench/project_store.js"),
         webpath("javascript/canvas_workbench/viewport.js"),
         webpath("javascript/canvas_workbench/scheduler.js"),
         webpath("javascript/canvas_workbench/media_helpers.js"),
         webpath("javascript/canvas_workbench/nodes/asset_node_common.js"),
         webpath("javascript/canvas_workbench/asset_manager.js"),
+        webpath("javascript/canvas_workbench/canvas_asset_manager_context.js"),
         webpath("javascript/canvas_workbench/node_browser.js"),
+        webpath("javascript/canvas_workbench/canvas_node_browser_context.js"),
         webpath("javascript/canvas_workbench/project_manager.js"),
+        webpath("javascript/canvas_workbench/canvas_project_manager_context.js"),
         webpath("javascript/canvas_workbench/group_list.js"),
         webpath("javascript/canvas_workbench/mask_editor.js"),
+        webpath("javascript/canvas_workbench/canvas_mask_editor_context.js"),
         webpath("javascript/canvas_workbench/media_viewers.js"),
+        webpath("javascript/canvas_workbench/canvas_media_viewer_context.js"),
         webpath("javascript/canvas_workbench/canvas_minimap_controller.js"),
         webpath("javascript/canvas_workbench/canvas_group_interaction_controller.js"),
         webpath("javascript/canvas_workbench/canvas_run_panels_controller.js"),
@@ -13755,27 +13817,29 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_timeline_dom.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_playhead_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_preview_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_timeline_frame_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_playback_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_keyframe_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_clip_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_mask_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_timeline_param_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_timeline_command_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_director_timeline_drag_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_frame_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_render_controller.js"),
         webpath("javascript/canvas_workbench/canvas_timeline_compare_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_director_timeline_drag_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_outpaint_controller.js"),
-        webpath("javascript/canvas_workbench/canvas_resolution_drag_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_param_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_command_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_context.js"),
+         webpath("javascript/canvas_workbench/canvas_resolution_drag_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_browser_drag_controller.js"),
         webpath("javascript/canvas_workbench/canvas_run_status_controller.js"),
         webpath("javascript/canvas_workbench/run_history_panel.js"),
         webpath("javascript/canvas_workbench/run_queue_panel.js"),
         webpath("javascript/canvas_workbench/media_timeline.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_node_context.js"),
         webpath("javascript/canvas_workbench/nodes/image_node.js"),
         webpath("javascript/canvas_workbench/nodes/video_node.js"),
         webpath("javascript/canvas_workbench/nodes/audio_node.js"),
         webpath("javascript/canvas_workbench/nodes/compare_node.js"),
+        webpath("javascript/canvas_workbench/canvas_compare_node_context.js"),
         webpath("javascript/canvas_workbench/nodes/sam3_video_mask_node.js"),
         webpath("javascript/canvas_workbench/nodes/camera_motion_node.js"),
         webpath("javascript/canvas_workbench/nodes/pose_studio_node.js"),
@@ -13784,10 +13848,20 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/nodes/qwen_tts_node.js"),
         webpath("javascript/canvas_workbench/nodes/director_timeline_node.js"),
         webpath("javascript/canvas_workbench/nodes/style_selector_node.js"),
+        webpath("javascript/canvas_workbench/canvas_special_node_context.js"),
         webpath("javascript/canvas_workbench/sketch_adapter.js"),
         webpath("javascript/canvas_workbench/preset_catalog.js"),
+        webpath("javascript/canvas_workbench/canvas_preset_context.js"),
         webpath("javascript/canvas_workbench/context_menu.js"),
+        webpath("javascript/canvas_workbench/canvas_context_menu_context.js"),
         webpath("javascript/canvas_workbench/node_menus.js"),
+        webpath("javascript/canvas_workbench/canvas_node_menu_context.js"),
+        webpath("javascript/canvas_workbench/canvas_input_interaction_context.js"),
+         webpath("javascript/canvas_workbench/canvas_input_control_context.js"),
+         webpath("javascript/canvas_workbench/canvas_input_event_context.js"),
+         webpath("javascript/canvas_workbench/canvas_runtime_service_context.js"),
+         webpath("javascript/canvas_workbench/canvas_runtime_context.js"),
+        webpath("javascript/canvas_workbench/canvas_input_context.js"),
         webpath("javascript/infinite_canvas_workbench.js"),
     ]
     meta_values = {
@@ -13842,26 +13916,9 @@ body.simpai-canvas-standalone-loading::before {{ content: "Loading Infinite Canv
     }}
     applyStandaloneBodyTheme();
     document.addEventListener('DOMContentLoaded', applyStandaloneBodyTheme, {{ once: true }});
-    var standaloneActiveKey = 'simpai.canvasWorkbench.standaloneActive';
-    var standaloneTabId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random()).slice(2);
-    function writeStandaloneActive(active) {{
-        try {{
-            localStorage.setItem('simpai.canvasWorkbench.openMode', 'standalone');
-            localStorage.setItem(standaloneActiveKey, JSON.stringify({{
-                active: !!active,
-                source: 'standalone',
-                tab_id: standaloneTabId,
-                updated_at: Date.now()
-            }}));
-        }} catch (err) {{}}
-    }}
     try {{
         localStorage.setItem('simpai.canvasWorkbench.systemParams', JSON.stringify(window.simpleaiTopbarSystemParams || {{}}));
     }} catch (err) {{}}
-    writeStandaloneActive(true);
-    window.setInterval(function () {{ writeStandaloneActive(true); }}, 3000);
-    window.addEventListener('pagehide', function () {{ writeStandaloneActive(false); }});
-    window.addEventListener('beforeunload', function () {{ writeStandaloneActive(false); }});
 }})();
 </script>
 {scripts}

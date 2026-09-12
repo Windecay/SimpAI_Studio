@@ -6,6 +6,10 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const getProject = () => call('getProject', {}) || {};
         const getNode = (...args) => call('getNode', null, ...args);
+        const applyTextMergeStatePatch = (node, options) => {
+            const patch = call('buildTextMergeStatePatch', node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        };
         const batchAnyMediaKind = (...args) => call('batchAnyMediaKind', '', ...args);
         const batchAnyCurrentItem = (...args) => call('batchAnyCurrentItem', null, ...args);
         const batchAnyTextFromItem = (...args) => call('batchAnyTextFromItem', '', ...args);
@@ -122,8 +126,10 @@
                 slots.push(`input_${nextNumber}`);
                 nextNumber += 1;
             }
-            node.input_slots = slots;
-            node.text_inputs = Object.assign({}, node.text_inputs || {});
+            applyTextMergeStatePatch(node, {
+                inputSlots: slots,
+                textInputs: node.text_inputs || {}
+            });
             return slots;
         };
 

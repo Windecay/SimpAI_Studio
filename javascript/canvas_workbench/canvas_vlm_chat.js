@@ -383,6 +383,14 @@
         const safeAssetDisplaySrc = (...args) => call('safeAssetDisplaySrc', '', ...args);
         const inferChatImageRelativePath = (...args) => call('inferChatImageRelativePath', '', ...args);
         const safeVlmChatAssetThumb = (...args) => call('safeVlmChatAssetThumb', '', ...args);
+        const buildVlmChatStatePatch = (...args) => call('buildVlmChatStatePatch', {}, ...args);
+        const buildVlmChatToolStatePatch = (...args) => call('buildVlmChatToolStatePatch', {}, ...args);
+        const buildVlmParamsPatch = (...args) => call('buildVlmParamsPatch', {}, ...args);
+        const buildVlmTextPatch = (...args) => call('buildVlmTextPatch', {}, ...args);
+        const buildVlmLastResponsePatch = (...args) => call('buildVlmLastResponsePatch', {}, ...args);
+        const buildVlmCustomModelChoicesPatch = (...args) => call('buildVlmCustomModelChoicesPatch', {}, ...args);
+        const buildVlmRunStatusPatch = (...args) => call('buildVlmRunStatusPatch', {}, ...args);
+        const buildVlmModelStatusPatch = (...args) => call('buildVlmModelStatusPatch', {}, ...args);
         const nowIso = (...args) => call('nowIso', () => new Date().toISOString(), ...args);
         const generatedResultNodesForPreset = (...args) => call('generatedResultNodesForPreset', [], ...args);
         const resultNodeHasOutput = (...args) => call('resultNodeHasOutput', false, ...args);
@@ -392,6 +400,46 @@
         const pushHistory = (...args) => call('pushHistory', undefined, ...args);
         const pushHistoryBatch = (...args) => call('pushHistoryBatch', undefined, ...args);
         const cloneRunValue = (...args) => call('cloneRunValue', args[0], ...args);
+
+        function applyVlmChatState(node, options) {
+            if (!node || node.type !== 'vlm') return;
+            const patch = buildVlmChatStatePatch(node, options || {});
+            if (patch && typeof patch === 'object') {
+                Object.assign(node, { chat: Object.assign({}, node.chat || {}, patch) });
+            }
+        }
+
+        function applyVlmText(node, options) {
+            if (!node || node.type !== 'vlm') return;
+            const patch = buildVlmTextPatch(node, options || {});
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'text')) {
+                Object.assign(node, patch);
+            }
+        }
+
+        function applyVlmLastResponse(node, options) {
+            if (!node || node.type !== 'vlm') return;
+            const patch = buildVlmLastResponsePatch(node, options || {});
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'last_response')) {
+                Object.assign(node, patch);
+            }
+        }
+
+        function applyVlmCustomModelChoices(node, choices) {
+            if (!node || node.type !== 'vlm') return;
+            const patch = buildVlmCustomModelChoicesPatch(node, choices);
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'custom_model_choices')) {
+                Object.assign(node, patch);
+            }
+        }
+
+        function applyVlmRunStatus(node, options) {
+            if (!node || node.type !== 'vlm') return;
+            const patch = buildVlmRunStatusPatch(node, options || {});
+            if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
+                Object.assign(node, patch);
+            }
+        }
 
         function getVlmCustomApiProfile(params) {
             const profiles = readVlmCustomApiProfiles();
@@ -501,15 +549,19 @@
             const requestState = getVlmChatRequest(liveNode.id);
             const cancelPromise = cancelVlmChatRequest(liveNode, requestState);
             replaceVlmChatPendingMessage(liveNode, t('Stopped.', '已停止。'));
-            liveNode.status = {
-                state: 'idle',
-                message: t('VLM chat reply stopped.', 'VLM chat 回复已停止。')
-            };
-            liveNode.last_response = Object.assign({}, liveNode.last_response || {}, {
-                ok: false,
-                aborted: true,
-                cancelled: true,
-                message: 'VLM chat reply stopped.'
+            applyVlmRunStatus(liveNode, {
+                status: {
+                    state: 'idle',
+                    message: t('VLM chat reply stopped.', 'VLM chat 回复已停止。')
+                }
+            });
+            applyVlmLastResponse(liveNode, {
+                responsePatch: {
+                    ok: false,
+                    aborted: true,
+                    cancelled: true,
+                    message: 'VLM chat reply stopped.'
+                }
             });
             mutate();
             scrollVlmChatToBottom(liveNode.id);
@@ -1528,7 +1580,9 @@
                 }
                 if (opts.rememberAutoConfirm && isVlmImageToolActionType(type)) {
                     pushHistoryBatch(`vlm-agent-auto-confirm:${node.id}`, 'Enable VLM agent auto confirm');
-                    node.params = Object.assign({}, node.params || {}, { agent_auto_confirm_generation: true });
+                    Object.assign(node, buildVlmParamsPatch(node, {
+                        paramsPatch: { agent_auto_confirm_generation: true }
+                    }));
                 }
 
                 const targetId = vlmAgentActionTargetId(action);
@@ -1604,11 +1658,15 @@
 
             if (isChat && (response?.aborted || response?.cancelled)) {
                 replaceVlmChatPendingMessage(current, t('Stopped.', '已停止。'));
-                current.status = {
-                    state: 'idle',
-                    message: t('VLM chat reply stopped.', 'VLM chat 回复已停止。')
-                };
-                current.last_response = cloneRunValue(response || { ok: false, aborted: true, cancelled: true }, {});
+                applyVlmRunStatus(current, {
+                    status: {
+                        state: 'idle',
+                        message: t('VLM chat reply stopped.', 'VLM chat 回复已停止。')
+                    }
+                });
+                applyVlmLastResponse(current, {
+                    response: response || { ok: false, aborted: true, cancelled: true }
+                });
                 mutate();
                 scrollVlmChatToBottom(current.id);
                 return { ok: false, aborted: true, cancelled: true };
@@ -1633,29 +1691,33 @@
                     );
                     autoAssistantIndex = responseState.assistant_index;
                     autoActionIndex = responseState.auto_action_index;
-                    current.chat = {
+                    applyVlmChatState(current, {
                         messages: responseState.messages,
-                        pending_images: Array.isArray(current.chat?.pending_images) ? current.chat.pending_images : [],
-                        conversation_id: responseState.conversation_id,
-                        agent_tool_state: current.chat?.agent_tool_state || {},
-                        updated_at: nowIso()
-                    };
-                    current.params = Object.assign({}, current.params || {}, {
-                        conversation_id: responseState.conversation_id
+                        pendingImages: Array.isArray(current.chat?.pending_images) ? current.chat.pending_images : [],
+                        conversationId: responseState.conversation_id,
+                        agentToolState: current.chat?.agent_tool_state || {},
+                        updatedAt: nowIso()
                     });
+                    Object.assign(current, buildVlmParamsPatch(current, {
+                        paramsPatch: { conversation_id: responseState.conversation_id }
+                    }));
                     markVlmChatStickToBottom(current.id);
                 }
-                current.text = {
-                    value: response.text || '',
-                    updated_at: nowIso()
-                };
-                current.status = {
-                    state: 'finished',
-                    message: response?.params?.stateless_llamacpp_chat
-                        ? t('VLM chat response received with rolling context.', 'VLM 已使用滚动上下文返回回复。')
-                        : (response.text ? (isChat ? 'VLM chat response received.' : 'VLM output generated.') : 'VLM finished with empty output.')
-                };
-                current.last_response = cloneRunValue(response, {});
+                applyVlmText(current, {
+                    text: {
+                        value: response.text || '',
+                        updated_at: nowIso()
+                    }
+                });
+                applyVlmRunStatus(current, {
+                    status: {
+                        state: 'finished',
+                        message: response?.params?.stateless_llamacpp_chat
+                            ? t('VLM chat response received with rolling context.', 'VLM 已使用滚动上下文返回回复。')
+                            : (response.text ? (isChat ? 'VLM chat response received.' : 'VLM output generated.') : 'VLM finished with empty output.')
+                    }
+                });
+                applyVlmLastResponse(current, { response });
                 showToast(isChat ? 'VLM chat response received' : 'VLM output generated');
                 mutate();
                 if (isChat) scrollVlmChatToBottom(current.id);
@@ -1680,21 +1742,25 @@
                     submittedPendingImages,
                     userPrompt
                 });
-                current.chat = Object.assign({}, current.chat || {}, {
+                applyVlmChatState(current, {
                     messages: failureState.messages,
-                    pending_images: failureState.pending_images,
-                    updated_at: nowIso()
+                    pendingImages: failureState.pending_images,
+                    updatedAt: nowIso()
                 });
                 if (failureState.restore_prompt) {
-                    current.params = Object.assign({}, current.params || {}, { prompt: failureState.prompt });
+                    Object.assign(current, buildVlmParamsPatch(current, {
+                        paramsPatch: { prompt: failureState.prompt }
+                    }));
                 }
                 markVlmChatStickToBottom(current.id);
             }
-            current.status = {
-                state: 'failed',
-                message: response?.details || response?.error || 'VLM failed'
-            };
-            current.last_response = cloneRunValue(response || {}, {});
+            applyVlmRunStatus(current, {
+                status: {
+                    state: 'failed',
+                    message: response?.details || response?.error || 'VLM failed'
+                }
+            });
+            applyVlmLastResponse(current, { response: response || {} });
             showToast(`VLM failed: ${response?.error || 'unknown error'}`);
             mutate();
             if (isChat) scrollVlmChatToBottom(current.id);
@@ -1714,21 +1780,27 @@
             cancelVlmChatRequest(node, requestState).catch(() => {});
             const conversationId = uid('vlm_chat');
             pushHistory('Clear VLM chat');
-            node.chat = {
+            applyVlmChatState(node, {
                 messages: [],
-                conversation_id: conversationId,
-                pending_images: pendingImages,
-                agent_tool_state: agentToolState,
-                updated_at: nowIso()
-            };
-            node.params = Object.assign({}, node.params || {}, {
-                conversation_id: conversationId,
-                prompt: currentPrompt
+                conversationId,
+                pendingImages,
+                agentToolState,
+                updatedAt: nowIso()
             });
-            node.text = { value: '', updated_at: nowIso() };
-            node.status = Object.assign({}, node.status || {}, {
-                state: 'idle',
-                message: 'Chat context cleared. Send a new message to start again.'
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: {
+                    conversation_id: conversationId,
+                    prompt: currentPrompt
+                }
+            }));
+            applyVlmText(node, {
+                text: { value: '', updated_at: nowIso() }
+            });
+            applyVlmRunStatus(node, {
+                statusPatch: {
+                    state: 'idle',
+                    message: 'Chat context cleared. Send a new message to start again.'
+                }
             });
             mutate();
             showToast('VLM chat cleared');
@@ -1736,9 +1808,11 @@
 
         async function unloadVlmNodeModel(node) {
             if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
-            node.status = Object.assign({}, node.status || {}, {
-                state: 'waiting',
-                message: 'Unloading VLM model...'
+            applyVlmRunStatus(node, {
+                statusPatch: {
+                    state: 'waiting',
+                    message: 'Unloading VLM model...'
+                }
             });
             mutate({ inspector: true });
             const project = getProject() || {};
@@ -1751,16 +1825,20 @@
             const current = getNode(node.id);
             if (!current) return response || { ok: false, error: 'node removed' };
             if (response?.ok) {
-                current.status = {
-                    state: 'idle',
-                    message: response.message || 'VLM model unloaded.'
-                };
+                applyVlmRunStatus(current, {
+                    status: {
+                        state: 'idle',
+                        message: response.message || 'VLM model unloaded.'
+                    }
+                });
                 showToast(t('VLM model unloaded.', 'VLM 模型已卸载'));
             } else {
-                current.status = {
-                    state: 'failed',
-                    message: response?.details || response?.error || 'VLM unload failed'
-                };
+                applyVlmRunStatus(current, {
+                    status: {
+                        state: 'failed',
+                        message: response?.details || response?.error || 'VLM unload failed'
+                    }
+                });
                 showToast(`VLM unload failed: ${response?.error || 'unknown error'}`);
             }
             mutate();
@@ -1793,18 +1871,24 @@
 
         async function queueVlmModelDownloads(node, options) {
             if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
-            node.vlm_model_status = Object.assign({}, node.vlm_model_status || {}, {
-                state: 'checking',
-                message: 'Queuing VLM model downloads...'
-            });
+            Object.assign(node, buildVlmModelStatusPatch(node, {
+                statusPatch: {
+                    state: 'checking',
+                    message: 'Queuing VLM model downloads...'
+                }
+            }));
             renderAll({ inspector: false });
             const response = await sendVlmModelDownloads(node, options || {});
             const current = getNode(node.id);
             if (current) {
                 applyVlmModelStatus(current, response);
                 if (response?.ok && response.state === 'queued') {
-                    current.vlm_model_status.state = 'queued';
-                    current.vlm_model_status.message = response.message || `Queued ${response.queued_count || 0} VLM model download task(s).`;
+                    Object.assign(current, buildVlmModelStatusPatch(current, {
+                        statusPatch: {
+                            state: 'queued',
+                            message: response.message || `Queued ${response.queued_count || 0} VLM model download task(s).`
+                        }
+                    }));
                 }
                 mutate({ inspector: false });
             }
@@ -1820,28 +1904,36 @@
         async function fetchVlmCustomModels(node) {
             if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
             persistVlmCustomSecretIfPresent(node);
-            node.status = Object.assign({}, node.status || {}, {
-                state: 'checking',
-                message: 'Fetching custom model list...'
+            applyVlmRunStatus(node, {
+                statusPatch: {
+                    state: 'checking',
+                    message: 'Fetching custom model list...'
+                }
             });
             mutate({ inspector: false });
             const response = await sendVlmCustomModels(node);
             const current = getNode(node.id);
             if (!current) return response;
             if (response?.ok) {
-                current.custom_model_choices = Array.isArray(response.models) ? response.models : [];
+                applyVlmCustomModelChoices(current, Array.isArray(response.models) ? response.models : []);
                 if (!current.params?.custom_model && current.custom_model_choices.length) {
-                    current.params = Object.assign({}, current.params || {}, { custom_model: current.custom_model_choices[0] });
+                    Object.assign(current, buildVlmParamsPatch(current, {
+                        paramsPatch: { custom_model: current.custom_model_choices[0] }
+                    }));
                 }
-                current.status = Object.assign({}, current.status || {}, {
-                    state: 'idle',
-                    message: `Fetched ${current.custom_model_choices.length} model(s).`
+                applyVlmRunStatus(current, {
+                    statusPatch: {
+                        state: 'idle',
+                        message: `Fetched ${current.custom_model_choices.length} model(s).`
+                    }
                 });
                 showToast(`Fetched ${current.custom_model_choices.length} custom model(s).`);
             } else {
-                current.status = Object.assign({}, current.status || {}, {
-                    state: 'error',
-                    message: response?.details || response?.error || 'Custom model fetch failed.'
+                applyVlmRunStatus(current, {
+                    statusPatch: {
+                        state: 'error',
+                        message: response?.details || response?.error || 'Custom model fetch failed.'
+                    }
                 });
                 showToast(`Fetch models failed: ${current.status.message}`);
             }
@@ -1865,9 +1957,9 @@
         function toggleVlmCustomApi(node) {
             if (!node || node.type !== 'vlm') return;
             pushHistoryBatch(`vlm:${node.id}:custom-api-collapse`, 'Toggle Custom API panel');
-            node.params = Object.assign({}, node.params || {}, {
-                custom_api_collapsed: node.params?.custom_api_collapsed !== true
-            });
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: { custom_api_collapsed: node.params?.custom_api_collapsed !== true }
+            }));
             mutate({ inspector: true });
         }
 
@@ -1953,17 +2045,26 @@
             if (!node || node.type !== 'vlm') return;
             const params = getCanvasAgentCustomParams() || {};
             pushHistory('Sync Custom API from Agent');
-            node.params = Object.assign({}, node.params || {}, {
-                version: 'Custom',
-                custom_provider: params.custom_provider,
-                custom_api_name: params.custom_api_name,
-                custom_api_format: params.custom_api_format,
-                custom_base_url: params.custom_base_url,
-                custom_model: params.custom_model,
-                custom_supports_images: params.custom_supports_images,
-                custom_api_collapsed: false
-            });
-            node.vlm_model_status = { state: 'unknown', ready: false, version: 'Custom', message: 'Custom API settings changed. Test or check before running.' };
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: {
+                    version: 'Custom',
+                    custom_provider: params.custom_provider,
+                    custom_api_name: params.custom_api_name,
+                    custom_api_format: params.custom_api_format,
+                    custom_base_url: params.custom_base_url,
+                    custom_model: params.custom_model,
+                    custom_supports_images: params.custom_supports_images,
+                    custom_api_collapsed: false
+                }
+            }));
+            Object.assign(node, buildVlmModelStatusPatch(node, {
+                status: {
+                    state: 'unknown',
+                    ready: false,
+                    version: 'Custom',
+                    message: 'Custom API settings changed. Test or check before running.'
+                }
+            }));
             mutate({ inspector: true });
             showToast(t('VLM node synced from Agent Custom API settings.', 'VLM 节点已从 Agent Custom API 设置同步'));
         }
@@ -2001,20 +2102,24 @@
                 };
                 if (pendingIndex >= 0) messages[pendingIndex] = errorMessage;
                 else messages.push(errorMessage);
-                current.chat = Object.assign({}, current.chat || {}, {
+                applyVlmChatState(current, {
                     messages: messages.slice(-40),
-                    pending_images: Array.isArray(opts.submittedPendingImages) ? opts.submittedPendingImages : [],
-                    updated_at: nowIso()
+                    pendingImages: Array.isArray(opts.submittedPendingImages) ? opts.submittedPendingImages : [],
+                    updatedAt: nowIso()
                 });
                 if (!String(current.params?.prompt || '').trim()) {
-                    current.params = Object.assign({}, current.params || {}, { prompt: String(opts.userPrompt || '') });
+                    Object.assign(current, buildVlmParamsPatch(current, {
+                        paramsPatch: { prompt: String(opts.userPrompt || '') }
+                    }));
                 }
                 markVlmChatStickToBottom(current.id);
             }
-            current.status = {
-                state: modelGate?.model_status && modelGate.model_status.ready === false ? 'blocked' : 'failed',
-                message
-            };
+            applyVlmRunStatus(current, {
+                status: {
+                    state: modelGate?.model_status && modelGate.model_status.ready === false ? 'blocked' : 'failed',
+                    message
+                }
+            });
             mutate();
             if (opts.isChat) scrollVlmChatToBottom(current.id);
             return modelGate;
@@ -2030,10 +2135,12 @@
             const conversationId = String(opts.conversationId || params.conversation_id || '');
             const userPrompt = String(opts.userPrompt || '').trim();
             pushHistory('Run VLM node');
-            node.status = {
-                state: 'running',
-                message: `${isChat ? 'Starting chat with' : 'Starting'} ${params.version || VLM_DEFAULT_VERSION}...`
-            };
+            applyVlmRunStatus(node, {
+                status: {
+                    state: 'running',
+                    message: `${isChat ? 'Starting chat with' : 'Starting'} ${params.version || VLM_DEFAULT_VERSION}...`
+                }
+            });
             if (isChat) {
                 const messages = displayHistoryMessages.slice();
                 messages.push({
@@ -2049,17 +2156,19 @@
                     pending: true,
                     at: nowIso()
                 });
-                node.chat = {
+                applyVlmChatState(node, {
                     messages: messages.slice(-40),
-                    pending_images: [],
-                    conversation_id: conversationId,
-                    agent_tool_state: node.chat?.agent_tool_state || {},
-                    updated_at: nowIso()
-                };
-                node.params = Object.assign({}, node.params || {}, {
-                    conversation_id: conversationId,
-                    prompt: ''
+                    pendingImages: [],
+                    conversationId,
+                    agentToolState: node.chat?.agent_tool_state || {},
+                    updatedAt: nowIso()
                 });
+                Object.assign(node, buildVlmParamsPatch(node, {
+                    paramsPatch: {
+                        conversation_id: conversationId,
+                        prompt: ''
+                    }
+                }));
                 markVlmChatStickToBottom(node.id);
             }
             mutate();
@@ -2115,7 +2224,9 @@
             if (isChat && !params.conversation_id) {
                 const project = getProject() || {};
                 params.conversation_id = `${project.id || getDefaultProjectId()}:${node.id}`;
-                node.params = Object.assign({}, node.params || {}, { conversation_id: params.conversation_id });
+                Object.assign(node, buildVlmParamsPatch(node, {
+                    paramsPatch: { conversation_id: params.conversation_id }
+                }));
             }
             const chatRequestState = isChat
                 ? startVlmChatRequest(node.id, {
@@ -2155,10 +2266,12 @@
                 openVlmMissingModelModal(getNode(node?.id) || node);
                 const current = getNode(node?.id) || node;
                 if (current) {
-                    current.status = {
-                        state: 'blocked',
-                        message: `Missing ${count} VLM model file(s).`
-                    };
+                    applyVlmRunStatus(current, {
+                        status: {
+                            state: 'blocked',
+                            message: `Missing ${count} VLM model file(s).`
+                        }
+                    });
                     renderAll({ inspector: false });
                 }
                 return { ok: false, error: 'VLM model files are missing', model_status: status };
@@ -2218,10 +2331,12 @@
             const current = getNode(node?.id || '') || node;
             const project = getProject() || {};
             if (current) {
-                current.status = {
-                    state: 'running',
-                    message: `${isChat ? 'Chatting with' : 'Running'} ${params.version || VLM_DEFAULT_VERSION}...`
-                };
+                applyVlmRunStatus(current, {
+                    status: {
+                        state: 'running',
+                        message: `${isChat ? 'Chatting with' : 'Running'} ${params.version || VLM_DEFAULT_VERSION}...`
+                    }
+                });
                 mutate({ inspector: false });
             }
             const requestParams = isChat ? Object.assign({}, params, { request_id: requestId }) : params;
@@ -2602,8 +2717,7 @@
             const dataUrl = await readFileAsDataUrl(file);
             const dimensions = await getImageDimensions(dataUrl);
             const thumb = await createThumbnailDataUrl(dataUrl, 480);
-            node.chat = Object.assign({}, node.chat || {});
-            const pending = Array.isArray(node.chat.pending_images) ? node.chat.pending_images.slice() : [];
+            const pending = Array.isArray(node.chat?.pending_images) ? node.chat.pending_images.slice() : [];
             pending.push({
                 id: uid('vlm_img'),
                 name: file.name || 'image',
@@ -2615,7 +2729,10 @@
                 thumb,
                 added_at: nowIso()
             });
-            node.chat.pending_images = pending;
+            applyVlmChatState(node, {
+                pendingImages: pending,
+                updatedAt: nowIso()
+            });
             mutate({ inspector: true });
             return true;
         }
@@ -2625,7 +2742,10 @@
             const pending = Array.isArray(node.chat?.pending_images) ? node.chat.pending_images.slice() : [];
             if (index < 0 || index >= pending.length) return;
             pending.splice(index, 1);
-            node.chat = Object.assign({}, node.chat || {}, { pending_images: pending });
+            applyVlmChatState(node, {
+                pendingImages: pending,
+                updatedAt: nowIso()
+            });
             mutate({ inspector: true });
         }
 
@@ -2685,9 +2805,10 @@
 
         function setVlmChatToolState(node, patch) {
             if (!node || node.type !== 'vlm') return;
-            node.chat = Object.assign({}, node.chat || {}, {
-                agent_tool_state: Object.assign({}, getVlmChatToolState(node), patch || {}),
-                updated_at: nowIso()
+            const toolStatePatch = buildVlmChatToolStatePatch(node, patch);
+            applyVlmChatState(node, {
+                agentToolState: toolStatePatch?.agent_tool_state,
+                updatedAt: nowIso()
             });
         }
 
@@ -2747,25 +2868,30 @@
                 notice: opts.notice || '',
                 at: nowIso()
             });
-            node.chat = Object.assign({}, node.chat || {}, {
+            applyVlmChatState(node, {
                 messages: messages.slice(-40),
-                pending_images: Array.isArray(node.chat?.pending_images) ? node.chat.pending_images : [],
-                updated_at: nowIso()
+                pendingImages: Array.isArray(node.chat?.pending_images) ? node.chat.pending_images : [],
+                updatedAt: nowIso()
             });
-            node.text = {
-                value: text,
-                updated_at: nowIso()
-            };
-            const previousStatus = node.status && typeof node.status === 'object' ? node.status : {};
+            applyVlmText(node, {
+                text: {
+                    value: text,
+                    updated_at: nowIso()
+                }
+            });
             if (hasPendingVlmChatMessage(node)) {
-                node.status = Object.assign({}, previousStatus, {
-                    state: 'running',
-                    message: previousStatus.message || t('VLM is still thinking...', 'VLM 仍在思考中...')
+                applyVlmRunStatus(node, {
+                    statusPatch: {
+                        state: 'running',
+                        message: node.status?.message || t('VLM is still thinking...', 'VLM 仍在思考中...')
+                    }
                 });
             } else {
-                node.status = Object.assign({}, previousStatus, {
-                    state: opts.state || 'finished',
-                    message: text
+                applyVlmRunStatus(node, {
+                    statusPatch: {
+                        state: opts.state || 'finished',
+                        message: text
+                    }
                 });
             }
             markVlmChatStickToBottom(node.id);
@@ -2784,9 +2910,9 @@
             };
             if (pendingIndex >= 0) messages[pendingIndex] = assistant;
             else messages.push(assistant);
-            node.chat = Object.assign({}, node.chat || {}, {
+            applyVlmChatState(node, {
                 messages: messages.slice(-40),
-                updated_at: nowIso()
+                updatedAt: nowIso()
             });
             markVlmChatStickToBottom(node.id);
             return true;
@@ -2808,25 +2934,30 @@
                 : cleanMessages.concat(pendingVlmChatMessages(node)).slice(-40);
             const conversationId = uid('vlm_chat');
             pushHistoryBatch(`vlm-chat-context-edit:${node.id}:${Date.now()}`, historyLabel || 'Edit VLM chat context');
-            node.chat = Object.assign({}, node.chat || {}, {
+            applyVlmChatState(node, {
                 messages: nextMessages,
-                conversation_id: conversationId,
-                pending_images: nextPendingImages,
-                agent_tool_state: node.chat?.agent_tool_state || {},
-                updated_at: nowIso()
+                conversationId,
+                pendingImages: nextPendingImages,
+                agentToolState: node.chat?.agent_tool_state || {},
+                updatedAt: nowIso()
             });
-            node.params = Object.assign({}, node.params || {}, { conversation_id: conversationId });
-            if (hasPrompt) node.params.prompt = String(opts.prompt || '');
-            node.text = {
-                value: lastVlmAssistantText(nextMessages),
-                updated_at: nowIso()
-            };
-            node.status = Object.assign({}, node.status || {}, {
-                state: 'idle',
-                message: statusMessage || t(
-                    'Chat context edited. Next reply will use the edited context.',
-                    '聊天上下文已编辑。下一次回复将使用编辑后的上下文。'
-                )
+            const paramsPatch = { conversation_id: conversationId };
+            if (hasPrompt) paramsPatch.prompt = String(opts.prompt || '');
+            Object.assign(node, buildVlmParamsPatch(node, { paramsPatch }));
+            applyVlmText(node, {
+                text: {
+                    value: lastVlmAssistantText(nextMessages),
+                    updated_at: nowIso()
+                }
+            });
+            applyVlmRunStatus(node, {
+                statusPatch: {
+                    state: 'idle',
+                    message: statusMessage || t(
+                        'Chat context edited. Next reply will use the edited context.',
+                        '聊天上下文已编辑。下一次回复将使用编辑后的上下文。'
+                    )
+                }
             });
             markVlmChatStickToBottom(node.id);
             mutate({ inspector: true });
@@ -2893,9 +3024,9 @@
             });
             messages[Number(messageIndex)] = Object.assign({}, message, { actions });
             pushHistoryBatch(`vlm-agent-action:${node.id}:${messageIndex}:${actionIndex}`, 'Update VLM agent action');
-            node.chat = Object.assign({}, node.chat || {}, {
+            applyVlmChatState(node, {
                 messages,
-                updated_at: nowIso()
+                updatedAt: nowIso()
             });
             mutate({ inspector: true });
         }
@@ -2909,9 +3040,9 @@
             actions[Number(actionIndex)] = Object.assign({}, actions[Number(actionIndex)] || {}, patch || {});
             messages[Number(messageIndex)] = Object.assign({}, message, { actions });
             pushHistoryBatch(`vlm-agent-action-patch:${node.id}:${messageIndex}:${actionIndex}`, historyLabel || 'Update VLM agent action');
-            node.chat = Object.assign({}, node.chat || {}, {
+            applyVlmChatState(node, {
                 messages,
-                updated_at: nowIso()
+                updatedAt: nowIso()
             });
             mutate({ inspector: true });
             return true;
@@ -2959,9 +3090,9 @@
             }
             const quote = `> ${text.replace(/\n/g, '\n> ')}\n\n`;
             pushHistoryBatch(`vlm-quote:${node.id}`, 'Quote VLM chat message');
-            node.params = Object.assign({}, node.params || {}, {
-                prompt: `${quote}${node.params?.prompt || ''}`
-            });
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: { prompt: `${quote}${node.params?.prompt || ''}` }
+            }));
             mutate({ inspector: true });
             showToast(t('Message quoted to input.', '已引用到输入框'));
             return true;
@@ -3168,6 +3299,7 @@
         }
 
         return {
+            applyVlmChatState,
             getVlmCustomApiKey,
             getVlmCustomRuntimeParams,
             vlmAgentCleanActionPrompt,

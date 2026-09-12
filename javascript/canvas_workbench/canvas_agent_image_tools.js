@@ -6,7 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
         const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
         const maxExtraImageReferences = () => Math.max(0, Number(call('getMaxExtraImageReferences', 0) || 0));
         const getDefaultT2iPresetQueue = () => {
@@ -18,6 +17,11 @@
             const value = call('getClassicOutpaintDirs', ['Left', 'Right', 'Top', 'Bottom']);
             return Array.isArray(value) && value.length ? value : ['Left', 'Right', 'Top', 'Bottom'];
         };
+        const buildNodeParamsPatch = (...args) => call('buildNodeParamsPatch', {}, ...args) || {};
+        const buildNodeLayoutPatch = (...args) => call('buildNodeLayoutPatch', {}, ...args) || {};
+        const buildClassicNodeStatePatch = (...args) => call('buildClassicNodeStatePatch', {}, ...args) || {};
+        const applyNodeParamsPatch = (node, options) => Object.assign(node, buildNodeParamsPatch(node, options || {}));
+        const applyClassicNodeStatePatch = (node, options) => Object.assign(node, buildClassicNodeStatePatch(node, options || {}));
 
         const getAgentState = (...args) => call('getAgentState', {}, ...args) || {};
         const getCanvasAgentSettings = (...args) => call('getCanvasAgentSettings', {}, ...args) || {};
@@ -168,32 +172,37 @@
             const spec = canvasAgentQuickToolSpec(key);
             if (!node || !spec) return;
             if (node.type === 'classic' && spec.classicMode) {
-                node.classic_mode = spec.classicMode;
-                node.upload_slots = {};
+                const uploadSlots = {};
                 canvasAgentUploadSlotsForNode(node).forEach(slot => {
-                    node.upload_slots[slot.key] = node.upload_slots[slot.key] || null;
+                    if (slot?.key) uploadSlots[slot.key] = node.upload_slots?.[slot.key] || null;
                 });
-                node.params = Object.assign({}, node.params || {});
+                applyClassicNodeStatePatch(node, {
+                    classicMode: spec.classicMode,
+                    uploadSlots
+                });
+                const paramsPatch = {};
                 if (key === 'upscale') {
-                    node.params.uov_method = node.params.uov_method || 'Upscale (1.5x)';
+                    if (!node.params?.uov_method) paramsPatch.uov_method = 'Upscale (1.5x)';
                 } else if (key === 'outpaint') {
-                    node.params.inpaint_mode = node.params.inpaint_mode || 'Inpaint or Outpaint (default)';
-                    node.params.outpaint_selections = getClassicOutpaintDirs().slice();
+                    if (!node.params?.inpaint_mode) paramsPatch.inpaint_mode = 'Inpaint or Outpaint (default)';
+                    paramsPatch.outpaint_selections = getClassicOutpaintDirs().slice();
                     getClassicOutpaintDirs().forEach(direction => {
-                        node.params[`outpaint_${String(direction).toLowerCase()}`] = true;
+                        paramsPatch[`outpaint_${String(direction).toLowerCase()}`] = true;
                     });
                 } else if (key === 'erase' || key === 'replace') {
-                    node.params.inpaint_mode = node.params.inpaint_mode || 'Inpaint or Outpaint (default)';
-                    node.params.outpaint_selections = [];
+                    if (!node.params?.inpaint_mode) paramsPatch.inpaint_mode = 'Inpaint or Outpaint (default)';
+                    paramsPatch.outpaint_selections = [];
                 }
+                applyNodeParamsPatch(node, { paramsPatch });
             }
             if (node.type === 'preset' && extraParams && typeof extraParams === 'object') {
-                node.params = Object.assign({}, node.params || {});
+                const paramsPatch = {};
                 Object.keys(extraParams).forEach(paramKey => {
                     if (extraParams[paramKey] !== undefined && extraParams[paramKey] !== null) {
-                        node.params[paramKey] = extraParams[paramKey];
+                        paramsPatch[paramKey] = extraParams[paramKey];
                     }
                 });
+                applyNodeParamsPatch(node, { paramsPatch });
             }
         }
 
@@ -316,10 +325,14 @@
                 selectorSize,
                 excludeIds: [presetNode.id, selectorNode.id]
             });
-            presetNode.x = Math.round(position.x);
-            presetNode.y = Math.round(position.y);
-            selectorNode.x = Math.round(position.x - selectorSize.w - 90);
-            selectorNode.y = Math.round(position.y);
+            Object.assign(presetNode, buildNodeLayoutPatch(presetNode, {
+                x: Math.round(position.x),
+                y: Math.round(position.y)
+            }));
+            Object.assign(selectorNode, buildNodeLayoutPatch(selectorNode, {
+                x: Math.round(position.x - selectorSize.w - 90),
+                y: Math.round(position.y)
+            }));
         }
 
         async function runCanvasAgentQuickTool(toolKey, options) {
@@ -428,8 +441,7 @@
             const finalPrompt = canvasAgentPromptFromDecision(decisionForm, prompt);
             entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                collapsed: true
             }));
             configureCanvasAgentQuickToolNode(node, toolKey);
             applyCanvasAgentPromptToGenerator(node, finalPrompt);
@@ -482,9 +494,8 @@
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, presetPosition, {
                 collapsed: true,
                 render: false,
-                avoidOverlap: false,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_tool: 'style_transfer' }
-            }));
+                avoidOverlap: false
+            }), { sourcePatch: { agent_tool: 'style_transfer' } });
             if (!node) {
                 showToast(t('Style Transfer+ preset could not be created.', '无法创建 Style Transfer+ preset。'));
                 return;

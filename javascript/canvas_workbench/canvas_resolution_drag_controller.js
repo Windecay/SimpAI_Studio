@@ -23,6 +23,39 @@
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         let dragState = null;
 
+        function applyConfigStatePatch(node, options) {
+            const config = options || {};
+            const patch = call('buildConfigStatePatch', node, config);
+            if (patch && typeof patch === 'object' && !Array.isArray(patch)
+                && patch.config && typeof patch.config === 'object' && !Array.isArray(patch.config)) {
+                Object.assign(node, patch);
+                return;
+            }
+            const currentConfig = node?.config && typeof node.config === 'object' && !Array.isArray(node.config)
+                ? node.config
+                : {};
+            const currentValues = currentConfig.values
+                && typeof currentConfig.values === 'object'
+                && !Array.isArray(currentConfig.values)
+                ? currentConfig.values
+                : {};
+            const valuesPatch = config.valuesPatch
+                && typeof config.valuesPatch === 'object'
+                && !Array.isArray(config.valuesPatch)
+                ? config.valuesPatch
+                : {};
+            const nextConfig = Object.assign({}, currentConfig, {
+                values: Object.assign({}, currentValues, valuesPatch)
+            });
+            if (Object.prototype.hasOwnProperty.call(config, 'updatedAt')) {
+                nextConfig.updated_at = config.updatedAt;
+            }
+            else if (config.touchUpdatedAt) {
+                nextConfig.updated_at = nowIso();
+            }
+            node.config = nextConfig;
+        }
+
         function startResolutionDrag(node, evt) {
             const area = evt?.target?.closest?.('[data-resolution-drag-area]')
                 || evt?.currentTarget?.querySelector?.('[data-resolution-drag-area]');
@@ -75,9 +108,10 @@
             }
             width = quantizeResolutionValue(clamp(width, 64, 4096), quantize);
             height = quantizeResolutionValue(clamp(height, 64, 4096), quantize);
-            node.config = node.config || { values: {} };
-            node.config.values = Object.assign({}, node.config.values || {}, { width, height, manual: true });
-            node.config.updated_at = nowIso();
+            applyConfigStatePatch(node, {
+                valuesPatch: { width, height, manual: true },
+                updatedAt: nowIso()
+            });
             call('applyConfigNodeToPreset', node);
             const nodeEl = area.closest?.('[data-node-id]');
             if (nodeEl) {

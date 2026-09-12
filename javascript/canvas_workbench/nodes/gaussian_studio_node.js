@@ -47,13 +47,29 @@
             scheduleSave: delegate(context, 'scheduleSave'),
             serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
             setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast')
+            showToast: delegate(context, 'showToast'),
+            buildAssetReference: delegate(context, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
+            buildGaussianStudioStatePatch: delegate(context, 'buildGaussianStudioStatePatch'),
+            buildGaussianCachePatch: delegate(context, 'buildGaussianCachePatch'),
+            buildGaussianConfirmPatch: delegate(context, 'buildGaussianConfirmPatch')
         };
     }
 
     function getProject(context) {
         const project = typeof context?.getProject === 'function' ? context.getProject() : null;
         return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
     }
 
     function getNode(id, context) {
@@ -69,7 +85,8 @@
 
     function isSource(node, context) {
         if (!node || node.type !== 'gaussian_studio') return false;
-        const asset = node.asset || gaussianState(node).render_asset || gaussianState(node).output_asset || {};
+        const state = gaussianState(node, context);
+        const asset = node.asset || state.render_asset || state.output_asset || {};
         const mime = String(asset.mime || '').toLowerCase();
         const hasAsset = !!(asset.path || asset.preview_url || asset.data_url || asset.thumb || asset.asset_id || asset.asset_relative_path || asset.relative_path);
         return hasAsset && (!mime || mime.startsWith('image/'));
@@ -151,8 +168,9 @@
         return call(context, 'portHintText', t('Double-click', '双击'));
     }
 
-    function gaussianState(node) {
-        node.gaussian_studio = Object.assign({
+    function gaussianState(node, context) {
+        const fallback = {
+            gaussian_studio: Object.assign({
             reference_asset: null,
             reference_signature: '',
             reference_capture_signature: '',
@@ -166,13 +184,16 @@
             intrinsics: null,
             params: { precision: DEFAULT_GAUSSIAN_PRECISION, focal_length_mm: 30 },
             updated_at: ''
-        }, node.gaussian_studio || {});
-        const params = node.gaussian_studio.params && typeof node.gaussian_studio.params === 'object' ? node.gaussian_studio.params : {};
+            }, node?.gaussian_studio || {})
+        };
+        const patch = call(context, 'buildGaussianStudioStatePatch', fallback, node);
+        const state = patch?.gaussian_studio || fallback.gaussian_studio;
+        const params = state.params && typeof state.params === 'object' ? state.params : {};
         const precision = String(params.precision || '').trim().toLowerCase();
-        node.gaussian_studio.params = Object.assign({}, params, {
+        state.params = Object.assign({}, params, {
             precision: (!precision || !VALID_GAUSSIAN_PRECISIONS.has(precision)) ? DEFAULT_GAUSSIAN_PRECISION : precision
         });
-        return node.gaussian_studio;
+        return state;
     }
 
     function renderNodeStateBadges(node, context) {
@@ -180,7 +201,7 @@
     }
 
     function renderNodeHtml(node, context) {
-        const state = gaussianState(node);
+        const state = gaussianState(node, context);
         const source = inputSourceForNode(node, context);
         const asset = node.asset || state.render_asset || state.output_asset || {};
         const src = assetDisplaySrc(asset, context);
@@ -212,7 +233,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function renderInspector(node, context) {
         const source = inputSourceForNode(node, context);
-        const state = gaussianState(node);
+        const state = gaussianState(node, context);
         const info = readAssetInfo(node.asset || state.render_asset || state.output_asset || {}, context);
         return `
 <div class="sai-inspector-section">
@@ -245,6 +266,14 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             title: opts.title || 'Gaussian Studio',
             input_node_id: opts.input_node_id || null,
             asset: opts.asset || null,
+            gaussian_studio: opts.gaussian_studio || {},
+            source: { kind: 'gaussian_studio', module: 'ui.services.gaussian_studio' },
+            status: {
+                state: opts.asset ? 'finished' : 'idle',
+                message: opts.asset ? t('Gaussian render ready.', '高斯渲染图已就绪。') : t('Open Gaussian Studio to build a view.', '打开 Gaussian Studio 生成视角。')
+            }
+        };
+        Object.assign(node, call(context, 'buildGaussianStudioStatePatch', {
             gaussian_studio: Object.assign({
                 reference_asset: opts.reference_asset || null,
                 reference_signature: '',
@@ -259,15 +288,16 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                 intrinsics: null,
                 params: { precision: DEFAULT_GAUSSIAN_PRECISION, focal_length_mm: 30 },
                 updated_at: ''
-            }, opts.gaussian_studio || {}),
-            source: { kind: 'gaussian_studio', module: 'ui.services.gaussian_studio' },
-            status: {
-                state: opts.asset ? 'finished' : 'idle',
-                message: opts.asset ? t('Gaussian render ready.', '高斯渲染图已就绪。') : t('Open Gaussian Studio to build a view.', '打开 Gaussian Studio 生成视角。')
+            }, opts.gaussian_studio || {})
+        }, node, {
+            initialState: {
+                reference_asset: opts.reference_asset || null,
+                render_asset: opts.asset || null,
+                output_asset: opts.asset || null
             }
-        };
+        }));
         call(context, 'placeNodeAvoidingOverlap', null, node, world || { x: node.x, y: node.y });
-        if (Array.isArray(project.nodes)) project.nodes.push(node);
+        appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t('Gaussian Studio node added', '已添加 Gaussian Studio 节点'));
@@ -281,7 +311,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             call(context, 'showToast', null, 'Gaussian Studio editor is not loaded.');
             return null;
         }
-        const state = gaussianState(node);
+        const state = gaussianState(node, context);
         const referenceSource = inputSourceForNode(node, context);
         const referenceAsset = sourceAssetForNode(node, context) || state.reference_asset || null;
         const referenceAssetSource = referenceSource
@@ -319,75 +349,44 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             ensureFormNames: (scope, prefix) => call(context, 'ensureWorkbenchFormFieldNames', null, scope, prefix),
             onStateChange: (cache, reason) => {
                 const current = getNode(node.id, context) || node;
-                const nextState = gaussianState(current);
-                const hasOwn = (key) => !!cache && Object.prototype.hasOwnProperty.call(cache, key);
-                if (hasOwn('ply_asset')) nextState.ply_asset = cache.ply_asset || null;
-                else nextState.ply_asset = nextState.ply_asset || null;
-                if (hasOwn('ply_path')) nextState.ply_path = cache.ply_path || '';
-                else nextState.ply_path = nextState.ply_path || '';
-                if (hasOwn('reference_asset')) nextState.reference_asset = cache.reference_asset || referenceAsset || nextState.reference_asset || null;
-                else nextState.reference_asset = referenceAsset || nextState.reference_asset || null;
-                if (hasOwn('reference_signature')) nextState.reference_signature = cache.reference_signature || '';
-                if (hasOwn('reference_capture_signature')) nextState.reference_capture_signature = cache.reference_capture_signature || '';
-                if (hasOwn('reference_data_signature')) nextState.reference_data_signature = cache.reference_data_signature || '';
-                if (hasOwn('camera_state')) nextState.camera_state = cache.camera_state || {};
-                else nextState.camera_state = nextState.camera_state || {};
-                if (hasOwn('extrinsics')) nextState.extrinsics = cache.extrinsics || null;
-                else nextState.extrinsics = nextState.extrinsics || null;
-                if (hasOwn('intrinsics')) nextState.intrinsics = cache.intrinsics || null;
-                else nextState.intrinsics = nextState.intrinsics || null;
-                if (hasOwn('params')) nextState.params = cache.params || {};
-                else nextState.params = nextState.params || {};
-                nextState.updated_at = cache?.updated_at || new Date().toISOString();
-                if (hasOwn('render_asset')) {
-                    current.asset = cache.render_asset || null;
-                    nextState.output_asset = current.asset;
-                    nextState.render_asset = current.asset;
-                }
-                if (reason === 'reference_changed') {
-                    current.asset = null;
-                    nextState.output_asset = null;
-                    nextState.render_asset = null;
-                    current.status = {
+                Object.assign(current, call(context, 'buildGaussianStudioStatePatch', {
+                    gaussian_studio: gaussianState(current, context)
+                }, current));
+                Object.assign(current, call(context, 'buildGaussianCachePatch', {}, current, {
+                    cache: cache || {},
+                    reason,
+                    referenceAsset,
+                    referenceChangedStatus: {
                         state: 'idle',
                         message: t('Reference changed. Rebuild the 3D Gaussian.', '参考图已更新，需重新生成 3D 高斯。')
-                    };
-                } else if (!current.asset && (nextState.ply_asset || nextState.ply_path)) {
-                    current.status = {
+                    },
+                    plyReadyStatus: {
                         state: reason === 'build' ? 'ready' : 'idle',
                         message: t('PLY ready. Rotate and export a view.', 'PLY 已生成，可旋转并导出视角。')
-                    };
-                }
+                    }
+                }));
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null, { inspector: true });
             },
             onConfirm: (response) => {
                 call(context, 'pushHistory', null, 'Update Gaussian Studio output');
                 const current = getNode(node.id, context) || node;
-                const nextState = gaussianState(current);
-                current.asset = response.render_asset || response.asset_ref || null;
-                nextState.output_asset = current.asset;
-                nextState.render_asset = current.asset;
-                nextState.ply_asset = response.ply_asset || nextState.ply_asset || null;
-                nextState.ply_path = response.ply_path || nextState.ply_path || '';
-                nextState.reference_asset = response.reference_asset || referenceAsset || nextState.reference_asset || null;
-                nextState.reference_signature = response.reference_signature || response.gaussian_state?.reference_signature || nextState.reference_signature || '';
-                nextState.reference_capture_signature = response.reference_capture_signature || response.gaussian_state?.reference_capture_signature || nextState.reference_capture_signature || '';
-                nextState.reference_data_signature = response.reference_data_signature || response.gaussian_state?.reference_data_signature || nextState.reference_data_signature || '';
-                nextState.camera_state = response.camera_state || nextState.camera_state || {};
-                nextState.extrinsics = response.extrinsics || nextState.extrinsics || null;
-                nextState.intrinsics = response.intrinsics || nextState.intrinsics || null;
-                nextState.params = response.params || nextState.params || {};
-                nextState.updated_at = response.exported_at || new Date().toISOString();
-                current.source = Object.assign({}, current.source || {}, {
-                    kind: 'gaussian_studio',
-                    module: 'ui.services.gaussian_studio',
-                    reference_node_id: inputSourceForNode(current, context)?.id || ''
-                });
-                current.status = {
-                    state: 'finished',
-                    message: t('Gaussian render exported.', '高斯渲染图已导出。')
-                };
+                Object.assign(current, call(context, 'buildGaussianStudioStatePatch', {
+                    gaussian_studio: gaussianState(current, context)
+                }, current));
+                Object.assign(current, call(context, 'buildGaussianConfirmPatch', {}, current, {
+                    response,
+                    referenceAsset,
+                    sourcePatch: {
+                        kind: 'gaussian_studio',
+                        module: 'ui.services.gaussian_studio',
+                        reference_node_id: inputSourceForNode(current, context)?.id || ''
+                    },
+                    status: {
+                        state: 'finished',
+                        message: t('Gaussian render exported.', '高斯渲染图已导出。')
+                    }
+                }));
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null);
             }

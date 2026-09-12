@@ -18,6 +18,7 @@
         const context = source || {};
         return {
             applyStyleSelectorToPreset: delegate(context, 'applyStyleSelectorToPreset'),
+            buildStyleSelectorStatePatch: delegate(context, 'buildStyleSelectorStatePatch'),
             defaultNodeSize: delegate(context, 'defaultNodeSize'),
             getNode: delegate(context, 'getNode'),
             isNodeLocked: delegate(context, 'isNodeLocked'),
@@ -37,7 +38,8 @@
         const opts = options || {};
         const position = world || { x: 0, y: 0 };
         const size = call(context, 'defaultNodeSize', { w: 390, h: 560 }, 'style_selector') || { w: 390, h: 560 };
-        return {
+        const updatedAt = call(context, 'nowIso', new Date().toISOString());
+        const node = {
             id: call(context, 'uid', 'style_selector-node', 'style_selector'),
             type: 'style_selector',
             x: Math.round(Number(position?.x || 0)),
@@ -45,6 +47,9 @@
             w: size.w,
             h: size.h,
             title: opts.title || 'Style Selector',
+            source: { kind: opts.source_kind || 'style_transfer_selector' }
+        };
+        Object.assign(node, call(context, 'buildStyleSelectorStatePatch', {
             style_selector: {
                 selected_name: '',
                 prompt: '',
@@ -52,9 +57,12 @@
                 target_preset_id: opts.targetPresetId || '',
                 search: ''
             },
-            text: { value: '', updated_at: call(context, 'nowIso', new Date().toISOString()) },
-            source: { kind: opts.source_kind || 'style_transfer_selector' }
-        };
+            text: { value: '', updated_at: updatedAt }
+        }, node, {
+            initialState: { target_preset_id: opts.targetPresetId || '' },
+            initialText: { updated_at: updatedAt }
+        }));
+        return node;
     }
 
     function catalogItems() {
@@ -68,60 +76,87 @@
         return catalogItems().find(item => String(item.name || '') === wanted) || null;
     }
 
-    function selectorState(node) {
-        node.style_selector = Object.assign({
-            selected_name: '',
-            prompt: '',
-            negative: '',
-            target_preset_id: '',
-            search: ''
-        }, node.style_selector || {});
-        node.text = Object.assign({ value: '', updated_at: '' }, node.text || {});
-        return node.style_selector;
+    function styleSelectorStatePatch(node, context, options) {
+        const fallback = {
+            style_selector: Object.assign({
+                selected_name: '',
+                prompt: '',
+                negative: '',
+                target_preset_id: '',
+                search: ''
+            }, node?.style_selector || {}),
+            text: Object.assign({ value: '', updated_at: '' }, node?.text || {})
+        };
+        const patch = call(context, 'buildStyleSelectorStatePatch', fallback, node, options);
+        return patch && typeof patch === 'object' && (patch.style_selector || patch.text) ? patch : fallback;
     }
 
-    function selectedStyle(node) {
-        const state = selectorState(node);
+    function selectorState(node, context) {
+        return styleSelectorStatePatch(node, context).style_selector;
+    }
+
+    function selectedStyle(node, context) {
+        const patch = styleSelectorStatePatch(node, context);
+        const state = patch.style_selector || {};
+        const text = patch.text || {};
         return styleByName(state.selected_name) || (state.selected_name ? {
             name: state.selected_name,
             description: '',
-            prompt: state.prompt || node.text?.value || '',
+            prompt: state.prompt || text.value || '',
             negative: state.negative || '',
             preview_url: ''
         } : null);
     }
 
-    function getPrompt(node) {
-        const style = selectedStyle(node);
-        return String(style?.prompt || selectorState(node).prompt || node?.text?.value || '');
+    function getPrompt(node, context) {
+        const patch = styleSelectorStatePatch(node, context);
+        const style = selectedStyle(node, context);
+        return String(style?.prompt || patch.style_selector?.prompt || patch.text?.value || '');
     }
 
-    function getNegative(node) {
-        const style = selectedStyle(node);
-        return String(style?.negative || selectorState(node).negative || '');
+    function getNegative(node, context) {
+        const style = selectedStyle(node, context);
+        return String(style?.negative || selectorState(node, context).negative || '');
     }
 
     function setSelectedStyle(node, name, context) {
         const style = styleByName(name);
         if (!node || !style) return null;
-        const state = selectorState(node);
-        state.selected_name = style.name;
-        state.prompt = style.prompt || '';
-        state.negative = style.negative || '';
-        node.text = Object.assign({}, node.text || {}, {
-            value: state.prompt,
-            updated_at: call(context, 'nowIso', new Date().toISOString())
+        const updatedAt = call(context, 'nowIso', new Date().toISOString());
+        const current = styleSelectorStatePatch(node, context);
+        const fallback = {
+            style_selector: Object.assign({}, current.style_selector || {}, {
+                selected_name: style.name,
+                prompt: style.prompt || '',
+                negative: style.negative || ''
+            }),
+            text: Object.assign({}, current.text || {}, {
+                value: style.prompt || '',
+                updated_at: updatedAt
+            })
+        };
+        const patch = call(context, 'buildStyleSelectorStatePatch', fallback, node, {
+            statePatch: {
+                selected_name: style.name,
+                prompt: style.prompt || '',
+                negative: style.negative || ''
+            },
+            textPatch: {
+                value: style.prompt || '',
+                updated_at: updatedAt
+            }
         });
+        Object.assign(node, patch && typeof patch === 'object' && (patch.style_selector || patch.text) ? patch : fallback);
         return style;
     }
 
     function linkedPresetLabel(node, context) {
-        const state = selectorState(node);
+        const state = selectorState(node, context);
         return call(context, 'styleSelectorTargetLabel', '', node, state.target_preset_id);
     }
 
-    function renderCards(node) {
-        const selected = selectedStyle(node);
+    function renderCards(node, context) {
+        const selected = selectedStyle(node, context);
         const selectedName = selected?.name || '';
         const items = catalogItems();
         if (!items.length) {
@@ -137,8 +172,8 @@
         }).join('');
     }
 
-    function renderSelectedPreview(node) {
-        const style = selectedStyle(node);
+    function renderSelectedPreview(node, context) {
+        const style = selectedStyle(node, context);
         if (!style) {
             return `<div class="sai-style-selector-current is-empty">
   <i class="fa-solid fa-palette"></i>
@@ -152,7 +187,7 @@
     }
 
     function renderNodeHtml(node, context) {
-        const state = selectorState(node);
+        const state = selectorState(node, context);
         const linked = linkedPresetLabel(node, context);
         return `
 <div class="sai-node-head">
@@ -170,16 +205,16 @@
   <span>${escapeHtml(t('Search', '搜索'))}</span>
   <input data-style-selector-search type="search" value="${escapeHtml(state.search || '')}" placeholder="${escapeHtml(t('Filter styles...', '筛选风格...'))}" autocomplete="off">
 </label>
-${renderSelectedPreview(node)}
+${renderSelectedPreview(node, context)}
 <div class="sai-style-selector-grid" data-style-selector-grid>
-  ${renderCards(node)}
+  ${renderCards(node, context)}
 </div>
 <button type="button" class="sai-node-primary" data-node-action="apply-style-selector"><i class="fa-solid fa-paper-plane"></i><span>${escapeHtml(t('Apply & Run', '应用并运行'))}</span></button>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(t('Style prompt output', '风格提示词输出'))}"></button>`;
     }
 
     function renderInspector(node, context) {
-        const style = selectedStyle(node);
+        const style = selectedStyle(node, context);
         const linked = linkedPresetLabel(node, context) || t('Not linked', '未连接');
         return `
 <div class="sai-inspector-section">
@@ -191,11 +226,11 @@ ${renderSelectedPreview(node)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Prompt Preview', '提示词预览'))}</h3>
-  <textarea readonly rows="7">${escapeHtml(getPrompt(node))}</textarea>
+  <textarea readonly rows="7">${escapeHtml(getPrompt(node, context))}</textarea>
 </div>
-${getNegative(node) ? `<div class="sai-inspector-section">
+${getNegative(node, context) ? `<div class="sai-inspector-section">
   <h3>${escapeHtml(t('Negative Prompt', '负向提示词'))}</h3>
-  <textarea readonly rows="3">${escapeHtml(getNegative(node))}</textarea>
+  <textarea readonly rows="3">${escapeHtml(getNegative(node, context))}</textarea>
 </div>` : ''}
 <div class="sai-inspector-actions">
   <button type="button" data-node-action="apply-style-selector"><i class="fa-solid fa-paper-plane"></i><span>${escapeHtml(t('Apply & Run', '应用并运行'))}</span></button>

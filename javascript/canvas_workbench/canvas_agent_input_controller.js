@@ -6,13 +6,27 @@
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         const closest = (evt, selector) => evt?.target?.closest?.(selector) || null;
 
+        function applyDecisionFormPatch(decision, key, value) {
+            const formPatch = { [key]: value };
+            const patch = call('buildAgentDecisionFormPatch', decision, { formPatch });
+            if (patch && typeof patch === 'object' && patch.form
+                && typeof patch.form === 'object' && !Array.isArray(patch.form)) {
+                Object.assign(decision, patch);
+                return;
+            }
+            const currentForm = decision.form && typeof decision.form === 'object' && !Array.isArray(decision.form)
+                ? decision.form
+                : {};
+            Object.assign(decision, { form: Object.assign({}, currentForm, formPatch) });
+        }
+
         function updateDecisionRange(field) {
             const key = field?.getAttribute?.('data-canvas-agent-decision-field');
             const output = field?.closest?.('.sai-canvas-agent-range-row')?.querySelector?.('output');
             if (output) output.textContent = `${field.value}%`;
             const state = call('getAgentState') || {};
             const decision = state.pendingDecision;
-            if (decision?.form && key) decision.form[key] = Number(field.value);
+            if (decision?.form && key) applyDecisionFormPatch(decision, key, Number(field.value));
         }
 
         function isSettingInputHandledByChange(field) {

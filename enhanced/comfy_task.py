@@ -140,6 +140,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("reference_video", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath:reference_video")
         comfy_params.update_mapping_rule("reference_video2", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath2:reference_video")
         comfy_params.update_mapping_rule("video", "SimpAIH3TransitionSource:H3 Transition Sources:video")
+        comfy_params.update_mapping_rule("video", "SimpAIH3RegionSource:H3 Region Source:video")
         comfy_params.update_mapping_rule("reference_video", "SimpAIH3TransitionSource:H3 Transition Sources:next_video")
         comfy_params.update_mapping_rule("audio", "SimpAIOptionalAudioPath:SimpAIOptionalAudioPath:audio")
         comfy_params.update_mapping_rule("audio2", "SimpAIOptionalAudioPath:SimpAIOptionalAudioPath2:audio")

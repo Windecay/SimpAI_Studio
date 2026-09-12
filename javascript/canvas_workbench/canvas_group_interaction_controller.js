@@ -20,6 +20,14 @@
             if (typeof scope.showToast === 'function') scope.showToast(message);
         };
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const applyNodeLayoutPatch = (node, options) => {
+            const patch = call('buildNodeLayoutPatch', node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        };
+        const applyGroupFieldPatch = (group, key, value) => {
+            const patch = call('buildGroupFieldPatch', group, key, value);
+            if (patch && typeof patch === 'object') Object.assign(group, patch);
+        };
         const snapCanvasCoord = (value) => typeof scope.snapCanvasCoord === 'function' ? scope.snapCanvasCoord(value) : value;
         const snapCanvasSizeFromOrigin = (origin, value, min, max) => typeof scope.snapCanvasSizeFromOrigin === 'function'
             ? scope.snapCanvasSizeFromOrigin(origin, value, min, max)
@@ -101,8 +109,8 @@
                 call('pushHistory', 'Resize area group');
                 groupResizeState.historyPushed = true;
             }
-            group.w = nextW;
-            group.h = nextH;
+            applyGroupFieldPatch(group, 'w', nextW);
+            applyGroupFieldPatch(group, 'h', nextH);
             call('updateGroupPositionDom', group.id);
             call('invalidateMinimapStaticCache');
             call('invalidateNodeSpatialIndex');
@@ -141,13 +149,15 @@
                 call('pushHistory', 'Move area group');
                 groupDragState.historyPushed = true;
             }
-            group.x = groupDragState.startX + dx;
-            group.y = groupDragState.startY + dy;
+            applyGroupFieldPatch(group, 'x', groupDragState.startX + dx);
+            applyGroupFieldPatch(group, 'y', groupDragState.startY + dy);
             groupDragState.nodes.forEach((item) => {
                 const node = getNode(item.id);
                 if (!node) return;
-                node.x = Math.round(item.x + dx);
-                node.y = Math.round(item.y + dy);
+                applyNodeLayoutPatch(node, {
+                    x: Math.round(item.x + dx),
+                    y: Math.round(item.y + dy)
+                });
             });
             call('updateGroupPositionDom', group.id);
             const nodeIds = groupDragState.nodes.map(item => item.id);

@@ -24,6 +24,10 @@
             ? scope.snapCanvasSizeFromOrigin(origin, value, min, max)
             : value;
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const applyNodeLayoutPatch = (node, options) => {
+            const patch = call('buildNodeLayoutPatch', node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        };
         let resizeState = null;
 
         function startNodeResize(node, evt) {
@@ -73,9 +77,10 @@
                 call('pushHistory', 'Resize node');
                 resizeState.historyPushed = true;
             }
-            node.w = nextW;
-            if (resizeState.resizeCollapsedPromptHeight) node.collapsed_h = nextH;
-            else node.h = nextH;
+            const layoutPatch = { w: nextW };
+            if (resizeState.resizeCollapsedPromptHeight) layoutPatch.collapsed_h = nextH;
+            else layoutPatch.h = nextH;
+            applyNodeLayoutPatch(node, layoutPatch);
             call('updateNodePositionDom', [node.id]);
             if (node.type === 'note') call('refreshNoteDom', node.id);
             call('scheduleInteractiveLinkRender', { nodeIds: [node.id] });

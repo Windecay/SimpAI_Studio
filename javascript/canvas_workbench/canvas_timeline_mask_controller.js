@@ -15,6 +15,45 @@
             ? scope.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const buildTimelineClipMaskPatch = (clip, options) => {
+            if (typeof scope.buildTimelineClipMaskPatch === 'function') return scope.buildTimelineClipMaskPatch(clip, options);
+            const config = options || {};
+            const mask = Object.assign({}, clip?.mask || {}, config.maskPatch || {});
+            if (config.dataUrl !== undefined) mask.data_url = config.dataUrl;
+            if (config.width !== undefined) mask.width = config.width;
+            if (config.height !== undefined) mask.height = config.height;
+            const patch = { mask };
+            if (config.maskDataUrl !== undefined) patch.mask_data_url = config.maskDataUrl;
+            else if (config.dataUrl !== undefined) patch.mask_data_url = config.dataUrl;
+            return patch;
+        };
+        const buildTimelineClipMaskPointPatch = (clip, target, point) => {
+            if (typeof scope.buildTimelineClipMaskPointPatch === 'function') {
+                return scope.buildTimelineClipMaskPointPatch(clip, target, point);
+            }
+            const mask = JSON.parse(JSON.stringify(clip?.mask || {}));
+            if (target?.kind === 'pending') {
+                const points = Array.isArray(mask.pending_pen?.points) ? mask.pending_pen.points.slice() : [];
+                if (points[target.pointIndex] !== undefined) {
+                    points[target.pointIndex] = point;
+                    mask.pending_pen = Object.assign({}, mask.pending_pen, { points });
+                }
+            } else {
+                const strokes = Array.isArray(mask.strokes) ? mask.strokes.slice() : [];
+                const strokeIndex = Number.isInteger(Number(target?.strokeIndex))
+                    ? Number(target.strokeIndex)
+                    : (Array.isArray(clip?.mask?.strokes) ? clip.mask.strokes : [])
+                        .findIndex(item => item?.points === target?.points);
+                const stroke = strokes[strokeIndex];
+                const points = Array.isArray(stroke?.points) ? stroke.points.slice() : [];
+                if (stroke && points[target.pointIndex] !== undefined) {
+                    points[target.pointIndex] = point;
+                    strokes[strokeIndex] = Object.assign({}, stroke, { points });
+                    mask.strokes = strokes;
+                }
+            }
+            return { mask };
+        };
         let anchorDragState = null;
 
         function startTimelineMaskAnchorDrag(node, anchor, evt) {
@@ -57,7 +96,8 @@
             const clip = (node?.clips || []).find(item => item.id === state.clipId);
             const target = call('getTimelinePenAnchorTarget', clip, state.ref);
             if (!node || !clip || !target) return;
-            target.points[target.pointIndex] = call('timelineMaskPointFromEvent', state.stageEl, evt);
+            const point = call('timelineMaskPointFromEvent', state.stageEl, evt);
+            Object.assign(clip, buildTimelineClipMaskPointPatch(clip, target, point));
             call('refreshTimelinePenOverlayDom', state.stageEl, clip, { mask: false });
             call('scheduleSave');
         }
@@ -77,8 +117,11 @@
                 const dataUrl = call('exportTimelineMaskDataUrl', node, clip);
                 if (dataUrl) {
                     const size = call('timelineMaskDimensions', node);
-                    clip.mask = Object.assign({}, clip.mask, { data_url: dataUrl, width: size.width, height: size.height });
-                    clip.mask_data_url = dataUrl;
+                    Object.assign(clip, buildTimelineClipMaskPatch(clip, {
+                        dataUrl,
+                        width: size.width,
+                        height: size.height
+                    }));
                 }
                 call('refreshTimelinePenOverlayDom', state.stageEl, clip);
                 call('syncTimelinePreviewVideos', state.nodeEl, node);
@@ -100,7 +143,7 @@
             const point = call('timelineMaskPointFromEvent', stageEl, evt);
             const feather = clamp(Number(node.params?.mask_feather || 0), 0, 120);
             const current = clip.mask?.pending_pen && Array.isArray(clip.mask.pending_pen.points)
-                ? clip.mask.pending_pen
+                ? Object.assign({}, clip.mask.pending_pen)
                 : { kind: 'pen', closed: false, feather, points: [] };
             let points = Array.isArray(current.points) ? current.points.slice() : [];
             let shouldClose = false;
@@ -118,23 +161,26 @@
                     shouldClose = evt.detail >= 2 && points.length >= 3;
                 }
             }
-            current.points = points;
-            current.feather = feather;
+            const nextCurrent = Object.assign({}, current, { points, feather });
             const nextStrokes = shouldClose
-                ? strokes.concat(Object.assign({}, current, { closed: true, pending: false }))
+                ? strokes.concat(Object.assign({}, nextCurrent, { closed: true, pending: false }))
                 : strokes;
-            clip.mask = Object.assign({}, clip.mask || {}, {
-                kind: 'pen_alpha',
-                space: 'canvas',
-                width: size.width,
-                height: size.height,
-                strokes: nextStrokes,
-                pending_pen: shouldClose ? null : current
-            });
+            Object.assign(clip, buildTimelineClipMaskPatch(clip, {
+                maskPatch: {
+                    kind: 'pen_alpha',
+                    space: 'canvas',
+                    width: size.width,
+                    height: size.height,
+                    strokes: nextStrokes,
+                    pending_pen: shouldClose ? null : nextCurrent
+                }
+            }));
             if (shouldClose) {
                 const dataUrl = call('exportTimelineMaskDataUrl', node, clip);
-                if (dataUrl) clip.mask = Object.assign({}, clip.mask, { data_url: dataUrl });
-                clip.mask_data_url = dataUrl || clip.mask_data_url || '';
+                Object.assign(clip, buildTimelineClipMaskPatch(clip, {
+                    ...(dataUrl ? { dataUrl } : {}),
+                    maskDataUrl: dataUrl || clip.mask_data_url || ''
+                }));
                 call('pushHistoryBatch', `timeline-mask:${node.id}:${clipId}`, 'Add timeline pen mask');
                 call('refreshTimelinePenOverlayDom', stageEl, clip);
                 call('syncTimelinePreviewVideos', nodeEl, node);

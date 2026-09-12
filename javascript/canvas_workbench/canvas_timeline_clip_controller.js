@@ -15,6 +15,12 @@
             ? scope.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const buildTimelineClipPatch = (fields) => typeof scope.buildTimelineClipPatch === 'function'
+            ? scope.buildTimelineClipPatch(fields)
+            : Object.assign({}, fields || {});
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
+            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+            : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         const snapTimelineTime = (...args) => {
             const value = call('snapTimelineTime', ...args);
             return value === undefined ? args[1] : value;
@@ -87,9 +93,11 @@
                     threshold: snapThreshold,
                     disabled: snapDisabled
                 }), 0, maxStart);
-                clip.duration = Math.max(minDuration, state.startDuration - (nextStart - state.startStart));
-                clip.start = nextStart;
-                clip.in = Math.max(0, state.startIn + (nextStart - state.startStart));
+                Object.assign(clip, buildTimelineClipPatch({
+                    duration: Math.max(minDuration, state.startDuration - (nextStart - state.startStart)),
+                    start: nextStart,
+                    in: Math.max(0, state.startIn + (nextStart - state.startStart))
+                }));
                 call('enforceTimelineClipMediaBounds', node, clip);
             } else if (state.mode === 'trim-end') {
                 const maxDuration = timelineClipAvailableDuration(node, clip);
@@ -101,7 +109,9 @@
                     threshold: snapThreshold,
                     disabled: snapDisabled
                 });
-                clip.duration = Math.max(minDuration, Math.min(snappedEnd - state.startStart, Number.isFinite(maxDuration) ? maxDuration : Infinity));
+                Object.assign(clip, buildTimelineClipPatch({
+                    duration: Math.max(minDuration, Math.min(snappedEnd - state.startStart, Number.isFinite(maxDuration) ? maxDuration : Infinity))
+                }));
                 call('enforceTimelineClipMediaBounds', node, clip);
             } else {
                 let rawStart = Math.max(0, state.startStart + delta);
@@ -110,7 +120,7 @@
                 const trackEl = lane?.closest?.('[data-timeline-track]');
                 const trackId = trackEl?.getAttribute('data-timeline-track');
                 if (trackId && timelineTrackCompatible(clip, trackId, node)) {
-                    clip.track_id = trackId;
+                    Object.assign(clip, buildTimelineClipPatch({ track_id: trackId }));
                     if (state.lastTrackId !== trackId) {
                         state.nodeEl.querySelectorAll?.('.sai-timeline-track').forEach(el => el.classList.remove('is-drop-target'));
                         trackEl.classList.add('is-drop-target');
@@ -134,13 +144,13 @@
                 } else {
                     rawStart = snappedStart;
                 }
-                clip.start = Math.max(0, rawStart);
+                Object.assign(clip, buildTimelineClipPatch({ start: Math.max(0, rawStart) }));
                 call('enforceTimelineClipMediaBounds', node, clip);
             }
-            node.params = Object.assign({}, node.params || {}, {
+            Object.assign(node, buildTimelineParamsPatch(node, {
                 selected_clip_id: clip.id,
                 playhead: clamp(Number(clip.start || 0), 0, Number(node.params?.duration || 1))
-            });
+            }));
             call('normalizeNode', node);
             call('refreshTimelineClipDom', state.nodeEl, node, clip);
             call('refreshTimelineTrackRowsDom', state.nodeEl, node);

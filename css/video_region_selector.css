@@ -1,0 +1,136 @@
+.sai-region-bridge { display: none !important; }
+.sai-video-region {
+    --region-text: #dedfe3; --region-muted: #969ba5; --region-input: #1b1d21;
+    --region-border: #41454d; --region-track: #393c43;
+    --region-accent: var(--button-primary-background-fill, var(--color-accent, #ff7a18));
+    --region-on-accent: var(--button-primary-text-color, #fff);
+    --region-core-fill: color-mix(in srgb, var(--region-accent) 55%, var(--region-track));
+    --region-reference: color-mix(in srgb, var(--region-text) 38%, var(--region-track));
+    min-width: 0; width: 100%; box-sizing: border-box; padding: 12px 8px 10px;
+    color: var(--region-text); font: 12px/1.5 sans-serif; letter-spacing: 0;
+}
+.sai-video-region[data-theme="light"] {
+    --region-text: #252830; --region-muted: #606673; --region-input: #f7f8fa;
+    --region-border: #c9cdd4; --region-track: #dfe2e7;
+}
+.sai-video-region .sai-region-heading { display: flex; align-items: center; gap: 10px; }
+.sai-video-region .sai-region-heading strong { font-size: 13px; font-weight: 600; }
+.sai-video-region .sai-region-status { margin-left: auto; color: var(--region-muted); font-variant-numeric: tabular-nums; }
+.sai-video-region .sai-region-play {
+    width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: grid; place-items: center;
+    color: var(--region-text); background: transparent; border: 1px solid var(--region-border);
+    border-radius: 4px; cursor: pointer;
+}
+.sai-video-region .sai-region-track {
+    height: 24px; margin: 22px 9px 0; position: relative; border-radius: 2px;
+    background: var(--region-track); touch-action: none; cursor: col-resize;
+    user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
+}
+.sai-region-context, .sai-region-core { height: 100%; position: absolute; pointer-events: none; }
+.sai-region-context { background: var(--region-reference); }
+.sai-region-core { background: var(--region-core-fill); border-top: 2px solid var(--region-accent); border-bottom: 2px solid var(--region-accent); box-sizing: border-box; }
+.sai-video-region .sai-region-handle {
+    position: absolute; top: -6px; width: 22px; height: 36px; transform: translateX(-50%);
+    background: transparent; border: 0; padding: 0; cursor: ew-resize; z-index: 2; border-radius: 2px;
+}
+.sai-region-handle::before {
+    content: ""; position: absolute; left: 9px; top: 4px; bottom: 4px; width: 4px;
+    background: var(--region-accent); border-radius: 2px; box-shadow: 0 0 0 1px var(--region-input);
+}
+.sai-region-handle:hover::before { background: color-mix(in srgb, var(--region-accent) 70%, #fff); }
+.sai-video-region .sai-region-playhead {
+    position: absolute; top: -11px; width: 16px; height: 10px; padding: 0; border: 0;
+    border-radius: 2px 2px 0 0; transform: translateX(-50%); background: var(--region-text);
+    cursor: col-resize; z-index: 3; touch-action: none; -webkit-user-drag: none;
+}
+.sai-region-playhead::after {
+    content: ""; position: absolute; left: 7px; top: 10px; width: 2px; height: 25px;
+    background: var(--region-text); pointer-events: none;
+}
+.sai-region-track[data-dragging], .sai-region-track[data-dragging] * { cursor: col-resize !important; }
+.sai-video-region .sai-region-ruler {
+    display: flex; justify-content: space-between; margin: 5px 9px 12px;
+    color: var(--region-muted); font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.sai-video-region .sai-region-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.sai-region-boundary { min-width: 0; }
+.sai-video-region .sai-region-preview {
+    width: 100%; aspect-ratio: 16 / 10; position: relative; display: block; padding: 0;
+    margin: 0 0 7px; border: 1px solid var(--region-border); border-radius: 4px;
+    background: #111; color: #fff; overflow: hidden; cursor: pointer;
+    user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
+}
+.sai-region-preview video {
+    position: absolute; inset: 0 0 24px; width: 100% !important; height: calc(100% - 24px) !important;
+    min-height: 0 !important; object-fit: contain; pointer-events: none; opacity: 0;
+}
+.sai-region-preview[data-ready="true"] video { opacity: 1; }
+.sai-region-preview-caption {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 24px; padding: 0 6px;
+    display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    background: var(--region-input); color: var(--region-text); font: 11px/1.3 sans-serif;
+}
+.sai-region-preview-caption [data-frame-number] { color: var(--region-muted); font-variant-numeric: tabular-nums; }
+.sai-region-preview-status { position: absolute; left: calc(50% - 6px); top: calc(50% - 18px); font-size: 12px; }
+.sai-region-preview[data-ready="true"] .sai-region-preview-status { display: none; }
+.sai-video-region[data-active-preview="start"] [data-preview="start"],
+.sai-video-region[data-active-preview="end"] [data-preview="end"],
+.sai-video-region .sai-region-preview:hover { border-color: var(--region-accent); }
+.sai-video-region .sai-region-fields label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--region-muted); }
+.sai-video-region .sai-region-fields input[type="number"] {
+    height: 32px !important; min-width: 0 !important; width: 100% !important; box-sizing: border-box;
+    border: 1px solid var(--region-border) !important; border-radius: 4px !important;
+    background: var(--region-input) !important; color: var(--region-text) !important;
+    padding: 4px 8px !important; font: 13px/1.5 sans-serif !important;
+    font-variant-numeric: tabular-nums !important; box-shadow: none !important; color-scheme: dark;
+}
+.sai-video-region[data-theme="light"] input[type="number"] { color-scheme: light; }
+.sai-video-region .sai-region-speed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.sai-region-speed > span { flex: 1 1 110px; color: var(--region-muted); font-size: 11px; }
+.sai-video-region .sai-region-factors {
+    display: grid; grid-template-columns: repeat(4, 32px); padding: 2px; gap: 2px;
+    border: 1px solid var(--region-border); border-radius: 4px; background: var(--region-input);
+}
+.sai-video-region .sai-region-factors button {
+    height: 25px; min-width: 0; padding: 0; border: 0; border-radius: 2px;
+    color: var(--region-muted); background: transparent; font: 12px/1 sans-serif; cursor: pointer;
+}
+.sai-video-region .sai-region-factors button[aria-checked="true"] { background: var(--region-accent); color: var(--region-on-accent); }
+.sai-video-region :is(button, input):focus-visible { outline: 2px solid var(--region-accent) !important; outline-offset: 2px; }
+.sai-video-region :disabled { opacity: .45; cursor: default; }
+.sai-video-region .sai-region-legend { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: var(--region-muted); font-size: 10px; }
+.sai-region-legend i { width: 7px; height: 7px; display: inline-block; border-radius: 1px; }
+.sai-region-legend i:nth-of-type(2) { margin-left: 10px; }
+.sai-region-context-swatch { background: var(--region-reference); }
+.sai-region-core-swatch { background: var(--region-accent); }
+.sai-region-references { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--region-border); }
+.sai-region-references > strong { font-size: 12px; font-weight: 600; }
+.sai-region-reference-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sai-video-region .sai-region-reference-tools :is(select, button) {
+    min-height: 32px; min-width: 0; max-width: 100%; padding: 5px 8px;
+    border: 1px solid var(--region-border); border-radius: 4px;
+    background: var(--region-input); color: var(--region-text); font: inherit; letter-spacing: 0;
+}
+.sai-region-reference-tools select { flex: 1 1 160px; }
+.sai-region-reference-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.sai-region-reference-tools button:hover { border-color: var(--region-accent); }
+.sai-region-reference-tools input[hidden] { display: none !important; }
+.sai-region-references output { display: block; margin-top: 4px; color: var(--region-muted); }
+.sai-region-references output:empty { display: none; }
+.sai-region-references output[data-error="true"] { color: #e56a6a; }
+#scene_input_images_row_1:has(> .sai-region-reference-input) {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)) !important;
+    gap: 8px !important;
+}
+.sai-region-reference-input > .sai-region-reference-label {
+    position: relative; z-index: 1; flex: 0 0 auto; min-height: 28px; padding: 5px 64px 5px 8px;
+    font: 11px/1.5 sans-serif; letter-spacing: 0; overflow-wrap: anywhere;
+}
+.sai-region-reference-input > [data-testid="image"] { flex: 1 1 0 !important; min-height: 0 !important; }
+.sai-region-reference-input > label { display: none !important; }
+.sai-region-source button[aria-label="start drag handle for trimming video"],
+.sai-region-source button[aria-label="end drag handle for trimming video"],
+.sai-region-source button[aria-label="Trim video"],
+.sai-region-source button[aria-label="Trim video to selection"],
+.sai-region-source button[aria-label="Trim"] { display: none !important; }

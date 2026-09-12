@@ -6478,6 +6478,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
     setLtxGuideControlVisible(showLtxGuideControl, langSource);
     setH3StoryboardControlVisible(showH3StoryboardControl, langSource);
+    window.SimpAIVideoRegionSelector?.syncSceneControl(langSource);
     setSceneAuxControlVisible("relight_light_control", showRelightLight);
     setSceneAuxControlVisible("scene_cloud_image_api", showCloudImageApi);
     setRelightLightSliderHidden(showRelightLight);

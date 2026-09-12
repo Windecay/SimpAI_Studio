@@ -46,13 +46,29 @@
             scheduleSave: delegate(context, 'scheduleSave'),
             serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
             setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast')
+            showToast: delegate(context, 'showToast'),
+            buildAssetReference: delegate(context, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
+            buildLivePortraitNodeStatePatch: delegate(context, 'buildLivePortraitNodeStatePatch'),
+            buildLivePortraitStatePatch: delegate(context, 'buildLivePortraitStatePatch'),
+            buildLivePortraitConfirmPatch: delegate(context, 'buildLivePortraitConfirmPatch')
         };
     }
 
     function getProject(context) {
         const project = typeof context?.getProject === 'function' ? context.getProject() : null;
         return project && typeof project === 'object' ? project : { id: 'default', nodes: [], edges: [] };
+    }
+
+    function appendProjectNode(project, node, context) {
+        const patch = call(context, 'buildProjectNodeAppendPatch', null, project, node);
+        if (patch && typeof patch === 'object' && Array.isArray(patch.nodes)) {
+            Object.assign(project, patch);
+            return;
+        }
+        const nodes = Array.isArray(project?.nodes) ? project.nodes.slice() : [];
+        if (node && typeof node === 'object') nodes.push(node);
+        Object.assign(project, { nodes });
     }
 
     function getNode(id, context) {
@@ -68,7 +84,7 @@
 
     function isSource(node, context) {
         if (!node || node.type !== 'liveportrait_expression') return false;
-        const asset = node.asset || livePortraitState(node).output_asset || {};
+        const asset = node.asset || livePortraitState(node, context).output_asset || {};
         const mime = String(asset.mime || '').toLowerCase();
         const hasAsset = !!(asset.path || asset.preview_url || asset.data_url || asset.thumb || asset.asset_id || asset.asset_relative_path || asset.relative_path);
         return hasAsset && (!mime || mime.startsWith('image/'));
@@ -101,8 +117,8 @@
         return edges.find(item => item.type === 'image' && item.to === node?.id && item.slot === slot) || null;
     }
 
-    function stateNodeId(node, slot) {
-        const state = livePortraitState(node);
+    function stateNodeId(node, slot, context) {
+        const state = livePortraitState(node, context);
         return slot === 'reference'
             ? (state.reference_node_id || node.reference_node_id || '')
             : (state.source_node_id || node.input_node_id || '');
@@ -110,7 +126,7 @@
 
     function inputSourceForSlot(node, slot, context) {
         const edge = edgeForSlot(node, slot, context);
-        const source = getNode(stateNodeId(node, slot), context) || getNode(edge?.from, context);
+        const source = getNode(stateNodeId(node, slot, context), context) || getNode(edge?.from, context);
         return isImageSource(source, context) ? source : null;
     }
 
@@ -163,8 +179,9 @@
         return call(context, 'portHintText', t('Double-click', '双击'));
     }
 
-    function livePortraitState(node) {
-        node.liveportrait_expression = Object.assign({
+    function livePortraitState(node, context) {
+        const fallback = {
+            liveportrait_expression: Object.assign({
             source_node_id: '',
             reference_node_id: '',
             source_asset: null,
@@ -173,8 +190,10 @@
             params: {},
             expression_state: '',
             updated_at: ''
-        }, node.liveportrait_expression || {});
-        return node.liveportrait_expression;
+            }, node?.liveportrait_expression || {})
+        };
+        const patch = call(context, 'buildLivePortraitNodeStatePatch', fallback, node);
+        return patch?.liveportrait_expression || fallback.liveportrait_expression;
     }
 
     function renderNodeStateBadges(node, context) {
@@ -202,7 +221,7 @@
     }
 
     function renderNodeHtml(node, context) {
-        const state = livePortraitState(node);
+        const state = livePortraitState(node, context);
         const source = inputSourceForSlot(node, 'source', context);
         const reference = inputSourceForSlot(node, 'reference', context);
         const asset = node.asset || state.output_asset || {};
@@ -227,7 +246,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderInspector(node, context) {
-        const state = livePortraitState(node);
+        const state = livePortraitState(node, context);
         const source = inputSourceForSlot(node, 'source', context);
         const reference = inputSourceForSlot(node, 'reference', context);
         const info = readAssetInfo(node.asset || state.output_asset || {}, context);
@@ -263,6 +282,14 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             input_node_id: opts.input_node_id || opts.source_node_id || '',
             reference_node_id: opts.reference_node_id || '',
             asset: opts.asset || null,
+            liveportrait_expression: opts.liveportrait_expression || {},
+            source: { kind: 'liveportrait_expression', module: 'ui.services.liveportrait_expression' },
+            status: {
+                state: opts.asset ? 'finished' : 'idle',
+                message: opts.asset ? t('Expression image ready.', '表情图已就绪。') : t('Connect a source image, then edit expression.', '连接源图后编辑表情。')
+            }
+        };
+        Object.assign(node, call(context, 'buildLivePortraitNodeStatePatch', {
             liveportrait_expression: Object.assign({
                 source_node_id: opts.input_node_id || opts.source_node_id || '',
                 reference_node_id: opts.reference_node_id || '',
@@ -272,15 +299,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                 params: opts.params || {},
                 expression_state: opts.expression_state || '',
                 updated_at: ''
-            }, opts.liveportrait_expression || {}),
-            source: { kind: 'liveportrait_expression', module: 'ui.services.liveportrait_expression' },
-            status: {
-                state: opts.asset ? 'finished' : 'idle',
-                message: opts.asset ? t('Expression image ready.', '表情图已就绪。') : t('Connect a source image, then edit expression.', '连接源图后编辑表情。')
+            }, opts.liveportrait_expression || {})
+        }, node, {
+            initialState: {
+                source_node_id: opts.input_node_id || opts.source_node_id || '',
+                reference_node_id: opts.reference_node_id || '',
+                source_asset: opts.source_asset || null,
+                reference_asset: opts.reference_asset || null,
+                output_asset: opts.asset || null,
+                params: opts.params || {},
+                expression_state: opts.expression_state || ''
             }
-        };
+        }));
         call(context, 'placeNodeAvoidingOverlap', null, node, world || { x: node.x, y: node.y });
-        if (Array.isArray(project.nodes)) project.nodes.push(node);
+        appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
         if (opts.toast !== false) call(context, 'showToast', null, t('LivePortrait Exp node added', '已添加 LivePortrait Exp 节点'));
@@ -294,7 +326,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             call(context, 'showToast', null, t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。'));
             return null;
         }
-        const state = livePortraitState(node);
+        const state = livePortraitState(node, context);
         const sourceSource = inputSourceForSlot(node, 'source', context);
         const referenceSource = inputSourceForSlot(node, 'reference', context);
         const sourceAsset = sourceAssetForSlot(node, 'source', context) || state.source_asset || null;
@@ -326,36 +358,30 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             ensureFormNames: (scope, prefix) => call(context, 'ensureWorkbenchFormFieldNames', null, scope, prefix),
             onStateChange: (cache) => {
                 const current = getNode(node.id, context) || node;
-                const nextState = livePortraitState(current);
-                nextState.params = cache?.params || nextState.params || {};
-                nextState.expression_state = cache?.expression_state || nextState.expression_state || '';
-                nextState.updated_at = cache?.updated_at || new Date().toISOString();
+                Object.assign(current, call(context, 'buildLivePortraitStatePatch', {}, current, cache || {}));
             },
             onConfirm: (response) => {
                 call(context, 'pushHistory', null, 'Update LivePortrait Exp output');
                 const current = getNode(node.id, context) || node;
-                const nextState = livePortraitState(current);
-                current.asset = response.asset_ref || response.expression_image || null;
-                nextState.output_asset = current.asset;
-                nextState.params = response.params || nextState.params || {};
-                nextState.expression_state = response.expression_state || nextState.expression_state || '';
-                nextState.source_asset = response.source_asset || sourceAsset || nextState.source_asset || null;
-                nextState.reference_asset = response.reference_asset || referenceAsset || nextState.reference_asset || null;
-                nextState.source_node_id = inputSourceForSlot(current, 'source', context)?.id || nextState.source_node_id || '';
-                nextState.reference_node_id = inputSourceForSlot(current, 'reference', context)?.id || nextState.reference_node_id || '';
-                current.input_node_id = nextState.source_node_id;
-                current.reference_node_id = nextState.reference_node_id;
-                nextState.updated_at = response.exported_at || new Date().toISOString();
-                current.source = Object.assign({}, current.source || {}, {
-                    kind: 'liveportrait_expression',
-                    module: 'ui.services.liveportrait_expression',
-                    source_node_id: nextState.source_node_id,
-                    reference_node_id: nextState.reference_node_id
-                });
-                current.status = {
-                    state: 'finished',
-                    message: t('Expression image exported.', '表情图已导出。')
-                };
+                const sourceNodeId = inputSourceForSlot(current, 'source', context)?.id || '';
+                const referenceNodeId = inputSourceForSlot(current, 'reference', context)?.id || '';
+                Object.assign(current, call(context, 'buildLivePortraitConfirmPatch', {}, current, {
+                    response,
+                    sourceAsset,
+                    referenceAsset,
+                    sourceNodeId,
+                    referenceNodeId,
+                    sourcePatch: {
+                        kind: 'liveportrait_expression',
+                        module: 'ui.services.liveportrait_expression',
+                        source_node_id: sourceNodeId,
+                        reference_node_id: referenceNodeId
+                    },
+                    status: {
+                        state: 'finished',
+                        message: t('Expression image exported.', '表情图已导出。')
+                    }
+                }));
                 call(context, 'setSelectedNode', null, current.id);
                 call(context, 'mutate', null);
             }

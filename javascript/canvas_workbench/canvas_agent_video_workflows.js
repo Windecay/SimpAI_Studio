@@ -6,7 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
         const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
         const getMaxExtraImageReferences = () => Math.max(0, Number(call('getMaxExtraImageReferences', 0) || 0));
         const getMaxImageReferences = () => Math.max(0, Number(call('getMaxImageReferences', 0) || 0));
@@ -25,7 +24,7 @@
         const canvasAgentMediaNodeCounts = (...args) => call('canvasAgentMediaNodeCounts', {}, ...args);
         const canvasAgentVideoTaskForMedia = (...args) => call('canvasAgentVideoTaskForMedia', '', ...args);
         const canvasAgentVideoTaskLabel = (...args) => call('canvasAgentVideoTaskLabel', '', ...args);
-        const canvasAgentAudioVideoSceneTheme = (...args) => call('canvasAgentAudioVideoSceneTheme', '', ...args);
+        const canvasAgentPresetSupportsTask = (...args) => call('canvasAgentPresetSupportsTask', false, ...args);
         const previewCanvasAgentMediaInputSlot = (...args) => call('previewCanvasAgentMediaInputSlot', null, ...args);
         const canvasAgentPromptTargetFromNode = (...args) => call('canvasAgentPromptTargetFromNode', {}, ...args);
         const canvasAgentPromptTargetFromEntry = (...args) => call('canvasAgentPromptTargetFromEntry', {}, ...args);
@@ -64,6 +63,28 @@
         const prepareCanvasAgentGenerator = (...args) => call('prepareCanvasAgentGenerator', false, ...args);
         const findCanvasAgentUploadSlotForTarget = (...args) => call('findCanvasAgentUploadSlotForTarget', '', ...args);
         const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
+
+        function canvasAgentAudioVideoSceneTheme(entry, hasImage, task) {
+            const schema = entry?.schema && typeof entry.schema === 'object' ? entry.schema : {};
+            const themes = Array.isArray(schema.themes) ? schema.themes : [];
+            if (!themes.length) return '';
+            const normalized = themes.map(theme => ({ theme, key: String(theme || '').toLowerCase().replace(/\s+/g, '') }));
+            if (hasImage) {
+                const matched = normalized.find(item => item.key.includes('image+audiotovideo') || item.key.includes('audio+imagetovideo'))?.theme
+                    || normalized.find(item => item.key.includes('audio') && item.key.includes('image'))?.theme
+                    || normalized.find(item => item.key.includes('audio') && !item.key.includes('text'))?.theme
+                    || '';
+                if (matched) return matched;
+            } else {
+                const matched = normalized.find(item => item.key.includes('text+audiotovideo') || item.key.includes('audio+texttovideo'))?.theme
+                    || normalized.find(item => item.key.includes('audio') && item.key.includes('text'))?.theme
+                    || normalized.find(item => item.key.includes('audio') && !item.key.includes('image'))?.theme
+                    || '';
+                if (matched) return matched;
+            }
+            if (canvasAgentPresetSupportsTask(entry, task)) return String(schema.default_theme || themes[0] || '');
+            return '';
+        }
 
         async function runCanvasAgentTextToVideo(prompt, options) {
             const opts = options || {};
@@ -156,8 +177,7 @@
                     return;
                 }
                 generator = markCanvasAgentCreatedNode(addPresetNode(chosenEntry, canvasAgentWorkflowPresetPosition(null), {
-                    collapsed: true,
-                    source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                    collapsed: true
                 }));
             }
             if (!prepareCanvasAgentGenerator(generator, resolved.prompt)) return;
@@ -298,8 +318,7 @@
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
                 collapsed: true,
                 sceneTheme: audioVideoTheme,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_audio_mode: videoTask, agent_audio_scene_theme: audioVideoTheme || '' }
-            }));
+            }), { sourcePatch: { agent_audio_mode: videoTask, agent_audio_scene_theme: audioVideoTheme || '' } });
             applyCanvasAgentPromptToGenerator(node, resolved.prompt);
             const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
             if (!connections.ok) {
@@ -439,8 +458,7 @@
             }
             slotPreview = previewCanvasAgentMediaInputSlot(entry, target);
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                collapsed: true
             }));
             applyCanvasAgentPromptToGenerator(node, resolved.prompt);
             const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
@@ -581,8 +599,7 @@
             }
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
                 collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_video_mode: videoTask }
-            }));
+            }), { sourcePatch: { agent_video_mode: videoTask } });
             applyCanvasAgentPromptToGenerator(node, resolved.prompt);
             const connections = connectCanvasAgentMediaToGenerator(node, mediaNodes);
             if (!connections.ok) {
@@ -693,8 +710,7 @@
             entry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
             slotPreview = previewCanvasAgentMediaInputSlot(entry, target);
             const node = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(target), {
-                collapsed: true,
-                source: { kind: 'canvas_agent_created', created_at: nowIso() }
+                collapsed: true
             }));
             applyCanvasAgentPromptToGenerator(node, resolved.prompt);
             const slot = findCanvasAgentUploadSlotForTarget(node, target, slotPreview?.key);

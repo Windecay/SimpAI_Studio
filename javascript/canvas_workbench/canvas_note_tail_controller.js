@@ -17,6 +17,10 @@
         const snapCanvasCoord = (value) => typeof scope.snapCanvasCoord === 'function'
             ? scope.snapCanvasCoord(value)
             : value;
+        const buildNoteStatePatch = (node, options) => {
+            const patch = call('buildNoteStatePatch', node, options || {});
+            return patch && typeof patch === 'object' ? patch : {};
+        };
         const t = typeof scope.t === 'function' ? scope.t : (en) => en;
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         let dragState = null;
@@ -61,16 +65,18 @@
                 call('pushHistory', 'Move tip note pointer');
                 dragState.historyPushed = true;
             }
-            node.tail = Object.assign({}, node.tail || {});
-            node.tail.enabled = true;
-            node.tail.target = {
+            const nextTarget = {
                 x: Math.round(dragState.startX + dx),
                 y: Math.round(dragState.startY + dy)
             };
             if (project.settings?.snap) {
-                node.tail.target.x = snapCanvasCoord(node.tail.target.x);
-                node.tail.target.y = snapCanvasCoord(node.tail.target.y);
+                nextTarget.x = snapCanvasCoord(nextTarget.x);
+                nextTarget.y = snapCanvasCoord(nextTarget.y);
             }
+            Object.assign(node, buildNoteStatePatch(node, {
+                tailPatch: { enabled: true },
+                tailTargetPatch: nextTarget
+            }));
             call('renderEdges');
         }
 

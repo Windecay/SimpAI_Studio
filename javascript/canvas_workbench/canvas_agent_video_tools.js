@@ -6,7 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
         const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
         const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
         const getDefaultVideoOutpaintPreset = () => String(call('getDefaultVideoOutpaintPreset', '') || '');
@@ -63,6 +62,7 @@
         const viewportCenterWorld = (...args) => call('viewportCenterWorld', { x: 0, y: 0 }, ...args);
         const findOpenNodePosition = (...args) => call('findOpenNodePosition', args[0] || { x: 0, y: 0 }, ...args.slice(1));
         const addLivePortraitExpressionNode = (...args) => call('addLivePortraitExpressionNode', null, ...args);
+        const applyNodeLayoutPatch = (...args) => call('applyNodeLayoutPatch', {}, ...args) || {};
         const createLivePortraitExpressionImageEdge = (...args) => call('createLivePortraitExpressionImageEdge', null, ...args);
         const openLivePortraitExpressionEditor = (...args) => call('openLivePortraitExpressionEditor', null, ...args);
         const setCanvasAgentSelection = (...args) => call('setCanvasAgentSelection', null, ...args);
@@ -292,13 +292,12 @@
             const node = markCanvasAgentCreatedNode(addLivePortraitExpressionNode(world, {
                 render: false,
                 toast: false,
-                source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_tool: 'liveportrait_expression' }
-            }));
+            }), { sourcePatch: { agent_tool: 'liveportrait_expression' } });
             if (!node) {
                 showToast(t('LivePortrait Exp node could not be created.', '无法创建 LivePortrait Exp 节点。'));
                 return null;
             }
-            node.collapsed = false;
+            applyNodeLayoutPatch(node, { collapsed: false });
             createLivePortraitExpressionImageEdge(target.id, node.id, 'source', { silent: true });
             setCanvasAgentSelection(node.id, [node.id], null, { clearGroup: true });
             mutate({ inspector: true });
@@ -413,7 +412,6 @@
             const node = markCanvasAgentCreatedNode(addPresetNode(finalEntry, canvasAgentWorkflowPresetPosition(target), {
                 collapsed: true,
                 sceneTheme: finalTheme,
-                source: { kind: 'canvas_agent_created', created_at: nowIso() }
             }));
             applyCanvasAgentPromptToGenerator(node, finalPrompt);
             const uploadSlots = canvasAgentUploadSlotsForNode(node);

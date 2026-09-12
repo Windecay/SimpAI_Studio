@@ -1,0 +1,96 @@
+{
+  "supported_tasks": ["video_edit"],
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["Basic"],
+      "theme_title": "MiniMax H3 Region Reconstruction",
+      "theme_labels": {"Basic": {"en": "Basic", "zh": "\u57fa\u7840"}},
+      "task_method": {"Basic": "minimax_h3_region_cn"},
+      "disable_canvas_mask": true,
+      "video_source_slots": ["scene_video"],
+      "temporal_region_control": {
+        "source": "scene_video",
+        "start_control": "scene_var_number5",
+        "end_control": "scene_var_number6",
+        "factor_control": "scene_var_number7",
+        "reference_controls": ["scene_input_image1", "scene_input_image2", "scene_input_image3"],
+        "context_slow_seconds": 0.75
+      },
+      "director_capability": {
+        "director_supported": false,
+        "image_policy": "optional", "audio_policy": "forbidden", "video_policy": "required",
+        "min_images": 0, "max_images": 3, "max_audios": 0, "min_videos": 1, "max_videos": 1,
+        "image_modes": ["none", "reference_set"], "video_modes": ["explicit"],
+        "duration_strategy": "video_min", "audio_output": "source_audio", "mixed_segments": false
+      },
+      "divisible": ["scene_input_image3"],
+      "disvisible": [
+        "scene_canvas_image",
+        "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7",
+        "scene_input_image8", "scene_reference_video", "scene_reference_video2",
+        "scene_audio", "scene_audio2", "scene_audio3", "sam3_video_mask_accordion",
+        "sam3_input_video", "sam3_mask_video", "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_var_number", "scene_var_number2", "scene_var_number9",
+        "scene_var_number10", "scene_switch_option1", "scene_switch_option2",
+        "scene_switch_option3", "scene_switch_option4", "scene_refiner_model",
+        "scene_video_duration", "scene_batch", "minimax_h3_storyboard_control"
+      ],
+      "prompt": {
+        "Basic": "integrated_multimodal_description: [Shot 1] Reconstruct the supplied video interval while retaining the same subjects, identities, clothing, objects, environment and visual style. Follow the source action order, trajectories, body orientation, momentum, contact and occlusion. Rebuild coherent faces, hands, limbs and object contours without changing the action. Continue the incoming movement through the interval into the outgoing state. Preserve camera direction and movement, intentional motion blur, lighting and existing visible text. Do not introduce a new action, frozen pose, subject, shot or camera reset.\n\noverall_soundscape: Retain the source soundscape and its timing.\n\nnon_diegetic_music: Retain existing source music."
+      },
+      "overwrite_step": {"Basic": 8},
+      "overwrite_step_min": 1, "overwrite_step_max": 50,
+      "video_duration": {"Basic": 1},
+      "var_number3_title": "Video Shift", "var_number3_min": 0.01, "var_number3_max": 100,
+      "var_number3_step": 0.01, "var_number3": {"Basic": 6},
+      "var_number4_title": "ControlNet Strength", "var_number4_min": 0, "var_number4_max": 2,
+      "var_number4_step": 0.05, "var_number4": {"Basic": 0.8},
+      "var_number5_title": "Region Start (s)", "var_number5_min": 0, "var_number5_max": 10000,
+      "var_number5_step": 0.01, "var_number5": {"Basic": 0},
+      "var_number6_title": "Region End (s)", "var_number6_min": 0, "var_number6_max": 10000,
+      "var_number6_step": 0.01, "var_number6": {"Basic": 1},
+      "var_number7_title": "Reconstruction Slowdown", "var_number7_min": 1, "var_number7_max": 4,
+      "var_number7_step": 1, "var_number7": {"Basic": 2},
+      "var_number8_title": "Denoising Strength (%)", "var_number8_min": 1, "var_number8_max": 100,
+      "var_number8_step": 1, "var_number8": {"Basic": 80},
+      "aspect_ratio": ["origin|Original", "640|1:1", "832|1:1", "1024|1:1", "1280|1:1"],
+      "resolution_control": {
+        "mode": "video_keep_input_area", "source": "scene_video",
+        "base_width": 640, "base_height": 640, "quantize": 32, "interactive": true,
+        "frontend_preprocess": false, "preprocess_fit": "proportional",
+        "preprocess_duration_limit": false, "preserve_audio": true
+      },
+      "image_preprocessor_method": [["-normalization"]]
+    }
+  },
+  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "previous_default_models": ["minimax_h3_fl2va_pruned_int8_convrot.safetensors"],
+  "default_refiner": "None", "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  "default_loras": [["minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", 1.0], ["None", 1], ["None", 1], ["None", 1], ["None", 1]],
+  "default_cfg_scale": 1,
+  "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+  "default_sample_sharpness": 2, "default_sampler": "er_sde", "default_scheduler": "beta57",
+  "default_performance": "Speed", "default_styles": [],
+  "default_aspect_ratio": "origin|Original", "default_image_number": 1,
+  "default_overwrite_step": 8,
+  "default_prompt": "integrated_multimodal_description: [Shot 1] Reconstruct the supplied video interval while retaining the same subjects, identities, clothing, objects, environment and visual style. Follow the source action order, trajectories, body orientation, momentum, contact and occlusion. Rebuild coherent faces, hands, limbs and object contours without changing the action. Continue the incoming movement through the interval into the outgoing state. Preserve camera direction and movement, intentional motion blur, lighting and existing visible text. Do not introduce a new action, frozen pose, subject, shot or camera reset.\n\noverall_soundscape: Retain the source soundscape and its timing.\n\nnon_diegetic_music: Retain existing source music.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {}, "embeddings_downloads": {}, "lora_downloads": {}, "vae_downloads": {},
+  "model_list": [
+    "model_patches,minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors,2296635360,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/model_patches/minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
+    "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+    "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+    "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
+  ]
+}

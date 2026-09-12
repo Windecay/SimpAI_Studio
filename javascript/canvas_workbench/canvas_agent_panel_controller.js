@@ -39,6 +39,19 @@
             return text.replace(/["\\]/g, '\\$&');
         };
 
+        function applyCanvasAgentDecisionFormPatch(decision, formPatch) {
+            const patch = call('buildAgentDecisionFormPatch', null, decision, { formPatch });
+            if (patch && typeof patch === 'object' && patch.form
+                && typeof patch.form === 'object' && !Array.isArray(patch.form)) {
+                Object.assign(decision, patch);
+                return;
+            }
+            const currentForm = decision.form && typeof decision.form === 'object' && !Array.isArray(decision.form)
+                ? decision.form
+                : {};
+            Object.assign(decision, { form: Object.assign({}, currentForm, formPatch || {}) });
+        }
+
         function setCanvasAgentRunInfo(info) {
             const state = getAgentState();
             state.currentRun = info && typeof info === 'object' ? Object.assign({ updated_at: nowIso() }, info) : null;
@@ -138,7 +151,7 @@
             const currentPrompt = String(decision.form[promptKey] || '').trim();
             const autoPrompt = String(decision.promptAutoValue || '').trim();
             if (decision.promptEdited && currentPrompt && currentPrompt !== autoPrompt) return;
-            decision.form[promptKey] = nextPrompt;
+            applyCanvasAgentDecisionFormPatch(decision, { [promptKey]: nextPrompt });
             decision.promptAutoValue = nextPrompt;
             decision.promptEdited = false;
             const panel = getCanvasAgentPanel();
@@ -153,7 +166,7 @@
             const key = field?.getAttribute?.('data-canvas-agent-decision-field');
             if (!key) return;
             const value = String(field.type || '').toLowerCase() === 'range' ? Number(field.value) : field.value;
-            decision.form[key] = value;
+            applyCanvasAgentDecisionFormPatch(decision, { [key]: value });
             if (key === (decision.promptField || 'prompt')) {
                 const autoPrompt = String(decision.promptAutoValue || '').trim();
                 const currentPrompt = String(value || '').trim();

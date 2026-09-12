@@ -11,6 +11,26 @@
         return typeof ctx?.[name] === 'function' ? ctx[name](...args) : fallback;
     }
 
+    function cloneValue(value, fallback) {
+        try {
+            return JSON.parse(JSON.stringify(value ?? fallback));
+        } catch (err) {
+            return fallback;
+        }
+    }
+
+    function isRecord(value) {
+        return !!value && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function mergeObject(previous, next) {
+        return Object.assign(
+            {},
+            isRecord(previous) ? cloneValue(previous, {}) : {},
+            isRecord(next) ? cloneValue(next, {}) : {}
+        );
+    }
+
     function delegate(context, name) {
         if (typeof context?.[name] !== 'function') return undefined;
         return (...args) => context[name](...args);
@@ -30,6 +50,66 @@
         uid: delegate(context, 'uid')
     };
 }
+
+    function buildCompareStatePatch(node, options) {
+        const config = options || {};
+        const hasOwn = key => Object.prototype.hasOwnProperty.call(config, key);
+        const defaults = {
+            inputs: { a: null, b: null },
+            params: { position: 50, mode: 'fit' },
+            source: { kind: 'manual_compare' }
+        };
+        const initialState = isRecord(config.initialState) ? config.initialState : {};
+        const statePatch = isRecord(config.statePatch) ? config.statePatch : {};
+        const state = Object.assign(
+            {},
+            cloneValue(defaults, {}),
+            cloneValue(initialState, {}),
+            cloneValue(node || {}, {}),
+            cloneValue(statePatch, {})
+        );
+        const inputs = hasOwn('inputs')
+            ? (isRecord(config.inputs) ? cloneValue(config.inputs, {}) : {})
+            : mergeObject(
+                mergeObject(
+                    mergeObject(defaults.inputs, initialState.inputs),
+                    node?.inputs
+                ),
+                statePatch.inputs
+            );
+        if (isRecord(config.inputsPatch)) Object.assign(inputs, cloneValue(config.inputsPatch, {}));
+        (Array.isArray(config.deleteInputKeys) ? config.deleteInputKeys : []).forEach((key) => {
+            const name = String(key || '').trim();
+            if (name) delete inputs[name];
+        });
+        const params = hasOwn('params')
+            ? (isRecord(config.params) ? cloneValue(config.params, {}) : {})
+            : mergeObject(
+                mergeObject(
+                    mergeObject(defaults.params, initialState.params),
+                    node?.params
+                ),
+                statePatch.params
+            );
+        if (isRecord(config.paramsPatch)) Object.assign(params, cloneValue(config.paramsPatch, {}));
+        (Array.isArray(config.deleteParamKeys) ? config.deleteParamKeys : []).forEach((key) => {
+            const name = String(key || '').trim();
+            if (name) delete params[name];
+        });
+        const source = mergeObject(
+            mergeObject(
+                mergeObject(defaults.source, initialState.source),
+                node?.source
+            ),
+            statePatch.source
+        );
+        if (isRecord(config.sourcePatch)) Object.assign(source, cloneValue(config.sourcePatch, {}));
+        return {
+            inputs: cloneValue(inputs, {}),
+            params: cloneValue(params, {}),
+            source: cloneValue(source, {})
+        };
+    }
 
     function createNode(world, options, context) {
         const opts = options || {};
@@ -269,6 +349,7 @@ ${renderControls(node)}
     window.SimpAICanvasWorkbenchCompareNode = {
         createCompareNodeContext,
         createNode,
+        buildCompareStatePatch,
         sourceSignature,
         imageGeometry,
         viewportSize,

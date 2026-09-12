@@ -159,7 +159,7 @@
     const canvasWorkbenchToggleBtn = document.createElement('button');
     canvasWorkbenchToggleBtn.className = 'canvas-workbench-toggle work-entry-main';
     canvasWorkbenchToggleBtn.type = 'button';
-    canvasWorkbenchToggleBtn.title = t('Left click: open overlay. Right click: open standalone page.', '左键打开覆盖层；右键打开独立页');
+    canvasWorkbenchToggleBtn.title = t('Open Infinite Canvas in standalone page', '打开独立无限画布页面');
     canvasWorkbenchToggleBtn.setAttribute('aria-label', canvasWorkbenchToggleBtn.title);
 
     const canvasWorkbenchIcon = document.createElement('span');
@@ -254,68 +254,12 @@
         clearRevision: 0
     };
 
-    const CANVAS_WORKBENCH_MIN_LOADING_MS = 720;
     const CANVAS_WORKBENCH_STANDALONE_URL = '/canvas-workbench/app';
     const CANVAS_WORKBENCH_STANDALONE_TARGET = 'simpai-canvas-workbench';
-    const CANVAS_WORKBENCH_OPEN_MODE_KEY = 'simpai.canvasWorkbench.openMode';
-    const CANVAS_WORKBENCH_STANDALONE_ACTIVE_KEY = 'simpai.canvasWorkbench.standaloneActive';
-    const CANVAS_WORKBENCH_STANDALONE_ACTIVE_TTL_MS = 12000;
     const CANVAS_WORKBENCH_SYSTEM_PARAMS_KEY = 'simpai.canvasWorkbench.systemParams';
-    const canvasWorkbenchLazyState = {
-        stylesheetPromises: new Map(),
-        scriptPromises: new Map(),
-        loadingPromise: null,
-        overlayEl: null,
-        overlayTitleEl: null,
-        overlaySubtitleEl: null,
-        overlayShownAt: 0,
-        loaded: false
-    };
-    let canvasWorkbenchStandaloneMenuEl = null;
-    let canvasWorkbenchStandaloneMenuPointerHandler = null;
-
-    function waitMs(ms) {
-        return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, Number(ms) || 0)));
-    }
-
-    function getCanvasWorkbenchApi() {
-        const api = window.SimpAIInfiniteCanvasWorkbench;
-        return api && typeof api.open === 'function' ? api : null;
-    }
 
     function canvasWorkbenchStandaloneTitle() {
         return t('Open Infinite Canvas in standalone page', '打开独立无限画布页面');
-    }
-
-    function canvasWorkbenchInlineTitle() {
-        return t('Left click: open overlay. Right click: open standalone page.', '左键打开覆盖层；右键打开独立页');
-    }
-
-    function readCanvasWorkbenchStandaloneState() {
-        try {
-            const value = JSON.parse(localStorage.getItem(CANVAS_WORKBENCH_STANDALONE_ACTIVE_KEY) || '{}');
-            return value && typeof value === 'object' ? value : {};
-        } catch (err) {
-            return {};
-        }
-    }
-
-    function isCanvasWorkbenchStandaloneActive() {
-        const value = readCanvasWorkbenchStandaloneState();
-        const updatedAt = Number(value.updated_at || value.updatedAt || 0);
-        if (!value.active || !Number.isFinite(updatedAt) || updatedAt <= 0) return false;
-        return Date.now() - updatedAt < CANVAS_WORKBENCH_STANDALONE_ACTIVE_TTL_MS;
-    }
-
-    function writeCanvasWorkbenchStandaloneState(active) {
-        try {
-            localStorage.setItem(CANVAS_WORKBENCH_STANDALONE_ACTIVE_KEY, JSON.stringify({
-                active: !!active,
-                source: 'main',
-                updated_at: Date.now()
-            }));
-        } catch (err) {
-        }
     }
 
     function rememberCanvasWorkbenchSystemParams() {
@@ -330,11 +274,6 @@
 
     function openCanvasWorkbenchStandalone() {
         rememberCanvasWorkbenchSystemParams();
-        try {
-            localStorage.setItem(CANVAS_WORKBENCH_OPEN_MODE_KEY, 'standalone');
-        } catch (err) {
-        }
-        writeCanvasWorkbenchStandaloneState(true);
         const opened = window.open(CANVAS_WORKBENCH_STANDALONE_URL, CANVAS_WORKBENCH_STANDALONE_TARGET);
         if (opened && typeof opened.focus === 'function') {
             try { opened.focus(); } catch (err) {}
@@ -345,356 +284,8 @@
         return !!opened;
     }
 
-    function hideCanvasWorkbenchStandaloneMenu() {
-        if (canvasWorkbenchStandaloneMenuEl && canvasWorkbenchStandaloneMenuEl.parentElement) {
-            canvasWorkbenchStandaloneMenuEl.parentElement.removeChild(canvasWorkbenchStandaloneMenuEl);
-        }
-        canvasWorkbenchStandaloneMenuEl = null;
-        if (canvasWorkbenchStandaloneMenuPointerHandler) {
-            document.removeEventListener('pointerdown', canvasWorkbenchStandaloneMenuPointerHandler, true);
-            canvasWorkbenchStandaloneMenuPointerHandler = null;
-        }
-    }
-
-    function showCanvasWorkbenchStandaloneMenu(evt) {
-        if (evt) {
-            evt.preventDefault();
-            evt.stopPropagation();
-        }
-        if (canvasWorkbenchLazyState.loadingPromise) return;
-        rememberCanvasWorkbenchSystemParams();
-        hideCanvasWorkbenchStandaloneMenu();
-
-        const menu = document.createElement('div');
-        menu.className = 'canvas-workbench-standalone-menu';
-        menu.setAttribute('role', 'menu');
-
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'canvas-workbench-standalone-menu-item';
-        item.setAttribute('role', 'menuitem');
-        item.textContent = t('Open Standalone Page', '打开独立页');
-        item.addEventListener('click', (clickEvt) => {
-            clickEvt.preventDefault();
-            clickEvt.stopPropagation();
-            hideCanvasWorkbenchStandaloneMenu();
-            openCanvasWorkbenchStandalone();
-        });
-
-        menu.appendChild(item);
-        (document.body || document.documentElement).appendChild(menu);
-
-        const rect = menu.getBoundingClientRect();
-        const margin = 8;
-        const left = Math.max(margin, Math.min((evt && Number.isFinite(evt.clientX)) ? evt.clientX : margin, window.innerWidth - rect.width - margin));
-        const top = Math.max(margin, Math.min((evt && Number.isFinite(evt.clientY)) ? evt.clientY : margin, window.innerHeight - rect.height - margin));
-        menu.style.left = `${left}px`;
-        menu.style.top = `${top}px`;
-        canvasWorkbenchStandaloneMenuEl = menu;
-
-        canvasWorkbenchStandaloneMenuPointerHandler = (pointerEvt) => {
-            if (canvasWorkbenchStandaloneMenuEl && canvasWorkbenchStandaloneMenuEl.contains(pointerEvt.target)) return;
-            hideCanvasWorkbenchStandaloneMenu();
-        };
-        window.setTimeout(() => {
-            if (canvasWorkbenchStandaloneMenuEl) {
-                document.addEventListener('pointerdown', canvasWorkbenchStandaloneMenuPointerHandler, true);
-            }
-        }, 0);
-    }
-
-    function normalizeLazyScriptSrc(src) {
-        try {
-            return new URL(String(src || ''), window.location.href).href;
-        } catch (err) {
-            return String(src || '');
-        }
-    }
-
-    function getInfiniteCanvasLazyScripts() {
-        const assets = window.SimpAIInfiniteCanvasLazyAssets && typeof window.SimpAIInfiniteCanvasLazyAssets === 'object'
-            ? window.SimpAIInfiniteCanvasLazyAssets
-            : {};
-        const scripts = Array.isArray(assets.js) ? assets.js : [];
-        return scripts.map((src) => String(src || '').trim()).filter(Boolean);
-    }
-
-    function getInfiniteCanvasLazyStylesheets() {
-        const assets = window.SimpAIInfiniteCanvasLazyAssets && typeof window.SimpAIInfiniteCanvasLazyAssets === 'object'
-            ? window.SimpAIInfiniteCanvasLazyAssets
-            : {};
-        const stylesheets = Array.isArray(assets.css) ? assets.css : [];
-        return stylesheets.map((src) => String(src || '').trim()).filter(Boolean);
-    }
-
-    function findExistingLazyStylesheet(src) {
-        const normalized = normalizeLazyScriptSrc(src);
-        return Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).find((link) => {
-            if (!link) return false;
-            if (link.dataset && link.dataset.simpaiLazyCanvasCssSrc === normalized) return true;
-            return normalizeLazyScriptSrc(link.getAttribute('href') || link.href || '') === normalized;
-        }) || null;
-    }
-
-    function loadInfiniteCanvasStylesheetOnce(src) {
-        const normalized = normalizeLazyScriptSrc(src);
-        if (!normalized) return Promise.resolve(null);
-        if (canvasWorkbenchLazyState.stylesheetPromises.has(normalized)) {
-            return canvasWorkbenchLazyState.stylesheetPromises.get(normalized);
-        }
-
-        const existing = findExistingLazyStylesheet(src);
-        if (existing) {
-            existing.dataset.simpaiLazyCanvasCssLoaded = 'true';
-            const existingPromise = Promise.resolve(existing);
-            canvasWorkbenchLazyState.stylesheetPromises.set(normalized, existingPromise);
-            return existingPromise;
-        }
-
-        const promise = new Promise((resolve, reject) => {
-            const link = document.createElement('link');
-            let done = false;
-            const finish = () => {
-                if (done) return;
-                done = true;
-                link.dataset.simpaiLazyCanvasCssLoaded = 'true';
-                resolve(link);
-            };
-            const fail = () => {
-                if (done) return;
-                done = true;
-                canvasWorkbenchLazyState.stylesheetPromises.delete(normalized);
-                link.remove();
-                reject(new Error(`Failed to load infinite canvas stylesheet: ${src}`));
-            };
-            link.rel = 'stylesheet';
-            link.setAttribute('property', 'stylesheet');
-            link.dataset.simpaiLazyCanvasCssSrc = normalized;
-            link.addEventListener('load', finish, { once: true });
-            link.addEventListener('error', fail, { once: true });
-            link.href = src;
-            (document.head || document.documentElement).appendChild(link);
-        });
-
-        canvasWorkbenchLazyState.stylesheetPromises.set(normalized, promise);
-        return promise;
-    }
-
-    function findExistingLazyScript(src) {
-        const normalized = normalizeLazyScriptSrc(src);
-        return Array.from(document.scripts || []).find((script) => {
-            if (!script) return false;
-            if (script.dataset && script.dataset.simpaiLazyCanvasSrc === normalized) return true;
-            return normalizeLazyScriptSrc(script.getAttribute('src') || script.src || '') === normalized;
-        }) || null;
-    }
-
-    function loadInfiniteCanvasScriptOnce(src) {
-        const normalized = normalizeLazyScriptSrc(src);
-        if (!normalized) return Promise.resolve(null);
-        if (canvasWorkbenchLazyState.scriptPromises.has(normalized)) {
-            return canvasWorkbenchLazyState.scriptPromises.get(normalized);
-        }
-
-        let existing = findExistingLazyScript(src);
-        if (existing && existing.dataset && existing.dataset.simpaiLazyCanvasLoaded === 'true') {
-            return Promise.resolve(existing);
-        }
-        if (existing && existing.dataset && existing.dataset.simpaiLazyCanvasSrc === normalized) {
-            existing.remove();
-            existing = null;
-        }
-
-        const promise = new Promise((resolve, reject) => {
-            const script = existing || document.createElement('script');
-            let done = false;
-            const finish = () => {
-                if (done) return;
-                done = true;
-                script.dataset.simpaiLazyCanvasLoaded = 'true';
-                resolve(script);
-            };
-            const fail = () => {
-                if (done) return;
-                done = true;
-                canvasWorkbenchLazyState.scriptPromises.delete(normalized);
-                if (script.parentElement && script.dataset && script.dataset.simpaiLazyCanvasSrc === normalized) {
-                    script.remove();
-                }
-                reject(new Error(`Failed to load infinite canvas script: ${src}`));
-            };
-
-            if (script.dataset && script.dataset.simpaiLazyCanvasLoaded === 'true') {
-                finish();
-                return;
-            }
-
-            script.type = 'text/javascript';
-            script.async = false;
-            script.dataset.simpaiLazyCanvasSrc = normalized;
-            script.addEventListener('load', finish, { once: true });
-            script.addEventListener('error', fail, { once: true });
-            if (!existing) {
-                script.src = src;
-                (document.head || document.documentElement).appendChild(script);
-            }
-        });
-
-        canvasWorkbenchLazyState.scriptPromises.set(normalized, promise);
-        return promise;
-    }
-
-    function setCanvasWorkbenchButtonLoading(isLoading) {
-        canvasWorkbenchToggleBtn.classList.toggle('is-loading', !!isLoading);
-        canvasWorkbenchToggleBtn.toggleAttribute('aria-disabled', !!isLoading);
-        canvasWorkbenchToggleBtn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
-        canvasWorkbenchLabel.textContent = isLoading ? t('Loading', '加载中') : t('iCanvas', '无限画布');
-        canvasWorkbenchToggleBtn.title = isLoading
-            ? t('Loading Infinite Canvas', '正在加载无限画布')
-            : (isCanvasWorkbenchStandaloneActive() ? canvasWorkbenchStandaloneTitle() : canvasWorkbenchInlineTitle());
-        canvasWorkbenchToggleBtn.setAttribute('aria-label', canvasWorkbenchToggleBtn.title);
-    }
-
-    function getCanvasWorkbenchLoadingOverlay() {
-        if (canvasWorkbenchLazyState.overlayEl) return canvasWorkbenchLazyState.overlayEl;
-
-        const overlay = document.createElement('div');
-        overlay.className = 'canvas-workbench-loading-overlay';
-        overlay.setAttribute('aria-hidden', 'true');
-
-        const card = document.createElement('div');
-        card.className = 'canvas-workbench-loading-card';
-        card.setAttribute('role', 'status');
-        card.setAttribute('aria-live', 'polite');
-
-        const spinner = document.createElement('div');
-        spinner.className = 'canvas-workbench-loading-spinner';
-
-        const copy = document.createElement('div');
-        copy.className = 'canvas-workbench-loading-copy';
-
-        const title = document.createElement('div');
-        title.className = 'canvas-workbench-loading-title';
-
-        const subtitle = document.createElement('div');
-        subtitle.className = 'canvas-workbench-loading-subtitle';
-
-        copy.appendChild(title);
-        copy.appendChild(subtitle);
-        card.appendChild(spinner);
-        card.appendChild(copy);
-        overlay.appendChild(card);
-
-        canvasWorkbenchLazyState.overlayEl = overlay;
-        canvasWorkbenchLazyState.overlayTitleEl = title;
-        canvasWorkbenchLazyState.overlaySubtitleEl = subtitle;
-        return overlay;
-    }
-
-    function updateCanvasWorkbenchLoadingOverlayText() {
-        if (canvasWorkbenchLazyState.overlayTitleEl) {
-            canvasWorkbenchLazyState.overlayTitleEl.textContent = t('Loading Infinite Canvas', '正在加载无限画布');
-        }
-        if (canvasWorkbenchLazyState.overlaySubtitleEl) {
-            canvasWorkbenchLazyState.overlaySubtitleEl.textContent = t('Preparing the workbench for the first launch', '首次进入正在准备工作台资源');
-        }
-    }
-
-    function showCanvasWorkbenchLoadingOverlay() {
-        const overlay = getCanvasWorkbenchLoadingOverlay();
-        updateCanvasWorkbenchLoadingOverlayText();
-        canvasWorkbenchLazyState.overlayShownAt = Date.now();
-        if (!overlay.parentElement) {
-            (document.body || document.documentElement).appendChild(overlay);
-        }
-        overlay.setAttribute('aria-hidden', 'false');
-        setCanvasWorkbenchButtonLoading(true);
-        window.requestAnimationFrame(() => overlay.classList.add('is-visible'));
-    }
-
-    function hideCanvasWorkbenchLoadingOverlay() {
-        const overlay = canvasWorkbenchLazyState.overlayEl;
-        if (overlay) {
-            overlay.classList.remove('is-visible');
-            overlay.setAttribute('aria-hidden', 'true');
-        }
-        setCanvasWorkbenchButtonLoading(false);
-    }
-
-    async function ensureInfiniteCanvasLoaded(options) {
-        const currentApi = getCanvasWorkbenchApi();
-        if (currentApi) {
-            canvasWorkbenchLazyState.loaded = true;
-            return currentApi;
-        }
-        if (canvasWorkbenchLazyState.loadingPromise) {
-            return canvasWorkbenchLazyState.loadingPromise;
-        }
-
-        const showLoading = !options || options.showLoading !== false;
-        if (showLoading) showCanvasWorkbenchLoadingOverlay();
-
-        canvasWorkbenchLazyState.loadingPromise = (async () => {
-            const minDelay = showLoading ? waitMs(CANVAS_WORKBENCH_MIN_LOADING_MS) : Promise.resolve();
-            try {
-                if (typeof window.loadSimpleAILazyAssetGroup === 'function') {
-                    const ok = await window.loadSimpleAILazyAssetGroup('infiniteCanvas');
-                    if (!ok) throw new Error('Infinite canvas lazy assets are not configured.');
-                } else {
-                    const stylesheets = getInfiniteCanvasLazyStylesheets();
-                    await Promise.all(stylesheets.map((src) => loadInfiniteCanvasStylesheetOnce(src)));
-                    const scripts = getInfiniteCanvasLazyScripts();
-                    if (!scripts.length) {
-                        throw new Error('Infinite canvas lazy assets are not configured.');
-                    }
-                    for (const src of scripts) {
-                        await loadInfiniteCanvasScriptOnce(src);
-                    }
-                }
-                const api = getCanvasWorkbenchApi();
-                if (!api) {
-                    throw new Error('Infinite canvas API was not registered after scripts loaded.');
-                }
-                canvasWorkbenchLazyState.loaded = true;
-                await minDelay;
-                return api;
-            } finally {
-                await minDelay;
-                if (showLoading) hideCanvasWorkbenchLoadingOverlay();
-                canvasWorkbenchLazyState.loadingPromise = null;
-            }
-        })();
-
-        return canvasWorkbenchLazyState.loadingPromise;
-    }
-
-    async function openCanvasWorkbench(source) {
-        const currentApi = getCanvasWorkbenchApi();
-        if (currentApi) {
-            currentApi.open({ source });
-            return true;
-        }
-
-        try {
-            setTransferHintMessage(t('Canvas is loading', '画布加载中'), 2400);
-            const api = await ensureInfiniteCanvasLoaded({ showLoading: true });
-            api.open({ source });
-            return true;
-        } catch (err) {
-            console.warn('Open canvas workbench failed:', err);
-            setTransferHintMessage(t('Canvas is not ready', '画布未就绪'), 2400);
-            return false;
-        }
-    }
-
-    window.addEventListener('simpai:open-infinite-canvas', (evt) => {
-        if (isCanvasWorkbenchStandaloneActive()) {
-            openCanvasWorkbenchStandalone();
-            return;
-        }
-        if (getCanvasWorkbenchApi()) return;
-        const detail = evt && evt.detail && typeof evt.detail === 'object' ? evt.detail : {};
-        openCanvasWorkbench(detail.source || 'event');
+    window.addEventListener('simpai:open-infinite-canvas', () => {
+        openCanvasWorkbenchStandalone();
     });
 
     window.addEventListener('simpai:system-params-updated', () => {
@@ -703,7 +294,7 @@
     });
 
     window.addEventListener('storage', (evt) => {
-        if (!evt || (evt.key !== CANVAS_WORKBENCH_OPEN_MODE_KEY && evt.key !== CANVAS_WORKBENCH_STANDALONE_ACTIVE_KEY && evt.key !== CANVAS_WORKBENCH_SYSTEM_PARAMS_KEY)) return;
+        if (!evt || evt.key !== CANVAS_WORKBENCH_SYSTEM_PARAMS_KEY) return;
         refreshLocalizedStaticText();
     });
 
@@ -727,8 +318,6 @@
     function refreshLocalizedStaticText() {
         const staticKey = JSON.stringify([
             getStatusMonitorLang(),
-            !!canvasWorkbenchLazyState.loadingPromise,
-            isCanvasWorkbenchStandaloneActive(),
             !!transferState.expanded,
             transferState.items.length,
             transferState.hintOverride || '',
@@ -740,14 +329,10 @@
         reconnectBtn.textContent = state.reloadScheduled
             ? ` ${tr('Restoring workspace')}`
             : ` ${tr('Reconnect')}`;
-        canvasWorkbenchLabel.textContent = canvasWorkbenchLazyState.loadingPromise ? t('Loading', '加载中') : t('iCanvas', '无限画布');
-        canvasWorkbenchToggleBtn.title = canvasWorkbenchLazyState.loadingPromise
-            ? t('Loading Infinite Canvas', '正在加载无限画布')
-            : (isCanvasWorkbenchStandaloneActive() ? canvasWorkbenchStandaloneTitle() : canvasWorkbenchInlineTitle());
+        canvasWorkbenchLabel.textContent = t('iCanvas', '无限画布');
+        canvasWorkbenchToggleBtn.title = canvasWorkbenchStandaloneTitle();
         canvasWorkbenchToggleBtn.setAttribute('aria-label', canvasWorkbenchToggleBtn.title);
         workEntryTile.title = t('Drag to move. Drop images here for the transfer station.', '拖拽移动；拖放图片到这里进入中转站');
-        setCanvasWorkbenchButtonLoading(!!canvasWorkbenchLazyState.loadingPromise);
-        updateCanvasWorkbenchLoadingOverlayText();
         transferPasteBtn.textContent = t('Paste', '粘贴');
         transferCopyBtn.textContent = t('Copy', '复制');
         transferClearBtn.textContent = t('Clear', '清空');
@@ -1281,52 +866,6 @@
             outline: none;
         }
 
-        .status-indicator .canvas-workbench-toggle:disabled,
-        .status-indicator .canvas-workbench-toggle[aria-disabled="true"] {
-            cursor: progress;
-            opacity: 0.88;
-        }
-
-        .status-indicator .canvas-workbench-toggle.is-loading .work-entry-icon {
-            border: 2px solid currentColor;
-            border-top-color: transparent;
-            background: transparent;
-            font-size: 0;
-            animation: simpaiCanvasLazySpin 0.8s linear infinite;
-        }
-
-        .canvas-workbench-standalone-menu {
-            position: fixed;
-            z-index: 2147483647 !important;
-            min-width: 132px;
-            padding: 5px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            background: rgba(30, 30, 32, 0.96);
-            color: #f4f4f5;
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
-            pointer-events: auto;
-        }
-
-        .canvas-workbench-standalone-menu-item {
-            width: 100%;
-            border: none;
-            border-radius: 6px;
-            padding: 7px 9px;
-            background: transparent;
-            color: inherit;
-            font-size: 12px;
-            line-height: 1.2;
-            text-align: left;
-            cursor: pointer;
-        }
-
-        .canvas-workbench-standalone-menu-item:hover,
-        .canvas-workbench-standalone-menu-item:focus-visible {
-            background: rgba(255, 255, 255, 0.12);
-            outline: none;
-        }
-
         .status-indicator .status-content {
             min-height: 62px;
             padding: 4px;
@@ -1487,88 +1026,6 @@
 
         .status-indicator.transfer-expanded .work-entry-tile {
             overflow: visible;
-        }
-
-        .canvas-workbench-loading-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2147483646;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            box-sizing: border-box;
-            background: rgba(14, 14, 16, 0.34);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 180ms ease;
-        }
-
-        .canvas-workbench-loading-overlay.is-visible {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .canvas-workbench-loading-card {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            min-width: min(360px, calc(100vw - 48px));
-            max-width: min(460px, calc(100vw - 48px));
-            padding: 18px 20px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(34, 34, 36, 0.96);
-            color: #f4f4f5;
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
-            transform: translateY(8px) scale(0.985);
-            transition: transform 180ms ease;
-        }
-
-        .canvas-workbench-loading-overlay.is-visible .canvas-workbench-loading-card {
-            transform: translateY(0) scale(1);
-        }
-
-        .canvas-workbench-loading-spinner {
-            width: 24px;
-            height: 24px;
-            flex: 0 0 auto;
-            border-radius: 999px;
-            border: 3px solid rgba(255, 255, 255, 0.28);
-            border-top-color: #f4f4f5;
-            animation: simpaiCanvasLazySpin 0.8s linear infinite;
-        }
-
-        .canvas-workbench-loading-copy {
-            display: flex;
-            min-width: 0;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .canvas-workbench-loading-title {
-            font-size: 15px;
-            line-height: 1.35;
-            font-weight: 700;
-            color: #ffffff;
-        }
-
-        .canvas-workbench-loading-subtitle {
-            font-size: 12px;
-            line-height: 1.45;
-            color: rgba(244, 244, 245, 0.72);
-        }
-
-        @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
-            .canvas-workbench-loading-overlay {
-                background: rgba(14, 14, 16, 0.24);
-                -webkit-backdrop-filter: blur(8px);
-                backdrop-filter: blur(8px);
-            }
-        }
-
-        @keyframes simpaiCanvasLazySpin {
-            to { transform: rotate(360deg); }
         }
 
         .status-indicator .transfer-panel {
@@ -3284,23 +2741,9 @@
 
     function initTransferActions() {
         canvasWorkbenchToggleBtn.addEventListener('click', (e) => {
-            rememberCanvasWorkbenchSystemParams();
-            if (canvasWorkbenchLazyState.loadingPromise) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
             e.preventDefault();
             e.stopPropagation();
-            if (isCanvasWorkbenchStandaloneActive()) {
-                openCanvasWorkbenchStandalone();
-                return;
-            }
-            openCanvasWorkbench('status_entry');
-        });
-
-        canvasWorkbenchToggleBtn.addEventListener('contextmenu', (e) => {
-            showCanvasWorkbenchStandaloneMenu(e);
+            openCanvasWorkbenchStandalone();
         });
 
         transferToggleBtn.addEventListener('click', (e) => {
@@ -3585,11 +3028,7 @@
             remove: removeTransferItem,
             clear: clearTransferItems,
             setExpanded: (expanded) => setTransferExpanded(!!expanded, true),
-            openWorkbench: () => {
-                const ready = !!getCanvasWorkbenchApi();
-                openCanvasWorkbench('transfer_station_api');
-                return ready;
-            },
+            openWorkbench: openCanvasWorkbenchStandalone,
             onChange: (listener) => {
                 if (typeof listener !== 'function') return () => {};
                 transferListeners.add(listener);

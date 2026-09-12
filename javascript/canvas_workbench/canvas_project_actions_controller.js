@@ -7,6 +7,21 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         let importProjectInput = null;
 
+        function applyProjectSettingsMergePatch(project, updates) {
+            const fallback = {
+                settings: Object.assign({}, project?.settings || {}, updates || {})
+            };
+            Object.assign(project, call('buildProjectSettingsMergePatch', fallback, project, updates));
+        }
+
+        function applyProjectStoragePatch(project, storage) {
+            Object.assign(project, call('buildProjectStoragePatch', { storage }, project, storage));
+        }
+
+        function applyProjectIdentityPatch(project, id, title) {
+            Object.assign(project, call('buildProjectIdentityPatch', { id, title }, project, { id, title }));
+        }
+
         function clearBrowserCache() {
             const storage = call('getStorage', null);
             try {
@@ -43,11 +58,11 @@
                 return false;
             }
             const nextProject = call('sanitizeProject', {}, result.project || call('createDefaultProject', {}, [])) || {};
-            nextProject.settings = Object.assign({}, nextProject.settings || {}, { __demo_initialized: true });
+            applyProjectSettingsMergePatch(nextProject, { __demo_initialized: true });
             const storageScope = call('getStorageScope', {}, []);
             call('setProject', null, nextProject);
             call('setActiveBrowserCacheProject', null, nextProject.id || call('getDefaultProjectId', 'default', []), storageScope);
-            if (result.storage) nextProject.storage = result.storage;
+            if (result.storage) applyProjectStoragePatch(nextProject, result.storage);
             call('resetRenderedProjectDomCache', null);
             call('saveProjectToBrowserCache', null);
             call('resetSelectionState', null);
@@ -73,7 +88,7 @@
                 id: currentProject.id || call('getDefaultProjectId', 'default', []),
                 storage
             }) || {};
-            demo.storage = storage;
+            applyProjectStoragePatch(demo, storage);
             call('setProject', null, demo);
             call('resetRenderedProjectDomCache', null);
             call('resetSelectionState', null);
@@ -94,11 +109,13 @@
             call('pushHistory', null, 'Clear canvas');
             call('interruptDeletedResultRuns', null, nodes);
             call('stopTimelinePlayback', false);
-            currentProject.groups = [];
-            currentProject.nodes = [];
-            currentProject.edges = [];
-            currentProject.runs = [];
-            currentProject.settings = Object.assign({}, currentProject.settings || {}, { __demo_initialized: true });
+            Object.assign(currentProject, call('buildProjectCanvasClearPatch', {
+                groups: [],
+                nodes: [],
+                edges: [],
+                runs: []
+            }, currentProject));
+            applyProjectSettingsMergePatch(currentProject, { __demo_initialized: true });
             call('resetSelectionState', null);
             call('mutate', null);
             return true;
@@ -138,8 +155,7 @@
             const storageKey = call('getStorageKey', '', []);
             const nextProject = call('loadProject', {}, storageKey, call('browserCacheProjectScope', {}, storageScope)) || {};
             if ((nextProject.id || defaultId) !== safeId) {
-                nextProject.id = safeId;
-                nextProject.title = nextProject.title || safeId;
+                applyProjectIdentityPatch(nextProject, safeId, nextProject.title || safeId);
             }
             call('setProject', null, nextProject);
             call('resetRenderedProjectDomCache', null);
@@ -150,7 +166,8 @@
             const loaded = await call('loadProjectFromBackend', false, { force: false });
             if (!loaded) {
                 const fallbackProject = call('getCurrentProject', {}, []) || nextProject;
-                fallbackProject.storage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
+                const fallbackStorage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
+                applyProjectStoragePatch(fallbackProject, fallbackStorage);
                 await call('saveProject', null, true, { persist: false });
                 call('renderAll', null);
             }
@@ -193,8 +210,7 @@
             const storageKey = call('getStorageKey', '', []);
             const nextProject = call('loadProject', {}, storageKey, call('browserCacheProjectScope', {}, storageScope)) || {};
             if ((nextProject.id || defaultId) !== safeId) {
-                nextProject.id = safeId;
-                nextProject.title = nextProject.title || safeId;
+                applyProjectIdentityPatch(nextProject, safeId, nextProject.title || safeId);
             }
             call('setProject', null, nextProject);
             call('resetRenderedProjectDomCache', null);
@@ -204,7 +220,8 @@
             call('renderAll', null);
             const ok = await call('loadProjectFromBackend', false, { force: false });
             if (!ok && opts.createIfMissing) {
-                nextProject.storage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
+                const nextStorage = call('buildProjectStorageInfo', {}, storageKey, storageScope);
+                applyProjectStoragePatch(nextProject, nextStorage);
                 await call('saveProject', false, true, { persist: false });
                 call('renderAll', null);
                 call('showToast', null, t('Created local workbench cache: {id}', '已创建本地工作台缓存：{id}').replace('{id}', safeId));
@@ -232,11 +249,12 @@
             if (deletedId !== (currentProject.id || defaultId)) return false;
             const storageScope = call('getStorageScope', {}, []);
             const storageKey = call('getStorageKey', '', []);
-            currentProject.storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope), {
+            const storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope), {
                 deleted_from_disk: true,
                 deleted_from_disk_at: call('nowIso', new Date().toISOString()),
                 location: t('{location} (browser cache kept)', '{location}（浏览器缓存保留）').replace('{location}', storageScope.location)
             });
+            applyProjectStoragePatch(currentProject, storage);
             call('setProject', null, currentProject);
             call('syncCanvasProjectAssetRoot', null, currentProject);
             call('setBackendLoadedStorageKey', null, '');
@@ -284,9 +302,9 @@
                 const storageScope = call('getStorageScope', {}, []);
                 call('setActiveBrowserCacheProject', null, nextProjectId, storageScope);
                 const nextProject = call('sanitizeProject', {}, incoming) || {};
-                nextProject.id = nextProjectId;
-                nextProject.title = nextProject.title || nextProjectId;
-                nextProject.storage = call('buildProjectStorageInfo', {}, call('getStorageKey', '', []), storageScope);
+                applyProjectIdentityPatch(nextProject, nextProjectId, nextProject.title || nextProjectId);
+                const nextStorage = call('buildProjectStorageInfo', {}, call('getStorageKey', '', []), storageScope);
+                applyProjectStoragePatch(nextProject, nextStorage);
                 call('setProject', null, nextProject);
                 call('resetRenderedProjectDomCache', null);
                 call('resetSelectionState', null);

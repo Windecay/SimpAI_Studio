@@ -32,7 +32,18 @@
         const scheduleSave = (...args) => {
             if (typeof scope.scheduleSave === 'function') scope.scheduleSave(...args);
         };
+        const buildResultLayoutPatch = typeof scope.buildResultLayoutPatch === 'function'
+            ? scope.buildResultLayoutPatch
+            : (_resultNode, patch) => Object.assign({}, patch || {});
+        const buildNodeLayoutPatch = typeof scope.buildNodeLayoutPatch === 'function'
+            ? scope.buildNodeLayoutPatch
+            : (_node, patch) => Object.assign({}, patch || {});
         const collapsedPromptMinHeight = Math.max(1, Number(scope.collapsedPromptMinHeight || 220));
+
+        function applyNodeLayoutPatch(node, options) {
+            const patch = buildNodeLayoutPatch(node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        }
 
         function defaultResultNodeSize(asset) {
             const base = defaultNodeSize('result');
@@ -94,12 +105,12 @@
             const previousW = Number(node.w || defaultNodeSize('image').w || size.w);
             const previousH = Number(node.h || defaultNodeSize('image').h || size.h);
             if (Math.abs(previousW - size.w) < 1 && Math.abs(previousH - size.h) < 1) return false;
+            const layoutPatch = { w: size.w, h: size.h };
             if (options?.preserveCenter !== false) {
-                node.x = Math.round(Number(node.x || 0) + (previousW - size.w) / 2);
-                node.y = Math.round(Number(node.y || 0) + (previousH - size.h) / 2);
+                layoutPatch.x = Math.round(Number(node.x || 0) + (previousW - size.w) / 2);
+                layoutPatch.y = Math.round(Number(node.y || 0) + (previousH - size.h) / 2);
             }
-            node.w = size.w;
-            node.h = size.h;
+            applyNodeLayoutPatch(node, layoutPatch);
             return true;
         }
 
@@ -107,14 +118,16 @@
             if (!resultNode || resultNode.type !== 'result') return false;
             const size = defaultResultNodeSize(asset);
             let changed = false;
+            const layoutPatch = {};
             if (Number(resultNode.w || 0) < size.w) {
-                resultNode.w = size.w;
+                layoutPatch.w = size.w;
                 changed = true;
             }
             if (Number(resultNode.h || 0) < size.h) {
-                resultNode.h = size.h;
+                layoutPatch.h = size.h;
                 changed = true;
             }
+            if (changed) Object.assign(resultNode, buildResultLayoutPatch(resultNode, layoutPatch));
             return changed;
         }
 
@@ -139,15 +152,19 @@
             if (!node || node.type !== 'media_browser') return false;
             const size = minResizableNodeSize(node);
             let changed = false;
+            const layoutPatch = {};
             if (Number(node.w || 0) < size.w) {
-                node.w = size.w;
+                layoutPatch.w = size.w;
                 changed = true;
             }
             if (Number(node.h || 0) < size.h) {
-                node.h = size.h;
+                layoutPatch.h = size.h;
                 changed = true;
             }
-            if (changed) scheduleSave();
+            if (changed) {
+                applyNodeLayoutPatch(node, layoutPatch);
+                scheduleSave();
+            }
             return changed;
         }
 
@@ -213,8 +230,7 @@
                 { w: node.w || defaultNodeSize(node.type).w, h: node.h || defaultNodeSize(node.type).h },
                 options
             );
-            node.x = position.x;
-            node.y = position.y;
+            applyNodeLayoutPatch(node, { x: position.x, y: position.y });
             if (Array.isArray(reserved)) reserved.push(getNodeRect(node));
             return node;
         }

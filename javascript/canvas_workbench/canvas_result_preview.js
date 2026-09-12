@@ -15,6 +15,12 @@
         const getNodeElement = (id) => call('getNodeElement', null, id);
         const nodeStatusState = (node) => call('nodeStatusState', '', node);
         const isRunActive = (state) => !!call('isCanvasRunActiveState', false, state);
+        const applyResultPreviewPatch = (node, options) => {
+            if (!node) return {};
+            const patch = call('buildResultPreviewPatch', {}, node, options) || {};
+            Object.assign(node, patch);
+            return patch;
+        };
         const cloneValue = (value, fallback) => {
             if (typeof scope.cloneRunValue === 'function') return scope.cloneRunValue(value, fallback);
             try {
@@ -237,7 +243,8 @@
             const stepKey = String(stream.step_key || incoming[incoming.length - 1]?.step_key || '');
             let frames = Array.isArray(resultNode.preview_frames) ? resultNode.preview_frames.slice(-11) : [];
             if (stepKey && resultNode.preview_step_key && resultNode.preview_step_key !== stepKey) frames = [];
-            if (stepKey) resultNode.preview_step_key = stepKey;
+            const previewPatch = {};
+            if (stepKey) previewPatch.previewStepKey = stepKey;
             const seen = new Set(frames.map((frame) => {
                 const serial = Number(frame?.serial || 0) || 0;
                 return serial ? `s:${serial}` : `u:${frame?.data_url || frame?.thumb || ''}`;
@@ -252,7 +259,8 @@
                 seen.add(key);
                 frames.push(cloneValue(rawFrame, {}));
             });
-            resultNode.preview_frames = frames.slice(-12);
+            previewPatch.previewFrames = frames.slice(-12);
+            applyResultPreviewPatch(resultNode, previewPatch);
         }
 
         return {

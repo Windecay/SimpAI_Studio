@@ -187,7 +187,8 @@ def _coerce_scene_slider_value(value, minimum=None, maximum=None, step=None):
             number = max(number, float(minimum))
         if maximum is not None:
             number = min(number, float(maximum))
-        if step == 1 or all(isinstance(v, int) and not isinstance(v, bool) for v in (minimum, maximum) if v is not None):
+        # An explicit fractional step takes precedence over integer-looking bounds.
+        if step == 1 or (step is None and all(isinstance(v, int) and not isinstance(v, bool) for v in (minimum, maximum) if v is not None)):
             return int(round(number))
         return number
     except Exception:
@@ -703,25 +704,25 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     var_number3_min = scenes.get('var_number3_min', 0.0)
     var_number3_max = scenes.get('var_number3_max', 1.0)
     var_number3_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number3', 0.0)
-    results.append(get_scene_safe_update('scene_var_number3', var_number3_default if switch_flag else var_number3, visible, inter, label=var_number3_title, minimum=var_number3_min, maximum=var_number3_max))
+    results.append(get_scene_safe_update('scene_var_number3', var_number3_default if switch_flag else var_number3, visible, inter, label=var_number3_title, minimum=var_number3_min, maximum=var_number3_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number3_step', 0.05)))
 
     var_number4_title = scene_localized_text(state, scenes, 'var_number4_title', 'Float Value 2')
     var_number4_min = scenes.get('var_number4_min', 0.0)
     var_number4_max = scenes.get('var_number4_max', 1.0)
     var_number4_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number4', 0.0)
-    results.append(get_scene_safe_update('scene_var_number4', var_number4_default if switch_flag else var_number4, visible, inter, label=var_number4_title, minimum=var_number4_min, maximum=var_number4_max))
+    results.append(get_scene_safe_update('scene_var_number4', var_number4_default if switch_flag else var_number4, visible, inter, label=var_number4_title, minimum=var_number4_min, maximum=var_number4_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number4_step', 0.05)))
 
     var_number5_title = scene_localized_text(state, scenes, 'var_number5_title', 'Float Value 3')
     var_number5_min = scenes.get('var_number5_min', 0.0)
     var_number5_max = scenes.get('var_number5_max', 1.0)
     var_number5_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number5', 0.0)
-    results.append(get_scene_safe_update('scene_var_number5', var_number5_default if switch_flag else var_number5, visible, inter, label=var_number5_title, minimum=var_number5_min, maximum=var_number5_max))
+    results.append(get_scene_safe_update('scene_var_number5', var_number5_default if switch_flag else var_number5, visible, inter, label=var_number5_title, minimum=var_number5_min, maximum=var_number5_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number5_step', 0.05)))
 
     var_number6_title = scene_localized_text(state, scenes, 'var_number6_title', 'Float Value 4')
     var_number6_min = scenes.get('var_number6_min', 0.0)
     var_number6_max = scenes.get('var_number6_max', 1.0)
     var_number6_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number6', 0.0)
-    results.append(get_scene_safe_update('scene_var_number6', var_number6_default if switch_flag else var_number6, visible, inter, label=var_number6_title, minimum=var_number6_min, maximum=var_number6_max))
+    results.append(get_scene_safe_update('scene_var_number6', var_number6_default if switch_flag else var_number6, visible, inter, label=var_number6_title, minimum=var_number6_min, maximum=var_number6_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number6_step', 0.05)))
 
     var_number7_title = scene_localized_text(state, scenes, 'var_number7_title', 'Int Value 3')
     var_number7_min = scenes.get('var_number7_min', 0)
@@ -1247,6 +1248,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number3_title,
             minimum=var_number3_min,
             maximum=var_number3_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number3_step', 0.05),
         ))
 
         var_number4_title = scene_localized_text(state_params, scenes, 'var_number4_title', 'Float Value 2')
@@ -1260,6 +1262,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number4_title,
             minimum=var_number4_min,
             maximum=var_number4_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number4_step', 0.05),
         ))
 
         var_number5_title = scene_localized_text(state_params, scenes, 'var_number5_title', 'Float Value 3')
@@ -1273,6 +1276,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number5_title,
             minimum=var_number5_min,
             maximum=var_number5_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number5_step', 0.05),
         ))
 
         var_number6_title = scene_localized_text(state_params, scenes, 'var_number6_title', 'Float Value 4')
@@ -1286,6 +1290,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             label=var_number6_title,
             minimum=var_number6_min,
             maximum=var_number6_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number6_step', 0.05),
         ))
 
         var_number7_title = scene_localized_text(state_params, scenes, 'var_number7_title', 'Int Value 3')

@@ -21,31 +21,16 @@
                 ? call('captureTimelineMaskGeometry', null, node)
                 : null;
             call('pushHistoryBatch', undefined, `timeline-param:${nodeId}:${key}`, 'Edit timeline');
-            node.params = Object.assign({}, node.params || {});
-            if (key === 'size_preset') {
-                node.params.size_preset = value;
-                if (value && value !== 'custom') {
-                    const match = String(value).match(/^(\d+)x(\d+)$/i);
-                    if (match) {
-                        node.params.width = Number(match[1]);
-                        node.params.height = Number(match[2]);
-                        node.params.aspect = `${match[1]}:${match[2]}`;
-                    }
-                }
-            } else if (key === 'fps_preset') {
-                node.params.fps_preset = value;
-                if (value && value !== 'custom') node.params.fps = Number(value);
-            } else if (inputType === 'number' || inputType === 'range') {
-                const parsed = Number(value);
-                node.params[key] = Number.isFinite(parsed) ? parsed : value;
-                if (key === 'width' || key === 'height') node.params.size_preset = 'custom';
-                if (key === 'fps') node.params.fps_preset = 'custom';
-            } else {
-                node.params[key] = value;
-            }
+            Object.assign(node, call(
+                'buildTimelineParamUpdatePatch',
+                { params: Object.assign({}, node.params || {}, { [key]: value }) },
+                node,
+                key,
+                value,
+                inputType
+            ));
             if (maskGeometrySnapshot) call('remapTimelineMasksAfterCanvasResize', undefined, node, maskGeometrySnapshot);
             if (key === 'mask_feather') call('applyTimelineMaskFeatherToSelectedClip', undefined, node);
-            if (key === 'preview_tool' && value === 'mask') node.params.mask_mode = 'pen';
             call('normalizeTimelineNode', undefined, node);
             if (options?.render === false) call('scheduleSave');
             else call('mutate', undefined, { inspector: true });
@@ -59,22 +44,22 @@
             const maskGeometrySnapshot = clip.mask && ['x', 'y', 'scale', 'rotate'].includes(key)
                 ? call('timelineMaskLayerGeometry', null, node, clip)
                 : null;
-            node.params = Object.assign({}, node.params || {}, { selected_clip_id: clip.id });
+            Object.assign(node, call(
+                'buildTimelineParamsPatch',
+                { params: Object.assign({}, node.params || {}, { selected_clip_id: clip.id }) },
+                node,
+                { selected_clip_id: clip.id }
+            ));
             call('pushHistoryBatch', undefined, `timeline-clip:${nodeId}:${clipId}:${key}`, 'Edit timeline clip');
-            if (inputType === 'number' || inputType === 'range') {
-                const parsed = Number(value);
-                clip[key] = Number.isFinite(parsed) ? parsed : value;
-            } else {
-                clip[key] = value;
-            }
-            if (key === 'opacity') clip.opacity = clamp(Number(clip.opacity ?? 1), 0, 1);
-            if (key === 'volume') clip.volume = clamp(Number(clip.volume ?? 1), 0, 2);
-            if (key === 'scale') clip.scale = Math.max(0.05, Number(clip.scale ?? 1));
-            if (key === 'rotate') clip.rotate = Number(clip.rotate || 0);
-            if (key === 'start') clip.start = Math.max(0, Number(clip.start || 0));
-            if (key === 'duration') clip.duration = Math.max(0.05, Number(clip.duration || 0.05));
+            Object.assign(clip, call(
+                'buildTimelineClipParamUpdatePatch',
+                { [key]: value },
+                clip,
+                key,
+                value,
+                inputType
+            ));
             if (['duration', 'start', 'in'].includes(key)) call('enforceTimelineClipMediaBounds', undefined, node, clip);
-            if (key && key.startsWith('crop_')) clip[key] = clamp(Number(clip[key] || 0), 0, 95);
             call('syncTimelineClipTransformKeyframeAtPlayhead', undefined, node, clip, [key]);
             if (maskGeometrySnapshot) call('remapTimelineClipMaskForGeometryChange', undefined, node, clip, maskGeometrySnapshot);
             call('normalizeTimelineNode', undefined, node);

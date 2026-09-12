@@ -443,35 +443,39 @@ class MiniMaxH3FunControlPatch:
         spatial_compression = self.vae.spacial_compression_encode()
         width = latent_width * spatial_compression
         height = latent_height * spatial_compression
-        loaded_models = comfy.model_management.loaded_models(only_currently_used=True)
+        hint = None
+        if self.control_video is not None:
+            frames = self._fit_frames(self.control_video, frame_count, width, height)
+            hint = self._encode(frames, target_shape)
 
-        try:
-            hint = None
-            if self.control_video is not None:
-                frames = self._fit_frames(self.control_video, frame_count, width, height)
-                hint = self._encode(frames, target_shape)
-
-            if self.mask is not None:
-                mask = (self.mask.reshape(-1, 1, self.mask.shape[-2], self.mask.shape[-1]) > 0.5).to(torch.float32)
-                indices = torch.arange(frame_count, device=mask.device).clamp(max=mask.shape[0] - 1)
-                mask = comfy.utils.common_upscale(mask[indices], width, height, "bilinear", "center")
-                visibility = 1.0 - (mask > 0.5).to(torch.float32)
-                if self.source_video is None:
-                    source = torch.zeros(frame_count, 3, height, width, dtype=visibility.dtype, device=visibility.device)
-                else:
-                    source = self._fit_frames(self.source_video, frame_count, width, height)
-                masked_latent = self._encode(source * visibility.to(source.device), target_shape)
-                if hint is None:
-                    hint = torch.zeros_like(masked_latent)
-                visibility_latent = F.interpolate(
-                    visibility.squeeze(1)[None, None], size=(latent_frames, latent_height, latent_width),
-                    mode="trilinear", align_corners=False)
-                hint = torch.cat([hint, visibility_latent.to(hint.device), masked_latent.to(hint.device)], dim=1)
-        finally:
-            comfy.model_management.load_models_gpu(loaded_models)
+        if self.mask is not None:
+            mask = (self.mask.reshape(-1, 1, self.mask.shape[-2], self.mask.shape[-1]) > 0.5).to(torch.float32)
+            indices = torch.arange(frame_count, device=mask.device).clamp(max=mask.shape[0] - 1)
+            mask = comfy.utils.common_upscale(mask[indices], width, height, "bilinear", "center")
+            visibility = 1.0 - (mask > 0.5).to(torch.float32)
+            if self.source_video is None:
+                source = torch.zeros(frame_count, 3, height, width, dtype=visibility.dtype, device=visibility.device)
+            else:
+                source = self._fit_frames(self.source_video, frame_count, width, height)
+            masked_latent = self._encode(source * visibility.to(source.device), target_shape)
+            if hint is None:
+                hint = torch.zeros_like(masked_latent)
+            visibility_latent = F.interpolate(
+                visibility.squeeze(1)[None, None], size=(latent_frames, latent_height, latent_width),
+                mode="trilinear", align_corners=False)
+            hint = torch.cat([hint, visibility_latent.to(hint.device), masked_latent.to(hint.device)], dim=1)
 
         self.control_latent = hint
         self.control_latent_shape = target_shape
+
+    def outer_sample_wrapper(self, executor, noise, latent_image, sampler, sigmas, *args, latent_shapes=None, **kwargs):
+        # VAE encoding must precede prepare_sampling's model load and memory estimate.
+        target_shape = latent_shapes[0] if latent_shapes is not None else noise.shape
+        try:
+            self.prepare_control_latent(target_shape)
+            return executor(noise, latent_image, sampler, sigmas, *args, latent_shapes=latent_shapes, **kwargs)
+        finally:
+            self.cleanup()
 
     def diffusion_model_wrapper(self, executor, x, timestep, context, transformer_options={}, **kwargs):
         sigmas = transformer_options.get("sigmas")
@@ -479,8 +483,8 @@ class MiniMaxH3FunControlPatch:
         self.active = self.sigma_end <= sigma <= self.sigma_start
         self.control_stream = None
         if self.active:
-            with comfy.model_prefetch.pause_malloc_graph():
-                self.prepare_control_latent(x[0].shape)
+            if self.control_latent is None or self.control_latent_shape != tuple(x[0].shape):
+                raise RuntimeError("MiniMax H3 control latent was not prepared for this sampling shape")
         try:
             return executor(x, timestep, context, transformer_options, **kwargs)
         finally:
@@ -527,6 +531,7 @@ class MiniMaxH3FunControlPatch:
         return [self.model_patch]
 
     def register(self, model):
+        model.add_wrapper(comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, self.outer_sample_wrapper)
         model.add_wrapper(comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, self.diffusion_model_wrapper)
         for block_index in self.model_patch.model.injection_layers:
             blocks_replace = model.model_options.get("transformer_options", {}).get("patches_replace", {}).get("dit", {})

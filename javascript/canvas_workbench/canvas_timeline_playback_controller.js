@@ -27,6 +27,9 @@
             }
             clearTimeout(handle);
         };
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
+            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+            : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         let playbackState = null;
 
         function refreshTimelinePlaybackButtonDom(nodeEl, node) {
@@ -50,7 +53,7 @@
 
         function toggleTimelinePreviewPlayback(node) {
             if (!node || node.type !== 'timeline') return false;
-            node.params = Object.assign({}, node.params || {}, { preview_playing: !node.params?.preview_playing });
+            Object.assign(node, buildTimelineParamsPatch(node, { preview_playing: !node.params?.preview_playing }));
             if (node.params.preview_playing) startTimelinePlayback(node.id);
             else stopTimelinePlayback(node.id);
             syncTimelinePlaybackDom(getNodeElement(node.id), node);
@@ -60,7 +63,7 @@
 
         function playTimelineFromStart(node) {
             if (!node || node.type !== 'timeline') return false;
-            node.params = Object.assign({}, node.params || {}, { playhead: 0, preview_playing: true });
+            Object.assign(node, buildTimelineParamsPatch(node, { playhead: 0, preview_playing: true }));
             const nodeEl = getNodeElement(node.id);
             if (nodeEl) {
                 call('refreshTimelinePlayheadDom', undefined, nodeEl, node);
@@ -96,8 +99,10 @@
                 const elapsed = (performanceNow() - playbackState.startedAt) / 1000;
                 const rawNext = playbackState.startPlayhead + elapsed;
                 if (!playbackState.loop && rawNext >= duration) {
-                    liveNode.params.playhead = duration;
-                    liveNode.params.preview_playing = false;
+                    Object.assign(liveNode, buildTimelineParamsPatch(liveNode, {
+                        playhead: duration,
+                        preview_playing: false
+                    }));
                     call('refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
                     call('refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
                     refreshTimelinePlaybackButtonDom(nodeEl, liveNode);
@@ -106,7 +111,7 @@
                     return;
                 }
                 const next = playbackState.loop ? rawNext % duration : rawNext;
-                liveNode.params.playhead = next;
+                Object.assign(liveNode, buildTimelineParamsPatch(liveNode, { playhead: next }));
                 call('refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
                 call('refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
                 playbackState.raf = requestFrame(tick);
@@ -120,7 +125,7 @@
             if (nodeId && playbackState.nodeId !== nodeId) return false;
             if (playbackState.raf) cancelFrame(playbackState.raf);
             const oldNode = getNode(playbackState.nodeId);
-            if (oldNode?.params) oldNode.params.preview_playing = false;
+            if (oldNode?.params) Object.assign(oldNode, buildTimelineParamsPatch(oldNode, { preview_playing: false }));
             syncTimelinePlaybackDom(getNodeElement(playbackState.nodeId), oldNode);
             playbackState = null;
             return true;

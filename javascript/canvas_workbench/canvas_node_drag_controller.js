@@ -15,6 +15,10 @@
             ? scope.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
         const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const applyNodeLayoutPatch = (node, options) => {
+            const patch = call('buildNodeLayoutPatch', node, options || {});
+            if (patch && typeof patch === 'object') Object.assign(node, patch);
+        };
         const snapCanvasCoord = (value) => typeof scope.snapCanvasCoord === 'function' ? scope.snapCanvasCoord(value) : value;
         let dragState = null;
 
@@ -73,8 +77,10 @@
                     nextX = snapCanvasCoord(nextX);
                     nextY = snapCanvasCoord(nextY);
                 }
-                node.x = Math.round(nextX);
-                node.y = Math.round(nextY);
+                applyNodeLayoutPatch(node, {
+                    x: Math.round(nextX),
+                    y: Math.round(nextY)
+                });
             });
             const nodeIds = dragState.nodeIds.slice();
             call('updateNodePositionDom', nodeIds);

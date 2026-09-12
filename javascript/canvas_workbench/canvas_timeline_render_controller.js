@@ -8,6 +8,40 @@
         const getProject = () => call('getProject', {}, []) || {};
         const getNode = (id) => call('getNode', null, id);
         const serializeTimelineRenderPayload = (node) => call('serializeTimelineRenderPayload', {}, node) || {};
+        const buildTimelineOutputResultNode = (options) => call('buildTimelineOutputResultNode', null, options);
+        const buildProjectNodeAppendPatch = (project, node) => call(
+            'buildProjectNodeAppendPatch',
+            { nodes: [...(Array.isArray(project?.nodes) ? project.nodes : []), node] },
+            project,
+            node
+        ) || { nodes: [...(Array.isArray(project?.nodes) ? project.nodes : []), node] };
+        const buildTimelineResultPatch = (resultNode, options) => {
+            const config = options || {};
+            const fallback = {};
+            if (config.size && typeof config.size === 'object') {
+                if (config.size.w !== undefined) fallback.w = config.size.w;
+                if (config.size.h !== undefined) fallback.h = config.size.h;
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'producerPatch')) {
+                fallback.producer = Object.assign({}, resultNode?.producer || {}, config.producerPatch || {});
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'statusPatch')) {
+                fallback.status = Object.assign({}, resultNode?.status || {}, config.statusPatch || {});
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'source')) {
+                fallback.source = config.source;
+            } else if (Object.prototype.hasOwnProperty.call(config, 'sourcePatch')) {
+                fallback.source = Object.assign({}, resultNode?.source || {}, config.sourcePatch || {});
+            }
+            if (Object.prototype.hasOwnProperty.call(config, 'preview')) fallback.preview = config.preview;
+            if (Object.prototype.hasOwnProperty.call(config, 'asset')) fallback.asset = config.asset;
+            if (Object.prototype.hasOwnProperty.call(config, 'assets')) fallback.assets = config.assets;
+            if (config.selectedAssetIndex !== undefined) fallback.selected_asset_index = config.selectedAssetIndex;
+            if (Object.prototype.hasOwnProperty.call(config, 'errorDetails')) fallback.error_details = config.errorDetails;
+            return call('buildTimelineResultPatch', fallback, resultNode, options) || fallback;
+        };
+        const buildTimelineRenderAsset = (options) => call('buildTimelineRenderAsset', null, options);
+        const buildTimelinePreviewAsset = (options) => call('buildTimelinePreviewAsset', null, options);
 
         function timelineResultNodeSize(timelineNode) {
             const base = call('defaultNodeSize', { w: 440, h: 390 }, 'result') || { w: 440, h: 390 };
@@ -22,43 +56,34 @@
         function findOrCreateTimelineResultNode(timelineNode) {
             if (!timelineNode || timelineNode.type !== 'timeline') return null;
             const project = getProject();
-            const edges = Array.isArray(project.edges) ? project.edges : (project.edges = []);
+            const edges = Array.isArray(project.edges) ? project.edges : [];
             const existingEdge = edges.find(edge => edge.type === 'generate' && edge.from === timelineNode.id);
             const existing = existingEdge ? getNode(existingEdge.to) : null;
             const size = timelineResultNodeSize(timelineNode);
             if (existing?.type === 'result') {
-                existing.w = Math.max(Number(existing.w || 0), size.w);
-                existing.h = Math.max(Number(existing.h || 0), size.h);
+                Object.assign(existing, buildTimelineResultPatch(existing, {
+                    size: {
+                        w: Math.max(Number(existing.w || 0), size.w),
+                        h: Math.max(Number(existing.h || 0), size.h)
+                    }
+                }));
                 return existing;
             }
             const world = {
                 x: Math.round((timelineNode.x || 0) + (timelineNode.w || 760) + 80),
                 y: Math.round(timelineNode.y || 0)
             };
-            const result = {
-                id: call('uid', 'result', 'result'),
-                type: 'result',
-                x: world.x,
-                y: world.y,
-                w: size.w,
-                h: size.h,
+            const result = buildTimelineOutputResultNode({
+                position: world,
+                size,
                 title: `${timelineNode.title || 'Timeline'} ${t('Output', '输出')}`,
                 producer: { preset_node_id: null, timeline_node_id: timelineNode.id, run_id: null, task_id: null },
-                status: {
-                    state: 'reserved',
-                    queue_position: null,
-                    step: 0,
-                    total_steps: 0,
-                    percent: 0,
-                    message: t('Timeline output receiver node.', 'Timeline 输出承接节点。')
-                },
-                preview: null,
-                asset: null,
+                message: t('Timeline output receiver node.', 'Timeline 输出承接节点。'),
                 source: { kind: 'timeline_output', timeline_node_id: timelineNode.id }
-            };
+            });
+            if (!result) return null;
             call('placeNodeAvoidingOverlap', undefined, result, world);
-            if (!Array.isArray(project.nodes)) project.nodes = [];
-            project.nodes.push(result);
+            Object.assign(project, buildProjectNodeAppendPatch(project, result));
             call('ensureGenerateEdge', undefined, timelineNode.id, result.id);
             return result;
         }
@@ -92,28 +117,34 @@
                 return { ok: false, error: 'timeline result unavailable' };
             }
             const resultSize = timelineResultNodeSize(node);
-            result.w = Math.max(Number(result.w || 0), resultSize.w);
-            result.h = Math.max(Number(result.h || 0), resultSize.h);
-            result.producer = Object.assign({}, result.producer || {}, { preset_node_id: null, timeline_node_id: node.id, run_id: null, task_id: null });
-            result.status = Object.assign({}, result.status || {}, {
-                state: 'rendering',
-                percent: 0.15,
-                message: t('Rendering Timeline...', '正在合成 Timeline...')
-            });
+            Object.assign(result, buildTimelineResultPatch(result, {
+                size: {
+                    w: Math.max(Number(result.w || 0), resultSize.w),
+                    h: Math.max(Number(result.h || 0), resultSize.h)
+                },
+                producerPatch: { preset_node_id: null, timeline_node_id: node.id, run_id: null, task_id: null },
+                statusPatch: {
+                    state: 'rendering',
+                    percent: 0.15,
+                    message: t('Rendering Timeline...', '正在合成 Timeline...')
+                }
+            }));
             call('setSelectedNodeId', undefined, result.id);
             call('setSelectedNodeIds', undefined, [result.id]);
             call('setSelectedEdgeId', undefined, null);
             call('mutate', undefined, { inspector: true });
             const payload = serializeTimelineRenderPayload(node);
             const inputFingerprint = computeTimelineRunFingerprint(node, payload);
-            result.producer = Object.assign({}, result.producer || {}, {
-                preset_node_id: null,
-                timeline_node_id: node.id,
-                run_id: null,
-                task_id: null,
-                fingerprint: inputFingerprint,
-                stale: false
-            });
+            Object.assign(result, buildTimelineResultPatch(result, {
+                producerPatch: {
+                    preset_node_id: null,
+                    timeline_node_id: node.id,
+                    run_id: null,
+                    task_id: null,
+                    fingerprint: inputFingerprint,
+                    stale: false
+                }
+            }));
             const dataUrl = await call('renderTimelinePreviewFrameDataUrl', '', node);
             const width = Math.max(16, Math.round(Number(node.params?.width || 1280)));
             const height = Math.max(16, Math.round(Number(node.params?.height || 720)));
@@ -128,56 +159,53 @@
             } catch (err) {
                 renderResult = { ok: false, error: err?.message || String(err || 'timeline render failed') };
             }
-            const renderedAsset = renderResult?.ok && renderResult.asset_ref ? Object.assign({}, renderResult.asset_ref, {
-                kind: renderResult.asset_ref.kind || 'timeline_render',
-                render_payload: payload,
-                gallery: renderResult.gallery || null,
-                thumb: renderResult.asset_ref.thumb || dataUrl || renderResult.asset_ref.preview_url || ''
-            }) : null;
-            const asset = renderedAsset || (dataUrl ? {
-                kind: 'timeline_preview_frame',
-                asset_id: call('uid', 'asset', 'asset'),
+            const renderedAsset = renderResult?.ok && renderResult.asset_ref
+                ? buildTimelineRenderAsset({
+                    assetRef: renderResult.asset_ref,
+                    renderPayload: payload,
+                    gallery: renderResult.gallery || null,
+                    dataUrl
+                })
+                : null;
+            const asset = renderedAsset || buildTimelinePreviewAsset(dataUrl ? {
                 name: `${node.title || 'timeline'}-frame.png`,
-                mime: 'image/png',
                 width,
                 height,
-                duration: null,
                 fps: Number(node.params?.fps || 30),
-                data_url: dataUrl,
-                thumb: dataUrl,
-                render_payload: payload
+                dataUrl,
+                renderPayload: payload
             } : null);
-            result.preview = dataUrl ? { kind: 'timeline_preview_frame', data_url: dataUrl, thumb: dataUrl, width, height } : null;
-            result.asset = asset;
-            result.assets = asset ? [asset] : [];
-            result.selected_asset_index = 0;
-            result.source = {
-                kind: 'timeline_render_payload',
-                timeline_node_id: node.id,
-                playhead: Number(node.params?.playhead || 0),
-                payload,
-                input_fingerprint: inputFingerprint,
-                current_fingerprint: inputFingerprint,
-                stale: false,
-                stale_reason: ''
+            const preview = dataUrl ? { kind: 'timeline_preview_frame', data_url: dataUrl, thumb: dataUrl, width, height } : null;
+            const errorDetails = renderResult?.ok ? null : {
+                error: renderResult?.error || 'timeline render failed',
+                details: renderResult?.details || ''
             };
-            result.status = Object.assign({}, result.status || {}, {
-                state: renderResult?.ok ? 'finished' : (dataUrl ? 'preview_ready' : 'failed'),
-                percent: 1,
-                message: renderResult?.ok
-                    ? t('Timeline render completed: {name}', 'Timeline 合成完成：{name}').replace('{name}', renderResult.asset_ref?.name || renderResult.path || 'video')
-                    : (dataUrl
-                        ? t('Backend render failed; kept current-frame preview: {error}', '后端合成失败，已保留当前帧预览：{error}').replace('{error}', renderResult?.error || 'unknown error')
-                        : t('Timeline render failed: {error}', 'Timeline 合成失败：{error}').replace('{error}', renderResult?.error || 'unknown error'))
-            });
-            if (!renderResult?.ok) {
-                result.error_details = Object.assign({}, result.error_details || {}, {
-                    error: renderResult?.error || 'timeline render failed',
-                    details: renderResult?.details || ''
-                });
-            } else {
-                delete result.error_details;
-            }
+            Object.assign(result, buildTimelineResultPatch(result, {
+                preview,
+                asset,
+                assets: asset ? [asset] : [],
+                selectedAssetIndex: 0,
+                source: {
+                    kind: 'timeline_render_payload',
+                    timeline_node_id: node.id,
+                    playhead: Number(node.params?.playhead || 0),
+                    payload,
+                    input_fingerprint: inputFingerprint,
+                    current_fingerprint: inputFingerprint,
+                    stale: false,
+                    stale_reason: ''
+                },
+                statusPatch: {
+                    state: renderResult?.ok ? 'finished' : (dataUrl ? 'preview_ready' : 'failed'),
+                    percent: 1,
+                    message: renderResult?.ok
+                        ? t('Timeline render completed: {name}', 'Timeline 合成完成：{name}').replace('{name}', renderResult.asset_ref?.name || renderResult.path || 'video')
+                        : (dataUrl
+                            ? t('Backend render failed; kept current-frame preview: {error}', '后端合成失败，已保留当前帧预览：{error}').replace('{error}', renderResult?.error || 'unknown error')
+                            : t('Timeline render failed: {error}', 'Timeline 合成失败：{error}').replace('{error}', renderResult?.error || 'unknown error'))
+                },
+                errorDetails
+            }));
             call('mutate', undefined, { inspector: true });
             if (renderResult?.ok) call('refreshMainGalleryAfterCanvasRun', undefined, renderResult);
             call('showToast', undefined, renderResult?.ok

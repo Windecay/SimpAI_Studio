@@ -3952,6 +3952,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 try { window.SimpAIH3StoryboardEditor.closeScenePreset(); } catch (e) {}
             }
         }
+        window.SimpAIVideoRegionSelector?.syncSceneControl(params || {});
         const showRelightLight = (themeLower.includes('relight') || taskMethodLower.includes('relight')) && !disvisible.has('relight_light_control');
         setVisible('relight_light_control', showRelightLight);
         if (showRelightLight && typeof window.syncRelightLightControl === 'function') {
