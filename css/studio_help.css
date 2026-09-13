@@ -123,15 +123,21 @@
 }
 /* Distinguish the existing introduction without changing its geometry. */
 #preset_instruction_accordion {
-    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 5%, var(--block-background-fill, #fff)) !important;
-    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 50%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 15%, transparent);
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 12%, transparent) 0%,
+        color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 4%, transparent) 55%,
+        transparent 100%), var(--block-background-fill, #fff) !important;
+    box-shadow: none;
 }
-#preset_instruction_accordion > .label-wrap {
-    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 9%, transparent) !important;
-}
+#preset_instruction_accordion > .label-wrap,
 #preset_instruction_accordion > .label-wrap:hover {
-    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 14%, transparent) !important;
+    background: transparent !important;
+}
+#preset_instruction_accordion:has(> .label-wrap:hover) {
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 16%, transparent) 0%,
+        color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 5%, transparent) 55%,
+        transparent 100%), var(--block-background-fill, #fff) !important;
 }
 .sai-help-preset-summary {
     display: grid;
