@@ -1,0 +1,114 @@
+{
+  "supported_tasks": ["image_pose_transfer"],
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "image",
+    "disvisible": ["input_image_checkbox", "refiner_model", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "m1.1",
+      "theme": ["H3 Pose"],
+      "theme_title": "MiniMax H3 Pose Editor",
+      "disable_canvas_mask": true,
+      "pose_studio_reference_slots": ["scene_canvas"],
+      "director_capability": {
+        "director_supported": false,
+        "image_policy": "required",
+        "audio_policy": "forbidden",
+        "video_policy": "forbidden",
+        "min_images": 2,
+        "max_images": 2,
+        "max_audios": 0,
+        "max_videos": 0,
+        "image_modes": ["reference_set"],
+        "duration_strategy": "shot",
+        "audio_output": "silent",
+        "mixed_segments": false
+      },
+      "prompt_action_media": {
+        "image_roles": ["character_reference", "pose_reference"]
+      },
+      "disvisible": [
+        "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+        "scene_additional_prompt", "scene_additional_prompt_2", "scene_refiner_model",
+        "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4",
+        "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8",
+        "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "scene_video", "scene_reference_video", "scene_reference_video2",
+        "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",
+        "sam3_input_video", "sam3_mask_video", "scene_batch", "minimax_h3_storyboard_control"
+      ],
+      "task_method": {"H3 Pose": "minimax_h3_r2i_cn"},
+      "prompt_compiler": {"H3 Pose": "minimax_h3_r2i"},
+      "prompt": {
+        "H3 Pose": "Edit <Picture 1> while keeping its original background, surrounding people and objects, camera view, perspective, lighting, and visual style. Keep the same character, face, hairstyle, body proportions, clothing, and every worn accessory, including any hat, glasses, and equipment visible in <Picture 1>. Change only the character's body pose to match <Picture 2>: follow its head direction, torso angle, arm and leg positions, and visible hand gestures. Adapt the body and clothing to the new pose, and reconstruct the original background where the moved body reveals it. Use <Picture 2> only as a pose guide; keep all appearance and scene details from <Picture 1>."
+      },
+      "agent_prompt": {
+        "H3 Pose": "Write one self-contained still-image pose-editing instruction using exactly two ordered pictures. <Picture 1> is the source image to edit. Explicitly preserve its original background, surrounding people and objects, camera view, perspective, lighting, and visual style unless the user explicitly requests a change. Preserve the character's identity, face, hairstyle, body proportions, clothing, and worn accessories; name visible headwear, glasses, and equipment rather than relying only on generic identity-preservation wording. Describe the original setting using visible evidence from <Picture 1>, without inventing a different scene. <Picture 2> is the target pose exported from Pose Editor and supplies only pose and body orientation. Describe visible pose details from <Picture 2>; do not invent occluded details. Redraw the body and clothing for the requested pose, and reconstruct the original background where the moved body reveals it. Do not transfer the pose mannequin's appearance or plain background. Apply additional user instructions without swapping the picture roles. Do not request a mask, additional pose-specific LoRA, video, audio, or more reference pictures."
+      },
+      "overwrite_step": {"H3 Pose": 10},
+      "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
+      "resolution_control": {
+        "mode": "image_keep_input_area",
+        "source": "scene_canvas",
+        "base_width": 1024,
+        "base_height": 1024,
+        "quantize": 32,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "image",
+        "preprocess_fit": "pad"
+      },
+      "image_preprocessor_method": [["-normalization"]],
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50
+    }
+  },
+  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "previous_default_models": ["minimax_h3_fl2va_pruned_int8_convrot.safetensors"],
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  "default_loras": [
+    ["minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", 1.0],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1]
+  ],
+  "default_cfg_scale": 1,
+  "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+  "default_sample_sharpness": 2,
+  "default_sampler": "er_sde",
+  "default_scheduler": "beta57",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "1024*1024",
+  "default_image_number": 1,
+  "default_overwrite_step": 10,
+  "default_prompt": "Edit <Picture 1> while keeping its original background, surrounding people and objects, camera view, perspective, lighting, and visual style. Keep the same character, face, hairstyle, body proportions, clothing, and every worn accessory, including any hat, glasses, and equipment visible in <Picture 1>. Change only the character's body pose to match <Picture 2>: follow its head direction, torso angle, arm and leg positions, and visible hand gestures. Adapt the body and clothing to the new pose, and reconstruct the original background where the moved body reveals it. Use <Picture 2> only as a pose guide; keep all appearance and scene details from <Picture 1>.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+    "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
+    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
+    "sam3dbody,model.ckpt,2109129346,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/model.ckpt",
+    "sam3dbody,model_config.yaml,1488,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/model_config.yaml",
+    "sam3dbody,assets/mhr_model.pt,696110248,0,https://www.modelscope.cn/models/facebook/sam-3d-body-dinov3/resolve/master/assets/mhr_model.pt",
+    "birefnet,BiRefNet_lite/BiRefNet_config.py,298,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/BiRefNet_config.py",
+    "birefnet,BiRefNet_lite/birefnet.py,92134,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/birefnet.py",
+    "birefnet,BiRefNet_lite/config.json,410,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/config.json",
+    "birefnet,BiRefNet_lite/model.safetensors,177634392,,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/birefnet/BiRefNet_lite/model.safetensors"
+  ]
+}

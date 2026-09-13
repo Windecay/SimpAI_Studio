@@ -10,8 +10,16 @@
         const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
         const getVlmCustomProvider = (...args) => call('getVlmCustomProvider', {}, ...args);
         const getVlmCustomApiProfile = (...args) => call('getVlmCustomApiProfile', null, ...args);
-        const getCanvasAgentCustomKeyValue = (...args) => call('getCanvasAgentCustomKeyValue', '', ...args);
+        const getVlmCustomProfileKey = (...args) => call('getVlmCustomProfileKey', 'openai', ...args);
+        const readVlmCustomApiProfiles = (...args) => call('readVlmCustomApiProfiles', {}, ...args) || {};
+        const writeVlmCustomApiProfiles = (...args) => call('writeVlmCustomApiProfiles', undefined, ...args);
+        const readCanvasAgentCustomKeyValue = (...args) => call('getCanvasAgentCustomKeyValue', '', ...args);
+        const sendCanvasVlmRunRequest = (...args) => call('sendCanvasVlmRunRequest', { ok: false, error: 'VLM run API is unavailable' }, ...args);
+        const sendCanvasAgentCustomModelsRequest = (...args) => call('sendCanvasAgentCustomModelsRequest', { ok: false, error: 'Custom model API is unavailable' }, ...args);
+        const buildVlmParamsPatch = (...args) => call('buildVlmParamsPatch', {}, ...args);
+        const buildVlmModelStatusPatch = (...args) => call('buildVlmModelStatusPatch', {}, ...args);
         const decodeCanvasAgentVideoToolChoice = (...args) => call('decodeCanvasAgentVideoToolChoice', {}, ...args) || {};
+        const vlmModelDisplayLabel = (...args) => call('vlmModelDisplayLabel', String(args[0] || ''), ...args);
 
         function call(name, fallback, ...args) {
             return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
@@ -22,12 +30,118 @@
             return Array.isArray(value) ? value : [];
         };
 
+        function canvasAgentDefaultLocalRewriteModel() {
+            const defaults = getDefaultSettings();
+            return getVersionChoices().find(model => model && model !== 'Custom')
+                || (defaults.rewriteModel !== 'Custom' ? defaults.rewriteModel : '')
+                || 'Qwen3.5-9B-abliterated-Q4_K_M';
+        }
+
+        function canvasAgentLocalRewriteModels(currentModel) {
+            const seen = new Set();
+            const list = [];
+            [...getVersionChoices(), currentModel].forEach((model) => {
+                const value = String(model || '').trim();
+                if (!value || value === 'Custom' || seen.has(value)) return;
+                seen.add(value);
+                list.push(value);
+            });
+            if (!list.length) list.push(canvasAgentDefaultLocalRewriteModel());
+            return list;
+        }
+
+        function canvasAgentModelSummary(settings) {
+            const current = settings && typeof settings === 'object' ? settings : {};
+            if (current.rewriteModel === 'Custom') {
+                const provider = getVlmCustomProvider(current.customProvider || 'openai');
+                const apiName = current.customApiName || provider.label || 'Custom API';
+                const model = current.customModel || t('Select model', '选择模型');
+                return {
+                    icon: 'fa-cloud',
+                    label: model,
+                    title: `${apiName} · ${model}`
+                };
+            }
+            const model = current.rewriteModel || canvasAgentDefaultLocalRewriteModel();
+            const modelLabel = vlmModelDisplayLabel(model, model);
+            return {
+                icon: 'fa-microchip',
+                label: modelLabel,
+                title: `${t('Local VLM', '本地 VLM')} · ${modelLabel}`
+            };
+        }
+
         function getProject() {
             return call('getProject', null) || {};
         }
 
         function getAgentState() {
             return call('getAgentState', null) || {};
+        }
+
+        const aspectOptions = () => Array.isArray(scope.canvasAgentAspectOptions) ? scope.canvasAgentAspectOptions : [];
+        let canvasAgentCustomModelChoices = [];
+
+        function getCanvasAgentResolutionState() {
+            const state = getAgentState();
+            const raw = state.resolution && typeof state.resolution === 'object' ? state.resolution : {};
+            const options = aspectOptions();
+            const aspect = options.some(item => item.key === raw.aspect) ? raw.aspect : 'auto';
+            const multiplier = clamp(Number(raw.multiplier || 1) || 1, 1, 2);
+            state.resolution = { aspect, multiplier };
+            return state.resolution;
+        }
+
+        function canvasAgentResolutionLabel(state) {
+            const current = state && typeof state === 'object' ? state : getCanvasAgentResolutionState();
+            const options = aspectOptions();
+            const aspect = options.find(item => item.key === current.aspect) || options[0] || { label: '' };
+            return `${aspect.label} · ${Number(current.multiplier || 1).toFixed(1)}x`;
+        }
+
+        function canvasAgentResolutionCompactLabel(state) {
+            const current = state && typeof state === 'object' ? state : getCanvasAgentResolutionState();
+            const options = aspectOptions();
+            const aspect = options.find(item => item.key === current.aspect) || options[0] || { label: '' };
+            return `${aspect.label} | ${Number(current.multiplier || 1).toFixed(1)}x`;
+        }
+
+        function setCanvasAgentResolutionOpen(value) {
+            const state = getAgentState();
+            state.resolutionOpen = !!value;
+            if (state.resolutionOpen) state.modelPickerOpen = false;
+        }
+
+        function syncCanvasAgentResolutionDom() {
+            const panel = call('getCanvasAgentPanel', null);
+            if (!panel || !panel.isConnected) return;
+            const state = getCanvasAgentResolutionState();
+            const scale = Number(state.multiplier || 1).toFixed(1);
+            panel.querySelectorAll('[data-canvas-agent-scale-label]').forEach(label => {
+                label.textContent = `${scale}x`;
+            });
+            panel.querySelectorAll('[data-canvas-agent-resolution-summary]').forEach(label => {
+                label.textContent = canvasAgentResolutionLabel(state);
+            });
+            panel.querySelectorAll('[data-canvas-agent-resolution-label]').forEach(label => {
+                label.textContent = canvasAgentResolutionCompactLabel(state);
+            });
+            const documentObject = call('getDocument', null) || globalThis.document;
+            panel.querySelectorAll('[data-canvas-agent-scale]').forEach(input => {
+                if (input === documentObject?.activeElement) return;
+                input.value = scale;
+            });
+        }
+
+        function setCanvasAgentResolutionPatch(patch, options) {
+            const state = getAgentState();
+            const current = getCanvasAgentResolutionState();
+            const next = Object.assign({}, current, patch || {});
+            if (!aspectOptions().some(item => item.key === next.aspect)) next.aspect = 'auto';
+            next.multiplier = clamp(Number(next.multiplier || 1) || 1, 1, 2);
+            state.resolution = next;
+            if (options?.render === false) syncCanvasAgentResolutionDom();
+            else call('renderCanvasAgentPanel', null);
         }
 
         function applyProjectSettingsMergePatch(project, updates) {
@@ -203,6 +317,155 @@
             return canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), true);
         }
 
+        function getCanvasAgentCustomKeyInput() {
+            const panel = call('getCanvasSettingsPanel', null);
+            return panel?.querySelector?.('[data-canvas-agent-custom-key]') || null;
+        }
+
+        function getCanvasAgentCustomKeyValue() {
+            const input = getCanvasAgentCustomKeyInput();
+            return input ? String(input.value || '') : String(readCanvasAgentCustomKeyValue() || '');
+        }
+
+        function getCanvasAgentCustomModelChoices() {
+            return canvasAgentCustomModelChoices.slice();
+        }
+
+        function saveCanvasAgentCustomSecret() {
+            const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
+            const apiKey = getCanvasAgentCustomKeyValue().trim();
+            if (!apiKey) {
+                call('showToast', null, t('Paste an API key first.', '请先粘贴 API Key'));
+                return;
+            }
+            const profiles = readVlmCustomApiProfiles();
+            const key = getVlmCustomProfileKey(params);
+            profiles[key] = Object.assign({}, profiles[key] || {}, {
+                api_key: apiKey,
+                api_name: params.custom_api_name || key,
+                provider: params.custom_provider || 'openai',
+                base_url: params.custom_base_url || '',
+                updated_at: call('nowIso', new Date().toISOString())
+            });
+            writeVlmCustomApiProfiles(profiles);
+            call('showToast', null, t('API key saved for Agent and VLM nodes.', 'API Key 已保存，可供 Agent 和 VLM 节点共用'));
+        }
+
+        function syncCanvasAgentCustomFromSelectedVlm() {
+            const selectedNodeId = call('getSelectedNodeId', null);
+            const node = call('getNode', null, selectedNodeId);
+            if (!node || node.type !== 'vlm') {
+                call('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
+                return;
+            }
+            const params = node.params || {};
+            setCanvasAgentSettingsPatch({
+                rewriteModel: 'Custom',
+                customProvider: params.custom_provider || 'openai',
+                customApiName: params.custom_api_name || 'Custom',
+                customApiFormat: params.custom_api_format || 'openai_compatible',
+                customBaseUrl: params.custom_base_url || '',
+                customModel: params.custom_model || '',
+                customSupportsImages: params.custom_supports_images !== false,
+                customApiCollapsed: false
+            }, { silentHistory: true });
+            call('showToast', null, t('Agent Custom API settings synced from selected VLM node.', '已从选中的 VLM 节点同步 Agent Custom API 设置'));
+        }
+
+        function syncSelectedVlmCustomFromCanvasAgent() {
+            const selectedNodeId = call('getSelectedNodeId', null);
+            const node = call('getNode', null, selectedNodeId);
+            if (!node || node.type !== 'vlm') {
+                call('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
+                return;
+            }
+            const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
+            call('pushHistory', null, 'Sync Custom API settings');
+            Object.assign(node, buildVlmParamsPatch(node, {
+                paramsPatch: {
+                    version: 'Custom',
+                    custom_provider: params.custom_provider,
+                    custom_api_name: params.custom_api_name,
+                    custom_api_format: params.custom_api_format,
+                    custom_base_url: params.custom_base_url,
+                    custom_model: params.custom_model,
+                    custom_supports_images: params.custom_supports_images
+                }
+            }));
+            Object.assign(node, buildVlmModelStatusPatch(node, {
+                status: call('buildVlmModelUnknownStatus', null, 'Custom', 'Custom API settings changed. Test or check before running.')
+                    || {
+                        state: 'unknown',
+                        ready: false,
+                        version: 'Custom',
+                        message: 'Custom API settings changed. Test or check before running.'
+                    }
+            }));
+            call('mutate', null, { inspector: true });
+            call('showToast', null, t('Selected VLM node now uses Agent Custom API settings.', '选中的 VLM 节点已同步 Agent Custom API 设置'));
+        }
+
+        async function testCustomApiParams(params, sourceLabel) {
+            const runtime = Object.assign({}, params || {}, {
+                version: 'Custom',
+                mode: 'single',
+                prompt: 'Reply with OK.',
+                system_prompt: 'You are an API connectivity tester. Reply with OK only.',
+                max_tokens: 16,
+                temperature: 0,
+                top_p: 1,
+                seed: -1,
+                disable_thinking: true,
+                free_after: false
+            });
+            if (!runtime.custom_base_url || !runtime.custom_model) {
+                call('showToast', null, t('Custom API settings incomplete: Base URL and Model are required. API Key can stay empty for Ollama/LM Studio.', 'Custom API 设置不完整：需要 Base URL 和 Model；Ollama/LM Studio 可不填 API Key'));
+                return { ok: false, error: 'Custom API settings incomplete' };
+            }
+            call('showToast', null, t('Testing Custom API...', '正在测试 Custom API...'));
+            const project = getProject();
+            const response = await sendCanvasVlmRunRequest({
+                project_id: project.id || call('getCurrentProjectId', 'default'),
+                node_id: `custom_api_test:${sourceLabel || 'agent'}`,
+                asset_sources: [],
+                conversation_id: '',
+                params: runtime
+            });
+            if (response?.ok) {
+                call('showToast', null, t('Custom API test succeeded: {text}', 'Custom API 测试成功：{text}').replace('{text}', String(response.text || 'OK').slice(0, 80)));
+            } else {
+                call('showToast', null, t('Custom API test failed: {error}', 'Custom API 测试失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
+            }
+            return response;
+        }
+
+        async function testCanvasAgentCustomApi() {
+            if (getCanvasAgentCustomKeyValue().trim()) saveCanvasAgentCustomSecret();
+            return testCustomApiParams(getCanvasAgentCustomRuntimeParams(), 'agent');
+        }
+
+        async function fetchCanvasAgentCustomModels() {
+            if (getCanvasAgentCustomKeyValue().trim()) saveCanvasAgentCustomSecret();
+            const params = getCanvasAgentCustomRuntimeParams();
+            const project = getProject();
+            const response = await sendCanvasAgentCustomModelsRequest({
+                project_id: project.id || call('getCurrentProjectId', 'default'),
+                node_id: 'canvas_agent_custom_api',
+                params,
+                api_key: params.custom_api_key || ''
+            });
+            if (response?.ok) {
+                canvasAgentCustomModelChoices = Array.isArray(response.models) ? response.models : [];
+                const patch = { customApiCollapsed: false };
+                if (!getCanvasAgentSettings().customModel && canvasAgentCustomModelChoices.length) patch.customModel = canvasAgentCustomModelChoices[0];
+                setCanvasAgentSettingsPatch(patch, { silentHistory: true });
+                call('showToast', null, t('Fetched {count} custom model(s).', '已拉取 {count} 个 Custom 模型').replace('{count}', canvasAgentCustomModelChoices.length));
+            } else {
+                call('showToast', null, t('Fetch models failed: {error}', '拉取模型失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
+            }
+            return response;
+        }
+
         function handleCanvasAgentSettingInput(field) {
             const key = field?.getAttribute?.('data-canvas-agent-setting');
             if (!key) return false;
@@ -254,16 +517,45 @@
             return true;
         }
 
+        function handleCanvasAgentModelModeInput(field) {
+            const mode = String(field?.value || '').trim();
+            if (mode === 'custom') {
+                setCanvasAgentSettingsPatch({ rewriteModel: 'Custom', customApiCollapsed: false });
+                return;
+            }
+            const settings = getCanvasAgentSettings();
+            const model = settings.rewriteModel && settings.rewriteModel !== 'Custom'
+                ? settings.rewriteModel
+                : canvasAgentDefaultLocalRewriteModel();
+            setCanvasAgentSettingsPatch({ rewriteModel: model });
+        }
+
         return {
             getCanvasAgentSettings,
             setCanvasAgentSettingsPatch,
             setCanvasAgentLayoutPatch,
+            canvasAgentDefaultLocalRewriteModel,
+            canvasAgentLocalRewriteModels,
+            canvasAgentModelSummary,
+            getCanvasAgentResolutionState,
+            setCanvasAgentResolutionPatch,
+            setCanvasAgentResolutionOpen,
+            canvasAgentResolutionLabel,
+            canvasAgentResolutionCompactLabel,
             revealCanvasAgentPanelForToolCard,
             dockCanvasAgentPanelBottomLeft,
             getCanvasAgentRewriteModel,
             canvasAgentCustomParamsFromSettings,
             getCanvasAgentCustomRuntimeParams,
-            handleCanvasAgentSettingInput
+            getCanvasAgentCustomKeyValue,
+            getCanvasAgentCustomModelChoices,
+            saveCanvasAgentCustomSecret,
+            fetchCanvasAgentCustomModels,
+            testCanvasAgentCustomApi,
+            syncCanvasAgentCustomFromSelectedVlm,
+            syncSelectedVlmCustomFromCanvasAgent,
+            handleCanvasAgentSettingInput,
+            handleCanvasAgentModelModeInput
         };
     }
 

@@ -2,32 +2,57 @@
     'use strict';
 
     function createCanvasPresetNodeRenderer(context) {
+        const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const utilitySource = sourceObject('utilitySource');
+        const projectSource = sourceObject('projectSource');
+        const classicSource = sourceObject('classicSource');
+        const promptSource = sourceObject('promptSource');
+        const uploadSource = sourceObject('uploadSource');
+        const portSource = sourceObject('portSource');
+        const presetSource = sourceObject('presetSource');
+        const renderSource = sourceObject('renderSource');
+        const { t, tOption, localizeCanvasLabel } = languageSource;
+        const { clamp, escapeHtml, normalizeCanvasColor } = utilitySource;
+        const { getProject, getNode } = projectSource;
         const {
-            t, tOption, clamp, escapeHtml,
             getClassicModes,
             getClassicOutpaintDirs,
             getClassicInpaintMethods,
             getClassicEnhanceUovProcessingOrder,
             getClassicEnhanceUovPromptTypes,
             getClassicIpMaxImages,
-            getProject, getNode,
             getClassicUovMethods, getClassicIpTypes, getClassicInpaintEngines,
             normalizeClassicInpaintMode, getInpaintModeDefaults,
             getClassicEnhanceRegionValues, getClassicEnhanceRegionDefault,
-            detectionSlotForRegion, getDetectionConfigLabel, enhanceRegionKey, portHintText,
-            danbooruAutocompleteAttrs, getPromptTextSourceNode,
-            getVisibleClassicUploadSlots, getVisibleUploadSlots, getUploadSlotMediaKind,
-            collapsedKeepClass, slotPortTitle, slotPortButtonTitle, slotPortHintText,
-            notConnectedText, renderPresetModelStatusHtml, renderPresetParamControl,
+            detectionSlotForRegion, getDetectionConfigLabel, enhanceRegionKey
+        } = classicSource;
+        const { getPromptTextSourceNode, getNodeTextOutput, canvasAgentPresetPromptDefaults } = promptSource;
+        const {
+            danbooruAutocompleteAttrs,
+            getVisibleClassicUploadSlots, getVisibleUploadSlots, getUploadSlotMediaKind
+        } = uploadSource;
+        const {
+            portHintText, collapsedKeepClass, slotPortTitle, slotPortButtonTitle,
+            slotPortHintText, notConnectedText
+        } = portSource;
+        const {
+            getPresetConfigKinds: getPresetConfigKindsFromContext,
+            getSlotLabels: getSlotLabelsFromContext,
+            getPresetSchema, getPresetTheme, getPresetThemeInfo, presetSpecialViewerUrl,
+            isStyleTransferPresetNode, isLivePortraitVideoExpressionPresetNode,
+            isLtx23MultiGuidePresetNode, isMiniMaxH3PresetNode
+        } = presetSource;
+        const {
+            renderPresetModelStatusHtml, renderPresetParamControl,
             renderNodeStateBadges, renderRunnableNodeStatusFoot, renderPresetConfigPortRow,
-            getPresetConfigKinds: getPresetConfigKindsFromContext, getSlotLabels: getSlotLabelsFromContext,
-            getPresetSchema, getPresetTheme, getPresetThemeInfo, canvasAgentPresetPromptDefaults,
-            normalizeCanvasColor, presetSpecialViewerUrl,
-            localizeCanvasLabel, isStyleTransferPresetNode, isLivePortraitVideoExpressionPresetNode,
-            isLtx23MultiGuidePresetNode, isMiniMaxH3PresetNode, renderStyleTransferPresetController,
-            renderLivePortraitVideoExpressionPresetController, renderLtx23GuidePresetController,
-            renderMiniMaxH3StoryboardPresetController
-        } = context;
+            renderStyleTransferPresetController, renderLivePortraitVideoExpressionPresetController,
+            renderLtx23GuidePresetController, renderMiniMaxH3StoryboardPresetController
+        } = renderSource;
         const readArrayConfig = (getter) => {
             const value = typeof getter === 'function' ? getter() : [];
             return Array.isArray(value) ? value : [];
@@ -247,11 +272,18 @@
             return ['aspect_ratio', 'scene_aspect_ratio', 'aspect_ratios_selection'].includes(String(key || ''));
         }
 
+        function promptTextSourceValue(source) {
+            if (!source) return '';
+            return typeof getNodeTextOutput === 'function'
+                ? String(getNodeTextOutput(source) || '')
+                : String(source.text?.value || '');
+        }
+
         function presetParamValue(node, param) {
             if (!node || !param?.key) return param?.default ?? '';
             if (isPromptTextParam(param?.key)) {
                 const source = getPromptTextSourceNode(node, param.key);
-                if (source) return source.text?.value || '';
+                if (source) return promptTextSourceValue(source);
             }
             const params = node.params || {};
             if (Object.prototype.hasOwnProperty.call(params, param.key)) {
@@ -393,7 +425,8 @@ ${enhanceOrder === 'After Last Enhancement' ? `<label class="sai-node-field"><sp
   ${regionRows}
 </div>`;
             })() : '';
-            const effectivePrompt = getPromptTextSourceNode(node, 'prompt') ? getPromptTextSourceNode(node, 'prompt').text?.value : params.prompt;
+            const promptSourceNode = getPromptTextSourceNode(node, 'prompt');
+            const effectivePrompt = promptSourceNode ? promptTextSourceValue(promptSourceNode) : params.prompt;
             const runDisabled = (mode === 'ip' && !node.upload_slots?.ip_image_0 && !effectivePrompt) ? 'disabled' : '';
             return `
 <div class="sai-node-head">

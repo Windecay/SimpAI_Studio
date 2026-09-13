@@ -1,0 +1,326 @@
+.sai-help-button,
+.sai-help-icon {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 28px !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    color: var(--body-text-color-subdued, #59636b);
+    font-size: 16px !important;
+    cursor: pointer;
+}
+.sai-help-button:hover,
+.sai-help-icon:hover {
+    color: var(--body-text-color, #172d29);
+    background: var(--background-fill-secondary, #e7eeeb) !important;
+}
+.sai-help-button:focus-visible,
+.sai-help-dialog button:focus-visible,
+.sai-help-body:focus-visible {
+    outline: 2px solid #16846b;
+    outline-offset: 2px;
+}
+.sai-help-button .fa-circle-question { font-weight: 900; }
+.simpleai-prompt-action-header:has(> .sai-help-button) > div {
+    flex: 1;
+    min-width: 0;
+}
+/* Retire the former Gradio help-only rows on servers not yet restarted. */
+.block:has(> .html-container > .prose > [data-studio-help-slot]) {
+    display: none !important;
+}
+.sai-help-inline,
+.advanced_check_row > .sai-help-inline {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 28px !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+.sai-help-region-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+    min-height: 28px;
+}
+.sai-help-caption { font-size: 12px; }
+.sai-help-tabbar {
+    gap: 4px;
+}
+.sai-help-tabbar > [role="tablist"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+}
+.sai-help-tabbar > .sai-help-inline {
+    align-self: center;
+    margin-inline-start: auto !important;
+}
+.sai-help-tabbar > .sai-help-inline[hidden] { display: none !important; }
+.sai-help-search-row {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+.sai-help-search-row > .column {
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+}
+.sai-help-accordion { position: relative; }
+.sai-help-accordion > .label-wrap > span:not(.icon) {
+    padding-inline-end: 36px;
+    overflow-wrap: anywhere;
+}
+.sai-help-accordion > .sai-help-inline {
+    position: absolute;
+    inset-inline-end: 30px;
+    top: 6px;
+}
+.sai-help-model-field,
+[data-simpai-models-js-root] .simpai-models-js-subhead,
+#guidance_scale .head > label {
+    position: relative;
+    min-width: 0;
+}
+.sai-help-model-field > .simpai-models-js-field > span,
+[data-simpai-models-js-root] .simpai-models-js-subhead,
+#guidance_scale [data-testid="block-info"] {
+    padding-inline-end: 32px;
+    overflow-wrap: anywhere;
+}
+.sai-help-model-field > .sai-help-inline,
+[data-simpai-models-js-root] .simpai-models-js-subhead > .sai-help-inline,
+#guidance_scale .head > label > .sai-help-inline {
+    position: absolute;
+    inset-inline-end: 0;
+    top: -6px;
+}
+/* Override the model panel's 34px action-button rules without resizing fields. */
+[data-simpai-models-js-root] .sai-help-button {
+    width: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    font-size: 16px !important;
+    color: var(--body-text-color-subdued, #59636b) !important;
+}
+[data-simpai-models-js-root] .sai-help-button:hover {
+    background: var(--background-fill-secondary, #e7eeeb) !important;
+    color: var(--body-text-color, #172d29) !important;
+}
+/* Distinguish the existing introduction without changing its geometry. */
+#preset_instruction_accordion {
+    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 5%, var(--block-background-fill, #fff)) !important;
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 50%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 15%, transparent);
+}
+#preset_instruction_accordion > .label-wrap {
+    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 9%, transparent) !important;
+}
+#preset_instruction_accordion > .label-wrap:hover {
+    background: color-mix(in srgb, var(--button-primary-background-fill, #ff7a18) 14%, transparent) !important;
+}
+.sai-help-preset-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 4px 0;
+}
+.sai-help-preset-summary strong,
+.sai-help-preset-summary p,
+.sai-help-preset-facts dd {
+    overflow-wrap: anywhere;
+}
+.sai-help-preset-summary p {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.sai-help-preset-facts {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: 6px 10px;
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.sai-help-preset-facts dt {
+    font-weight: 600;
+}
+.sai-help-preset-facts dd {
+    min-width: 0;
+    margin: 0;
+}
+.sai-help-preset-legacy[hidden] { display: none !important; }
+.sai-help-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 6px 8px;
+    border-left: 3px solid #a77d15;
+    color: var(--body-text-color, #253531);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+[data-describe-vlm-help-status]:empty,
+[data-studio-help-model]:empty { display: none; }
+.sai-help-notice button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    padding: 2px 0;
+    background: transparent;
+    color: var(--link-text-color, #13735f);
+    font-size: inherit;
+    cursor: pointer;
+    text-align: start;
+}
+.sai-help-dialog {
+    --help-bg: #ffffff;
+    --help-text: #273630;
+    --help-muted: #56615d;
+    --help-border: #dce4df;
+    box-sizing: border-box;
+    width: min(720px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: min(800px, calc(100dvh - 48px));
+    padding: 0;
+    margin: auto;
+    color: var(--help-text);
+    background: var(--help-bg);
+    border: 1px solid var(--help-border);
+    border-radius: 8px;
+    box-shadow: 0 12px 48px #0003;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 0;
+}
+.sai-help-dialog[open] { display: flex; flex-direction: column; }
+.sai-help-dialog.theme-dark {
+    --help-bg: #202523;
+    --help-text: #e5ece8;
+    --help-muted: #b0bdb6;
+    --help-border: #414c46;
+    color-scheme: dark;
+}
+.sai-help-dialog::backdrop { background: #0006; }
+.sai-help-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--help-border);
+}
+.sai-help-header h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+.sai-help-dialog .sai-help-icon { color: var(--help-text); }
+.sai-help-dialog button:disabled { opacity: .35; cursor: default; }
+.sai-help-body {
+    min-height: 0;
+    padding: 8px 24px 24px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+    line-height: 1.75;
+}
+.sai-help-body section { margin-top: 20px; }
+.sai-help-body h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.sai-help-body p { margin: 12px 0; }
+.sai-help-body ol,
+.sai-help-body ul { margin: 0; padding-inline-start: 24px; }
+.sai-help-body li { margin: 8px 0; }
+.sai-help-body code { font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.sai-help-body details { margin-top: 12px; }
+.sai-help-body summary { cursor: pointer; font-weight: 600; }
+.sai-help-body iframe { width: 100%; height: 320px; border: 0; background: #fff; }
+.sai-help-body nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 20px; gap: 0 20px; }
+.sai-help-body nav button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border: 0;
+    border-bottom: 1px solid var(--help-border);
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    font: inherit;
+    cursor: pointer;
+}
+.sai-help-dialog footer { padding: 12px 24px; border-top: 1px solid var(--help-border); }
+.sai-help-dialog footer button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--help-border);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.sai-help-action-status { color: var(--help-muted); }
+.theme-dark .sai-help-button,
+.dark .sai-help-button,
+[data-theme="dark"] .sai-help-button { color: #c7d7cd; }
+.theme-dark .sai-help-button:hover,
+.theme-dark .sai-help-icon:hover,
+.dark .sai-help-button:hover,
+[data-theme="dark"] .sai-help-button:hover { background: #34433b !important; color: #edf5f0; }
+.theme-dark .sai-help-notice,
+.dark .sai-help-notice,
+[data-theme="dark"] .sai-help-notice { color: #dbe8df; }
+.theme-dark .sai-help-notice button,
+.dark .sai-help-notice button,
+[data-theme="dark"] .sai-help-notice button { color: #84d1b5; }
+@media (max-width: 600px) {
+    .sai-help-dialog { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 24px); }
+    .sai-help-header { padding: 10px; gap: 4px; }
+    .sai-help-body { padding: 8px 16px 20px; }
+    .sai-help-body nav { grid-template-columns: minmax(0, 1fr); }
+    .sai-help-button,
+    .sai-help-icon { width: 32px !important; height: 32px !important; flex-basis: 32px !important; }
+    .sai-help-inline,
+    .advanced_check_row > .sai-help-inline { width: 32px !important; min-width: 32px !important; height: 32px; flex-basis: 32px !important; }
+    [data-simpai-models-js-root] .sai-help-button {
+        width: 32px !important;
+        min-width: 32px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+    }
+    .sai-help-model-field > .simpai-models-js-field > span,
+    [data-simpai-models-js-root] .simpai-models-js-subhead,
+    #guidance_scale [data-testid="block-info"] { padding-inline-end: 36px; }
+    .sai-help-model-field > .sai-help-inline,
+    [data-simpai-models-js-root] .simpai-models-js-subhead > .sai-help-inline,
+    #guidance_scale .head > label > .sai-help-inline { top: -10px; }
+}

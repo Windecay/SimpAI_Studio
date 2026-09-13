@@ -1088,12 +1088,8 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(gr_update(value=preset_negative_prompt, visible='negative_prompt' not in visible, interactive='negative_prompt' not in inter))
     else:
         results.append(get_layout_empty_visible_inter_text('negative_prompt', visible, inter))
-    preset_instruction_visible = False
-    try:
-        preset_instruction_visible = os.path.basename(str(preset_url).split('?', 1)[0].replace('\\', '/')) != 'blank.inc.html'
-    except Exception:
-        preset_instruction_visible = False
-    results.append(gr_update(visible=preset_instruction_visible))
+    # Every preset has a metadata-based introduction, even without a dedicated HTML article.
+    results.append(gr_update(visible=True))
     results.append(gr_update(visible=False)) # identity_dialog
     state_params['identity_dialog'] = False
 

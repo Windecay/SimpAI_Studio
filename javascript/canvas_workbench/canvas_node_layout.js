@@ -6,39 +6,55 @@
 
     function createCanvasNodeLayoutController(context) {
         const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const utilitySource = sourceObject('utilitySource');
+        const nodeSource = sourceObject('nodeSource');
+        const projectSource = sourceObject('projectSource');
+        const viewportSource = sourceObject('viewportSource');
+        const patchSource = sourceObject('patchSource');
+        const persistenceSource = sourceObject('persistenceSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
         const defaultNodeSize = (type) => {
-            const size = typeof scope.defaultNodeSize === 'function' ? scope.defaultNodeSize(type) : null;
+            const size = sourceCall(nodeSource, 'defaultNodeSize', null, type);
             return size && typeof size === 'object' ? size : { w: 220, h: 250 };
         };
-        const supportsCollapsedPromptHeight = (node) => typeof scope.supportsCollapsedPromptHeight === 'function'
-            ? !!scope.supportsCollapsedPromptHeight(node)
-            : false;
-        const collapsedPromptNodeHeight = (node) => typeof scope.collapsedPromptNodeHeight === 'function'
-            ? scope.collapsedPromptNodeHeight(node)
-            : 0;
-        const getMeasuredNodeLayout = (id) => typeof scope.getMeasuredNodeLayout === 'function'
-            ? scope.getMeasuredNodeLayout(id)
+        const supportsCollapsedPromptHeight = (node) => !!sourceCall(
+            nodeSource,
+            'supportsCollapsedPromptHeight',
+            false,
+            node
+        );
+        const collapsedPromptNodeHeight = (node) => sourceCall(
+            nodeSource,
+            'collapsedPromptNodeHeight',
+            0,
+            node
+        );
+        const getMeasuredNodeLayout = (id) => sourceCall(nodeSource, 'getMeasuredNodeLayout', null, id);
+        const getProjectNodes = () => sourceCall(projectSource, 'getProjectNodes', [],) || [];
+        const getVisibleWorldRect = () => sourceCall(viewportSource, 'getVisibleWorldRect', null);
+        const viewportGetNodeRect = typeof viewportSource.viewportGetNodeRect === 'function'
+            ? viewportSource.viewportGetNodeRect
             : null;
-        const getProjectNodes = () => typeof scope.getProjectNodes === 'function'
-            ? (scope.getProjectNodes() || [])
-            : [];
-        const getVisibleWorldRect = () => typeof scope.getVisibleWorldRect === 'function'
-            ? scope.getVisibleWorldRect()
-            : null;
-        const viewportGetNodeRect = typeof scope.viewportGetNodeRect === 'function' ? scope.viewportGetNodeRect : null;
-        const viewportFindOpenNodePosition = typeof scope.viewportFindOpenNodePosition === 'function'
-            ? scope.viewportFindOpenNodePosition
+        const viewportFindOpenNodePosition = typeof viewportSource.viewportFindOpenNodePosition === 'function'
+            ? viewportSource.viewportFindOpenNodePosition
             : null;
         const scheduleSave = (...args) => {
-            if (typeof scope.scheduleSave === 'function') scope.scheduleSave(...args);
+            sourceCall(persistenceSource, 'scheduleSave', undefined, ...args);
         };
-        const buildResultLayoutPatch = typeof scope.buildResultLayoutPatch === 'function'
-            ? scope.buildResultLayoutPatch
+        const buildResultLayoutPatch = typeof patchSource.buildResultLayoutPatch === 'function'
+            ? patchSource.buildResultLayoutPatch
             : (_resultNode, patch) => Object.assign({}, patch || {});
-        const buildNodeLayoutPatch = typeof scope.buildNodeLayoutPatch === 'function'
-            ? scope.buildNodeLayoutPatch
+        const buildNodeLayoutPatch = typeof patchSource.buildNodeLayoutPatch === 'function'
+            ? patchSource.buildNodeLayoutPatch
             : (_node, patch) => Object.assign({}, patch || {});
-        const collapsedPromptMinHeight = Math.max(1, Number(scope.collapsedPromptMinHeight || 220));
+        const clamp = typeof utilitySource.clamp === 'function' ? utilitySource.clamp : UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const collapsedPromptMinHeight = Math.max(1, Number(nodeSource.collapsedPromptMinHeight || 220));
 
         function applyNodeLayoutPatch(node, options) {
             const patch = buildNodeLayoutPatch(node, options || {});

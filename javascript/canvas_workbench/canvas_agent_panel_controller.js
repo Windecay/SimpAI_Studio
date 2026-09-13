@@ -27,6 +27,7 @@
         const ensureWorkbenchFormFieldNames = (...args) => call('ensureWorkbenchFormFieldNames', null, ...args);
         const renderView = (name, ...args) => call(name, '', ...args) || '';
         const setCanvasAgentLayoutPatch = (...args) => call('setCanvasAgentLayoutPatch', null, ...args);
+        const setCanvasAgentResolutionOpen = (...args) => call('setCanvasAgentResolutionOpen', null, ...args);
         const setCanvasAgentSuppressClickUntil = (...args) => call('setCanvasAgentSuppressClickUntil', null, ...args);
         const clamp = scope.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
         const requestRenderCanvasAgentPanel = () => call('renderCanvasAgentPanel', null);
@@ -251,12 +252,14 @@ ${state.resolutionOpen ? renderView('renderCanvasAgentResolutionControls', decis
 <div class="sai-canvas-agent-head" data-canvas-agent-drag-handle>
   <div class="sai-canvas-agent-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(canvasAgentTargetLabel(target))}</span></div>
   ${renderView('renderCanvasAgentModelChip', settings, decisionActive || runActive)}
+  ${window.SimpAIStudioHelp?.button('agent', 'canvas') || ''}
   <button type="button" class="sai-canvas-agent-head-btn ${attachPaused ? 'is-active' : ''}" data-canvas-agent-action="toggle-attach" title="${escapeHtml(attachPaused ? t('Enable attach to selection', '启用吸附到选中节点') : t('Pause attach to selection', '暂停吸附到选中节点'))}"><i class="fa-solid ${attachPaused ? 'fa-link' : 'fa-link-slash'}"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="toggle-expanded" title="${escapeHtml(expanded ? t('Collapse composer', '收起输入器') : t('Expand composer', '展开输入器'))}"><i class="fa-solid ${expanded ? 'fa-down-left-and-up-right-to-center' : 'fa-up-right-and-down-left-from-center'}"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="toggle-minimized" title="${escapeHtml(t('Minimize Agent', '最小化 Agent'))}"><i class="fa-solid fa-minus"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="open-settings" title="${escapeHtml(t('Agent settings', 'Agent 设置'))}"><i class="fa-solid fa-gear"></i></button>
 </div>
 ${state.modelPickerOpen ? renderView('renderCanvasAgentModelPicker', settings, decisionActive || runActive) : ''}
+${window.SimpAIStudioHelp?.modelNotice(settings.rewriteModel, !settings.customModel) || ''}
 ${renderView('renderCanvasAgentRunInfo', state.currentRun)}
 ${overlay.active ? renderOutpaintControlPanel() : (decisionActive ? renderView('renderCanvasAgentDecision', decision) : composerBody)}
 ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.lastMessage)}</div>` : ''}`;
@@ -295,7 +298,7 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
             }
             if (action === 'toggle-minimized') {
                 state.pickReference = false;
-                state.resolutionOpen = false;
+                setCanvasAgentResolutionOpen(false);
                 state.modelPickerOpen = false;
                 setCanvasAgentLayoutPatch({ minimized: true });
                 return true;
@@ -306,7 +309,7 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
             }
             if (action === 'toggle-model-picker') {
                 state.modelPickerOpen = !state.modelPickerOpen;
-                if (state.modelPickerOpen) state.resolutionOpen = false;
+                if (state.modelPickerOpen) setCanvasAgentResolutionOpen(false);
                 requestRenderCanvasAgentPanel();
                 return true;
             }
@@ -316,8 +319,7 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
                 return true;
             }
             if (action === 'toggle-resolution-picker') {
-                state.resolutionOpen = !state.resolutionOpen;
-                if (state.resolutionOpen) state.modelPickerOpen = false;
+                setCanvasAgentResolutionOpen(!state.resolutionOpen);
                 requestRenderCanvasAgentPanel();
                 return true;
             }

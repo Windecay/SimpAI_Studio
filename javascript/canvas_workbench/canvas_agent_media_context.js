@@ -103,6 +103,8 @@
             connectCanvasAgentMediaToGenerator: mediaConnectionsMethod.bind(null, 'connectCanvasAgentMediaToGenerator'),
             canvasAgentMediaConnectionError: mediaConnectionsMethod.bind(null, 'canvasAgentMediaConnectionError'),
             previewCanvasAgentMediaInputSlot: mediaConnectionsMethod.bind(null, 'previewCanvasAgentMediaInputSlot'),
+            canvasAgentUploadSlotsForNode: mediaConnectionsMethod.bind(null, 'canvasAgentUploadSlotsForNode'),
+            isCanvasAgentMaskSlot: mediaConnectionsMethod.bind(null, 'isCanvasAgentMaskSlot'),
             canvasAgentMaskUploadSlot: mediaConnectionsMethod.bind(null, 'canvasAgentMaskUploadSlot'),
             canvasAgentVideoMaskUploadSlot: mediaConnectionsMethod.bind(null, 'canvasAgentVideoMaskUploadSlot'),
             canvasAgentVideoSourceUploadSlot: mediaConnectionsMethod.bind(null, 'canvasAgentVideoSourceUploadSlot'),

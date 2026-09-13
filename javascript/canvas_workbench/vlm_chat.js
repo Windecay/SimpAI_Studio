@@ -39,6 +39,29 @@
         { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }
     ];
 
+    const VLM_AGENT_MODE_CHOICES = [
+        { key: 'raw', label: t('Raw Model', '原始模型') },
+        { key: 'persona', label: t('Persona Chat', '人格聊天') },
+        { key: 'canvas_agent', label: t('Canvas Tool Agent', '画布工具 Agent') }
+    ];
+
+    function normalizeVlmAgentMode(params) {
+        const explicit = String(params?.agent_mode || '').trim().toLowerCase();
+        if (VLM_AGENT_MODE_CHOICES.some(item => item.key === explicit)) return explicit;
+        if (params?.agent_raw_mode === true) return 'raw';
+        if (
+            params
+            && (Object.prototype.hasOwnProperty.call(params, 'agent_use_skills')
+                || Object.prototype.hasOwnProperty.call(params, 'agent_use_canvas_context')
+                || Object.prototype.hasOwnProperty.call(params, 'agent_action_hints'))
+        ) {
+            return (params.agent_use_skills !== false || params.agent_use_canvas_context !== false || params.agent_action_hints !== false)
+                ? 'canvas_agent'
+                : 'persona';
+        }
+        return 'persona';
+    }
+
     window.SimpAICanvasWorkbenchVlm = Object.assign({}, window.SimpAICanvasWorkbenchVlm || {}, {
         VLM_VERSION_CHOICES,
         VLM_MODEL_LABELS: REGISTRY.VLM_MODEL_LABELS || {},
@@ -61,11 +84,8 @@
             'Custom': 32768
         },
         VLM_CUSTOM_API_STORAGE_KEY: 'simpai.canvas.vlmCustomApiProfiles.v1',
-        VLM_AGENT_MODE_CHOICES: [
-            { key: 'raw', label: t('Raw Model', '原始模型') },
-            { key: 'persona', label: t('Persona Chat', '人格聊天') },
-            { key: 'canvas_agent', label: t('Canvas Tool Agent', '画布工具 Agent') }
-        ],
+        VLM_AGENT_MODE_CHOICES,
+        normalizeVlmAgentMode,
         VLM_CHAT_TOOL_COMMANDS: [
             { command: '/t2i', label: t('Generate image', '生成图片') },
             { command: '/edit', label: t('Edit selected image', '编辑选中图片') },

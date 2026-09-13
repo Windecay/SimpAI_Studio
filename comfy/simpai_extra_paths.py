@@ -5,6 +5,7 @@ import os
 
 SIMPAI_CONFIG_PATH_MAP = {
     "checkpoints": ("path_diffusion_models", "path_checkpoints"),
+    "configs": ("path_configs",),
     "LLM": ("path_LLM",),
     "llms": ("path_llms",),
     "clip_vision": ("path_clip_vision", "path_ipadapter"),
@@ -21,6 +22,10 @@ SIMPAI_CONFIG_PATH_MAP = {
     "birefnet": ("path_birefnet",),
     "layer_model": ("path_layer_model",),
     "vae": ("path_vae",),
+    "vae_approx": ("path_vae_approx",),
+    "gligen": ("path_gligen",),
+    "hypernetworks": ("path_hypernetworks",),
+    "photomaker": ("path_photomaker",),
     "ipadapter": ("path_ipadapter", "path_controlnet"),
     "inpaint": ("path_inpaint",),
     "sams": ("path_sams",),

@@ -9993,7 +9993,8 @@ function ensurePresetStoreResize(presetStoreEl) {
         modal: presetStoreEl,
         minWidth: 560,
         minHeight: 320,
-        margin: window.innerWidth <= 860 ? 6 : 24,
+        // The store's frame applies desktop margins; resizing must also allow its narrow layout.
+        margin: 6,
         disabled: () => window.innerWidth <= 860,
         isHidden: () => {
             const style = window.getComputedStyle ? window.getComputedStyle(presetStoreEl) : null;
@@ -10014,7 +10015,7 @@ function getPresetStoreViewportMargin() {
 
 function getPresetStoreDefaultTop() {
     const margin = getPresetStoreViewportMargin();
-    if (window.innerWidth <= 860) return margin;
+    if (window.innerWidth <= 860 || window.innerHeight <= 720) return margin;
     const preferredTop = 118;
     const viewportScaledTop = Math.round(window.innerHeight * 0.12);
     return Math.max(margin, Math.min(preferredTop, viewportScaledTop));

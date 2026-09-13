@@ -3,13 +3,27 @@
 
     function createCanvasStatusController(context) {
         const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const getStorageScope = () => typeof scope.getStorageScope === 'function' ? (scope.getStorageScope() || {}) : {};
-        const getStorageKey = () => typeof scope.getStorageKey === 'function' ? scope.getStorageKey() : null;
-        const getZoomLabel = () => typeof scope.getZoomLabel === 'function' ? scope.getZoomLabel() : null;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const domSource = sourceObject('domSource');
+        const projectSource = sourceObject('projectSource');
+        const storageSource = sourceObject('storageSource');
+        const uiSource = sourceObject('uiSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const call = (name, ...args) => sourceCall(uiSource, name, undefined, ...args);
+        const getRoot = () => sourceCall(domSource, 'getRoot', null);
+        const getProject = () => sourceCall(projectSource, 'getProject', {}) || {};
+        const getStorageScope = () => sourceCall(storageSource, 'getStorageScope', {}) || {};
+        const getStorageKey = () => sourceCall(storageSource, 'getStorageKey', null);
+        const getStorageDisplayLocation = () => sourceCall(storageSource, 'storageDisplayLocation', '');
+        const getStorageDisplayPath = () => sourceCall(storageSource, 'storageDisplayPath', '');
+        const getZoomLabel = () => sourceCall(domSource, 'getZoomLabel', null);
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
 
         function renderStatus() {
             const root = getRoot();
@@ -35,7 +49,7 @@
                     .replace('{scheduler}', schedulerStatus);
                 const storage = project.storage || {};
                 const schedulerError = project.scheduler?.error ? `\n${t('Queue', '队列')}：${project.scheduler.error}` : '';
-                status.title = `${call('storageDisplayLocation')}\n${call('storageDisplayPath')}\n${t('Cache key', '缓存键')}：${storage.key || getStorageKey() || ''}${schedulerError}`;
+                status.title = `${getStorageDisplayLocation()}\n${getStorageDisplayPath()}\n${t('Cache key', '缓存键')}：${storage.key || getStorageKey() || ''}${schedulerError}`;
             }
             const zoomLabel = getZoomLabel();
             if (zoomLabel) zoomLabel.textContent = `${Math.round(Number(project.viewport?.zoom || 0) * 100)}%`;

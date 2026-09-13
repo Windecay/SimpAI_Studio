@@ -208,8 +208,9 @@
         const style = allowedStyles.has(String(source.style || '').trim().toLowerCase())
             ? String(source.style || '').trim().toLowerCase()
             : '';
-        const preset = String(source.preset || '').trim().replace(/\.json$/i, '').slice(0, 200);
-        const parameterProfile = String(source.parameter_profile || source.parameterProfile || '').trim().slice(0, 200);
+        const retired = isRetiredCreativePreset(source.preset);
+        const preset = retired ? '' : String(source.preset || '').trim().replace(/\.json$/i, '').slice(0, 200);
+        const parameterProfile = retired ? '' : String(source.parameter_profile || source.parameterProfile || '').trim().slice(0, 200);
         return {
             prompted: !!source.prompted,
             style,
@@ -10834,6 +10835,13 @@
             state.vlmRuntimeStatusResponse = response || null;
             state.vlmRuntimeStatus = response?.runtime_status || null;
         }
+        const helpStatus = modal?.querySelector?.('[data-describe-vlm-help-status]');
+        if (helpStatus && window.SimpAIStudioHelp) {
+            const current = state.vlmRuntimeStatusResponse;
+            const matches = !current?.version || current.version === resolveVlmVersion(readSelectedVlmVersion());
+            const html = window.SimpAIStudioHelp.notice(matches ? current : null);
+            if (helpStatus.innerHTML !== html) helpStatus.innerHTML = html;
+        }
         const status = modal?.querySelector?.('[data-describe-vlm-chat-runtime-status]');
         const value = status?.querySelector?.('[data-describe-vlm-chat-runtime-status-value]');
         if (!status || !value) return;
@@ -11589,6 +11597,7 @@
       <b data-describe-vlm-chat-model-value hidden>${escapeHtml(t('Detecting', '检测中'))}</b>
     </div>
     <span class="describe-vlm-chat-head-actions">
+      ${window.SimpAIStudioHelp?.button('agent') || ''}
       <button type="button" data-describe-vlm-chat-settings-toggle title="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-label="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-expanded="false"><i class="fa-solid fa-sliders"></i></button>
       <button type="button" data-describe-vlm-chat-maximize title="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-label="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-pressed="false"><i class="fa-solid fa-maximize"></i></button>
       <button type="button" data-describe-vlm-chat-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -11824,6 +11833,7 @@
     </div>
   </section>
   <div class="describe-vlm-chat-chat-area">
+    <div data-describe-vlm-help-status></div>
     <div class="describe-vlm-chat-preference-mount" data-describe-vlm-chat-preference-mount hidden></div>
     <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
   </div>
@@ -16848,6 +16858,13 @@
         }
     }
 
+    function isRetiredCreativePreset(value) {
+        const name = String(value || '').replace(/[\u2b07\ufe0f]/g, '')
+            .replace(/\\/g, '/').split('/').pop().trim().replace(/\.+$/, '')
+            .replace(/\.json$/i, '').replace(/\.+$/, '');
+        return /^(?:nunflux|nunqwenedit\+|nunswap)(?:_(?:fp4|int4))?$/i.test(name);
+    }
+
     function normalizeCreativePresetEntries(entries) {
         const seen = new Set();
         const rows = [];
@@ -16855,7 +16872,7 @@
             if (!entry || typeof entry !== 'object') return;
             const name = String(entry.name || entry.display_name || '').trim().replace(/\.json$/i, '');
             const engineType = String(entry.engine_type || entry.default_engine?.engine_type || 'image').trim().toLowerCase();
-            if (!name || seen.has(name.toLowerCase()) || engineType === 'audio') return;
+            if (!name || isRetiredCreativePreset(name) || seen.has(name.toLowerCase()) || engineType === 'audio') return;
             seen.add(name.toLowerCase());
             rows.push(Object.assign({}, entry, { name, display_name: String(entry.display_name || name) }));
         });
@@ -16873,7 +16890,7 @@
             const name = String(item.name || '').trim().slice(0, 200);
             const preset = String(item.preset || item.preset_name || '').trim().replace(/\.json$/i, '').slice(0, 200);
             const key = `${preset.toLowerCase()}\n${name.toLowerCase()}`;
-            if (!name || !preset || seen.has(key)) return null;
+            if (!name || !preset || isRetiredCreativePreset(preset) || seen.has(key)) return null;
             seen.add(key);
             return {
                 name,
@@ -16932,6 +16949,7 @@
 
     function creativePresetEntry(name) {
         const wanted = String(name || '').trim().replace(/\.json$/i, '').toLowerCase();
+        if (isRetiredCreativePreset(wanted)) return null;
         return state.creativePresetCatalog.find((entry) => String(entry.name || '').toLowerCase() === wanted) || null;
     }
 
@@ -17152,6 +17170,7 @@
     }
 
     function creativePresetSupportsTask(entry, task, media = 0) {
+        if (isRetiredCreativePreset(entry?.name || entry?.display_name)) return false;
         if (!entry || !creativePresetSupportedTasks(entry).includes(task)) return false;
         if (!creativePresetCanCompleteTask(entry, task, media)) return false;
         const counts = creativeMediaCounts(media);
@@ -17214,7 +17233,7 @@
     }
 
     function creativePresetDeclaresTaskRoute(entry, task) {
-        if (!entry) return false;
+        if (!entry || isRetiredCreativePreset(entry.name || entry.display_name)) return false;
         if (creativePresetSupportedTasks(entry).includes(task)) return true;
         const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes : [];
         return themes.some((theme) => creativeThemeSupportedTasks(entry, theme).includes(task));
@@ -17510,24 +17529,24 @@
             video_audio_to_video: ['MiniMax-H3(R2V)'],
             image_upscale: ['Z-TTP', 'Wan-TTP'],
             image_restore: ['Imagerepair+'],
-            image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext'],
-            multi_image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext'],
-            image_detail_enhance: ['Z-imageT', 'Anima', 'Flux2-Klein', 'Qwen2512', 'Wan(T2I)', 'Flux1-dev', 'NunFlux_fp4', 'NunFlux_int4', 'Illustrious(OB)', 'Illustrious(MiaoKa)', 'ChenkinXL', 'SD1.5'],
+            image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
+            multi_image_edit: ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext'],
+            image_detail_enhance: ['Z-imageT', 'Anima', 'Flux2-Klein', 'Qwen2512', 'Wan(T2I)', 'Flux1-dev', 'Illustrious(OB)', 'Illustrious(MiaoKa)', 'ChenkinXL', 'SD1.5'],
             image_background_removal: ['Removebg'],
             image_object_removal: ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'Eraser'],
-            image_object_transfer: ['QwenEdit+', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'Bernini-ImageEdit', 'MiniMax-H3(R2I)', 'OneKeyKontext', 'Swap+', 'NunSwap_fp4', 'NunSwap_int4'],
+            image_object_transfer: ['QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'Bernini-ImageEdit', 'MiniMax-H3(R2I)', 'OneKeyKontext', 'Swap+'],
             image_outpaint: ['OneKey-Outpaint'],
             image_relight: ['Relight', 'Flux2-AngleLight'],
             image_style_transfer: ['StyleTransfer+'],
             image_face_swap: ['QwenFaceSwap', 'Swapface'],
-            image_pose_transfer: ['Flux2-KleinPose', 'QwenPose'],
+            image_pose_transfer: ['MiniMax-H3(Pose)', 'QwenPose'],
             image_pose_extraction: ['OneKeyPose'],
             image_anime_to_real: ['Flux2-A2R', 'QwenA2R'],
             image_view_synthesis: ['QwenMultiAngle'],
             image_depth_estimation: ['Depthstatue'],
             image_expression_transfer: ['LivePortrait Exp']
         };
-        const priorities = (taskPriorities[task] || ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
+        const priorities = (taskPriorities[task] || ['MiniMax-H3(R2I)', 'QwenEdit+', 'Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenNSFW', 'Bernini-ImageEdit', 'OneKeyKontext']).slice();
         if (task === 'text_to_image') priorities.splice(0, priorities.length, 'MiniMax-H3(R2I)', 'QwenNSFW', CREATIVE_DEFAULT_PRESET, 'Anima');
         const readinessRank = { ready: 0, unknown: 1, missing: 2 };
         return candidates.slice().sort((left, right) => {
@@ -17562,7 +17581,7 @@
     }
 
     function creativePresetCapabilitiesPayload() {
-        return state.creativePresetCatalog.slice(0, 100).map((entry) => {
+        return state.creativePresetCatalog.filter(entry => !isRetiredCreativePreset(entry.name || entry.display_name)).slice(0, 100).map((entry) => {
             const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes.slice(0, 40).map((theme) => String(theme || '')).filter(Boolean) : [];
             const perTheme = entry?.schema?.per_theme && typeof entry.schema.per_theme === 'object' ? entry.schema.per_theme : {};
             const durationParam = (Array.isArray(entry?.schema?.params) ? entry.schema.params : [])
@@ -17677,7 +17696,7 @@
         const initiative = normalizeCreativeInitiative(state.creativeInitiative);
         const selectedPreset = String(preference.preset || '');
         const selectedParameterProfile = String(preference.parameter_profile || '');
-        const presetRows = state.creativePresetCatalog.slice();
+        const presetRows = state.creativePresetCatalog.filter(entry => !isRetiredCreativePreset(entry.name || entry.display_name));
         if (selectedPreset && !presetRows.some((entry) => entry.name === selectedPreset)) {
             presetRows.unshift({ name: selectedPreset, display_name: selectedPreset });
         }

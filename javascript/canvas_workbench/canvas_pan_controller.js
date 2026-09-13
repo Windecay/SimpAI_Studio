@@ -3,20 +3,41 @@
 
     function createCanvasPanController(context) {
         const scope = context || {};
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const projectSource = sourceObject('projectSource');
+        const viewportSource = sourceObject('viewportSource');
+        const domSource = sourceObject('domSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const patchSource = sourceObject('patchSource');
+        const uiSource = sourceObject('uiSource');
+        const edgeSource = sourceObject('edgeSource');
+        const minimapSource = sourceObject('minimapSource');
+        const renderSource = sourceObject('renderSource');
+        const persistenceSource = sourceObject('persistenceSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const getProject = () => sourceCall(projectSource, 'getProject', {}) || {};
+        const getViewport = () => sourceCall(viewportSource, 'getViewport', null);
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
+            ? runtimeSource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const getPerfStats = () => typeof scope.getPerfStats === 'function' ? (scope.getPerfStats() || {}) : {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const edgeCall = (name, fallback, ...args) => sourceCall(edgeSource, name, fallback, ...args);
+        const minimapCall = (name, fallback, ...args) => sourceCall(minimapSource, name, fallback, ...args);
+        const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
+        const persistenceCall = (name, fallback, ...args) => sourceCall(persistenceSource, name, fallback, ...args);
         let panState = null;
 
         function applyProjectViewportPatch(project, viewportPatch) {
-            const patch = call('buildProjectViewportPatch', project, { viewportPatch });
+            const patch = sourceCall(patchSource, 'buildProjectViewportPatch', undefined, project, { viewportPatch });
             if (patch && typeof patch === 'object'
                 && patch.viewport
                 && typeof patch.viewport === 'object'
@@ -33,13 +54,13 @@
         }
 
         function startPan(evt) {
-            call('hideCanvasTooltip');
-            call('hideHoverPreview');
-            call('closePreviewSelectMenu');
-            call('cancelPanEdgeSettleRender');
-            call('cancelDragEdgeSettleRender');
-            call('endDragEdgeLodVisual');
-            call('preferSvgEdgesForViewportInteraction', 5000);
+            uiCall('hideCanvasTooltip', undefined);
+            uiCall('hideHoverPreview', undefined);
+            uiCall('closePreviewSelectMenu', undefined);
+            edgeCall('cancelPanEdgeSettleRender', undefined);
+            edgeCall('cancelDragEdgeSettleRender', undefined);
+            edgeCall('endDragEdgeLodVisual', undefined);
+            edgeCall('preferSvgEdgesForViewportInteraction', undefined, 5000);
             const viewport = getViewport();
             const project = getProject();
             if (!viewport || !evt) return;
@@ -66,10 +87,10 @@
                 x: Math.round(panState.startX + evt.clientX - panState.startClientX),
                 y: Math.round(panState.startY + evt.clientY - panState.startClientY)
             });
-            call('preferSvgEdgesForViewportInteraction', 5000);
-            call('applyViewport');
-            call('updateMinimapForViewportInteraction');
-            call('schedulePanNodeRender');
+            edgeCall('preferSvgEdgesForViewportInteraction', undefined, 5000);
+            sourceCall(viewportSource, 'applyViewport', undefined);
+            minimapCall('updateMinimapForViewportInteraction', undefined);
+            renderCall('schedulePanNodeRender', undefined);
         }
 
         function stopPan(evt) {
@@ -77,32 +98,32 @@
             if (evt && evt.pointerId !== panState.pointerId) return;
             const pointerId = panState.pointerId;
             panState = null;
-            call('setSuppressWheelUntil', 0);
+            uiCall('setSuppressWheelUntil', undefined, 0);
             const viewport = getViewport();
             try { viewport?.releasePointerCapture?.(pointerId); } catch (err) {}
             viewport?.classList?.remove?.('is-panning');
-            call('preferSvgEdgesForViewportInteraction', 5000);
+            edgeCall('preferSvgEdgesForViewportInteraction', undefined, 5000);
             const doc = getDocument();
             doc?.removeEventListener('pointermove', onPanMove, true);
             doc?.removeEventListener('pointerup', stopPan, true);
             doc?.removeEventListener('pointercancel', stopPan, true);
-            call('clearPanNodeRenderTimer');
-            call('cancelMinimapRender');
+            renderCall('clearPanNodeRenderTimer', undefined);
+            minimapCall('cancelMinimapRender', undefined);
 
             const startedAt = getPerformanceNow();
-            const visibleWorld = call('getVisibleWorldRect');
-            const deferPanEdges = !!call('shouldDeferPanEdgeSettleRender');
-            call('renderNodes', { skipLayoutMinimap: true, skipAgentPosition: true });
+            const visibleWorld = renderCall('getVisibleWorldRect', {});
+            const deferPanEdges = !!renderCall('shouldDeferPanEdgeSettleRender', false);
+            renderCall('renderNodes', undefined, { skipLayoutMinimap: true, skipAgentPosition: true });
             if (deferPanEdges) {
-                call('schedulePanEdgeSettleRender');
+                renderCall('schedulePanEdgeSettleRender', undefined);
             } else {
-                call('renderFinalEdgesAfterPan');
+                edgeCall('renderFinalEdgesAfterPan', undefined);
             }
-            call('renderMinimap', { visibleWorld });
+            minimapCall('renderMinimap', undefined, { visibleWorld });
             const perfStats = getPerfStats();
             perfStats.renderTotalMs = getPerformanceNow() - startedAt;
-            call('renderPerformanceHud', true);
-            call('scheduleSave');
+            renderCall('renderPerformanceHud', undefined, true);
+            persistenceCall('scheduleSave', undefined);
         }
 
         return {

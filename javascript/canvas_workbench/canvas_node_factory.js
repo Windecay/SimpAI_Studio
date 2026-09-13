@@ -3,38 +3,45 @@
 
     function createCanvasNodeFactoryController(context) {
         const scope = context || {};
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const presetSource = sourceObject('presetSource');
+        const cloneRunValue = typeof runtimeSource.cloneRunValue === 'function'
+            ? runtimeSource.cloneRunValue
             : (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const normalizePresetName = typeof scope.normalizePresetName === 'function'
-            ? scope.normalizePresetName
+        const nowIso = typeof runtimeSource.nowIso === 'function' ? runtimeSource.nowIso : () => new Date().toISOString();
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const uid = typeof runtimeSource.uid === 'function' ? runtimeSource.uid : (type) => `${type}-node`;
+        const normalizePresetName = typeof presetSource.normalizePresetName === 'function'
+            ? presetSource.normalizePresetName
             : (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
-        const getPromptDefaults = (...args) => typeof scope.canvasAgentPresetPromptDefaults === 'function'
-            ? (scope.canvasAgentPresetPromptDefaults(...args) || {})
+        const getPromptDefaults = (...args) => typeof presetSource.canvasAgentPresetPromptDefaults === 'function'
+            ? (presetSource.canvasAgentPresetPromptDefaults(...args) || {})
             : {};
-        const getClassicIpTypes = typeof scope.getClassicIpTypes === 'function'
-            ? scope.getClassicIpTypes
+        const getClassicIpTypes = typeof presetSource.getClassicIpTypes === 'function'
+            ? presetSource.getClassicIpTypes
             : () => [];
-        const enhanceRegionKey = typeof scope.enhanceRegionKey === 'function'
-            ? scope.enhanceRegionKey
+        const enhanceRegionKey = typeof presetSource.enhanceRegionKey === 'function'
+            ? presetSource.enhanceRegionKey
             : index => `enhance_region_${index}`;
-        const getVisiblePresetParams = typeof scope.getVisiblePresetParams === 'function'
-            ? scope.getVisiblePresetParams
+        const getVisiblePresetParams = typeof presetSource.getVisiblePresetParams === 'function'
+            ? presetSource.getVisiblePresetParams
             : () => [];
-        const getVisibleUploadSlots = typeof scope.getVisibleUploadSlots === 'function'
-            ? scope.getVisibleUploadSlots
+        const getVisibleUploadSlots = typeof presetSource.getVisibleUploadSlots === 'function'
+            ? presetSource.getVisibleUploadSlots
             : () => [];
-        const ensurePresetSpecialControllerState = typeof scope.ensurePresetSpecialControllerState === 'function'
-            ? scope.ensurePresetSpecialControllerState
+        const ensurePresetSpecialControllerState = typeof presetSource.ensurePresetSpecialControllerState === 'function'
+            ? presetSource.ensurePresetSpecialControllerState
             : () => '';
-        const enhanceRegionDefaults = Array.isArray(scope.registryClassicEnhanceRegionDefaults)
-            ? scope.registryClassicEnhanceRegionDefaults
+        const enhanceRegionDefaults = Array.isArray(presetSource.registryClassicEnhanceRegionDefaults)
+            ? presetSource.registryClassicEnhanceRegionDefaults
             : null;
-        const classicIpControlTypes = Array.isArray(scope.registryClassicIpControlTypes)
-            ? scope.registryClassicIpControlTypes
+        const classicIpControlTypes = Array.isArray(presetSource.registryClassicIpControlTypes)
+            ? presetSource.registryClassicIpControlTypes
             : null;
 
         function buildNodeParamsPatch(node, options) {

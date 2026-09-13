@@ -59,7 +59,7 @@
             setAgentInput: scope.setAgentInput,
             buildAgentDecisionFormPatch: scope.buildAgentDecisionFormPatch,
             setCanvasAgentResolutionPatch: scope.setCanvasAgentResolutionPatch,
-            setResolutionOpen: scope.setResolutionOpen,
+            setCanvasAgentResolutionOpen: scope.setCanvasAgentResolutionOpen,
             handleCanvasAgentDecisionFieldInput: scope.handleCanvasAgentDecisionFieldInput,
             onOutpaintSliderInput: scope.onOutpaintSliderInput,
             handleCanvasAgentSettingInput: scope.handleCanvasAgentSettingInput,

@@ -596,6 +596,7 @@ def prepare_prompt_action_resources(state, input_images, scene_resources=None, i
     masked_image_edit = (
         scene_mode
         and _prompt_action_h3_r2i(task_method)
+        and not scene.get("disable_canvas_mask", False)
         and _prompt_action_canvas_mask_present(image_map.get("scene_canvas_image"))
     )
     masked_source_present = bool(

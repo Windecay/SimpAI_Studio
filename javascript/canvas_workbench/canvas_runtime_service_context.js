@@ -11,7 +11,12 @@
     }
 
     function createCanvasWorkbenchRuntimeServiceContext(source, controllers) {
-        const scope = source || {};
+        const scope = source?.runtimeServiceSource || source || {};
+        const renderSource = scope.renderSource || {};
+        const runStatusSource = scope.runStatusSource || {};
+        const minimapSource = scope.minimapSource || {};
+        const bridgeSource = scope.bridgeSource || {};
+        const historySource = scope.historySource || {};
         const renderMethod = name => method(controllers.render, name);
         const runStatusMethod = name => method(controllers.runStatus, name);
         const minimapMethod = name => method(controllers.minimap, name);
@@ -25,137 +30,58 @@
         controllers.render = createController(
             window.SimpAICanvasWorkbenchRender || {},
             'createCanvasRenderController',
-            {
-                getRoot: scope.getRoot,
-                getRunHistoryPanel: scope.getRunHistoryPanel,
-                getPerfStats: scope.getPerfStats,
-                performanceNow: scope.performanceNow,
-                cancelPanEdgeSettleRender: scope.cancelPanEdgeSettleRender,
-                isNodeDragging: scope.isNodeDragging,
-                isGroupDragging: scope.isGroupDragging,
-                cancelDragEdgeSettleRender: scope.cancelDragEdgeSettleRender,
-                endDragEdgeLodVisual: scope.endDragEdgeLodVisual,
-                invalidateMinimapStaticCache: (...args) => minimapMethod('invalidateMinimapStaticCache')?.(...args),
-                invalidateNodeSpatialIndex: (...args) => spatialMethod('invalidateNodeSpatialIndex')?.(...args),
-                reconcileSelection: scope.reconcileSelection,
-                applyThemeClass: scope.applyThemeClass,
-                applyViewport: scope.applyViewport,
-                renderGroups: scope.renderGroups,
-                renderMode: scope.renderMode,
-                renderNodes: (...args) => nodeRenderMethod('renderNodes')?.(...args),
-                renderEdges: scope.renderEdges,
-                renderSelectedChainOverlay: scope.renderSelectedChainOverlay,
-                renderInspector: scope.renderInspector,
-                renderStatus: (...args) => method(controllers.status, 'renderStatus')?.(...args),
-                renderCanvasSettingsPanel: scope.renderCanvasSettingsPanel,
-                renderMinimap: (...args) => minimapMethod('renderMinimap')?.(...args),
-                renderCanvasAgentPanel: scope.renderCanvasAgentPanel,
-                renderRunQueuePanelIfOpen: scope.renderRunQueuePanelIfOpen,
-                renderRunHistoryPanel: scope.renderRunHistoryPanel,
-                renderPerformanceHud: scope.renderPerformanceHud,
-                scheduleEdgeIncidentIndexWarmup: scope.scheduleEdgeIncidentIndexWarmup
-            }
+            Object.assign({}, renderSource, {
+                nodeSource: Object.assign({}, renderSource.nodeSource || {}, {
+                    renderNodes: (...args) => nodeRenderMethod('renderNodes')?.(...args)
+                }),
+                statusSource: Object.assign({}, renderSource.statusSource || {}, {
+                    renderStatus: (...args) => method(controllers.status, 'renderStatus')?.(...args)
+                }),
+                uiSource: Object.assign({}, renderSource.uiSource || {}, {
+                    invalidateMinimapStaticCache: (...args) => minimapMethod('invalidateMinimapStaticCache')?.(...args),
+                    invalidateNodeSpatialIndex: (...args) => spatialMethod('invalidateNodeSpatialIndex')?.(...args),
+                    renderMinimap: (...args) => minimapMethod('renderMinimap')?.(...args)
+                })
+            })
         );
         const renderAll = renderMethod('renderAll');
 
         controllers.runStatus = createController(
             window.SimpAICanvasWorkbenchRunStatus || {},
             'createCanvasRunStatusController',
-            {
-                t: scope.t,
-                escapeHtml: scope.escapeHtml,
-                formatLocalTime: scope.formatLocalTime,
-                clamp: scope.clamp,
-                getProject: scope.getProject,
-                getNode: scope.getNode,
-                getRunQueueWidget: scope.getRunQueueWidget,
-                getRunQueuePanel: scope.getRunQueuePanel,
-                getSystemInfoElement: scope.getSystemInfoElement,
-                getBackendAlertElement: scope.getBackendAlertElement,
-                getWindow: () => window,
-                isStandaloneCanvasWorkbench: scope.isStandaloneCanvasWorkbench,
-                isCanvasRunActiveState: scope.isCanvasRunActiveState,
-                isTerminalRunState: scope.isTerminalRunState,
-                fetchStatus: scope.fetchStatus,
-                setInterval: scope.setInterval,
-                clearInterval: scope.clearInterval
-            }
+            runStatusSource
         );
 
         controllers.minimap = createController(
             window.SimpAICanvasWorkbenchMinimap || {},
             'createCanvasMinimapController',
-            {
-                getProject: scope.getProject,
-                getMinimapElement: scope.getMinimapElement,
-                getViewport: scope.getViewport,
-                buildProjectViewportPatch: scope.buildProjectViewportPatch,
-                getDocument: scope.getDocument,
-                getWindow: () => window,
-                getVisibleWorldRect: (...args) => viewportMethod('getVisibleWorldRect')?.(...args) || {},
-                getNodeRect: (...args) => layoutMethod('getNodeRect')?.(...args),
-                getGroupRect: scope.getGroupRect,
-                ensureProjectGroups: scope.ensureProjectGroups,
-                getSelectedNodeId: scope.getSelectedNodeId,
-                getSelectedNodeIds: scope.getSelectedNodeIds,
-                getSelectedGroupId: scope.getSelectedGroupId,
-                nodeCustomColor: scope.nodeCustomColor,
-                expandCanvasHexColor: scope.expandCanvasHexColor,
-                escapeHtml: scope.escapeHtml,
-                defaultNodeSize: scope.defaultNodeSize,
-                getNodeLayoutSize: (...args) => layoutMethod('getNodeLayoutSize')?.(...args),
-                getMinimapBounds: scope.getMinimapBounds,
-                hasCanvasOverflow: scope.hasCanvasOverflow,
-                getPerfStats: scope.getPerfStats,
-                performanceNow: scope.performanceNow,
-                setTimeout: scope.setTimeout,
-                clearTimeout: scope.clearTimeout,
-                preferSvgEdgesForViewportInteraction: scope.preferSvgEdgesForViewportInteraction,
-                applyViewport: scope.applyViewport,
-                renderStatus: (...args) => method(controllers.status, 'renderStatus')?.(...args),
-                scheduleViewportNodeRender: scope.scheduleViewportNodeRender,
-                scheduleViewportSave: scope.scheduleViewportSave
-            }
+            Object.assign({}, minimapSource, {
+                viewportSource: Object.assign({}, minimapSource.viewportSource || {}, {
+                    getVisibleWorldRect: (...args) => viewportMethod('getVisibleWorldRect')?.(...args) || {},
+                }),
+                layoutSource: Object.assign({}, minimapSource.layoutSource || {}, {
+                    getNodeRect: (...args) => layoutMethod('getNodeRect')?.(...args),
+                    getNodeLayoutSize: (...args) => layoutMethod('getNodeLayoutSize')?.(...args),
+                }),
+                interactionSource: Object.assign({}, minimapSource.interactionSource || {}, {
+                    renderStatus: (...args) => method(controllers.status, 'renderStatus')?.(...args),
+                }),
+            })
         );
 
         controllers.bridge = createController(
             window.SimpAICanvasWorkbenchBridgeTransport || {},
             'createCanvasBridgeTransportController',
-            {
-                document: scope.getDocument?.(),
-                uid: scope.uid,
-                setGradioTextboxValue: scope.setGradioTextboxValue,
-                clickGradioButton: scope.clickGradioButton,
-                setTimeout: scope.setTimeout,
-                clearTimeout: scope.clearTimeout
-            }
+            bridgeSource
         );
 
         controllers.history = createController(
             window.SimpAICanvasWorkbenchHistory || {},
             'createCanvasHistoryController',
-            {
-                t: scope.t,
-                getHistoryLimit: scope.getHistoryLimit,
-                getHistoryMemoryBudgetBytes: scope.getHistoryMemoryBudgetBytes,
-                getProject: scope.getProject,
-                setProject: scope.setProject,
-                compactProjectForStorage: scope.compactProjectForStorage,
-                buildProjectStorageInfo: scope.buildProjectStorageInfo,
-                getStorageKey: scope.getStorageKey,
-                getStorageScope: scope.getStorageScope,
-                sanitizeProject: scope.sanitizeProject,
+            Object.assign({}, historySource, {
                 resetRenderedProjectDomCache: (...args) => nodeRenderMethod('resetRenderedProjectDomCache')?.(...args),
-                getSelectionState: scope.getSelectionState,
-                setSelectionState: scope.setSelectionState,
-                closeContextMenu: scope.closeContextMenu,
-                scheduleSave: scope.scheduleSave,
-                renderAll,
-                showToast: scope.showToast,
-                getRoot: scope.getRoot,
-                setTimeout: scope.setTimeout,
-                clearTimeout: scope.clearTimeout
-            }
+                renderAll
+            })
         );
 
         const expose = (controllerKey, names) => names.reduce((result, name) => {

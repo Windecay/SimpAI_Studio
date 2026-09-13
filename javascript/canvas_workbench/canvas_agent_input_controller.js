@@ -83,7 +83,7 @@
 
             const agentScale = closest(evt, '[data-canvas-agent-scale]');
             if (agentScale) {
-                call('setResolutionOpen', false);
+                call('setCanvasAgentResolutionOpen', false);
                 call('setCanvasAgentResolutionPatch', { multiplier: agentScale.value });
                 return true;
             }

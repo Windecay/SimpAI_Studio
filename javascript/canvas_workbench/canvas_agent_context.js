@@ -4,6 +4,7 @@
     const modules = {
         references: window.SimpAICanvasWorkbenchCanvasAgentReferences || {},
         decision: window.SimpAICanvasWorkbenchCanvasAgentDecision || {},
+        generation: window.SimpAICanvasWorkbenchCanvasAgentGeneration || {},
         promptRewrite: window.SimpAICanvasWorkbenchCanvasAgentPromptRewrite || {},
         promptResolver: window.SimpAICanvasWorkbenchAgentPromptResolver || {},
         textWorkflows: window.SimpAICanvasWorkbenchTextWorkflows || {},
@@ -19,8 +20,42 @@
         return controller && typeof controller[name] === 'function' ? controller[name] : undefined;
     }
 
+    function canvasAgentRunNodeSelection(scope, node) {
+        if (!node) return;
+        if (typeof scope.dockCanvasAgentPanelBottomLeft === 'function') {
+            scope.dockCanvasAgentPanelBottomLeft({ render: false });
+        }
+        if (typeof scope.setCanvasAgentSelection === 'function') {
+            scope.setCanvasAgentSelection(node.id, [node.id]);
+        }
+        if (typeof scope.mutate === 'function') scope.mutate({ inspector: true });
+    }
+
+    function prepareVlmAgentImageActionStart(scope, prompt) {
+        const settings = typeof scope?.getCanvasAgentSettings === 'function'
+            ? (scope.getCanvasAgentSettings() || {})
+            : {};
+        if (!settings.enabled && typeof scope?.setCanvasAgentSettingsPatch === 'function') {
+            scope.setCanvasAgentSettingsPatch({ enabled: true }, { silentHistory: true });
+        }
+        const state = typeof scope?.getAgentState === 'function' ? (scope.getAgentState() || {}) : {};
+        state.input = prompt;
+        const t = scope?.t || ((en, cn) => cn || en);
+        state.lastMessage = t(
+            'VLM Chat confirmed a tool call. Starting with the prepared prompt...',
+            'VLM Chat 已确认工具调用，正在使用准备好的提示词启动...'
+        );
+        if (typeof scope?.renderCanvasAgentPanel === 'function') scope.renderCanvasAgentPanel();
+    }
+
     function createCanvasWorkbenchAgentContext(source) {
         const scope = source?.agentSource || source || {};
+        const generation = createController(
+            modules.generation,
+            'createCanvasAgentGenerationController',
+            scope.generationSource || {}
+        );
+        const generationMethod = (name, ...args) => method(generation, name)?.(...args);
         let promptRewrite = {};
         let textNodes = {};
         const promptRewriteMethod = (name, ...args) => method(promptRewrite, name)?.(...args);
@@ -97,21 +132,24 @@
                 getProject: scope.getProject,
                 getCanvasAgentSettings: scope.getCanvasAgentSettings,
                 getCanvasAgentRewriteModel: scope.getCanvasAgentRewriteModel,
-                getCanvasAgentVlmReferenceSources: scope.getCanvasAgentVlmReferenceSources,
-                canvasAgentReferenceSummaryText: scope.canvasAgentReferenceSummaryText,
+                getCanvasAgentVlmReferenceSources: (...args) => referencesMethod('getCanvasAgentVlmReferenceSources', ...args),
+                canvasAgentReferenceSummaryText: (...args) => referencesMethod('canvasAgentReferenceSummaryText', ...args),
                 runtimeUiLang: scope.runtimeUiLang,
                 getCanvasAgentTargetNode: scope.getCanvasAgentTargetNode,
                 isCanvasAgentImageTarget: scope.isCanvasAgentImageTarget,
                 canvasAgentPromptTargetFromPurpose: scope.canvasAgentPromptTargetFromPurpose,
                 canvasAgentPromptDefaultsForPurpose: scope.canvasAgentPromptDefaultsForPurpose,
                 canvasAgentPromptTargetNeedsDanbooru: scope.canvasAgentPromptTargetNeedsDanbooru,
-                canvasAgentDanbooruLookupText: scope.canvasAgentDanbooruLookupText,
+                canvasAgentPromptLooksDanbooru: scope.canvasAgentPromptLooksDanbooru,
+                canvasAgentPromptNeedsTargetRewrite: scope.canvasAgentPromptNeedsTargetRewrite,
                 canvasAgentPromptTargetContextLine: scope.canvasAgentPromptTargetContextLine,
                 canvasAgentPromptTargetInstruction: scope.canvasAgentPromptTargetInstruction,
                 canvasAgentVlmAgentContextPayload: scope.canvasAgentVlmAgentContextPayload,
                 sendCanvasVlmRunRequest: scope.sendCanvasVlmRunRequest,
                 getCanvasAgentCustomRuntimeParams: scope.getCanvasAgentCustomRuntimeParams,
-                canvasAgentDanbooruFallbackPrompt: scope.canvasAgentDanbooruFallbackPrompt
+                canvasAgentDanbooruFallbackPrompt: scope.canvasAgentDanbooruFallbackPrompt,
+                apiDanbooruTagLookup: scope.apiDanbooruTagLookup,
+                showToast: scope.showToast
             }
         );
 
@@ -180,9 +218,32 @@
         );
 
         return {
+            CANVAS_AGENT_GENERATION_CONTROLLER: generation,
+            canvasAgentRunNodeSelection: node => canvasAgentRunNodeSelection(scope, node),
+            prepareVlmAgentImageActionStart: prompt => prepareVlmAgentImageActionStart(scope, prompt),
+            canvasAgentUserExplicitNegativePrompt: generationMethod.bind(null, 'canvasAgentUserExplicitNegativePrompt'),
+            normalizeCanvasAgentAspect: generationMethod.bind(null, 'normalizeCanvasAgentAspect'),
+            extractCanvasAgentAspectFromText: generationMethod.bind(null, 'extractCanvasAgentAspectFromText'),
+            stripCanvasAgentInlineGenerationParams: generationMethod.bind(null, 'stripCanvasAgentInlineGenerationParams'),
+            normalizeCanvasAgentGenerationOptions: generationMethod.bind(null, 'normalizeCanvasAgentGenerationOptions'),
+            canvasAgentResolutionLabel: generationMethod.bind(null, 'canvasAgentResolutionLabel'),
+            canvasAgentResolutionCompactLabel: generationMethod.bind(null, 'canvasAgentResolutionCompactLabel'),
+            canvasAgentModelStatusLabel: generationMethod.bind(null, 'canvasAgentModelStatusLabel'),
+            applyCanvasAgentPromptToGenerator: generationMethod.bind(null, 'applyCanvasAgentPromptToGenerator'),
+            applyCanvasAgentPresetDefaultsToGenerator: generationMethod.bind(null, 'applyCanvasAgentPresetDefaultsToGenerator'),
+            clonePresetWithPromptDefaults: generationMethod.bind(null, 'clonePresetWithPromptDefaults'),
+            presetGenerationStepValue: generationMethod.bind(null, 'presetGenerationStepValue'),
+            presetGenerationImageNumberValue: generationMethod.bind(null, 'presetGenerationImageNumberValue'),
+            applyCanvasAgentGenerationOptionsToGenerator: generationMethod.bind(null, 'applyCanvasAgentGenerationOptionsToGenerator'),
+            prepareCanvasAgentGenerator: generationMethod.bind(null, 'prepareCanvasAgentGenerator'),
+            applyCanvasAgentResolutionToGenerator: generationMethod.bind(null, 'applyCanvasAgentResolutionToGenerator'),
+            previewCanvasAgentEditInputSlot: generationMethod.bind(null, 'previewCanvasAgentEditInputSlot'),
             CANVAS_AGENT_REFERENCES_CONTROLLER: references,
             canvasAgentReferenceIcon: referencesMethod.bind(null, 'canvasAgentReferenceIcon'),
             canvasAgentReferenceKey: referencesMethod.bind(null, 'canvasAgentReferenceKey'),
+            getCanvasAgentVlmReferenceSources: referencesMethod.bind(null, 'getCanvasAgentVlmReferenceSources'),
+            canvasAgentReferenceSummaryText: referencesMethod.bind(null, 'canvasAgentReferenceSummaryText'),
+            canvasAgentReferenceFacts: referencesMethod.bind(null, 'canvasAgentReferenceFacts'),
             normalizeCanvasAgentReferences: referencesMethod.bind(null, 'normalizeCanvasAgentReferences'),
             canvasAgentReferenceCounts: referencesMethod.bind(null, 'canvasAgentReferenceCounts'),
             createCanvasAgentReferenceFromNode: referencesMethod.bind(null, 'createCanvasAgentReferenceFromNode'),
@@ -222,6 +283,10 @@
             canvasAgentComparablePromptText: promptRewriteMethod.bind(null, 'canvasAgentComparablePromptText'),
             canvasAgentPromptRewriteTooWeak: promptRewriteMethod.bind(null, 'canvasAgentPromptRewriteTooWeak'),
             canvasAgentLocalPromptRewriteFallback: promptRewriteMethod.bind(null, 'canvasAgentLocalPromptRewriteFallback'),
+            canvasAgentDanbooruFallbackRewrite: promptRewriteMethod.bind(null, 'canvasAgentDanbooruFallbackRewrite'),
+            ensureCanvasAgentPromptMatchesTarget: promptRewriteMethod.bind(null, 'ensureCanvasAgentPromptMatchesTarget'),
+            canvasAgentDanbooruLookupText: promptRewriteMethod.bind(null, 'canvasAgentDanbooruLookupText'),
+            maybeShowCanvasDanbooruRuntimeNotice: promptRewriteMethod.bind(null, 'maybeShowCanvasDanbooruRuntimeNotice'),
             CANVAS_AGENT_TEXT_WORKFLOW_CONTROLLER: textWorkflows,
             runCanvasAgentTextRefine: textWorkflowsMethod.bind(null, 'runCanvasAgentTextRefine'),
             CANVAS_AGENT_TEXT_NODE_CONTROLLER: textNodes,

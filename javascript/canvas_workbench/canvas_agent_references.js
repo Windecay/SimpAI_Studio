@@ -18,6 +18,7 @@
         const maxVideoReferences = () => Number(call('getMaxVideoReferences', 3) || 3);
         const maxAudioReferences = () => Number(call('getMaxAudioReferences', 3) || 3);
         const maxTextReferences = () => Number(call('getMaxTextReferences', 4) || 4);
+        const serializeAssetSourceForRun = (...args) => call('serializeAssetSourceForRun', null, ...args);
 
         function getAgentState() {
             return call('getAgentState', {}) || {};
@@ -39,6 +40,111 @@
 
         function getReferenceKind(node) {
             return call('getCanvasAgentReferenceKind', '', node);
+        }
+
+        function getCanvasAgentVlmReferenceSources(options) {
+            const opts = options || {};
+            const refs = normalizeCanvasAgentReferences();
+            const nodes = [];
+            const seen = new Set();
+            const descriptorByNode = new Map(
+                (Array.isArray(opts.referenceDescriptors) ? opts.referenceDescriptors : [])
+                    .filter((item) => item && item.node?.id)
+                    .map((item) => [item.node.id, item])
+            );
+            const addNode = (node, descriptor) => {
+                const kind = getReferenceKind(node);
+                if (!node || !['image', 'video'].includes(kind)) return;
+                if (opts.imagesOnly && kind !== 'image') return;
+                const key = canvasAgentReferenceKey(node, kind);
+                if (seen.has(key) && !opts.preserveReferenceDuplicates) return;
+                if (!opts.preserveReferenceDuplicates) seen.add(key);
+                nodes.push({ node, descriptor: descriptor || null });
+            };
+            if (Array.isArray(opts.referenceEntries)) {
+                opts.referenceEntries.forEach((entry) => addNode(entry?.node, entry));
+            } else if (Array.isArray(opts.referenceNodes)) {
+                opts.referenceNodes.forEach((node) => addNode(node));
+            }
+            if (opts.includeCanvasAgentReferences !== false) {
+                refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref), ref));
+            }
+            if (opts.fallbackTarget && call('isCanvasAgentMediaReferenceTarget', false, opts.fallbackTarget)) {
+                addNode(opts.fallbackTarget);
+            }
+            const defaultLimit = opts.imagesOnly
+                ? maxImageReferences()
+                : maxImageReferences() + maxVideoReferences();
+            const requestedLimit = Math.round(Number(opts.maxSources || defaultLimit));
+            const maxSources = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
+            const selected = nodes.slice(0, maxSources);
+            const selectedKeys = new Set(selected.map((entry) => canvasAgentReferenceKey(
+                entry?.node,
+                getReferenceKind(entry?.node),
+            )));
+            const required = [];
+            if (opts.fallbackTarget && call('isCanvasAgentMediaReferenceTarget', false, opts.fallbackTarget)) {
+                required.push(opts.fallbackTarget);
+            }
+            nodes.forEach((entry) => {
+                if (getReferenceKind(entry?.node) === 'video') required.push(entry?.node);
+            });
+            required.forEach((node) => {
+                const kind = getReferenceKind(node);
+                const key = canvasAgentReferenceKey(node, kind);
+                if (!node || selectedKeys.has(key)) return;
+                const replaceIndex = [...selected].map((entry, index) => ({ entry, index }))
+                    .reverse()
+                    .find(({ entry }) => getReferenceKind(entry?.node) !== 'video')?.index;
+                if (!Number.isFinite(replaceIndex)) return;
+                const replaced = selected[replaceIndex];
+                selected[replaceIndex] = { node, descriptor: descriptorByNode.get(node.id) || null };
+                selectedKeys.delete(canvasAgentReferenceKey(
+                    replaced?.node,
+                    getReferenceKind(replaced?.node),
+                ));
+                selectedKeys.add(key);
+            });
+            return selected.map((entry) => {
+                const node = entry?.node;
+                const serialized = serializeAssetSourceForRun(node);
+                const descriptor = entry?.descriptor || descriptorByNode.get(node?.id);
+                if (!serialized || !descriptor) return serialized;
+                return Object.assign(serialized, {
+                    reference_token: descriptor.token || '',
+                    reference_slot: descriptor.slot || '',
+                    reference_role: descriptor.role || '',
+                });
+            }).filter(Boolean).slice(0, maxSources);
+        }
+
+        function canvasAgentReferenceSummaryText() {
+            const refs = normalizeCanvasAgentReferences();
+            if (!refs.length) return 'No explicit references.';
+            return refs.map((ref, index) => {
+                const meta = ref.meta || {};
+                const bits = [
+                    `#${index + 1}`,
+                    ref.role,
+                    ref.kind,
+                    ref.label,
+                    meta.width && meta.height ? `${meta.width}x${meta.height}` : '',
+                    meta.duration ? `${meta.duration}s` : '',
+                    meta.fps ? `${meta.fps}fps` : '',
+                    meta.excerpt ? `text="${meta.excerpt}"` : ''
+                ].filter(Boolean);
+                return bits.join(' / ');
+            }).join('\n');
+        }
+
+        function canvasAgentReferenceFacts() {
+            const counts = canvasAgentReferenceCounts();
+            return [
+                counts.images ? { label: t('Images', '图片'), value: `${counts.hasPrimaryImage ? 1 : 0} ${t('main', '主图')} + ${counts.imageReferences} ${t('ref', '参考')}` } : null,
+                counts.videos ? { label: t('Video', '视频'), value: String(counts.videos) } : null,
+                counts.audio ? { label: t('Audio', '音频'), value: String(counts.audio) } : null,
+                counts.texts ? { label: t('Text refs', '文本引用'), value: String(counts.texts) } : null
+            ].filter(Boolean);
         }
 
         function canvasAgentReferenceIcon(kind) {
@@ -365,6 +471,9 @@
         return {
             canvasAgentReferenceIcon,
             canvasAgentReferenceKey,
+            getCanvasAgentVlmReferenceSources,
+            canvasAgentReferenceSummaryText,
+            canvasAgentReferenceFacts,
             normalizeCanvasAgentReferences,
             canvasAgentReferenceCounts,
             createCanvasAgentReferenceFromNode,

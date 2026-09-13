@@ -218,7 +218,12 @@
     }
 
     async function readSceneReference() {
-        for (const id of ['scene_input_image1', 'scene_canvas', 'scene_input_image2']) {
+        const state = window.simpleaiTopbarSystemParams || {};
+        const configuredSlots = state.scene_frontend?.pose_studio_reference_slots;
+        const slots = Array.isArray(configuredSlots) && configuredSlots.length
+            ? configuredSlots.filter(id => ['scene_canvas', 'scene_input_image1', 'scene_input_image2'].includes(id))
+            : ['scene_input_image1', 'scene_canvas', 'scene_input_image2'];
+        for (const id of slots) {
             const host = findById(id);
             if (!host) continue;
             const img = host.querySelector?.('img');

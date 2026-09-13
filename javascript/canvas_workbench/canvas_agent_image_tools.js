@@ -30,6 +30,7 @@
         const getCanvasAgentPrimaryImageReference = (...args) => call('getCanvasAgentPrimaryImageReference', null, ...args);
         const getCanvasAgentExtraImageReferences = (...args) => call('getCanvasAgentExtraImageReferences', [], ...args) || [];
         const canvasAgentReferenceNode = (...args) => call('canvasAgentReferenceNode', null, ...args);
+        const addCanvasAgentReferenceFromNode = (...args) => call('addCanvasAgentReferenceFromNode', null, ...args);
         const isCanvasAgentImageTarget = (...args) => call('isCanvasAgentImageTarget', false, ...args);
         const showToast = (...args) => call('showToast', null, ...args);
         const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
@@ -37,16 +38,29 @@
         const revealCanvasAgentPanelForToolCard = (...args) => call('revealCanvasAgentPanelForToolCard', null, ...args);
         const showOutpaintOverlay = (...args) => call('showOutpaintOverlay', null, ...args);
         const hideOutpaintOverlay = (...args) => call('hideOutpaintOverlay', null, ...args);
+        const getOutpaintOverlayState = (...args) => call('getOutpaintOverlayState', {}, ...args) || {};
+        const setCanvasAgentSettingsPatch = (...args) => call('setCanvasAgentSettingsPatch', null, ...args);
         const askCanvasAgentDecision = (...args) => call('askCanvasAgentDecision', 'cancel', ...args);
         const canvasAgentPresetDecisionOptions = (...args) => call('canvasAgentPresetDecisionOptions', [], ...args);
-        const canvasAgentQuickToolPresetOptions = (...args) => call('canvasAgentQuickToolPresetOptions', [], ...args);
+        const canvasAgentUpscalePresetEntries = (...args) => call('canvasAgentUpscalePresetEntries', [], ...args) || [];
         const canvasAgentPromptDecisionField = (...args) => call('canvasAgentPromptDecisionField', {}, ...args);
         const canvasAgentPromptFromDecision = (...args) => call('canvasAgentPromptFromDecision', fallback => fallback, ...args);
+        const canvasAgentPromptTargetFromEntry = (...args) => call('canvasAgentPromptTargetFromEntry', null, ...args);
+        const canvasAgentPresetPromptDefaults = (...args) => call('canvasAgentPresetPromptDefaults', {}, ...args) || {};
+        const ensureCanvasAgentPromptMatchesTarget = (...args) => call('ensureCanvasAgentPromptMatchesTarget', {
+            ok: false,
+            prompt: String(args[0] || ''),
+            error: 'Prompt target rewrite is unavailable'
+        }, ...args);
+        const ensureCanvasAgentPromptPreflightAllows = (...args) => call('ensureCanvasAgentPromptPreflightAllows', {
+            ok: false,
+            prompt: String(args[0] || ''),
+            error: 'Prompt preflight is unavailable'
+        }, ...args);
         const canvasAgentResolutionLabel = (...args) => call('canvasAgentResolutionLabel', '', ...args);
         const findCanvasAgentPresetEntryByAlias = (...args) => call('findCanvasAgentPresetEntryByAlias', null, ...args);
         const canvasAgentPresetDefaultPrompt = (...args) => call('canvasAgentPresetDefaultPrompt', '', ...args);
         const canvasAgentPreferredUpscalePresetEntry = (...args) => call('canvasAgentPreferredUpscalePresetEntry', null, ...args);
-        const startCanvasAgentReferencePickForTool = (...args) => call('startCanvasAgentReferencePickForTool', null, ...args);
         const runCanvasAgentLivePortraitExpressionQuickTool = (...args) => call('runCanvasAgentLivePortraitExpressionQuickTool', null, ...args);
         const addPresetNode = (...args) => call('addPresetNode', null, ...args);
         const canvasAgentWorkflowPresetPosition = (...args) => call('canvasAgentWorkflowPresetPosition', {}, ...args);
@@ -68,9 +82,6 @@
         const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
         const runPresetNode = (...args) => call('runPresetNode', null, ...args);
         const clearCanvasAgentRunInfo = (...args) => call('clearCanvasAgentRunInfo', null, ...args);
-        const findCanvasAgentReservedResultNodeForPreset = (...args) => call('findCanvasAgentReservedResultNodeForPreset', null, ...args);
-        const fitCanvasAgentWorkflowGroup = (...args) => call('fitCanvasAgentWorkflowGroup', null, ...args);
-        const canvasAgentManualMaskWorkflowNodes = (...args) => call('canvasAgentManualMaskWorkflowNodes', [], ...args);
         const getNodeRect = (...args) => call('getNodeRect', null, ...args);
         const getVisibleWorldRect = (...args) => call('getVisibleWorldRect', null, ...args);
         const defaultNodeSize = (...args) => call('defaultNodeSize', null, ...args);
@@ -87,6 +98,18 @@
                 && a.y + a.h + pad > b.y;
         };
         const setCanvasAgentSelection = (...args) => call('setCanvasAgentSelection', null, ...args);
+
+        function startCanvasAgentReferencePickForTool(target, spec) {
+            const state = getAgentState();
+            if (target && isCanvasAgentImageTarget(target)) {
+                addCanvasAgentReferenceFromNode(target, { role: 'primary', silent: true });
+                setCanvasAgentSelection(target.id, [target.id]);
+            }
+            state.expanded = true;
+            state.pickReference = true;
+            setCanvasAgentMessage(t('{tool} needs another reference image. Click an image or result node to add it as Ref, then use the tool again.', '{tool} 还需要另一张参考图。点击图像或结果节点加入 Ref，然后再次使用工具。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
+            showToast(t('Pick a reference image for {tool}.', '请选择 {tool} 的参考图。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
+        }
 
         function canvasAgentQuickTools() {
             return [
@@ -168,6 +191,15 @@
             return settings[spec.presetSetting] || spec.defaultPreset || '';
         }
 
+        function canvasAgentQuickToolPresetOptions(toolKey, selectedEntry) {
+            if (toolKey === 'upscale') {
+                return canvasAgentPresetDecisionOptions(selectedEntry, {
+                    entries: canvasAgentUpscalePresetEntries(selectedEntry)
+                });
+            }
+            return canvasAgentPresetDecisionOptions(selectedEntry);
+        }
+
         function configureCanvasAgentQuickToolNode(node, key, extraParams) {
             const spec = canvasAgentQuickToolSpec(key);
             if (!node || !spec) return;
@@ -203,30 +235,6 @@
                     }
                 });
                 applyNodeParamsPatch(node, { paramsPatch });
-            }
-        }
-
-        async function runCanvasAgentManualMaskPreset(presetNode, resultNode, workflowGroup, spec, savedNode) {
-            const currentPreset = getNode(presetNode?.id);
-            const currentResult = getNode(resultNode?.id) || findCanvasAgentReservedResultNodeForPreset(currentPreset);
-            if (!currentPreset || !currentResult) return { ok: false, error: 'masked workflow is missing preset or result' };
-            fitCanvasAgentWorkflowGroup(workflowGroup?.id || workflowGroup, canvasAgentManualMaskWorkflowNodes(currentPreset, currentResult, savedNode), 48);
-            setCanvasAgentRunInfo({
-                token: uid('agent_run'),
-                stage: t('Submitting masked quick tool', '提交蒙版快捷工具'),
-                preset: currentPreset.title || currentPreset.preset?.display_name || currentPreset.preset?.name || '',
-                model: t('Direct prompt', '直接提示词')
-            });
-            setCanvasAgentMessage(t('{tool} mask saved. Auto-running now.', '{tool} 蒙版已保存，正在自动运行。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
-            try {
-                const response = await runPresetNode(currentPreset, {
-                    resultNode: currentResult,
-                    reuseExistingResult: true
-                });
-                fitCanvasAgentWorkflowGroup(workflowGroup?.id || workflowGroup, canvasAgentManualMaskWorkflowNodes(currentPreset, getNode(currentResult.id) || currentResult, savedNode), 48);
-                return response;
-            } finally {
-                clearCanvasAgentRunInfo(1800);
             }
         }
 
@@ -487,6 +495,120 @@
             clearCanvasAgentRunInfo(1800);
         }
 
+        function canvasAgentOutpaintDirectionText(state) {
+            const s = state || {};
+            const dirs = [];
+            if (Number(s.up || 0) > 0) dirs.push('top');
+            if (Number(s.down || 0) > 0) dirs.push('bottom');
+            if (Number(s.left || 0) > 0) dirs.push('left');
+            if (Number(s.right || 0) > 0) dirs.push('right');
+            return dirs.length ? `extend the ${dirs.join(' and ')} borders` : 'extend the image borders';
+        }
+
+        function canvasAgentOutpaintPromptIsGeneric(rawPrompt) {
+            const text = String(rawPrompt || '').trim();
+            return !text || /^(扩图|扩展|扩边|扩画布|延展|补边|outpaint|outpainting|extend|extend image|image extension)$/i.test(text);
+        }
+
+        function canvasAgentOutpaintPrompt(rawPrompt, state) {
+            const userText = String(rawPrompt || '').trim();
+            const generic = canvasAgentOutpaintPromptIsGeneric(userText);
+            const base = `Create a seamless FLUX outpaint to ${canvasAgentOutpaintDirectionText(state)}. Preserve the original subject while keeping the same lighting and perspective. Keep the camera angle composition style color palette texture and depth consistent with the source image. Continue the background naturally with coherent details and clean seamless edges.`;
+            if (generic) return base;
+            if (/[\u3400-\u9fff]/.test(userText)) {
+                return `${base}. Preserve the user-requested visual intent while extending the image naturally.`;
+            }
+            return `${base}. User intent: ${userText}`;
+        }
+
+        async function resolveCanvasAgentOutpaintPrompt(rawPrompt, state, targetNode, entry, initialPresetName) {
+            const userText = String(rawPrompt || '').trim();
+            const presetName = normalizePresetName(entry?.name || entry?.display_name || initialPresetName || '');
+            const promptTarget = canvasAgentPromptTargetFromEntry(entry, 'outpaint');
+            const presetDefaults = canvasAgentPresetPromptDefaults(entry);
+            let prompt = canvasAgentOutpaintPrompt(userText, state);
+            const targetRewrite = await ensureCanvasAgentPromptMatchesTarget(prompt, promptTarget, 'outpaint', {
+                entry,
+                presetName,
+                userPrompt: userText,
+                presetDefaults,
+                promptSource: userText ? 'outpaint_user_intent' : 'outpaint_default'
+            });
+            if (targetRewrite.ok && targetRewrite.prompt) prompt = targetRewrite.prompt;
+            return { prompt, promptTarget, presetDefaults };
+        }
+
+        async function confirmOutpaintFromOverlay() {
+            const overlayState = getOutpaintOverlayState();
+            if (!overlayState.active) return;
+            const s = overlayState;
+            const agentState = getAgentState();
+            const node = s.nodeId ? getNode(s.nodeId) : null;
+            if (!node) { hideOutpaintOverlay(); return; }
+            const initialPresetName = canvasAgentQuickToolPresetName('outpaint');
+            let entry = findCanvasAgentPresetEntryByAlias(initialPresetName);
+            if (!entry) {
+                showToast(t('Outpaint preset is unavailable: {preset}', 'Outpaint preset 不可用：{preset}').replace('{preset}', initialPresetName || 'OneKey-Outpaint'));
+                return;
+            }
+            const outpaintParams = {
+                scene_var_number7: s.up,
+                scene_var_number8: s.down,
+                scene_var_number9: s.left,
+                scene_var_number10: s.right
+            };
+            const resolvedPrompt = await resolveCanvasAgentOutpaintPrompt(agentState.input, s, node, entry, initialPresetName);
+            let prompt = resolvedPrompt.prompt;
+            const promptTarget = resolvedPrompt.promptTarget;
+            const preflightGate = await ensureCanvasAgentPromptPreflightAllows(prompt, promptTarget, 'outpaint', {
+                entry,
+                action: 'outpaint',
+                presetName: normalizePresetName(entry.name || entry.display_name || initialPresetName),
+                userPrompt: String(agentState.input || '').trim(),
+                presetDefaults: resolvedPrompt.presetDefaults
+            });
+            if (!preflightGate.ok) {
+                setCanvasAgentMessage(preflightGate.error || t('Prompt preflight blocked outpaint.', '提示词预检查阻止了扩图。'));
+                return;
+            }
+            prompt = preflightGate.prompt || prompt;
+            const presetNode = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(node), {
+                collapsed: true
+            }));
+            configureCanvasAgentQuickToolNode(presetNode, 'outpaint', outpaintParams);
+            applyCanvasAgentPromptToGenerator(presetNode, prompt);
+            const connections = connectCanvasAgentImagesToGenerator(presetNode, node, []);
+            if (!connections.ok) {
+                showToast(t('Selected preset has no compatible image input.', '选择的 preset 没有兼容图像输入'));
+                return;
+            }
+            applyCanvasAgentResolutionToGenerator(presetNode);
+            setCanvasAgentSelection(presetNode.id, [presetNode.id]);
+            mutate({ inspector: true });
+            try {
+                setCanvasAgentSettingsPatch({
+                    outpaintUpPercent: s.up,
+                    outpaintDownPercent: s.down,
+                    outpaintLeftPercent: s.left,
+                    outpaintRightPercent: s.right
+                }, { silentHistory: true });
+            } catch (err) {}
+            hideOutpaintOverlay();
+            setCanvasAgentRunInfo({
+                token: uid('agent_run'),
+                stage: t('Submitting outpaint', '提交扩图'),
+                preset: presetNode.title || presetNode.preset?.display_name || presetNode.preset?.name || '',
+                model: t('Direct prompt', '直接提示词')
+            });
+            setCanvasAgentMessage(t('Submitted outpaint ({up}%↑ {down}%↓ {left}%← {right}%→)', '已提交扩图 ({up}%↑ {down}%↓ {left}%← {right}%→)').replace('{up}', s.up).replace('{down}', s.down).replace('{left}', s.left).replace('{right}', s.right));
+            await runPresetNode(presetNode, {
+                agentWorkflowTitle: `${t('Agent outpaint', 'Agent 扩图')}: ${s.up}%↑ ${s.down}%↓ ${s.left}%← ${s.right}%→`,
+                promptPreflight: preflightGate.preflight,
+                skipInputPreflight: true
+            });
+            clearCanvasAgentRunInfo(1800);
+        }
+
         function createCanvasAgentStyleTransferWorkflow(target, entry, extraImageRefs, spec) {
             hideOutpaintOverlay();
             const label = spec?.label || t('Style Transfer', '风格转换');
@@ -530,12 +652,15 @@
             canvasAgentQuickToolSpec,
             canvasAgentQuickToolPresetName,
             configureCanvasAgentQuickToolNode,
-            runCanvasAgentManualMaskPreset,
+            startCanvasAgentReferencePickForTool,
             canvasAgentStyleTransferWorkflowRect,
             findOpenCanvasAgentStyleTransferPresetPosition,
             canvasAgentStyleTransferPresetPosition,
             positionCanvasAgentStyleTransferWorkflow,
             runCanvasAgentQuickTool,
+            canvasAgentOutpaintPrompt,
+            resolveCanvasAgentOutpaintPrompt,
+            confirmOutpaintFromOverlay,
             createCanvasAgentStyleTransferWorkflow
         };
     }

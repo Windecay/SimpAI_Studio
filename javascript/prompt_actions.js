@@ -322,6 +322,7 @@
                         <h2 id="simpleai-prompt-action-title" data-role="title"></h2>
                         <p data-role="context"></p>
                     </div>
+                    ${window.SimpAIStudioHelp?.button('prompt') || ''}
                     <button type="button" class="simpleai-prompt-action-icon-button" data-prompt-action="close" aria-label="Close">
                         <i class="fa-solid fa-xmark"></i>
                     </button>

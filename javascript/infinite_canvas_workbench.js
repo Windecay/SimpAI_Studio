@@ -33,6 +33,7 @@
     const WORKBENCH_CANVAS_NODE_DRAG = window.SimpAICanvasWorkbenchNodeDrag || {};
     const WORKBENCH_CANVAS_PAN = window.SimpAICanvasWorkbenchPan || {};
     const WORKBENCH_CANVAS_MARQUEE = window.SimpAICanvasWorkbenchMarquee || {};
+    const WORKBENCH_CANVAS_VIEWPORT_POINTER = window.SimpAICanvasWorkbenchViewportPointer || {};
     const WORKBENCH_CANVAS_CONNECTION = window.SimpAICanvasWorkbenchConnection || {};
     const WORKBENCH_CANVAS_VIEWPORT_RENDER = window.SimpAICanvasWorkbenchViewportRender || {};
     const WORKBENCH_CANVAS_NODE_SPATIAL_INDEX = window.SimpAICanvasWorkbenchNodeSpatialIndex || {};
@@ -54,6 +55,7 @@
     const WORKBENCH_DIRECTOR_TIMELINE_NODE = window.SimpAICanvasWorkbenchDirectorTimelineNode || {};
     const WORKBENCH_STYLE_SELECTOR_NODE = window.SimpAICanvasWorkbenchStyleSelectorNode || {};
     const WORKBENCH_VLM = window.SimpAICanvasWorkbenchVlm || {};
+    const normalizeVlmAgentMode = (...args) => WORKBENCH_VLM.normalizeVlmAgentMode?.(...args) || 'persona';
     const WORKBENCH_CANVAS_AGENT = window.SimpAICanvasWorkbenchCanvasAgent || {};
     const WORKBENCH_CANVAS_STATUS = window.SimpAICanvasWorkbenchStatus || {};
     const WORKBENCH_CANVAS_RENDER = window.SimpAICanvasWorkbenchRender || {};
@@ -75,6 +77,7 @@
     const WORKBENCH_CANVAS_AGENT_AUDIO_TOOLS = window.SimpAICanvasWorkbenchAudioTools || {};
     const WORKBENCH_CANVAS_AGENT_TOOL_DISPATCH = window.SimpAICanvasWorkbenchToolDispatch || {};
     const WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT = window.SimpAICanvasWorkbenchAgentWorkflowLayout || {};
+    const WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW = window.SimpAICanvasWorkbenchAgentMaskWorkflow || {};
     const WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW = window.SimpAICanvasWorkbenchAgentSam3Workflow || {};
     const WORKBENCH_CANVAS_AGENT_PRESET_RUNTIME = window.SimpAICanvasWorkbenchAgentPresetRuntime || {};
     const WORKBENCH_CANVAS_AGENT_TARGET = window.SimpAICanvasWorkbenchCanvasAgentTarget || {};
@@ -308,10 +311,12 @@
     let CANVAS_AGENT_ACTION_CONTROLLER = null;
     let CANVAS_AGENT_ACTION_EXECUTION_CONTROLLER = null;
     let CANVAS_OUTPAINT_CONTROLLER = null;
+    let CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER = {};
     let CANVAS_TEXT_NODE_RENDERER = null;
     let CANVAS_VLM_NODE_CONTROLLER = null;
     let CANVAS_VLM_NODE_VIEW_CONTROLLER = null;
     let CANVAS_VLM_CHAT_CONTROLLER = null;
+    let CANVAS_VLM_AGENT_CONTEXT = {};
     let CANVAS_PRESET_PARAM_RENDERER = null;
     let CANVAS_INSPECTOR_CONTROLLER = null;
     let CANVAS_NODE_PARAM_CONTROLLER = null;
@@ -321,6 +326,11 @@
     let CANVAS_TIMELINE_RENDER_CONTROLLER = null;
     let CANVAS_TIMELINE_FRAME_CONTROLLER = null;
     let CANVAS_TIMELINE_COMPARE_CONTROLLER = null;
+    const canvasAgentUploadSlotsForNode = (...args) => {
+        const slots = CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentUploadSlotsForNode?.(...args);
+        return Array.isArray(slots) ? slots : [];
+    };
+    const isCanvasAgentMaskSlot = (...args) => !!CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.isCanvasAgentMaskSlot?.(...args);
     const renderTextNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTextNodeHtml?.(...args) || '';
     const renderTextMergeNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTextMergeNodeHtml?.(...args) || '';
     const renderTranslationNodeHtml = (...args) => CANVAS_TEXT_NODE_RENDERER?.renderTranslationNodeHtml?.(...args) || '';
@@ -723,6 +733,9 @@
     const runCanvasAgentTextRefine = async (...args) => CANVAS_AGENT_TEXT_WORKFLOW_CONTROLLER?.runCanvasAgentTextRefine?.(...args);
     const canvasAgentCustomParamsFromSettings = (...args) => CANVAS_AGENT_SETTINGS_CONTROLLER?.canvasAgentCustomParamsFromSettings?.(...args) || {};
     const getCanvasAgentCustomRuntimeParams = (...args) => CANVAS_AGENT_SETTINGS_CONTROLLER?.getCanvasAgentCustomRuntimeParams?.(...args) || {};
+    const setCanvasAgentResolutionPatchBeforeUi = (...args) => CANVAS_AGENT_SETTINGS_CONTROLLER?.setCanvasAgentResolutionPatch?.(...args);
+    const setCanvasAgentResolutionOpenBeforeUi = (...args) => CANVAS_AGENT_SETTINGS_CONTROLLER?.setCanvasAgentResolutionOpen?.(...args);
+    const handleCanvasAgentModelModeInputBeforeUi = (...args) => CANVAS_AGENT_SETTINGS_CONTROLLER?.handleCanvasAgentModelModeInput?.(...args);
     const getPromptTextSourceNode = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getPromptTextSourceNode?.(...args) || null;
     const getTextNodeInputSource = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getTextNodeInputSource?.(...args) || null;
     const wildcardHelperBuildTag = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.wildcardHelperBuildTag?.(...args) || '';
@@ -734,6 +747,14 @@
     const getNodeTextOutput = (...args) => CANVAS_AGENT_TEXT_NODE_CONTROLLER?.getNodeTextOutput?.(...args) || '';
     const wouldCreateTextCycle = (...args) => !!CANVAS_AGENT_TEXT_NODE_CONTROLLER?.wouldCreateTextCycle?.(...args);
     const cancelOutpaintEdgeDrag = (...args) => CANVAS_OUTPAINT_CONTROLLER?.cancelOutpaintEdgeDrag?.(...args);
+    const showOutpaintOverlay = (...args) => CANVAS_OUTPAINT_CONTROLLER?.showOutpaintOverlay?.(...args);
+    const hideOutpaintOverlay = (...args) => CANVAS_OUTPAINT_CONTROLLER?.hideOutpaintOverlay?.(...args);
+    const renderOutpaintControlPanel = (...args) => CANVAS_OUTPAINT_CONTROLLER?.renderOutpaintControlPanel?.(...args) || '';
+    const ensureOutpaintOverlayMatchesAgentTarget = (...args) => CANVAS_OUTPAINT_CONTROLLER?.ensureOutpaintOverlayMatchesAgentTarget?.(...args);
+    const getOutpaintTargetNode = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintTargetNode?.(...args) || null;
+    const getOutpaintMediaGeometry = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintMediaGeometry?.(...args) || null;
+    const getOutpaintMediaSize = (...args) => CANVAS_OUTPAINT_CONTROLLER?.getOutpaintMediaSize?.(...args) || null;
+    const syncOutpaintOverlayPosition = (...args) => CANVAS_OUTPAINT_CONTROLLER?.syncOutpaintOverlayPosition?.(...args);
     const requestCanvasAgentVlmInstructionPlan = (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.requestCanvasAgentVlmInstructionPlan?.(...args)
         || Promise.resolve({ ok: false, error: t('VLM planner is unavailable.', 'VLM 计划模块不可用。') });
     const invokeCanvasAgentPromptRewrite = (...args) => CANVAS_AGENT_PROMPT_REWRITE_CONTROLLER?.rewriteCanvasAgentPromptWithLlm?.(...args);
@@ -1034,6 +1055,7 @@
     const vlmAgentActionNeedsVisibleControls = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionNeedsVisibleControls?.(...args);
     const shouldCollapseVlmChatActionDetails = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.shouldCollapseVlmChatActionDetails?.(...args);
     const vlmChatActionStateLabel = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatActionStateLabel?.(...args) || '';
+    const markVlmAgentActionCardBusy = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.markVlmAgentActionCardBusy?.(...args);
     const vlmAgentActionPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionPrompt?.(...args) || '';
     const normalizeVlmExecutableActionType = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.normalizeVlmExecutableActionType?.(...args) || '';
     const vlmAgentActionPurpose = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionPurpose?.(...args) || '';
@@ -1103,6 +1125,9 @@
     const getVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.getVlmAgentAction?.(...args) || null;
     const setVlmAgentActionExecution = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.setVlmAgentActionExecution?.(...args);
     const patchVlmAgentAction = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.patchVlmAgentAction?.(...args);
+    const ignoreVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.ignoreVlmAgentAction?.(...args);
+    const retryVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.retryVlmAgentAction?.(...args);
+    const allowRejectedVlmAgentAction = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.allowRejectedVlmAgentAction?.(...args);
     const clearVlmChat = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.clearVlmChatNode?.(...args);
     const serializeVlmPendingImageSource = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.serializeVlmPendingImageSource?.(...args) || null;
     const startVlmChatRequest = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.startVlmChatRequest?.(...args) || null;
@@ -1158,6 +1183,13 @@
         ok: false,
         error: 'VLM node execution is unavailable'
     };
+    const runVlmNode = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.runVlmNode?.(...args) || {
+        ok: false,
+        error: 'VLM node execution is unavailable'
+    };
+    const isVlmNodeBusy = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmNodeBusy?.(...args);
+    const isVlmModelStatusFresh = (...args) => !!CANVAS_VLM_CHAT_CONTROLLER?.isVlmModelStatusFresh?.(...args);
+    const cleanVlmToolPrompt = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.cleanVlmToolPrompt?.(...args) || '';
     const queueVlmModelDownloads = async (...args) => CANVAS_VLM_CHAT_CONTROLLER?.queueVlmModelDownloads?.(...args) || {
         ok: false,
         error: 'VLM model download coordination is unavailable'
@@ -1269,7 +1301,1453 @@
         buildVlmChatToolStatePatch
     } = CANVAS_FACTORY_CONTEXT;
     const RUNTIME_CONTEXT_SOURCE = {
-            t,
+            statusSource: {
+                languageSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                },
+                domSource: {
+                    getRoot: () => root,
+                    getZoomLabel: () => zoomLabel,
+                },
+                projectSource: {
+                    getProject: () => project,
+                },
+                storageSource: {
+                    getStorageScope: () => storageScope,
+                    getStorageKey: () => storageKey,
+                    storageDisplayLocation: () => storageDisplayLocation(),
+                    storageDisplayPath: () => storageDisplayPath(),
+                },
+                uiSource: {
+                    getCanvasTitle: () => getCanvasTitle(),
+                    renderHistoryButtons: (...args) => CANVAS_HISTORY_CONTROLLER?.renderHistoryButtons?.(...args),
+                    renderSystemInfo: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.renderSystemInfo?.(...args),
+                    renderRunQueueWidget: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.renderRunQueueWidget?.(...args),
+                },
+            },
+            presetNodeRendererSource: {
+                languageSource: {
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                    tOption,
+                    localizeCanvasLabel,
+                },
+                utilitySource: {
+                    clamp,
+                    escapeHtml,
+                    normalizeCanvasColor,
+                },
+                projectSource: {
+                    getProject: () => project,
+                    getNode,
+                },
+                classicSource: {
+                    getClassicModes: () => registryClassicModes,
+                    getClassicOutpaintDirs: () => registryClassicOutpaintDirs,
+                    getClassicInpaintMethods: () => registryClassicInpaintMethods,
+                    getClassicEnhanceUovProcessingOrder: () => registryClassicEnhanceUovProcessingOrder,
+                    getClassicEnhanceUovPromptTypes: () => registryClassicEnhanceUovPromptTypes,
+                    getClassicIpMaxImages,
+                    getClassicUovMethods,
+                    getClassicIpTypes,
+                    getClassicInpaintEngines,
+                    normalizeClassicInpaintMode,
+                    getInpaintModeDefaults,
+                    getClassicEnhanceRegionValues,
+                    getClassicEnhanceRegionDefault,
+                    detectionSlotForRegion,
+                    getDetectionConfigLabel,
+                    enhanceRegionKey,
+                },
+                promptSource: {
+                    getPromptTextSourceNode,
+                    getNodeTextOutput,
+                    canvasAgentPresetPromptDefaults,
+                },
+                uploadSource: {
+                    danbooruAutocompleteAttrs: (...args) => DANBOORU_AUTOCOMPLETE_CONTROLLER?.danbooruAutocompleteAttrs?.(...args) || '',
+                    getVisibleClassicUploadSlots,
+                    getVisibleUploadSlots,
+                    getUploadSlotMediaKind,
+                },
+                portSource: {
+                    portHintText: (...args) => CANVAS_NODE_RENDERER?.portHintText?.(...args) || '',
+                    collapsedKeepClass,
+                    slotPortTitle: (...args) => CANVAS_NODE_RENDERER?.slotPortTitle?.(...args) || '',
+                    slotPortButtonTitle: (...args) => CANVAS_NODE_RENDERER?.slotPortButtonTitle?.(...args) || '',
+                    slotPortHintText: (...args) => CANVAS_NODE_RENDERER?.slotPortHintText?.(...args) || '',
+                    notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || '',
+                },
+                presetSource: {
+                    getPresetConfigKinds: () => PRESET_CONFIG_KINDS,
+                    getSlotLabels: () => SLOT_LABELS,
+                    getPresetSchema,
+                    getPresetTheme,
+                    getPresetThemeInfo,
+                    presetSpecialViewerUrl,
+                    isStyleTransferPresetNode,
+                    isLivePortraitVideoExpressionPresetNode,
+                    isLtx23MultiGuidePresetNode,
+                    isMiniMaxH3PresetNode,
+                },
+                renderSource: {
+                    renderPresetModelStatusHtml,
+                    renderPresetParamControl: (...args) => CANVAS_PRESET_PARAM_RENDERER?.renderPresetParamControl?.(...args) || '',
+                    renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
+                    renderRunnableNodeStatusFoot: (...args) => CANVAS_NODE_RENDERER?.renderRunnableNodeStatusFoot?.(...args) || '',
+                    renderPresetConfigPortRow: (...args) => CANVAS_NODE_RENDERER?.renderPresetConfigPortRow?.(...args) || '',
+                    renderStyleTransferPresetController,
+                    renderLivePortraitVideoExpressionPresetController,
+                    renderLtx23GuidePresetController,
+                    renderMiniMaxH3StoryboardPresetController,
+                },
+            },
+            runtimeServiceSource: {
+                renderSource: {
+                    domSource: {
+                        getRoot: () => root,
+                        getRunHistoryPanel: () => runHistoryPanel,
+                    },
+                    runtimeSource: {
+                        getPerfStats: () => perfStats,
+                        performanceNow: () => performance.now(),
+                    },
+                    interactionSource: {
+                        cancelPanEdgeSettleRender: (...args) => cancelPanEdgeSettleRender(...args),
+                        isNodeDragging: (...args) => isNodeDragging(...args),
+                        isGroupDragging: (...args) => isGroupDragging(...args),
+                        cancelDragEdgeSettleRender: (...args) => cancelDragEdgeSettleRender(...args),
+                        endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
+                    },
+                    selectionSource: {
+                        reconcileSelection: (...args) => reconcileSelection(...args),
+                    },
+                    renderSource: {
+                        applyThemeClass: (...args) => applyThemeClass(...args),
+                        applyViewport: (...args) => applyViewport(...args),
+                        renderGroups: (...args) => renderGroups(...args),
+                        renderMode: () => canvasRenderMode,
+                        renderEdges: (...args) => renderEdges(...args),
+                        renderSelectedChainOverlay: (...args) => renderSelectedChainOverlay(...args),
+                    },
+                    uiSource: {
+                        renderInspector: (...args) => renderInspector(...args),
+                        renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
+                        renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
+                        renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                        renderRunQueuePanelIfOpen: (...args) => renderRunQueuePanelIfOpen(...args),
+                        renderRunHistoryPanel: (...args) => renderRunHistoryPanel(...args),
+                        renderPerformanceHud: (...args) => renderPerformanceHud(...args),
+                        scheduleEdgeIncidentIndexWarmup: (...args) => scheduleEdgeIncidentIndexWarmup(...args),
+                        invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                        invalidateNodeSpatialIndex: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.invalidateNodeSpatialIndex?.(...args),
+                    },
+                },
+                runStatusSource: {
+                    languageSource: {
+                        t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                        formatLocalTime,
+                    },
+                    utilitySource: {
+                        cloneRunValue,
+                        escapeHtml,
+                        clamp,
+                    },
+                    projectSource: {
+                        getProject: () => project,
+                        getNode,
+                    },
+                    windowSource: {
+                        getWindow: () => window,
+                    },
+                    runtimeSource: {
+                        isStandaloneCanvasWorkbench,
+                        isCanvasRunActiveState,
+                        isTerminalRunState,
+                        fetchStatus,
+                        now: () => Date.now(),
+                        setInterval: (...args) => window.setInterval(...args),
+                        clearInterval: (...args) => window.clearInterval(...args),
+                    },
+                    domSource: {
+                        getRunQueueWidget: () => runQueueWidget,
+                        getRunQueuePanel: () => runQueuePanel,
+                        getSystemInfoElement: () => systemInfoEl,
+                        getBackendAlertElement: () => backendAlertEl,
+                    },
+                },
+                minimapSource: {
+                    projectSource: {
+                        getProject: () => project,
+                    },
+                    domSource: {
+                        getMinimapElement: () => minimapEl,
+                        getDocument: () => document,
+                    },
+                    viewportSource: {
+                        getViewport: () => viewport,
+                        getVisibleWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getVisibleWorldRect?.(...args)
+                            || (typeof viewportGetVisibleWorldRect === 'function'
+                                ? viewportGetVisibleWorldRect(viewport, project?.viewport)
+                                : null),
+                        getMinimapBounds: (items, visible, options) => typeof viewportGetMinimapBounds === 'function'
+                            ? viewportGetMinimapBounds(items, visible, options || { defaultNodeSize, getNodeLayoutSize })
+                            : null,
+                        hasCanvasOverflow: (items, visible, options) => typeof viewportHasCanvasOverflow === 'function'
+                            ? viewportHasCanvasOverflow(items, visible, options || { defaultNodeSize, getNodeLayoutSize })
+                            : false,
+                    },
+                    layoutSource: {
+                        getNodeRect: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeRect?.(...args)
+                            || (typeof viewportGetNodeRect === 'function' ? viewportGetNodeRect(...args) : null),
+                        defaultNodeSize,
+                        getNodeLayoutSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeLayoutSize?.(...args)
+                            || getNodeRect(...args),
+                    },
+                    groupSource: {
+                        getGroupRect,
+                        ensureProjectGroups,
+                    },
+                    selectionSource: {
+                        getSelectedNodeId: () => selectedNodeId,
+                        getSelectedNodeIds: () => selectedNodeIds,
+                        getSelectedGroupId: () => selectedGroupId,
+                    },
+                    utilitySource: {
+                        nodeCustomColor,
+                        expandCanvasHexColor,
+                        escapeHtml,
+                    },
+                    runtimeSource: {
+                        getWindow: () => window,
+                        getPerfStats: () => perfStats,
+                        performanceNow: () => performance.now(),
+                        setTimeout: (...args) => window.setTimeout(...args),
+                        clearTimeout: (...args) => window.clearTimeout(...args),
+                    },
+                    interactionSource: {
+                        buildProjectViewportPatch,
+                        preferSvgEdgesForViewportInteraction,
+                        applyViewport,
+                        renderStatus: (...args) => CANVAS_STATUS_CONTROLLER?.renderStatus?.(...args),
+                        scheduleViewportNodeRender,
+                    },
+                    persistenceSource: {
+                        scheduleViewportSave,
+                    },
+                },
+                bridgeSource: {
+                    document,
+                    uid,
+                    setGradioTextboxValue,
+                    clickGradioButton,
+                    setTimeout: (...args) => window.setTimeout(...args),
+                    clearTimeout: (...args) => window.clearTimeout(...args),
+                },
+                historySource: {
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                    getHistoryLimit,
+                    getHistoryMemoryBudgetBytes,
+                    getProject: () => project,
+                    setProject: (...args) => setProject(...args),
+                    compactProjectForStorage,
+                    buildProjectStorageInfo,
+                    getStorageKey: () => storageKey,
+                    getStorageScope: () => storageScope,
+                    sanitizeProject,
+                    getSelectionState: () => ({
+                        selectedNodeId,
+                        selectedNodeIds: new Set(selectedNodeIds),
+                        selectedEdgeId,
+                        selectedGroupId,
+                    }),
+                    setSelectionState: (state) => {
+                        const next = state || {};
+                        selectedNodeId = next.selectedNodeId || null;
+                        selectedNodeIds = next.selectedNodeIds instanceof Set
+                            ? new Set(next.selectedNodeIds)
+                            : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                        selectedEdgeId = next.selectedEdgeId || null;
+                        selectedGroupId = next.selectedGroupId || null;
+                    },
+                    closeContextMenu,
+                    scheduleSave: (...args) => scheduleSave(...args),
+                    showToast,
+                    getRoot: () => root,
+                    setTimeout: (...args) => window.setTimeout(...args),
+                    clearTimeout: (...args) => window.clearTimeout(...args),
+                },
+            },
+            assetNodeRenderSource: {
+                languageSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                },
+                utilitySource: {
+                    clamp,
+                    escapeHtml,
+                     assetMediaKind,
+                     assetMediaIcon,
+                     safeAssetDisplaySrc: (...args) => CANVAS_PROJECT_ASSETS_CONTROLLER?.safeAssetDisplaySrc?.(...args) || '',
+                     safeAssetFullDisplaySrc: (...args) => CANVAS_PROJECT_ASSETS_CONTROLLER?.safeAssetFullDisplaySrc?.(...args) || '',
+                     safeAssetFallbackSrc: (...args) => CANVAS_PROJECT_ASSETS_CONTROLLER?.safeAssetFallbackSrc?.(...args) || '',
+                    readAssetInfo,
+                    mediaAspectStyle,
+                    inferChatImageRelativePath: (...args) => inferChatImageRelativePath(...args),
+                    localizedDefaultTitle,
+                },
+                renderSource: {
+                    renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
+                    collapsedKeepClass,
+                    syncGalleryFrostClass,
+                },
+                statusSource: {
+                    isCanvasRunActiveState,
+                    isResultStale,
+                    isResultRefreshing,
+                    resultMediaDisplayAsset,
+                 },
+                 batchSource: {
+                     getResultMetadataRows: (...args) => resultMetadataRows(...args),
+                     batchAnyMediaKindFromAsset,
+                    batchAnyMediaKind,
+                    batchAnyPortKind,
+                    batchAnyMediaLabel,
+                    batchAnyMediaIcon,
+                    batchAnyCurrentItem,
+                    batchAnySelectedItemIds,
+                    batchAnyTargets,
+                    batchAnyTargetLabel,
+                    batchAnyTextFromItem,
+                },
+                 mediaSource: {
+                     mediaBrowserNodeState,
+                     mediaBrowserRuntimeFor,
+                     isGalleryFrostEnabled,
+                     selectedMediaBrowserItemFrom,
+                     mediaBrowserItemMeta,
+                     danbooruPostMediaType,
+                 },
+             },
+              resultPreviewSource: {
+                 previewSource: {
+                     resultPreviewFrameSrc: (...args) => CANVAS_ASSET_NODE_RENDERER?.resultPreviewFrameSrc?.(...args) || '',
+                     resultPreviewFrameAspect: (...args) => CANVAS_ASSET_NODE_RENDERER?.resultPreviewFrameAspect?.(...args) || 0,
+                     resultPreviewAspectSource: (...args) => CANVAS_ASSET_NODE_RENDERER?.resultPreviewAspectSource?.(...args) || null,
+                     renderResultPreviewStripHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderResultPreviewStripHtml?.(...args) || '',
+                 },
+                 nodeSource: {
+                     getNode,
+                     getNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
+                     nodeStatusState,
+                 },
+                 statusSource: {
+                     isCanvasRunActiveState,
+                 },
+                 resultSource: {
+                     buildResultPreviewPatch,
+                     getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+                 },
+                 utilitySource: {
+                     cloneRunValue,
+                 },
+                 runtimeSource: {
+                     maxFrames: 96,
+                     setInterval: (...args) => window.setInterval(...args),
+                     clearInterval: (...args) => window.clearInterval(...args),
+                  },
+              },
+              nodeLayoutSource: {
+                  utilitySource: {
+                      clamp,
+                  },
+                  nodeSource: {
+                      collapsedPromptMinHeight: COLLAPSED_PROMPT_NODE_MIN_HEIGHT,
+                      collapsedPromptNodeHeight: (node) => collapsedPromptNodeHeight(node),
+                      defaultNodeSize,
+                      supportsCollapsedPromptHeight: (node) => supportsCollapsedPromptHeight(node),
+                      getMeasuredNodeLayout: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.getMeasuredNodeLayout?.(...args) || null,
+                  },
+                  projectSource: {
+                      getProjectNodes: () => project?.nodes || [],
+                  },
+                  viewportSource: {
+                      getVisibleWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getVisibleWorldRect?.(...args) || {},
+                      viewportFindOpenNodePosition,
+                      viewportGetNodeRect,
+                  },
+                  patchSource: {
+                      buildResultLayoutPatch,
+                      buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args) || {},
+                  },
+                  persistenceSource: {
+                      scheduleSave: (...args) => scheduleSave(...args),
+                  },
+              },
+              viewportRenderSource: {
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  viewportSource: {
+                      getViewport: () => viewport,
+                      viewportGetVisibleWorldRect,
+                      viewportGetNodeRenderWorldRect,
+                      viewportShouldRenderNodeInViewport,
+                      viewportShouldRenderEdgeInViewport,
+                      viewportGetEdgeSvgBounds,
+                  },
+                  layoutSource: {
+                      defaultNodeSize,
+                      getNodeLayoutSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeLayoutSize?.(...args),
+                  },
+                  selectionSource: {
+                      getSelectedNodeId: () => selectedNodeId,
+                      getSelectedNodeIds: () => selectedNodeIds,
+                      getSelectedEdgeId: () => selectedEdgeId,
+                  },
+                  connectionSource: {
+                      getConnectingFromId: () => getConnectingFromId(),
+                  },
+                  nodeSource: {
+                      isNodeVisuallyRunning,
+                  },
+                  configSource: {
+                      nodeRenderOverscanPx: NODE_RENDER_OVERSCAN_PX,
+                      edgeRenderOverscanPx: EDGE_RENDER_OVERSCAN_PX,
+                      edgePointCacheMinEdges: EDGE_POINT_CACHE_MIN_EDGES,
+                  },
+              },
+              nodeSpatialIndexSource: {
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  layoutSource: {
+                      getNodeRect: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeRect?.(...args),
+                  },
+                  nodeSource: {
+                      isNodeVisuallyRunning,
+                      isResultRefreshing,
+                  },
+                  viewportSource: {
+                      shouldRenderNodeInViewport: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.shouldRenderNodeInViewport?.(...args),
+                      getCanvasRenderMode: () => canvasRenderMode,
+                  },
+                  runtimeSource: {
+                      getPerfStats: () => perfStats,
+                      isPanning: () => isPanning(),
+                  },
+                  configSource: {
+                      nodeSpatialIndexMinNodes: NODE_SPATIAL_INDEX_MIN_NODES,
+                      nodeSpatialIndexCellSize: NODE_SPATIAL_INDEX_CELL_SIZE,
+                      canvasOverviewExitZoom: CANVAS_OVERVIEW_EXIT_ZOOM,
+                      panPreviewNodeBudget: PAN_PREVIEW_NODE_BUDGET,
+                      nodeRenderOverscanPx: NODE_RENDER_OVERSCAN_PX,
+                      panPreviewDeferCoveragePadPx: PAN_PREVIEW_DEFER_COVERAGE_PAD_PX,
+                  },
+                  utilitySource: {
+                      rectsOverlap: viewportRectsOverlap,
+                  },
+                  renderSource: {
+                      setNodeRenderCoverageRect: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.setNodeRenderCoverageRect?.(...args),
+                  },
+                  selectionSource: {
+                      getSelectedNodeId: () => selectedNodeId,
+                      getSelectedNodeIds: () => selectedNodeIds,
+                  },
+                  connectionSource: {
+                      getConnectingFromId: () => getConnectingFromId(),
+                  },
+                  interactionSource: {
+                      getDraggingNodeIds: () => getDraggingNodeIds(),
+                      getNodeResizeNodeId: () => getNodeResizeNodeId(),
+                      getActiveInlineTagCartNodeId: () => activeInlineTagCartNodeId,
+                  },
+              },
+              nodeFactorySource: {
+                  languageSource: {
+                      t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                  },
+                  runtimeSource: {
+                      uid,
+                      cloneRunValue,
+                      nowIso,
+                  },
+                  presetSource: {
+                      normalizePresetName,
+                      canvasAgentPresetPromptDefaults,
+                      getClassicIpTypes,
+                      enhanceRegionKey,
+                      registryClassicEnhanceRegionDefaults,
+                      registryClassicIpControlTypes,
+                      getVisiblePresetParams: (...args) => CANVAS_PRESET_NODE_RENDERER?.getVisiblePresetParams?.(...args) || [],
+                      getVisibleUploadSlots,
+                      ensurePresetSpecialControllerState,
+                  },
+              },
+              nodeRendererSource: {
+                 languageSource: {
+                     t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                     mediaBrowserLabel,
+                     tagCartLabel,
+                     localizeCanvasLabel,
+                     getDetectionConfigLabel,
+                 },
+                 utilitySource: {
+                     escapeHtml,
+                 },
+                 nodeSource: {
+                     nodeEffectiveRenderMode,
+                     isDirectorTimelineNode,
+                     isQwenTtsNode,
+                     nodeStatusState,
+                     getNode,
+                     isNodeLocked,
+                     isNodeIgnored,
+                     isNodeCollapsed,
+                 },
+                 assetSource: {
+                     getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+                     getVlmSourceAsset,
+                     getTimelineSourceAsset,
+                     safeAssetDisplaySrc: (...args) => CANVAS_PROJECT_ASSETS_CONTROLLER?.safeAssetDisplaySrc?.(...args) || '',
+                     readAssetInfo,
+                 },
+                 portSource: {
+                     getVisibleClassicUploadSlots,
+                     getVisibleUploadSlots,
+                     detectionSlotForRegion,
+                     textMergeInputSlots,
+                     qwenTtsAudioInputSlots,
+                     batchAnyPortKind,
+                     getUploadSlotMediaKind,
+                     getPresetConfigKinds: () => PRESET_CONFIG_KINDS,
+                     getVlmImageSlots: () => VLM_IMAGE_SLOTS,
+                     getDirectorTimelineMediaKindGroups: () => directorTimelineMediaKindGroups,
+                 },
+                 renderSource: {
+                     renderConfigNodeHtml,
+                     renderClassicNodeHtml: (...args) => CANVAS_PRESET_NODE_RENDERER?.renderClassicNodeHtml?.(...args) || '',
+                     renderPresetNodeHtml: (...args) => CANVAS_PRESET_NODE_RENDERER?.renderPresetNodeHtml?.(...args) || '',
+                     renderResultNodeHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderResultNodeHtml?.(...args) || '',
+                     renderCompareNodeHtml,
+                     renderBatchAnyNodeHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderBatchAnyNodeHtml?.(...args) || '',
+                     renderXyzMatrixNodeHtml,
+                     renderTimelineNodeHtml,
+                     renderDirectorTimelineNodeHtml,
+                     renderMediaBrowserNodeHtml: (...args) => CANVAS_ASSET_NODE_RENDERER?.renderMediaBrowserNodeHtml?.(...args) || '',
+                     renderStyleSelectorNodeHtml,
+                     renderVideoNodeHtml,
+                     renderAudioNodeHtml,
+                     renderNoteNodeHtml,
+                     renderWildcardsHelperNodeHtml,
+                     renderTextNodeHtml,
+                     renderTextMergeNodeHtml,
+                     renderTranslationNodeHtml,
+                     renderTagCartNodeHtml,
+                     renderWd14NodeHtml,
+                     renderVlmNodeHtml,
+                     renderMaskNodeHtml,
+                     renderSam3VideoMaskNodeHtml,
+                     renderCameraMotionNodeHtml,
+                     renderPoseStudioNodeHtml,
+                     renderGaussianStudioNodeHtml,
+                     renderLivePortraitExpressionNodeHtml,
+                     renderQwenTtsNodeHtml,
+                     renderImageNodeHtml,
+                     collapsedKeepClass,
+                 },
+                 statusSource: {
+                     isResultRefreshing,
+                     isResultStale,
+                     isCanvasRunActiveState,
+                 },
+                 mediaSource: {
+                     mediaBrowserRuntimeFor,
+                 },
+             },
+             nodeRenderSource: {
+                domSource: {
+                    getRoot: () => root,
+                    getNodesLayer: () => nodesLayer,
+                    getGroupsLayer: () => groupsLayer,
+                    getEdgesLayer: () => edgesLayer,
+                    getChainRunOverlay: () => chainRunOverlay,
+                    getDocument: () => document,
+                },
+                projectSource: {
+                    getProject: () => project,
+                    getNode,
+                },
+                selectionSource: {
+                    getSelectedNodeId: () => selectedNodeId,
+                    getSelectedNodeIds: () => selectedNodeIds,
+                },
+                runtimeSource: {
+                    getPerfStats: () => perfStats,
+                    performanceNow: () => performance.now(),
+                    getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime,
+                    getMediaBrowserScrollMemory: () => mediaBrowserScrollMemory,
+                    getVlmChatScrollMemory: () => vlmChatScrollMemory,
+                    getVlmRenderDebugEnabled: () => vlmRenderDebugEnabled,
+                    requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
+                    setTimeout: (...args) => window.setTimeout(...args),
+                },
+                edgeSource: {
+                    setEdgeRenderCacheKey: (value) => { edgeRenderCacheKey = value; },
+                    setEdgeIncidentIndex: (value) => { edgeIncidentIndex = value; },
+                    setActiveInlineTagCartNodeId: (value) => { activeInlineTagCartNodeId = value; },
+                    clearTempEdge,
+                    cancelEdgeIncidentIndexWarmup,
+                    clearEdgeCanvas,
+                    invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                },
+                utilitySource: {
+                    cssEscape: (value) => CSS.escape(value),
+                },
+                viewportSource: {
+                    updateCanvasRenderMode,
+                    getNodeRenderWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getNodeRenderWorldRect?.(...args),
+                    getVisibleNodeRecords: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.getVisibleNodeRecords?.(...args) || { nodes: [], projectIds: new Set() },
+                    isPanning: (...args) => CANVAS_PAN_CONTROLLER?.isPanning?.(...args) || false,
+                    scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
+                    renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
+                    positionCanvasAgentPanel,
+                },
+                layoutSource: {
+                    getNodeLayoutSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeLayoutSize?.(...args),
+                    ensureVlmNodeModeSize,
+                    ensureResultNodeReadableSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.ensureResultNodeReadableSize?.(...args) || false,
+                    ensureMediaBrowserNodeReadableSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.ensureMediaBrowserNodeReadableSize?.(...args) || false,
+                    defaultNodeSize,
+                    supportsCollapsedPromptHeight,
+                    collapsedPromptNodeHeight,
+                    shouldFixNodeHeight,
+                },
+                nodeSource: {
+                    nodeEffectiveRenderMode,
+                    isNodeCollapsed,
+                    isNodeLocked,
+                    isNodeIgnored,
+                    isImageNodeFrameless,
+                    isNodeVisuallyRunning,
+                    isNodeSchedulerBlocked,
+                    isNodeSchedulerWaiting,
+                    isResultStale,
+                    nodeOverviewRenderSignature,
+                    nodeRenderSignature,
+                },
+                assetSource: {
+                    getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
+                    resultPreviewAspectSource: (...args) => CANVAS_ASSET_NODE_RENDERER?.resultPreviewAspectSource?.(...args),
+                    mediaBrowserRuntimeFor,
+                    refreshMediaBrowserNode,
+                    captureVlmChatScroll,
+                    captureMediaBrowserScroll,
+                    restoreVlmChatScroll,
+                    refreshVlmChatReadabilityDom,
+                    restoreMediaBrowserScroll,
+                    syncResultPreviewPlayerDom: (...args) => CANVAS_RESULT_PREVIEW_CONTROLLER?.syncResultPreviewPlayerDom?.(...args),
+                },
+                renderSource: {
+                    logVlmRenderKeyChange,
+                    applyNodeCustomColorVars,
+                    renderNodeHtml: (...args) => CANVAS_NODE_RENDERER?.renderNodeHtml?.(...args) || '',
+                    ensureWorkbenchFormFieldNames,
+                    ensureNodeCollapseButton,
+                    ensureNodeResizeHandle,
+                    bindNodeEvents,
+                    restoreInlineTagCartAfterRender,
+                    syncOutpaintOverlayPosition,
+                    renderEdges,
+                },
+                presetSource: {
+                    getPresetSpecialControllerKind: (...args) => CANVAS_PRESET_NODE_RENDERER?.getPresetSpecialControllerKind?.(...args),
+                    bindPresetSpecialViewerEvents,
+                    refreshPresetSpecialNodeDom,
+                },
+                spatialSource: {
+                    refreshNodeSpatialIndexRecord: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.refreshNodeSpatialIndexRecord?.(...args),
+                    invalidateNodeSpatialIndex: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.invalidateNodeSpatialIndex?.(...args),
+                },
+            },
+            selectionSource: {
+                languageSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                },
+                projectSource: {
+                    getProject: () => project,
+                },
+                selectionSource: {
+                    getSelectionState: () => ({
+                        selectedNodeId,
+                        selectedNodeIds: new Set(selectedNodeIds),
+                        selectedEdgeId,
+                        selectedGroupId,
+                    }),
+                    setSelectionState: (state) => {
+                        const next = state || {};
+                        selectedNodeId = next.selectedNodeId || null;
+                        selectedNodeIds = next.selectedNodeIds instanceof Set
+                            ? new Set(next.selectedNodeIds)
+                            : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                        selectedEdgeId = next.selectedEdgeId || null;
+                        selectedGroupId = next.selectedGroupId || null;
+                    },
+                },
+                domSource: {
+                    getNodesLayer: () => nodesLayer,
+                    getEdgesLayer: () => edgesLayer,
+                    getGroupsLayer: () => groupsLayer,
+                },
+                nodeSource: {
+                    getNode,
+                    isNodeLocked,
+                },
+                layoutSource: {
+                    getNodeRect: (...args) => viewportGetNodeRect(...args),
+                },
+                viewportSource: {
+                    getCanvasRenderMode: () => canvasRenderMode,
+                    snapCanvasCoord: (value) => snapCanvasCoord(value),
+                },
+                patchSource: {
+                    buildNodeLayoutPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildNodeLayoutPatch?.(...args),
+                    buildNodeFlagPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildNodeFlagPatch?.(...args),
+                },
+                renderSource: {
+                    renderNodes: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.renderNodes?.(...args),
+                    renderEdges,
+                    renderSelectedChainOverlay,
+                    renderInspector,
+                    renderAll: (...args) => CANVAS_RENDER_CONTROLLER?.renderAll?.(...args),
+                },
+                minimapSource: {
+                    invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                    renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
+                },
+                historySource: {
+                    pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                },
+                uiStateSource: {
+                    renderCanvasAgentPanel,
+                    mutate,
+                    showToast,
+                },
+                runtimeSource: {
+                    setTimeout: (...args) => window.setTimeout(...args),
+                },
+            },
+            graphDeleteSource: {
+                languageSource: {
+                    getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                },
+                projectSource: {
+                    getProject: () => project,
+                },
+                selectionSource: {
+                    getSelectionState: () => ({
+                        selectedNodeId,
+                        selectedNodeIds: new Set(selectedNodeIds),
+                        selectedEdgeId,
+                        selectedGroupId,
+                    }),
+                    setSelectionState: (state) => {
+                        const next = state || {};
+                        selectedNodeId = next.selectedNodeId || null;
+                        selectedNodeIds = next.selectedNodeIds instanceof Set
+                            ? new Set(next.selectedNodeIds)
+                            : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                        selectedEdgeId = next.selectedEdgeId || null;
+                        selectedGroupId = next.selectedGroupId || null;
+                    },
+                },
+                nodeSource: {
+                    getNode,
+                    isNodeLocked,
+                    isQwenTtsNode,
+                    isDirectorTimelineNode,
+                },
+                patchSource: {
+                    buildProjectNodesPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildProjectNodesPatch?.(...args),
+                    buildProjectEdgeFilterPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildProjectEdgeFilterPatch?.(...args),
+                    buildPresetUploadSlotPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetUploadSlotPatch?.(...args),
+                    buildPresetTextInputPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetTextInputPatch?.(...args),
+                    buildPresetConfigPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetConfigPatch?.(...args),
+                    buildTextNodeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTextNodeStatePatch?.(...args),
+                    buildTextMergeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTextMergeStatePatch?.(...args),
+                    buildCompareStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildCompareStatePatch?.(...args),
+                    buildTimelineClipDeletePatch: timelineBuildClipDeletePatch,
+                    buildBatchAnyStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildBatchAnyStatePatch?.(...args),
+                    buildClassicNodeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildClassicNodeStatePatch?.(...args),
+                    buildSpecialNodeConnectionPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSpecialNodeConnectionPatch?.(...args),
+                    buildStyleSelectorStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildStyleSelectorStatePatch?.(...args),
+                    buildSam3SourcePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSam3SourcePatch?.(...args),
+                    buildMaskStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildMaskStatePatch?.(...args),
+                    buildDirectorTimelineStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildDirectorTimelineStatePatch?.(...args),
+                    buildTranslationStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTranslationStatePatch?.(...args),
+                    buildTagCartStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTagCartStatePatch?.(...args),
+                    buildWd14StatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildWd14StatePatch?.(...args),
+                    buildConfigStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildConfigStatePatch?.(...args),
+                    buildVlmImageInputsPatch,
+                    buildQwenTtsStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildQwenTtsStatePatch?.(...args),
+                    buildResultProducerPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildResultProducerPatch?.(...args),
+                },
+                statusSource: {
+                    mergeCanvasRunStatus: (...args) => mergeCanvasRunStatus(...args),
+                    buildResultStatusPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildResultStatusPatch?.(...args),
+                    buildVlmRunStatusPatch,
+                    buildSam3StatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSam3StatePatch?.(...args),
+                    buildMaskStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildMaskStatePatch?.(...args),
+                    buildSpecialNodeStatusPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSpecialNodeStatusPatch?.(...args),
+                    buildTranslationStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTranslationStatePatch?.(...args),
+                    buildWd14StatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildWd14StatePatch?.(...args),
+                    updateDirectorStatus,
+                },
+                actionSource: {
+                    deleteSelectedGroup,
+                    deleteTimelineClipById: (...args) => deleteTimelineClipById(...args),
+                    stopResultPreviewPlayer: (...args) => CANVAS_RESULT_PREVIEW_CONTROLLER?.stopResultPreviewPlayer?.(...args),
+                    interruptDeletedResultRuns,
+                    getOutpaintOverlayState: () => outpaintOverlayState,
+                    hideOutpaintOverlay,
+                    getActiveInlineTagCartNodeId: () => activeInlineTagCartNodeId,
+                    setActiveInlineTagCartNodeId: (value) => { activeInlineTagCartNodeId = value; },
+                    handleCanvasAgentWorkflowNodeDeletion: (...args) => CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER?.handleCanvasAgentWorkflowNodeDeletion?.(...args),
+                    handleCanvasAgentWorkflowEdgeDeletion: (...args) => CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER?.handleCanvasAgentWorkflowEdgeDeletion?.(...args),
+                    refreshBatchAnyActiveItem,
+                },
+                renderSource: {
+                    refreshPresetSpecialNodeDom,
+                },
+                historySource: {
+                    pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                },
+                persistenceSource: {
+                    scheduleSave: (...args) => scheduleSave(...args),
+                    mutate,
+                },
+                utilitySource: {
+                    parseDetectionSlot,
+                    configKeyForKind,
+                },
+                 uiSource: {
+                     showToast,
+                 },
+             },
+             resolutionDragSource: {
+                 domSource: {
+                     getDocument: () => document,
+                 },
+                 configSource: {
+                     getResolutionRenderValues: (node) => getResolutionRenderValues(node),
+                     getResolutionPreview: (values) => getResolutionPreview(values, []),
+                     buildConfigStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildConfigStatePatch?.(...args),
+                     applyConfigNodeToPreset: (node) => applyConfigNodeToPreset(node),
+                 },
+                 utilitySource: {
+                     clamp,
+                     quantizeResolutionValue: (value, step) => quantizeResolutionValue(value, step),
+                     nowIso,
+                 },
+                 persistenceSource: {
+                     scheduleSave: (...args) => scheduleSave(...args),
+                 },
+             },
+             clipboardSource: {
+                 languageSource: {
+                     getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                     t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                 },
+                 projectSource: {
+                     getProject: () => project,
+                 },
+                 selectionSource: {
+                     getSelectionState: () => ({
+                         selectedNodeId,
+                         selectedNodeIds: new Set(selectedNodeIds),
+                         selectedEdgeId,
+                         selectedGroupId,
+                     }),
+                     setSelectionState: (state) => {
+                         const next = state || {};
+                         selectedNodeId = next.selectedNodeId || null;
+                         selectedNodeIds = next.selectedNodeIds instanceof Set
+                             ? new Set(next.selectedNodeIds)
+                             : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                         selectedEdgeId = next.selectedEdgeId || null;
+                         selectedGroupId = next.selectedGroupId || null;
+                     },
+                     getSelectedNodeIdList: (...args) => CANVAS_SELECTION_CONTROLLER?.getSelectedNodeIdList?.(...args) || [],
+                 },
+                 nodeSource: {
+                     getNode,
+                     textMergeInputSlots,
+                     isTextOutputNode,
+                     wouldCreateTextCycle,
+                     isPoseStudioImageSource,
+                     isLivePortraitExpressionImageSource,
+                     isVlmMediaSource,
+                     isSam3VideoMaskSource,
+                     isQwenTtsAudioSource,
+                     isQwenTtsNode,
+                     isDirectorTimelineNode,
+                     isDirectorMediaSourceForSlot,
+                     isImageCompareSource,
+                     isTimelineSource,
+                 },
+                 layoutSource: {
+                     getNodeRect: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeRect?.(...args) || null,
+                 },
+                 configSource: {
+                     getVlmImageSlots: () => VLM_IMAGE_SLOTS,
+                     getVisibleClassicUploadSlots,
+                     getVisibleUploadSlots,
+                     normalizeTimelineNode: timelineNormalizeNode,
+                     applyConfigNodeToPreset,
+                 },
+                 patchSource: {
+                     buildProjectNodesPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildProjectNodesPatch?.(...args),
+                     buildProjectEdgeAppendPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildProjectEdgeAppendPatch?.(...args),
+                     buildNodeFlagPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeFlagPatch?.(...args),
+                     buildSpecialNodeConnectionPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSpecialNodeConnectionPatch?.(...args),
+                     buildSam3SourcePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSam3SourcePatch?.(...args),
+                     buildMaskStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildMaskStatePatch?.(...args),
+                     buildStyleSelectorStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildStyleSelectorStatePatch?.(...args),
+                     buildDirectorTimelineStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildDirectorTimelineStatePatch?.(...args),
+                     buildTranslationStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTranslationStatePatch?.(...args),
+                     buildTagCartStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTagCartStatePatch?.(...args),
+                     buildWd14StatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildWd14StatePatch?.(...args),
+                     buildWildcardsHelperStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildWildcardsHelperStatePatch?.(...args),
+                     buildConfigStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildConfigStatePatch?.(...args),
+                     buildPresetConfigPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetConfigPatch?.(...args),
+                     buildPresetUploadSlotPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetUploadSlotPatch?.(...args),
+                     buildClassicNodeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildClassicNodeStatePatch?.(...args),
+                     buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
+                     buildPresetTextInputPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPresetTextInputPatch?.(...args),
+                     buildTextMergeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTextMergeStatePatch?.(...args),
+                     buildTextNodeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTextNodeStatePatch?.(...args),
+                     buildCompareStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildCompareStatePatch?.(...args),
+                     buildNoteStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildNoteStatePatch?.(...args),
+                     buildVlmChatStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildVlmChatStatePatch?.(...args),
+                     buildVlmParamsPatch,
+                     buildVlmImageInputsPatch,
+                     buildResultProducerPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildResultProducerPatch?.(...args),
+                     buildQwenTtsStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildQwenTtsStatePatch?.(...args),
+                     buildPoseStudioStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildPoseStudioStatePatch?.(...args),
+                     buildGaussianStudioStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildGaussianStudioStatePatch?.(...args),
+                     buildLivePortraitNodeStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildLivePortraitNodeStatePatch?.(...args),
+                     buildLivePortraitVideoExpressionStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildLivePortraitVideoExpressionStatePatch?.(...args),
+                 },
+                 statusSource: {
+                     mergeCanvasRunStatus: (...args) => mergeCanvasRunStatus(...args),
+                     buildResultStatusPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildResultStatusPatch?.(...args),
+                     buildVlmRunStatusPatch,
+                     buildMaskStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildMaskStatePatch?.(...args),
+                     buildTranslationStatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildTranslationStatePatch?.(...args),
+                     buildWd14StatePatch: (...args) => CANVAS_FACTORY_CONTEXT.buildWd14StatePatch?.(...args),
+                     buildSpecialNodeStatusPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildSpecialNodeStatusPatch?.(...args),
+                     buildCanvasNodeStatusPatch: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.buildCanvasNodeStatusPatch?.(...args),
+                 },
+                 actionSource: {
+                     addTimelineClipFromSource,
+                     updateDirectorStatus,
+                 },
+                 historySource: {
+                     pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                 },
+                 persistenceSource: {
+                     mutate,
+                 },
+                 utilitySource: {
+                     cloneRunValue,
+                     uid,
+                     nowIso,
+                 },
+                 viewportSource: {
+                     viewportCenterWorld,
+                 },
+                 uiSource: {
+                     showToast,
+                 },
+             },
+             groupInteractionSource: {
+                 languageSource: {
+                     getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                     t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                 },
+                 projectSource: {
+                     getProject: () => project,
+                 },
+                 domSource: {
+                     getGroupsLayer: () => groupsLayer,
+                     getDocument: () => document,
+                 },
+                 groupSource: {
+                     getGroup: (id) => getGroup(id),
+                     getNodesInsideGroup: (group) => getNodesInsideGroup(group),
+                     getSelectedGroupId: () => selectedGroupId,
+                 },
+                 nodeSource: {
+                     getNode,
+                     isNodeLocked,
+                 },
+                 selectionSource: {
+                     selectGroupLight: (...args) => CANVAS_SELECTION_CONTROLLER?.selectGroupLight?.(...args),
+                 },
+                 layoutSource: {
+                     buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
+                 },
+                 patchSource: {
+                     buildGroupFieldPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildGroupFieldPatch?.(...args),
+                 },
+                 viewportSource: {
+                     snapCanvasCoord,
+                     snapCanvasSizeFromOrigin,
+                 },
+                 renderSource: {
+                     beginDragEdgeLod: (...args) => beginDragEdgeLod(...args),
+                     isDragEdgeLodActive: (...args) => isDragEdgeLodActive(...args),
+                     scheduleDragEdgeSettleRender: (...args) => scheduleDragEdgeSettleRender(...args),
+                     flushInteractiveLinkRender: (...args) => flushInteractiveLinkRender(...args),
+                     updateGroupPositionDom: (...args) => updateGroupPositionDom(...args),
+                     updateNodePositionDom: (...args) => updateNodePositionDom(...args),
+                     scheduleInteractiveLinkRender: (...args) => scheduleInteractiveLinkRender(...args),
+                     renderInspector: (...args) => renderInspector(...args),
+                 },
+                 minimapSource: {
+                     invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                     invalidateNodeSpatialIndex: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.invalidateNodeSpatialIndex?.(...args),
+                     scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
+                     flushMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.flushMinimapRender?.(...args),
+                 },
+                 actionSource: {
+                     openGroupContextMenu: (...args) => openGroupContextMenu(...args),
+                 },
+                 historySource: {
+                     pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                 },
+                 persistenceSource: {
+                     scheduleSave: (...args) => scheduleSave(...args),
+                 },
+                 uiSource: {
+                     showToast,
+                 },
+             },
+              runPanelsSource: {
+                 languageSource: {
+                     getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                     t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                 },
+                 projectSource: {
+                     getProject: () => project,
+                 },
+                 domSource: {
+                     getRoot: () => root,
+                     getRunQueuePanel: () => runQueuePanel,
+                     getRunHistoryPanel: () => runHistoryPanel,
+                 },
+                 stateSource: {
+                     getRunHistorySelectedId: () => null,
+                     setRunHistorySelectedId: () => {},
+                 },
+                 queueSource: {
+                     openPanel: runQueueOpenPanel,
+                     closePanel: runQueueClosePanel,
+                     renderPanel: runQueueRenderPanel,
+                     handleAction: runQueueHandleAction,
+                 },
+                 historySource: {
+                     openPanel: runHistoryOpenPanel,
+                     closePanel: runHistoryClosePanel,
+                     renderPanel: runHistoryRenderPanel,
+                     handleAction: runHistoryHandleAction,
+                 },
+                 statusSource: {
+                     isTerminalRunState,
+                 },
+                 utilitySource: {
+                     escapeHtml,
+                     formatLocalTime,
+                 },
+                 uiSource: {
+                     showToast,
+                 },
+                 nodeSource: {
+                     getNode,
+                 },
+                 actionSource: {
+                     closeCanvasSettingsPanel: (...args) => closeCanvasSettingsPanel(...args),
+                     controlResultRun: (...args) => controlResultRun(...args),
+                     retryResultRun: (...args) => retryResultRun(...args),
+                     selectAndFitNode: (node) => {
+                         if (!node) return;
+                         CANVAS_SELECTION_CONTROLLER?.selectNode?.(node.id);
+                         fitSelection();
+                     },
+                 },
+                  renderSource: {
+                      renderRunQueueWidget: (...args) => CANVAS_RUN_STATUS_CONTROLLER?.renderRunQueueWidget?.(...args),
+                  },
+              },
+              nodeResizeSource: {
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  domSource: {
+                      getDocument: () => document,
+                  },
+                  nodeSource: {
+                      getNode,
+                      isNodeLocked,
+                  },
+                  layoutSource: {
+                      getNodeRect: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.getNodeRect?.(...args) || null,
+                      minResizableNodeSize: (...args) => CANVAS_NODE_LAYOUT_CONTROLLER?.minResizableNodeSize?.(...args) || null,
+                      supportsCollapsedPromptHeight,
+                      collapsedPromptNodeHeight,
+                  },
+                  selectionSource: {
+                      getSelectionState: () => ({
+                          selectedNodeId,
+                          selectedNodeIds: new Set(selectedNodeIds),
+                          selectedEdgeId,
+                          selectedGroupId,
+                      }),
+                      setSelectionState: (state) => {
+                          const next = state || {};
+                          selectedNodeId = next.selectedNodeId || null;
+                          selectedNodeIds = next.selectedNodeIds instanceof Set
+                              ? new Set(next.selectedNodeIds)
+                              : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                          selectedEdgeId = next.selectedEdgeId || null;
+                          selectedGroupId = next.selectedGroupId || null;
+                      },
+                      refreshSelectionUi: (...args) => CANVAS_SELECTION_CONTROLLER?.refreshSelectionUi?.(...args),
+                      getSelectedNodeId: () => selectedNodeId,
+                  },
+                  utilitySource: {
+                      clamp,
+                  },
+                  viewportSource: {
+                      snapCanvasSizeFromOrigin,
+                  },
+                  patchSource: {
+                      buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
+                  },
+                  historySource: {
+                      pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                  },
+                  renderSource: {
+                      updateNodePositionDom: (...args) => updateNodePositionDom(...args),
+                      refreshNoteDom: (...args) => refreshNoteDom(...args),
+                      scheduleInteractiveLinkRender: (...args) => scheduleInteractiveLinkRender(...args),
+                      flushInteractiveLinkRender: (...args) => flushInteractiveLinkRender(...args),
+                      renderInspector: (...args) => renderInspector(...args),
+                  },
+                  minimapSource: {
+                      invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                      invalidateNodeSpatialIndex: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.invalidateNodeSpatialIndex?.(...args),
+                      scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
+                      flushMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.flushMinimapRender?.(...args),
+                  },
+                  persistenceSource: {
+                      scheduleSave: (...args) => scheduleSave(...args),
+                  },
+              },
+              nodeDragSource: {
+                  languageSource: {
+                      getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                      t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                  },
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  domSource: {
+                      getDocument: () => document,
+                  },
+                  nodeSource: {
+                      getNode,
+                      getSelectedNodeIds: () => selectedNodeIds,
+                      isNodeLocked,
+                  },
+                  runtimeSource: {
+                      performanceNow: () => performance.now(),
+                  },
+                  viewportSource: {
+                      snapCanvasCoord,
+                  },
+                  patchSource: {
+                      buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
+                  },
+                  uiSource: {
+                      hideCanvasTooltip: (...args) => hideCanvasTooltip(...args),
+                      hideHoverPreview: (...args) => hideHoverPreview(...args),
+                      closePreviewSelectMenu: (...args) => closePreviewSelectMenu(...args),
+                      setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
+                      showToast,
+                  },
+                  historySource: {
+                      pushHistory: (...args) => CANVAS_HISTORY_CONTROLLER?.pushHistory?.(...args),
+                  },
+                  renderSource: {
+                      beginDragEdgeLod: (...args) => beginDragEdgeLod(...args),
+                      updateNodePositionDom: (...args) => updateNodePositionDom(...args),
+                      scheduleInteractiveLinkRender: (...args) => scheduleInteractiveLinkRender(...args),
+                      isDragEdgeLodActive: () => dragEdgeLodActive,
+                      scheduleDragEdgeSettleRender: (...args) => scheduleDragEdgeSettleRender(...args),
+                      flushInteractiveLinkRender: (...args) => flushInteractiveLinkRender(...args),
+                  },
+                  minimapSource: {
+                      invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                      invalidateNodeSpatialIndex: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.invalidateNodeSpatialIndex?.(...args),
+                      scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
+                      flushMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.flushMinimapRender?.(...args),
+                  },
+                  persistenceSource: {
+                      scheduleSave: (...args) => scheduleSave(...args),
+                  },
+              },
+              panSource: {
+                  projectSource: {
+                      getProject: () => project,
+                  },
+                  viewportSource: {
+                      getViewport: () => viewport,
+                      applyViewport: (...args) => applyViewport(...args),
+                  },
+                  domSource: {
+                      getDocument: () => document,
+                  },
+                  runtimeSource: {
+                      performanceNow: () => performance.now(),
+                      getPerfStats: () => perfStats,
+                  },
+                  patchSource: {
+                      buildProjectViewportPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildProjectViewportPatch?.(...args),
+                  },
+                  uiSource: {
+                      hideCanvasTooltip: (...args) => hideCanvasTooltip(...args),
+                      hideHoverPreview: (...args) => hideHoverPreview(...args),
+                      closePreviewSelectMenu: (...args) => closePreviewSelectMenu(...args),
+                      setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
+                  },
+                  edgeSource: {
+                      cancelPanEdgeSettleRender: (...args) => cancelPanEdgeSettleRender(...args),
+                      cancelDragEdgeSettleRender: (...args) => cancelDragEdgeSettleRender(...args),
+                      endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
+                      preferSvgEdgesForViewportInteraction: (...args) => preferSvgEdgesForViewportInteraction(...args),
+                      renderFinalEdgesAfterPan: () => {
+                          if ((project.edges || []).length >= CANVAS_EDGE_FINAL_RENDER_MIN_EDGES) renderEdgesWithCanvasPreferred();
+                          else renderEdgesWithSvgFallback();
+                          renderSelectedChainOverlay();
+                      },
+                  },
+                  minimapSource: {
+                      updateMinimapForViewportInteraction: (...args) => CANVAS_MINIMAP_CONTROLLER?.updateMinimapForViewportInteraction?.(...args),
+                      cancelMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.cancelMinimapRender?.(...args),
+                      renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
+                  },
+                  renderSource: {
+                      schedulePanNodeRender: (...args) => schedulePanNodeRender(...args),
+                      clearPanNodeRenderTimer: (...args) => clearPanNodeRenderTimer(...args),
+                      getVisibleWorldRect: (...args) => CANVAS_VIEWPORT_RENDER_CONTROLLER?.getVisibleWorldRect?.(...args) || {},
+                      shouldDeferPanEdgeSettleRender: (...args) => shouldDeferPanEdgeSettleRender(...args),
+                      renderNodes: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.renderNodes?.(...args),
+                      schedulePanEdgeSettleRender: (...args) => schedulePanEdgeSettleRender(...args),
+                      renderPerformanceHud: (...args) => renderPerformanceHud(...args),
+                  },
+                  persistenceSource: {
+                      scheduleSave: (...args) => scheduleSave(...args),
+                  },
+              },
+              marqueeSource: {
+                  viewportSource: {
+                      getViewport: () => viewport,
+                  },
+                  domSource: {
+                      getRoot: () => root,
+                      getDocument: () => document,
+                  },
+                  windowSource: {
+                      getWindow: () => window,
+                  },
+                  selectionSource: {
+                      getSelectedNodeIds: () => selectedNodeIds,
+                      getSelectionState: () => ({
+                          selectedNodeId,
+                          selectedNodeIds: new Set(selectedNodeIds),
+                          selectedEdgeId,
+                          selectedGroupId,
+                      }),
+                      setSelectionState: (state) => {
+                          const next = state || {};
+                          selectedNodeId = next.selectedNodeId || null;
+                          selectedNodeIds = next.selectedNodeIds instanceof Set
+                              ? new Set(next.selectedNodeIds)
+                              : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                          selectedEdgeId = next.selectedEdgeId || null;
+                          selectedGroupId = next.selectedGroupId || null;
+                      },
+                      applyMarqueeSelection: (ids) => {
+                          const nextIds = new Set(ids || []);
+                          const current = {
+                              selectedNodeId,
+                              selectedNodeIds: new Set(selectedNodeIds),
+                              selectedEdgeId,
+                              selectedGroupId,
+                          };
+                          const nextList = Array.from(nextIds);
+                          current.selectedNodeId = nextList.length ? nextList[nextList.length - 1] : null;
+                          current.selectedNodeIds = nextIds;
+                          current.selectedEdgeId = null;
+                          current.selectedGroupId = null;
+                          selectedNodeId = current.selectedNodeId;
+                          selectedNodeIds = current.selectedNodeIds;
+                          selectedEdgeId = current.selectedEdgeId;
+                          selectedGroupId = current.selectedGroupId;
+                      },
+                      updateSelectionDomClasses: (...args) => CANVAS_SELECTION_CONTROLLER?.updateSelectionDomClasses?.(...args),
+                  },
+                  runtimeSource: {
+                      performanceNow: () => performance.now(),
+                      getPerfStats: () => perfStats,
+                  },
+                  spatialSource: {
+                      getMarqueeNodeRecords: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.getMarqueeNodeRecords?.(...args) || [],
+                  },
+                  utilitySource: {
+                      clientToWorld: (...args) => clientToWorld(...args),
+                  },
+                  uiSource: {
+                      hideCanvasTooltip: (...args) => hideCanvasTooltip(...args),
+                      hideHoverPreview: (...args) => hideHoverPreview(...args),
+                      closePreviewSelectMenu: (...args) => closePreviewSelectMenu(...args),
+                      setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
+                      renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                  },
+                  minimapSource: {
+                      invalidateMinimapStaticCache: (...args) => CANVAS_MINIMAP_CONTROLLER?.invalidateMinimapStaticCache?.(...args),
+                      scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
+                      flushMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.flushMinimapRender?.(...args),
+                  },
+                  renderSource: {
+                      renderSelectedChainOverlay: (...args) => renderSelectedChainOverlay(...args),
+                      renderInspector: (...args) => renderInspector(...args),
+                  },
+              },
+              viewportPointerSource: {
+                  languageSource: {
+                      getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                      t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+                  },
+                  viewportSource: {
+                      clientToWorld: (...args) => clientToWorld(...args),
+                      setLastPointerWorld: (world) => { lastPointerWorld = world; },
+                      getMode: () => mode,
+                  },
+                  domSource: {
+                      getRoot: () => root,
+                  },
+                  uiSource: {
+                      closeContextMenu: (...args) => CONTEXT_MENU_CONTROLLER?.closeContextMenu?.(...args),
+                      isCanvasAgentPickingReference: () => !!canvasAgentState.pickReference,
+                      setCanvasAgentPickingReference: (value) => { canvasAgentState.pickReference = !!value; },
+                      addCanvasAgentReferenceFromNode: (...args) => addCanvasAgentReferenceFromNode(...args),
+                      renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                      setCanvasAgentMessage: (...args) => setCanvasAgentMessage(...args),
+                  },
+                  edgeSource: {
+                      findCanvasEdgeAtClient: (...args) => findCanvasEdgeAtClient(...args),
+                      selectEdge: (...args) => CANVAS_SELECTION_CONTROLLER?.selectEdge?.(...args),
+                  },
+                  spatialSource: {
+                      findCanvasNodeAtWorldPoint: (...args) => CANVAS_NODE_SPATIAL_INDEX_CONTROLLER?.findCanvasNodeAtWorldPoint?.(...args),
+                  },
+                  nodeSource: {
+                      getNode,
+                      isNodeSelected: (nodeId) => selectedNodeIds instanceof Set
+                          ? selectedNodeIds.has(nodeId)
+                          : Array.isArray(selectedNodeIds) && selectedNodeIds.includes(nodeId),
+                      getSelectedNodeId: () => selectedNodeId,
+                      hasSelectedEdge: () => selectedEdgeId !== null && selectedEdgeId !== undefined,
+                  },
+                  selectionSource: {
+                      selectNodeLight: (...args) => CANVAS_SELECTION_CONTROLLER?.selectNodeLight?.(...args),
+                      toggleNodeSelectionLight: (...args) => CANVAS_SELECTION_CONTROLLER?.toggleNodeSelectionLight?.(...args),
+                      focusSelectedNode: (nodeId) => {
+                          selectedNodeId = nodeId;
+                          selectedEdgeId = null;
+                          CANVAS_SELECTION_CONTROLLER?.refreshSelectionUi?.();
+                      },
+                  },
+                  interactionSource: {
+                      startPan: (...args) => CANVAS_PAN_CONTROLLER?.startPan?.(...args),
+                      startNodeDrag: (...args) => CANVAS_NODE_DRAG_CONTROLLER?.startNodeDrag?.(...args),
+                      startMarqueeSelection: (...args) => CANVAS_MARQUEE_CONTROLLER?.startMarqueeSelection?.(...args),
+                  },
+                  actionSource: {
+                      openAddNodeMenu: (...args) => openAddNodeMenu(...args),
+                  },
+                  runtimeSource: {
+                      setTimeout: (...args) => window.setTimeout(...args),
+                  },
+              },
+              connectionSource: {
+                  domSource: {
+                      getDocument: () => document,
+                  },
+                  viewportSource: {
+                      clientToWorld: (...args) => clientToWorld(...args),
+                  },
+                  runtimeSource: {
+                      performanceNow: () => performance.now(),
+                  },
+                  uiSource: {
+                      hideCanvasTooltip: (...args) => hideCanvasTooltip(...args),
+                      hideHoverPreview: (...args) => hideHoverPreview(...args),
+                      closePreviewSelectMenu: (...args) => closePreviewSelectMenu(...args),
+                      setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
+                  },
+                  selectionSource: {
+                      selectNode: (...args) => CANVAS_SELECTION_CONTROLLER?.selectNode?.(...args),
+                      selectInputConnectionTarget: (nodeId) => {
+                          selectedNodeId = nodeId;
+                          selectedNodeIds = new Set([nodeId]);
+                          selectedEdgeId = null;
+                          selectedGroupId = null;
+                          CANVAS_SELECTION_CONTROLLER?.refreshSelectionUi?.();
+                      },
+                  },
+                  nodeSource: {
+                      getOutputPoint: (...args) => getOutputPoint(...args),
+                      getHandleCenterWorldPoint: (...args) => getHandleCenterWorldPoint(...args),
+                  },
+                  spatialSource: {
+                      findNearestConnectionTarget: (...args) => findNearestConnectionTarget(...args),
+                  },
+                  connectionSource: {
+                      connectSourceToTarget: (...args) => connectSourceToTarget(...args),
+                  },
+                  renderSource: {
+                      renderTempEdge: (state) => {
+                          if (!state) {
+                              clearTempEdge();
+                              return;
+                          }
+                          const path = ensureTempEdge();
+                          path.setAttribute('d', curvePath(state.fromPoint, state.currentPoint));
+                      },
+                      renderAll: (...args) => CANVAS_RENDER_CONTROLLER?.renderAll?.(...args),
+                  },
+                  actionSource: {
+                      setPendingConnection: (...args) => setPendingConnection(...args),
+                      openInputPortCreateMenu: (...args) => openInputPortCreateMenu(...args),
+                      openAddNodeMenu: (...args) => openAddNodeMenu(...args),
+                  },
+              },
+              t,
             tOption,
             clamp,
             escapeHtml,
@@ -1388,10 +2866,6 @@
             getNodeResizeNodeId: () => getNodeResizeNodeId(),
              getActiveInlineTagCartNodeId: () => activeInlineTagCartNodeId,
              getOutpaintOverlayState: () => outpaintOverlayState,
-             getResolutionRenderValues: (node) => getResolutionRenderValues(node),
-             getResolutionPreview: (values) => getResolutionPreview(values, []),
-             quantizeResolutionValue: (value, step) => quantizeResolutionValue(value, step),
-             applyConfigNodeToPreset: (node) => applyConfigNodeToPreset(node),
              uid,
             cloneRunValue,
             nowIso,
@@ -1552,8 +3026,8 @@
             deleteTimelineClipById: (...args) => deleteTimelineClipById(...args),
             interruptDeletedResultRuns,
             hideOutpaintOverlay,
-            handleCanvasAgentWorkflowNodeDeletion,
-            handleCanvasAgentWorkflowEdgeDeletion,
+             handleCanvasAgentWorkflowNodeDeletion: (...args) => CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER?.handleCanvasAgentWorkflowNodeDeletion?.(...args),
+             handleCanvasAgentWorkflowEdgeDeletion: (...args) => CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER?.handleCanvasAgentWorkflowEdgeDeletion?.(...args),
             parseDetectionSlot,
             configKeyForKind,
             updateDirectorStatus,
@@ -1584,6 +3058,7 @@
                 ? viewportHasCanvasOverflow(items, visible, { defaultNodeSize, getNodeLayoutSize })
                 : false,
             setTimeout: (...args) => window.setTimeout(...args),
+            requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
             clearTimeout: (...args) => window.clearTimeout(...args),
             preferSvgEdgesForViewportInteraction,
             scheduleViewportNodeRender,
@@ -1887,6 +3362,7 @@
         nodeRenderKey,
         invalidateRenderedNode,
         rememberRenderedNodeLayout,
+        refreshNodeLayoutForAgent,
         getRenderedNodeElement,
         getNodeRenderCoverageRect,
         setNodeRenderCoverageRect,
@@ -2014,12 +3490,12 @@
             getAgentState: () => canvasAgentState,
             setAgentInput: (value) => { canvasAgentState.input = value || ''; },
             buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
-            setCanvasAgentResolutionPatch: (...args) => setCanvasAgentResolutionPatch(...args),
-            setResolutionOpen: (value) => { canvasAgentState.resolutionOpen = !!value; },
+            setCanvasAgentResolutionPatch: (...args) => setCanvasAgentResolutionPatchBeforeUi(...args),
+            setCanvasAgentResolutionOpen: (...args) => setCanvasAgentResolutionOpenBeforeUi(...args),
             handleCanvasAgentDecisionFieldInput: (...args) => handleCanvasAgentDecisionFieldInput(...args),
             onOutpaintSliderInput: (...args) => onOutpaintSliderInput(...args),
             handleCanvasAgentSettingInput: (...args) => handleCanvasAgentSettingInput(...args),
-            handleCanvasAgentModelModeInput: (...args) => handleCanvasAgentModelModeInput(...args),
+            handleCanvasAgentModelModeInput: (...args) => handleCanvasAgentModelModeInputBeforeUi(...args),
             consumeWorkbenchShortcut: (...args) => consumeWorkbenchShortcut(...args),
             handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
             canvasAgentPrimaryAction: (...args) => canvasAgentPrimaryAction(...args),
@@ -2644,39 +4120,56 @@
             saveCurrentCanvasAsTemplate,
             getCanvasAgentDefaultSettings: () => CANVAS_AGENT_DEFAULT_SETTINGS,
             getVersionChoices: () => VLM_VERSION_CHOICES,
-            normalizePresetName,
-            clamp,
-            getVlmCustomProvider: (...args) => getVlmCustomProvider(...args),
-            getVlmCustomApiProfile: (...args) => getVlmCustomApiProfile(...args),
-            getCanvasAgentCustomKeyValue: () => String(getCanvasAgentCustomKeyInput()?.value || ''),
-            decodeCanvasAgentVideoToolChoice: (...args) => CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER?.decodeCanvasAgentVideoToolChoice?.(...args) || {},
-            getCanvasAgentState: () => canvasAgentState,
-            pushHistoryBatch: (...args) => pushHistoryBatch(...args),
-            scheduleSave: (...args) => scheduleSave(...args),
-            renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+            vlmModelDisplayLabel,
+             canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS,
+             normalizePresetName,
+             clamp,
+             getVlmCustomProvider: (...args) => getVlmCustomProvider(...args),
+             getVlmCustomApiProfile: (...args) => getVlmCustomApiProfile(...args),
+             getVlmCustomProfileKey: (...args) => getVlmCustomProfileKey(...args),
+             readVlmCustomApiProfiles: (...args) => readVlmCustomApiProfiles(...args),
+             writeVlmCustomApiProfiles: (...args) => writeVlmCustomApiProfiles(...args),
+             getCanvasSettingsPanel: () => canvasSettingsPanel,
+             decodeCanvasAgentVideoToolChoice: (...args) => CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER?.decodeCanvasAgentVideoToolChoice?.(...args) || {},
+             getCanvasAgentState: () => canvasAgentState,
+             getSelectedNodeId: () => selectedNodeId,
+             getNode: (...args) => getNode(...args),
+             getCurrentProjectId: () => project.id || PROJECT_ID,
+             pushHistoryBatch: (...args) => pushHistoryBatch(...args),
+             pushHistory: (...args) => pushHistory(...args),
+             scheduleSave: (...args) => scheduleSave(...args),
+             mutate: (...args) => mutate(...args),
+             showToast: (...args) => showToast(...args),
+             nowIso: (...args) => nowIso(...args),
+             buildVlmModelUnknownStatus: (...args) => buildVlmModelUnknownStatus(...args),
+             buildVlmParamsPatch: (...args) => buildVlmParamsPatch(...args),
+             buildVlmModelStatusPatch: (...args) => buildVlmModelStatusPatch(...args),
+             sendCanvasVlmRunRequest: (...args) => sendCanvasVlmRunRequest(...args),
+             sendCanvasAgentCustomModelsRequest: (params) => typeof apiCustomLlmModels === 'function'
+                 ? apiCustomLlmModels(Object.assign({}, params || {}, { user_context: getWorkbenchUserContext() }))
+                 : { ok: false, error: 'Custom model API is unavailable' },
+             renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
             renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
             renderStatus: (...args) => renderStatus(...args),
             buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args),
             getDocument: () => document,
             getOutpaintOverlayState: () => outpaintOverlayState,
-            getOutpaintTargetNode: (...args) => getOutpaintTargetNode(...args),
-            getOutpaintMediaSize: (...args) => getOutpaintMediaSize(...args),
+            getOutpaintOverlayElement: () => outpaintOverlayEl,
+            getProject: () => project,
+            getOutpaintNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
+            getOutpaintStage: () => stage,
+            defaultNodeSize,
+             isCanvasAgentImageTarget: (...args) => CANVAS_AGENT_TARGET_CONTROLLER?.isCanvasAgentImageTarget?.(...args) || false,
             getViewportZoom: () => project.viewport?.zoom || 1,
             getCanvasAgentPanel: () => canvasAgentPanel,
-            syncOutpaintOverlayPosition: (...args) => syncOutpaintOverlayPosition(...args),
             getCanvasSettingsPanel: () => canvasSettingsPanel,
             getCanvasSettingsTab: () => canvasSettingsState.tab,
             setCanvasSettingsTab: (tab) => { canvasSettingsState.tab = tab; },
-            isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
-            refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args),
-            closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
-            closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args),
-            saveCanvasAgentCustomSecret: (...args) => saveCanvasAgentCustomSecret(...args),
-            fetchCanvasAgentCustomModels: (...args) => fetchCanvasAgentCustomModels(...args),
-            testCanvasAgentCustomApi: (...args) => testCanvasAgentCustomApi(...args),
-            syncCanvasAgentCustomFromSelectedVlm: (...args) => syncCanvasAgentCustomFromSelectedVlm(...args),
-            syncSelectedVlmCustomFromCanvasAgent: (...args) => syncSelectedVlmCustomFromCanvasAgent(...args),
-            toggleSetting: (...args) => toggleSetting(...args),
+             isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
+             refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args),
+             closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
+             closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args),
+             toggleSetting: (...args) => toggleSetting(...args),
             clearBrowserCache: (...args) => clearBrowserCache(...args),
             clearProjectFileWithConfirm: (...args) => clearProjectFileWithConfirm(...args)
     };
@@ -2691,11 +4184,27 @@
          getCanvasAgentSettings,
          setCanvasAgentSettingsPatch,
          setCanvasAgentLayoutPatch,
+         canvasAgentDefaultLocalRewriteModel,
+         canvasAgentLocalRewriteModels,
+         canvasAgentModelSummary,
+         getCanvasAgentResolutionState,
+         setCanvasAgentResolutionPatch,
+         setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
+         canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
+         canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
          revealCanvasAgentPanelForToolCard,
          dockCanvasAgentPanelBottomLeft,
-         getCanvasAgentRewriteModel,
-         handleCanvasAgentSettingInput,
-         startOutpaintEdgeDrag,
+          getCanvasAgentRewriteModel,
+          handleCanvasAgentSettingInput,
+          handleCanvasAgentModelModeInput,
+          getCanvasAgentCustomKeyValue,
+          getCanvasAgentCustomModelChoices,
+          saveCanvasAgentCustomSecret,
+          fetchCanvasAgentCustomModels,
+          testCanvasAgentCustomApi,
+          syncCanvasAgentCustomFromSelectedVlm,
+          syncSelectedVlmCustomFromCanvasAgent,
+          startOutpaintEdgeDrag,
          updateOutpaintFromSlider,
          onOutpaintOverlayPointerDown,
          onOutpaintSliderInput,
@@ -3020,14 +4529,14 @@
             isGaussianStudioImageSource,
             isLivePortraitExpressionImageSource,
             mediaViewerNodeHasViewableImage,
-            getMediaViewerContext: () => MEDIA_VIEWER_CONTEXT,
-            getCanvasAgentReferenceKind
+            getMediaViewerContext: () => MEDIA_VIEWER_CONTEXT
     };
     CANVAS_AGENT_TARGET_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_TARGET.createCanvasAgentTargetController === 'function'
         ? WORKBENCH_CANVAS_AGENT_TARGET.createCanvasAgentTargetController(AGENT_TARGET_CONTEXT_SOURCE)
         : {};
     const getCanvasAgentTargetNode = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentTargetNode;
     const canvasAgentTargetLabel = CANVAS_AGENT_TARGET_CONTROLLER.canvasAgentTargetLabel;
+    const canvasAgentShortNodeLabel = CANVAS_AGENT_TARGET_CONTROLLER.canvasAgentShortNodeLabel;
     const isCanvasAgentImageTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentImageTarget;
     const isCanvasAgentVideoTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentVideoTarget;
     const isCanvasAgentAudioTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentAudioTarget;
@@ -3036,13 +4545,51 @@
     const isCanvasAgentTextTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentTextTarget;
     const isCanvasAgentMediaReferenceTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentMediaReferenceTarget;
     const isCanvasAgentSupportedTarget = CANVAS_AGENT_TARGET_CONTROLLER.isCanvasAgentSupportedTarget;
+    const getCanvasAgentReferenceAsset = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentReferenceAsset;
+    const getCanvasAgentReferenceKind = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentReferenceKind;
     const AGENT_CONTEXT_SOURCE = {
+            generationSource: {
+                t,
+                clamp,
+                canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS,
+                getCanvasAgentResolutionState,
+                canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
+                canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
+                getVisiblePresetParams,
+                buildNodeParamsPatch,
+                canvasAgentPresetPromptDefaults,
+                buildPresetSnapshotPatch,
+                cloneRunValue,
+                createCanvasAgentPresetProbeNode,
+                buildClassicNodeStatePatch,
+                getVisibleClassicUploadSlots,
+                getVisibleUploadSlots,
+                canNodeConnectToUploadSlot,
+                isCanvasAgentMaskSlot,
+                generationConfigValueForPresetSchema,
+                buildPresetGenerationConfigPatch,
+                getNode,
+                buildConfigStatePatch,
+                applyConfigNodeToPreset,
+                isNodeLocked,
+                showToast,
+                pushHistoryBatch,
+                buildCanvasNodeStatusPatch,
+                mutate,
+                getPresetConfigSource,
+                buildInitialConfigValues,
+                normalizeResolutionProfile,
+                resolveResolutionBaseDims,
+                buildPresetConfigPatch,
+                nowIso
+            },
             t,
             uid,
             getAgentState: () => canvasAgentState,
             getNode: (nodeId) => getNode(nodeId),
             getCanvasAgentReferenceAsset,
             getCanvasAgentReferenceKind,
+            serializeAssetSourceForRun,
             canvasAgentShortNodeLabel,
             getNodeTextOutput,
             assetDisplaySrc,
@@ -3050,7 +4597,17 @@
             getCanvasAgentTargetMediaKind,
             getSelectedNodeIdList,
             getCanvasAgentTargetNode,
+            dockCanvasAgentPanelBottomLeft,
+            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                selectedEdgeId = null;
+                if (options?.clearGroup) selectedGroupId = null;
+                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+            },
+            mutate,
             setCanvasAgentMessage,
+            setCanvasAgentSettingsPatch,
             showToast,
             renderCanvasAgentPanel,
             getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
@@ -3084,20 +4641,20 @@
             getDefaultProjectId: () => PROJECT_ID,
             getProject: () => project,
             getCanvasAgentRewriteModel,
-            getCanvasAgentVlmReferenceSources,
-            canvasAgentReferenceSummaryText,
             runtimeUiLang,
             isCanvasAgentImageTarget,
             canvasAgentPromptTargetFromPurpose,
             canvasAgentPromptDefaultsForPurpose,
             canvasAgentPromptTargetNeedsDanbooru,
-            canvasAgentDanbooruLookupText,
+            canvasAgentPromptLooksDanbooru,
+            canvasAgentPromptNeedsTargetRewrite,
             canvasAgentPromptTargetContextLine,
             canvasAgentPromptTargetInstruction,
             canvasAgentVlmAgentContextPayload: (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.canvasAgentVlmAgentContextPayload?.(...args) || {},
             sendCanvasVlmRunRequest,
             getCanvasAgentCustomRuntimeParams,
             canvasAgentDanbooruFallbackPrompt,
+            apiDanbooruTagLookup,
             isCanvasAgentTextTarget,
             setCanvasAgentRunInfo,
             resetCanvasAgentRunInfo,
@@ -3121,9 +4678,31 @@
         })
         : {};
     const {
+         CANVAS_AGENT_GENERATION_CONTROLLER,
+         canvasAgentRunNodeSelection,
+         canvasAgentUserExplicitNegativePrompt,
+         normalizeCanvasAgentAspect,
+         extractCanvasAgentAspectFromText,
+         stripCanvasAgentInlineGenerationParams,
+         normalizeCanvasAgentGenerationOptions,
+        canvasAgentResolutionLabel,
+        canvasAgentResolutionCompactLabel,
+        canvasAgentModelStatusLabel,
+        applyCanvasAgentPromptToGenerator,
+        applyCanvasAgentPresetDefaultsToGenerator,
+        clonePresetWithPromptDefaults,
+        presetGenerationStepValue,
+        presetGenerationImageNumberValue,
+        applyCanvasAgentGenerationOptionsToGenerator,
+        prepareCanvasAgentGenerator,
+        applyCanvasAgentResolutionToGenerator,
+        previewCanvasAgentEditInputSlot,
         CANVAS_AGENT_REFERENCES_CONTROLLER,
         canvasAgentReferenceIcon,
         canvasAgentReferenceKey,
+        getCanvasAgentVlmReferenceSources,
+        canvasAgentReferenceSummaryText,
+        canvasAgentReferenceFacts,
         normalizeCanvasAgentReferences,
         canvasAgentReferenceCounts,
         createCanvasAgentReferenceFromNode,
@@ -3160,7 +4739,11 @@
         resolveCanvasAgentPrompt: resolveCanvasAgentPromptFromContext,
         canvasAgentComparablePromptText,
          canvasAgentPromptRewriteTooWeak,
-         canvasAgentLocalPromptRewriteFallback
+         canvasAgentLocalPromptRewriteFallback,
+         canvasAgentDanbooruFallbackRewrite,
+         ensureCanvasAgentPromptMatchesTarget,
+         canvasAgentDanbooruLookupText,
+         maybeShowCanvasDanbooruRuntimeNotice
      } = CANVAS_AGENT_CONTEXT;
     CANVAS_AGENT_ACTION_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_ACTION.createCanvasAgentActionController === 'function'
         ? WORKBENCH_CANVAS_AGENT_ACTION.createCanvasAgentActionController({
@@ -3207,63 +4790,114 @@
             notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接')
         },
         vlmNodeSource: {
-            uid,
-            nowIso,
-            cloneRunValue,
-            t,
-            escapeHtml,
-            getVlmVersionChoices: () => VLM_VERSION_CHOICES,
-            getDefaultVlmParamsFromAgentSettings: buildDefaultVlmParamsFromAgentSettings,
-            getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
-            getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
-            getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
-            getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
-            getVlmChatNodeSize: () => VLM_CHAT_NODE_SIZE,
-            getVlmSingleNodeSize: () => VLM_SINGLE_NODE_SIZE,
-            getNode,
-            normalizeVlmAgentMode,
-            isNodeLocked,
-            pushHistoryBatch,
-            mutate,
-            scheduleSave,
-            sendVlmSystemPromptTemplates: sendVlmSystemPromptTemplatesRequest,
-            invalidateVlmSystemPromptTemplateViews: () => {
-                (project.nodes || []).forEach((node) => {
-                    if (node?.type === 'vlm') invalidateRenderedNode(node.id);
-                });
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
             },
-            getVlmChatUiAreas,
-            handleVlmAgentAutoConfirmToggle: (node, field) => maybeRunVlmAgentActionFromAutoConfirmToggle(node, field),
-            showToast,
-            renderAll,
-            getVlmCustomProvider,
+            utilitySource: {
+                uid,
+                nowIso,
+                escapeHtml,
+            },
+            stateSource: {
+                cloneRunValue,
+            },
+            configSource: {
+                getVlmVersionChoices: () => VLM_VERSION_CHOICES,
+                getDefaultVlmParamsFromAgentSettings: buildDefaultVlmParamsFromAgentSettings,
+                getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
+                getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
+                getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
+                getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+                getVlmChatNodeSize: () => VLM_CHAT_NODE_SIZE,
+                getVlmSingleNodeSize: () => VLM_SINGLE_NODE_SIZE,
+                normalizeVlmAgentMode,
+            },
+            nodeSource: {
+                getNode,
+                isNodeLocked,
+            },
+            chatContextSource: {
+                vlmChatContextBudgetMax: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatContextBudgetMax?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+                clampVlmChatContextBudget: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.clampVlmChatContextBudget?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+            },
+            historySource: {
+                pushHistoryBatch,
+            },
+            uiStateSource: {
+                mutate,
+                showToast,
+            },
+            persistenceSource: {
+                scheduleSave,
+            },
+            transportSource: {
+                sendVlmSystemPromptTemplates: sendVlmSystemPromptTemplatesRequest,
+            },
+            renderSource: {
+                invalidateVlmSystemPromptTemplateViews: () => {
+                    (project.nodes || []).forEach((node) => {
+                        if (node?.type === 'vlm') invalidateRenderedNode(node.id);
+                    });
+                },
+                renderAll,
+            },
+            uiSource: {
+                getVlmChatUiAreas,
+                handleVlmAgentAutoConfirmToggle: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.maybeRunVlmAgentActionFromAutoConfirmToggle?.(...args) || false,
+            },
+            customApiSource: {
+                getVlmCustomProvider,
+            },
         },
         vlmNodeViewSource: {
-            t,
-            escapeHtml,
-            getVlmVersionChoices: () => VLM_VERSION_CHOICES,
-            getVlmChatToolCommands: () => VLM_CHAT_TOOL_COMMANDS,
-            getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
-            getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
-            getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
-            getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
-            getVlmImageSlots: () => VLM_IMAGE_SLOTS,
-            getVlmCustomApiProviders: () => VLM_CUSTOM_API_PROVIDERS,
-            getVlmAgentModeChoices: () => VLM_AGENT_MODE_CHOICES,
-            getNode,
-            notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接'),
-            getVlmSourceAsset,
-            safeAssetDisplaySrc,
-            nodeStatusState,
-            isVlmNodeBusy,
-            normalizeVlmAgentMode,
-            vlmModelOptionsHtml,
-            renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
-            renderVlmSystemPromptTemplatePicker,
-            renderTranslatableTextarea,
-            getTranslationFieldState,
-            getVlmCustomProvider,
-            getVlmCustomApiProfile
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+            },
+            utilitySource: {
+                escapeHtml,
+            },
+            configSource: {
+                getVlmVersionChoices: () => VLM_VERSION_CHOICES,
+                getVlmChatToolCommands: () => VLM_CHAT_TOOL_COMMANDS,
+                getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
+                getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
+                getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
+                getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+                getVlmImageSlots: () => VLM_IMAGE_SLOTS,
+                getVlmCustomApiProviders: () => VLM_CUSTOM_API_PROVIDERS,
+                getVlmAgentModeChoices: () => VLM_AGENT_MODE_CHOICES,
+                normalizeVlmAgentMode,
+            },
+            nodeSource: {
+                getNode,
+                notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接'),
+            },
+            assetSource: {
+                getVlmSourceAsset,
+                safeAssetDisplaySrc,
+            },
+            stateSource: {
+                nodeStatusState,
+                isVlmNodeBusy,
+            },
+            chatContextSource: {
+                vlmChatContextBudgetMax: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmChatContextBudgetMax?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+                clampVlmChatContextBudget: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.clampVlmChatContextBudget?.(...args) || VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+            },
+            renderSource: {
+                vlmModelOptionsHtml,
+                renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
+                renderVlmChatLog,
+                renderVlmSystemPromptTemplatePicker,
+                renderTranslatableTextarea,
+                getTranslationFieldState,
+            },
+            customApiSource: {
+                getVlmCustomProvider,
+                getVlmCustomApiProfile,
+            }
         }
     };
     const AGENT_PROMPT_BOOTSTRAP_CONTEXT_SOURCE = {
@@ -3295,147 +4929,220 @@
     const canvasAgentAttachPromptCompilerContext = (...args) => CANVAS_AGENT_PROMPT_CONTEXT.canvasAgentAttachPromptCompilerContext(...args);
     const canvasAgentMergeDanbooruPromptWithContext = (...args) => CANVAS_AGENT_PROMPT_CONTEXT.canvasAgentMergeDanbooruPromptWithContext(...args);
     const VLM_AGENT_CONTEXT_SOURCE = {
-        getDefaultProjectId: () => PROJECT_ID,
-        getProject: () => project,
-        getSelectedNodeIds: () => selectedNodeIds,
-        getSelectedNodeId: () => selectedNodeId,
-        getNode,
-        ensureProjectGroups,
-        nodeStatusState,
-        isCanvasRunActiveState,
-        isTerminalRunState,
-        cloneRunValue,
-        findCanvasAgentPresetInstructionOverride,
-        normalizePresetName,
-        canvasAgentPromptTargetFromPurpose,
-        canvasAgentPromptTargetInstruction,
-        canvasAgentPromptTargetContextLine,
-        runtimeUiLang
+        projectSource: {
+            getDefaultProjectId: () => PROJECT_ID,
+            getProject: () => project,
+            ensureProjectGroups,
+        },
+        selectionSource: {
+            getSelectedNodeIds: () => selectedNodeIds,
+            getSelectedNodeId: () => selectedNodeId,
+        },
+        nodeSource: {
+            getNode,
+        },
+        statusSource: {
+            nodeStatusState,
+            isCanvasRunActiveState,
+            isTerminalRunState,
+            cloneRunValue,
+        },
+        promptSource: {
+            findCanvasAgentPresetInstructionOverride,
+            normalizePresetName,
+            canvasAgentPromptTargetFromPurpose,
+            canvasAgentPromptTargetInstruction,
+            canvasAgentPromptTargetContextLine,
+        },
+        languageSource: {
+            runtimeUiLang,
+            t,
+        },
+        actionSource: {
+            getVlmAgentActionTargetId: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.vlmAgentActionTargetId?.(...args) || ''
+        }
     };
     const VLM_CHAT_CONTEXT_SOURCE = {
         vlmAgentContextSource: VLM_AGENT_CONTEXT_SOURCE,
         controllerSource: {
-            getVlmContextWindows: () => VLM_CONTEXT_WINDOWS,
-            getVlmDefaultVersion: () => VLM_VERSION_CHOICES[0],
-            getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
-            getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
-            getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
-            getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
-            getVlmChatContextCharsHardMax: () => VLM_CHAT_CONTEXT_CHARS_HARD_MAX,
-            getVlmImageSlots: () => VLM_IMAGE_SLOTS,
-            getProject: () => project,
-            getDefaultProjectId: () => PROJECT_ID,
-            isVlmMediaSource,
-            checkVlmModelStatus,
-            isVlmModelStatusFresh,
-            buildVlmParamsPatch,
-            buildVlmRunStatusPatch,
-            buildVlmModelStatusPatch,
-            applyVlmModelStatus,
-            openVlmMissingModelModal,
-            sendVlmModelDownloads: (node, options) => sendCanvasVlmModelDownloadsRequest(node, options),
-            sendVlmCustomModels: (node) => sendCanvasCustomLlmModelsRequest(node),
-            readVlmCustomApiProfiles,
-            writeVlmCustomApiProfiles,
-            getVlmCustomProfileKey,
-            getVlmCustomProvider,
-            getCanvasAgentCustomParams: () => canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false),
-            setCanvasAgentCustomSettings: (patch, options) => setCanvasAgentSettingsPatch(patch, options),
-            renderAll,
-            getNode,
-            getSelectedResultAsset,
-            getVlmSourceAsset,
-            openVlmAssetViewer: (asset, title) => openAssetViewer(asset, title),
-            refreshVlmChatAssetRoot: (options) => refreshCanvasProjectAssetRoot(options),
-            hasVlmChatAssetRoot: () => !!String(window.SimpAICanvasWorkbenchAssetRoot || '').trim(),
-            safeVlmChatFallbackSrc: (asset, fallback) => safeAssetFallbackSrc(asset, fallback),
-            isImageFile,
-            readFileAsDataUrl,
-            getImageDimensions,
-            createThumbnailDataUrl,
-            serializeAssetSourceForRun,
-            serializeAssetForRun,
-            safeAssetDisplaySrc,
-            inferChatImageRelativePath,
-            safeVlmChatAssetThumb,
-            nowIso,
-            generatedResultNodesForPreset,
-            resultNodeHasOutput,
-            t,
-            escapeHtml,
-            cleanVlmToolPrompt,
-            stripCanvasAgentInlineGenerationParams,
-            canvasAgentUserExplicitNegativePrompt,
-            extractVlmPreparedImagePrompt,
-            vlmAgentUserPromptHasAssistantPersonaImageIntent,
-            normalizeVlmAgentMode,
-            findCanvasAgentPresetInstructionOverride,
-            normalizePresetName,
-            stripCanvasAgentPresetFromPrompt: (...args) => stripCanvasAgentPresetFromPrompt(...args),
-            findCanvasAgentPresetEntryByAlias,
-            canvasAgentPromptNeedsTargetRewrite,
-            vlmAgentDanbooruPromptNeedsForcedCanonicalRepair,
-            canvasAgentDanbooruFallbackRewrite,
-            canvasAgentMergeDanbooruPromptWithContext,
-            canvasAgentCanonicalizeDanbooruPrompt,
-            canvasAgentPromptDefaultsForPurpose,
-            extractCanvasAgentAspectFromText,
-            canvasAgentPromptTargetFromPurpose,
-            canvasAgentPromptTargetEntryForPurpose,
-            canvasAgentPresetPromptDefaults,
-            canvasAgentPromptPreflight,
-            ensureCanvasAgentPromptMatchesTarget,
-            vlmAgentPreparedPromptFastPath,
-            vlmAgentLocalPromptPreflightPass,
-            getWorkbenchUserContext,
-            sendVlmRun: (payload, options) => apiVlmRun(payload, options),
-            sendVlmCancel: (payload) => typeof apiVlmCancel === 'function'
-                ? apiVlmCancel(payload)
-                : { ok: false, error: 'VLM cancel API is unavailable' },
-            sendVlmUnload: (payload) => typeof apiVlmUnload === 'function'
-                ? apiVlmUnload(payload)
-                : { ok: false, error: 'VLM unload API is unavailable' },
-            scheduleTimeout: (callback, delay) => window.setTimeout(callback, delay),
-            clearScheduledTimeout: (handle) => window.clearTimeout(handle),
-            wildcardsPreview: (payload) => typeof apiWildcardsPreview === 'function'
-                ? apiWildcardsPreview(payload)
-                : null,
-            prepareVlmAgentImageActionStart,
-            vlmCanvasAgentWorkflowKey: (...args) => CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER?.vlmCanvasAgentWorkflowKey?.(...args) || '',
-            runCanvasAgentImageEdit: (...args) => runCanvasAgentImageEdit(...args),
-            runCanvasAgentQuickTool: (...args) => runCanvasAgentQuickTool(...args),
-            runCanvasAgentTextToImage: (...args) => runCanvasAgentTextToImage(...args),
-            addVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.add(lockKey),
-            deleteVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.delete(lockKey),
-            hasVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.has(lockKey),
-            focusVlmAgentTarget,
-            selectVlmAgentTarget,
-            describeVlmAgentToolStatus,
-            findVlmAgentBrokenEdges,
-            canvasAgentPromptTargetContextLine,
-            canvasAgentPromptPreflightFacts,
-            uid,
-            isNodeLocked,
-            pushHistory,
-            pushHistoryBatch,
-            cloneRunValue,
-            buildVlmChatStatePatch,
-            buildVlmChatToolStatePatch,
-            buildVlmTextPatch,
-            buildVlmLastResponsePatch,
-            buildVlmCustomModelChoicesPatch,
-            markVlmChatStickToBottom: (nodeId) => vlmChatStickToBottomNodeIds.add(nodeId),
-            mutate,
-            scrollVlmChatToBottom,
-            showToast,
-            copyVlmChatText: (value) => {
-                if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return false;
-                return navigator.clipboard.writeText(String(value || '')).then(() => true, () => false);
+            generationSource: {
+                stripCanvasAgentInlineGenerationParams,
+                canvasAgentUserExplicitNegativePrompt,
+                extractCanvasAgentAspectFromText,
             },
-            confirmDialog: (message) => window.confirm(message),
-            getVlmChatUiAreas,
-            focusVlmChatPromptInput: (...args) => focusVlmChatPromptInput(...args),
-            schedule: (callback, delay) => window.setTimeout(callback, delay)
+            promptSource: {
+                vlmAgentUserPromptHasAssistantPersonaImageIntent,
+                findCanvasAgentPresetInstructionOverride,
+                normalizePresetName,
+                stripCanvasAgentPresetFromPrompt: (...args) => stripCanvasAgentPresetFromPrompt(...args),
+                findCanvasAgentPresetEntryByAlias,
+                canvasAgentPromptNeedsTargetRewrite,
+                vlmAgentDanbooruPromptNeedsForcedCanonicalRepair,
+                canvasAgentDanbooruFallbackRewrite,
+                canvasAgentMergeDanbooruPromptWithContext,
+                canvasAgentCanonicalizeDanbooruPrompt,
+                canvasAgentPromptDefaultsForPurpose,
+                canvasAgentPromptTargetFromPurpose,
+                canvasAgentPromptTargetEntryForPurpose,
+                canvasAgentPresetPromptDefaults,
+                canvasAgentPromptTargetContextLine,
+                canvasAgentPromptPreflightFacts,
+                canvasAgentPromptPreflight,
+                ensureCanvasAgentPromptMatchesTarget,
+                vlmAgentPreparedPromptFastPath,
+                vlmAgentLocalPromptPreflightPass,
+            },
+            agentActionSource: {
+                prepareVlmAgentImageActionStart: (...args) => CANVAS_AGENT_CONTEXT?.prepareVlmAgentImageActionStart?.(...args),
+                vlmCanvasAgentWorkflowKey: (...args) => CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER?.vlmCanvasAgentWorkflowKey?.(...args) || '',
+                runCanvasAgentImageEdit: (...args) => runCanvasAgentImageEdit(...args),
+                runCanvasAgentQuickTool: (...args) => runCanvasAgentQuickTool(...args),
+                runCanvasAgentTextToImage: (...args) => runCanvasAgentTextToImage(...args),
+                addVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.add(lockKey),
+                deleteVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.delete(lockKey),
+                hasVlmAgentActionRunLock: (lockKey) => vlmAgentActionRunLocks.has(lockKey),
+                describeVlmAgentToolStatus: (...args) => CANVAS_VLM_AGENT_CONTEXT?.describeVlmAgentToolStatus?.(...args) || { ok: false },
+                findVlmAgentBrokenEdges: (...args) => CANVAS_VLM_AGENT_CONTEXT?.findVlmAgentBrokenEdges?.(...args) || { ok: false },
+            },
+            transportSource: {
+                sendVlmRun: (payload, options) => apiVlmRun(payload, options),
+                sendVlmCancel: (payload) => typeof apiVlmCancel === 'function'
+                    ? apiVlmCancel(payload)
+                    : { ok: false, error: 'VLM cancel API is unavailable' },
+                sendVlmUnload: (payload) => typeof apiVlmUnload === 'function'
+                    ? apiVlmUnload(payload)
+                    : { ok: false, error: 'VLM unload API is unavailable' },
+                sendVlmModelDownloads: (node, options) => sendCanvasVlmModelDownloadsRequest(node, options),
+                sendVlmCustomModels: (node) => sendCanvasCustomLlmModelsRequest(node),
+            },
+            customApiSource: {
+                readVlmCustomApiProfiles,
+                writeVlmCustomApiProfiles,
+                getVlmCustomProfileKey,
+                getVlmCustomProvider,
+            },
+            schedulerSource: {
+                scheduleTimeout: (callback, delay) => window.setTimeout(callback, delay),
+                clearScheduledTimeout: (handle) => window.clearTimeout(handle),
+                schedule: (callback, delay) => window.setTimeout(callback, delay),
+            },
+            wildcardSource: {
+                wildcardsPreview: (payload) => typeof apiWildcardsPreview === 'function'
+                    ? apiWildcardsPreview(payload)
+                    : null,
+            },
+            uiSource: {
+                getVlmChatUiAreas,
+                focusVlmChatPromptInput: (...args) => focusVlmChatPromptInput(...args),
+            },
+            renderSource: {
+                renderAll,
+                renderNodes,
+                renderEdges,
+                renderInspector,
+                renderMinimap,
+                selectNodeLight,
+            },
+            nodeSource: {
+                getProject: () => project,
+                getDefaultProjectId: () => PROJECT_ID,
+                getNode,
+                getNodeRect,
+                setVlmAgentTargetSelection: (nodeId, options) => {
+                    selectedNodeId = nodeId;
+                    selectedNodeIds = new Set(nodeId ? [nodeId] : []);
+                    selectedEdgeId = null;
+                    if (options?.clearGroup) selectedGroupId = null;
+                },
+                centerViewportOnWorld,
+                isNodeIgnored,
+                isNodeLocked,
+                nodeStatusState,
+                isVlmMediaSource,
+            },
+            resultSource: {
+                generatedResultNodesForPreset,
+                resultNodeHasOutput,
+            },
+            historySource: {
+                pushHistory,
+                pushHistoryBatch,
+            },
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+            },
+            utilitySource: {
+                nowIso,
+                uid,
+                escapeHtml,
+            },
+            configSource: {
+                getVlmContextWindows: () => VLM_CONTEXT_WINDOWS,
+                getVlmDefaultVersion: () => VLM_VERSION_CHOICES[0],
+                getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
+                getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,
+                getVlmChatContextCharsMin: () => VLM_CHAT_CONTEXT_CHARS_MIN,
+                getVlmChatDefaultContextChars: () => VLM_CHAT_DEFAULT_CONTEXT_CHARS,
+                getVlmChatContextCharsHardMax: () => VLM_CHAT_CONTEXT_CHARS_HARD_MAX,
+                getVlmImageSlots: () => VLM_IMAGE_SLOTS,
+                getVlmModelStatusCacheTtlMs: () => VLM_MODEL_STATUS_CACHE_TTL_MS,
+                normalizeVlmAgentMode,
+            },
+            modelStatusSource: {
+                buildVlmModelCheckingStatus,
+                buildVlmModelStatusPatch,
+                applyVlmModelStatus,
+                sendVlmModelStatus: (node) => sendCanvasVlmModelStatusRequest(node),
+                openVlmMissingModelModal,
+            },
+            agentSettingsSource: {
+                getCanvasAgentCustomParams: () => canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false),
+                setCanvasAgentCustomSettings: (patch, options) => setCanvasAgentSettingsPatch(patch, options),
+            },
+            assetSource: {
+                getSelectedResultAsset,
+                getVlmSourceAsset,
+                openVlmAssetViewer: (asset, title) => openAssetViewer(asset, title),
+                refreshVlmChatAssetRoot: (options) => refreshCanvasProjectAssetRoot(options),
+                hasVlmChatAssetRoot: () => !!String(window.SimpAICanvasWorkbenchAssetRoot || '').trim(),
+                safeVlmChatFallbackSrc: (asset, fallback) => safeAssetFallbackSrc(asset, fallback),
+                serializeAssetSourceForRun,
+                serializeAssetForRun,
+                safeAssetDisplaySrc,
+                inferChatImageRelativePath,
+                safeVlmChatAssetThumb,
+            },
+            inputMediaSource: {
+                isImageFile,
+                readFileAsDataUrl,
+                getImageDimensions,
+                createThumbnailDataUrl,
+            },
+            stateSource: {
+                buildVlmChatStatePatch,
+                buildVlmChatToolStatePatch,
+                buildVlmParamsPatch,
+                buildVlmTextPatch,
+                buildVlmLastResponsePatch,
+                buildVlmCustomModelChoicesPatch,
+                buildVlmRunStatusPatch,
+                cloneRunValue,
+            },
+            uiStateSource: {
+                markVlmChatStickToBottom: (nodeId) => vlmChatStickToBottomNodeIds.add(nodeId),
+                mutate,
+                scrollVlmChatToBottom,
+                showToast,
+                copyVlmChatText: (value) => {
+                    if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return false;
+                    return navigator.clipboard.writeText(String(value || '')).then(() => true, () => false);
+                },
+                confirmDialog: (message) => window.confirm(message),
+            },
+            backendContextSource: {
+                getWorkbenchUserContext,
+            },
         }
     };
     const NODE_INSPECTOR_RENDERERS = {
@@ -3470,61 +5177,101 @@
     const getNodeInspectorRenderer = (kind) => NODE_INSPECTOR_RENDERERS[kind];
     const NODE_INTERACTION_CONTEXT_SOURCE = {
         nodeParamSource: {
-            getNode,
-            getInspector: () => inspector,
-            getSelectedNodeId: () => selectedNodeId,
-            isNodeLocked,
-            isQwenTtsNode,
-            buildNodeParamsPatch,
-            buildNodeFieldPatch,
-            buildClassicNodeStatePatch,
-            t,
-            showToast,
-            renderNodes,
-            renderEdges,
-            updateQwenTtsParam,
-            handleInpaintModeChange,
-            handleUovMethodChange,
-            handleEnhanceUovParamChange,
-            syncTwinParamInputs,
-            pushHistoryBatch,
-            scheduleSave,
-            mutate,
-            getClassicOutpaintDirs: () => registryClassicOutpaintDirs
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+            },
+            nodeSource: {
+                getNode,
+                getInspector: () => inspector,
+                getSelectedNodeId: () => selectedNodeId,
+                isNodeLocked,
+                isQwenTtsNode,
+                isDirectorTimelineNode,
+            },
+            configSource: {
+                getClassicOutpaintDirs: () => registryClassicOutpaintDirs,
+            },
+            patchSource: {
+                buildNodeParamsPatch,
+                buildNodeFieldPatch,
+                buildClassicNodeStatePatch,
+            },
+            historySource: {
+                pushHistory,
+                pushHistoryBatch,
+            },
+            persistenceSource: {
+                scheduleSave,
+            },
+            renderSource: {
+                renderNodes,
+                renderEdges,
+            },
+            uiStateSource: {
+                showToast,
+                mutate,
+            },
+            actionSource: {
+                updateQwenTtsParam,
+                handleInpaintModeChange,
+                handleUovMethodChange,
+                handleEnhanceUovParamChange,
+                syncTwinParamInputs,
+            }
         },
         inspectorSource: {
-            t,
-            escapeHtml,
-            getProject: () => project,
-            getInspector: () => inspector,
-            getSelectedNodeId: () => selectedNodeId,
-            getSelectedNodeIds: () => selectedNodeIds,
-            getSelectedEdgeId: () => selectedEdgeId,
-            getSelectedGroupId: () => selectedGroupId,
-            getNode,
-            getGroup,
-            getSelectedNodeIdList,
-            getNodesInsideGroup,
-            getGroupRect,
-            isNodeLocked,
-            isNodeIgnored,
-            isNodeCollapsed,
-            isImageCompareSource,
-            isTimelineSource,
-            isDirectorTimelineNode,
-            isQwenTtsNode,
-            nodeCustomColor,
-            expandCanvasHexColor,
-            normalizeCanvasColor,
-            getSlotLabel,
-            storageDisplayLocation,
-            storageDisplayPath,
-            getStorageScope: () => storageScope,
-            getStorageKey: () => storageKey,
-            renderIconHtml,
-            ensureWorkbenchFormFieldNames,
-            bindInspectorEvents,
-            getNodeInspectorRenderer
+            languageSource: {
+                getLanguageState: () => ({ __lang: runtimeUiLang() }),
+                t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
+            },
+            utilitySource: {
+                escapeHtml,
+                renderIconHtml,
+                normalizeCanvasColor,
+            },
+            projectSource: {
+                getProject: () => project,
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId,
+                getSelectedNodeIds: () => selectedNodeIds,
+                getSelectedEdgeId: () => selectedEdgeId,
+                getSelectedGroupId: () => selectedGroupId,
+                getSelectedNodeIdList,
+            },
+            nodeSource: {
+                getNode,
+                isNodeLocked,
+                isNodeIgnored,
+                isNodeCollapsed,
+                isImageCompareSource,
+                isTimelineSource,
+                isDirectorTimelineNode,
+                isQwenTtsNode,
+                nodeCustomColor,
+                expandCanvasHexColor,
+                getSlotLabel,
+            },
+            groupSource: {
+                getGroup,
+                getNodesInsideGroup,
+                getGroupRect,
+            },
+            rendererSource: {
+                getNodeInspectorRenderer,
+            },
+            storageSource: {
+                storageDisplayLocation,
+                storageDisplayPath,
+                getStorageScope: () => storageScope,
+                getStorageKey: () => storageKey,
+            },
+            uiSource: {
+                getInspector: () => inspector,
+                ensureWorkbenchFormFieldNames,
+                bindInspectorEvents,
+            },
         }
     };
     const VLM_CHAT_IMAGE_PREVIEW_CONTEXT_SOURCE = {
@@ -3563,7 +5310,7 @@
     const CANVAS_NODE_VIEW_CONTEXT = CANVAS_VLM_CONTEXT.CANVAS_NODE_VIEW_CONTEXT || {};
     const CANVAS_VLM_CHAT_CONTEXT = CANVAS_VLM_CONTEXT.CANVAS_VLM_CHAT_CONTEXT || {};
     const CANVAS_NODE_INTERACTION_CONTEXT = CANVAS_VLM_CONTEXT.CANVAS_NODE_INTERACTION_CONTEXT || {};
-    const CANVAS_VLM_AGENT_CONTEXT = CANVAS_VLM_CONTEXT.CANVAS_VLM_AGENT_CONTEXT || CANVAS_VLM_CHAT_CONTEXT.CANVAS_VLM_AGENT_CONTEXT || {};
+    CANVAS_VLM_AGENT_CONTEXT = CANVAS_VLM_CONTEXT.CANVAS_VLM_AGENT_CONTEXT || CANVAS_VLM_CHAT_CONTEXT.CANVAS_VLM_AGENT_CONTEXT || {};
     CANVAS_TEXT_NODE_RENDERER = CANVAS_VLM_CONTEXT.CANVAS_TEXT_NODE_RENDERER || CANVAS_NODE_VIEW_CONTEXT.CANVAS_TEXT_NODE_RENDERER || null;
     CANVAS_VLM_NODE_CONTROLLER = CANVAS_VLM_CONTEXT.CANVAS_VLM_NODE_CONTROLLER || CANVAS_NODE_VIEW_CONTEXT.CANVAS_VLM_NODE_CONTROLLER || null;
     CANVAS_VLM_NODE_VIEW_CONTROLLER = CANVAS_VLM_CONTEXT.CANVAS_VLM_NODE_VIEW_CONTROLLER || CANVAS_NODE_VIEW_CONTEXT.CANVAS_VLM_NODE_VIEW_CONTROLLER || null;
@@ -3639,26 +5386,128 @@
     const fitCanvasAgentWorkflowGroup = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.fitCanvasAgentWorkflowGroup;
     const centerCanvasAgentWorkflow = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.centerCanvasAgentWorkflow;
     const createCanvasAgentWorkflowGroup = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.createCanvasAgentWorkflowGroup;
+    let CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER = {};
+    const AGENT_MASK_WORKFLOW_SOURCE = {
+        t,
+        uid,
+        getProject: () => project,
+        getNode,
+        getAgentState: () => canvasAgentState,
+        getNodeLayerForgeAsset,
+        assetMediaKind,
+        assetDisplaySrc,
+        getNodeImageSrc,
+        createImageNodeFromSketchOutput,
+        ensureWorkbenchLazyRuntime,
+        canvasAgentMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMaskUploadSlot?.(...args) || '',
+        canvasAgentUploadSlotsForNode,
+        isCanvasAgentMaskSlot,
+        canNodeConnectToUploadSlot,
+        createUploadEdge,
+        syncResolutionConfigForPresetInputs,
+        generatedResultNodesForPreset,
+        isResultRefreshing,
+        isCanvasRunActiveState,
+        nodeStatusState,
+        ensureGenerateEdge,
+        buildReservedResultNode,
+        buildProjectNodeAppendPatch,
+        buildCanvasAgentReservedResultSource,
+        presetGenerationStepValue,
+        presetResultBasePosition,
+        defaultNodeSize,
+        dockCanvasAgentPanelBottomLeft,
+        applyNodeLayoutPatch,
+        createCanvasAgentWorkflowGroup,
+        fitCanvasAgentWorkflowGroup,
+        centerCanvasAgentWorkflow,
+        mutate,
+        setCanvasAgentMessage,
+        showToast,
+        clearCanvasAgentRunInfo,
+        runPresetNode,
+        setCanvasAgentRunInfo,
+        setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+            selectedNodeId = nodeId;
+            selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+            selectedEdgeId = null;
+            if (options?.clearGroup) selectedGroupId = null;
+            else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+        },
+         setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+    };
+    CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController === 'function'
+        ? WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController({
+            maskWorkflowSource: AGENT_MASK_WORKFLOW_SOURCE
+        })
+        : {};
+    const createCanvasAgentReservedResultNode = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.createCanvasAgentReservedResultNode;
+    const canvasAgentManualMaskWorkflowNodes = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.canvasAgentManualMaskWorkflowNodes;
+    const findCanvasAgentReservedResultNodeForPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.findCanvasAgentReservedResultNodeForPreset;
+    const runCanvasAgentManualMaskPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.runCanvasAgentManualMaskPreset;
+    const prepareCanvasAgentManualMaskWorkflow = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.prepareCanvasAgentManualMaskWorkflow;
     let CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = {};
     const AGENT_SAM3_WORKFLOW_SOURCE = {
         t,
+        uid,
+        nowIso,
         getProject: () => project,
         getNode,
         getGroup,
+        getAgentState: () => canvasAgentState,
+        getNodeRect,
+        defaultNodeSize,
+        isCanvasAgentVideoTarget,
+        canvasAgentVideoMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoMaskUploadSlot?.(...args) || '',
+        canvasAgentVideoSourceUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoSourceUploadSlot?.(...args) || '',
+        createCanvasAgentReservedResultNode,
+        dockCanvasAgentPanelBottomLeft,
+        applyNodeLayoutPatch,
+        buildNodeLayoutPatch,
+        addSam3VideoMaskNode,
+        positionCanvasAgentVideoMaskWorkflow,
+        createSam3VideoMaskEdge,
+        createUploadEdge,
+        buildResultSourcePatch,
+        fitCanvasAgentWorkflowGroup,
+        createCanvasAgentWorkflowGroup,
+        centerCanvasAgentWorkflow,
+        centerViewportOnWorld,
+        renderNodes,
+        renderEdges,
+        mutate,
+        setCanvasAgentRunInfo,
+        clearCanvasAgentRunInfo,
+        runPresetNode,
+        canvasAgentManualMaskWorkflowNodes,
+        showToast,
+        findActiveResultNodeForPreset,
+        isCanvasRunActiveState,
+        nodeStatusState,
+        getPendingPresetRuns: () => pendingPresetRuns,
+        openSam3PointEditor,
+        setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+            selectedNodeId = nodeId;
+            selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+            selectedEdgeId = null;
+            if (options?.clearGroup) selectedGroupId = null;
+            else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+        },
         buildSam3SourcePatch,
         buildSam3StatePatch,
         buildGroupFieldPatch,
+        mergeCanvasRunStatus,
         renderGroups,
         findCanvasAgentReservedResultNodeForPreset,
         setCanvasAgentMessage,
-        scheduleSave
+        scheduleSave,
+         setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
     };
     CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW.createCanvasAgentSam3WorkflowController === 'function'
         ? WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW.createCanvasAgentSam3WorkflowController({
             sam3WorkflowSource: AGENT_SAM3_WORKFLOW_SOURCE
         })
         : {};
-    const canvasAgentManualMaskWorkflowNodes = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentManualMaskWorkflowNodes;
     const canvasAgentSam3WorkflowNodes = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentSam3WorkflowNodes;
     const canvasAgentSam3WorkflowTitle = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentSam3WorkflowTitle;
     const setCanvasAgentSam3WorkflowState = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.setCanvasAgentSam3WorkflowState;
@@ -3667,13 +5516,15 @@
     const canvasAgentResultForPresetRun = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.canvasAgentResultForPresetRun;
     const handleCanvasAgentSam3VideoMaskEditorClosed = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskEditorClosed;
     const handleCanvasAgentSam3VideoMaskState = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskState;
+    const prepareCanvasAgentVideoMaskWorkflow = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.prepareCanvasAgentVideoMaskWorkflow;
+    const handleCanvasAgentSam3VideoMaskReady = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentSam3VideoMaskReady;
+    const handleCanvasAgentWorkflowNodeDeletion = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentWorkflowNodeDeletion;
+    const handleCanvasAgentWorkflowEdgeDeletion = CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER.handleCanvasAgentWorkflowEdgeDeletion;
 
     const AGENT_MEDIA_CONTEXT_SOURCE = {
             mediaConnectionsSource: {
                 t,
                 runtimeUiLang,
-                canvasAgentUploadSlotsForNode,
-                isCanvasAgentMaskSlot,
                 getUploadSlotMediaKind,
                 canNodeConnectToUploadSlot,
                 createUploadEdge,
@@ -3900,6 +5751,7 @@
                 getCanvasAgentPrimaryImageReference,
                 getCanvasAgentExtraImageReferences,
                 canvasAgentReferenceNode,
+                addCanvasAgentReferenceFromNode,
                 isCanvasAgentImageTarget,
                 showToast,
                 setCanvasAgentMessage,
@@ -3909,14 +5761,19 @@
                 hideOutpaintOverlay,
                 askCanvasAgentDecision,
                 canvasAgentPresetDecisionOptions,
-                canvasAgentQuickToolPresetOptions,
+                canvasAgentUpscalePresetEntries,
                 canvasAgentPromptDecisionField,
                 canvasAgentPromptFromDecision,
                 canvasAgentResolutionLabel,
                 findCanvasAgentPresetEntryByAlias,
                 canvasAgentPresetDefaultPrompt,
                 canvasAgentPreferredUpscalePresetEntry,
-                startCanvasAgentReferencePickForTool,
+                getOutpaintOverlayState: () => outpaintOverlayState,
+                setCanvasAgentSettingsPatch,
+                canvasAgentPromptTargetFromEntry,
+                canvasAgentPresetPromptDefaults,
+                ensureCanvasAgentPromptMatchesTarget,
+                ensureCanvasAgentPromptPreflightAllows,
                 addPresetNode,
                 canvasAgentWorkflowPresetPosition,
                 markCanvasAgentCreatedNode,
@@ -3938,9 +5795,6 @@
                 setCanvasAgentRunInfo,
                 runPresetNode,
                 clearCanvasAgentRunInfo,
-                findCanvasAgentReservedResultNodeForPreset,
-                fitCanvasAgentWorkflowGroup,
-                canvasAgentManualMaskWorkflowNodes,
                 getNodeRect,
                 getVisibleWorldRect,
                 defaultNodeSize,
@@ -4025,7 +5879,7 @@
             agentMediaSource: AGENT_MEDIA_CONTEXT_SOURCE
         })
         : {};
-    const CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER || {};
+    CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER || {};
     const connectCanvasAgentImagesToGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentImagesToGenerator?.(...args)
         || { ok: false, mainSlot: '', refCount: 0 };
     const connectCanvasAgentMediaToGenerator = (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentMediaToGenerator?.(...args)
@@ -4070,12 +5924,12 @@
     const canvasAgentQuickToolSpec = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentQuickToolSpec;
     const canvasAgentQuickToolPresetName = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentQuickToolPresetName;
     const configureCanvasAgentQuickToolNode = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.configureCanvasAgentQuickToolNode;
-    const runCanvasAgentManualMaskPreset = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.runCanvasAgentManualMaskPreset;
     const canvasAgentStyleTransferWorkflowRect = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentStyleTransferWorkflowRect;
     const findOpenCanvasAgentStyleTransferPresetPosition = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.findOpenCanvasAgentStyleTransferPresetPosition;
     const canvasAgentStyleTransferPresetPosition = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.canvasAgentStyleTransferPresetPosition;
     const positionCanvasAgentStyleTransferWorkflow = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.positionCanvasAgentStyleTransferWorkflow;
     const runCanvasAgentQuickTool = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.runCanvasAgentQuickTool;
+    const confirmOutpaintFromOverlay = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.confirmOutpaintFromOverlay;
     const createCanvasAgentStyleTransferWorkflow = CANVAS_AGENT_IMAGE_TOOLS_CONTROLLER.createCanvasAgentStyleTransferWorkflow;
     const CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER = CANVAS_AGENT_MEDIA_CONTEXT.CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER || {};
     const runCanvasAgentTextToAudio = CANVAS_AGENT_AUDIO_WORKFLOW_CONTROLLER.runCanvasAgentTextToAudio;
@@ -4113,14 +5967,14 @@
                 getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
                 getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
                 getCanvasAgentResolutionState,
-                canvasAgentResolutionCompactLabel,
+                canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
                 canvasAgentModelSummary,
-                canvasAgentDefaultLocalRewriteModel,
-                canvasAgentLocalRewriteModels,
-                getVlmCustomProvider,
-                canvasAgentCustomParamsFromSettings,
-                getVlmCustomApiProfile,
-                getCanvasAgentCustomModelChoices: () => canvasAgentCustomModelChoices,
+                 canvasAgentDefaultLocalRewriteModel,
+                 canvasAgentLocalRewriteModels,
+                 getVlmCustomProvider,
+                 canvasAgentCustomParamsFromSettings,
+                 getVlmCustomApiProfile,
+                 getCanvasAgentCustomModelChoices,
                 canvasAgentPresetOptionHtml,
                 vlmModelOptionsHtml,
                 canvasAgentVideoQuickToolChoiceFromSettings,
@@ -4157,6 +6011,7 @@
                 getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
                 buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
                 setCanvasAgentLayoutPatch,
+                setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
                 setCanvasAgentSuppressClickUntil: (value) => {
                     canvasAgentSuppressClickUntil = Number(value || 0);
                 },
@@ -4539,7 +6394,6 @@
         renderedEdges: 0,
         totalEdges: 0
     };
-    let danbooruRuntimeNoticeKey = '';
     let activeInlineTagCartNodeId = '';
     let zoomLabel = null;
     let chainRunOverlay = null;
@@ -4573,7 +6427,6 @@
     let canvasSettingsState = {
         tab: 'agent'
     };
-    let canvasAgentCustomModelChoices = [];
     const INPUT_PORT_HANDLE_SELECTOR = [
         '[data-handle-in]', '[data-config-in]', '[data-handle-in-result]', '[data-text-in]', '[data-text-node-in]',
         '[data-translation-text-in]', '[data-tagcart-text-in]', '[data-wd14-image-in]', '[data-vlm-image-in]',
@@ -5442,433 +7295,12 @@
         if (selectedEdgeId && !project.edges.some(edge => edge.id === selectedEdgeId)) selectedEdgeId = null;
     }
 
-    function getCanvasAgentReferenceAsset(node) {
-        if (!node || node.type === 'text') return null;
-        return node.type === 'result' ? getSelectedResultAsset(node) : node.asset;
-    }
-
-    function getCanvasAgentReferenceKind(node) {
-        if (!node) return '';
-        if (node.type === 'text') return 'text';
-        const asset = getCanvasAgentReferenceAsset(node);
-        return asset ? assetMediaKind(asset) : '';
-    }
-
-    function getCanvasAgentVlmReferenceSources(options) {
-        const opts = options || {};
-        const refs = normalizeCanvasAgentReferences();
-        const nodes = [];
-        const seen = new Set();
-        const descriptorByNode = new Map(
-            (Array.isArray(opts.referenceDescriptors) ? opts.referenceDescriptors : [])
-                .filter((item) => item && item.node?.id)
-                .map((item) => [item.node.id, item])
-        );
-        const addNode = (node, descriptor) => {
-            const kind = getCanvasAgentReferenceKind(node);
-            if (!node || !['image', 'video'].includes(kind)) return;
-            if (opts.imagesOnly && kind !== 'image') return;
-            const key = canvasAgentReferenceKey(node, kind);
-            if (seen.has(key) && !opts.preserveReferenceDuplicates) return;
-            if (!opts.preserveReferenceDuplicates) seen.add(key);
-            nodes.push({ node, descriptor: descriptor || null });
-        };
-        if (Array.isArray(opts.referenceEntries)) {
-            opts.referenceEntries.forEach((entry) => addNode(entry?.node, entry));
-        } else if (Array.isArray(opts.referenceNodes)) {
-            opts.referenceNodes.forEach((node) => addNode(node));
-        }
-        if (opts.includeCanvasAgentReferences !== false) {
-            refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref), ref));
-        }
-        if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) addNode(opts.fallbackTarget);
-        const defaultLimit = opts.imagesOnly
-            ? CANVAS_AGENT_MAX_IMAGE_REFERENCES
-            : CANVAS_AGENT_MAX_IMAGE_REFERENCES + CANVAS_AGENT_MAX_VIDEO_REFERENCES;
-        const requestedLimit = Math.round(Number(opts.maxSources || defaultLimit));
-        const maxSources = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
-        const selected = nodes.slice(0, maxSources);
-        const selectedKeys = new Set(selected.map((entry) => canvasAgentReferenceKey(
-            entry?.node,
-            getCanvasAgentReferenceKind(entry?.node),
-        )));
-        const required = [];
-        if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) {
-            required.push(opts.fallbackTarget);
-        }
-        nodes.forEach((entry) => {
-            if (getCanvasAgentReferenceKind(entry?.node) === 'video') required.push(entry?.node);
-        });
-        required.forEach((node) => {
-            const kind = getCanvasAgentReferenceKind(node);
-            const key = canvasAgentReferenceKey(node, kind);
-            if (!node || selectedKeys.has(key)) return;
-            const replaceIndex = [...selected].map((entry, index) => ({ entry, index }))
-                .reverse()
-                .find(({ entry }) => getCanvasAgentReferenceKind(entry?.node) !== 'video')?.index;
-            if (!Number.isFinite(replaceIndex)) return;
-            const replaced = selected[replaceIndex];
-            selected[replaceIndex] = { node, descriptor: descriptorByNode.get(node.id) || null };
-            selectedKeys.delete(canvasAgentReferenceKey(
-                replaced?.node,
-                getCanvasAgentReferenceKind(replaced?.node),
-            ));
-            selectedKeys.add(key);
-        });
-        return selected.map((entry) => {
-            const node = entry?.node;
-            const serialized = serializeAssetSourceForRun(node);
-            const descriptor = entry?.descriptor || descriptorByNode.get(node?.id);
-            if (!serialized || !descriptor) return serialized;
-            return Object.assign(serialized, {
-                reference_token: descriptor.token || '',
-                reference_slot: descriptor.slot || '',
-                reference_role: descriptor.role || '',
-            });
-        }).filter(Boolean).slice(0, maxSources);
-    }
-
-    function canvasAgentReferenceSummaryText() {
-        const refs = normalizeCanvasAgentReferences();
-        if (!refs.length) return 'No explicit references.';
-        return refs.map((ref, index) => {
-            const meta = ref.meta || {};
-            const bits = [
-                `#${index + 1}`,
-                ref.role,
-                ref.kind,
-                ref.label,
-                meta.width && meta.height ? `${meta.width}x${meta.height}` : '',
-                meta.duration ? `${meta.duration}s` : '',
-                meta.fps ? `${meta.fps}fps` : '',
-                meta.excerpt ? `text="${meta.excerpt}"` : ''
-            ].filter(Boolean);
-            return bits.join(' / ');
-        }).join('\n');
-    }
-
-    function canvasAgentReferenceFacts() {
-        const counts = canvasAgentReferenceCounts();
-        return [
-            counts.images ? { label: t('Images', '图片'), value: `${counts.hasPrimaryImage ? 1 : 0} ${t('main', '主图')} + ${counts.imageReferences} ${t('ref', '参考')}` } : null,
-            counts.videos ? { label: t('Video', '视频'), value: String(counts.videos) } : null,
-            counts.audio ? { label: t('Audio', '音频'), value: String(counts.audio) } : null,
-            counts.texts ? { label: t('Text refs', '文本引用'), value: String(counts.texts) } : null
-        ].filter(Boolean);
-    }
-
     function canvasAgentPrimaryAction(...args) {
         return CANVAS_AGENT_ACTION_CONTROLLER?.canvasAgentPrimaryAction?.(...args) || '';
     }
 
     function canvasAgentPrimaryActionMeta(...args) {
         return CANVAS_AGENT_ACTION_CONTROLLER?.canvasAgentPrimaryActionMeta?.(...args) || {};
-    }
-
-    function getCanvasAgentResolutionState() {
-        const raw = canvasAgentState.resolution && typeof canvasAgentState.resolution === 'object' ? canvasAgentState.resolution : {};
-        const aspect = CANVAS_AGENT_ASPECT_OPTIONS.some(item => item.key === raw.aspect) ? raw.aspect : 'auto';
-        const multiplier = clamp(Number(raw.multiplier || 1) || 1, 1, 2);
-        canvasAgentState.resolution = { aspect, multiplier };
-        return canvasAgentState.resolution;
-    }
-
-    function syncCanvasAgentResolutionDom() {
-        if (!canvasAgentPanel || !canvasAgentPanel.isConnected) return;
-        const state = getCanvasAgentResolutionState();
-        const scale = Number(state.multiplier || 1).toFixed(1);
-        canvasAgentPanel.querySelectorAll('[data-canvas-agent-scale-label]').forEach(label => {
-            label.textContent = `${scale}x`;
-        });
-        canvasAgentPanel.querySelectorAll('[data-canvas-agent-resolution-summary]').forEach(label => {
-            label.textContent = canvasAgentResolutionLabel();
-        });
-        canvasAgentPanel.querySelectorAll('[data-canvas-agent-resolution-label]').forEach(label => {
-            label.textContent = canvasAgentResolutionCompactLabel();
-        });
-        canvasAgentPanel.querySelectorAll('[data-canvas-agent-scale]').forEach(input => {
-            if (input === document.activeElement) return;
-            input.value = scale;
-        });
-    }
-
-    function setCanvasAgentResolutionPatch(patch, options) {
-        const current = getCanvasAgentResolutionState();
-        const next = Object.assign({}, current, patch || {});
-        if (!CANVAS_AGENT_ASPECT_OPTIONS.some(item => item.key === next.aspect)) next.aspect = 'auto';
-        next.multiplier = clamp(Number(next.multiplier || 1) || 1, 1, 2);
-        canvasAgentState.resolution = next;
-        if (options?.render === false) syncCanvasAgentResolutionDom();
-        else renderCanvasAgentPanel();
-    }
-
-    function normalizeCanvasAgentAspect(value, fallbackText) {
-        const text = [value, fallbackText].map(item => String(item || '').trim()).filter(Boolean).join(' ').toLowerCase();
-        if (!text) return '';
-        const explicitRatio = text.match(/(?:^|[^\d])(\d{1,2})\s*(?::|：|x|×|\*|\/|比)\s*(\d{1,2})(?:[^\d]|$)/i);
-        const explicitRatioSafe = text.match(new RegExp("(?:^|[^\\d])(\\d{1,2})\\s*(?::|\\uFF1A|x|\\u00D7|\\*|\\/|\\u6BD4)\\s*(\\d{1,2})(?:[^\\d]|$)", "i"));
-        const closestAspect = (w, h) => {
-            const width = Number(w);
-            const height = Number(h);
-            if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return '';
-            const ratio = width / height;
-            let best = null;
-            CANVAS_AGENT_ASPECT_OPTIONS.forEach((item) => {
-                const parts = String(item.key || '').split(':').map(Number);
-                if (parts.length !== 2 || !parts[0] || !parts[1]) return;
-                const diff = Math.abs(Math.log(ratio / (parts[0] / parts[1])));
-                if (!best || diff < best.diff) best = { key: item.key, diff };
-            });
-            return best && best.diff < 0.08 ? best.key : '';
-        };
-        const ratioMatch = explicitRatioSafe || explicitRatio;
-        if (ratioMatch) {
-            const key = `${Number(ratioMatch[1])}:${Number(ratioMatch[2])}`;
-            const found = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === key);
-            if (found) return found.key;
-            const closest = closestAspect(ratioMatch[1], ratioMatch[2]);
-            if (closest) return closest;
-        }
-        const dimensions = text.match(/(?:^|[^\d])(\d{3,5})\s*(?:x|×|\*|by)\s*(\d{3,5})(?:[^\d]|$)/i);
-        if (dimensions) {
-            const key = closestAspect(dimensions[1], dimensions[2]);
-            if (key) return key;
-        }
-        const direct = text.match(/(?:^|[^\d])(\d{1,2})\s*(?:[:：x×*\/]|比)\s*(\d{1,2})(?:[^\d]|$)/);
-        if (direct) {
-            const key = `${Number(direct[1])}:${Number(direct[2])}`;
-            const found = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === key);
-            if (found) return found.key;
-            const closest = closestAspect(direct[1], direct[2]);
-            if (closest) return closest;
-        }
-        if (/(竖屏|纵向|portrait|vertical|手机壁纸|手机屏幕|9\s*[:：x*\/比]\s*16)/i.test(text)) return '9:16';
-        if (/(横屏|横向|landscape|wide|widescreen|宽屏|16\s*[:：x*\/比]\s*9)/i.test(text)) return '16:9';
-        if (/(方图|正方形|square|1\s*[:：x*\/比]\s*1)/i.test(text)) return '1:1';
-        if (/(4\s*[:：x*\/比]\s*3|标准屏|standard)/i.test(text)) return '4:3';
-        if (/(3\s*[:：x*\/比]\s*4)/i.test(text)) return '3:4';
-        if (/(2\s*[:：x*\/比]\s*3)/i.test(text)) return '2:3';
-        if (/(3\s*[:：x*\/比]\s*2)/i.test(text)) return '3:2';
-        if (/(\u6a2a\u5c4f|\u6a2a\u5411|\u5bbd\u5c4f|\u5bec\u5c4f|landscape|wide|widescreen)/i.test(text)) return '16:9';
-        if (/(\u7ad6\u5c4f|\u7eb5\u5411|\u7e31\u5411|\u624b\u673a\u58c1\u7eb8|\u624b\u673a\u5c4f\u5e55|portrait|vertical)/i.test(text)) return '9:16';
-        if (/(\u65b9\u56fe|\u65b9\u5716|\u6b63\u65b9\u5f62|square)/i.test(text)) return '1:1';
-        return '';
-    }
-
-    function extractCanvasAgentAspectFromText(text) {
-        return normalizeCanvasAgentAspect('', text);
-    }
-
-    function stripCanvasAgentInlineGenerationParams(prompt) {
-        let text = String(prompt || '');
-        if (!text) return '';
-        text = text.replace(/(?:^|,\s*|\s+)(?:aspect[_\s-]*ratio|ratio|画幅|比例|宽高比)\s*[:=：]\s*(?:\d{1,5}\s*(?:[:：x×*\/]|比)\s*\d{1,5}|landscape|portrait|horizontal|vertical|横屏|竖屏|横向|纵向|square|方图)(?=\s*,|\s*$)/gi, '');
-        text = text.replace(/(?:^|,\s*|\s+)(?:resolution[_\s-]*scale|scale|upscale|steps?|cfg(?:_scale)?|guidance(?:_scale)?|seed(?:_random)?)\s*[:=：]\s*[-+]?\w+(?:\.\w+)?(?=\s*,|\s*$)/gi, '');
-        return text
-            .split(',')
-            .map(item => item.trim())
-            .filter(Boolean)
-            .join(', ')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-    }
-
-    function canvasAgentUserExplicitNegativePrompt(text) {
-        return /(?:negative\s*prompt|negative_prompt|--neg\b|\u53cd\u5411\u63d0\u793a|\u8d1f\u5411\u63d0\u793a|\u8d1f\u9762\u63d0\u793a|\u8d1f\u9762prompt|\u8d1f\u5411prompt)/i.test(String(text || ''));
-    }
-
-    function normalizeCanvasAgentGenerationOptions(plan, fallbackText) {
-        const src = plan && typeof plan === 'object' ? plan : {};
-        const text = String(fallbackText || src.prompt || src.recommendedPrompt || '').trim();
-        const composer = src.prompt_composer && typeof src.prompt_composer === 'object' ? src.prompt_composer : {};
-        const composerResolution = composer.generation_resolution && typeof composer.generation_resolution === 'object' ? composer.generation_resolution : {};
-        const composerWidth = Number(String(composerResolution.width || '').match(/-?\d+(?:\.\d+)?/)?.[0] || 0);
-        const composerHeight = Number(String(composerResolution.height || '').match(/-?\d+(?:\.\d+)?/)?.[0] || 0);
-        const composerAspect = String(composerResolution.aspect_ratio || (composerWidth && composerHeight ? `${composerWidth}x${composerHeight}` : '')).trim();
-        const aspect = normalizeCanvasAgentAspect(src.aspect_ratio || src.aspectRatio || src.aspect || src.ratio || src.orientation || src.resolution || src.size || (src.width && src.height ? `${src.width}x${src.height}` : '') || composerAspect, text);
-        const aspectOption = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === aspect);
-        const boolValue = (value) => {
-            if (value === undefined || value === null || value === '') return null;
-            if (typeof value === 'boolean') return value;
-            if (typeof value === 'number') return value !== 0;
-            const normalized = String(value).trim().toLowerCase();
-            if (['false', '0', 'no', 'off', 'fixed', 'manual'].includes(normalized)) return false;
-            if (['true', '1', 'yes', 'on', 'random', 'auto'].includes(normalized)) return true;
-            if (/随机/.test(normalized)) return true;
-            if (/固定|指定/.test(normalized)) return false;
-            return !!normalized;
-        };
-        const numberValue = (...keys) => {
-            for (const key of keys) {
-                const value = src[key];
-                if (value === undefined || value === null || value === '') continue;
-                const parsed = Number(String(value).match(/-?\d+(?:\.\d+)?/)?.[0]);
-                if (Number.isFinite(parsed)) return parsed;
-            }
-            return null;
-        };
-        const imageCountFromText = /(?:出|生成|来|要)?\s*(\d{1,2})\s*(?:张|幅|images?|imgs?|batch)/i.exec(text)?.[1];
-        const scale = numberValue('resolution_scale', 'scale', 'upscale');
-        const rawImageNumber = numberValue('image_number', 'images', 'count', 'batch_size') ?? (imageCountFromText ? Number(imageCountFromText) : null);
-        const imageNumber = rawImageNumber != null && rawImageNumber > 1 ? clamp(Math.round(rawImageNumber), 1, 16) : null;
-        const seed = numberValue('seed', 'image_seed');
-        const steps = numberValue('overwrite_step', 'steps', 'scene_steps');
-        const cfg = numberValue('cfg_scale', 'guidance_scale', 'cfg', 'guidance');
-        const seedRandom = boolValue(src.seed_random ?? src.random_seed ?? src.randomize_seed);
-        const widthValue = numberValue('width', 'overwrite_width');
-        const heightValue = numberValue('height', 'overwrite_height');
-        const dimensionsFromText = (...values) => {
-            for (const value of values) {
-                const match = String(value || '').match(/(?:^|[^\d])(\d{3,5})\s*(?:x|脳|\*)\s*(\d{3,5})(?:[^\d]|$)/i);
-                if (match) return { width: Number(match[1]), height: Number(match[2]) };
-            }
-            return null;
-        };
-        const composerDimensions = composerWidth && composerHeight
-            ? { width: composerWidth, height: composerHeight }
-            : null;
-        const explicitDimensions = widthValue && heightValue
-            ? { width: widthValue, height: heightValue }
-            : (composerDimensions || dimensionsFromText(src.size, src.resolution, src.aspect_ratio, src.aspectRatio, src.aspect, composerAspect, text));
-        const aspectDimensions = (() => {
-            const match = String(aspectOption?.value || '').match(/^(\d{3,5})\*(\d{3,5})$/);
-            return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
-        })();
-        const resolvedDimensions = explicitDimensions || aspectDimensions;
-        const resolvedAspect = resolvedDimensions?.width && resolvedDimensions?.height
-            ? (normalizeCanvasAgentAspect(`${resolvedDimensions.width}x${resolvedDimensions.height}`, '') || aspect)
-            : aspect;
-        const rawNegativePrompt = String(src.negative_prompt || src.negativePrompt || src.negative || '').trim();
-        return {
-            aspect: resolvedAspect,
-            width: resolvedDimensions?.width ? Math.round(resolvedDimensions.width) : null,
-            height: resolvedDimensions?.height ? Math.round(resolvedDimensions.height) : null,
-            resolutionScale: scale != null ? clamp(scale, 1, 2) : null,
-            imageNumber,
-            seed: seed != null ? Math.max(0, Math.round(seed)) : null,
-            seedRandom,
-            steps: steps != null ? clamp(Math.round(steps), 1, 200) : null,
-            cfgScale: cfg != null ? clamp(cfg, 0, 30) : null,
-            negativePrompt: canvasAgentUserExplicitNegativePrompt(text) ? rawNegativePrompt : ''
-        };
-    }
-
-    function canvasAgentResolutionLabel() {
-        const state = getCanvasAgentResolutionState();
-        const aspect = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === state.aspect) || CANVAS_AGENT_ASPECT_OPTIONS[0];
-        return `${aspect.label} · ${Number(state.multiplier || 1).toFixed(1)}x`;
-    }
-
-    function canvasAgentResolutionCompactLabel() {
-        const state = getCanvasAgentResolutionState();
-        const aspect = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === state.aspect) || CANVAS_AGENT_ASPECT_OPTIONS[0];
-        return `${aspect.label} | ${Number(state.multiplier || 1).toFixed(1)}x`;
-    }
-
-    function canvasAgentDefaultLocalRewriteModel() {
-        return VLM_VERSION_CHOICES.find(model => model && model !== 'Custom')
-            || (CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel !== 'Custom' ? CANVAS_AGENT_DEFAULT_SETTINGS.rewriteModel : '')
-            || 'Qwen3.5-9B-abliterated-Q4_K_M';
-    }
-
-    function canvasAgentLocalRewriteModels(currentModel) {
-        const seen = new Set();
-        const list = [];
-        [...VLM_VERSION_CHOICES, currentModel].forEach((model) => {
-            const value = String(model || '').trim();
-            if (!value || value === 'Custom' || seen.has(value)) return;
-            seen.add(value);
-            list.push(value);
-        });
-        if (!list.length) list.push(canvasAgentDefaultLocalRewriteModel());
-        return list;
-    }
-
-    function canvasAgentModelSummary(settings) {
-        if (settings.rewriteModel === 'Custom') {
-            const provider = getVlmCustomProvider(settings.customProvider || 'openai');
-            const apiName = settings.customApiName || provider.label || 'Custom API';
-            const model = settings.customModel || t('Select model', '选择模型');
-            return {
-                icon: 'fa-cloud',
-                label: model,
-                title: `${apiName} · ${model}`
-            };
-        }
-        const model = settings.rewriteModel || canvasAgentDefaultLocalRewriteModel();
-        const modelLabel = vlmModelDisplayLabel(model, model);
-        return {
-            icon: 'fa-microchip',
-            label: modelLabel,
-            title: `${t('Local VLM', '本地 VLM')} · ${modelLabel}`
-        };
-    }
-
-    function handleCanvasAgentModelModeInput(field) {
-        const mode = String(field?.value || '').trim();
-        if (mode === 'custom') {
-            setCanvasAgentSettingsPatch({ rewriteModel: 'Custom', customApiCollapsed: false });
-            return;
-        }
-        const settings = getCanvasAgentSettings();
-        const model = settings.rewriteModel && settings.rewriteModel !== 'Custom'
-            ? settings.rewriteModel
-            : canvasAgentDefaultLocalRewriteModel();
-        setCanvasAgentSettingsPatch({ rewriteModel: model });
-    }
-
-    function renderOutpaintControlPanel() {
-        const s = outpaintOverlayState;
-        if (!s.active) return '';
-        const rows = [
-            { key: 'top', label: t('Up', '上'), icon: '↑', value: s.up },
-            { key: 'bottom', label: t('Down', '下'), icon: '↓', value: s.down },
-            { key: 'left', label: t('Left', '左'), icon: '←', value: s.left },
-            { key: 'right', label: t('Right', '右'), icon: '→', value: s.right }
-        ];
-        return `
-<div class="sai-outpaint-control">
-  <div class="sai-outpaint-control-title">
-    <i class="fa-solid fa-expand"></i>
-    <span>${escapeHtml(t('Outpaint Range', '扩图范围'))}</span>
-  </div>
-  <div class="sai-outpaint-control-grid">
-    ${rows.map(r => `<div class="sai-outpaint-control-edge">
-      <span class="sai-outpaint-edge-label">${escapeHtml(r.icon)} ${escapeHtml(r.label)}</span>
-      <input type="range" data-outpaint-slider="${r.key}" min="0" max="100" value="${r.value}">
-      <output data-outpaint-output="${r.key}">${r.value}%</output>
-    </div>`).join('')}
-  </div>
-  <div class="sai-outpaint-control-actions">
-    <button type="button" class="is-primary" data-canvas-agent-action="confirm-outpaint"><i class="fa-solid fa-play"></i><span>${escapeHtml(t('Confirm & Run', '确认运行'))}</span></button>
-    <button type="button" data-canvas-agent-action="cancel-outpaint"><i class="fa-solid fa-xmark"></i><span>${escapeHtml(t('Cancel', '取消'))}</span></button>
-  </div>
-  <div class="sai-outpaint-control-note">${escapeHtml(t('Drag edges on canvas or use sliders. Enter to confirm, Esc to cancel.', '拖动画布边框或使用滑块。Enter 确认，Esc 取消。'))}</div>
-</div>`;
-    }
-
-    function ensureOutpaintOverlayMatchesAgentTarget(target) {
-        if (!outpaintOverlayState.active) return;
-        if (!target || target.id !== outpaintOverlayState.nodeId || !isCanvasAgentImageTarget(target)) {
-            hideOutpaintOverlay();
-        }
-    }
-
-    function refreshNodeLayoutForAgent(nodeId, delayMs) {
-        if (!nodeId || !nodesLayer) return;
-        const run = () => {
-            const node = getNode(nodeId);
-            const nodeEl = node ? nodesLayer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`) : null;
-            if (!node || !nodeEl) return;
-            const changed = rememberRenderedNodeLayout(node, nodeEl);
-            if (changed) {
-                renderMinimap();
-                renderEdges();
-            }
-            positionCanvasAgentPanel();
-        };
-        if (delayMs && delayMs > 0) window.setTimeout(run, delayMs);
-        else window.requestAnimationFrame(run);
     }
 
     function canvasAgentPresetSearchText(...args) {
@@ -5893,15 +7325,6 @@
 
     function canvasAgentVideoUpscalePresetEntries(...args) {
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentVideoUpscalePresetEntries?.(...args) || [];
-    }
-
-    function canvasAgentQuickToolPresetOptions(toolKey, selectedEntry) {
-        if (toolKey === 'upscale') {
-            return canvasAgentPresetDecisionOptions(selectedEntry, {
-                entries: canvasAgentUpscalePresetEntries(selectedEntry)
-            });
-        }
-        return canvasAgentPresetDecisionOptions(selectedEntry);
     }
 
     function canvasAgentPresetDefaultPromptForTheme(...args) {
@@ -5956,186 +7379,6 @@
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.getCanvasAgentPresetStatus?.(...args) || null;
     }
 
-    function applyCanvasAgentPromptToGenerator(node, prompt) {
-        const paramsPatch = { prompt };
-        if (node.type === 'preset') {
-            const visibleKeys = new Set(getVisiblePresetParams(node).map(param => param.key));
-            if (visibleKeys.has('scene_additional_prompt') && !visibleKeys.has('prompt')) {
-                paramsPatch.scene_additional_prompt = prompt;
-            }
-        }
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
-    }
-
-    function applyCanvasAgentPresetDefaultsToGenerator(node, entryOrNode) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return;
-        const defaults = canvasAgentPresetPromptDefaults(entryOrNode || node);
-        Object.assign(node, buildPresetSnapshotPatch(node, {
-            snapshotPatch: Object.assign(
-                {},
-                defaults.styles.length ? { default_styles: defaults.styles.slice() } : {},
-                defaults.prompt ? { default_prompt: defaults.prompt } : {},
-                defaults.negative_prompt ? { default_prompt_negative: defaults.negative_prompt } : {}
-            )
-        }));
-    }
-
-    function clonePresetWithPromptDefaults(node, entryOrNode) {
-        const preset = cloneRunValue(node?.preset || {}, {});
-        const defaults = canvasAgentPresetPromptDefaults(entryOrNode || node);
-        const snapshot = preset.snapshot && typeof preset.snapshot === 'object' && !Array.isArray(preset.snapshot)
-            ? preset.snapshot
-            : {};
-        const snapshotPatch = {};
-        if (defaults.styles.length && !Array.isArray(snapshot.default_styles)) {
-            snapshotPatch.default_styles = defaults.styles.slice();
-        }
-        if (defaults.prompt && !String(snapshot.default_prompt || '').trim()) {
-            snapshotPatch.default_prompt = defaults.prompt;
-        }
-        if (defaults.negative_prompt && !String(snapshot.default_prompt_negative || '').trim()) {
-            snapshotPatch.default_prompt_negative = defaults.negative_prompt;
-        }
-        return buildPresetSnapshotPatch(node, { preset, snapshotPatch }).preset;
-    }
-
-    function canvasDanbooruRuntimeStatusMessage(status) {
-        if (!status || typeof status !== 'object') return '';
-        const lang = String(runtimeUiLang() || '').toLowerCase();
-        const message = String(status.message || '').trim();
-        const messageCn = String(status.message_cn || status.messageCn || '').trim();
-        return lang === 'en' || lang.startsWith('en-') ? (message || messageCn) : (messageCn || message);
-    }
-
-    function maybeShowCanvasDanbooruRuntimeNotice(response) {
-        const status = response?.runtime_status || response?.runtimeStatus;
-        if (!status || typeof status !== 'object') return;
-        const state = String(status.state || '').toLowerCase();
-        const level = String(status.level || '').toLowerCase();
-        const shouldShow = level === 'warning' || (state === 'ready' && status.auto_build === true);
-        if (!shouldShow) return;
-        const message = canvasDanbooruRuntimeStatusMessage(status);
-        if (!message) return;
-        const key = `${state}|${level}|${message}`;
-        if (danbooruRuntimeNoticeKey === key) return;
-        danbooruRuntimeNoticeKey = key;
-        showToast(message, level === 'warning' ? 5200 : 3600);
-    }
-
-    async function canvasAgentDanbooruFallbackRewrite(prompt, target, purpose, options) {
-        if (String(target?.key || '') !== 'sdxl_danbooru') return '';
-        const opts = Object.assign({}, options || {}, { purpose });
-        let matches = [];
-        if (typeof apiDanbooruTagLookup === 'function') {
-            try {
-                const defaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, opts);
-                const response = await apiDanbooruTagLookup({
-                    query: prompt,
-                    model_hint: canvasAgentPromptTargetContextLine(target),
-                    preset_defaults: defaults,
-                    limit: 20
-                });
-                maybeShowCanvasDanbooruRuntimeNotice(response);
-                if (response?.ok && Array.isArray(response.matches)) matches = response.matches;
-            } catch (err) {
-                console.warn('[SimpAI Canvas Agent] Danbooru fallback lookup failed', err);
-            }
-        }
-        const fallback = canvasAgentDanbooruFallbackPrompt(prompt, target, opts, matches);
-        return canvasAgentPromptLooksDanbooru(fallback) ? fallback : '';
-    }
-
-    async function ensureCanvasAgentPromptMatchesTarget(prompt, target, purpose, options) {
-        const current = String(prompt || '').trim();
-        if (!current || !canvasAgentPromptNeedsTargetRewrite(current, target)) return { ok: true, prompt: current, source: options?.promptSource || '' };
-        try {
-            const rewritten = await rewriteCanvasAgentPromptWithLlm(current, purpose, options || {});
-            if (rewritten?.ok && rewritten.prompt) {
-                const candidate = String(rewritten.prompt || '').trim();
-                if (!canvasAgentPromptNeedsTargetRewrite(candidate, target)) {
-                    return { ok: true, prompt: candidate, source: 'target_rewrite' };
-                }
-            }
-            const fallback = await canvasAgentDanbooruFallbackRewrite(rewritten?.prompt || current, target, purpose, options || {});
-            if (fallback) return { ok: true, prompt: fallback, source: 'target_rewrite_fallback' };
-            return { ok: false, prompt: current, error: rewritten?.error || 'target rewrite failed' };
-        } catch (err) {
-            const fallback = await canvasAgentDanbooruFallbackRewrite(current, target, purpose, options || {});
-            if (fallback) return { ok: true, prompt: fallback, source: 'target_rewrite_fallback' };
-            return { ok: false, prompt: current, error: err?.message || String(err) };
-        }
-    }
-
-    async function canvasAgentDanbooruLookupText(prompt, target, purpose, options) {
-        if (!canvasAgentPromptTargetNeedsDanbooru(target)) return '';
-        if (typeof apiDanbooruTagLookup !== 'function') return '';
-        const opts = options || {};
-        const defaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, opts);
-        const modelHint = [
-            target?.name || '',
-            target?.backend_engine || '',
-            target?.task_method || '',
-            Array.isArray(defaults.styles) ? defaults.styles.join(', ') : ''
-        ].filter(Boolean).join(' | ');
-        try {
-            const response = await apiDanbooruTagLookup({
-                query: prompt,
-                model_hint: modelHint,
-                preset_defaults: defaults,
-                limit: 28
-            });
-            maybeShowCanvasDanbooruRuntimeNotice(response);
-            return response?.ok && response.text ? String(response.text).trim() : '';
-        } catch (err) {
-            console.warn('[SimpAI Canvas Agent] Danbooru tag lookup failed', err);
-            return '';
-        }
-    }
-
-    function canvasAgentModelStatusLabel(status) {
-        if (status?.ready) return t('Ready', '就绪');
-        if (status?.ok === false) return status.error || t('Check failed', '检查失败');
-        return t('Will use normal model gate', '将使用正常模型门禁');
-    }
-
-    function canvasAgentShortNodeLabel(node) {
-        if (!node) return '';
-        return `${String(node.type || '').toUpperCase()} · ${node.title || node.id}`;
-    }
-
-    function previewCanvasAgentEditInputSlot(entry, target) {
-        if (!entry || !target) return null;
-        const probe = createCanvasAgentPresetProbeNode(entry);
-        if (probe.type === 'classic') {
-            Object.assign(probe, buildClassicNodeStatePatch(probe, { classicMode: 'uov' }));
-        }
-        const uploadSlots = probe.type === 'classic' ? getVisibleClassicUploadSlots(probe) : getVisibleUploadSlots(probe);
-        return uploadSlots.find(item => !isCanvasAgentMaskSlot(item) && canNodeConnectToUploadSlot(target, item.key)) || uploadSlots.find(item => !isCanvasAgentMaskSlot(item)) || null;
-    }
-
-    function isCanvasAgentMaskSlot(slot) {
-        const key = String(slot?.key || '').toLowerCase();
-        const label = String(slot?.label || '').toLowerCase();
-        return key.includes('mask') || label.includes('mask') || label.includes('蒙版') || label.includes('遮罩');
-    }
-
-    function canvasAgentUploadSlotsForNode(node) {
-        return node?.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
-    }
-
-    function startCanvasAgentReferencePickForTool(target, spec) {
-        if (target && isCanvasAgentImageTarget(target)) {
-            addCanvasAgentReferenceFromNode(target, { role: 'primary', silent: true });
-            selectedNodeId = target.id;
-            selectedNodeIds = new Set([target.id]);
-            selectedEdgeId = null;
-        }
-        canvasAgentState.expanded = true;
-        canvasAgentState.pickReference = true;
-        setCanvasAgentMessage(t('{tool} needs another reference image. Click an image or result node to add it as Ref, then use the tool again.', '{tool} 还需要另一张参考图。点击图像或结果节点加入 Ref，然后再次使用工具。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
-        showToast(t('Pick a reference image for {tool}.', '请选择 {tool} 的参考图。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
-    }
-
     function canvasAgentPresetAliasTokensForEntry(...args) {
         return CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER?.canvasAgentPresetAliasTokensForEntry?.(...args) || [];
     }
@@ -6145,161 +7388,6 @@
     }
 
 
-    function presetNodeHasParam(node, key) {
-        if (!node || !key) return false;
-        if (Object.prototype.hasOwnProperty.call(node.params || {}, key)) return true;
-        return Array.isArray(node.schema?.params) && node.schema.params.some(param => param?.key === key);
-    }
-
-    function setPresetGenerationConfigValue(node, key, value) {
-        if (!node || !key) return;
-        value = generationConfigValueForPresetSchema(node, key, value);
-        const currentGeneration = node.generation_config && typeof node.generation_config === 'object'
-            ? node.generation_config
-            : {};
-        const currentDefaults = currentGeneration.defaults && typeof currentGeneration.defaults === 'object'
-            ? currentGeneration.defaults
-            : {};
-        Object.assign(node, buildPresetGenerationConfigPatch(node, {
-            defaultsPatch: Object.prototype.hasOwnProperty.call(currentDefaults, key) ? {} : { [key]: value },
-            overridesPatch: { [key]: value }
-        }));
-        const sourceNode = node.generation_config.source_node_id ? getNode(node.generation_config.source_node_id) : null;
-        if (sourceNode && sourceNode.type === 'config' && sourceNode.config_kind === 'advanced') {
-            const sourceDefaults = sourceNode.config?.defaults && typeof sourceNode.config.defaults === 'object'
-                ? sourceNode.config.defaults
-                : {};
-            Object.assign(sourceNode, buildConfigStatePatch(sourceNode, {
-                valuesPatch: { [key]: value },
-                defaultsPatch: Object.prototype.hasOwnProperty.call(sourceDefaults, key) ? {} : { [key]: value },
-                touchUpdatedAt: true
-            }));
-            applyConfigNodeToPreset(sourceNode);
-        }
-    }
-
-    function presetGenerationStepValue(node) {
-        const generation = node?.generation_config && typeof node.generation_config === 'object' ? node.generation_config : {};
-        const overrides = generation.overrides && typeof generation.overrides === 'object' ? generation.overrides : {};
-        const defaults = generation.defaults && typeof generation.defaults === 'object' ? generation.defaults : {};
-        const value = overrides.overwrite_step ?? overrides.steps ?? defaults.overwrite_step ?? defaults.steps;
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    }
-
-    function presetGenerationImageNumberValue(node) {
-        const generation = node?.generation_config && typeof node.generation_config === 'object' ? node.generation_config : {};
-        const overrides = generation.overrides && typeof generation.overrides === 'object' ? generation.overrides : {};
-        const defaults = generation.defaults && typeof generation.defaults === 'object' ? generation.defaults : {};
-        const value = overrides.image_number ?? defaults.image_number;
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    }
-
-    function applyCanvasAgentGenerationOptionsToGenerator(node, options) {
-        if (!node || !options) return;
-        const paramsPatch = {};
-        const deleteKeys = [];
-        const imageNumber = Number.isFinite(options.imageNumber) && options.imageNumber > 1 ? options.imageNumber : 1;
-        setPresetGenerationConfigValue(node, 'image_number', imageNumber);
-        deleteKeys.push('scene_image_number');
-        if (Number.isFinite(options.seed)) {
-            paramsPatch.seed_random = false;
-            paramsPatch.image_seed = options.seed;
-        } else if (options.seedRandom === true) {
-            paramsPatch.seed_random = true;
-        }
-        if (Number.isFinite(options.steps)) {
-            setPresetGenerationConfigValue(node, 'overwrite_step', options.steps);
-            deleteKeys.push('scene_steps', 'steps');
-        }
-        if (Number.isFinite(options.cfgScale)) {
-            if (presetNodeHasParam(node, 'cfg_scale')) paramsPatch.cfg_scale = options.cfgScale;
-            else if (presetNodeHasParam(node, 'guidance_scale')) paramsPatch.guidance_scale = options.cfgScale;
-        }
-        Object.assign(node, buildNodeParamsPatch(node, { paramsPatch, deleteKeys }));
-    }
-
-    function prepareCanvasAgentGenerator(node, prompt, generationOptions) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return false;
-        if (isNodeLocked(node)) {
-            showToast(t('Locked node cannot be edited', '锁定节点无法编辑'));
-            return false;
-        }
-        pushHistoryBatch(`canvas-agent-prompt:${node.id}`, 'Canvas Agent prompt');
-        applyCanvasAgentPresetDefaultsToGenerator(node);
-        applyCanvasAgentPromptToGenerator(node, prompt);
-        applyCanvasAgentGenerationOptionsToGenerator(node, generationOptions);
-        applyCanvasAgentResolutionToGenerator(node, generationOptions);
-        Object.assign(node, buildCanvasNodeStatusPatch(node, { status: 'idle' }));
-        mutate({ inspector: true });
-        return true;
-    }
-
-    function applyCanvasAgentResolutionToGenerator(node, options) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return;
-        const state = getCanvasAgentResolutionState();
-        const sourceConfig = getPresetConfigSource(node, 'resolution');
-        const values = buildInitialConfigValues('resolution', sourceConfig, node);
-        const aspectOption = CANVAS_AGENT_ASPECT_OPTIONS.find(item => item.key === (options?.aspect || state.aspect)) || CANVAS_AGENT_ASPECT_OPTIONS[0];
-        const explicitWidth = Number(options?.width || 0);
-        const explicitHeight = Number(options?.height || 0);
-        const explicitAspectValue = explicitWidth > 0 && explicitHeight > 0 ? `${Math.round(explicitWidth)}*${Math.round(explicitHeight)}` : '';
-        const aspectValue = explicitAspectValue || aspectOption?.value || '';
-        if (aspectValue) {
-            values.aspect_ratio = aspectValue;
-            values.manual = false;
-            const profile = normalizeResolutionProfile(values.profile || values.defaults || sourceConfig.defaults || {});
-            const dims = explicitAspectValue
-                ? { width: Math.round(explicitWidth), height: Math.round(explicitHeight) }
-                : resolveResolutionBaseDims(Object.assign({}, values, {
-                    aspect_ratio: aspectValue,
-                    profile
-                }), Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : []);
-            values.width = dims.width;
-            values.height = dims.height;
-        }
-        values.multiplier = clamp(Number(options?.resolutionScale || state.multiplier || 1) || 1, 1, 2);
-        Object.assign(node, buildPresetConfigPatch(node, {
-            configKey: 'resolution_config',
-            presetConfig: {
-                mode: 'agent_override',
-                defaults: sourceConfig.defaults || {},
-                overrides: Object.assign({}, sourceConfig.overrides || {}, values),
-                updated_at: nowIso()
-            }
-        }));
-    }
-
-    function canvasAgentRunNodeSelection(node) {
-        if (!node) return;
-        dockCanvasAgentPanelBottomLeft({ render: false });
-        selectedNodeId = node.id;
-        selectedNodeIds = new Set([node.id]);
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-    }
-
-    function syncCanvasAgentMaskTargetToPreset(sourceNode, presetNode, maskCarrierNode) {
-        if (!sourceNode || !presetNode) return '';
-        const maskSlot = canvasAgentMaskUploadSlot(presetNode);
-        if (maskSlot && maskCarrierNode?.type === 'mask' && canNodeConnectToUploadSlot(maskCarrierNode, maskSlot)) {
-            createUploadEdge(maskCarrierNode.id, presetNode.id, maskSlot, { silent: true });
-            return maskSlot;
-        }
-        if (sourceNode.type === 'image' && sourceNode.mask?.data_url) {
-            let imageSlot = Object.entries(presetNode.upload_slots || {})
-                .find(([, nodeId]) => nodeId === sourceNode.id)?.[0] || '';
-            if (!imageSlot) {
-                const imageSlots = canvasAgentUploadSlotsForNode(presetNode).filter(slot => !isCanvasAgentMaskSlot(slot));
-                imageSlot = imageSlots.find(slot => canNodeConnectToUploadSlot(sourceNode, slot.key))?.key || '';
-                if (imageSlot) createUploadEdge(sourceNode.id, presetNode.id, imageSlot, { silent: true });
-            }
-            if (imageSlot && imageSlot !== maskSlot) syncResolutionConfigForPresetInputs(presetNode);
-        }
-        return maskSlot;
-    }
-
     function presetResultBasePosition(presetNode) {
         return {
             x: Math.round((presetNode?.x || 0) + (presetNode?.w || 360) + 140),
@@ -6307,450 +7395,25 @@
         };
     }
 
-    function createCanvasAgentReservedResultNode(presetNode, spec) {
-        if (!presetNode) return null;
-        const existing = findCanvasAgentReservedResultNodeForPreset(presetNode);
-        if (existing) return existing;
-        const size = defaultNodeSize('result');
-        const basePosition = presetResultBasePosition(presetNode);
-        const resultNode = buildReservedResultNode({
-            position: basePosition,
-            size: {
-                w: Math.max(240, Number(size?.w || 240)),
-                h: Math.max(260, Number(size?.h || 260))
-            },
-            title: `${presetNode.title || 'Preset'} ${t('Output', '输出')}`,
-            producer: {
-                preset_node_id: presetNode.id,
-                run_id: null,
-                run_token: '',
-                task_id: null,
-                refreshing: false,
-                stale: false
-            },
-            step: 0,
-                totalSteps: presetGenerationStepValue(presetNode),
-                message: t('Result reserved; save the mask to auto-run.', '结果已占位；保存蒙版后会自动运行。'),
-                collapsed: false,
-                source: buildCanvasAgentReservedResultSource({
-                    presetNodeId: presetNode.id,
-                    tool: spec?.key || spec?.label || ''
-                })
-        });
-        if (!resultNode) return null;
-        Object.assign(project, buildProjectNodeAppendPatch(project, resultNode));
-        ensureGenerateEdge(presetNode.id, resultNode.id);
-        return resultNode;
-    }
-
-    async function openCanvasAgentMaskSketch(sourceNode, presetNode, resultNode, workflowGroup, spec) {
-        if (!sourceNode || !presetNode) return;
-        const ready = await ensureWorkbenchLazyRuntime(
-            'customSketch',
-            () => typeof window.SimpAIWorkbenchSketchAdapter?.open === 'function',
-            t('Loading Sketch...', '正在加载 Sketch...'),
-            t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。')
-        );
-        if (!ready) return;
-        const adapter = window.SimpAIWorkbenchSketchAdapter;
-        if (!adapter || typeof adapter.open !== 'function') {
-            showToast(t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。'));
-            return;
-        }
-        const asset = getNodeLayerForgeAsset(sourceNode);
-        if (assetMediaKind(asset || {}) !== 'image') {
-            showToast(t('Sketch only supports image assets.', 'Sketch 仅支持图片素材。'));
-            return;
-        }
-        const image = assetDisplaySrc(asset) || getNodeImageSrc(sourceNode);
-        if (!image) {
-            showToast(t('No image available for Sketch.', '没有可用于 Sketch 的图片。'));
-            return;
-        }
-        adapter.open({
-            image,
-            mask: sourceNode.type === 'image' ? (sourceNode.mask?.data_url || '') : '',
-            title: `${spec?.label || t('Mask', '蒙版')} · ${sourceNode.title || 'Image'}`,
-            onSave: async (payload) => {
-                const outputNode = await createImageNodeFromSketchOutput(sourceNode, payload);
-                if (!outputNode) return;
-                const currentPreset = getNode(presetNode.id);
-                const currentSource = getNode(sourceNode.id);
-                const savedNode = getNode(outputNode?.id) || currentSource;
-                if (currentPreset && savedNode) {
-                    const currentResult = getNode(resultNode?.id) || findCanvasAgentReservedResultNodeForPreset(currentPreset);
-                    const maskSource = savedNode?.type === 'image' ? savedNode : (currentSource || savedNode);
-                    syncCanvasAgentMaskTargetToPreset(maskSource, currentPreset, savedNode);
-                    const groupNodes = canvasAgentManualMaskWorkflowNodes(currentPreset, currentResult, savedNode.id && savedNode.id !== sourceNode.id ? savedNode : null);
-                    fitCanvasAgentWorkflowGroup(workflowGroup?.id || workflowGroup, groupNodes.filter(Boolean), 48);
-                    selectedNodeId = currentPreset.id;
-                    selectedNodeIds = new Set([currentPreset.id]);
-                    selectedEdgeId = null;
-                    mutate({ inspector: true });
-                    const workflowMaskNode = savedNode.id && savedNode.id !== sourceNode.id ? savedNode : null;
-                    window.setTimeout(() => {
-                        runCanvasAgentManualMaskPreset(currentPreset, currentResult, workflowGroup, spec, workflowMaskNode).catch((err) => {
-                            console.warn('[SimpAI Canvas] Agent masked quick tool auto-run failed', err);
-                            showToast(`Masked quick tool run failed: ${err?.message || err || 'unknown error'}`);
-                            clearCanvasAgentRunInfo(0);
-                        });
-                    }, 0);
-                }
-            },
-            onError: (err) => showToast(`Sketch save failed: ${err?.message || err || 'unknown error'}`)
-        }).catch((err) => {
-            console.warn('[SimpAI Canvas] Agent mask Sketch open failed', err);
-            showToast(`Sketch failed to open: ${err?.message || err || 'unknown error'}`);
-        });
-    }
-
-    function prepareCanvasAgentManualMaskWorkflow(sourceNode, presetNode, spec, title) {
-        dockCanvasAgentPanelBottomLeft({ render: false });
-        if (presetNode) applyNodeLayoutPatch(presetNode, { collapsed: true });
-        const resultNode = createCanvasAgentReservedResultNode(presetNode, spec);
-        const workflowNodes = canvasAgentManualMaskWorkflowNodes(presetNode, resultNode, null);
-        const group = createCanvasAgentWorkflowGroup(workflowNodes, title || `${t('Agent masked quick tool', 'Agent 蒙版快捷工具')}: ${spec?.label || ''}`);
-        selectedNodeId = presetNode?.id || sourceNode?.id || null;
-        selectedNodeIds = selectedNodeId ? new Set([selectedNodeId]) : new Set();
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-        centerCanvasAgentWorkflow(workflowNodes);
-        window.setTimeout(() => openCanvasAgentMaskSketch(sourceNode, presetNode, resultNode, group, spec), 80);
-        setCanvasAgentMessage(t('{tool} workflow is grouped. Sketch is open; save the mask to auto-run.', '{tool} 工作流已分组。Sketch 已打开，保存蒙版后会自动运行。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
-        return group;
-    }
-
-
-    function prepareCanvasAgentVideoMaskWorkflow(sourceNode, presetNode, resultNode, spec, options) {
-        const opts = options || {};
-        const currentSource = getNode(sourceNode?.id) || sourceNode;
-        const currentPreset = getNode(presetNode?.id) || presetNode;
-        if (!currentSource || !isCanvasAgentVideoTarget(currentSource)) {
-            return { ok: false, error: 'source video is unavailable' };
-        }
-        if (!currentPreset || !['preset', 'classic'].includes(currentPreset.type)) {
-            return { ok: false, error: 'preset node is unavailable' };
-        }
-        const maskSlot = canvasAgentVideoMaskUploadSlot(currentPreset);
-        if (!maskSlot) {
-            showToast(t('Selected video preset has no compatible mask video slot.', '所选视频预设没有可用的视频蒙版输入槽。'));
-            return { ok: false, error: 'mask video slot is unavailable' };
-        }
-        dockCanvasAgentPanelBottomLeft({ render: false });
-        applyNodeLayoutPatch(currentPreset, { collapsed: true });
-        const currentResult = resultNode || createCanvasAgentReservedResultNode(currentPreset, spec);
-        if (!currentResult) return { ok: false, error: 'reserved result could not be created' };
-        const sourceRect = getNodeRect(currentSource);
-        const sam3Size = defaultNodeSize('sam3_video_mask');
-        const sam3World = {
-            x: Math.round((sourceRect?.x || currentPreset.x || 0) + (sourceRect?.w || 360) + 120),
-            y: Math.round(sourceRect?.y || currentPreset.y || 0)
-        };
-        const sam3Prompt = String(opts.prompt || canvasAgentState.input || '').trim();
-        const sam3Node = addSam3VideoMaskNode(sam3World, {
-            history: false,
-            render: false,
-            title: `${spec?.label || t('Video Mask', '视频蒙版')} SAM3`,
-            params: sam3Prompt ? { prompt: sam3Prompt } : {}
-        });
-        if (!sam3Node) return { ok: false, error: 'SAM3 Video Mask node could not be created' };
-        Object.assign(sam3Node, buildNodeLayoutPatch(sam3Node, {
-            w: Number(sam3Node.w || sam3Size.w || 360),
-            h: Number(sam3Node.h || sam3Size.h || 560),
-            collapsed: false
-        }));
-        Object.assign(sam3Node, buildSam3StatePatch(sam3Node, {
-            paramsPatch: sam3Prompt ? { prompt: sam3Prompt } : {}
-        }));
-        positionCanvasAgentVideoMaskWorkflow(currentSource, sam3Node, currentPreset, currentResult);
-        createSam3VideoMaskEdge(currentSource.id, sam3Node.id, { silent: true });
-        const sourceVideoSlot = canvasAgentVideoSourceUploadSlot(currentPreset, currentSource);
-        if (sourceVideoSlot && currentPreset.upload_slots?.[sourceVideoSlot] !== currentSource.id) {
-            createUploadEdge(currentSource.id, currentPreset.id, sourceVideoSlot, { silent: true });
-        }
-        createUploadEdge(sam3Node.id, currentPreset.id, maskSlot, { silent: true });
-        const agentWorkflow = {
-            auto_run: true,
-            source_node_id: currentSource.id,
-            preset_node_id: currentPreset.id,
-            result_node_id: currentResult.id,
-            group_id: '',
-            mask_slot: maskSlot,
-            source_video_slot: sourceVideoSlot,
-            tool_key: opts.toolKey || spec?.key || '',
-            tool_label: spec?.label || '',
-            group_title_base: opts.title || `${t('Agent video quick tool', 'Agent 视频快捷工具')}: ${spec?.label || t('Video quick tool', '视频快捷工具')}`,
-            last_auto_run_state: 'waiting_for_mask',
-            last_auto_run_error: '',
-            created_at: nowIso()
-        };
-        Object.assign(sam3Node, buildSam3SourcePatch(sam3Node, {
-            sourcePatch: {
-                agent_video_mask_workflow: agentWorkflow
-            }
-        }));
-        const workflowNodes = canvasAgentManualMaskWorkflowNodes(currentPreset, currentResult, sam3Node);
-        const group = createCanvasAgentWorkflowGroup(workflowNodes, agentWorkflow.group_title_base);
-        if (group) {
-            Object.assign(sam3Node, buildSam3SourcePatch(sam3Node, {
-                sourcePatch: {
-                    agent_video_mask_workflow: Object.assign({}, agentWorkflow, {
-                        group_id: group.id
-                    })
-                }
-            }));
-            fitCanvasAgentWorkflowGroup(group, workflowNodes, 48);
-        }
-        selectedNodeId = sam3Node.id;
-        selectedNodeIds = new Set([sam3Node.id]);
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-        centerCanvasAgentWorkflow(workflowNodes);
-        if (opts.openEditor !== false) {
-            window.setTimeout(() => {
-                const currentSam3 = getNode(sam3Node.id);
-                if (currentSam3) openSam3PointEditor(currentSam3);
-            }, 80);
-        }
-        setCanvasAgentMessage(t('{tool} workflow is grouped. Generate or upload the SAM3 mask to auto-run the reserved result.', '{tool} 工作流已分组。生成或上传 SAM3 蒙版后会自动运行预留结果。').replace('{tool}', spec?.label || t('Video quick tool', '视频快捷工具')));
-        return { group, sam3Node, resultNode: currentResult };
-    }
-
-    async function handleCanvasAgentSam3VideoMaskReady(sam3Node, response, details) {
-        const currentSam3 = getNode(sam3Node?.id) || sam3Node;
-        const workflow = currentSam3?.source?.agent_video_mask_workflow;
-        if (!workflow || workflow.auto_run === false) return null;
-        const currentPreset = getNode(workflow.preset_node_id);
-        const currentResult = getNode(workflow.result_node_id) || findCanvasAgentReservedResultNodeForPreset(currentPreset);
-        if (!currentPreset || !currentResult) {
-            setCanvasAgentMessage(t('SAM3 mask is ready, but the reserved Agent workflow is incomplete.', 'SAM3 蒙版已完成，但预留的 Agent 工作流不完整。'));
-            return { ok: false, error: 'reserved Agent workflow is incomplete' };
-        }
-        if (!currentSam3?.asset) {
-            setCanvasAgentMessage(t('SAM3 mask is not ready yet. Generate or upload a mask before running the preset.', 'SAM3 蒙版尚未就绪。请先生成或上传蒙版再运行 preset。'));
-            return { ok: false, error: 'SAM3 mask asset is missing' };
-        }
-        const maskSlot = workflow.mask_slot || canvasAgentVideoMaskUploadSlot(currentPreset);
-        if (!maskSlot) {
-            setCanvasAgentMessage(t('SAM3 mask is ready, but the target preset has no mask video slot.', 'SAM3 蒙版已完成，但目标 preset 没有视频蒙版槽。'));
-            return { ok: false, error: 'mask video slot is unavailable' };
-        }
-        const sourceNode = getNode(workflow.source_node_id);
-        const sourceVideoSlot = workflow.source_video_slot || canvasAgentVideoSourceUploadSlot(currentPreset, sourceNode);
-        if (sourceNode && sourceVideoSlot && currentPreset.upload_slots?.[sourceVideoSlot] !== sourceNode.id) {
-            createUploadEdge(sourceNode.id, currentPreset.id, sourceVideoSlot, { silent: true });
-        }
-        createUploadEdge(currentSam3.id, currentPreset.id, maskSlot, { silent: true });
-        if (currentPreset.upload_slots?.[maskSlot] !== currentSam3.id) {
-            setCanvasAgentMessage(t('SAM3 mask is ready, but Agent could not connect it to the preset mask slot.', 'SAM3 蒙版已完成，但 Agent 未能把它连接到 preset 蒙版槽。'));
-            return { ok: false, error: 'mask video slot connection failed' };
-        }
-        const maskSignature = canvasAgentSam3WorkflowMaskSignature(currentSam3, response, details);
-        if (workflow.last_mask_signature === maskSignature && ['starting', 'running', 'submitted'].includes(String(workflow.last_auto_run_state || ''))) {
-            setCanvasAgentMessage(t('SAM3 mask is already submitting. Focusing the reserved result.', 'SAM3 蒙版已在提交中，已定位到预留结果。'));
-            selectedNodeId = currentResult.id;
-            selectedNodeIds = new Set([currentResult.id]);
-            selectedEdgeId = null;
-            renderNodes();
-            renderEdges();
-            return { ok: false, error: 'auto-run already submitting' };
-        }
-        const activeResult = findActiveResultNodeForPreset(currentPreset);
-        if (isCanvasRunActiveState(nodeStatusState(currentPreset)) || activeResult || pendingPresetRuns.has(currentPreset.id)) {
-            const focusNode = activeResult || currentResult || currentPreset;
-            setCanvasAgentSam3WorkflowState(currentSam3, {
-                mask_slot: maskSlot,
-                source_video_slot: sourceVideoSlot || workflow.source_video_slot || '',
-                last_mask_ready_at: nowIso(),
-                last_mask_origin: details?.origin || currentSam3.source?.mask_origin || '',
-                last_mask_signature: maskSignature,
-                last_auto_run_state: 'active_run_exists',
-                last_auto_run_error: ''
-            }, t('Run active', '运行中'));
-            selectedNodeId = focusNode.id;
-            selectedNodeIds = new Set([focusNode.id]);
-            selectedEdgeId = null;
-            const rect = getNodeRect(focusNode);
-            centerViewportOnWorld(rect.x + rect.w / 2, rect.y + rect.h / 2);
-            renderNodes();
-            renderEdges();
-            setCanvasAgentMessage(t('{tool} already has an active run. Focusing the current result.', '{tool} 已有运行中的任务，已定位到当前结果。').replace('{tool}', workflow.tool_label || t('Video quick tool', '视频快捷工具')));
-            return { ok: false, error: 'run already active' };
-        }
-        const autoRunToken = uid('agent_video_mask_run');
-        const nextWorkflow = setCanvasAgentSam3WorkflowState(currentSam3, {
-            mask_slot: maskSlot,
-            source_video_slot: sourceVideoSlot || workflow.source_video_slot || '',
-            last_mask_ready_at: nowIso(),
-            last_mask_origin: details?.origin || currentSam3.source?.mask_origin || '',
-            last_mask_signature: maskSignature,
-            last_auto_run_token: autoRunToken,
-            last_auto_run_state: 'starting',
-            last_auto_run_error: ''
-        }, t('Mask ready', '蒙版就绪'));
-        Object.assign(currentResult, buildResultSourcePatch(currentResult, {
-            agent_video_mask_workflow: {
-                sam3_node_id: currentSam3.id,
-                preset_node_id: currentPreset.id,
-                group_id: nextWorkflow?.group_id || workflow.group_id || '',
-                last_auto_run_token: autoRunToken
-            }
-        }));
-        const workflowNodes = canvasAgentSam3WorkflowNodes(workflow, currentSam3, currentPreset, currentResult);
-        fitCanvasAgentWorkflowGroup(nextWorkflow?.group_id || workflow.group_id, workflowNodes, 48);
-        selectedNodeId = currentPreset.id;
-        selectedNodeIds = new Set([currentPreset.id]);
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-        setCanvasAgentRunInfo({
-            token: uid('agent_run'),
-            stage: t('Submitting video mask quick tool', '提交视频蒙版快捷工具'),
-            preset: currentPreset.title || currentPreset.preset?.display_name || currentPreset.preset?.name || '',
-            model: t('Direct prompt', '直接提示词')
-        });
-        setCanvasAgentMessage(t('{tool} mask is ready. Auto-running the reserved result.', '{tool} 蒙版已就绪，正在自动运行预留结果。').replace('{tool}', workflow.tool_label || t('Video quick tool', '视频快捷工具')));
-        try {
-            setCanvasAgentSam3WorkflowState(currentSam3, { last_auto_run_state: 'running', last_auto_run_token: autoRunToken }, t('Running', '运行中'));
-            const runResponse = await runPresetNode(currentPreset, {
-                resultNode: currentResult,
-                reuseExistingResult: true
-            });
-            const ok = runResponse?.ok === true || (runResponse?.ok !== false && runResponse?.state !== 'failed' && runResponse?.state !== 'canceled' && runResponse?.state !== 'skipped');
-            const finalState = ok && runResponse?.state === 'finished' ? 'finished' : (ok ? 'submitted' : 'failed');
-            setCanvasAgentSam3WorkflowState(currentSam3, {
-                last_auto_run_state: finalState,
-                last_auto_run_error: ok ? '' : (runResponse?.details || runResponse?.error || 'preset run failed')
-            }, finalState === 'finished' ? t('Finished', '已完成') : (ok ? t('Submitted', '已提交') : t('Run failed', '运行失败')));
-            fitCanvasAgentWorkflowGroup(nextWorkflow?.group_id || workflow.group_id, canvasAgentSam3WorkflowNodes(workflow, currentSam3, currentPreset, getNode(currentResult.id) || currentResult), 48);
-            return runResponse;
-        } catch (err) {
-            console.warn('[SimpAI Canvas] Agent SAM3 video mask auto-run failed', err);
-            showToast(`Video mask quick tool run failed: ${err?.message || err || 'unknown error'}`);
-            setCanvasAgentSam3WorkflowState(currentSam3, {
-                last_auto_run_state: 'failed',
-                last_auto_run_error: err?.message || String(err || 'unknown error')
-            }, t('Run failed', '运行失败'));
-            setCanvasAgentMessage(t('SAM3 mask is connected, but the preset run failed. The reserved workflow is still available for manual retry.', 'SAM3 蒙版已连接，但 preset 运行失败。预留工作流仍可手动重试。'));
-            return { ok: false, error: err?.message || String(err || 'unknown error') };
-        } finally {
-            clearCanvasAgentRunInfo(1800);
-        }
-    }
-
-    function handleCanvasAgentWorkflowNodeDeletion(idSet) {
-        if (!idSet || !idSet.size) return;
-        project.nodes.forEach((node) => {
-            const workflow = node?.source?.agent_video_mask_workflow;
-            if (!workflow) return;
-            const isSam3Node = node.type === 'sam3_video_mask';
-            const isResultNode = node.type === 'result';
-            if (!isSam3Node && !isResultNode) return;
-            const removedSam3 = isSam3Node
-                ? idSet.has(node.id)
-                : idSet.has(workflow.sam3_node_id);
-            const removedSource = isSam3Node && idSet.has(workflow.source_node_id);
-            const removedPreset = idSet.has(workflow.preset_node_id);
-            const removedResult = isSam3Node && idSet.has(workflow.result_node_id);
-            if (!removedSam3 && !removedSource && !removedPreset && !removedResult) return;
-            if (removedSam3) {
-                const nextWorkflow = Object.assign({}, workflow, {
-                    auto_run: false,
-                    last_auto_run_state: 'sam3_removed',
-                    last_auto_run_error: 'SAM3 Video Mask node was deleted.'
-                });
-                if (isSam3Node) {
-                    Object.assign(node, buildSam3SourcePatch(node, {
-                        sourcePatch: { agent_video_mask_workflow: nextWorkflow }
-                    }));
-                } else if (isResultNode && !idSet.has(node.id)) {
-                    Object.assign(node, buildResultSourcePatch(node, {
-                        agent_video_mask_workflow: nextWorkflow
-                    }));
-                }
-                if (workflow.group_id) {
-                    const group = getGroup(workflow.group_id);
-                    if (group) Object.assign(group, buildGroupFieldPatch(group, 'title', canvasAgentSam3WorkflowTitle(nextWorkflow, t('SAM3 removed', 'SAM3 已删除'))));
-                }
-            } else if (removedPreset || removedResult) {
-                const nextWorkflow = Object.assign({}, workflow, {
-                    auto_run: false,
-                    last_auto_run_state: removedPreset ? 'preset_removed' : 'result_removed',
-                    last_auto_run_error: removedPreset ? 'Target preset was deleted.' : 'Reserved result was deleted.'
-                });
-                if (isSam3Node) {
-                    Object.assign(node, buildSam3SourcePatch(node, {
-                        sourcePatch: { agent_video_mask_workflow: nextWorkflow }
-                    }));
-                } else if (isResultNode && !idSet.has(node.id)) {
-                    Object.assign(node, buildResultSourcePatch(node, {
-                        agent_video_mask_workflow: nextWorkflow
-                    }));
-                }
-                if (workflow.group_id) {
-                    const group = getGroup(workflow.group_id);
-                    if (group) {
-                        Object.assign(group, buildGroupFieldPatch(group, 'title', canvasAgentSam3WorkflowTitle(nextWorkflow, removedPreset ? t('Preset removed', 'Preset 已删除') : t('Result removed', '结果已删除'))));
-                    }
-                }
-            } else if (removedSource) {
-                Object.assign(node, buildSam3SourcePatch(node, {
-                    inputNodeId: null,
-                    sourcePatch: {
-                        agent_video_mask_workflow: Object.assign({}, workflow, {
-                            auto_run: false,
-                            source_node_id: '',
-                            last_auto_run_state: 'source_removed',
-                            last_auto_run_error: 'Source video was deleted.'
-                        })
-                    }
-                }));
-                Object.assign(node, buildSam3StatePatch(node, {
-                    status: mergeCanvasRunStatus(node.status, 'idle', 'Source video removed; reconnect a video before continuing.')
-                }));
-                if (workflow.group_id) {
-                    const group = getGroup(workflow.group_id);
-                    if (group) Object.assign(group, buildGroupFieldPatch(group, 'title', canvasAgentSam3WorkflowTitle(node.source.agent_video_mask_workflow, t('Source removed', '源视频已删除'))));
-                }
-            }
-        });
-        renderGroups();
-    }
-
-    function handleCanvasAgentWorkflowEdgeDeletion(edge) {
-        if (!edge) return;
-        if (edge.type === 'upload') {
-            const preset = getNode(edge.to);
-            const sam3 = getNode(edge.from);
-            const workflow = sam3?.source?.agent_video_mask_workflow;
-            if (preset && sam3?.type === 'sam3_video_mask' && workflow?.preset_node_id === preset.id && workflow.mask_slot === edge.slot) {
-                setCanvasAgentSam3WorkflowState(sam3, {
-                    auto_run: false,
-                    last_auto_run_state: 'mask_disconnected',
-                    last_auto_run_error: 'Mask upload edge was disconnected.'
-                }, t('Mask disconnected', '蒙版已断开'));
-                setCanvasAgentMessage(t('SAM3 mask was disconnected from the preset. Reconnect or regenerate/upload a mask before running.', 'SAM3 蒙版已从 preset 断开。请重新连接或重新生成/上传蒙版后再运行。'));
-            }
-            if (preset && workflow?.preset_node_id === preset.id && workflow.source_video_slot === edge.slot) {
-                setCanvasAgentSam3WorkflowState(sam3, {
-                    auto_run: false,
-                    last_auto_run_state: 'source_disconnected',
-                    last_auto_run_error: 'Source video upload edge was disconnected.'
-                }, t('Source disconnected', '源视频已断开'));
-            }
-        }
-        if (edge.type === 'media') {
-            const sam3 = getNode(edge.to);
-            const workflow = sam3?.source?.agent_video_mask_workflow;
-            if (sam3?.type === 'sam3_video_mask' && workflow?.source_node_id === edge.from) {
-                setCanvasAgentSam3WorkflowState(sam3, {
-                    auto_run: false,
-                    source_node_id: '',
-                    last_auto_run_state: 'source_disconnected',
-                    last_auto_run_error: 'SAM3 source video edge was disconnected.'
-                }, t('Source disconnected', '源视频已断开'));
-                setCanvasAgentMessage(t('SAM3 source video was disconnected. Reconnect a video before generating a mask.', 'SAM3 源视频已断开。请重新连接视频后再生成蒙版。'));
-            }
-        }
+    function centerPresetRunViewport(presetNode, resultNode) {
+        const sourceNodes = ['prompt', 'negative_prompt']
+            .map(slot => getPromptTextSourceNode(presetNode, slot))
+            .filter(Boolean);
+        const nodes = [presetNode, resultNode, ...sourceNodes].filter(Boolean);
+        const rects = nodes.map(item => getNodeRect(item)).filter(Boolean);
+        if (!rects.length) return;
+        const left = Math.min(...rects.map(rect => rect.x));
+        const top = Math.min(...rects.map(rect => rect.y));
+        const right = Math.max(...rects.map(rect => rect.x + rect.w));
+        const bottom = Math.max(...rects.map(rect => rect.y + rect.h));
+        const cx = (left + right) / 2;
+        const cy = (top + bottom) / 2;
+        const panelEl = document.querySelector('.sai-canvas-agent-panel');
+        const panelVisible = !!(panelEl && !panelEl.hidden && Number(panelEl.offsetWidth || 0) > 0);
+        const agentOffset = panelVisible
+            ? (panelEl.offsetWidth / 2 + 20) / (project.viewport.zoom || 1)
+            : 0;
+        centerViewportOnWorld(cx + agentOffset, cy);
     }
 
     async function handleCanvasAgentAction(...args) {
@@ -10028,23 +10691,6 @@ ${[0, 1, 2].map((index) => {
         return profiles[getVlmCustomProfileKey(params)] || null;
     }
 
-    function normalizeVlmAgentMode(params) {
-        const explicit = String(params?.agent_mode || '').trim().toLowerCase();
-        if (VLM_AGENT_MODE_CHOICES.some(item => item.key === explicit)) return explicit;
-        if (params?.agent_raw_mode === true) return 'raw';
-        if (
-            params
-            && (Object.prototype.hasOwnProperty.call(params, 'agent_use_skills')
-                || Object.prototype.hasOwnProperty.call(params, 'agent_use_canvas_context')
-                || Object.prototype.hasOwnProperty.call(params, 'agent_action_hints'))
-        ) {
-            return (params.agent_use_skills !== false || params.agent_use_canvas_context !== false || params.agent_action_hints !== false)
-                ? 'canvas_agent'
-                : 'persona';
-        }
-        return 'persona';
-    }
-
     function getVlmChatUiAreas(node, scope) {
         if (!node || node.type !== 'vlm') return [];
         const areas = [];
@@ -10069,137 +10715,6 @@ ${[0, 1, 2].map((index) => {
             version,
             agent_mode: 'persona'
         };
-    }
-
-    function getCanvasAgentCustomKeyInput() {
-        return canvasSettingsPanel?.querySelector?.('[data-canvas-agent-custom-key]') || null;
-    }
-
-    function saveCanvasAgentCustomSecret() {
-        const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
-        const input = getCanvasAgentCustomKeyInput();
-        const apiKey = String(input?.value || '').trim();
-        if (!apiKey) {
-            showToast(t('Paste an API key first.', '请先粘贴 API Key'));
-            return;
-        }
-        const profiles = readVlmCustomApiProfiles();
-        const key = getVlmCustomProfileKey(params);
-        profiles[key] = Object.assign({}, profiles[key] || {}, {
-            api_key: apiKey,
-            api_name: params.custom_api_name || key,
-            provider: params.custom_provider || 'openai',
-            base_url: params.custom_base_url || '',
-            updated_at: nowIso()
-        });
-        writeVlmCustomApiProfiles(profiles);
-        showToast(t('API key saved for Agent and VLM nodes.', 'API Key 已保存，可供 Agent 和 VLM 节点共用'));
-    }
-
-    function syncCanvasAgentCustomFromSelectedVlm() {
-        const node = getNode(selectedNodeId);
-        if (!node || node.type !== 'vlm') {
-            showToast(t('Select a VLM node first.', '请先选中一个 VLM 节点'));
-            return;
-        }
-        const params = node.params || {};
-        setCanvasAgentSettingsPatch({
-            rewriteModel: 'Custom',
-            customProvider: params.custom_provider || 'openai',
-            customApiName: params.custom_api_name || 'Custom',
-            customApiFormat: params.custom_api_format || 'openai_compatible',
-            customBaseUrl: params.custom_base_url || '',
-            customModel: params.custom_model || '',
-            customSupportsImages: params.custom_supports_images !== false,
-            customApiCollapsed: false
-        }, { silentHistory: true });
-        showToast(t('Agent Custom API settings synced from selected VLM node.', '已从选中的 VLM 节点同步 Agent Custom API 设置'));
-    }
-
-    function syncSelectedVlmCustomFromCanvasAgent() {
-        const node = getNode(selectedNodeId);
-        if (!node || node.type !== 'vlm') {
-            showToast(t('Select a VLM node first.', '请先选中一个 VLM 节点'));
-            return;
-        }
-        const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
-        pushHistory('Sync Custom API settings');
-        Object.assign(node, buildVlmParamsPatch(node, {
-            paramsPatch: {
-                version: 'Custom',
-                custom_provider: params.custom_provider,
-                custom_api_name: params.custom_api_name,
-                custom_api_format: params.custom_api_format,
-                custom_base_url: params.custom_base_url,
-                custom_model: params.custom_model,
-                custom_supports_images: params.custom_supports_images
-            }
-        }));
-        Object.assign(node, buildVlmModelStatusPatch(node, {
-            status: buildVlmModelUnknownStatus('Custom', 'Custom API settings changed. Test or check before running.')
-        }));
-        mutate({ inspector: true });
-        showToast(t('Selected VLM node now uses Agent Custom API settings.', '选中的 VLM 节点已同步 Agent Custom API 设置'));
-    }
-
-    async function testCustomApiParams(params, sourceLabel) {
-        const runtime = Object.assign({}, params || {}, {
-            version: 'Custom',
-            mode: 'single',
-            prompt: 'Reply with OK.',
-            system_prompt: 'You are an API connectivity tester. Reply with OK only.',
-            max_tokens: 16,
-            temperature: 0,
-            top_p: 1,
-            seed: -1,
-            disable_thinking: true,
-            free_after: false
-        });
-        if (!runtime.custom_base_url || !runtime.custom_model) {
-            showToast(t('Custom API settings incomplete: Base URL and Model are required. API Key can stay empty for Ollama/LM Studio.', 'Custom API 设置不完整：需要 Base URL 和 Model；Ollama/LM Studio 可不填 API Key'));
-            return { ok: false, error: 'Custom API settings incomplete' };
-        }
-        showToast(t('Testing Custom API...', '正在测试 Custom API...'));
-        const response = await sendCanvasVlmRunRequest({
-            project_id: project.id || PROJECT_ID,
-            node_id: `custom_api_test:${sourceLabel || 'agent'}`,
-            asset_sources: [],
-            conversation_id: '',
-            params: runtime
-        });
-        if (response?.ok) {
-            showToast(t('Custom API test succeeded: {text}', 'Custom API 测试成功：{text}').replace('{text}', String(response.text || 'OK').slice(0, 80)));
-        } else {
-            showToast(t('Custom API test failed: {error}', 'Custom API 测试失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
-        }
-        return response;
-    }
-
-    async function testCanvasAgentCustomApi() {
-        if (String(getCanvasAgentCustomKeyInput()?.value || '').trim()) saveCanvasAgentCustomSecret();
-        return testCustomApiParams(getCanvasAgentCustomRuntimeParams(), 'agent');
-    }
-
-    async function fetchCanvasAgentCustomModels() {
-        if (String(getCanvasAgentCustomKeyInput()?.value || '').trim()) saveCanvasAgentCustomSecret();
-        const params = getCanvasAgentCustomRuntimeParams();
-        const response = await apiCustomLlmModels({
-            project_id: project.id || PROJECT_ID,
-            node_id: 'canvas_agent_custom_api',
-            params,
-            api_key: params.custom_api_key || '',
-            user_context: getWorkbenchUserContext()
-        });
-        if (response?.ok) {
-            canvasAgentCustomModelChoices = Array.isArray(response.models) ? response.models : [];
-            const patch = { customApiCollapsed: false };
-            if (!getCanvasAgentSettings().customModel && canvasAgentCustomModelChoices.length) patch.customModel = canvasAgentCustomModelChoices[0];
-            setCanvasAgentSettingsPatch(patch, { silentHistory: true });
-            showToast(t('Fetched {count} custom model(s).', '已拉取 {count} 个 Custom 模型').replace('{count}', canvasAgentCustomModelChoices.length));
-        } else {
-            showToast(t('Fetch models failed: {error}', '拉取模型失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
-        }
-        return response;
     }
 
     const MASK_MODELS = ['u2net', 'u2netp', 'u2net_human_seg', 'u2net_cloth_seg', 'silueta', 'isnet-general-use', 'isnet-anime', 'sam'];
@@ -14648,231 +15163,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         chainRunOverlay.hidden = false;
     }
 
-    function showOutpaintOverlay(nodeId, initialPcts) {
-        if (!outpaintOverlayEl) return;
-        const node = project.nodes.find(n => n.id === nodeId);
-        if (!node) return;
-        const settings = getCanvasAgentSettings();
-        outpaintOverlayState.active = true;
-        outpaintOverlayState.nodeId = nodeId;
-        outpaintOverlayState.up = clamp(Number(initialPcts?.up ?? settings.outpaintUpPercent ?? 15), 0, 100);
-        outpaintOverlayState.down = clamp(Number(initialPcts?.down ?? settings.outpaintDownPercent ?? 15), 0, 100);
-        outpaintOverlayState.left = clamp(Number(initialPcts?.left ?? settings.outpaintLeftPercent ?? 15), 0, 100);
-        outpaintOverlayState.right = clamp(Number(initialPcts?.right ?? settings.outpaintRightPercent ?? 15), 0, 100);
-        outpaintOverlayEl.hidden = false;
-        syncOutpaintOverlayPosition();
-    }
-
-    function hideOutpaintOverlay() {
-        if (!outpaintOverlayEl) return;
-        cancelOutpaintEdgeDrag();
-        outpaintOverlayEl.hidden = true;
-        outpaintOverlayState.active = false;
-        outpaintOverlayState.nodeId = '';
-    }
-
-    function getOutpaintTargetNode() {
-        if (!outpaintOverlayState.nodeId) return null;
-        return project.nodes.find(n => n.id === outpaintOverlayState.nodeId) || null;
-    }
-
-    function getOutpaintMediaGeometry(node) {
-        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
-        const mediaEl = nodeEl?.querySelector('.sai-node-media');
-        const zoom = project.viewport.zoom || 1;
-        if (nodeEl && mediaEl) {
-            const stageRect = stage.getBoundingClientRect();
-            const mediaRect = mediaEl.getBoundingClientRect();
-            return {
-                x: (mediaRect.left - stageRect.left) / zoom,
-                y: (mediaRect.top - stageRect.top) / zoom,
-                width: mediaRect.width / zoom,
-                height: mediaRect.height / zoom
-            };
-        }
-        return {
-            x: node.x || 0,
-            y: node.y || 0,
-            width: node.w || defaultNodeSize(node.type).w,
-            height: node.h || defaultNodeSize(node.type).h
-        };
-    }
-
-    function getOutpaintMediaSize(node) {
-        const geometry = getOutpaintMediaGeometry(node);
-        return { width: geometry.width, height: geometry.height };
-    }
-
-    function syncOutpaintOverlayPosition() {
-        if (!outpaintOverlayEl || !outpaintOverlayState.active) return;
-        const node = getOutpaintTargetNode();
-        if (!node) { hideOutpaintOverlay(); return; }
-        const media = getOutpaintMediaGeometry(node);
-        const mediaX = media.x;
-        const mediaY = media.y;
-        const mediaW = media.width;
-        const mediaH = media.height;
-        const s = outpaintOverlayState;
-        const exUp = mediaH * (s.up / 100);
-        const exDown = mediaH * (s.down / 100);
-        const exLeft = mediaW * (s.left / 100);
-        const exRight = mediaW * (s.right / 100);
-        const outerX = mediaX - exLeft;
-        const outerY = mediaY - exUp;
-        const outerW = mediaW + exLeft + exRight;
-        const outerH = mediaH + exUp + exDown;
-        outpaintOverlayEl.style.left = `${outerX}px`;
-        outpaintOverlayEl.style.top = `${outerY}px`;
-        outpaintOverlayEl.style.width = `${outerW}px`;
-        outpaintOverlayEl.style.height = `${outerH}px`;
-        const outer = outpaintOverlayEl.querySelector('.sai-outpaint-outer');
-        if (outer) {
-            outer.style.left = '0';
-            outer.style.top = '0';
-            outer.style.width = `${outerW}px`;
-            outer.style.height = `${outerH}px`;
-        }
-        const inner = outpaintOverlayEl.querySelector('.sai-outpaint-inner');
-        if (inner) {
-            inner.style.left = `${exLeft}px`;
-            inner.style.top = `${exUp}px`;
-            inner.style.width = `${mediaW}px`;
-            inner.style.height = `${mediaH}px`;
-        }
-        const edgeW = 10;
-        const hTop = outpaintOverlayEl.querySelector('[data-edge="top"]');
-        const hBot = outpaintOverlayEl.querySelector('[data-edge="bottom"]');
-        const hL = outpaintOverlayEl.querySelector('[data-edge="left"]');
-        const hR = outpaintOverlayEl.querySelector('[data-edge="right"]');
-        if (hTop) { hTop.style.left = '0'; hTop.style.top = '0'; hTop.style.width = `${outerW}px`; hTop.style.height = `${Math.max(edgeW, exUp)}px`; }
-        if (hBot) { hBot.style.left = '0'; hBot.style.top = `${exUp + mediaH}px`; hBot.style.width = `${outerW}px`; hBot.style.height = `${Math.max(edgeW, exDown)}px`; }
-        if (hL) { hL.style.left = '0'; hL.style.top = '0'; hL.style.width = `${Math.max(edgeW, exLeft)}px`; hL.style.height = `${outerH}px`; }
-        if (hR) { hR.style.left = `${exLeft + mediaW}px`; hR.style.top = '0'; hR.style.width = `${Math.max(edgeW, exRight)}px`; hR.style.height = `${outerH}px`; }
-        const lTop = outpaintOverlayEl.querySelector('[data-dim="top"]');
-        const lBot = outpaintOverlayEl.querySelector('[data-dim="bottom"]');
-        const lL = outpaintOverlayEl.querySelector('[data-dim="left"]');
-        const lR = outpaintOverlayEl.querySelector('[data-dim="right"]');
-        if (lTop && exUp > 6) { lTop.textContent = `${s.up}%`; lTop.style.left = `${outerW / 2}px`; lTop.style.top = `${exUp / 2}px`; lTop.style.transform = 'translate(-50%, -50%)'; }
-        if (lBot && exDown > 6) { lBot.textContent = `${s.down}%`; lBot.style.left = `${outerW / 2}px`; lBot.style.top = `${exUp + mediaH + exDown / 2}px`; lBot.style.transform = 'translate(-50%, -50%)'; }
-        if (lL && exLeft > 6) { lL.textContent = `${s.left}%`; lL.style.left = `${exLeft / 2}px`; lL.style.top = `${outerH / 2}px`; lL.style.transform = 'translate(-50%, -50%)'; }
-        if (lR && exRight > 6) { lR.textContent = `${s.right}%`; lR.style.left = `${exLeft + mediaW + exRight / 2}px`; lR.style.top = `${outerH / 2}px`; lR.style.transform = 'translate(-50%, -50%)'; }
-    }
-
-    function canvasAgentOutpaintDirectionText(state) {
-        const s = state || {};
-        const dirs = [];
-        if (Number(s.up || 0) > 0) dirs.push('top');
-        if (Number(s.down || 0) > 0) dirs.push('bottom');
-        if (Number(s.left || 0) > 0) dirs.push('left');
-        if (Number(s.right || 0) > 0) dirs.push('right');
-        return dirs.length ? `extend the ${dirs.join(' and ')} borders` : 'extend the image borders';
-    }
-
-    function canvasAgentOutpaintPromptIsGeneric(rawPrompt) {
-        const text = String(rawPrompt || '').trim();
-        return !text || /^(扩图|扩展|扩边|扩画布|延展|补边|outpaint|outpainting|extend|extend image|image extension)$/i.test(text);
-    }
-
-    function canvasAgentOutpaintPrompt(rawPrompt, state) {
-        const userText = String(rawPrompt || '').trim();
-        const generic = canvasAgentOutpaintPromptIsGeneric(userText);
-        const base = `Create a seamless FLUX outpaint to ${canvasAgentOutpaintDirectionText(state)}. Preserve the original subject while keeping the same lighting and perspective. Keep the camera angle composition style color palette texture and depth consistent with the source image. Continue the background naturally with coherent details and clean seamless edges.`;
-        if (generic) return base;
-        if (/[\u3400-\u9fff]/.test(userText)) {
-            return `${base}. Preserve the user-requested visual intent while extending the image naturally.`;
-        }
-        return `${base}. User intent: ${userText}`;
-    }
-
-    async function resolveCanvasAgentOutpaintPrompt(rawPrompt, state, targetNode, entry, initialPresetName) {
-        const userText = String(rawPrompt || '').trim();
-        const presetName = normalizePresetName(entry?.name || entry?.display_name || initialPresetName || '');
-        const promptTarget = canvasAgentPromptTargetFromEntry(entry, 'outpaint');
-        const presetDefaults = canvasAgentPresetPromptDefaults(entry);
-        let prompt = canvasAgentOutpaintPrompt(userText, state);
-        const targetRewrite = await ensureCanvasAgentPromptMatchesTarget(prompt, promptTarget, 'outpaint', {
-            entry,
-            presetName,
-            userPrompt: userText,
-            presetDefaults,
-            promptSource: userText ? 'outpaint_user_intent' : 'outpaint_default'
-        });
-        if (targetRewrite.ok && targetRewrite.prompt) prompt = targetRewrite.prompt;
-        return { prompt, promptTarget, presetDefaults };
-    }
-
-    async function confirmOutpaintFromOverlay() {
-        if (!outpaintOverlayState.active) return;
-        const s = outpaintOverlayState;
-        const node = getOutpaintTargetNode();
-        if (!node) { hideOutpaintOverlay(); return; }
-        const initialPresetName = canvasAgentQuickToolPresetName('outpaint');
-        let entry = findCanvasAgentPresetEntryByAlias(initialPresetName);
-        if (!entry) {
-            showToast(t('Outpaint preset is unavailable: {preset}', 'Outpaint preset 不可用：{preset}').replace('{preset}', initialPresetName || 'OneKey-Outpaint'));
-            return;
-        }
-        const outpaintParams = {
-            scene_var_number7: s.up,
-            scene_var_number8: s.down,
-            scene_var_number9: s.left,
-            scene_var_number10: s.right
-        };
-        const resolvedPrompt = await resolveCanvasAgentOutpaintPrompt(canvasAgentState.input, s, node, entry, initialPresetName);
-        let prompt = resolvedPrompt.prompt;
-        const promptTarget = resolvedPrompt.promptTarget;
-        const preflightGate = await ensureCanvasAgentPromptPreflightAllows(prompt, promptTarget, 'outpaint', {
-            entry,
-            action: 'outpaint',
-            presetName: normalizePresetName(entry.name || entry.display_name || initialPresetName),
-            userPrompt: String(canvasAgentState.input || '').trim(),
-            presetDefaults: resolvedPrompt.presetDefaults
-        });
-        if (!preflightGate.ok) {
-            setCanvasAgentMessage(preflightGate.error || t('Prompt preflight blocked outpaint.', '提示词预检查阻止了扩图。'));
-            return;
-        }
-        prompt = preflightGate.prompt || prompt;
-        const presetNode = markCanvasAgentCreatedNode(addPresetNode(entry, canvasAgentWorkflowPresetPosition(node), {
-            collapsed: true
-        }));
-        configureCanvasAgentQuickToolNode(presetNode, 'outpaint', outpaintParams);
-        applyCanvasAgentPromptToGenerator(presetNode, prompt);
-        const connections = connectCanvasAgentImagesToGenerator(presetNode, node, []);
-        if (!connections.ok) {
-            showToast(t('Selected preset has no compatible image input.', '选择的 preset 没有兼容图像输入'));
-            return;
-        }
-        applyCanvasAgentResolutionToGenerator(presetNode);
-        selectedNodeId = presetNode.id;
-        selectedNodeIds = new Set([presetNode.id]);
-        selectedEdgeId = null;
-        mutate({ inspector: true });
-        try {
-            setCanvasAgentSettingsPatch({
-                outpaintUpPercent: s.up,
-                outpaintDownPercent: s.down,
-                outpaintLeftPercent: s.left,
-                outpaintRightPercent: s.right
-            }, { silentHistory: true });
-        } catch (err) {}
-        hideOutpaintOverlay();
-        setCanvasAgentRunInfo({
-            token: uid('agent_run'),
-            stage: t('Submitting outpaint', '提交扩图'),
-            preset: presetNode.title || presetNode.preset?.display_name || presetNode.preset?.name || '',
-            model: t('Direct prompt', '直接提示词')
-        });
-        setCanvasAgentMessage(t('Submitted outpaint ({up}%↑ {down}%↓ {left}%← {right}%→)', '已提交扩图 ({up}%↑ {down}%↓ {left}%← {right}%→)').replace('{up}', s.up).replace('{down}', s.down).replace('{left}', s.left).replace('{right}', s.right));
-        await runPresetNode(presetNode, {
-            agentWorkflowTitle: `${t('Agent outpaint', 'Agent 扩图')}: ${s.up}%↑ ${s.down}%↓ ${s.left}%← ${s.right}%→`,
-            promptPreflight: preflightGate.preflight,
-            skipInputPreflight: true
-        });
-        clearCanvasAgentRunInfo(1800);
-    }
-
-    function ensureTempEdge() {
+   function ensureTempEdge() {
         if (tempEdge && tempEdge.isConnected) return tempEdge;
         tempEdge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         tempEdge.setAttribute('class', 'sai-canvas-temp-edge');
@@ -19826,165 +20117,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return mediaViewerOpenAsset(asset, title, MEDIA_VIEWER_CONTEXT);
     }
 
-    function ignoreVlmAgentAction(node, messageIndex, actionIndex) {
-        const action = getVlmAgentAction(node, messageIndex, actionIndex);
-        if (!action) {
-            setVlmAgentActionExecution(node, messageIndex, actionIndex, {
-                state: 'failed',
-                message: t('Agent action was not found.', '未找到 Agent 动作。')
-            });
-            return { ok: false, message: 'Agent action was not found.' };
-        }
-        setVlmAgentActionExecution(node, messageIndex, actionIndex, {
-            state: 'ignored',
-            message: t('Ignored by user.', '已忽略')
-        });
-        showToast(t('Agent action ignored.', '已忽略 Agent action'));
-    }
-
-    function retryVlmAgentAction(node, messageIndex, actionIndex) {
-        const liveNode = getNode(node?.id || '') || node;
-        if (!liveNode || liveNode.type !== 'vlm') return;
-        if (isVlmNodeBusy(liveNode)) {
-            showToast(t('VLM is still thinking. Please wait before retrying.', 'VLM 还在思考，请稍后重试'));
-            return;
-        }
-        const retryContext = prepareVlmAgentRetryContext(liveNode, messageIndex, actionIndex);
-        if (!retryContext.ok) {
-            showToast(t('No source request was found for retry.', '没有找到可重试的原始请求'));
-            return;
-        }
-        applyVlmChatContextEdit(liveNode, retryContext.keptMessages, 'Retry VLM agent request', 'Retrying from the same prior chat context.');
-        applyVlmChatState(liveNode, {
-            pendingImages: retryContext.pendingImages,
-            updatedAt: nowIso()
-        });
-        Object.assign(liveNode, buildVlmParamsPatch(liveNode, {
-            paramsPatch: { prompt: retryContext.sourceUserPrompt }
-        }));
-        mutate({ inspector: true });
-        runVlmNode(liveNode);
-    }
-
-    function allowRejectedVlmAgentAction(node, messageIndex, actionIndex) {
-        const liveNode = getNode(node?.id || '') || node;
-        if (!liveNode || liveNode.type !== 'vlm') return;
-        if (isVlmNodeBusy(liveNode)) {
-            showToast(t('VLM is still thinking. Please wait before allowing another action.', 'VLM 还在思考，请稍后再放行'));
-            return;
-        }
-        const action = getVlmAgentAction(liveNode, messageIndex, actionIndex);
-        if (!action) return;
-        const bypass = prepareVlmAgentPromptReviewBypass(action);
-        if (!bypass.ok) {
-            showToast(bypass.message, 3600);
-            return;
-        }
-        patchVlmAgentAction(liveNode, messageIndex, actionIndex, bypass.patch, 'Bypass VLM prompt review');
-        executeVlmAgentAction(liveNode, messageIndex, actionIndex, { bypassPromptReview: true });
-    }
-
-    function focusVlmAgentTarget(targetId) {
-        const target = getNode(targetId);
-        if (!target) return { ok: false, message: t('Target node was not found.', '目标节点不存在') };
-        selectedNodeId = target.id;
-        selectedNodeIds = new Set([target.id]);
-        selectedEdgeId = null;
-        selectedGroupId = null;
-        const rect = getNodeRect(target);
-        centerViewportOnWorld(rect.x + rect.w / 2, rect.y + rect.h / 2);
-        renderNodes();
-        renderEdges();
-        renderInspector();
-        renderMinimap();
-        return { ok: true, node: target, message: t('Focused node: {title}', '已定位节点：{title}').replace('{title}', target.title || target.id) };
-    }
-
-    function selectVlmAgentTarget(targetId) {
-        const target = getNode(targetId);
-        if (!target) return { ok: false, message: t('Target node was not found.', '目标节点不存在') };
-        selectNodeLight(target.id);
-        return { ok: true, node: target, message: t('Selected node: {title}', '已选中节点：{title}').replace('{title}', target.title || target.id) };
-    }
-
-    function latestVlmAgentRunForTarget(targetId) {
-        const runs = Array.isArray(project.runs) ? project.runs : [];
-        const target = getNode(targetId);
-        const runId = target?.producer?.run_id || targetId || '';
-        return runs.find(item => item.id === runId || item.run_id === runId)
-            || runs.find(item => item.placeholder_node_id === targetId || item.preset_node_id === targetId || item.qwen_tts_node_id === targetId || item.producer_node_id === targetId)
-            || runs.slice().sort((a, b) => (Date.parse(b.updated_at || b.created_at || '') || 0) - (Date.parse(a.updated_at || a.created_at || '') || 0))[0]
-            || null;
-    }
-
-    function describeVlmAgentToolStatus(action) {
-        const targetId = vlmAgentActionTargetId(action);
-        const target = getNode(targetId);
-        const run = latestVlmAgentRunForTarget(targetId);
-        const resultNode = target?.type === 'result' ? target : getNode(run?.placeholder_node_id);
-        const state = String(run?.state || nodeStatusState(resultNode || target) || '').toLowerCase();
-        const statusKind = classifyVlmAgentToolStatus(state, run, resultNode);
-        const outputCount = Number(run?.output_count ?? (Array.isArray(resultNode?.assets) ? resultNode.assets.length : (resultNode?.asset ? 1 : 0)) ?? 0);
-        const title = target?.title || resultNode?.title || run?.placeholder_node_id || run?.preset_node_id || targetId || t('latest run', '最近任务');
-        const detail = run?.message || resultNode?.status?.message || run?.error || resultNode?.error_details?.error || '';
-        const labels = {
-            pending: t('waiting or preflight-ready', '等待或预检中'),
-            running: t('running', '正在运行'),
-            user_interrupt_pending: t('user interruption requested', '用户已请求中断，等待后端确认'),
-            succeeded: t('succeeded', '已成功'),
-            finished_without_output: t('finished without output', '已结束但无输出'),
-            failed: t('failed', '错误中断'),
-            user_stopped: t('stopped by user', '用户手动停止'),
-            user_skipped: t('skipped by user', '用户手动跳过'),
-            terminal: t('terminal', '已结束'),
-            unknown: t('unknown', '未知')
-        };
-        const message = `${title}: ${labels[statusKind] || statusKind || labels.unknown}${outputCount ? `, ${outputCount} output(s)` : ''}${detail ? ` · ${detail}` : ''}`;
-        return { ok: !!(run || target), message, target_id: target?.id || resultNode?.id || '', status_kind: statusKind };
-    }
-
-    function findVlmAgentBrokenEdges() {
-        const broken = project.edges
-            .filter(edge => !getNode(edge.from) || !getNode(edge.to))
-            .map(edge => `${edge.id || 'edge'} ${edge.type || ''}: ${edge.from || '?'} -> ${edge.to || '?'}${edge.slot ? ` (${edge.slot})` : ''}`);
-        if (!broken.length) return { ok: true, message: t('No broken edges found.', '未发现断开的连线') };
-        return {
-            ok: true,
-            message: t('Broken edges found: {items}', '发现断开的连线：{items}').replace('{items}', broken.slice(0, 4).join('; ') + (broken.length > 4 ? `; +${broken.length - 4}` : ''))
-        };
-    }
-
-    function markVlmAgentActionCardBusy(card, message) {
-        if (!card) return;
-        const buttons = card.querySelector?.('.sai-vlm-agent-action-buttons');
-        if (buttons) buttons.innerHTML = `<small class="is-running">${escapeHtml(message || t('Running...', '正在运行...'))}</small>`;
-        card.querySelectorAll?.('button,input').forEach(item => {
-            item.disabled = true;
-        });
-    }
-
-    function maybeRunVlmAgentActionFromAutoConfirmToggle(node, field) {
-        if (!node || node.type !== 'vlm' || !field || field.type !== 'checkbox' || !field.checked) return false;
-        const token = String(field.getAttribute('data-vlm-agent-action-auto-confirm') || '').trim();
-        if (!token) return false;
-        const [messageIndex, actionIndex] = token.split(':').map(Number);
-        if (!Number.isFinite(messageIndex) || !Number.isFinite(actionIndex)) return false;
-        const action = getVlmAgentAction(node, messageIndex, actionIndex);
-        const type = normalizeVlmExecutableActionType(action?.action || action?.type || '');
-        if (!isVlmImageToolActionType(type) || isVlmAgentPromptReviewRejected(action)) return false;
-        const state = String(action?.execution?.state || '').trim().toLowerCase();
-        if (state && state !== 'failed') return false;
-        const lockKey = `${node.id}:${messageIndex}:${actionIndex}`;
-        if (vlmAgentActionRunLocks.has(lockKey)) return true;
-        setVlmAgentActionExecution(node, messageIndex, actionIndex, {
-            state: 'queued',
-            message: t('Auto-confirmed; preparing generation...', '已自动确认，正在准备生成...'),
-            at: nowIso()
-        });
-        executeVlmAgentAction(node, messageIndex, actionIndex, { autoConfirmed: true, rememberAutoConfirm: true });
-        return true;
-    }
-
     function vlmAgentDanbooruPromptNeedsForcedCanonicalRepair(prompt, userPrompt, subjectCounts) {
         const text = String(prompt || '').trim();
         if (!text) return true;
@@ -20018,15 +20150,6 @@ ${renderGenerationMetadataInspectorSection(node)}
             action: action || '',
             purpose: purpose || ''
         };
-    }
-
-    function prepareVlmAgentImageActionStart(prompt) {
-        if (!getCanvasAgentSettings().enabled) {
-            setCanvasAgentSettingsPatch({ enabled: true }, { silentHistory: true });
-        }
-        canvasAgentState.input = prompt;
-        canvasAgentState.lastMessage = t('VLM Chat confirmed a tool call. Starting with the prepared prompt...', 'VLM Chat 已确认工具调用，正在使用准备好的提示词启动...');
-        renderCanvasAgentPanel();
     }
 
     function openNodeMediaFullscreen(node) {
@@ -23351,31 +23474,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return { ok: false, error };
     }
 
-    async function checkVlmModelStatus(node) {
-        if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
-        Object.assign(node, buildVlmModelStatusPatch(node, {
-            statusPatch: buildVlmModelCheckingStatus('Checking VLM model files...')
-        }));
-        renderAll({ inspector: false });
-        const response = await sendCanvasVlmModelStatusRequest(node);
-        const current = getNode(node.id);
-        if (current) {
-            applyVlmModelStatus(current, response);
-            mutate({ inspector: false });
-        }
-        return response;
-    }
-
-    function isVlmModelStatusFresh(node) {
-        const status = node?.vlm_model_status || {};
-        if (!status.ready) return false;
-        const currentVersion = String(node?.params?.version || '').trim();
-        if (currentVersion && String(status.version || '').trim() && String(status.version || '').trim() !== currentVersion) return false;
-        const checkedAt = Date.parse(status.checked_at || '');
-        if (!Number.isFinite(checkedAt)) return false;
-        return Date.now() - checkedAt < VLM_MODEL_STATUS_CACHE_TTL_MS;
-    }
-
     function openVlmMissingModelModal(node) {
         const status = node?.vlm_model_status || {};
         const rows = Array.isArray(status.missing_models) ? status.missing_models : [];
@@ -24455,61 +24553,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         }
     }
 
-    async function runVlmNode(node) {
-        if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
-        if (isNodeIgnored(node)) {
-            showToast('This VLM node is marked as skipped.');
-            return { ok: false, error: 'VLM node is skipped' };
-        }
-        if (isVlmNodeBusy(node)) {
-            showToast(t('VLM is still thinking. You can keep editing the next message while it finishes.', 'VLM 还在思考中。你可以继续编辑下一条消息，等待它完成。'));
-            return { ok: false, error: 'VLM node is busy' };
-        }
-        const runContext = prepareVlmNodeRunContext(node);
-        const { params, isChat, connectedSources, userPrompt } = runContext;
-        if (!String(params.prompt || '').trim()) {
-            showToast('VLM instruction cannot be empty.');
-            return { ok: false, error: 'VLM instruction cannot be empty.' };
-        }
-        const runInput = prepareVlmNodeRunInput(node, {
-            params,
-            isChat,
-            connectedSources,
-            userPrompt
-        });
-        const {
-            submittedPendingImages,
-            assetSources,
-            displayHistoryMessages,
-            rollingHistory,
-            historyMessages,
-            chatRequestState,
-            chatRequestId,
-            chatImages
-        } = runInput;
-        prepareVlmNodeRunState(node, {
-            isChat,
-            params,
-            displayHistoryMessages,
-            userPrompt,
-            assetSources,
-            chatImages,
-            conversationId: params.conversation_id || ''
-        });
-        return executeVlmNodeRun(node, {
-            isChat,
-            params,
-            requestId: chatRequestId,
-            assetSources,
-            historyMessages,
-            displayHistoryMessages,
-            rollingHistoryInfo: rollingHistory.info,
-            userPrompt,
-            chatRequestState,
-            submittedPendingImages
-        });
-    }
-
     function applyDirectorCapabilityToPayload(payload, capability) {
         if (!payload || typeof payload !== 'object') return payload;
         const next = cloneRunValue(payload, {});
@@ -25483,20 +25526,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         clearSchedulerBlockedState();
         mutate();
         if (!existingResultNode) {
-            const presetRect = getNodeRect(node);
-            const resultRect = getNodeRect(resultNode);
-            if (presetRect && resultRect) {
-                const left = Math.min(presetRect.x, resultRect.x);
-                const top = Math.min(presetRect.y, resultRect.y);
-                const right = Math.max(presetRect.x + presetRect.w, resultRect.x + resultRect.w);
-                const bottom = Math.max(presetRect.y + presetRect.h, resultRect.y + resultRect.h);
-                const cx = (left + right) / 2;
-                const cy = (top + bottom) / 2;
-                const panelEl = document.querySelector('.sai-canvas-agent-panel');
-                const panelWidth = panelEl ? panelEl.offsetWidth : 360;
-                const agentOffset = (panelWidth / 2 + 20) / (project.viewport.zoom || 1);
-                centerViewportOnWorld(cx + agentOffset, cy);
-            }
+            centerPresetRunViewport(node, resultNode);
         }
         showToast(t('Result placeholder created; submitting to AsyncTask.', '已创建结果占位节点，正在提交到 AsyncTask'));
         const payload = buildRunDryRunPayload(node, resultNode, runId);
@@ -25518,16 +25548,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         const edge = buildCanvasEdge('generate', { from: fromId, to: toId });
         Object.assign(project, buildProjectEdgeAppendPatch(project, edge));
         return edge;
-    }
-
-    function findCanvasAgentReservedResultNodeForPreset(presetNode) {
-        if (!presetNode?.id) return null;
-        return generatedResultNodesForPreset(presetNode).find(result => {
-            return result?.source?.kind === 'canvas_agent_reserved_result'
-                && !result.producer?.run_id
-                && !isResultRefreshing(result)
-                && !isCanvasRunActiveState(nodeStatusState(result));
-        }) || null;
     }
 
     function findReusableResultNodeForPreset(presetNode) {
@@ -26123,50 +26143,6 @@ ${renderGenerationMetadataInspectorSection(node)}
             getSelectedResultAsset,
             cloneValue: cloneRunValue
         });
-    }
-
-    function isVlmNodeBusy(node) {
-        const state = String(nodeStatusState(node) || '').toLowerCase();
-        return ['running', 'waiting', 'queued', 'preparing', 'checking'].includes(state);
-    }
-
-    function cleanVlmToolPrompt(prompt) {
-        return String(prompt || '').replace(/^\/(?:t2i|generate|image|draw)\b[:：]?\s*/i, '').trim();
-    }
-
-    function extractVlmPreparedImagePrompt(text) {
-        const source = String(text || '').trim();
-        if (!source) return '';
-        const cleanPreparedBlock = (value) => {
-            return String(value || '')
-                .replace(/```(?:text|prompt)?/gi, '')
-                .replace(/```/g, '')
-                .split(/\r?\n/)
-                .map(line => line.replace(/^\s*>\s?/, '').trim())
-                .filter(Boolean)
-                .join(', ')
-                .replace(/\s*,\s*,+/g, ', ')
-                .replace(/^["“”'`]+|["“”'`]+$/g, '')
-                .trim();
-        };
-        const blockPatterns = [
-            /(?:Prompt|Image prompt|Recommended prompt|Danbooru-style Tags)[^\n\r]*[:：]?\s*\n\s*([\s\S]{1,1600}?)(?=\n\s*(?:\*\*)?\s*(?:Negative Prompt|中文描述|Image Generation Recommendation|推荐操作|操作建议)\b|\n\s*---|$)/i,
-            /(?:提示词|推荐提示词|生成提示词|图像提示词)[^\n\r]*[:：]?\s*\n\s*([\s\S]{1,1600}?)(?=\n\s*(?:\*\*)?\s*(?:负面提示词|Negative Prompt|中文描述|推荐操作|操作建议)\b|\n\s*---|$)/i
-        ];
-        for (const pattern of blockPatterns) {
-            const prompt = cleanPreparedBlock(source.match(pattern)?.[1] || '');
-            if (prompt) return cleanVlmToolPrompt(prompt) || prompt;
-        }
-        const patterns = [
-            /(?:\*\*)?\s*(?:提示词|推荐提示词|生成提示词|图像提示词|Prompt|Image prompt|Prompt to submit)\s*(?:\*\*)?\s*[:：]\s*["“”']?([^\n\r]+)/i,
-            /(?:\*\*)?\s*(?:prompt|image_prompt|recommended_prompt)\s*(?:\*\*)?\s*=\s*["“”']?([^\n\r]+)/i
-        ];
-        for (const pattern of patterns) {
-            const match = source.match(pattern);
-            const prompt = String(match?.[1] || '').replace(/^["“”'`]+|["“”'`]+$/g, '').trim();
-            if (prompt) return cleanVlmToolPrompt(prompt) || prompt;
-        }
-        return '';
     }
 
     function mergeCommaPromptText(...values) {

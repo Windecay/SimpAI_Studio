@@ -3,23 +3,56 @@
 
     function createVlmAgentContext(source) {
         const scope = source || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getDefaultProjectId = () => String(call('getDefaultProjectId', '') || '').trim();
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const projectSource = sourceObject('projectSource');
+        const projectCall = (name, fallback, ...args) => typeof projectSource[name] === 'function'
+            ? projectSource[name](...args)
+            : fallback;
+        const selectionSource = sourceObject('selectionSource');
+        const selectionCall = (name, fallback, ...args) => typeof selectionSource[name] === 'function'
+            ? selectionSource[name](...args)
+            : fallback;
+        const nodeSource = sourceObject('nodeSource');
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const statusSource = sourceObject('statusSource');
+        const statusCall = (name, fallback, ...args) => typeof statusSource[name] === 'function'
+            ? statusSource[name](...args)
+            : fallback;
+        const promptSource = sourceObject('promptSource');
+        const promptCall = (name, fallback, ...args) => typeof promptSource[name] === 'function'
+            ? promptSource[name](...args)
+            : fallback;
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const actionSource = sourceObject('actionSource');
+        const actionCall = (name, fallback, ...args) => typeof actionSource[name] === 'function'
+            ? actionSource[name](...args)
+            : fallback;
+        const getDefaultProjectId = () => String(projectCall('getDefaultProjectId', '') || '').trim();
+        const t = (...args) => languageCall('t', args[0] || '', ...args);
+        const getVlmAgentActionTargetId = (...args) => String(actionCall('getVlmAgentActionTargetId', '', ...args) || '').trim();
 
         function selectedNodeIds() {
-            const value = call('getSelectedNodeIds', null);
+            const value = selectionCall('getSelectedNodeIds', null);
             if (Array.isArray(value)) return value.slice();
             if (value && typeof value !== 'string' && typeof value[Symbol.iterator] === 'function') return Array.from(value);
-            const selectedId = String(call('getSelectedNodeId', '') || '').trim();
+            const selectedId = String(selectionCall('getSelectedNodeId', '') || '').trim();
             return selectedId ? [selectedId] : [];
         }
 
         function summarizeNode(node) {
-            return call('summarizeVlmAgentNode', summarizeVlmAgentNode(node), node) || {};
+            return nodeCall('summarizeVlmAgentNode', summarizeVlmAgentNode(node), node) || {};
         }
 
         function isQwenTtsNode(node) {
-            return !!call('isQwenTtsNode', String(node?.type || '').startsWith('qwen_tts_'), node);
+            return !!nodeCall('isQwenTtsNode', String(node?.type || '').startsWith('qwen_tts_'), node);
         }
 
         function summarizeVlmAgentNode(node) {
@@ -57,7 +90,7 @@
         }
 
         function nodeStatusState(node) {
-            return String(call(
+            return String(statusCall(
                 'nodeStatusState',
                 node?.status?.state || node?.producer?.state || '',
                 node
@@ -65,7 +98,7 @@
         }
 
         function isCanvasRunActiveState(state) {
-            return !!call(
+            return !!statusCall(
                 'isCanvasRunActiveState',
                 ['queued', 'running', 'waiting', 'task_ready', 'args_ready', 'dry_run_ready', 'cancelling', 'skipping']
                     .includes(String(state || '').toLowerCase()),
@@ -74,7 +107,7 @@
         }
 
         function isTerminalRunState(state) {
-            return !!call(
+            return !!statusCall(
                 'isTerminalRunState',
                 ['finished', 'failed', 'canceled', 'skipped'].includes(String(state || '').toLowerCase()),
                 state
@@ -90,7 +123,7 @@
                     fallback = value;
                 }
             }
-            return call('cloneRunValue', fallback, value, {});
+            return statusCall('cloneRunValue', fallback, value, {});
         }
 
         function classifyVlmAgentToolStatus(state, run, resultNode) {
@@ -112,7 +145,7 @@
 
         function summarizeVlmAgentRun(run) {
             if (!run || typeof run !== 'object') return null;
-            const resultNode = call('getNode', null, run.placeholder_node_id);
+            const resultNode = nodeCall('getNode', null, run.placeholder_node_id);
             const state = String(run.state || nodeStatusState(resultNode) || '').toLowerCase();
             return {
                 run_id: run.id || run.run_id || '',
@@ -137,7 +170,7 @@
 
         function summarizeVlmAgentResultStatus(node) {
             if (!node || node.type !== 'result') return null;
-            const project = call('getProject', {}) || {};
+            const project = projectCall('getProject', {}) || {};
             const run = (Array.isArray(project.runs) ? project.runs : []).find(item => item.id && item.id === node.producer?.run_id);
             const state = String(run?.state || nodeStatusState(node) || '').toLowerCase();
             return {
@@ -159,7 +192,7 @@
         }
 
         function buildVlmAgentToolStatus() {
-            const project = call('getProject', {}) || {};
+            const project = projectCall('getProject', {}) || {};
             const runs = (Array.isArray(project.runs) ? project.runs : [])
                 .slice()
                 .sort((a, b) => (Date.parse(b.updated_at || b.created_at || '') || 0) - (Date.parse(a.updated_at || a.created_at || '') || 0))
@@ -190,14 +223,64 @@
             };
         }
 
+        function latestVlmAgentRunForTarget(targetId) {
+            const project = projectCall('getProject', {}) || {};
+            const runs = Array.isArray(project.runs) ? project.runs : [];
+            const target = nodeCall('getNode', null, targetId);
+            const runId = target?.producer?.run_id || targetId || '';
+            return runs.find(item => item.id === runId || item.run_id === runId)
+                || runs.find(item => item.placeholder_node_id === targetId || item.preset_node_id === targetId || item.qwen_tts_node_id === targetId || item.producer_node_id === targetId)
+                || runs.slice().sort((a, b) => (Date.parse(b.updated_at || b.created_at || '') || 0) - (Date.parse(a.updated_at || a.created_at || '') || 0))[0]
+                || null;
+        }
+
+        function describeVlmAgentToolStatus(action) {
+            const targetId = getVlmAgentActionTargetId(action);
+            const target = nodeCall('getNode', null, targetId);
+            const run = latestVlmAgentRunForTarget(targetId);
+            const resultNode = target?.type === 'result' ? target : nodeCall('getNode', null, run?.placeholder_node_id);
+            const state = String(run?.state || nodeStatusState(resultNode || target) || '').toLowerCase();
+            const statusKind = classifyVlmAgentToolStatus(state, run, resultNode);
+            const outputCount = Number(run?.output_count ?? (Array.isArray(resultNode?.assets) ? resultNode.assets.length : (resultNode?.asset ? 1 : 0)) ?? 0);
+            const title = target?.title || resultNode?.title || run?.placeholder_node_id || run?.preset_node_id || targetId || t('latest run', '最近任务');
+            const detail = run?.message || resultNode?.status?.message || run?.error || resultNode?.error_details?.error || '';
+            const labels = {
+                pending: t('waiting or preflight-ready', '等待或预检中'),
+                running: t('running', '正在运行'),
+                user_interrupt_pending: t('user interruption requested', '用户已请求中断，等待后端确认'),
+                succeeded: t('succeeded', '已成功'),
+                finished_without_output: t('finished without output', '已结束但无输出'),
+                failed: t('failed', '错误中断'),
+                user_stopped: t('stopped by user', '用户手动停止'),
+                user_skipped: t('skipped by user', '用户手动跳过'),
+                terminal: t('terminal', '已结束'),
+                unknown: t('unknown', '未知')
+            };
+            const message = `${title}: ${labels[statusKind] || statusKind || labels.unknown}${outputCount ? `, ${outputCount} output(s)` : ''}${detail ? ` · ${detail}` : ''}`;
+            return { ok: !!(run || target), message, target_id: target?.id || resultNode?.id || '', status_kind: statusKind };
+        }
+
+        function findVlmAgentBrokenEdges() {
+            const project = projectCall('getProject', {}) || {};
+            const edges = Array.isArray(project.edges) ? project.edges : [];
+            const broken = edges
+                .filter(edge => !nodeCall('getNode', null, edge.from) || !nodeCall('getNode', null, edge.to))
+                .map(edge => `${edge.id || 'edge'} ${edge.type || ''}: ${edge.from || '?'} -> ${edge.to || '?'}${edge.slot ? ` (${edge.slot})` : ''}`);
+            if (!broken.length) return { ok: true, message: t('No broken edges found.', '未发现断开的连线') };
+            return {
+                ok: true,
+                message: t('Broken edges found: {items}', '发现断开的连线：{items}').replace('{items}', broken.slice(0, 4).join('; ') + (broken.length > 4 ? `; +${broken.length - 4}` : ''))
+            };
+        }
+
         function buildVlmAgentContext(node, options) {
             const opts = options || {};
-            const project = call('getProject', {}) || {};
+            const project = projectCall('getProject', {}) || {};
             const nodes = Array.isArray(project.nodes) ? project.nodes : [];
             const edges = Array.isArray(project.edges) ? project.edges : [];
             const instructionPrompt = String(opts.userPrompt || opts.prompt || opts.instruction || '').trim();
-            const instructionOverrideEntry = call('findCanvasAgentPresetInstructionOverride', null, instructionPrompt);
-            const instructionPresetName = String(call(
+            const instructionOverrideEntry = promptCall('findCanvasAgentPresetInstructionOverride', null, instructionPrompt);
+            const instructionPresetName = String(promptCall(
                 'normalizePresetName',
                 String(instructionOverrideEntry?.name || instructionOverrideEntry?.display_name || ''),
                 instructionOverrideEntry?.name || instructionOverrideEntry?.display_name || ''
@@ -205,15 +288,15 @@
             const selectedIds = selectedNodeIds();
             const selectedSet = new Set(selectedIds);
             const connectedIds = new Set([node?.id || '']);
-            const textToImageTarget = call('canvasAgentPromptTargetFromPurpose', {}, 'text-to-image', { presetName: instructionPresetName }) || {};
-            const imageEditTarget = call('canvasAgentPromptTargetFromPurpose', {}, 'image edit', { presetName: instructionPresetName }) || {};
+            const textToImageTarget = promptCall('canvasAgentPromptTargetFromPurpose', {}, 'text-to-image', { presetName: instructionPresetName }) || {};
+            const imageEditTarget = promptCall('canvasAgentPromptTargetFromPurpose', {}, 'image edit', { presetName: instructionPresetName }) || {};
             const withInstructionPresetOverride = (target) => Object.assign({}, target || {}, instructionPresetName ? {
                 preset_instruction_override: true,
                 instruction_preset: instructionPresetName,
                 instruction_override_source: 'user_prompt'
             } : {}, {
-                instruction: call('canvasAgentPromptTargetInstruction', '', target),
-                context_line: call('canvasAgentPromptTargetContextLine', '', target)
+                instruction: promptCall('canvasAgentPromptTargetInstruction', '', target),
+                context_line: promptCall('canvasAgentPromptTargetContextLine', '', target)
             });
 
             edges.forEach((edge) => {
@@ -222,7 +305,7 @@
                 if (selectedSet.has(edge.from)) connectedIds.add(edge.to);
                 if (selectedSet.has(edge.to)) connectedIds.add(edge.from);
             });
-            const selectedNodes = selectedIds.map((id) => call('getNode', null, id)).filter(Boolean).map(summarizeNode);
+            const selectedNodes = selectedIds.map((id) => nodeCall('getNode', null, id)).filter(Boolean).map(summarizeNode);
             const nearbyNodes = nodes
                 .filter(item => item && item.id !== node?.id && (connectedIds.has(item.id) || selectedSet.has(item.id)))
                 .slice(0, 24)
@@ -233,15 +316,15 @@
                 nodeTypes[key] = (nodeTypes[key] || 0) + 1;
             });
             const brokenEdges = edges
-                .filter(edge => !call('getNode', null, edge.from) || !call('getNode', null, edge.to))
+                .filter(edge => !nodeCall('getNode', null, edge.from) || !nodeCall('getNode', null, edge.to))
                 .slice(0, 20)
                 .map(edge => ({ id: edge.id, type: edge.type, from: edge.from, to: edge.to, slot: edge.slot || '' }));
-            const groups = call('ensureProjectGroups', [],);
+            const groups = projectCall('ensureProjectGroups', [],);
             return {
                 project_id: project.id || getDefaultProjectId(),
                 project_title: project.title || '',
                 stage: {
-                    __lang: call('runtimeUiLang', 'en')
+                    __lang: languageCall('runtimeUiLang', 'en')
                 },
                 current_node_id: node?.id || '',
                 selected_node_ids: selectedIds.slice(0, 20),
@@ -270,136 +353,291 @@
                     slot: edge.slot || ''
                 })),
                 broken_edges: brokenEdges,
-                tool_status: call('buildVlmAgentToolStatus', buildVlmAgentToolStatus())
+                tool_status: statusCall('buildVlmAgentToolStatus', buildVlmAgentToolStatus())
             };
         }
 
-        return { buildVlmAgentContext, buildVlmAgentToolStatus };
+        return {
+            buildVlmAgentContext,
+            buildVlmAgentToolStatus,
+            latestVlmAgentRunForTarget,
+            describeVlmAgentToolStatus,
+            findVlmAgentBrokenEdges
+        };
     }
 
     function createCanvasVlmChatController(context) {
         const scope = context || {};
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const generationSource = scope.generationSource && typeof scope.generationSource === 'object'
+            ? scope.generationSource
+            : {};
+        const generationCall = (name, fallback, ...args) => typeof generationSource[name] === 'function'
+            ? generationSource[name](...args)
+            : fallback;
+        const promptSource = scope.promptSource && typeof scope.promptSource === 'object'
+            ? scope.promptSource
+            : {};
+        const promptCall = (name, fallback, ...args) => typeof promptSource[name] === 'function'
+            ? promptSource[name](...args)
+            : fallback;
+        const agentActionSource = scope.agentActionSource && typeof scope.agentActionSource === 'object'
+            ? scope.agentActionSource
+            : {};
+        const agentActionCall = (name, fallback, ...args) => typeof agentActionSource[name] === 'function'
+            ? agentActionSource[name](...args)
+            : fallback;
+        const transportSource = scope.transportSource && typeof scope.transportSource === 'object'
+            ? scope.transportSource
+            : {};
+        const transportCall = (name, fallback, ...args) => typeof transportSource[name] === 'function'
+            ? transportSource[name](...args)
+            : fallback;
+        const customApiSource = scope.customApiSource && typeof scope.customApiSource === 'object'
+            ? scope.customApiSource
+            : {};
+        const customApiCall = (name, fallback, ...args) => typeof customApiSource[name] === 'function'
+            ? customApiSource[name](...args)
+            : fallback;
+        const schedulerSource = scope.schedulerSource && typeof scope.schedulerSource === 'object'
+            ? scope.schedulerSource
+            : {};
+        const schedulerCall = (name, fallback, ...args) => typeof schedulerSource[name] === 'function'
+            ? schedulerSource[name](...args)
+            : fallback;
+        const wildcardSource = scope.wildcardSource && typeof scope.wildcardSource === 'object'
+            ? scope.wildcardSource
+            : {};
+        const wildcardCall = (name, fallback, ...args) => typeof wildcardSource[name] === 'function'
+            ? wildcardSource[name](...args)
+            : fallback;
+        const uiSource = scope.uiSource && typeof scope.uiSource === 'object'
+            ? scope.uiSource
+            : {};
+        const uiCall = (name, fallback, ...args) => typeof uiSource[name] === 'function'
+            ? uiSource[name](...args)
+            : fallback;
+        const renderSource = scope.renderSource && typeof scope.renderSource === 'object'
+            ? scope.renderSource
+            : {};
+        const renderCall = (name, fallback, ...args) => typeof renderSource[name] === 'function'
+            ? renderSource[name](...args)
+            : fallback;
+        const nodeSource = scope.nodeSource && typeof scope.nodeSource === 'object'
+            ? scope.nodeSource
+            : {};
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const configSource = scope.configSource && typeof scope.configSource === 'object'
+            ? scope.configSource
+            : {};
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const modelStatusSource = scope.modelStatusSource && typeof scope.modelStatusSource === 'object'
+            ? scope.modelStatusSource
+            : {};
+        const modelStatusCall = (name, fallback, ...args) => typeof modelStatusSource[name] === 'function'
+            ? modelStatusSource[name](...args)
+            : fallback;
+        const agentSettingsSource = scope.agentSettingsSource && typeof scope.agentSettingsSource === 'object'
+            ? scope.agentSettingsSource
+            : {};
+        const agentSettingsCall = (name, fallback, ...args) => typeof agentSettingsSource[name] === 'function'
+            ? agentSettingsSource[name](...args)
+            : fallback;
+        const assetSource = scope.assetSource && typeof scope.assetSource === 'object'
+            ? scope.assetSource
+            : {};
+        const assetCall = (name, fallback, ...args) => typeof assetSource[name] === 'function'
+            ? assetSource[name](...args)
+            : fallback;
+        const inputMediaSource = scope.inputMediaSource && typeof scope.inputMediaSource === 'object'
+            ? scope.inputMediaSource
+            : {};
+        const inputMediaCall = (name, fallback, ...args) => typeof inputMediaSource[name] === 'function'
+            ? inputMediaSource[name](...args)
+            : fallback;
+        const stateSource = scope.stateSource && typeof scope.stateSource === 'object'
+            ? scope.stateSource
+            : {};
+        const stateCall = (name, fallback, ...args) => typeof stateSource[name] === 'function'
+            ? stateSource[name](...args)
+            : fallback;
+        const resultSource = scope.resultSource && typeof scope.resultSource === 'object'
+            ? scope.resultSource
+            : {};
+        const resultCall = (name, fallback, ...args) => typeof resultSource[name] === 'function'
+            ? resultSource[name](...args)
+            : fallback;
+        const historySource = scope.historySource && typeof scope.historySource === 'object'
+            ? scope.historySource
+            : {};
+        const historyCall = (name, fallback, ...args) => typeof historySource[name] === 'function'
+            ? historySource[name](...args)
+            : fallback;
+        const languageSource = scope['languageSource'] && typeof scope['languageSource'] === 'object'
+            ? scope['languageSource']
+            : {};
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const utilitySource = scope.utilitySource && typeof scope.utilitySource === 'object'
+            ? scope.utilitySource
+            : {};
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const uiStateSource = scope.uiStateSource && typeof scope.uiStateSource === 'object'
+            ? scope.uiStateSource
+            : {};
+        const uiStateCall = (name, fallback, ...args) => typeof uiStateSource[name] === 'function'
+            ? uiStateSource[name](...args)
+            : fallback;
+        const backendContextSource = scope.backendContextSource && typeof scope.backendContextSource === 'object'
+            ? scope.backendContextSource
+            : {};
+        const backendContextCall = (name, fallback, ...args) => typeof backendContextSource[name] === 'function'
+            ? backendContextSource[name](...args)
+            : fallback;
         const getObjectConfig = (name, fallback) => {
-            const value = call(name, fallback);
+            const value = configCall(name, fallback);
             return value && typeof value === 'object' ? value : fallback;
         };
         const getArrayConfig = (name, fallback) => {
-            const value = call(name, fallback);
+            const value = configCall(name, fallback);
             return Array.isArray(value) ? value : fallback;
         };
-        const getNumberConfig = (name, fallback) => Number(call(name, fallback)) || fallback;
+        const getNumberConfig = (name, fallback) => Number(configCall(name, fallback)) || fallback;
         const VLM_CONTEXT_WINDOWS = getObjectConfig('getVlmContextWindows', {});
-        const VLM_DEFAULT_VERSION = String(call('getVlmDefaultVersion', Object.keys(VLM_CONTEXT_WINDOWS)[0] || '') || Object.keys(VLM_CONTEXT_WINDOWS)[0] || '');
+        const VLM_DEFAULT_VERSION = String(configCall('getVlmDefaultVersion', Object.keys(VLM_CONTEXT_WINDOWS)[0] || '') || Object.keys(VLM_CONTEXT_WINDOWS)[0] || '');
         const VLM_CHAT_DEFAULT_FONT_SIZE = getNumberConfig('getVlmChatDefaultFontSize', 14);
         const VLM_CHAT_DEFAULT_MAX_HISTORY = getNumberConfig('getVlmChatDefaultMaxHistory', 12);
         const VLM_CHAT_CONTEXT_CHARS_MIN = getNumberConfig('getVlmChatContextCharsMin', 1200);
         const VLM_CHAT_DEFAULT_CONTEXT_CHARS = getNumberConfig('getVlmChatDefaultContextChars', 6000);
         const VLM_CHAT_CONTEXT_CHARS_HARD_MAX = getNumberConfig('getVlmChatContextCharsHardMax', 18000);
         const VLM_IMAGE_SLOTS = getArrayConfig('getVlmImageSlots', []);
-        const getDefaultProjectId = () => String(call('getDefaultProjectId', '') || '').trim();
+        const getDefaultProjectId = () => String(nodeCall('getDefaultProjectId', '') || '').trim();
         const clampValue = (value, min, max) => Math.min(max, Math.max(min, value));
-        const escapeHtml = (...args) => call('escapeHtml', String(args[0] ?? ''), ...args);
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const escapeHtml = (...args) => utilityCall('escapeHtml', String(args[0] ?? ''), ...args);
         const VLM_AGENT_CLEAN_ACTION_PROMPT_UNSET = {};
-        const vlmAgentCleanActionPromptOverride = (...args) => call('vlmAgentCleanActionPrompt', VLM_AGENT_CLEAN_ACTION_PROMPT_UNSET, ...args);
-        const cleanVlmToolPrompt = (...args) => call('cleanVlmToolPrompt', String(args[0] ?? ''), ...args);
-        const stripCanvasAgentInlineGenerationParams = (...args) => call('stripCanvasAgentInlineGenerationParams', String(args[0] ?? ''), ...args);
-        const canvasAgentUserExplicitNegativePrompt = (...args) => !!call('canvasAgentUserExplicitNegativePrompt', false, ...args);
-        const extractVlmPreparedImagePrompt = (...args) => call('extractVlmPreparedImagePrompt', '', ...args);
-        const vlmAgentUserPromptHasAssistantPersonaImageIntent = (...args) => !!call('vlmAgentUserPromptHasAssistantPersonaImageIntent', false, ...args);
-        const normalizeVlmAgentMode = (...args) => call('normalizeVlmAgentMode', 'persona', ...args);
-        const findCanvasAgentPresetInstructionOverride = (...args) => call('findCanvasAgentPresetInstructionOverride', null, ...args);
-        const normalizePresetName = (...args) => call('normalizePresetName', String(args[0] ?? ''), ...args);
-        const stripCanvasAgentPresetFromPrompt = (...args) => call('stripCanvasAgentPresetFromPrompt', String(args[0] ?? ''), ...args);
-        const findCanvasAgentPresetEntryByAlias = (...args) => call('findCanvasAgentPresetEntryByAlias', null, ...args);
-        const canvasAgentPromptNeedsTargetRewrite = (...args) => !!call('canvasAgentPromptNeedsTargetRewrite', false, ...args);
-        const vlmAgentDanbooruPromptNeedsForcedCanonicalRepair = (...args) => !!call('vlmAgentDanbooruPromptNeedsForcedCanonicalRepair', false, ...args);
-        const canvasAgentDanbooruFallbackRewrite = (...args) => call('canvasAgentDanbooruFallbackRewrite', '', ...args);
-        const canvasAgentMergeDanbooruPromptWithContext = (...args) => call('canvasAgentMergeDanbooruPromptWithContext', String(args[0] ?? ''), ...args);
-        const canvasAgentCanonicalizeDanbooruPrompt = (...args) => call('canvasAgentCanonicalizeDanbooruPrompt', String(args[0] ?? ''), ...args);
-        const canvasAgentPromptDefaultsForPurpose = (...args) => call('canvasAgentPromptDefaultsForPurpose', {}, ...args);
-        const extractCanvasAgentAspectFromText = (...args) => call('extractCanvasAgentAspectFromText', '', ...args);
-        const canvasAgentPromptTargetFromPurpose = (...args) => call('canvasAgentPromptTargetFromPurpose', null, ...args);
-        const canvasAgentPromptTargetEntryForPurpose = (...args) => call('canvasAgentPromptTargetEntryForPurpose', null, ...args);
-        const canvasAgentPresetPromptDefaults = (...args) => call('canvasAgentPresetPromptDefaults', {}, ...args);
-        const canvasAgentPromptTargetContextLine = (...args) => call('canvasAgentPromptTargetContextLine', '', ...args);
-        const canvasAgentPromptPreflightFacts = (...args) => call('canvasAgentPromptPreflightFacts', [], ...args);
-        const canvasAgentPromptPreflight = (...args) => call('canvasAgentPromptPreflight', null, ...args);
-        const ensureCanvasAgentPromptMatchesTarget = (...args) => call('ensureCanvasAgentPromptMatchesTarget', { ok: false }, ...args);
-        const vlmAgentPreparedPromptFastPath = (...args) => !!call('vlmAgentPreparedPromptFastPath', false, ...args);
-        const vlmAgentLocalPromptPreflightPass = (...args) => call('vlmAgentLocalPromptPreflightPass', null, ...args);
-        const getWorkbenchUserContext = (...args) => call('getWorkbenchUserContext', {}, ...args);
-        const wildcardsPreview = (...args) => call('wildcardsPreview', null, ...args);
-        const prepareVlmAgentImageActionStart = (...args) => call('prepareVlmAgentImageActionStart', undefined, ...args);
-        const vlmCanvasAgentWorkflowKey = (...args) => call('vlmCanvasAgentWorkflowKey', '', ...args);
-        const runCanvasAgentImageEdit = (...args) => call('runCanvasAgentImageEdit', null, ...args);
-        const runCanvasAgentQuickTool = (...args) => call('runCanvasAgentQuickTool', null, ...args);
-        const runCanvasAgentTextToImage = (...args) => call('runCanvasAgentTextToImage', null, ...args);
-        const sendVlmRun = (...args) => call('sendVlmRun', null, ...args);
-        const sendVlmCancel = (...args) => call('sendVlmCancel', null, ...args);
-        const sendVlmUnload = (...args) => call('sendVlmUnload', null, ...args);
-        const sendVlmModelDownloads = (...args) => call('sendVlmModelDownloads', { ok: false, error: 'VLM model download API is unavailable' }, ...args);
-        const sendVlmCustomModels = (...args) => call('sendVlmCustomModels', { ok: false, error: 'VLM custom model API is unavailable' }, ...args);
-        const getVlmCustomKeyValue = (...args) => call('getVlmCustomKeyValue', '', ...args);
-        const setVlmCustomKeyValue = (...args) => call('setVlmCustomKeyValue', undefined, ...args);
-        const readVlmCustomApiProfiles = (...args) => call('readVlmCustomApiProfiles', {}, ...args);
-        const writeVlmCustomApiProfiles = (...args) => call('writeVlmCustomApiProfiles', undefined, ...args);
-        const getVlmCustomProfileKey = (...args) => call('getVlmCustomProfileKey', 'openai', ...args);
-        const getVlmCustomProvider = (...args) => call('getVlmCustomProvider', {}, ...args);
-        const getCanvasAgentCustomParams = (...args) => call('getCanvasAgentCustomParams', {}, ...args);
-        const setCanvasAgentCustomSettings = (...args) => call('setCanvasAgentCustomSettings', undefined, ...args);
+        const vlmAgentCleanActionPromptOverride = (...args) => promptCall('vlmAgentCleanActionPrompt', VLM_AGENT_CLEAN_ACTION_PROMPT_UNSET, ...args);
+        const stripCanvasAgentInlineGenerationParams = (...args) => generationCall('stripCanvasAgentInlineGenerationParams', String(args[0] ?? ''), ...args);
+        const canvasAgentUserExplicitNegativePrompt = (...args) => !!generationCall('canvasAgentUserExplicitNegativePrompt', false, ...args);
+        const vlmAgentUserPromptHasAssistantPersonaImageIntent = (...args) => !!promptCall('vlmAgentUserPromptHasAssistantPersonaImageIntent', false, ...args);
+        const normalizeVlmAgentMode = (...args) => configCall('normalizeVlmAgentMode', 'persona', ...args);
+        const findCanvasAgentPresetInstructionOverride = (...args) => promptCall('findCanvasAgentPresetInstructionOverride', null, ...args);
+        const normalizePresetName = (...args) => promptCall('normalizePresetName', String(args[0] ?? ''), ...args);
+        const stripCanvasAgentPresetFromPrompt = (...args) => promptCall('stripCanvasAgentPresetFromPrompt', String(args[0] ?? ''), ...args);
+        const findCanvasAgentPresetEntryByAlias = (...args) => promptCall('findCanvasAgentPresetEntryByAlias', null, ...args);
+        const canvasAgentPromptNeedsTargetRewrite = (...args) => !!promptCall('canvasAgentPromptNeedsTargetRewrite', false, ...args);
+        const vlmAgentDanbooruPromptNeedsForcedCanonicalRepair = (...args) => !!promptCall('vlmAgentDanbooruPromptNeedsForcedCanonicalRepair', false, ...args);
+        const canvasAgentDanbooruFallbackRewrite = (...args) => promptCall('canvasAgentDanbooruFallbackRewrite', '', ...args);
+        const canvasAgentMergeDanbooruPromptWithContext = (...args) => promptCall('canvasAgentMergeDanbooruPromptWithContext', String(args[0] ?? ''), ...args);
+        const canvasAgentCanonicalizeDanbooruPrompt = (...args) => promptCall('canvasAgentCanonicalizeDanbooruPrompt', String(args[0] ?? ''), ...args);
+        const canvasAgentPromptDefaultsForPurpose = (...args) => promptCall('canvasAgentPromptDefaultsForPurpose', {}, ...args);
+        const extractCanvasAgentAspectFromText = (...args) => generationCall('extractCanvasAgentAspectFromText', '', ...args);
+        const canvasAgentPromptTargetFromPurpose = (...args) => promptCall('canvasAgentPromptTargetFromPurpose', null, ...args);
+        const canvasAgentPromptTargetEntryForPurpose = (...args) => promptCall('canvasAgentPromptTargetEntryForPurpose', null, ...args);
+        const canvasAgentPresetPromptDefaults = (...args) => promptCall('canvasAgentPresetPromptDefaults', {}, ...args);
+        const canvasAgentPromptTargetContextLine = (...args) => promptCall('canvasAgentPromptTargetContextLine', '', ...args);
+        const canvasAgentPromptPreflightFacts = (...args) => promptCall('canvasAgentPromptPreflightFacts', [], ...args);
+        const canvasAgentPromptPreflight = (...args) => promptCall('canvasAgentPromptPreflight', null, ...args);
+        const ensureCanvasAgentPromptMatchesTarget = (...args) => promptCall('ensureCanvasAgentPromptMatchesTarget', { ok: false }, ...args);
+        const vlmAgentPreparedPromptFastPath = (...args) => !!promptCall('vlmAgentPreparedPromptFastPath', false, ...args);
+        const vlmAgentLocalPromptPreflightPass = (...args) => promptCall('vlmAgentLocalPromptPreflightPass', null, ...args);
+        const getWorkbenchUserContext = (...args) => backendContextCall('getWorkbenchUserContext', {}, ...args);
+        const wildcardsPreview = (...args) => wildcardCall('wildcardsPreview', null, ...args);
+        const prepareVlmAgentImageActionStart = (...args) => agentActionCall('prepareVlmAgentImageActionStart', undefined, ...args);
+        const vlmCanvasAgentWorkflowKey = (...args) => agentActionCall('vlmCanvasAgentWorkflowKey', '', ...args);
+        const runCanvasAgentImageEdit = (...args) => agentActionCall('runCanvasAgentImageEdit', null, ...args);
+        const runCanvasAgentQuickTool = (...args) => agentActionCall('runCanvasAgentQuickTool', null, ...args);
+        const runCanvasAgentTextToImage = (...args) => agentActionCall('runCanvasAgentTextToImage', null, ...args);
+        const sendVlmRun = (...args) => transportCall('sendVlmRun', null, ...args);
+        const sendVlmCancel = (...args) => transportCall('sendVlmCancel', null, ...args);
+        const sendVlmUnload = (...args) => transportCall('sendVlmUnload', null, ...args);
+        const sendVlmModelDownloads = (...args) => transportCall('sendVlmModelDownloads', { ok: false, error: 'VLM model download API is unavailable' }, ...args);
+        const sendVlmCustomModels = (...args) => transportCall('sendVlmCustomModels', { ok: false, error: 'VLM custom model API is unavailable' }, ...args);
+        const getVlmCustomKeyValue = (...args) => customApiCall('getVlmCustomKeyValue', '', ...args);
+        const setVlmCustomKeyValue = (...args) => customApiCall('setVlmCustomKeyValue', undefined, ...args);
+        const readVlmCustomApiProfiles = (...args) => customApiCall('readVlmCustomApiProfiles', {}, ...args);
+        const writeVlmCustomApiProfiles = (...args) => customApiCall('writeVlmCustomApiProfiles', undefined, ...args);
+        const getVlmCustomProfileKey = (...args) => customApiCall('getVlmCustomProfileKey', 'openai', ...args);
+        const getVlmCustomProvider = (...args) => customApiCall('getVlmCustomProvider', {}, ...args);
+        const getCanvasAgentCustomParams = (...args) => agentSettingsCall('getCanvasAgentCustomParams', {}, ...args);
+        const setCanvasAgentCustomSettings = (...args) => agentSettingsCall('setCanvasAgentCustomSettings', undefined, ...args);
         const getVlmChatUiAreas = (...args) => {
-            const areas = call('getVlmChatUiAreas', [], ...args);
+            const areas = uiCall('getVlmChatUiAreas', [], ...args);
             return Array.isArray(areas) ? areas : [];
         };
-        const addVlmAgentActionRunLock = (...args) => call('addVlmAgentActionRunLock', undefined, ...args);
-        const deleteVlmAgentActionRunLock = (...args) => call('deleteVlmAgentActionRunLock', undefined, ...args);
-        const hasVlmAgentActionRunLock = (...args) => !!call('hasVlmAgentActionRunLock', false, ...args);
-        const focusVlmAgentTarget = (...args) => call('focusVlmAgentTarget', { ok: false }, ...args);
-        const selectVlmAgentTarget = (...args) => call('selectVlmAgentTarget', { ok: false }, ...args);
-        const describeVlmAgentToolStatus = (...args) => call('describeVlmAgentToolStatus', { ok: false }, ...args);
-        const findVlmAgentBrokenEdges = (...args) => call('findVlmAgentBrokenEdges', { ok: false }, ...args);
-        const getNode = (...args) => call('getNode', null, ...args);
-        const getProject = (...args) => call('getProject', null, ...args);
+        const addVlmAgentActionRunLock = (...args) => agentActionCall('addVlmAgentActionRunLock', undefined, ...args);
+        const deleteVlmAgentActionRunLock = (...args) => agentActionCall('deleteVlmAgentActionRunLock', undefined, ...args);
+        const hasVlmAgentActionRunLock = (...args) => !!agentActionCall('hasVlmAgentActionRunLock', false, ...args);
+        const describeVlmAgentToolStatus = (...args) => agentActionCall('describeVlmAgentToolStatus', { ok: false }, ...args);
+        const findVlmAgentBrokenEdges = (...args) => agentActionCall('findVlmAgentBrokenEdges', { ok: false }, ...args);
+        const getNode = (...args) => nodeCall('getNode', null, ...args);
+        const getNodeRect = (...args) => nodeCall('getNodeRect', null, ...args);
+        const setVlmAgentTargetSelection = (...args) => nodeCall('setVlmAgentTargetSelection', undefined, ...args);
+        const centerViewportOnWorld = (...args) => nodeCall('centerViewportOnWorld', undefined, ...args);
+        const renderNodes = (...args) => renderCall('renderNodes', undefined, ...args);
+        const renderEdges = (...args) => renderCall('renderEdges', undefined, ...args);
+        const renderInspector = (...args) => renderCall('renderInspector', undefined, ...args);
+        const renderMinimap = (...args) => renderCall('renderMinimap', undefined, ...args);
+        const selectNodeLight = (...args) => renderCall('selectNodeLight', undefined, ...args);
+        const getProject = (...args) => nodeCall('getProject', null, ...args);
         const buildVlmAgentContext = (...args) => call('buildVlmAgentContext', null, ...args);
-        const isVlmMediaSource = (...args) => !!call('isVlmMediaSource', false, ...args);
-        const checkVlmModelStatus = (...args) => call('checkVlmModelStatus', null, ...args);
-        const isVlmModelStatusFresh = (...args) => !!call('isVlmModelStatusFresh', false, ...args);
-        const openVlmMissingModelModal = (...args) => call('openVlmMissingModelModal', undefined, ...args);
-        const applyVlmModelStatus = (...args) => call('applyVlmModelStatus', undefined, ...args);
-        const renderAll = (...args) => call('renderAll', undefined, ...args);
-        const getSelectedResultAsset = (...args) => call('getSelectedResultAsset', null, ...args);
-        const getVlmSourceAsset = (...args) => call('getVlmSourceAsset', null, ...args);
-        const openVlmAssetViewer = (...args) => call('openVlmAssetViewer', undefined, ...args);
-        const refreshVlmChatAssetRoot = (...args) => call('refreshVlmChatAssetRoot', false, ...args);
-        const hasVlmChatAssetRoot = (...args) => !!call('hasVlmChatAssetRoot', false, ...args);
-        const safeVlmChatFallbackSrc = (...args) => call('safeVlmChatFallbackSrc', '', ...args);
-        const isImageFile = (...args) => !!call('isImageFile', false, ...args);
-        const readFileAsDataUrl = (...args) => call('readFileAsDataUrl', '', ...args);
-        const getImageDimensions = (...args) => call('getImageDimensions', { width: 0, height: 0 }, ...args);
-        const createThumbnailDataUrl = (...args) => call('createThumbnailDataUrl', '', ...args);
-        const serializeAssetForRun = (...args) => call('serializeAssetForRun', null, ...args);
-        const serializeAssetSourceForRun = (...args) => call('serializeAssetSourceForRun', null, ...args);
-        const safeAssetDisplaySrc = (...args) => call('safeAssetDisplaySrc', '', ...args);
-        const inferChatImageRelativePath = (...args) => call('inferChatImageRelativePath', '', ...args);
-        const safeVlmChatAssetThumb = (...args) => call('safeVlmChatAssetThumb', '', ...args);
-        const buildVlmChatStatePatch = (...args) => call('buildVlmChatStatePatch', {}, ...args);
-        const buildVlmChatToolStatePatch = (...args) => call('buildVlmChatToolStatePatch', {}, ...args);
-        const buildVlmParamsPatch = (...args) => call('buildVlmParamsPatch', {}, ...args);
-        const buildVlmTextPatch = (...args) => call('buildVlmTextPatch', {}, ...args);
-        const buildVlmLastResponsePatch = (...args) => call('buildVlmLastResponsePatch', {}, ...args);
-        const buildVlmCustomModelChoicesPatch = (...args) => call('buildVlmCustomModelChoicesPatch', {}, ...args);
-        const buildVlmRunStatusPatch = (...args) => call('buildVlmRunStatusPatch', {}, ...args);
-        const buildVlmModelStatusPatch = (...args) => call('buildVlmModelStatusPatch', {}, ...args);
-        const nowIso = (...args) => call('nowIso', () => new Date().toISOString(), ...args);
-        const generatedResultNodesForPreset = (...args) => call('generatedResultNodesForPreset', [], ...args);
-        const resultNodeHasOutput = (...args) => call('resultNodeHasOutput', false, ...args);
-        const t = (...args) => call('t', args[0] || '', ...args);
-        const uid = (...args) => call('uid', '', ...args);
-        const isNodeLocked = (...args) => call('isNodeLocked', false, ...args);
-        const pushHistory = (...args) => call('pushHistory', undefined, ...args);
-        const pushHistoryBatch = (...args) => call('pushHistoryBatch', undefined, ...args);
-        const cloneRunValue = (...args) => call('cloneRunValue', args[0], ...args);
+        const isVlmMediaSource = (...args) => !!nodeCall('isVlmMediaSource', false, ...args);
+        const sendVlmModelStatus = (...args) => modelStatusCall('sendVlmModelStatus', null, ...args);
+        const getVlmModelStatusCacheTtlMs = (...args) => Number(configCall('getVlmModelStatusCacheTtlMs', 5 * 60 * 1000, ...args)) || 5 * 60 * 1000;
+        const openVlmMissingModelModal = (...args) => modelStatusCall('openVlmMissingModelModal', undefined, ...args);
+        const applyVlmModelStatus = (...args) => modelStatusCall('applyVlmModelStatus', undefined, ...args);
+        const renderAll = (...args) => renderCall('renderAll', undefined, ...args);
+        const getSelectedResultAsset = (...args) => assetCall('getSelectedResultAsset', null, ...args);
+        const getVlmSourceAsset = (...args) => assetCall('getVlmSourceAsset', null, ...args);
+        const openVlmAssetViewer = (...args) => assetCall('openVlmAssetViewer', undefined, ...args);
+        const refreshVlmChatAssetRoot = (...args) => assetCall('refreshVlmChatAssetRoot', false, ...args);
+        const hasVlmChatAssetRoot = (...args) => !!assetCall('hasVlmChatAssetRoot', false, ...args);
+        const safeVlmChatFallbackSrc = (...args) => assetCall('safeVlmChatFallbackSrc', '', ...args);
+        const isImageFile = (...args) => !!inputMediaCall('isImageFile', false, ...args);
+        const readFileAsDataUrl = (...args) => inputMediaCall('readFileAsDataUrl', '', ...args);
+        const getImageDimensions = (...args) => inputMediaCall('getImageDimensions', { width: 0, height: 0 }, ...args);
+        const createThumbnailDataUrl = (...args) => inputMediaCall('createThumbnailDataUrl', '', ...args);
+        const serializeAssetForRun = (...args) => assetCall('serializeAssetForRun', null, ...args);
+        const serializeAssetSourceForRun = (...args) => assetCall('serializeAssetSourceForRun', null, ...args);
+        const safeAssetDisplaySrc = (...args) => assetCall('safeAssetDisplaySrc', '', ...args);
+        const inferChatImageRelativePath = (...args) => assetCall('inferChatImageRelativePath', '', ...args);
+        const safeVlmChatAssetThumb = (...args) => assetCall('safeVlmChatAssetThumb', '', ...args);
+        const buildVlmChatStatePatch = (...args) => stateCall('buildVlmChatStatePatch', {}, ...args);
+        const buildVlmChatToolStatePatch = (...args) => stateCall('buildVlmChatToolStatePatch', {}, ...args);
+        const buildVlmParamsPatch = (...args) => stateCall('buildVlmParamsPatch', {}, ...args);
+        const buildVlmTextPatch = (...args) => stateCall('buildVlmTextPatch', {}, ...args);
+        const buildVlmLastResponsePatch = (...args) => stateCall('buildVlmLastResponsePatch', {}, ...args);
+        const buildVlmCustomModelChoicesPatch = (...args) => stateCall('buildVlmCustomModelChoicesPatch', {}, ...args);
+        const buildVlmRunStatusPatch = (...args) => stateCall('buildVlmRunStatusPatch', {}, ...args);
+        const buildVlmModelStatusPatch = (...args) => modelStatusCall('buildVlmModelStatusPatch', {}, ...args);
+        const buildVlmModelCheckingStatus = (...args) => modelStatusCall('buildVlmModelCheckingStatus', null, ...args);
+        const nowIso = (...args) => utilityCall('nowIso', new Date().toISOString(), ...args);
+        const generatedResultNodesForPreset = (...args) => resultCall('generatedResultNodesForPreset', [], ...args);
+        const resultNodeHasOutput = (...args) => resultCall('resultNodeHasOutput', false, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', en, en, cn, state);
+        };
+        const uid = (...args) => utilityCall('uid', '', ...args);
+        const isNodeLocked = (...args) => !!nodeCall('isNodeLocked', false, ...args);
+        const isNodeIgnored = (...args) => !!nodeCall('isNodeIgnored', false, ...args);
+        const nodeStatusState = (...args) => nodeCall(
+            'nodeStatusState',
+            args[0]?.status?.state || args[0]?.producer?.state || '',
+            ...args
+        );
+        const pushHistory = (...args) => historyCall('pushHistory', undefined, ...args);
+        const pushHistoryBatch = (...args) => historyCall('pushHistoryBatch', undefined, ...args);
+        const cloneRunValue = (...args) => stateCall('cloneRunValue', args[0], ...args);
 
         function applyVlmChatState(node, options) {
             if (!node || node.type !== 'vlm') return;
@@ -469,18 +707,60 @@
             }
             return params;
         }
-        const markVlmChatStickToBottom = (...args) => call('markVlmChatStickToBottom', undefined, ...args);
-        const mutate = (...args) => call('mutate', undefined, ...args);
-        const scrollVlmChatToBottom = (...args) => call('scrollVlmChatToBottom', undefined, ...args);
-        const showToast = (...args) => call('showToast', undefined, ...args);
-        const copyVlmChatText = (...args) => call('copyVlmChatText', false, ...args);
-        const confirmDialog = (...args) => !!call('confirmDialog', false, ...args);
-        const focusVlmChatPromptInput = (...args) => call('focusVlmChatPromptInput', false, ...args);
+
+        function cleanVlmToolPrompt(prompt) {
+            return String(prompt || '').replace(/^\/(?:t2i|generate|image|draw)\b[:：]?\s*/i, '').trim();
+        }
+
+        function extractVlmPreparedImagePrompt(text) {
+            const source = String(text || '').trim();
+            if (!source) return '';
+            const cleanPreparedBlock = (value) => {
+                return String(value || '')
+                    .replace(/```(?:text|prompt)?/gi, '')
+                    .replace(/```/g, '')
+                    .split(/\r?\n/)
+                    .map(line => line.replace(/^\s*>\s?/, '').trim())
+                    .filter(Boolean)
+                    .join(', ')
+                    .replace(/\s*,\s*,+/g, ', ')
+                    .replace(/^["“”'`]+|["“”'`]+$/g, '')
+                    .trim();
+            };
+            const blockPatterns = [
+                /(?:Prompt|Image prompt|Recommended prompt|Danbooru-style Tags)[^\n\r]*[:：]?\s*\n\s*([\s\S]{1,1600}?)(?=\n\s*(?:\*\*)?\s*(?:Negative Prompt|中文描述|Image Generation Recommendation|推荐操作|操作建议)\b|\n\s*---|$)/i,
+                /(?:提示词|推荐提示词|生成提示词|图像提示词)[^\n\r]*[:：]?\s*\n\s*([\s\S]{1,1600}?)(?=\n\s*(?:\*\*)?\s*(?:负面提示词|Negative Prompt|中文描述|推荐操作|操作建议)\b|\n\s*---|$)/i
+            ];
+            for (const pattern of blockPatterns) {
+                const prompt = cleanPreparedBlock(source.match(pattern)?.[1] || '');
+                if (prompt) return cleanVlmToolPrompt(prompt) || prompt;
+            }
+            const patterns = [
+                /(?:\*\*)?\s*(?:提示词|推荐提示词|生成提示词|图像提示词|Prompt|Image prompt|Prompt to submit)\s*(?:\*\*)?\s*[:：]\s*["“”']?([^\n\r]+)/i,
+                /(?:\*\*)?\s*(?:prompt|image_prompt|recommended_prompt)\s*(?:\*\*)?\s*=\s*["“”']?([^\n\r]+)/i
+            ];
+            for (const pattern of patterns) {
+                const match = source.match(pattern);
+                const prompt = String(match?.[1] || '').replace(/^["“”'`]+|["“”'`]+$/g, '').trim();
+                if (prompt) return cleanVlmToolPrompt(prompt) || prompt;
+            }
+            return '';
+        }
+
+        const markVlmChatStickToBottom = (...args) => uiStateCall('markVlmChatStickToBottom', undefined, ...args);
+        const mutate = (...args) => uiStateCall('mutate', undefined, ...args);
+        const scrollVlmChatToBottom = (...args) => uiStateCall('scrollVlmChatToBottom', undefined, ...args);
+        const showToast = (...args) => uiStateCall('showToast', undefined, ...args);
+        const copyVlmChatText = (...args) => uiStateCall('copyVlmChatText', false, ...args);
+        const confirmDialog = (...args) => !!uiStateCall('confirmDialog', false, ...args);
+        const focusVlmChatPromptInput = (...args) => uiCall('focusVlmChatPromptInput', false, ...args);
         const schedule = (callback, delay) => {
-            if (typeof scope.schedule === 'function') return scope.schedule(callback, delay);
+            if (typeof schedulerSource.schedule === 'function') return schedulerSource.schedule(callback, delay);
             if (typeof callback === 'function') return callback();
             return undefined;
         };
+        const scheduleTimeout = (...args) => schedulerCall('scheduleTimeout', null, ...args);
+        const clearScheduledTimeout = (...args) => schedulerCall('clearScheduledTimeout', undefined, ...args);
         const activeVlmChatRequests = new Map();
 
         function startVlmChatRequest(nodeId, options) {
@@ -599,18 +879,18 @@
             const canUseTimeout = timeoutMs > 0
                 && !opts.signal
                 && typeof AbortController === 'function'
-                && typeof scope.scheduleTimeout === 'function';
+                && typeof schedulerSource.scheduleTimeout === 'function';
             const controller = canUseTimeout ? new AbortController() : null;
             let timer = null;
             let timedOut = false;
             if (controller) {
-                timer = scope.scheduleTimeout(() => {
+                timer = scheduleTimeout(() => {
                     timedOut = true;
                     controller.abort();
                 }, timeoutMs);
             }
             const response = await sendVlmRun(payload, Object.assign({}, opts, controller ? { signal: controller.signal } : {}));
-            if (timer !== null && typeof scope.clearScheduledTimeout === 'function') scope.clearScheduledTimeout(timer);
+            if (timer !== null && typeof schedulerSource.clearScheduledTimeout === 'function') clearScheduledTimeout(timer);
             if (timedOut && response?.aborted) {
                 await requestVlmCancelForRunPayload(payload);
                 return Object.assign({}, response, {
@@ -623,7 +903,7 @@
         }
 
         async function sendVlmCancelRequest(payload) {
-            if (typeof scope.sendVlmCancel !== 'function') {
+            if (typeof transportSource.sendVlmCancel !== 'function') {
                 return { ok: false, error: 'VLM cancel API is unavailable' };
             }
             return sendVlmCancel(payload || {});
@@ -943,6 +1223,115 @@
 
         function vlmAgentActionTargetId(action) {
             return String(action?.target_node_id || action?.node_id || action?.run_id || '').trim();
+        }
+
+        function markVlmAgentActionCardBusy(card, message) {
+            if (!card) return;
+            const buttons = card.querySelector?.('.sai-vlm-agent-action-buttons');
+            if (buttons) buttons.innerHTML = `<small class="is-running">${escapeHtml(message || t('Running...', '正在运行...'))}</small>`;
+            card.querySelectorAll?.('button,input').forEach(item => {
+                item.disabled = true;
+            });
+        }
+
+        function ignoreVlmAgentAction(node, messageIndex, actionIndex) {
+            const action = getVlmAgentAction(node, messageIndex, actionIndex);
+            if (!action) {
+                setVlmAgentActionExecution(node, messageIndex, actionIndex, {
+                    state: 'failed',
+                    message: t('Agent action was not found.', '未找到 Agent 动作。')
+                });
+                return { ok: false, message: 'Agent action was not found.' };
+            }
+            setVlmAgentActionExecution(node, messageIndex, actionIndex, {
+                state: 'ignored',
+                message: t('Ignored by user.', '已忽略')
+            });
+            showToast(t('Agent action ignored.', '已忽略 Agent action'));
+        }
+
+        function retryVlmAgentAction(node, messageIndex, actionIndex) {
+            const liveNode = getNode(node?.id || '') || node;
+            if (!liveNode || liveNode.type !== 'vlm') return;
+            if (isVlmNodeBusy(liveNode)) {
+                showToast(t('VLM is still thinking. Please wait before retrying.', 'VLM 还在思考，请稍后重试'));
+                return;
+            }
+            const retryContext = prepareVlmAgentRetryContext(liveNode, messageIndex, actionIndex);
+            if (!retryContext.ok) {
+                showToast(t('No source request was found for retry.', '没有找到可重试的原始请求'));
+                return;
+            }
+            applyVlmChatContextEdit(liveNode, retryContext.keptMessages, 'Retry VLM agent request', 'Retrying from the same prior chat context.');
+            applyVlmChatState(liveNode, {
+                pendingImages: retryContext.pendingImages,
+                updatedAt: nowIso()
+            });
+            Object.assign(liveNode, buildVlmParamsPatch(liveNode, {
+                paramsPatch: { prompt: retryContext.sourceUserPrompt }
+            }));
+            mutate({ inspector: true });
+            runVlmNode(liveNode);
+        }
+
+        function allowRejectedVlmAgentAction(node, messageIndex, actionIndex) {
+            const liveNode = getNode(node?.id || '') || node;
+            if (!liveNode || liveNode.type !== 'vlm') return;
+            if (isVlmNodeBusy(liveNode)) {
+                showToast(t('VLM is still thinking. Please wait before allowing another action.', 'VLM 还在思考，请稍后再放行'));
+                return;
+            }
+            const action = getVlmAgentAction(liveNode, messageIndex, actionIndex);
+            if (!action) return;
+            const bypass = prepareVlmAgentPromptReviewBypass(action);
+            if (!bypass.ok) {
+                showToast(bypass.message, 3600);
+                return;
+            }
+            patchVlmAgentAction(liveNode, messageIndex, actionIndex, bypass.patch, 'Bypass VLM prompt review');
+            executeVlmAgentAction(liveNode, messageIndex, actionIndex, { bypassPromptReview: true });
+        }
+
+        function focusVlmAgentTarget(targetId) {
+            const target = getNode(targetId);
+            if (!target) return { ok: false, message: t('Target node was not found.', '目标节点不存在') };
+            setVlmAgentTargetSelection(target.id, { clearGroup: true });
+            const rect = getNodeRect(target);
+            centerViewportOnWorld(rect.x + rect.w / 2, rect.y + rect.h / 2);
+            renderNodes();
+            renderEdges();
+            renderInspector();
+            renderMinimap();
+            return { ok: true, node: target, message: t('Focused node: {title}', '已定位节点：{title}').replace('{title}', target.title || target.id) };
+        }
+
+        function selectVlmAgentTarget(targetId) {
+            const target = getNode(targetId);
+            if (!target) return { ok: false, message: t('Target node was not found.', '目标节点不存在') };
+            selectNodeLight(target.id);
+            return { ok: true, node: target, message: t('Selected node: {title}', '已选中节点：{title}').replace('{title}', target.title || target.id) };
+        }
+
+        function maybeRunVlmAgentActionFromAutoConfirmToggle(node, field) {
+            if (!node || node.type !== 'vlm' || !field || field.type !== 'checkbox' || !field.checked) return false;
+            const token = String(field.getAttribute('data-vlm-agent-action-auto-confirm') || '').trim();
+            if (!token) return false;
+            const [messageIndex, actionIndex] = token.split(':').map(Number);
+            if (!Number.isFinite(messageIndex) || !Number.isFinite(actionIndex)) return false;
+            const action = getVlmAgentAction(node, messageIndex, actionIndex);
+            const type = normalizeVlmExecutableActionType(action?.action || action?.type || '');
+            if (!isVlmImageToolActionType(type) || isVlmAgentPromptReviewRejected(action)) return false;
+            const state = String(action?.execution?.state || '').trim().toLowerCase();
+            if (state && state !== 'failed') return false;
+            const lockKey = `${node.id}:${messageIndex}:${actionIndex}`;
+            if (hasVlmAgentActionRunLock(lockKey)) return true;
+            setVlmAgentActionExecution(node, messageIndex, actionIndex, {
+                state: 'queued',
+                message: t('Auto-confirmed; preparing generation...', '已自动确认，正在准备生成...'),
+                at: nowIso()
+            });
+            executeVlmAgentAction(node, messageIndex, actionIndex, { autoConfirmed: true, rememberAutoConfirm: true });
+            return true;
         }
 
         function vlmAgentActionNegativePrompt(action) {
@@ -2125,6 +2514,95 @@
             return modelGate;
         }
 
+        function isVlmNodeBusy(node) {
+            const state = String(nodeStatusState(node) || '').toLowerCase();
+            return ['running', 'waiting', 'queued', 'preparing', 'checking'].includes(state);
+        }
+
+        async function checkVlmModelStatus(node) {
+            if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
+            const checkingStatus = buildVlmModelCheckingStatus('Checking VLM model files...') || {
+                state: 'checking',
+                message: 'Checking VLM model files...'
+            };
+            Object.assign(node, buildVlmModelStatusPatch(node, {
+                statusPatch: checkingStatus
+            }));
+            renderAll({ inspector: false });
+            const response = await sendVlmModelStatus(node);
+            const current = getNode(node.id);
+            if (current) {
+                applyVlmModelStatus(current, response);
+                mutate({ inspector: false });
+            }
+            return response;
+        }
+
+        function isVlmModelStatusFresh(node) {
+            const status = node?.vlm_model_status || {};
+            if (!status.ready) return false;
+            const currentVersion = String(node?.params?.version || '').trim();
+            if (currentVersion && String(status.version || '').trim() && String(status.version || '').trim() !== currentVersion) return false;
+            const checkedAt = Date.parse(status.checked_at || '');
+            if (!Number.isFinite(checkedAt)) return false;
+            return Date.now() - checkedAt < getVlmModelStatusCacheTtlMs();
+        }
+
+        async function runVlmNode(node) {
+            if (!node || node.type !== 'vlm') return { ok: false, error: 'VLM node is unavailable' };
+            if (isNodeIgnored(node)) {
+                showToast('This VLM node is marked as skipped.');
+                return { ok: false, error: 'VLM node is skipped' };
+            }
+            if (isVlmNodeBusy(node)) {
+                showToast(t('VLM is still thinking. You can keep editing the next message while it finishes.', 'VLM 还在思考中。你可以继续编辑下一条消息，等待它完成。'));
+                return { ok: false, error: 'VLM node is busy' };
+            }
+            const runContext = prepareVlmNodeRunContext(node);
+            const { params, isChat, connectedSources, userPrompt } = runContext;
+            if (!String(params.prompt || '').trim()) {
+                showToast('VLM instruction cannot be empty.');
+                return { ok: false, error: 'VLM instruction cannot be empty.' };
+            }
+            const runInput = prepareVlmNodeRunInput(node, {
+                params,
+                isChat,
+                connectedSources,
+                userPrompt
+            });
+            const {
+                submittedPendingImages,
+                assetSources,
+                displayHistoryMessages,
+                rollingHistory,
+                historyMessages,
+                chatRequestState,
+                chatRequestId,
+                chatImages
+            } = runInput;
+            prepareVlmNodeRunState(node, {
+                isChat,
+                params,
+                displayHistoryMessages,
+                userPrompt,
+                assetSources,
+                chatImages,
+                conversationId: params.conversation_id || ''
+            });
+            return executeVlmNodeRun(node, {
+                isChat,
+                params,
+                requestId: chatRequestId,
+                assetSources,
+                historyMessages,
+                displayHistoryMessages,
+                rollingHistoryInfo: rollingHistory.info,
+                userPrompt,
+                chatRequestState,
+                submittedPendingImages
+            });
+        }
+
         function prepareVlmNodeRunState(node, options) {
             const opts = options || {};
             const isChat = !!opts.isChat;
@@ -3302,6 +3780,8 @@
             applyVlmChatState,
             getVlmCustomApiKey,
             getVlmCustomRuntimeParams,
+            cleanVlmToolPrompt,
+            extractVlmPreparedImagePrompt,
             vlmAgentCleanActionPrompt,
             vlmAgentActionExecutionState,
             vlmAgentActionNeedsVisibleControls,
@@ -3330,6 +3810,13 @@
             vlmAgentActionExecutionGate,
             vlmAgentActionPrompt,
             vlmAgentActionTargetId,
+            markVlmAgentActionCardBusy,
+            ignoreVlmAgentAction,
+            retryVlmAgentAction,
+            allowRejectedVlmAgentAction,
+            focusVlmAgentTarget,
+            selectVlmAgentTarget,
+            maybeRunVlmAgentActionFromAutoConfirmToggle,
             vlmAgentActionNegativePrompt,
             vlmAgentSubjectCountHintFromAction,
             sanitizeVlmAgentGenerationControlFields,
@@ -3348,6 +3835,10 @@
             executeVlmAgentAction,
             finalizeVlmNodeRunResponse,
             finalizeVlmNodeModelGateFailure,
+            runVlmNode,
+            isVlmNodeBusy,
+            checkVlmModelStatus,
+            isVlmModelStatusFresh,
             prepareVlmNodeRunContext,
             prepareVlmNodeRunState,
             prepareVlmNodeRunInput,

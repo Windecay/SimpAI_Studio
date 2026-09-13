@@ -3,42 +3,60 @@
 
     function createCanvasNodeSpatialIndexController(context) {
         const scope = context || {};
-        const readValue = (name, fallback) => {
+        const sourceObject = (name) => {
             const value = scope[name];
-            if (typeof value === 'function') return value();
+            return value && typeof value === 'object' ? value : {};
+        };
+        const projectSource = sourceObject('projectSource');
+        const layoutSource = sourceObject('layoutSource');
+        const nodeSource = sourceObject('nodeSource');
+        const viewportSource = sourceObject('viewportSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const configSource = sourceObject('configSource');
+        const utilitySource = sourceObject('utilitySource');
+        const renderSource = sourceObject('renderSource');
+        const selectionSource = sourceObject('selectionSource');
+        const connectionSource = sourceObject('connectionSource');
+        const interactionSource = sourceObject('interactionSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const readValue = (source, name, fallback, ...args) => {
+            const value = source[name];
+            if (typeof value === 'function') return value(...args);
             return value === undefined ? fallback : value;
         };
-        const getProject = () => typeof scope.getProject === 'function' ? scope.getProject() : scope.project;
-        const getNodeRect = typeof scope.getNodeRect === 'function'
-            ? scope.getNodeRect
+        const getProject = () => sourceCall(projectSource, 'getProject', null);
+        const getNodeRect = typeof layoutSource.getNodeRect === 'function'
+            ? layoutSource.getNodeRect
             : (node) => ({
                 x: Math.round(Number(node?.x || 0)),
                 y: Math.round(Number(node?.y || 0)),
                 w: Math.max(1, Number(node?.w || 1)),
                 h: Math.max(1, Number(node?.h || 1))
             });
-        const isNodeVisuallyRunning = typeof scope.isNodeVisuallyRunning === 'function'
-            ? scope.isNodeVisuallyRunning
+        const isNodeVisuallyRunning = typeof nodeSource.isNodeVisuallyRunning === 'function'
+            ? nodeSource.isNodeVisuallyRunning
             : () => false;
-        const isResultRefreshing = typeof scope.isResultRefreshing === 'function'
-            ? scope.isResultRefreshing
+        const isResultRefreshing = typeof nodeSource.isResultRefreshing === 'function'
+            ? nodeSource.isResultRefreshing
             : () => false;
-        const rectsOverlap = typeof scope.rectsOverlap === 'function'
-            ? scope.rectsOverlap
+        const rectsOverlap = typeof utilitySource.rectsOverlap === 'function'
+            ? utilitySource.rectsOverlap
             : () => false;
-        const shouldRenderNodeInViewport = typeof scope.shouldRenderNodeInViewport === 'function'
-            ? scope.shouldRenderNodeInViewport
+        const shouldRenderNodeInViewport = typeof viewportSource.shouldRenderNodeInViewport === 'function'
+            ? viewportSource.shouldRenderNodeInViewport
             : () => true;
-        const getPerfStats = () => typeof scope.getPerfStats === 'function' ? (scope.getPerfStats() || {}) : {};
-        const setNodeRenderCoverageRect = typeof scope.setNodeRenderCoverageRect === 'function'
-            ? scope.setNodeRenderCoverageRect
-            : () => {};
-        const minNodes = Math.max(0, Number(scope.nodeSpatialIndexMinNodes ?? 180));
-        const cellSize = Math.max(1, Number(scope.nodeSpatialIndexCellSize ?? 960));
-        const overviewExitZoom = Number(scope.canvasOverviewExitZoom ?? 0.42);
-        const panPreviewNodeBudget = Math.max(0, Number(scope.panPreviewNodeBudget ?? 140));
-        const nodeRenderOverscanPx = Math.max(0, Number(scope.nodeRenderOverscanPx ?? 560));
-        const panPreviewDeferCoveragePadPx = Math.max(0, Number(scope.panPreviewDeferCoveragePadPx ?? 1200));
+        const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
+        const setNodeRenderCoverageRect = (...args) => {
+            sourceCall(renderSource, 'setNodeRenderCoverageRect', undefined, ...args);
+        };
+        const minNodes = Math.max(0, Number(readValue(configSource, 'nodeSpatialIndexMinNodes', 180)));
+        const cellSize = Math.max(1, Number(readValue(configSource, 'nodeSpatialIndexCellSize', 960)));
+        const overviewExitZoom = Number(readValue(configSource, 'canvasOverviewExitZoom', 0.42));
+        const panPreviewNodeBudget = Math.max(0, Number(readValue(configSource, 'panPreviewNodeBudget', 140)));
+        const nodeRenderOverscanPx = Math.max(0, Number(readValue(configSource, 'nodeRenderOverscanPx', 560)));
+        const panPreviewDeferCoveragePadPx = Math.max(0, Number(readValue(configSource, 'panPreviewDeferCoveragePadPx', 1200)));
         let nodeSpatialIndex = null;
         let nodeSpatialIndexDirty = true;
 
@@ -122,21 +140,21 @@
 
         function collectForceFullNodeIds() {
             const ids = new Set();
-            const selectedNodeId = readValue('getSelectedNodeId', '');
-            const selectedNodeIds = readValue('getSelectedNodeIds', new Set());
+            const selectedNodeId = readValue(selectionSource, 'getSelectedNodeId', '');
+            const selectedNodeIds = readValue(selectionSource, 'getSelectedNodeIds', new Set());
             if (selectedNodeId) ids.add(selectedNodeId);
             selectedNodeIds?.forEach?.((id) => {
                 if (id) ids.add(id);
             });
-            const connectingFromId = readValue('getConnectingFromId', '');
+            const connectingFromId = readValue(connectionSource, 'getConnectingFromId', '');
             if (connectingFromId) ids.add(connectingFromId);
-            const draggingNodeIds = readValue('getDraggingNodeIds', []);
+            const draggingNodeIds = readValue(interactionSource, 'getDraggingNodeIds', []);
             draggingNodeIds?.forEach?.((id) => {
                 if (id) ids.add(id);
             });
-            const resizeNodeId = readValue('getNodeResizeNodeId', '');
+            const resizeNodeId = readValue(interactionSource, 'getNodeResizeNodeId', '');
             if (resizeNodeId) ids.add(resizeNodeId);
-            const activeInlineTagCartNodeId = readValue('getActiveInlineTagCartNodeId', '');
+            const activeInlineTagCartNodeId = readValue(interactionSource, 'getActiveInlineTagCartNodeId', '');
             if (activeInlineTagCartNodeId) ids.add(activeInlineTagCartNodeId);
             return ids;
         }
@@ -210,7 +228,7 @@
         function canvasNodePointerFallbackPadding() {
             const project = getProject();
             const zoom = Math.max(0.05, Number(project?.viewport?.zoom || 1) || 1);
-            const renderMode = readValue('getCanvasRenderMode', 'full');
+            const renderMode = readValue(viewportSource, 'getCanvasRenderMode', 'full');
             if (renderMode !== 'overview' && zoom > overviewExitZoom) return 0;
             return Math.max(2, 4 / zoom);
         }
@@ -286,7 +304,7 @@
         }
 
         function shouldDeferPanNodeRender(renderWindow) {
-            if (!readValue('isPanning', false) || !renderWindow) return false;
+            if (!readValue(runtimeSource, 'isPanning', false) || !renderWindow) return false;
             const visibleCount = countVisibleNodesForRenderWindow(renderWindow, panPreviewNodeBudget);
             if (visibleCount <= panPreviewNodeBudget) return false;
             const project = getProject();

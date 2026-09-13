@@ -3,29 +3,47 @@
 
     function createCanvasViewportRenderController(context) {
         const scope = context || {};
-        const readValue = (name, fallback) => {
+        const sourceObject = (name) => {
             const value = scope[name];
-            if (typeof value === 'function') return value();
+            return value && typeof value === 'object' ? value : {};
+        };
+        const projectSource = sourceObject('projectSource');
+        const viewportSource = sourceObject('viewportSource');
+        const layoutSource = sourceObject('layoutSource');
+        const selectionSource = sourceObject('selectionSource');
+        const connectionSource = sourceObject('connectionSource');
+        const nodeSource = sourceObject('nodeSource');
+        const configSource = sourceObject('configSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const readValue = (source, name, fallback, ...args) => {
+            const value = source[name];
+            if (typeof value === 'function') return value(...args);
             return value === undefined ? fallback : value;
         };
-        const getProject = () => typeof scope.getProject === 'function' ? scope.getProject() : scope.project;
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : scope.viewport;
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function' ? scope.defaultNodeSize : undefined;
-        const getNodeLayoutSize = typeof scope.getNodeLayoutSize === 'function' ? scope.getNodeLayoutSize : undefined;
-        const viewportGetVisibleWorldRect = typeof scope.viewportGetVisibleWorldRect === 'function'
-            ? scope.viewportGetVisibleWorldRect
+        const getProject = () => sourceCall(projectSource, 'getProject', null);
+        const getViewport = () => sourceCall(viewportSource, 'getViewport', null);
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
+            : undefined;
+        const getNodeLayoutSize = typeof layoutSource.getNodeLayoutSize === 'function'
+            ? layoutSource.getNodeLayoutSize
+            : undefined;
+        const viewportGetVisibleWorldRect = typeof viewportSource.viewportGetVisibleWorldRect === 'function'
+            ? viewportSource.viewportGetVisibleWorldRect
             : null;
-        const viewportGetNodeRenderWorldRect = typeof scope.viewportGetNodeRenderWorldRect === 'function'
-            ? scope.viewportGetNodeRenderWorldRect
+        const viewportGetNodeRenderWorldRect = typeof viewportSource.viewportGetNodeRenderWorldRect === 'function'
+            ? viewportSource.viewportGetNodeRenderWorldRect
             : null;
-        const viewportShouldRenderNodeInViewport = typeof scope.viewportShouldRenderNodeInViewport === 'function'
-            ? scope.viewportShouldRenderNodeInViewport
+        const viewportShouldRenderNodeInViewport = typeof viewportSource.viewportShouldRenderNodeInViewport === 'function'
+            ? viewportSource.viewportShouldRenderNodeInViewport
             : null;
-        const viewportShouldRenderEdgeInViewport = typeof scope.viewportShouldRenderEdgeInViewport === 'function'
-            ? scope.viewportShouldRenderEdgeInViewport
+        const viewportShouldRenderEdgeInViewport = typeof viewportSource.viewportShouldRenderEdgeInViewport === 'function'
+            ? viewportSource.viewportShouldRenderEdgeInViewport
             : null;
-        const viewportGetEdgeSvgBounds = typeof scope.viewportGetEdgeSvgBounds === 'function'
-            ? scope.viewportGetEdgeSvgBounds
+        const viewportGetEdgeSvgBounds = typeof viewportSource.viewportGetEdgeSvgBounds === 'function'
+            ? viewportSource.viewportGetEdgeSvgBounds
             : null;
 
         function getVisibleWorldRect() {
@@ -39,17 +57,27 @@
             const project = getProject();
             const visible = getVisibleWorldRect();
             return viewportGetNodeRenderWorldRect
-                ? viewportGetNodeRenderWorldRect(visible, project?.viewport?.zoom, readValue('nodeRenderOverscanPx', 960))
+                ? viewportGetNodeRenderWorldRect(
+                    visible,
+                    project?.viewport?.zoom,
+                    readValue(configSource, 'nodeRenderOverscanPx', 960)
+                )
                 : visible;
         }
 
         function getEdgeRenderWorldRect() {
             const project = getProject();
             const edgeCount = Array.isArray(project?.edges) ? project.edges.length : 0;
-            if (edgeCount < Number(readValue('edgePointCacheMinEdges', 900))) return getNodeRenderWorldRect();
+            if (edgeCount < Number(readValue(configSource, 'edgePointCacheMinEdges', 900))) {
+                return getNodeRenderWorldRect();
+            }
             const visible = getVisibleWorldRect();
             return viewportGetNodeRenderWorldRect
-                ? viewportGetNodeRenderWorldRect(visible, project?.viewport?.zoom, readValue('edgeRenderOverscanPx', 960))
+                ? viewportGetNodeRenderWorldRect(
+                    visible,
+                    project?.viewport?.zoom,
+                    readValue(configSource, 'edgeRenderOverscanPx', 960)
+                )
                 : visible;
         }
 
@@ -58,10 +86,12 @@
             return viewportShouldRenderNodeInViewport(node, renderWindow, {
                 defaultNodeSize,
                 getNodeLayoutSize,
-                selectedNodeId: readValue('getSelectedNodeId', null),
-                selectedNodeIds: readValue('getSelectedNodeIds', new Set()),
-                connectFromId: readValue('getConnectingFromId', '') || '',
-                isRunning: typeof scope.isNodeVisuallyRunning === 'function' ? scope.isNodeVisuallyRunning : undefined
+                selectedNodeId: readValue(selectionSource, 'getSelectedNodeId', null),
+                selectedNodeIds: readValue(selectionSource, 'getSelectedNodeIds', new Set()),
+                connectFromId: readValue(connectionSource, 'getConnectingFromId', '') || '',
+                isRunning: typeof nodeSource.isNodeVisuallyRunning === 'function'
+                    ? nodeSource.isNodeVisuallyRunning
+                    : undefined
             });
         }
 
@@ -70,8 +100,8 @@
             return viewportShouldRenderEdgeInViewport(edge, fromNode, toNode, renderWindow, {
                 defaultNodeSize,
                 getNodeLayoutSize,
-                selectedEdgeId: readValue('getSelectedEdgeId', null),
-                selectedNodeIds: readValue('getSelectedNodeIds', new Set())
+                selectedEdgeId: readValue(selectionSource, 'getSelectedEdgeId', null),
+                selectedNodeIds: readValue(selectionSource, 'getSelectedNodeIds', new Set())
             });
         }
 

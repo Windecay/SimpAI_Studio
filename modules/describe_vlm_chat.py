@@ -373,7 +373,7 @@ SimpAI UI guide skill:
   - Krea2-Turbo is the Krea 2 Turbo AIO preset: text-to-image, single-image Depth or OpenPose control, image variation, tiled upscale, AnyPaint inpaint/outpaint, and original-model detail enhancement. Control images cannot be combined with variation/upscale or inpaint/outpaint. Style transfer and identity reference are not supported here; instruction editing still uses Krea2-ImageEdit, and anime-to-real uses Krea2-A2R.
   - Bernini-ImageEdit is the Bernini-R still-image editing route for instruction edits, style conversion, replacement, inpainting, and color matching on an input image.
   - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger reference consistency.
-  - Nun/Nunchaku presets are 4-bit quantized variants that trade precision for speed and lower resource use. Use fp4 on RTX 50-series or newer GPUs; use int4 on older GPUs.
+  - Nun/Nunchaku presets (NunFlux, NunQwenEdit+, NunSwap, including fp4/int4 variants) are retired. Their files are archived under presets/deprecated; do not recommend them, offer their packages, or select them from saved candidates. Use available Flux/Qwen/H3 presets according to task capabilities.
   - Directional Klein and Qwen presets are built for specific subjects or operations and usually include purpose-specific LoRAs.
   - QwenNSFW is a community-merged single-checkpoint route for direct text-to-image and restricted editing cases that the original QwenEdit may filter.
 - Image editing / retouching:
@@ -391,7 +391,7 @@ SimpAI UI guide skill:
 - Face, body, pose, and camera:
   - For face swap on still images, recommend QwenFaceSwap first. It uses exactly two images in target/base then source-identity order and detects the target face without requiring a painted mask. Use Swapface as an alternative when its models are the available ready route.
   - For expression editing on still portraits, recommend LivePortrait Exp. It edits face rotation, eyes, mouth, smile, and optional reference-expression strength; treat it as an expression editor, not an identity face-swap route.
-  - For pose transfer or pose-driven edits, recommend OneKeyPose, QwenPose, Flux2-KleinPose, or SDPose depending on the selected preset family.
+  - For pose transfer or pose-driven final-image edits, recommend MiniMax-H3(Pose) first: use the character/source image as <Picture 1> and the Pose Editor output as <Picture 2>. It uses 10 steps with the standard H3 Turbo distillation LoRA, as in H3 image editing; no additional pose-specific LoRA is required. QwenPose remains an alternative. Use OneKeyPose / SDPose only for skeleton extraction.
   - For camera angle / multi-view control, recommend QwenMultiAngle; for product or character three-view sheets, recommend OneKeyKontext IP 3-View.
   - For Gaussian blur cleanup or detail-oriented Qwen edits, recommend QwenGaussian / QwenEdit+ when relevant.
 - Image-to-video / video generation:
@@ -4111,17 +4111,17 @@ GENERATION_PRESET_PRIORITIES = {
     "video_audio_to_video": ("MiniMax-H3(R2V)",),
     "image_upscale": ("Z-TTP", "Wan-TTP"),
     "image_restore": ("Imagerepair+", "OneKeyKontext"),
-    "image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext"),
-    "multi_image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext"),
-    "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "NunFlux_fp4", "NunFlux_int4", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
+    "image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "multi_image_edit": ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext"),
+    "image_detail_enhance": ("Z-imageT", "Anima", "Flux2-Klein", "Qwen2512", "Wan(T2I)", "Flux1-dev", "Illustrious(OB)", "Illustrious(MiaoKa)", "ChenkinXL", "SD1.5"),
     "image_background_removal": ("Removebg", "OneKeyKontext"),
     "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
-    "image_object_transfer": ("QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+", "NunSwap_fp4", "NunSwap_int4"),
+    "image_object_transfer": ("QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "Bernini-ImageEdit", "MiniMax-H3(R2I)", "OneKeyKontext", "Swap+"),
     "image_outpaint": ("OneKey-Outpaint",),
     "image_relight": ("Relight", "Flux2-AngleLight", "OneKeyKontext"),
     "image_style_transfer": ("StyleTransfer+",),
     "image_face_swap": ("QwenFaceSwap", "Swapface"),
-    "image_pose_transfer": ("Flux2-KleinPose", "QwenPose"),
+    "image_pose_transfer": ("MiniMax-H3(Pose)", "QwenPose"),
     "image_pose_extraction": ("OneKeyPose",),
     "image_anime_to_real": ("Flux2-A2R", "Krea2-A2R", "QwenA2R"),
     "image_view_synthesis": ("QwenMultiAngle", "OneKeyKontext"),
@@ -4132,7 +4132,7 @@ GENERATION_PRESET_PRIORITIES = {
 
 def _generation_preset_priorities(task):
     return GENERATION_PRESET_PRIORITIES.get(task) or (
-        ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext")
+        ("MiniMax-H3(R2I)", "QwenEdit+", "Flux2-KleinEdit", "Krea2-ImageEdit", "QwenNSFW", "Bernini-ImageEdit", "OneKeyKontext")
         if task in {"image_edit", "multi_image_edit"}
         else ("Z-imageT", "Anima")
     )

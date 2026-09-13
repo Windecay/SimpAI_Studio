@@ -60,6 +60,7 @@ from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
 from ui.workspace_recovery import install_workspace_recovery
 from ui.frontend_http_guard import configure_frontend_http_guard
 from ui.update_helpers import dataset_update, dropdown_update, gr_update, skip_update as skip_component_update
+from ui.studio_help import vlm_help_marker
 from ui.events.topbar import (
     bind_topbar_identity_events,
     bind_topbar_load_chain,
@@ -260,15 +261,9 @@ def _main_vlm_custom_help_html(state=None):
     return (
         '<div class="describe-vlm-custom-help-row">'
         f'<strong>{html.escape(texts["help_title"])}</strong>'
-        '<span class="describe-vlm-custom-help" tabindex="0" role="button" '
-        f'aria-label="{html.escape(texts["help_aria"])}">?</span>'
-        '<div class="describe-vlm-custom-help-tip" role="tooltip">'
-        f'<b>{html.escape(texts["help_heading"])}</b>'
-        f'<p>{html.escape(texts["help_endpoint"])}</p>'
-        '<p>Ollama: <code>http://127.0.0.1:11434/v1</code></p>'
-        '<p>LM Studio: <code>http://127.0.0.1:1234/v1</code></p>'
-        f'<p>{html.escape(texts["help_key"])}</p>'
-        '</div>'
+        '<button type="button" class="sai-help-button" data-studio-help="api" '
+        f'title="{html.escape(texts["help_aria"])}" aria-label="{html.escape(texts["help_aria"])}" '
+        'aria-haspopup="dialog"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></button>'
         '</div>'
     )
 
@@ -368,15 +363,15 @@ def _vlm_model_status_html(version, state=None, scan_catalog=True):
     if profile:
         ready = vlm_api_profiles.profile_ready(profile)
         label = str(vlm_api_profiles.public_catalog_item(profile).get("label") or profile.get("name") or version)
-        title = "Shared API profile is ready." if ready else "Shared API profile settings are incomplete."
+        title = _main_vlm_text(state, "API configuration complete; use Test API to verify the connection.", "API 配置完整，请使用“测试 API”验证连接。") if ready else _main_vlm_text(state, "API configuration is incomplete.", "API 配置不完整。")
         return (
             f'<div class="describe-vlm-model-state {"ready" if ready else "missing"}" title="{html.escape(title)}">'
             f'<span class="describe-vlm-model-state-icon">{"✓" if ready else "⚠"}</span>'
             f'<span>{html.escape(label)}</span>'
-            '</div>'
+            '</div>' + vlm_help_marker({"exists": ready}, api=True)
         )
     status = VLM.get_version_status(version, scan_catalog=scan_catalog)
-    vision_missing = status.get("vision_status") == "missing"
+    vision_missing = status.get("vision_status") == "missing" and status["exists"]
     state_class = "vision-missing" if vision_missing else ("ready" if status["exists"] else "missing")
     if vision_missing:
         title = _main_vlm_text(
@@ -391,26 +386,26 @@ def _vlm_model_status_html(version, state=None, scan_catalog=True):
             title = f'{title}{_main_vlm_text(state, " Missing model files: ", " 缺少模型文件：")}{missing}'
         visible_label = _main_vlm_text(state, "Missing vision model", "缺少视觉模型")
     elif version == VLM.CUSTOM_VERSION and status["exists"]:
-        title = "API settings are ready."
-        visible_label = status["label"]
+        title = _main_vlm_text(state, "API configuration complete; use Test API to verify the connection.", "API 配置完整，请使用“测试 API”验证连接。")
+        visible_label = _main_vlm_text(state, "Configured", "配置完整")
     elif version == VLM.CUSTOM_VERSION:
         missing = ", ".join(status["missing_files"][:3])
-        title = f'API settings incomplete: {missing}'
-        visible_label = status["label"]
+        title = _main_vlm_text(state, f"API settings incomplete: {missing}", f"API 配置不完整：{missing}")
+        visible_label = _main_vlm_text(state, "Configuration incomplete", "配置不完整")
     elif status["exists"]:
-        title = "All required model files exist."
-        visible_label = status["label"]
+        title = _main_vlm_text(state, "Required files are present; inference has not been verified by this check.", "所需文件齐全，此检查不代表已经成功推理。")
+        visible_label = _main_vlm_text(state, "Files present", "文件齐全")
     else:
         missing = ", ".join(status["missing_files"][:3])
         if len(status["missing_files"]) > 3:
             missing += f', +{len(status["missing_files"]) - 3} more'
-        title = f'Missing model files: {missing}'
-        visible_label = status["label"]
+        title = _main_vlm_text(state, f"Missing model files: {missing}", f"缺少模型文件：{missing}")
+        visible_label = _main_vlm_text(state, "Files missing", "文件缺失")
     return (
         f'<div class="describe-vlm-model-state {state_class}" title="{html.escape(title)}">'
         f'<span class="describe-vlm-model-state-icon">{status["icon"]}</span>'
         f'<span>{html.escape(visible_label)}</span>'
-        f'</div>'
+        f'</div>' + vlm_help_marker(status, api=version == VLM.CUSTOM_VERSION)
     )
 
 
@@ -7770,7 +7765,7 @@ with shared.gradio_root:
             models_tab_active_state = gr.State(False)
             with gr.Tabs(elem_id="advanced_tabs"):
                 with gr.Tab(label='Setting', elem_id="scrollable-box") as setting_tab:
-                    with gr.Accordion("Preset Introduction", open=False, visible=False, elem_id="preset_instruction_accordion") as preset_instruction:
+                    with gr.Accordion("Preset Introduction", open=False, visible=True, elem_id="preset_instruction_accordion") as preset_instruction:
                         gr.HTML(value=topbar.preset_instruction(), elem_id="preset_instruction_html")
                     with gr.Row(elem_id="parameter_profile_row", elem_classes=["parameter-profile-row"]):
                         parameter_profile_select = gr.Dropdown(
@@ -7900,7 +7895,7 @@ with shared.gradio_root:
                                 with gr.Row():
                                     guidance_scale = gr.Slider(label='Guidance Scale', minimum=0.01, maximum=100.0, step=0.01,
                                                         value=modules.config.default_cfg_scale,
-                                                        info='Higher value means style is cleaner, vivider, and more artistic.',
+                                                        info='Guidance strength, not a quality score. Start with the preset default; CFG and distilled Guidance behave differently.',
                                                         elem_id="guidance_scale")
                                 with gr.Row():
                                     overwrite_step = gr.Slider(label='Forced Overwrite of Sampling Step',
@@ -7993,30 +7988,6 @@ with shared.gradio_root:
                         with gr.Tab(label='Describe Media', id='describe_tab', visible=True) as image_describe:
                             with gr.Group():
                                 with gr.Column():
-                                    describe_input_image = gr.File(
-                                        label='Image or video to be described',
-                                        file_count='single',
-                                        file_types=['image', 'video'],
-                                        type='filepath',
-                                        height=300,
-                                        elem_id='describe_input_image',
-                                    )
-                                with gr.Column():
-                                    with gr.Group(elem_id='describe_prompt_box'):
-                                        describe_prompt = gr.Textbox(value='', show_label=False, container=False, lines=1, max_lines=1, visible='hidden', elem_id='describe_prompt', elem_classes=['sai-gradio-hidden-bridge', 'describe-prompt-hidden-bridge'])
-                                        describe_vlm_chat_button = gr.HTML(
-                                            value='<button type="button" class="describe-vlm-chat-entry describe-vlm-chat-edge-entry" title="VLM/LLM AI chat" aria-label="VLM/LLM AI chat"><i class="fa-solid fa-comments" aria-hidden="true"></i></button>',
-                                            elem_id='describe_vlm_chat_button',
-                                            elem_classes=['describe-vlm-chat-edge-host'],
-                                        )
-                                    with gr.Row(elem_id='describe_output_options_row'):
-                                        describe_output_tags = gr.Checkbox(label='Output with tags', value=False, visible=True, min_width=50, elem_id='describe_output_tags')
-                                        describe_output_chinese = gr.Checkbox(label='Output in Chinese', value=False, visible=True, min_width=50, elem_id='describe_output_chinese')
-                                        describe_output_artist = gr.Checkbox(label='Artist', value=False, visible=True, min_width=50, elem_id='describe_output_artist')
-                                    describe_image_size = gr.Button(value='Original Size / Recommended Size', elem_id='describe_image_size', visible=False)
-                                    with gr.Row():
-                                        describe_btn = gr.Button(value='⚡ Execute Instruction')
-                                        unload_btn = gr.Button(value='🗑️Unload Models', min_width=150)
                                     with gr.Row(visible=True, elem_id='describe_vlm_model_bar') as vlm_describe_col:
                                         describe_vlm_model = gr.Dropdown(
                                             choices=_vlm_model_choices(_initial_main_vlm_version, include_dynamic=False, scan_catalog=False),
@@ -8119,6 +8090,29 @@ with shared.gradio_root:
                                             describe_vlm_custom_fetch_models = gr.Button(value=_initial_main_vlm_texts["fetch_models"], size='sm', min_width=120, elem_id='describe_vlm_custom_fetch_models')
                                             describe_vlm_custom_test = gr.Button(value=_initial_main_vlm_texts["test_api"], size='sm', min_width=120, elem_id='describe_vlm_custom_test')
                                         describe_vlm_custom_message = gr.HTML(value='', elem_id='describe_vlm_custom_message')
+                                    describe_input_image = gr.File(
+                                        label='Image or video to be described',
+                                        file_count='single',
+                                        file_types=['image', 'video'],
+                                        type='filepath',
+                                        height=300,
+                                        elem_id='describe_input_image',
+                                    )
+                                    with gr.Group(elem_id='describe_prompt_box'):
+                                        describe_prompt = gr.Textbox(value='', show_label=False, container=False, lines=1, max_lines=1, visible='hidden', elem_id='describe_prompt', elem_classes=['sai-gradio-hidden-bridge', 'describe-prompt-hidden-bridge'])
+                                        describe_vlm_chat_button = gr.HTML(
+                                            value='<button type="button" class="describe-vlm-chat-entry describe-vlm-chat-edge-entry" title="VLM/LLM AI chat" aria-label="VLM/LLM AI chat"><i class="fa-solid fa-comments" aria-hidden="true"></i></button>',
+                                            elem_id='describe_vlm_chat_button',
+                                            elem_classes=['describe-vlm-chat-edge-host'],
+                                        )
+                                    with gr.Row(elem_id='describe_output_options_row'):
+                                        describe_output_tags = gr.Checkbox(label='Output with tags', value=False, visible=True, min_width=50, elem_id='describe_output_tags')
+                                        describe_output_chinese = gr.Checkbox(label='Output in Chinese', value=False, visible=True, min_width=50, elem_id='describe_output_chinese')
+                                        describe_output_artist = gr.Checkbox(label='Artist', value=False, visible=True, min_width=50, elem_id='describe_output_artist')
+                                    describe_image_size = gr.Button(value='Original Size / Recommended Size', elem_id='describe_image_size', visible=False)
+                                    with gr.Row():
+                                        describe_btn = gr.Button(value='⚡ Execute Instruction')
+                                        unload_btn = gr.Button(value='🗑️Unload Models', min_width=150)
                                     describe_vlm_chat_prompt_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_chat_prompt_bridge', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_chat_apply_prompt_btn = gr.Button('Apply Describe VLM chat prompt', visible='hidden', elem_id='describe_vlm_chat_apply_prompt_btn', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_model_select_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_model_select_bridge', elem_classes=['sai-gradio-hidden-bridge'])
@@ -13610,6 +13604,9 @@ def _canvas_workbench_standalone_system_params(request: Request):
         "__user_did": user_did,
         "__theme": theme,
         "__lang": lang,
+        "__studio_help": {
+            "local_model_dirs": list(modules.config.paths_LLM) if is_local_mode() else [],
+        },
     }
 
 
@@ -13642,6 +13639,7 @@ def _canvas_workbench_standalone_html(request: Request):
     css_paths = [
         webpath("css/video_region_selector.css"),
         webpath("css/style.css"),
+        webpath("css/studio_help.css"),
         webpath("css/fa_all.min_6.5.2.css"),
         webpath("css/font_awesome_fix.css"),
         webpath("css/tag_cart.css"),
@@ -13649,6 +13647,8 @@ def _canvas_workbench_standalone_html(request: Request):
     ]
     script_paths = [
         webpath("javascript/simpleai_i18n.js"),
+        webpath("javascript/studio_help_content.js"),
+        webpath("javascript/studio_help.js"),
         webpath("javascript/video_region_selector.js"),
         webpath("javascript/canvas_workbench/utils.js"),
         webpath("javascript/canvas_workbench/api.js"),
@@ -13695,6 +13695,7 @@ def _canvas_workbench_standalone_html(request: Request):
          webpath("javascript/canvas_workbench/canvas_agent_preset_runtime.js"),
          webpath("javascript/canvas_workbench/canvas_agent_prompt_rewrite.js"),
          webpath("javascript/canvas_workbench/canvas_agent_prompt_resolver.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_generation.js"),
          webpath("javascript/canvas_workbench/canvas_agent_text_workflows.js"),
         webpath("javascript/canvas_workbench/canvas_agent_text_nodes.js"),
         webpath("javascript/canvas_workbench/canvas_agent_context.js"),
@@ -13726,9 +13727,10 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_node_param_controller.js"),
         webpath("javascript/canvas_workbench/canvas_inspector_controller.js"),
          webpath("javascript/canvas_workbench/canvas_node_interaction_context.js"),
-        webpath("javascript/canvas_workbench/canvas_vlm_chat.js"),
+         webpath("javascript/canvas_workbench/canvas_vlm_chat.js"),
          webpath("javascript/canvas_workbench/canvas_vlm_chat_context.js"),
          webpath("javascript/canvas_workbench/canvas_agent_workflow_layout.js"),
+         webpath("javascript/canvas_workbench/canvas_agent_mask_workflow.js"),
          webpath("javascript/canvas_workbench/canvas_agent_sam3_workflow.js"),
          webpath("javascript/canvas_workbench/canvas_agent_media_connections.js"),
          webpath("javascript/canvas_workbench/canvas_agent_image_workflows.js"),

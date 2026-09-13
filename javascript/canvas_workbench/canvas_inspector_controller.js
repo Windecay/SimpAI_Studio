@@ -3,22 +3,69 @@
 
     function createCanvasInspectorController(context) {
         const scope = context || {};
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : (value => String(value ?? ''));
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getProject = () => call('getProject', {}) || {};
-        const getInspector = () => call('getInspector', null);
-        const getSelectedNodeId = () => call('getSelectedNodeId', null);
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', cn || en, en, cn, state);
+        };
+        const utilitySource = sourceObject('utilitySource');
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const escapeHtml = (...args) => utilityCall('escapeHtml', String(args[0] ?? ''), ...args);
+        const renderIconHtml = (...args) => utilityCall('renderIconHtml', '<i class="fa-solid fa-code-compare"></i>', ...args);
+        const normalizeCanvasColor = (...args) => utilityCall('normalizeCanvasColor', '#14b8a6', ...args);
+        const projectSource = sourceObject('projectSource');
+        const projectCall = (name, fallback, ...args) => typeof projectSource[name] === 'function'
+            ? projectSource[name](...args)
+            : fallback;
+        const selectionSource = sourceObject('selectionSource');
+        const selectionCall = (name, fallback, ...args) => typeof selectionSource[name] === 'function'
+            ? selectionSource[name](...args)
+            : fallback;
+        const nodeSource = sourceObject('nodeSource');
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const groupSource = sourceObject('groupSource');
+        const groupCall = (name, fallback, ...args) => typeof groupSource[name] === 'function'
+            ? groupSource[name](...args)
+            : fallback;
+        const rendererSource = sourceObject('rendererSource');
+        const rendererCall = (name, fallback, ...args) => typeof rendererSource[name] === 'function'
+            ? rendererSource[name](...args)
+            : fallback;
+        const storageSource = sourceObject('storageSource');
+        const storageCall = (name, fallback, ...args) => typeof storageSource[name] === 'function'
+            ? storageSource[name](...args)
+            : fallback;
+        const uiSource = sourceObject('uiSource');
+        const uiCall = (name, fallback, ...args) => typeof uiSource[name] === 'function'
+            ? uiSource[name](...args)
+            : fallback;
+        const getProject = () => projectCall('getProject', {}) || {};
+        const getInspector = () => uiCall('getInspector', null);
+        const getSelectedNodeId = () => selectionCall('getSelectedNodeId', null);
         const getSelectedNodeIds = () => {
-            const value = call('getSelectedNodeIds', null);
+            const value = selectionCall('getSelectedNodeIds', null);
             if (value && typeof value[Symbol.iterator] === 'function') return new Set(Array.from(value));
             return new Set(Array.isArray(value) ? value : []);
         };
-        const getSelectedEdgeId = () => call('getSelectedEdgeId', null);
-        const getSelectedGroupId = () => call('getSelectedGroupId', null);
-        const getNode = (id) => call('getNode', null, id);
+        const getSelectedEdgeId = () => selectionCall('getSelectedEdgeId', null);
+        const getSelectedGroupId = () => selectionCall('getSelectedGroupId', null);
+        const getNode = (id) => nodeCall('getNode', null, id);
         function renderNodeKind(kind, node) {
-            const renderer = call('getNodeInspectorRenderer', null, kind);
+            const renderer = rendererCall('getNodeInspectorRenderer', null, kind);
             return typeof renderer === 'function' ? renderer(node) : '';
         }
 
@@ -33,7 +80,7 @@
             else if (node.type === 'batch_any') html = renderNodeKind('batch_any', node);
             else if (node.type === 'xy_matrix' || node.type === 'xyz_matrix') html = renderNodeKind('xyz_matrix', node);
             else if (node.type === 'timeline') html = renderNodeKind('timeline', node);
-            else if (call('isDirectorTimelineNode', false, node)) html = renderNodeKind('director_timeline', node);
+            else if (nodeCall('isDirectorTimelineNode', false, node)) html = renderNodeKind('director_timeline', node);
             else if (node.type === 'style_selector') html = renderNodeKind('style_selector', node);
             else if (node.type === 'video') html = renderNodeKind('video', node);
             else if (node.type === 'audio') html = renderNodeKind('audio', node);
@@ -50,7 +97,7 @@
             else if (node.type === 'pose_studio') html = renderNodeKind('pose_studio', node);
             else if (node.type === 'gaussian_studio') html = renderNodeKind('gaussian_studio', node);
             else if (node.type === 'liveportrait_expression') html = renderNodeKind('liveportrait_expression', node);
-            else if (call('isQwenTtsNode', false, node)) html = renderNodeKind('qwen_tts', node);
+            else if (nodeCall('isQwenTtsNode', false, node)) html = renderNodeKind('qwen_tts', node);
             else html = renderNodeKind('image', node);
             return `${renderNodeAppearanceInspector(node)}${html}`;
         }
@@ -63,45 +110,45 @@
             const selectedEdgeId = getSelectedEdgeId();
             const selectedNodeIds = getSelectedNodeIds();
             if (selectedGroupId && !selectedNodeId && !selectedEdgeId) {
-                const group = call('getGroup', null, selectedGroupId);
+                const group = groupCall('getGroup', null, selectedGroupId);
                 target.innerHTML = group ? renderGroupInspector(group) : renderInspectorEmpty();
-                call('ensureWorkbenchFormFieldNames', undefined, target, `inspector_group_${selectedGroupId || 'group'}`);
-                call('bindInspectorEvents');
+                uiCall('ensureWorkbenchFormFieldNames', undefined, target, `inspector_group_${selectedGroupId || 'group'}`);
+                uiCall('bindInspectorEvents');
                 return;
             }
             if (!selectedNodeId && !selectedEdgeId) {
                 target.innerHTML = renderInspectorEmpty();
-                call('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_empty');
+                uiCall('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_empty');
                 return;
             }
             if (!selectedEdgeId && selectedNodeIds.size > 1) {
                 target.innerHTML = renderSelectionInspector();
-                call('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_selection');
-                call('bindInspectorEvents');
+                uiCall('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_selection');
+                uiCall('bindInspectorEvents');
                 return;
             }
             if (selectedEdgeId) {
                 const edge = (Array.isArray(getProject().edges) ? getProject().edges : []).find(item => item.id === selectedEdgeId);
                 target.innerHTML = renderEdgeInspector(edge);
-                call('ensureWorkbenchFormFieldNames', undefined, target, `inspector_edge_${selectedEdgeId || 'edge'}`);
-                call('bindInspectorEvents');
+                uiCall('ensureWorkbenchFormFieldNames', undefined, target, `inspector_edge_${selectedEdgeId || 'edge'}`);
+                uiCall('bindInspectorEvents');
                 return;
             }
             const node = getNode(selectedNodeId);
             if (!node) {
                 target.innerHTML = renderInspectorEmpty();
-                call('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_missing');
+                uiCall('ensureWorkbenchFormFieldNames', undefined, target, 'inspector_missing');
                 return;
             }
             target.innerHTML = renderNodeInspector(node);
-            call('ensureWorkbenchFormFieldNames', undefined, target, `inspector_${selectedNodeId || selectedEdgeId || 'empty'}`);
-            call('bindInspectorEvents');
+            uiCall('ensureWorkbenchFormFieldNames', undefined, target, `inspector_${selectedNodeId || selectedEdgeId || 'empty'}`);
+            uiCall('bindInspectorEvents');
         }
 
         function renderNodeAppearanceInspector(node) {
-            const color = call('nodeCustomColor', '', node);
+            const color = nodeCall('nodeCustomColor', '', node);
             const enabled = !!color;
-            const inputValue = call('expandCanvasHexColor', '#14b8a6', color || '#14b8a6');
+            const inputValue = nodeCall('expandCanvasHexColor', '#14b8a6', color || '#14b8a6');
             return `
 <div class="sai-inspector-section sai-node-appearance-section">
   <h3>${escapeHtml(t('Node Appearance', '节点外观'))}</h3>
@@ -115,8 +162,8 @@
 
         function renderInspectorEmpty() {
             const project = getProject();
-            const storageScope = call('getStorageScope', {}) || {};
-            const storageKey = call('getStorageKey', '');
+            const storageScope = storageCall('getStorageScope', {}) || {};
+            const storageKey = storageCall('getStorageKey', '');
             return `
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Workbench', '工作台'))}</h3>
@@ -124,9 +171,9 @@
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Save Location', '保存位置'))}</h3>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Location', '位置'))}</span><b>${escapeHtml(call('storageDisplayLocation', ''))}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Location', '位置'))}</span><b>${escapeHtml(storageCall('storageDisplayLocation', ''))}</b></div>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Scope', '作用域'))}</span><b>${escapeHtml(storageScope.label)}</b></div>
-  <label>${escapeHtml(t('Project File', '项目文件'))}<input value="${escapeHtml(call('storageDisplayPath', ''))}" readonly></label>
+  <label>${escapeHtml(t('Project File', '项目文件'))}<input value="${escapeHtml(storageCall('storageDisplayPath', ''))}" readonly></label>
   <label>${escapeHtml(t('Browser Cache', '浏览器缓存'))}<input value="${escapeHtml(project.storage?.key || storageKey)}" readonly></label>
 </div>
 <div class="sai-inspector-actions">
@@ -139,19 +186,19 @@
   <button type="button" data-canvas-action="add-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Add Live Exp', '添加表情'))}</span></button>
   <button type="button" data-canvas-action="add-note"><i class="fa-solid fa-note-sticky"></i><span>${escapeHtml(t('Add note', '添加提示贴'))}</span></button>
   <button type="button" data-canvas-action="add-group"><i class="fa-solid fa-object-group"></i><span>${escapeHtml(t('Add group', '添加分组'))}</span></button>
-  <button type="button" data-canvas-action="add-compare">${call('renderIconHtml', '<i class="fa-solid fa-code-compare"></i>', 'sai-compare-glyph')}<span>${escapeHtml(t('Add compare', '添加对比'))}</span></button>
+  <button type="button" data-canvas-action="add-compare">${renderIconHtml('sai-compare-glyph')}<span>${escapeHtml(t('Add compare', '添加对比'))}</span></button>
   <button type="button" data-canvas-action="add-timeline"><i class="fa-solid fa-clapperboard"></i><span>${escapeHtml(t('Add timeline', '添加时间线'))}</span></button>
   <button type="button" data-canvas-action="add-output"><i class="fa-solid fa-circle-dot"></i><span>${escapeHtml(t('Add output', '添加输出'))}</span></button>
 </div>`;
         }
 
         function renderSelectionInspector() {
-            const ids = call('getSelectedNodeIdList', Array.from(getSelectedNodeIds()));
+            const ids = selectionCall('getSelectedNodeIdList', Array.from(getSelectedNodeIds()));
             const nodes = (Array.isArray(ids) ? ids : Array.from(ids || [])).map(id => getNode(id)).filter(Boolean);
-            const lockedCount = nodes.filter(node => !!call('isNodeLocked', false, node)).length;
-            const ignoredCount = nodes.filter(node => !!call('isNodeIgnored', false, node)).length;
-            const compareCount = nodes.filter(node => !!call('isImageCompareSource', false, node)).length;
-            const timelineCount = nodes.filter(node => !!call('isTimelineSource', false, node)).length;
+            const lockedCount = nodes.filter(node => !!nodeCall('isNodeLocked', false, node)).length;
+            const ignoredCount = nodes.filter(node => !!nodeCall('isNodeIgnored', false, node)).length;
+            const compareCount = nodes.filter(node => !!nodeCall('isImageCompareSource', false, node)).length;
+            const timelineCount = nodes.filter(node => !!nodeCall('isTimelineSource', false, node)).length;
             return `
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Selection', '选区'))}</h3>
@@ -163,9 +210,9 @@
 <div class="sai-inspector-actions">
   <button type="button" data-inspector-action="toggle-lock"><i class="fa-solid ${lockedCount === nodes.length ? 'fa-lock-open' : 'fa-lock'}"></i><span>${escapeHtml(lockedCount === nodes.length ? t('Unlock', '解锁') : t('Lock', '锁定'))}</span></button>
   <button type="button" data-inspector-action="toggle-ignore"><i class="fa-solid fa-forward-step"></i><span>${escapeHtml(ignoredCount === nodes.length ? t('Enable', '启用') : t('Skip', '跳过'))}</span></button>
-  <button type="button" data-inspector-action="toggle-collapse"><i class="fa-solid fa-down-left-and-up-right-to-center"></i><span>${escapeHtml(nodes.every(node => !!call('isNodeCollapsed', false, node)) ? t('Expand', '展开') : t('Collapse', '折叠'))}</span></button>
-  ${compareCount >= 2 ? `<button type="button" data-inspector-action="compare-selected">${call('renderIconHtml', '<i class="fa-solid fa-code-compare"></i>', 'sai-compare-glyph')}<span>${escapeHtml(t('Compare', '对比'))}</span></button>` : ''}
-  ${timelineCount >= 1 ? `<button type="button" data-inspector-action="timeline-selected"><i class="fa-solid fa-clapperboard"></i><span>Timeline</span></button>` : ''}
+  <button type="button" data-inspector-action="toggle-collapse"><i class="fa-solid fa-down-left-and-up-right-to-center"></i><span>${escapeHtml(nodes.every(node => !!nodeCall('isNodeCollapsed', false, node)) ? t('Expand', '展开') : t('Collapse', '折叠'))}</span></button>
+  ${compareCount >= 2 ? `<button type="button" data-inspector-action="compare-selected">${renderIconHtml('sai-compare-glyph')}<span>${escapeHtml(t('Compare', '对比'))}</span></button>` : ''}
+  ${timelineCount >= 1 ? `<button type="button" data-inspector-action="timeline-selected"><i class="fa-solid fa-clapperboard"></i><span>${escapeHtml(t('Timeline', '时间线'))}</span></button>` : ''}
   <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
   <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
 </div>
@@ -184,8 +231,8 @@
         }
 
         function renderGroupInspector(group) {
-            const rect = call('getGroupRect', {}, group) || {};
-            const nodes = call('getNodesInsideGroup', [], group) || [];
+            const rect = groupCall('getGroupRect', {}, group) || {};
+            const nodes = groupCall('getNodesInsideGroup', [], group) || [];
             return `
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Area Group', '区域分组'))}</h3>
@@ -197,7 +244,7 @@
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Appearance', '外观'))}</h3>
-  <label>${escapeHtml(t('Color', '颜色'))}<input data-group-field="color" type="color" value="${escapeHtml(call('normalizeCanvasColor', '#14b8a6', group.color, '#14b8a6'))}"></label>
+  <label>${escapeHtml(t('Color', '颜色'))}<input data-group-field="color" type="color" value="${escapeHtml(normalizeCanvasColor(group.color, '#14b8a6'))}"></label>
   <label>${escapeHtml(t('Opacity', '透明度'))}<input data-group-field="alpha" type="range" min="0.04" max="0.72" step="0.02" value="${escapeHtml(group.alpha ?? 0.16)}"></label>
   <div class="sai-inspector-grid2">
     <label>X<input data-group-field="x" type="number" step="10" value="${escapeHtml(rect.x)}"></label>
@@ -217,23 +264,23 @@
             const from = getNode(edge.from);
             const to = getNode(edge.to);
             const slotLabel = edge.type === 'config'
-                ? `${edge.slot} config`
+                ? `${edge.slot} ${t('config', '配置')}`
                 : (edge.type === 'text'
-                    ? `${edge.slot} text`
+                    ? `${edge.slot} ${t('text', '文本')}`
                     : (edge.type === 'timeline'
-                        ? 'Timeline clip'
+                        ? t('Timeline clip', '时间线片段')
                         : (edge.type === 'compare'
-                            ? `Image ${String(edge.slot).toUpperCase()}`
+                            ? `${t('Image', '图像')} ${String(edge.slot).toUpperCase()}`
                             : (edge.type === 'image'
                                 ? edge.slot
-                                : call('getSlotLabel', '', to, edge.slot)))));
+                                : nodeCall('getSlotLabel', '', to, edge.slot)))));
             return `
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Edge', '连线'))}</h3>
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Type', '类型'))}</span><b>${escapeHtml(edge.type || '')}</b></div>
-  <div class="sai-inspector-kv"><span>From</span><b>${escapeHtml(from?.title || edge.from)}</b></div>
-  <div class="sai-inspector-kv"><span>To</span><b>${escapeHtml(to?.title || edge.to)}</b></div>
-  ${edge.slot ? `<div class="sai-inspector-kv"><span>Slot</span><b>${escapeHtml(slotLabel)}</b></div>` : ''}
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('From', '来源'))}</span><b>${escapeHtml(from?.title || edge.from)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('To', '目标'))}</span><b>${escapeHtml(to?.title || edge.to)}</b></div>
+  ${edge.slot ? `<div class="sai-inspector-kv"><span>${escapeHtml(t('Slot', '槽位'))}</span><b>${escapeHtml(slotLabel)}</b></div>` : ''}
 </div>
 <div class="sai-inspector-actions">
   <button type="button" data-inspector-action="delete-edge" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete edge', '删除连线'))}</span></button>

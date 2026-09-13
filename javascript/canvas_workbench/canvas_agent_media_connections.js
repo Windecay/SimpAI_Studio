@@ -6,11 +6,6 @@
         const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
         const t = scope.t || ((en, cn) => cn || en);
         const runtimeUiLang = (...args) => call('runtimeUiLang', 'en', ...args);
-        const canvasAgentUploadSlotsForNode = (...args) => {
-            const slots = call('canvasAgentUploadSlotsForNode', [], ...args);
-            return Array.isArray(slots) ? slots : [];
-        };
-        const isCanvasAgentMaskSlot = (...args) => !!call('isCanvasAgentMaskSlot', false, ...args);
         const getUploadSlotMediaKind = (...args) => call('getUploadSlotMediaKind', 'image', ...args);
         const canNodeConnectToUploadSlot = (...args) => !!call('canNodeConnectToUploadSlot', false, ...args);
         const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
@@ -23,6 +18,19 @@
         const getSlotLabel = (...args) => call('getSlotLabel', 'upload', ...args);
         const buildMediaNodeStatePatch = (...args) => call('buildMediaNodeStatePatch', {}, ...args) || {};
         const buildAgentReferencePlaceholderPatch = (...args) => call('buildAgentReferencePlaceholderPatch', {}, ...args) || {};
+
+        function canvasAgentUploadSlotsForNode(node) {
+            const slots = node?.type === 'classic'
+                ? getVisibleClassicUploadSlots(node)
+                : getVisibleUploadSlots(node);
+            return Array.isArray(slots) ? slots : [];
+        }
+
+        function isCanvasAgentMaskSlot(slot) {
+            const key = String(slot?.key || '').toLowerCase();
+            const label = String(slot?.label || '').toLowerCase();
+            return key.includes('mask') || label.includes('mask') || label.includes('蒙版') || label.includes('遮罩');
+        }
 
         function connectCanvasAgentImagesToGenerator(generator, mainNode, extraNodes) {
             const uploadSlots = canvasAgentUploadSlotsForNode(generator).filter(slot => !isCanvasAgentMaskSlot(slot));
@@ -176,6 +184,8 @@
         }
 
         return {
+            canvasAgentUploadSlotsForNode,
+            isCanvasAgentMaskSlot,
             connectCanvasAgentImagesToGenerator,
             connectCanvasAgentMediaToGenerator,
             canvasAgentMediaConnectionError,

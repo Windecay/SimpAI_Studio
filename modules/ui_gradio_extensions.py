@@ -169,6 +169,8 @@ def prompt_action_catalog_js():
 
 def javascript_html():
     simpleai_i18n_js_path = webpath('javascript/simpleai_i18n.js')
+    studio_help_content_path = webpath('javascript/studio_help_content.js')
+    studio_help_path = webpath('javascript/studio_help.js')
     video_region_selector_js_path = webpath('javascript/video_region_selector.js')
     studio_performance_js_path = webpath('javascript/studio_performance.js')
     script_js_path = webpath('javascript/script.js')
@@ -229,6 +231,7 @@ def javascript_html():
     canvas_workbench_canvas_agent_preset_runtime_path = webpath('javascript/canvas_workbench/canvas_agent_preset_runtime.js')
     canvas_workbench_canvas_agent_prompt_rewrite_path = webpath('javascript/canvas_workbench/canvas_agent_prompt_rewrite.js')
     canvas_workbench_canvas_agent_prompt_resolver_path = webpath('javascript/canvas_workbench/canvas_agent_prompt_resolver.js')
+    canvas_workbench_canvas_agent_generation_path = webpath('javascript/canvas_workbench/canvas_agent_generation.js')
     canvas_workbench_canvas_agent_text_workflows_path = webpath('javascript/canvas_workbench/canvas_agent_text_workflows.js')
     canvas_workbench_canvas_agent_text_nodes_path = webpath('javascript/canvas_workbench/canvas_agent_text_nodes.js')
     canvas_workbench_canvas_agent_context_path = webpath('javascript/canvas_workbench/canvas_agent_context.js')
@@ -271,6 +274,7 @@ def javascript_html():
     canvas_workbench_canvas_vlm_chat_path = webpath('javascript/canvas_workbench/canvas_vlm_chat.js')
     canvas_workbench_canvas_vlm_chat_context_path = webpath('javascript/canvas_workbench/canvas_vlm_chat_context.js')
     canvas_workbench_canvas_agent_workflow_layout_path = webpath('javascript/canvas_workbench/canvas_agent_workflow_layout.js')
+    canvas_workbench_canvas_agent_mask_workflow_path = webpath('javascript/canvas_workbench/canvas_agent_mask_workflow.js')
     canvas_workbench_canvas_agent_sam3_workflow_path = webpath('javascript/canvas_workbench/canvas_agent_sam3_workflow.js')
     canvas_workbench_canvas_agent_media_connections_path = webpath('javascript/canvas_workbench/canvas_agent_media_connections.js')
     canvas_workbench_canvas_vlm_context_path = webpath('javascript/canvas_workbench/canvas_vlm_context.js')
@@ -467,6 +471,7 @@ def javascript_html():
              canvas_workbench_canvas_agent_preset_runtime_path,
              canvas_workbench_canvas_agent_prompt_rewrite_path,
              canvas_workbench_canvas_agent_prompt_resolver_path,
+             canvas_workbench_canvas_agent_generation_path,
              canvas_workbench_canvas_agent_text_workflows_path,
             canvas_workbench_canvas_agent_text_nodes_path,
             canvas_workbench_canvas_agent_context_path,
@@ -498,9 +503,10 @@ def javascript_html():
             canvas_workbench_canvas_node_param_path,
             canvas_workbench_canvas_inspector_path,
              canvas_workbench_canvas_node_interaction_context_path,
-            canvas_workbench_canvas_vlm_chat_path,
+             canvas_workbench_canvas_vlm_chat_path,
              canvas_workbench_canvas_vlm_chat_context_path,
              canvas_workbench_canvas_agent_workflow_layout_path,
+             canvas_workbench_canvas_agent_mask_workflow_path,
              canvas_workbench_canvas_agent_sam3_workflow_path,
              canvas_workbench_canvas_agent_media_connections_path,
              canvas_workbench_canvas_agent_image_workflows_path,
@@ -730,6 +736,8 @@ def javascript_html():
         head += f'<script type="text/javascript" src="{studio_performance_js_path}"></script>\n'
     head += f'<script type="text/javascript">window.SimpAILazyAssets={lazy_assets_json};</script>\n'
     head += f'<script type="text/javascript" src="{script_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{studio_help_content_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{studio_help_path}"></script>\n'
     head += f'<script type="text/javascript" src="{context_menus_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{localization_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{gradio_media_replacement_js_path}"></script>\n'
@@ -765,10 +773,12 @@ def javascript_html():
 
 def css_html():
     style_css_path = webpath('css/style.css')
+    studio_help_css_path = webpath('css/studio_help.css')
     video_region_selector_css_path = webpath('css/video_region_selector.css')
     font_awesome_path = webpath('css/fa_all.min_6.5.2.css')
     font_awesome_fix_path = webpath('css/font_awesome_fix.css')
     head = f'<link rel="stylesheet" property="stylesheet" href="{style_css_path}">\n'
+    head += f'<link rel="stylesheet" property="stylesheet" href="{studio_help_css_path}">\n'
     head += f'<link rel="stylesheet" property="stylesheet" href="{video_region_selector_css_path}">\n'
     head += f'<link rel="stylesheet" property="stylesheet" href="{font_awesome_path}">\n'
     head += f'<link rel="stylesheet" property="stylesheet" href="{font_awesome_fix_path}">\n'

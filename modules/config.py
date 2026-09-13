@@ -434,7 +434,7 @@ def resolve_preset_supported_tasks(preset_content, preset_name=""):
         (("relight", "anglelight", "angle light"), "image_relight"),
         (("styletransfer", "style transfer"), "image_style_transfer"),
         (("swapface", "face swap"), "image_face_swap"),
-        (("pose editor", "qwenpose", "kleinpose"), "image_pose_transfer"),
+        (("pose editor", "qwenpose", "h3(pose)", "h3 pose"), "image_pose_transfer"),
         (("onekeypose", "dw_pose", "sdpose"), "image_pose_extraction"),
         (("a2r", "anime-to-real", "anime to real"), "image_anime_to_real"),
         (("multiangle", "multi-angle", "multi angle"), "image_view_synthesis"),

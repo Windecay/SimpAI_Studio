@@ -3262,6 +3262,14 @@ def get_gpu_arch_str():
         print(f"获取GPU架构失败: {e}", file=sys.stderr)
         return "cpu"
 
+DEPRECATED_PACKAGE_KEYS = (
+    "nun_int4_qwen_image_edit_plus_package",
+    "nun_fp4_qwen_image_edit_plus_package",
+    "nunchaku_int4_aio_package",
+    "nunchaku_fp4_aio_package",
+)
+
+
 def filter_packages_by_gpu_arch(packages):
     """
     根据GPU架构过滤package
@@ -3287,6 +3295,8 @@ def filter_packages_by_gpu_arch(packages):
             pass
 
     for package_key, package_info in packages.items():
+        if package_key in DEPRECATED_PACKAGE_KEYS:
+            continue
         package_name = package_info["name"]
 
         if is_20_series_or_lower and package_key in {
@@ -4156,6 +4166,9 @@ MANUAL_DOWNLOAD_LIST = [
     for category, files in MANUAL_DOWNLOAD_MAP.items() 
     for filename in files
 ]
+
+# Retain historical manifests without exposing their packages to downloads.
+DEPRECATED_PACKAGES = {key: packages.pop(key) for key in DEPRECATED_PACKAGE_KEYS}
 
 OBSOLETE_MODELS = [
     'flux-2-klein-9b-fp8.safetensors',

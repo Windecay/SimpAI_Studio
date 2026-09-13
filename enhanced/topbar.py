@@ -34,6 +34,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 from ui.update_helpers import dataset_update, skip_update
+from ui.studio_help import build_preset_help_context
 from gradio.route_utils import API_PREFIX
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
@@ -276,16 +277,9 @@ PRESET_STORE_ORDER = [
     "Flux2-KleinEdit",
     "Flux2-AngleLight",
     "Flux2-A2R",
-    "Flux2-KleinPose",
     "Flux1-dev",
     "FluxKontext",
     "Swap+",
-    "NunSwap_fp4",
-    "NunSwap_int4",
-    "NunFlux_fp4",
-    "NunFlux_int4",
-    "NunQwenEdit+_fp4",
-    "NunQwenEdit+_int4",
     "QwenEdit+",
     "Qwen2512",
     "QwenA2R",
@@ -312,6 +306,7 @@ PRESET_STORE_ORDER = [
     "MiniMax-H3(Avatar)",
     "MiniMax-H3(R2C)",
     "MiniMax-H3(R2I)",
+    "MiniMax-H3(Pose)",
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
     "Bernini-VideoEdit",
@@ -967,11 +962,14 @@ def get_system_message():
 
 
 def preset_instruction():
-    head = "<div style='max-width:100%; max-height:65x; overflow:auto'>"
-    foot = "</div>"
-    body = f'<iframe id="instruction" src="{get_preset_inc_url(config.preset, args_manager.args.language)}" frameborder="0" scrolling="auto" width="100%" height="65"></iframe>'
-    
-    return head + body + foot
+    return (
+        '<div id="studio_preset_intro"></div>'
+        '<details class="sai-help-preset-legacy" hidden>'
+        '<summary data-studio-legacy-title></summary>'
+        f'<iframe id="instruction" src="{get_preset_inc_url(config.preset, args_manager.args.language)}" '
+        'title="Preset" frameborder="0" scrolling="auto" width="100%" height="180"></iframe>'
+        '</details>'
+    )
 
 get_system_params_js = '''
 function(system_params) {
@@ -1167,7 +1165,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, dy
     preset = state_params.get("__preset", initial_preset)
     preset_url = get_preset_inc_url(preset, state_params.get("__lang"))
     state_params.update({"__preset_url":preset_url})
-    results += [gr.update(visible=has_preset_inc_url(preset_url))]
+    results += [gr.update(visible=True)]
     results += get_all_user_default(state_params)
     results += get_all_admin_default(admin_currunt_value)
 
@@ -4671,6 +4669,10 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __webpath=state["__webpath"],
         __lang=state.get("__lang"),
         __preset_url=state.get("__preset_url"),
+        __studio_help={
+            "preset": build_preset_help_context(state, scene_theme),
+            "local_model_dirs": list(config.paths_LLM) if state_has_full_local_access(state) else [],
+        },
         __finished_nums_pages=state.get("__finished_nums_pages", "0,0"),
         __gallery_engine_type=state.get("__gallery_engine_type", state.get('engine_type', 'image')),
         __skip_gallery_browser_refresh_once=bool(state.get("__skip_gallery_browser_refresh_once", False)),

@@ -7,9 +7,22 @@
 
     function createCanvasRunStatusController(context) {
         const scope = context || {};
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const utilitySource = sourceObject('utilitySource');
+        const projectSource = sourceObject('projectSource');
+        const windowSource = sourceObject('windowSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const domSource = sourceObject('domSource');
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const formatLocalTime = typeof languageSource.formatLocalTime === 'function'
+            ? languageSource.formatLocalTime
+            : (value) => String(value || '');
+        const cloneRunValue = typeof utilitySource.cloneRunValue === 'function'
+            ? utilitySource.cloneRunValue
             : (value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -17,40 +30,37 @@
                     return fallback;
                 }
             };
-        const escapeHtml = typeof scope.escapeHtml === 'function'
-            ? scope.escapeHtml
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
             : (value) => String(value ?? '').replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char]));
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const getWindow = () => typeof scope.getWindow === 'function'
-            ? (scope.getWindow() || {})
-            : (typeof window !== 'undefined' ? window : {});
-        const clampValue = (value, min, max) => typeof scope.clamp === 'function'
-            ? scope.clamp(value, min, max)
+        const clampValue = (value, min, max) => typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp(value, min, max)
             : Math.max(min, Math.min(max, value));
-        const isStandalone = () => typeof scope.isStandaloneCanvasWorkbench === 'function'
-            ? !!scope.isStandaloneCanvasWorkbench()
+        const getProject = () => typeof projectSource.getProject === 'function' ? (projectSource.getProject() || {}) : {};
+        const getWindow = () => typeof windowSource.getWindow === 'function'
+            ? (windowSource.getWindow() || {})
+            : (typeof window !== 'undefined' ? window : {});
+        const isStandalone = () => typeof runtimeSource.isStandaloneCanvasWorkbench === 'function'
+            ? !!runtimeSource.isStandaloneCanvasWorkbench()
             : false;
-        const formatLocalTime = (value) => typeof scope.formatLocalTime === 'function'
-            ? scope.formatLocalTime(value)
-            : String(value || '');
-        const isTerminalRunState = (state) => typeof scope.isTerminalRunState === 'function'
-            ? !!scope.isTerminalRunState(state)
+        const isTerminalRunState = (state) => typeof runtimeSource.isTerminalRunState === 'function'
+            ? !!runtimeSource.isTerminalRunState(state)
             : TERMINAL_STATES.has(String(state || '').toLowerCase());
-        const getElement = (name) => typeof scope[name] === 'function' ? scope[name]() : null;
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const now = () => typeof scope.now === 'function' ? Number(scope.now()) : Date.now();
+        const getElement = (name) => typeof domSource[name] === 'function' ? domSource[name]() : null;
+        const getNode = (id) => typeof projectSource.getNode === 'function' ? projectSource.getNode(id) : null;
+        const now = () => typeof runtimeSource.now === 'function' ? Number(runtimeSource.now()) : Date.now();
         const fetchStatus = (...args) => {
-            if (typeof scope.fetchStatus === 'function') return scope.fetchStatus(...args);
+            if (typeof runtimeSource.fetchStatus === 'function') return runtimeSource.fetchStatus(...args);
             if (typeof fetch === 'function') return fetch(...args);
             throw new Error('status fetch is unavailable');
         };
         const setIntervalFn = (...args) => {
-            if (typeof scope.setInterval === 'function') return scope.setInterval(...args);
+            if (typeof runtimeSource.setInterval === 'function') return runtimeSource.setInterval(...args);
             const win = getWindow();
             return typeof win.setInterval === 'function' ? win.setInterval(...args) : 0;
         };
         const clearIntervalFn = (...args) => {
-            if (typeof scope.clearInterval === 'function') return scope.clearInterval(...args);
+            if (typeof runtimeSource.clearInterval === 'function') return runtimeSource.clearInterval(...args);
             const win = getWindow();
             if (typeof win.clearInterval === 'function') return win.clearInterval(...args);
         };
@@ -115,8 +125,8 @@
 
         function isRunQueueActiveState(state) {
             const normalized = String(state || '').toLowerCase();
-            const baseActive = typeof scope.isCanvasRunActiveState === 'function'
-                ? !!scope.isCanvasRunActiveState(normalized)
+            const baseActive = typeof runtimeSource.isCanvasRunActiveState === 'function'
+                ? !!runtimeSource.isCanvasRunActiveState(normalized)
                 : FALLBACK_ACTIVE_STATES.has(normalized);
             return baseActive || EXTRA_ACTIVE_STATES.has(normalized);
         }

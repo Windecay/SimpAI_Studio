@@ -3,14 +3,59 @@
 
     function createCanvasVlmNodeView(context) {
         const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', cn || en, en, cn, state);
+        };
+        const utilitySource = sourceObject('utilitySource');
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const escapeHtml = (...args) => utilityCall('escapeHtml', String(args[0] ?? ''), ...args);
+        const configSource = sourceObject('configSource');
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const nodeSource = sourceObject('nodeSource');
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const assetSource = sourceObject('assetSource');
+        const assetCall = (name, fallback, ...args) => typeof assetSource[name] === 'function'
+            ? assetSource[name](...args)
+            : fallback;
+        const stateSource = sourceObject('stateSource');
+        const stateCall = (name, fallback, ...args) => typeof stateSource[name] === 'function'
+            ? stateSource[name](...args)
+            : fallback;
+        const chatContextSource = sourceObject('chatContextSource');
+        const chatContextCall = (name, fallback, ...args) => typeof chatContextSource[name] === 'function'
+            ? chatContextSource[name](...args)
+            : fallback;
+        const renderSource = sourceObject('renderSource');
+        const renderCall = (name, fallback, ...args) => typeof renderSource[name] === 'function'
+            ? renderSource[name](...args)
+            : fallback;
+        const customApiSource = sourceObject('customApiSource');
+        const customApiCall = (name, fallback, ...args) => typeof customApiSource[name] === 'function'
+            ? customApiSource[name](...args)
+            : fallback;
         const getArrayConfig = (name, fallback) => {
-            const value = call(name, fallback);
+            const value = configCall(name, fallback);
             return Array.isArray(value) ? value : fallback;
         };
-        const getNumberConfig = (name, fallback) => Number(call(name, fallback)) || fallback;
+        const getNumberConfig = (name, fallback) => Number(configCall(name, fallback)) || fallback;
         const VLM_VERSION_CHOICES = (() => {
             const value = getArrayConfig('getVlmVersionChoices', ['Custom']);
             return value.length ? value : ['Custom'];
@@ -23,23 +68,23 @@
         const VLM_IMAGE_SLOTS = getArrayConfig('getVlmImageSlots', []);
         const VLM_AGENT_MODE_CHOICES = getArrayConfig('getVlmAgentModeChoices', []);
         const VLM_CUSTOM_API_PROVIDERS = getArrayConfig('getVlmCustomApiProviders', []);
-        const getNode = (...args) => call('getNode', null, ...args);
-        const notConnectedText = (...args) => call('notConnectedText', t('Not connected', '未连接'), ...args);
-        const getVlmSourceAsset = (...args) => call('getVlmSourceAsset', null, ...args);
-        const safeAssetDisplaySrc = (...args) => call('safeAssetDisplaySrc', '', ...args);
-        const nodeStatusState = (...args) => call('nodeStatusState', '', ...args);
-        const isVlmNodeBusy = (...args) => !!call('isVlmNodeBusy', false, ...args);
-        const normalizeVlmAgentMode = (...args) => call('normalizeVlmAgentMode', 'raw', ...args);
-        const vlmChatContextBudgetMax = (...args) => call('vlmChatContextBudgetMax', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
-        const clampVlmChatContextBudget = (...args) => call('clampVlmChatContextBudget', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
-        const vlmModelOptionsHtml = (...args) => call('vlmModelOptionsHtml', '', ...args);
-        const renderNodeStateBadges = (...args) => call('renderNodeStateBadges', '', ...args);
-        const renderVlmChatLog = (...args) => call('renderVlmChatLog', '', ...args);
-        const renderVlmSystemPromptTemplatePicker = (...args) => call('renderVlmSystemPromptTemplatePicker', '', ...args);
-        const renderTranslatableTextarea = (...args) => call('renderTranslatableTextarea', '', ...args);
-        const getTranslationFieldState = (...args) => call('getTranslationFieldState', null, ...args);
-        const getVlmCustomProvider = (...args) => call('getVlmCustomProvider', {}, ...args);
-        const getVlmCustomApiProfile = (...args) => call('getVlmCustomApiProfile', null, ...args);
+        const getNode = (...args) => nodeCall('getNode', null, ...args);
+        const notConnectedText = (...args) => nodeCall('notConnectedText', t('Not connected', '未连接'), ...args);
+        const getVlmSourceAsset = (...args) => assetCall('getVlmSourceAsset', null, ...args);
+        const safeAssetDisplaySrc = (...args) => assetCall('safeAssetDisplaySrc', '', ...args);
+        const nodeStatusState = (...args) => stateCall('nodeStatusState', '', ...args);
+        const isVlmNodeBusy = (...args) => !!stateCall('isVlmNodeBusy', false, ...args);
+        const normalizeVlmAgentMode = (...args) => configCall('normalizeVlmAgentMode', 'raw', ...args);
+        const vlmChatContextBudgetMax = (...args) => chatContextCall('vlmChatContextBudgetMax', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
+        const clampVlmChatContextBudget = (...args) => chatContextCall('clampVlmChatContextBudget', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
+        const vlmModelOptionsHtml = (...args) => renderCall('vlmModelOptionsHtml', '', ...args);
+        const renderNodeStateBadges = (...args) => renderCall('renderNodeStateBadges', '', ...args);
+        const renderVlmChatLog = (...args) => renderCall('renderVlmChatLog', '', ...args);
+        const renderVlmSystemPromptTemplatePicker = (...args) => renderCall('renderVlmSystemPromptTemplatePicker', '', ...args);
+        const renderTranslatableTextarea = (...args) => renderCall('renderTranslatableTextarea', '', ...args);
+        const getTranslationFieldState = (...args) => renderCall('getTranslationFieldState', null, ...args);
+        const getVlmCustomProvider = (...args) => customApiCall('getVlmCustomProvider', {}, ...args);
+        const getVlmCustomApiProfile = (...args) => customApiCall('getVlmCustomApiProfile', null, ...args);
 
         function renderVlmModelStatusHtml(node) {
             const status = node?.vlm_model_status && typeof node.vlm_model_status === 'object' ? node.vlm_model_status : {};

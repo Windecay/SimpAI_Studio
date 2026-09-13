@@ -3,20 +3,47 @@
 
     function createCanvasConnectionController(context) {
         const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const domSource = sourceObject('domSource');
+        const viewportSource = sourceObject('viewportSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const uiSource = sourceObject('uiSource');
+        const selectionSource = sourceObject('selectionSource');
+        const nodeSource = sourceObject('nodeSource');
+        const spatialSource = sourceObject('spatialSource');
+        const connectionSource = sourceObject('connectionSource');
+        const renderSource = sourceObject('renderSource');
+        const actionSource = sourceObject('actionSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const clientToWorld = (clientX, clientY) => typeof scope.clientToWorld === 'function'
-            ? (scope.clientToWorld(clientX, clientY) || { x: 0, y: 0 })
-            : { x: clientX, y: clientY };
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const clientToWorld = (clientX, clientY) => sourceCall(
+            viewportSource,
+            'clientToWorld',
+            { x: clientX, y: clientY },
+            clientX,
+            clientY
+        ) || { x: clientX, y: clientY };
+        const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
+            ? runtimeSource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);
+        const spatialCall = (name, fallback, ...args) => sourceCall(spatialSource, name, fallback, ...args);
+        const connectionCall = (name, fallback, ...args) => sourceCall(connectionSource, name, fallback, ...args);
+        const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
+        const actionCall = (name, fallback, ...args) => sourceCall(actionSource, name, fallback, ...args);
         let connectState = null;
 
         function updateTempEdge() {
-            call('renderTempEdge', connectState);
+            renderCall('renderTempEdge', undefined, connectState);
         }
 
         function bindConnectionListeners() {
@@ -33,14 +60,14 @@
 
         function startConnection(node, evt) {
             if (!node || !evt) return;
-            call('hideCanvasTooltip');
-            call('hideHoverPreview');
-            call('closePreviewSelectMenu');
-            call('setSuppressWheelUntil', getPerformanceNow() + 420);
-            call('selectNode', node.id);
+            uiCall('hideCanvasTooltip', undefined);
+            uiCall('hideHoverPreview', undefined);
+            uiCall('closePreviewSelectMenu', undefined);
+            uiCall('setSuppressWheelUntil', undefined, getPerformanceNow() + 420);
+            selectionCall('selectNode', undefined, node.id);
             connectState = {
                 from: node.id,
-                fromPoint: call('getOutputPoint', node),
+                fromPoint: nodeCall('getOutputPoint', undefined, node),
                 currentPoint: clientToWorld(evt.clientX, evt.clientY)
             };
             updateTempEdge();
@@ -49,12 +76,12 @@
 
         function startInputConnection(target, evt) {
             if (!target?.handle || !target.toId || !evt) return;
-            call('hideCanvasTooltip');
-            call('hideHoverPreview');
-            call('closePreviewSelectMenu');
-            call('setSuppressWheelUntil', getPerformanceNow() + 420);
-            call('selectInputConnectionTarget', target.toId);
-            const point = call('getHandleCenterWorldPoint', target.handle);
+            uiCall('hideCanvasTooltip', undefined);
+            uiCall('hideHoverPreview', undefined);
+            uiCall('closePreviewSelectMenu', undefined);
+            uiCall('setSuppressWheelUntil', undefined, getPerformanceNow() + 420);
+            selectionCall('selectInputConnectionTarget', undefined, target.toId);
+            const point = nodeCall('getHandleCenterWorldPoint', undefined, target.handle);
             connectState = {
                 mode: 'input',
                 target: Object.assign({}, target, { handle: null }),
@@ -78,9 +105,9 @@
                 updateTempEdge();
                 return;
             }
-            const snapTarget = call('findNearestConnectionTarget', evt.clientX, evt.clientY);
+            const snapTarget = spatialCall('findNearestConnectionTarget', null, evt.clientX, evt.clientY);
             connectState.currentPoint = snapTarget
-                ? call('getHandleCenterWorldPoint', snapTarget.handle)
+                ? nodeCall('getHandleCenterWorldPoint', undefined, snapTarget.handle)
                 : clientToWorld(evt.clientX, evt.clientY);
             updateTempEdge();
         }
@@ -91,35 +118,35 @@
                 const state = connectState;
                 const menuWorld = clientToWorld(evt.clientX, evt.clientY);
                 connectState = null;
-                call('renderTempEdge', null);
+                renderCall('renderTempEdge', undefined, null);
                 removeConnectionListeners();
                 if (state.moved) {
-                    call('renderAll');
-                    call('openInputPortCreateMenu', state.target, evt.clientX, evt.clientY, menuWorld);
+                    renderCall('renderAll', undefined);
+                    actionCall('openInputPortCreateMenu', undefined, state.target, evt.clientX, evt.clientY, menuWorld);
                 }
                 return;
             }
-            const snapTarget = call('findNearestConnectionTarget', evt.clientX, evt.clientY);
-            const connected = !!(snapTarget && call('connectSourceToTarget', connectState.from, snapTarget));
+            const snapTarget = spatialCall('findNearestConnectionTarget', null, evt.clientX, evt.clientY);
+            const connected = !!(snapTarget && connectionCall('connectSourceToTarget', false, connectState.from, snapTarget));
             const menuWorld = clientToWorld(evt.clientX, evt.clientY);
             const pendingFromId = connectState.from;
             connectState = null;
-            call('renderTempEdge', null);
+            renderCall('renderTempEdge', undefined, null);
             removeConnectionListeners();
-            if (connected) call('renderAll');
+            if (connected) renderCall('renderAll', undefined);
             else {
-                call('setPendingConnection', pendingFromId, menuWorld);
-                call('renderAll');
-                call('openAddNodeMenu', evt.clientX, evt.clientY, menuWorld, false, 420);
+                actionCall('setPendingConnection', undefined, pendingFromId, menuWorld);
+                renderCall('renderAll', undefined);
+                actionCall('openAddNodeMenu', undefined, evt.clientX, evt.clientY, menuWorld, false, 420);
             }
         }
 
         function cancelConnection() {
             if (!connectState) return;
             connectState = null;
-            call('renderTempEdge', null);
+            renderCall('renderTempEdge', undefined, null);
             removeConnectionListeners();
-            call('renderAll');
+            renderCall('renderAll', undefined);
         }
 
         return {

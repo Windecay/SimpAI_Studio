@@ -71,7 +71,8 @@
       "priority": 680,
       "keywords": [
         "image edit", "edit image", "图像编辑", "图片编辑", "修图", "改图", "qwenedit", "kleinedit",
-        "onekeykontext", "imagerepair", "removebg", "relight", "outpaint", "扩图", "擦除", "styletransfer", "object transfer", "物品迁移"
+        "onekeykontext", "imagerepair", "removebg", "relight", "outpaint", "扩图", "擦除", "styletransfer", "object transfer", "物品迁移",
+        "nunchaku", "双截棍", "nunflux", "nunqwenedit", "nunswap"
       ],
       "sections": ["Editing Model Boundaries", "Image Editing / Retouching"]
     },

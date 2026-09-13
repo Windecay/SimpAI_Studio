@@ -3,39 +3,100 @@
 
     function createCanvasMinimapController(context) {
         const scope = context || {};
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const getElement = () => typeof scope.getMinimapElement === 'function' ? scope.getMinimapElement() : null;
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
-        const getDocument = () => typeof scope.getDocument === 'function' ? scope.getDocument() : (typeof document !== 'undefined' ? document : null);
-        const getVisibleWorldRect = () => typeof scope.getVisibleWorldRect === 'function' ? scope.getVisibleWorldRect() : null;
-        const getNodeRect = (node) => typeof scope.getNodeRect === 'function' ? scope.getNodeRect(node) : { x: node?.x || 0, y: node?.y || 0, w: node?.w || 1, h: node?.h || 1 };
-        const getGroupRect = (group) => typeof scope.getGroupRect === 'function' ? scope.getGroupRect(group) : { x: group?.x || 0, y: group?.y || 0, w: group?.w || 1, h: group?.h || 1 };
-        const ensureProjectGroups = () => typeof scope.ensureProjectGroups === 'function' ? scope.ensureProjectGroups() : (Array.isArray(getProject().groups) ? getProject().groups : []);
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const getPerfStats = () => typeof scope.getPerfStats === 'function' ? scope.getPerfStats() : {};
-        const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : (value) => String(value ?? '');
-        const clamp = typeof scope.clamp === 'function' ? scope.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getWindow = () => typeof scope.getWindow === 'function' ? (scope.getWindow() || {}) : (typeof window !== 'undefined' ? window : {});
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const projectSource = sourceObject('projectSource');
+        const domSource = sourceObject('domSource');
+        const viewportSource = sourceObject('viewportSource');
+        const layoutSource = sourceObject('layoutSource');
+        const groupSource = sourceObject('groupSource');
+        const selectionSource = sourceObject('selectionSource');
+        const utilitySource = sourceObject('utilitySource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const interactionSource = sourceObject('interactionSource');
+        const persistenceSource = sourceObject('persistenceSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const getProject = () => sourceCall(projectSource, 'getProject', {}) || {};
+        const getElement = () => sourceCall(domSource, 'getMinimapElement', null);
+        const getViewport = () => sourceCall(viewportSource, 'getViewport', null);
+        const getDocument = () => sourceCall(
+            domSource,
+            'getDocument',
+            typeof document !== 'undefined' ? document : null
+        );
+        const getVisibleWorldRect = () => sourceCall(viewportSource, 'getVisibleWorldRect', null);
+        const getNodeRect = (node) => sourceCall(
+            layoutSource,
+            'getNodeRect',
+            { x: node?.x || 0, y: node?.y || 0, w: node?.w || 1, h: node?.h || 1 },
+            node
+        );
+        const getGroupRect = (group) => sourceCall(
+            groupSource,
+            'getGroupRect',
+            { x: group?.x || 0, y: group?.y || 0, w: group?.w || 1, h: group?.h || 1 },
+            group
+        );
+        const ensureProjectGroups = () => sourceCall(
+            groupSource,
+            'ensureProjectGroups',
+            Array.isArray(getProject().groups) ? getProject().groups : []
+        );
+        const getPerformanceNow = () => sourceCall(
+            runtimeSource,
+            'performanceNow',
+            typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+        );
+        const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : (value) => String(value ?? '');
+        const getWindow = () => sourceCall(
+            runtimeSource,
+            'getWindow',
+            typeof window !== 'undefined' ? window : {}
+        ) || {};
         const getMinimapBoundsFromViewport = (items, visible) => {
-            const bounds = typeof scope.getMinimapBounds === 'function'
-                ? scope.getMinimapBounds(items, visible)
-                : null;
+            const bounds = sourceCall(
+                viewportSource,
+                'getMinimapBounds',
+                null,
+                items,
+                visible,
+                {
+                    defaultNodeSize: (type) => sourceCall(layoutSource, 'defaultNodeSize', { w: 160, h: 120 }, type),
+                    getNodeLayoutSize: (node) => sourceCall(layoutSource, 'getNodeLayoutSize', getNodeRect(node), node)
+                }
+            );
             return bounds || { minX: 0, minY: 0, maxX: 1, maxY: 1, width: 1, height: 1 };
         };
-        const hasCanvasOverflow = (items, visible) => typeof scope.hasCanvasOverflow === 'function'
-            ? !!scope.hasCanvasOverflow(items, visible)
-            : false;
-        const getNodeColor = (node) => typeof scope.nodeCustomColor === 'function' ? scope.nodeCustomColor(node) : '';
-        const expandHex = (value, fallback) => typeof scope.expandCanvasHexColor === 'function'
-            ? scope.expandCanvasHexColor(value, fallback)
-            : (value || fallback);
-        const defaultNodeSize = (type) => typeof scope.defaultNodeSize === 'function' ? scope.defaultNodeSize(type) : { w: 160, h: 120 };
-        const getNodeLayoutSize = (node) => typeof scope.getNodeLayoutSize === 'function' ? scope.getNodeLayoutSize(node) : getNodeRect(node);
-        const setTimeoutFn = (...args) => typeof scope.setTimeout === 'function' ? scope.setTimeout(...args) : getWindow().setTimeout?.(...args);
-        const clearTimeoutFn = (...args) => typeof scope.clearTimeout === 'function' ? scope.clearTimeout(...args) : getWindow().clearTimeout?.(...args);
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const hasCanvasOverflow = (items, visible) => !!sourceCall(
+            viewportSource,
+            'hasCanvasOverflow',
+            false,
+            items,
+            visible,
+            {
+                defaultNodeSize: (type) => sourceCall(layoutSource, 'defaultNodeSize', { w: 160, h: 120 }, type),
+                getNodeLayoutSize: (node) => sourceCall(layoutSource, 'getNodeLayoutSize', getNodeRect(node), node)
+            }
+        );
+        const getNodeColor = (node) => sourceCall(utilitySource, 'nodeCustomColor', '', node);
+        const expandHex = (value, fallback) => sourceCall(utilitySource, 'expandCanvasHexColor', value || fallback, value, fallback);
+        const setTimeoutFn = (...args) => {
+            if (typeof runtimeSource.setTimeout === 'function') return runtimeSource.setTimeout(...args);
+            return getWindow().setTimeout?.(...args);
+        };
+        const clearTimeoutFn = (...args) => {
+            if (typeof runtimeSource.clearTimeout === 'function') return runtimeSource.clearTimeout(...args);
+            return getWindow().clearTimeout?.(...args);
+        };
+        const interactionCall = (name, ...args) => sourceCall(interactionSource, name, undefined, ...args);
+        const persistenceCall = (name, ...args) => sourceCall(persistenceSource, name, undefined, ...args);
         let renderTimer = 0;
         let renderLastAt = 0;
         let renderCacheKey = '';
@@ -45,7 +106,7 @@
         let dragState = null;
 
         function applyProjectViewportPatch(project, viewportPatch) {
-            const patch = call('buildProjectViewportPatch', project, { viewportPatch });
+            const patch = interactionCall('buildProjectViewportPatch', project, { viewportPatch });
             if (patch && typeof patch === 'object'
                 && patch.viewport
                 && typeof patch.viewport === 'object'
@@ -98,9 +159,9 @@
         }
 
         function buildMinimapStaticData(items) {
-            const selectedNodeId = typeof scope.getSelectedNodeId === 'function' ? scope.getSelectedNodeId() : null;
-            const selectedNodeIds = typeof scope.getSelectedNodeIds === 'function' ? scope.getSelectedNodeIds() : new Set();
-            const selectedGroupId = typeof scope.getSelectedGroupId === 'function' ? scope.getSelectedGroupId() : null;
+            const selectedNodeId = sourceCall(selectionSource, 'getSelectedNodeId', null);
+            const selectedNodeIds = sourceCall(selectionSource, 'getSelectedNodeIds', new Set());
+            const selectedGroupId = sourceCall(selectionSource, 'getSelectedGroupId', null);
             const parts = [];
             const records = items.map((node) => {
                 const sourceRect = getNodeRect(node);
@@ -263,11 +324,11 @@ ${renderMinimapNodeRects(nextCache.records)}
                 x: Math.round(rect.width / 2 - worldX * zoom),
                 y: Math.round(rect.height / 2 - worldY * zoom)
             });
-            call('preferSvgEdgesForViewportInteraction', 5000);
-            call('applyViewport');
-            call('renderStatus');
+            interactionCall('preferSvgEdgesForViewportInteraction', 5000);
+            interactionCall('applyViewport');
+            interactionCall('renderStatus');
             updateMinimapForViewportInteraction();
-            call('scheduleViewportNodeRender');
+            interactionCall('scheduleViewportNodeRender');
         }
 
         function updateViewportFromMinimapPointer(evt) {
@@ -335,7 +396,7 @@ ${renderMinimapNodeRects(nextCache.records)}
             doc?.removeEventListener('pointermove', onMinimapPointerMove, true);
             doc?.removeEventListener('pointerup', stopMinimapDrag, true);
             doc?.removeEventListener('pointercancel', stopMinimapDrag, true);
-            call('scheduleViewportSave');
+            persistenceCall('scheduleViewportSave');
             flushMinimapRender();
         }
 

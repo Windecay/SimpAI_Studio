@@ -2,8 +2,37 @@
     'use strict';
 
     function createCanvasNodeRenderer(context) {
+        const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
         const {
-            t, escapeHtml, nodeEffectiveRenderMode,
+            t, mediaBrowserLabel, tagCartLabel, localizeCanvasLabel, getDetectionConfigLabel
+        } = languageSource;
+        const utilitySource = sourceObject('utilitySource');
+        const { escapeHtml } = utilitySource;
+        const nodeSource = sourceObject('nodeSource');
+        const {
+            nodeEffectiveRenderMode, isDirectorTimelineNode, isQwenTtsNode, nodeStatusState,
+            getNode, isNodeLocked, isNodeIgnored, isNodeCollapsed
+        } = nodeSource;
+        const assetSource = sourceObject('assetSource');
+        const {
+            getSelectedResultAsset, getVlmSourceAsset, getTimelineSourceAsset,
+            safeAssetDisplaySrc, readAssetInfo
+        } = assetSource;
+        const portSource = sourceObject('portSource');
+        const {
+            getVisibleClassicUploadSlots, getVisibleUploadSlots, detectionSlotForRegion,
+            textMergeInputSlots, qwenTtsAudioInputSlots, batchAnyPortKind, getUploadSlotMediaKind,
+            getPresetConfigKinds: getPresetConfigKindsFromContext,
+            getVlmImageSlots: getVlmImageSlotsFromContext,
+            getDirectorTimelineMediaKindGroups: getDirectorTimelineMediaKindGroupsFromContext
+        } = portSource;
+        const renderSource = sourceObject('renderSource');
+        const {
             renderConfigNodeHtml, renderClassicNodeHtml, renderPresetNodeHtml, renderResultNodeHtml,
             renderCompareNodeHtml, renderBatchAnyNodeHtml, renderXyzMatrixNodeHtml, renderTimelineNodeHtml,
             renderDirectorTimelineNodeHtml, renderMediaBrowserNodeHtml, renderStyleSelectorNodeHtml,
@@ -12,16 +41,12 @@
             renderWd14NodeHtml, renderVlmNodeHtml, renderMaskNodeHtml, renderSam3VideoMaskNodeHtml,
             renderCameraMotionNodeHtml, renderPoseStudioNodeHtml, renderGaussianStudioNodeHtml,
             renderLivePortraitExpressionNodeHtml, renderQwenTtsNodeHtml, renderImageNodeHtml,
-            isDirectorTimelineNode, isQwenTtsNode, nodeStatusState, mediaBrowserLabel, tagCartLabel,
-            getSelectedResultAsset, getNode, getVlmSourceAsset, getTimelineSourceAsset, safeAssetDisplaySrc,
-            mediaBrowserRuntimeFor, readAssetInfo, getVisibleClassicUploadSlots, getVisibleUploadSlots,
-            localizeCanvasLabel, detectionSlotForRegion, getDetectionConfigLabel, textMergeInputSlots,
-            qwenTtsAudioInputSlots, batchAnyPortKind, getUploadSlotMediaKind, collapsedKeepClass,
-            isNodeLocked, isNodeIgnored, isNodeCollapsed, isResultRefreshing, isResultStale, isCanvasRunActiveState,
-            getPresetConfigKinds: getPresetConfigKindsFromContext,
-            getVlmImageSlots: getVlmImageSlotsFromContext,
-            getDirectorTimelineMediaKindGroups: getDirectorTimelineMediaKindGroupsFromContext
-        } = context;
+            collapsedKeepClass
+        } = renderSource;
+        const statusSource = sourceObject('statusSource');
+        const { isResultRefreshing, isResultStale, isCanvasRunActiveState } = statusSource;
+        const mediaSource = sourceObject('mediaSource');
+        const { mediaBrowserRuntimeFor } = mediaSource;
         const getPresetConfigKinds = () => {
             const value = typeof getPresetConfigKindsFromContext === 'function' ? getPresetConfigKindsFromContext() : [];
             return Array.isArray(value) ? value : [];

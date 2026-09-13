@@ -1028,8 +1028,9 @@ def build_rewrite_request(prompt, target_or_compiler, context=None):
             )
         else:
             source_rule = (
-                "- Preserve the source image, identity, composition, pose, lighting, and all unrequested content when "
-                "the user supplies a picture; when multiple pictures are supplied, state the role of each one.\n"
+                "- When editing a supplied picture, preserve only content the user has not asked to change. "
+                "User-requested changes take precedence over the source pose, composition, lighting, or other "
+                "edited attributes; when multiple pictures are supplied, state the role of each one.\n"
             )
         return (
             "Compile this rough request into one complete MiniMax H3 R2I still-image prompt.\n\n"

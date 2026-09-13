@@ -262,6 +262,7 @@
             return `<section class="sai-settings-section sai-agent-custom-api ${collapsed ? 'is-collapsed' : ''}">
       <div class="sai-settings-section-head">
         <h3>${escapeHtml(t('Custom API', 'Custom API'))}</h3>
+        ${window.SimpAIStudioHelp?.button('api', 'canvas') || ''}
         <button type="button" data-canvas-settings-action="toggle-agent-custom-api"><i class="fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i><span>${escapeHtml(collapsed ? t('Expand', '展开') : t('Collapse', '折叠'))}</span></button>
       </div>
       <div class="sai-settings-status">${escapeHtml(`${src.customApiName || provider.label || 'Custom'}${src.customModel ? ` · ${src.customModel}` : ''}`)}</div>

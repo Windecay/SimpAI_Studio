@@ -3,25 +3,107 @@
 
     function createCanvasVlmNodeController(context) {
         const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getNumberConfig = (name, fallback) => Number(call(name, fallback)) || fallback;
+        const languageSource = scope['languageSource'] && typeof scope['languageSource'] === 'object'
+            ? scope['languageSource']
+            : {};
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const utilitySource = scope.utilitySource && typeof scope.utilitySource === 'object'
+            ? scope.utilitySource
+            : {};
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const stateSource = scope.stateSource && typeof scope.stateSource === 'object'
+            ? scope.stateSource
+            : {};
+        const stateCall = (name, fallback, ...args) => typeof stateSource[name] === 'function'
+            ? stateSource[name](...args)
+            : fallback;
+        const configSource = scope.configSource && typeof scope.configSource === 'object'
+            ? scope.configSource
+            : {};
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const nodeSource = scope.nodeSource && typeof scope.nodeSource === 'object'
+            ? scope.nodeSource
+            : {};
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const chatContextSource = scope.chatContextSource && typeof scope.chatContextSource === 'object'
+            ? scope.chatContextSource
+            : {};
+        const chatContextCall = (name, fallback, ...args) => typeof chatContextSource[name] === 'function'
+            ? chatContextSource[name](...args)
+            : fallback;
+        const historySource = scope.historySource && typeof scope.historySource === 'object'
+            ? scope.historySource
+            : {};
+        const historyCall = (name, fallback, ...args) => typeof historySource[name] === 'function'
+            ? historySource[name](...args)
+            : fallback;
+        const uiStateSource = scope.uiStateSource && typeof scope.uiStateSource === 'object'
+            ? scope.uiStateSource
+            : {};
+        const uiStateCall = (name, fallback, ...args) => typeof uiStateSource[name] === 'function'
+            ? uiStateSource[name](...args)
+            : fallback;
+        const persistenceSource = scope.persistenceSource && typeof scope.persistenceSource === 'object'
+            ? scope.persistenceSource
+            : {};
+        const persistenceCall = (name, fallback, ...args) => typeof persistenceSource[name] === 'function'
+            ? persistenceSource[name](...args)
+            : fallback;
+        const transportSource = scope.transportSource && typeof scope.transportSource === 'object'
+            ? scope.transportSource
+            : {};
+        const transportCall = (name, fallback, ...args) => typeof transportSource[name] === 'function'
+            ? transportSource[name](...args)
+            : fallback;
+        const renderSource = scope.renderSource && typeof scope.renderSource === 'object'
+            ? scope.renderSource
+            : {};
+        const renderCall = (name, fallback, ...args) => typeof renderSource[name] === 'function'
+            ? renderSource[name](...args)
+            : fallback;
+        const uiSource = scope.uiSource && typeof scope.uiSource === 'object'
+            ? scope.uiSource
+            : {};
+        const uiCall = (name, fallback, ...args) => typeof uiSource[name] === 'function'
+            ? uiSource[name](...args)
+            : fallback;
+        const customApiSource = scope.customApiSource && typeof scope.customApiSource === 'object'
+            ? scope.customApiSource
+            : {};
+        const customApiCall = (name, fallback, ...args) => typeof customApiSource[name] === 'function'
+            ? customApiSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', en, en, cn, state);
+        };
+        const escapeHtml = (...args) => utilityCall('escapeHtml', String(args[0] ?? ''), ...args);
+        const uid = (...args) => utilityCall('uid', `${args[0] || 'node'}-node`, ...args);
+        const nowIso = (...args) => utilityCall('nowIso', new Date().toISOString(), ...args);
+        const cloneRunValueFallback = (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
+        const cloneRunValue = (...args) => stateCall('cloneRunValue', cloneRunValueFallback, ...args);
+        const getNumberConfig = (name, fallback) => Number(configCall(name, fallback)) || fallback;
         const getObjectConfig = (name, fallback) => {
-            const value = call(name, fallback);
+            const value = configCall(name, fallback);
             return value && typeof value === 'object' ? value : fallback;
         };
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
-            : (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
         const getVlmVersionChoices = (...args) => {
-            const choices = call('getVlmVersionChoices', [], ...args);
+            const choices = configCall('getVlmVersionChoices', [], ...args);
             return Array.isArray(choices) ? choices : [];
         };
         const getDefaultVlmParamsFromAgentSettings = (...args) => {
-            const params = call('getDefaultVlmParamsFromAgentSettings', {}, ...args);
+            const params = configCall('getDefaultVlmParamsFromAgentSettings', {}, ...args);
             return params && typeof params === 'object' ? params : {};
         };
         const VLM_CHAT_DEFAULT_FONT_SIZE = getNumberConfig('getVlmChatDefaultFontSize', 14);
@@ -30,18 +112,18 @@
         const VLM_CHAT_DEFAULT_CONTEXT_CHARS = getNumberConfig('getVlmChatDefaultContextChars', 6000);
         const VLM_CHAT_NODE_SIZE = getObjectConfig('getVlmChatNodeSize', { w: 0, h: 0 });
         const VLM_SINGLE_NODE_SIZE = getObjectConfig('getVlmSingleNodeSize', { w: 0, h: 0 });
-        const getNode = (...args) => call('getNode', null, ...args);
-        const normalizeVlmAgentMode = (...args) => call('normalizeVlmAgentMode', 'raw', ...args);
-        const vlmChatContextBudgetMax = (...args) => call('vlmChatContextBudgetMax', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
-        const clampVlmChatContextBudget = (...args) => call('clampVlmChatContextBudget', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
-        const isNodeLocked = (...args) => !!call('isNodeLocked', false, ...args);
-        const pushHistoryBatch = (...args) => call('pushHistoryBatch', undefined, ...args);
-        const mutate = (...args) => call('mutate', undefined, ...args);
-        const scheduleSave = (...args) => call('scheduleSave', undefined, ...args);
-        const sendVlmSystemPromptTemplates = (...args) => call('sendVlmSystemPromptTemplates', null, ...args);
-        const invalidateVlmSystemPromptTemplateViews = (...args) => call('invalidateVlmSystemPromptTemplateViews', undefined, ...args);
+        const getNode = (...args) => nodeCall('getNode', null, ...args);
+        const normalizeVlmAgentMode = (...args) => configCall('normalizeVlmAgentMode', 'raw', ...args);
+        const vlmChatContextBudgetMax = (...args) => chatContextCall('vlmChatContextBudgetMax', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
+        const clampVlmChatContextBudget = (...args) => chatContextCall('clampVlmChatContextBudget', VLM_CHAT_DEFAULT_CONTEXT_CHARS, ...args);
+        const isNodeLocked = (...args) => !!nodeCall('isNodeLocked', false, ...args);
+        const pushHistoryBatch = (...args) => historyCall('pushHistoryBatch', undefined, ...args);
+        const mutate = (...args) => uiStateCall('mutate', undefined, ...args);
+        const scheduleSave = (...args) => persistenceCall('scheduleSave', undefined, ...args);
+        const sendVlmSystemPromptTemplates = (...args) => transportCall('sendVlmSystemPromptTemplates', null, ...args);
+        const invalidateVlmSystemPromptTemplateViews = (...args) => renderCall('invalidateVlmSystemPromptTemplateViews', undefined, ...args);
         const getVlmChatUiAreas = (...args) => {
-            const areas = call('getVlmChatUiAreas', [], ...args);
+            const areas = uiCall('getVlmChatUiAreas', [], ...args);
             return Array.isArray(areas) ? areas : [];
         };
 
@@ -305,10 +387,10 @@
             const input = getVlmCustomKeyInput(node);
             if (input) input.value = String(value || '');
         }
-        const handleVlmAgentAutoConfirmToggle = (...args) => call('handleVlmAgentAutoConfirmToggle', false, ...args);
-        const showToast = (...args) => call('showToast', undefined, ...args);
-        const renderAll = (...args) => call('renderAll', undefined, ...args);
-        const getVlmCustomProvider = (...args) => call('getVlmCustomProvider', {}, ...args);
+        const handleVlmAgentAutoConfirmToggle = (...args) => uiCall('handleVlmAgentAutoConfirmToggle', false, ...args);
+        const showToast = (...args) => uiStateCall('showToast', undefined, ...args);
+        const renderAll = (...args) => renderCall('renderAll', undefined, ...args);
+        const getVlmCustomProvider = (...args) => customApiCall('getVlmCustomProvider', {}, ...args);
         let vlmSystemPromptTemplates = [];
         let vlmSystemPromptTemplatesLoaded = false;
         let vlmSystemPromptTemplatesLoading = false;

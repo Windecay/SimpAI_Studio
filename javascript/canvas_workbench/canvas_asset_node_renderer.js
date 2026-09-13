@@ -2,8 +2,26 @@
     'use strict';
 
     function createCanvasAssetNodeRenderer(context) {
+        const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', cn || en, en, cn, state);
+        };
+        const utilitySource = sourceObject('utilitySource');
         const {
-            t, clamp, escapeHtml,
+            clamp,
+            escapeHtml,
             assetMediaKind: readAssetMediaKind,
             assetMediaIcon: readAssetMediaIcon,
             safeAssetDisplaySrc: resolveAssetDisplaySrc,
@@ -11,13 +29,20 @@
             safeAssetFallbackSrc: resolveAssetFallbackSrc,
             readAssetInfo,
             mediaAspectStyle,
-            renderNodeStateBadges,
-            collapsedKeepClass,
+            inferChatImageRelativePath,
+            localizedDefaultTitle
+        } = utilitySource;
+        const renderSource = sourceObject('renderSource');
+        const { renderNodeStateBadges, collapsedKeepClass, syncGalleryFrostClass } = renderSource;
+        const statusSource = sourceObject('statusSource');
+        const {
             isCanvasRunActiveState,
             isResultStale,
             isResultRefreshing,
-            resultMediaDisplayAsset,
-            inferChatImageRelativePath,
+            resultMediaDisplayAsset
+        } = statusSource;
+        const batchSource = sourceObject('batchSource');
+        const {
             getResultMetadataRows,
             batchAnyMediaKindFromAsset,
             batchAnyMediaKind,
@@ -28,16 +53,17 @@
             batchAnySelectedItemIds,
             batchAnyTargets,
             batchAnyTargetLabel,
-            batchAnyTextFromItem,
+            batchAnyTextFromItem
+        } = batchSource;
+        const mediaSource = sourceObject('mediaSource');
+        const {
             mediaBrowserNodeState,
             mediaBrowserRuntimeFor,
             isGalleryFrostEnabled,
-            syncGalleryFrostClass,
-            localizedDefaultTitle,
             selectedMediaBrowserItemFrom,
             mediaBrowserItemMeta,
             danbooruPostMediaType
-        } = context;
+        } = mediaSource;
 
         const clampValue = typeof clamp === 'function'
             ? clamp

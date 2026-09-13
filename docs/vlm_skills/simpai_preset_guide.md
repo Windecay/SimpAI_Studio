@@ -89,17 +89,20 @@ SimpAI UI guide skill:
 - Flux2-Klein is a fast, resource-light, 4-step distilled model with slightly
   lower precision. If it does not follow the instruction once, suggest trying
   again or using a more stable editor.
-- Krea2-Turbo is a Krea 2 Turbo text-to-image preset for realistic/general
-  images from natural-language prompts. It is not an instruction-editing or
-  reference-image route.
+- Krea2-Turbo is a Krea 2 Turbo AIO preset for text-to-image, single-image
+  Depth/OpenPose control, variation, tiled upscale, AnyPaint inpaint/outpaint,
+  and original-model detail enhancement. Control images cannot be combined
+  with variation/upscale or inpaint/outpaint. Instruction editing uses
+  Krea2-ImageEdit; identity reference and style transfer are not supported here.
 - Bernini-ImageEdit is the Bernini-R still-image editing route for instruction
   edits, style conversion, replacement, inpainting, and color matching on an
   input image.
 - QwenEdit+ is heavier, slower, and more stable for image editing, with stronger
   reference consistency.
-- Nun/Nunchaku presets are 4-bit quantized variants that trade precision for
-  speed and lower resource use. Use fp4 on RTX 50-series or newer GPUs; use int4
-  on older GPUs.
+- Nun/Nunchaku presets are retired, including NunFlux, NunQwenEdit+, NunSwap
+  and their fp4/int4 variants. Do not recommend them or offer their packages.
+  Their files remain in `presets/deprecated/`; use available Flux/Qwen/H3
+  presets according to the live task capabilities.
 - Directional Klein and Qwen presets are built for specific subjects or
   operations and usually include purpose-specific LoRAs.
 - QwenNSFW is a community-merged single-checkpoint route aimed at unlocking
@@ -156,13 +159,15 @@ SimpAI UI guide skill:
 - For expression editing on still portraits, recommend LivePortrait Exp. It
   edits face rotation, eyes, mouth, smile, and optional reference-expression
   strength; treat it as an expression editor, not an identity face-swap route.
-- For pose transfer or pose-driven edits, recommend OneKeyPose, QwenPose,
-  Flux2-KleinPose, or SDPose depending on the selected preset family.
+- For pose transfer or pose-driven final-image edits, recommend MiniMax-H3(Pose)
+  first, with QwenPose as an alternative.
 - For pose preset workflows where image1 is the character/source image and
-  image2 supplies the target body pose, recommend QwenPose for the heavier Qwen
-  edit route with stronger reference following, or Flux2-KleinPose for a faster
-  resource-light Flux2-Klein route. These two presets are for producing the
-  edited final image, not only a skeleton control image.
+  image2 supplies the target body pose, recommend MiniMax-H3(Pose): it uses
+  the H3 image-editing workflow with <Picture 1> from the character canvas and
+  <Picture 2> exported from Pose Editor. It defaults to 10 steps with the
+  standard H3 Turbo distillation LoRA; no additional pose-specific LoRA is
+  required. QwenPose remains the Qwen alternative. Both produce the edited
+  final image, not only a skeleton control image.
 - For skeleton/control-map extraction only, recommend OneKeyPose. Its two
   built-in pose extraction presets are SDPose-OOD and DWPose: SDPose-OOD is the
   whole-body SDPose route with people-count and body-part drawing controls,
@@ -286,7 +291,7 @@ SimpAI UI guide skill:
 - LTX(InsightTool) for video restoration, HD enhancement, watermark removal,
   and subtitle removal.
 - Qwen自由视角+ / QwenMultiAngle / Qwen-MultiAngle Free Viewpoint.
-- QwenPose and Flux2-KleinPose are pose-driven final-image editors.
+- MiniMax-H3(Pose) and QwenPose are pose-driven final-image editors.
 - SDPose-OOD and DWPose are OneKeyPose skeleton extraction presets.
 - QwenGaussianStudio is the advanced Gaussian-splatting viewpoint-change route
   using image2 to reproject/repair image1 perspective and missing regions.
@@ -309,12 +314,11 @@ SimpAI UI guide skill:
   automatic selection and no compatible preference, use the application
   priority order rather than inventing a Preset.
 - Eligible built-in Classic Presets are Anima, ChenkinXL, Flux1-dev,
-  Flux2-Klein, Illustrious(MiaoKa), Illustrious(OB), NunFlux_fp4,
-  NunFlux_int4, Qwen2512, SD1.5, Wan(T2I), and Z-imageT. Their local AIO
+  Flux2-Klein, Illustrious(MiaoKa), Illustrious(OB), Krea2-Turbo, Qwen2512, SD1.5,
+  Wan(T2I), and Z-imageT. Their local AIO
   workflows contain a complete three-region Enhance path.
-- Do not route Classic Enhance through Krea2-Turbo. Its current AIO workflow
-  has only the Enhance UOV input and no complete face/hand/eye detail path.
-  Tile and GeneralAPIImage are also outside this local Classic AIO route.
+- Krea2-Turbo now has a complete face/hand/eye detail path using its original
+  model. Tile and GeneralAPIImage remain outside this local Classic AIO route.
 - Clothing changes, object replacement/removal, pose changes, relighting,
   style transfer, and broad instruction editing still use their specialized
   Scene Presets. Classic Enhance is for automatic detected-region repair.
@@ -500,3 +504,27 @@ SimpAI UI guide skill:
   transfer as face swap.
 - Follow `state.__lang` for the visible Preset display name and keep the exact
   catalog key when the user needs to select it.
+
+## 2026-09-13 H3 Pose Editing
+
+- Use `MiniMax-H3(Pose)` / MiniMax-H3姿势 for character pose editing with two pictures:
+  the character/source canvas is <Picture 1>, and Pose Editor output is
+  <Picture 2>. Use 10 steps with the same H3 Turbo distillation LoRA at weight
+  1.0 as H3 R2I Basic. No additional pose-specific LoRA is required.
+- Flux2-KleinPose has been retired. Do not recommend it or its pose LoRA.
+- Keep QwenPose and OneKeyPose available for their existing editing and
+  skeleton-extraction workflows.
+
+## 2026-09-13 Nunchaku Preset Retirement
+
+- Nunchaku / 双截棍 presets are retired. `NunFlux`, `NunQwenEdit+`, and
+  `NunSwap`, including `_fp4` and `_int4`, are not Agent candidates, even
+  when present in a saved preference, queue, or older capability catalog.
+- Do not suggest downloading package IDs 7, 8, 12, or 13. Historical
+  package manifests are retained, but are not active download packages.
+- Preset JSON files are archived under `presets/deprecated/`. Existing
+  model files, LoRAs, workflows, samples, and backend support are retained.
+- For image editing, select an available H3 R2I, QwenEdit+, Flux2-KleinEdit,
+  Krea2-ImageEdit, or Bernini-ImageEdit route matching the supplied media.
+  `Swap+` remains a manual-mask workflow. Do not treat all fp4/int4 models
+  as retired or substitute a text-to-image preset for reference editing.

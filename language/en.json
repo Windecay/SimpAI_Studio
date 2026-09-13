@@ -398,7 +398,7 @@
     "Note: If MUID is not obtained after synchronizing, it means that it is a new model file. You need to add an available download URL before.": "Note: If MUID is not obtained after synchronizing, it means that it is a new model file. You need to add an available download URL before.",
     "Advanced": "Advanced",
     "Guidance Scale": "Guidance Scale",
-    "Higher value means style is cleaner, vivider, and more artistic.": "Higher value means style is cleaner, vivider, and more artistic.",
+  "Guidance strength, not a quality score. Start with the preset default; CFG and distilled Guidance behave differently.": "Guidance strength, not a quality score. Start with the preset default; CFG and distilled Guidance behave differently.",
     "Image Sharpness": "Image Sharpness",
     "Higher value means image and texture are sharper.": "Higher value means image and texture are sharper.",
     "<a href=\"https://github.com/lllyasviel/Fooocus/discussions/117\" target=\"_blank\">\ud83d\udcd4 Document</a>": "<a href=\"https://github.com/lllyasviel/Fooocus/discussions/117\" target=\"_blank\">\ud83d\udcd4 Document</a>",
@@ -768,5 +768,10 @@
     "Unable to permanently delete media": "Unable to permanently delete media",
     "Empty the trash permanently?": "Empty the trash permanently?",
     "Trash emptied": "Trash emptied",
-    "Unable to empty trash": "Unable to empty trash"
+    "Unable to empty trash": "Unable to empty trash",
+    "MiniMax-H3(Pose)": "H3 Pose",
+    "MiniMax-H3(Pose)\u2B07": "H3 Pose\u2B07",
+    "MiniMax H3 Pose Editor": "MiniMax H3 Pose Editor",
+    "H3 Pose": "H3 Pose",
+    "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2).": "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2)."
 }

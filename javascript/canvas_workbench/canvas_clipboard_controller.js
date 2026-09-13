@@ -3,25 +3,90 @@
 
     function createCanvasClipboardController(context) {
         const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', cn || en, en, cn, state);
+        };
+        const projectSource = sourceObject('projectSource');
+        const projectCall = (name, fallback, ...args) => typeof projectSource[name] === 'function'
+            ? projectSource[name](...args)
+            : fallback;
+        const selectionSource = sourceObject('selectionSource');
+        const selectionCall = (name, fallback, ...args) => typeof selectionSource[name] === 'function'
+            ? selectionSource[name](...args)
+            : fallback;
+        const nodeSource = sourceObject('nodeSource');
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const layoutSource = sourceObject('layoutSource');
+        const layoutCall = (name, fallback, ...args) => typeof layoutSource[name] === 'function'
+            ? layoutSource[name](...args)
+            : fallback;
+        const configSource = sourceObject('configSource');
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const patchSource = sourceObject('patchSource');
+        const patchCall = (name, fallback, ...args) => typeof patchSource[name] === 'function'
+            ? patchSource[name](...args)
+            : fallback;
+        const statusSource = sourceObject('statusSource');
+        const statusCall = (name, fallback, ...args) => typeof statusSource[name] === 'function'
+            ? statusSource[name](...args)
+            : fallback;
+        const actionSource = sourceObject('actionSource');
+        const actionCall = (name, fallback, ...args) => typeof actionSource[name] === 'function'
+            ? actionSource[name](...args)
+            : fallback;
+        const historySource = sourceObject('historySource');
+        const historyCall = (name, fallback, ...args) => typeof historySource[name] === 'function'
+            ? historySource[name](...args)
+            : fallback;
+        const persistenceSource = sourceObject('persistenceSource');
+        const persistenceCall = (name, fallback, ...args) => typeof persistenceSource[name] === 'function'
+            ? persistenceSource[name](...args)
+            : fallback;
+        const utilitySource = sourceObject('utilitySource');
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const viewportSource = sourceObject('viewportSource');
+        const viewportCall = (name, fallback, ...args) => typeof viewportSource[name] === 'function'
+            ? viewportSource[name](...args)
+            : fallback;
+        const uiSource = sourceObject('uiSource');
+        const uiCall = (name, fallback, ...args) => typeof uiSource[name] === 'function'
+            ? uiSource[name](...args)
+            : fallback;
+        const getProject = () => projectCall('getProject', {}) || {};
         const getVlmImageSlots = () => {
-            const value = typeof scope.getVlmImageSlots === 'function' ? scope.getVlmImageSlots() : [];
+            const value = configCall('getVlmImageSlots', []);
             return Array.isArray(value) ? value : [];
         };
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
         const cloneValue = (value) => {
-            if (typeof scope.cloneRunValue === 'function') return scope.cloneRunValue(value, {});
+            if (typeof utilitySource.cloneRunValue === 'function') return utilitySource.cloneRunValue(value, {});
             try {
                 return JSON.parse(JSON.stringify(value));
             } catch (err) {
                 return Object.assign({}, value || {});
             }
         };
-        const uid = typeof scope.uid === 'function'
-            ? scope.uid
+        const uid = typeof utilitySource.uid === 'function'
+            ? utilitySource.uid
             : (prefix) => `${prefix || 'id'}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
+        const nowIso = () => utilityCall('nowIso', new Date().toISOString());
         let canvasClipboard = null;
 
         function translate(en, cn) {
@@ -30,7 +95,7 @@
 
         function applyProjectNodesPatch(project, nodes) {
             const nextNodes = Array.isArray(nodes) ? nodes : [];
-            const patch = call('buildProjectNodesPatch', project, nextNodes);
+            const patch = patchCall('buildProjectNodesPatch', undefined, project, nextNodes);
             if (patch && typeof patch === 'object' && !Array.isArray(patch) && Array.isArray(patch.nodes)) {
                 Object.assign(project, patch);
                 return;
@@ -40,7 +105,7 @@
 
         function applyProjectEdgeAppendPatch(project, edge) {
             const currentEdges = Array.isArray(project?.edges) ? project.edges : [];
-            const patch = call('buildProjectEdgeAppendPatch', project, edge);
+            const patch = patchCall('buildProjectEdgeAppendPatch', undefined, project, edge);
             if (patch && typeof patch === 'object' && !Array.isArray(patch) && Array.isArray(patch.edges)) {
                 Object.assign(project, patch);
                 return;
@@ -52,7 +117,7 @@
 
         function applyNodeFlagPatch(node, flag, value) {
             const nextValue = !!value;
-            const patch = call('buildNodeFlagPatch', node, { [flag]: nextValue });
+            const patch = patchCall('buildNodeFlagPatch', undefined, node, { [flag]: nextValue });
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, flag)) {
                 Object.assign(node, patch);
                 return;
@@ -61,58 +126,58 @@
         }
 
         function applySpecialNodeConnectionPatch(node, options) {
-            const patch = call('buildSpecialNodeConnectionPatch', node, options || {});
+            const patch = patchCall('buildSpecialNodeConnectionPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applySam3SourcePatch(node, options) {
-            const patch = call('buildSam3SourcePatch', node, options || {});
+            const patch = patchCall('buildSam3SourcePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyMaskStatePatch(node, options) {
-            const patch = call('buildMaskStatePatch', node, options || {});
+            const patch = patchCall('buildMaskStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyStyleSelectorStatePatch(node, options) {
-            const patch = call('buildStyleSelectorStatePatch', node, options || {});
+            const patch = patchCall('buildStyleSelectorStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyDirectorTimelineStatePatch(node, options) {
-            const patch = call('buildDirectorTimelineStatePatch', node, options || {});
+            const patch = patchCall('buildDirectorTimelineStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyTranslationStatePatch(node, options) {
-            const patch = call('buildTranslationStatePatch', node, options || {});
+            const patch = patchCall('buildTranslationStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyTagCartStatePatch(node, options) {
-            const patch = call('buildTagCartStatePatch', node, options || {});
+            const patch = patchCall('buildTagCartStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyWd14StatePatch(node, options) {
-            const patch = call('buildWd14StatePatch', node, options || {});
+            const patch = patchCall('buildWd14StatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyWildcardsHelperStatePatch(node, options) {
-            const patch = call('buildWildcardsHelperStatePatch', node, options || {});
+            const patch = patchCall('buildWildcardsHelperStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyConfigStatePatch(node, options) {
-            const patch = call('buildConfigStatePatch', node, options || {});
+            const patch = patchCall('buildConfigStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyPresetConfigPatch(node, configKey, options) {
             const config = Object.assign({ configKey }, options || {});
-            const patch = call('buildPresetConfigPatch', node, config);
+            const patch = patchCall('buildPresetConfigPatch', undefined, node, config);
             if (patch && typeof patch === 'object'
                 && Object.prototype.hasOwnProperty.call(patch, configKey)) {
                 Object.assign(node, patch);
@@ -127,49 +192,49 @@
         }
 
         function applyPresetUploadSlotPatch(node, options) {
-            const patch = call('buildPresetUploadSlotPatch', node, options || {});
+            const patch = patchCall('buildPresetUploadSlotPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'upload_slots')) {
                 Object.assign(node, patch);
             }
         }
 
         function applyClassicNodeStatePatch(node, options) {
-            const patch = call('buildClassicNodeStatePatch', node, options || {});
+            const patch = patchCall('buildClassicNodeStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyNodeLayoutPatch(node, options) {
-            const patch = call('buildNodeLayoutPatch', node, options || {});
+            const patch = patchCall('buildNodeLayoutPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyPresetTextInputPatch(node, options) {
-            const patch = call('buildPresetTextInputPatch', node, options || {});
+            const patch = patchCall('buildPresetTextInputPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyTextMergeStatePatch(node, options) {
-            const patch = call('buildTextMergeStatePatch', node, options || {});
+            const patch = patchCall('buildTextMergeStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyTextNodeStatePatch(node, options) {
-            const patch = call('buildTextNodeStatePatch', node, options || {});
+            const patch = patchCall('buildTextNodeStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyCompareStatePatch(node, options) {
-            const patch = call('buildCompareStatePatch', node, options || {});
+            const patch = patchCall('buildCompareStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyNoteStatePatch(node, options) {
-            const patch = call('buildNoteStatePatch', node, options || {});
+            const patch = patchCall('buildNoteStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyVlmChatStatePatch(node, options) {
-            const patch = call('buildVlmChatStatePatch', node, options || {}) || {
+            const patch = patchCall('buildVlmChatStatePatch', undefined, node, options || {}) || {
                 messages: [],
                 pending_images: [],
                 conversation_id: '',
@@ -182,58 +247,58 @@
         }
 
         function applyVlmParamsPatch(node, options) {
-            const patch = call('buildVlmParamsPatch', node, options || {});
+            const patch = patchCall('buildVlmParamsPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyVlmImageInputsPatch(node, options) {
-            const patch = call('buildVlmImageInputsPatch', node, options || {});
+            const patch = patchCall('buildVlmImageInputsPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'image_inputs')) {
                 Object.assign(node, patch);
             }
         }
 
         function applyResultStatusPatch(node, options) {
-            const patch = call('buildResultStatusPatch', node, options || {});
+            const patch = statusCall('buildResultStatusPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                 Object.assign(node, patch);
             }
         }
 
         function applyResultProducerPatch(node, producerPatch) {
-            const patch = call('buildResultProducerPatch', node, producerPatch || {});
+            const patch = patchCall('buildResultProducerPatch', undefined, node, producerPatch || {});
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'producer')) {
                 Object.assign(node, patch);
             }
         }
 
         function applyQwenTtsStatePatch(node, options) {
-            const patch = call('buildQwenTtsStatePatch', node, options || {});
+            const patch = patchCall('buildQwenTtsStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyPoseStudioStatePatch(node, options) {
-            const patch = call('buildPoseStudioStatePatch', node, options || {});
+            const patch = patchCall('buildPoseStudioStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyGaussianStudioStatePatch(node, options) {
-            const patch = call('buildGaussianStudioStatePatch', node, options || {});
+            const patch = patchCall('buildGaussianStudioStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyLivePortraitNodeStatePatch(node, options) {
-            const patch = call('buildLivePortraitNodeStatePatch', node, options || {});
+            const patch = patchCall('buildLivePortraitNodeStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applyLivePortraitVideoExpressionStatePatch(node, options) {
-            const patch = call('buildLivePortraitVideoExpressionStatePatch', node, options || {});
+            const patch = patchCall('buildLivePortraitVideoExpressionStatePatch', undefined, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         }
 
         function applySpecialNodeStatusPatch(node, options) {
-            const patch = call('buildSpecialNodeStatusPatch', node, options || {});
+            const patch = statusCall('buildSpecialNodeStatusPatch', undefined, node, options || {});
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                 Object.assign(node, patch);
                 return true;
@@ -243,7 +308,7 @@
 
         function applyCanvasNodeStatusPatch(node, options) {
             const config = options || {};
-            const patch = call('buildCanvasNodeStatusPatch', node, config);
+            const patch = statusCall('buildCanvasNodeStatusPatch', undefined, node, config);
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                 Object.assign(node, patch);
                 return true;
@@ -256,37 +321,37 @@
         }
 
         function applyRunStatus(node, state, message) {
-            const status = call('mergeCanvasRunStatus', node?.status, state, message);
-            if (node?.type === 'result' && typeof scope.buildResultStatusPatch === 'function') {
-                const patch = call('buildResultStatusPatch', node, { status });
+            const status = statusCall('mergeCanvasRunStatus', undefined, node?.status, state, message);
+            if (node?.type === 'result' && typeof statusSource.buildResultStatusPatch === 'function') {
+                const patch = statusCall('buildResultStatusPatch', undefined, node, { status });
                 if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                     Object.assign(node, patch);
                     return;
                 }
             }
-            if (node?.type === 'vlm' && typeof scope.buildVlmRunStatusPatch === 'function') {
-                const patch = call('buildVlmRunStatusPatch', node, { status });
+            if (node?.type === 'vlm' && typeof statusSource.buildVlmRunStatusPatch === 'function') {
+                const patch = statusCall('buildVlmRunStatusPatch', undefined, node, { status });
                 if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                     Object.assign(node, patch);
                     return;
                 }
             }
-            if (node?.type === 'mask' && typeof scope.buildMaskStatePatch === 'function') {
-                const patch = call('buildMaskStatePatch', node, { status });
+            if (node?.type === 'mask' && typeof statusSource.buildMaskStatePatch === 'function') {
+                const patch = statusCall('buildMaskStatePatch', undefined, node, { status });
                 if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                     Object.assign(node, patch);
                     return;
                 }
             }
-            if (node?.type === 'translation' && typeof scope.buildTranslationStatePatch === 'function') {
-                const patch = call('buildTranslationStatePatch', node, { status });
+            if (node?.type === 'translation' && typeof statusSource.buildTranslationStatePatch === 'function') {
+                const patch = statusCall('buildTranslationStatePatch', undefined, node, { status });
                 if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                     Object.assign(node, patch);
                     return;
                 }
             }
-            if (node?.type === 'wd14' && typeof scope.buildWd14StatePatch === 'function') {
-                const patch = call('buildWd14StatePatch', node, { status });
+            if (node?.type === 'wd14' && typeof statusSource.buildWd14StatePatch === 'function') {
+                const patch = statusCall('buildWd14StatePatch', undefined, node, { status });
                 if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'status')) {
                     Object.assign(node, patch);
                     return;
@@ -298,9 +363,7 @@
         }
 
         function getSelectionState() {
-            const state = typeof scope.getSelectionState === 'function'
-                ? (scope.getSelectionState() || {})
-                : scope;
+            const state = selectionCall('getSelectionState', selectionSource) || {};
             return {
                 selectedNodeId: state.selectedNodeId || null,
                 selectedNodeIds: state.selectedNodeIds instanceof Set
@@ -316,12 +379,12 @@
             state.selectedNodeIds = state.selectedNodeIds instanceof Set
                 ? new Set(state.selectedNodeIds)
                 : new Set(Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : []);
-            if (typeof scope.setSelectionState === 'function') scope.setSelectionState(state);
-            else Object.assign(scope, state);
+            if (typeof selectionSource.setSelectionState === 'function') selectionSource.setSelectionState(state);
+            else Object.assign(selectionSource, state);
         }
 
         function getSelectedNodeIdList() {
-            const ids = call('getSelectedNodeIdList');
+            const ids = selectionCall('getSelectedNodeIdList', undefined);
             if (Array.isArray(ids)) return ids.filter(Boolean);
             const state = getSelectionState();
             if (state.selectedNodeIds.size) return Array.from(state.selectedNodeIds);
@@ -329,7 +392,7 @@
         }
 
         function getNodeRect(node) {
-            const rect = call('getNodeRect', node);
+            const rect = layoutCall('getNodeRect', undefined, node);
             if (rect && Number.isFinite(Number(rect.x)) && Number.isFinite(Number(rect.y))) {
                 return {
                     x: Number(rect.x),
@@ -375,11 +438,11 @@
         function copyCanvasSelection() {
             const ids = getSelectedNodeIdList();
             if (!ids.length) {
-                call('showToast', translate('No selected nodes to copy.', '没有选中的节点可复制'));
+                uiCall('showToast', undefined, translate('No selected nodes to copy.', '没有选中的节点可复制'));
                 return null;
             }
             canvasClipboard = buildSelectionClipboard(ids);
-            call('showToast', translate('Copied {count} node(s).', '已复制 {count} 个节点').replace('{count}', canvasClipboard.nodes.length));
+            uiCall('showToast', undefined, translate('Copied {count} node(s).', '已复制 {count} 个节点').replace('{count}', canvasClipboard.nodes.length));
             return canvasClipboard;
         }
 
@@ -388,8 +451,8 @@
             if (node.type === 'preset' || node.type === 'classic') {
                 const uploadSlots = {};
                 const slots = node.type === 'classic'
-                    ? (call('getVisibleClassicUploadSlots', node) || [])
-                    : (call('getVisibleUploadSlots', node) || []);
+                    ? (configCall('getVisibleClassicUploadSlots', [], node) || [])
+                    : (configCall('getVisibleUploadSlots', [], node) || []);
                 slots.forEach((slot) => {
                     if (slot?.key) uploadSlots[slot.key] = null;
                 });
@@ -536,7 +599,7 @@
             if (node.type === 'compare') {
                 applyCompareStatePatch(node, { inputs: {} });
             }
-            if (node.type === 'timeline') call('normalizeTimelineNode', node);
+            if (node.type === 'timeline') configCall('normalizeTimelineNode', undefined, node);
             return node;
         }
 
@@ -572,27 +635,27 @@
         }
 
         function textMergeInputSlots(node) {
-            const slots = call('textMergeInputSlots', node);
+            const slots = nodeCall('textMergeInputSlots', undefined, node);
             return Array.isArray(slots) ? slots : (Array.isArray(node?.input_slots) ? node.input_slots : ['input_1', 'input_2']);
         }
 
         function isTextOutputNode(node) {
-            return !!call('isTextOutputNode', node);
+            return !!nodeCall('isTextOutputNode', false, node);
         }
 
         function wouldCreateTextCycle(fromId, toId) {
-            return !!call('wouldCreateTextCycle', fromId, toId);
+            return !!nodeCall('wouldCreateTextCycle', false, fromId, toId);
         }
 
         function applyPastedEdgeRelation(edge) {
-            const to = call('getNode', edge.to);
-            const from = call('getNode', edge.from);
+            const to = nodeCall('getNode', null, edge.to);
+            const from = nodeCall('getNode', null, edge.from);
             if (!to || !from) return;
             if (edge.type === 'upload' && (to.type === 'preset' || to.type === 'classic')) {
                 applyPresetUploadSlotPatch(to, { uploadSlotsPatch: { [edge.slot]: from.id } });
             } else if (edge.type === 'config' && from.type === 'config' && (to.type === 'preset' || to.type === 'classic')) {
                 applyConfigStatePatch(from, { targetPresetId: to.id });
-                call('applyConfigNodeToPreset', from);
+                configCall('applyConfigNodeToPreset', undefined, from);
             } else if (edge.type === 'generate' && to.type === 'result') {
                 applyResultProducerPatch(to, { preset_node_id: from.id, run_id: null, task_id: null });
             } else if (edge.type === 'text' && isTextOutputNode(from) && (to.type === 'preset' || to.type === 'classic')) {
@@ -620,10 +683,10 @@
                     inputNodeId: from.id,
                     status: Object.assign({}, to.status || {}, { state: 'ready', message: translate('Image connected.', '图像已连接。') })
                 });
-            } else if (edge.type === 'image' && call('isPoseStudioImageSource', from) && to.type === 'pose_studio') {
+            } else if (edge.type === 'image' && nodeCall('isPoseStudioImageSource', false, from) && to.type === 'pose_studio') {
                 applySpecialNodeConnectionPatch(to, { inputNodeId: from.id });
                 applyRunStatus(to, 'ready', translate('Reference image connected.', '参考图已连接。'));
-            } else if (edge.type === 'image' && call('isLivePortraitExpressionImageSource', from) && to.type === 'liveportrait_expression') {
+            } else if (edge.type === 'image' && nodeCall('isLivePortraitExpressionImageSource', false, from) && to.type === 'liveportrait_expression') {
                 const slot = edge.slot === 'reference' ? 'reference' : 'source';
                 if (slot === 'reference') {
                     applySpecialNodeConnectionPatch(to, {
@@ -643,46 +706,46 @@
                         ? translate('Reference expression connected.', '参考表情已连接。')
                         : translate('Source image connected.', '源图已连接。')
                 );
-            } else if (edge.type === 'image' && call('isVlmMediaSource', from) && to.type === 'vlm') {
+            } else if (edge.type === 'image' && nodeCall('isVlmMediaSource', false, from) && to.type === 'vlm') {
                 const slots = getVlmImageSlots();
                 const slot = slots.some(item => item.key === edge.slot) ? edge.slot : 'image_1';
                 applyVlmImageInputsPatch(to, { imageInputsPatch: { [slot]: from.id } });
                 applyRunStatus(to, 'ready', translate('Media connected.', '媒体已连接。'));
-            } else if (edge.type === 'media' && call('isSam3VideoMaskSource', from) && to.type === 'sam3_video_mask') {
+            } else if (edge.type === 'media' && nodeCall('isSam3VideoMaskSource', false, from) && to.type === 'sam3_video_mask') {
                 applySam3SourcePatch(to, { inputNodeId: from.id });
                 applyRunStatus(to, 'ready', translate('Source video connected.', '源视频已连接。'));
-            } else if (edge.type === 'media' && call('isQwenTtsAudioSource', from) && call('isQwenTtsNode', to)) {
+            } else if (edge.type === 'media' && nodeCall('isQwenTtsAudioSource', false, from) && nodeCall('isQwenTtsNode', false, to)) {
                 const slot = edge.slot || 'ref_audio';
                 applyQwenTtsStatePatch(to, {
                     audioInputsPatch: { [slot]: from.id },
-                    status: call('mergeCanvasRunStatus', to?.status, 'ready', translate('Reference audio connected.', '参考音频已连接。'))
+                    status: statusCall('mergeCanvasRunStatus', undefined, to?.status, 'ready', translate('Reference audio connected.', '参考音频已连接。'))
                 });
-            } else if (edge.type === 'media' && call('isDirectorTimelineNode', to) && call('isDirectorMediaSourceForSlot', from, edge.slot)) {
+            } else if (edge.type === 'media' && nodeCall('isDirectorTimelineNode', false, to) && nodeCall('isDirectorMediaSourceForSlot', false, from, edge.slot)) {
                 applyDirectorTimelineStatePatch(to, {
                     mediaInputsPatch: { [edge.slot || 'image_1']: from.id }
                 });
-                call('updateDirectorStatus', to);
-            } else if (edge.type === 'compare' && call('isImageCompareSource', from) && to.type === 'compare') {
+                actionCall('updateDirectorStatus', undefined, to);
+            } else if (edge.type === 'compare' && nodeCall('isImageCompareSource', false, from) && to.type === 'compare') {
                 const slot = ['a', 'b'].includes(edge.slot) ? edge.slot : 'a';
                 applyCompareStatePatch(to, { inputsPatch: { [slot]: from.id } });
-            } else if (edge.type === 'timeline' && call('isTimelineSource', from) && to.type === 'timeline') {
+            } else if (edge.type === 'timeline' && nodeCall('isTimelineSource', false, from) && to.type === 'timeline') {
                 if (!Array.isArray(to.clips) || !to.clips.some(clip => clip.id === edge.slot)) {
-                    call('addTimelineClipFromSource', to, from, { history: false, render: false, edge: false });
+                    actionCall('addTimelineClipFromSource', undefined, to, from, { history: false, render: false, edge: false });
                 }
             }
         }
 
         function pasteCanvasClipboard(world, options) {
             if (!canvasClipboard || !Array.isArray(canvasClipboard.nodes) || !canvasClipboard.nodes.length) {
-                call('showToast', translate('Clipboard has no canvas nodes.', '剪贴板没有画布节点'));
+                uiCall('showToast', undefined, translate('Clipboard has no canvas nodes.', '剪贴板没有画布节点'));
                 return [];
             }
             const project = getProject();
             const opts = options || {};
-            call('pushHistory', opts.label || 'Paste nodes');
+            historyCall('pushHistory', undefined, opts.label || 'Paste nodes');
             const sourceNodes = canvasClipboard.nodes;
             const bounds = getClipboardBounds(sourceNodes);
-            const target = world || call('viewportCenterWorld') || { x: 0, y: 0 };
+            const target = world || viewportCall('viewportCenterWorld', null) || { x: 0, y: 0 };
             const dx = Math.round(Number(target.x || 0) - (bounds.minX + bounds.width / 2));
             const dy = Math.round(Number(target.y || 0) - (bounds.minY + bounds.height / 2));
             const idMap = {};
@@ -712,7 +775,7 @@
             getClipboardSourceEdges(opts).forEach((edge) => {
                 const toId = idMap[edge.to];
                 if (!toId) return;
-                const fromId = idMap[edge.from] || (opts.withInputConnections && call('getNode', edge.from) ? edge.from : null);
+                const fromId = idMap[edge.from] || (opts.withInputConnections && nodeCall('getNode', null, edge.from) ? edge.from : null);
                 if (!fromId) return;
                 const next = cloneValue(edge);
                 next.id = uid('edge');
@@ -727,9 +790,9 @@
                 selectedEdgeId: null,
                 selectedGroupId: null
             });
-            call('mutate');
+            persistenceCall('mutate', undefined);
             if (opts.showToast !== false) {
-                call('showToast', translate('Pasted {count} node(s).', '已粘贴 {count} 个节点').replace('{count}', pasted.length));
+                uiCall('showToast', undefined, translate('Pasted {count} node(s).', '已粘贴 {count} 个节点').replace('{count}', pasted.length));
             }
             return pasted;
         }
@@ -748,7 +811,7 @@
                 showToast: opts.showToast,
                 stagger: opts.stagger
             });
-            return getSelectedNodeIdList().map(id => call('getNode', id)).filter(Boolean);
+            return getSelectedNodeIdList().map(id => nodeCall('getNode', null, id)).filter(Boolean);
         }
 
         return {

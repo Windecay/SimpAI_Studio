@@ -220,7 +220,7 @@
             hasLooseAlias(
                 /\bklein\b/i,
                 ['用klein', '使用klein', '采用klein', '指定klein', '选择klein', '模型klein', '预设klein'],
-                ['Flux2-Klein', 'Flux2-KleinEdit', 'Flux2-KleinPose']
+                ['Flux2-Klein', 'Flux2-KleinEdit']
             );
             hasLooseAlias(
                 /\bflux(?:1|2)?\b/i,

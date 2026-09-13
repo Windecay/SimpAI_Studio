@@ -63,6 +63,20 @@
             return !!node && node.type === 'text';
         }
 
+        function getCanvasAgentReferenceAsset(node) {
+            if (!node || node.type === 'text') return null;
+            return node.type === 'result'
+                ? call('getSelectedResultAsset', null, node)
+                : node.asset;
+        }
+
+        function getCanvasAgentReferenceKind(node) {
+            if (!node) return '';
+            if (node.type === 'text') return 'text';
+            const asset = getCanvasAgentReferenceAsset(node);
+            return asset ? call('assetMediaKind', '', asset) : '';
+        }
+
         function isCanvasAgentMediaReferenceTarget(node) {
             if (!node || call('isNodeIgnored', false, node)) return false;
             if (node.type === 'text') return true;
@@ -79,7 +93,7 @@
             if (isCanvasAgentAudioTarget(node)) return 'audio';
             if (isCanvasAgentTextTarget(node)) return 'text';
             if (isCanvasAgentGeneratorTarget(node)) return 'generator';
-            return call('getCanvasAgentReferenceKind', '', node);
+            return getCanvasAgentReferenceKind(node);
         }
 
         function isCanvasAgentSupportedTarget(node) {
@@ -111,9 +125,17 @@
             return `${t('Agent on', 'Agent 作用于')} ${type} · ${node.title || node.id}`;
         }
 
+        function canvasAgentShortNodeLabel(node) {
+            if (!node) return '';
+            return `${String(node.type || '').toUpperCase()} · ${node.title || node.id}`;
+        }
+
         return {
             getCanvasAgentTargetNode,
             canvasAgentTargetLabel,
+            canvasAgentShortNodeLabel,
+            getCanvasAgentReferenceAsset,
+            getCanvasAgentReferenceKind,
             isCanvasAgentImageTarget,
             isCanvasAgentVideoTarget,
             isCanvasAgentAudioTarget,

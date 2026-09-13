@@ -128,15 +128,13 @@
     "available_aspect_ratios_selection": "Flux",
     "scene_frontend": {
       "version": "m1.1",
-      "theme": ["Edit", "Pose"],
+      "theme": ["Edit"],
       "theme_title": "Flux Image Editing",
       "task_method": {
-        "Edit": "flux2_9b_edit_cn",
-        "Pose": "flux2_pose_cn"
+        "Edit": "flux2_9b_edit_cn"
       },
       "prompt": {
-        "Edit": "",
-        "Pose": "Convert the second image to pose and apply it to the first image."
+        "Edit": ""
       },
       "disvisible": [
         "scene_additional_prompt_2",
@@ -376,3 +374,10 @@ Get-ChildItem .\presets -Filter *.json | ForEach-Object {
 ```
 
 这只检查 JSON 格式，不检查模型文件是否存在。模型是否齐全由界面的模型检查和下载面板读取 `model_list` 后判断。
+
+## 2026-09-13 Nunchaku 预置退役
+
+`NunFlux_fp4/int4`、`NunQwenEdit+_fp4/int4`、`NunSwap_fp4/int4` 六个 JSON
+原样移至 `deprecated/`，不再进入预置商店、导航和 Agent 候选。相关下载包
+7、8、12、13 停用，历史包清单保留。模型、LoRA、工作流和展示资源不删除，
+底层 Nunchaku/Forge 支持不变；其他 Flux、Qwen 和 fp4/int4 预置不受此退役规则影响。

@@ -83,8 +83,6 @@ IMAGE_EDIT_SHARED_PRESETS = {
     "Bernini-ImageEdit",
     "Flux2-KleinEdit",
     "QwenEdit+",
-    "NunQwenEdit+_fp4",
-    "NunQwenEdit+_int4",
     "QwenNSFW",
 }
 
@@ -3060,7 +3058,15 @@ def _scene_prompt_shared_keys(preset_name):
         and video_policy in {"", "forbidden"}
         and audio_policy in {"", "forbidden"}
     )
-    if no_media_input and any("t2v" in method for method in task_methods):
+    prompt_compilers = [
+        item.lower() for item in _scene_value_candidates(scene_frontend.get("prompt_compiler"))
+    ]
+    # H3 T2VA picks must remain valid examples of its structured prompt format.
+    if (
+        no_media_input
+        and any("t2v" in method for method in task_methods)
+        and "minimax_h3_t2va" not in prompt_compilers
+    ):
         keys.append("text_to_video")
     return keys
 

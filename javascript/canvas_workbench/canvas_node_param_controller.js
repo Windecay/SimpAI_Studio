@@ -3,18 +3,63 @@
 
     function createCanvasNodeParamController(context) {
         const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const getNode = (id) => call('getNode', null, id);
-        const getInspector = () => call('getInspector', null);
-        const getSelectedNodeId = () => call('getSelectedNodeId', null);
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const languageCall = (name, fallback, ...args) => typeof languageSource[name] === 'function'
+            ? languageSource[name](...args)
+            : fallback;
+        const getLanguageState = (...args) => languageCall('getLanguageState', { __lang: 'en' }, ...args);
+        const t = (...args) => {
+            const en = args[0] || '';
+            const cn = args.length > 1 ? args[1] : en;
+            const state = args.length > 2 ? args[2] : getLanguageState();
+            return languageCall('t', cn || en, en, cn, state);
+        };
+        const nodeSource = sourceObject('nodeSource');
+        const nodeCall = (name, fallback, ...args) => typeof nodeSource[name] === 'function'
+            ? nodeSource[name](...args)
+            : fallback;
+        const configSource = sourceObject('configSource');
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const patchSource = sourceObject('patchSource');
+        const patchCall = (name, fallback, ...args) => typeof patchSource[name] === 'function'
+            ? patchSource[name](...args)
+            : fallback;
+        const historySource = sourceObject('historySource');
+        const historyCall = (name, fallback, ...args) => typeof historySource[name] === 'function'
+            ? historySource[name](...args)
+            : fallback;
+        const persistenceSource = sourceObject('persistenceSource');
+        const persistenceCall = (name, fallback, ...args) => typeof persistenceSource[name] === 'function'
+            ? persistenceSource[name](...args)
+            : fallback;
+        const renderSource = sourceObject('renderSource');
+        const renderCall = (name, fallback, ...args) => typeof renderSource[name] === 'function'
+            ? renderSource[name](...args)
+            : fallback;
+        const uiStateSource = sourceObject('uiStateSource');
+        const uiStateCall = (name, fallback, ...args) => typeof uiStateSource[name] === 'function'
+            ? uiStateSource[name](...args)
+            : fallback;
+        const actionSource = sourceObject('actionSource');
+        const actionCall = (name, fallback, ...args) => typeof actionSource[name] === 'function'
+            ? actionSource[name](...args)
+            : fallback;
+        const getNode = (id) => nodeCall('getNode', null, id);
+        const getInspector = () => nodeCall('getInspector', null);
+        const getSelectedNodeId = () => nodeCall('getSelectedNodeId', null);
         const classicOutpaintDirs = (() => {
-            const value = call('getClassicOutpaintDirs', []);
+            const value = configCall('getClassicOutpaintDirs', []);
             return Array.isArray(value) ? value : [];
         })();
-        const buildNodeParamsPatch = (node, options) => call('buildNodeParamsPatch', {}, node, options) || {};
-        const buildNodeFieldPatch = (node, key, value) => call('buildNodeFieldPatch', {}, node, key, value) || {};
-        const buildClassicNodeStatePatch = (node, options) => call('buildClassicNodeStatePatch', {}, node, options) || {};
+        const buildNodeParamsPatch = (node, options) => patchCall('buildNodeParamsPatch', {}, node, options) || {};
+        const buildNodeFieldPatch = (node, key, value) => patchCall('buildNodeFieldPatch', {}, node, key, value) || {};
+        const buildClassicNodeStatePatch = (node, options) => patchCall('buildClassicNodeStatePatch', {}, node, options) || {};
 
         function fieldValue(field) {
             return field?.type === 'checkbox' ? !!field.checked : field?.value;
@@ -22,8 +67,8 @@
 
         function updateNodeParam(nodeId, key, value, inputType) {
             const node = getNode(nodeId);
-            if (!node || call('isNodeLocked', false, node)) return;
-            call('pushHistoryBatch', undefined, `node-param:${nodeId}:${key}`, 'Edit node parameter');
+            if (!node || nodeCall('isNodeLocked', false, node)) return;
+            historyCall('pushHistoryBatch', undefined, `node-param:${nodeId}:${key}`, 'Edit node parameter');
             const paramsPatch = {};
             if (inputType === 'checkbox') {
                 paramsPatch[key] = !!value;
@@ -35,10 +80,10 @@
             }
             Object.assign(node, buildNodeParamsPatch(node, { paramsPatch }));
             if (key === 'seed_random') {
-                call('mutate', undefined, { inspector: true });
+                uiStateCall('mutate', undefined, { inspector: true });
                 return;
             }
-            call('scheduleSave');
+            persistenceCall('scheduleSave');
         }
 
         function updateClassicOutpaintParam(node, key, field, options = {}) {
@@ -49,7 +94,7 @@
             Object.assign(node, buildNodeParamsPatch(node, {
                 paramsPatch: { [key]: !!field.checked, outpaint_selections: outpaintSelections }
             }));
-            if (options.scheduleSave !== false) call('scheduleSave');
+            if (options.scheduleSave !== false) persistenceCall('scheduleSave');
             return true;
         }
 
@@ -58,19 +103,19 @@
             const paramKey = field.getAttribute?.('data-node-param');
             if (!paramKey) return false;
             if (paramKey === 'inpaint_mode' && node.type === 'classic') {
-                call('handleInpaintModeChange', undefined, node.id, field.value);
+                actionCall('handleInpaintModeChange', undefined, node.id, field.value);
                 return true;
             }
             if (paramKey === 'uov_method' && node.type === 'classic') {
-                call('handleUovMethodChange', undefined, node.id, field.value);
+                actionCall('handleUovMethodChange', undefined, node.id, field.value);
                 return true;
             }
             if ((paramKey === 'enhance_uov_method' || paramKey === 'enhance_uov_processing_order') && node.type === 'classic') {
-                call('handleEnhanceUovParamChange', undefined, node.id, paramKey, field.value, field.type);
+                actionCall('handleEnhanceUovParamChange', undefined, node.id, paramKey, field.value, field.type);
                 return true;
             }
             if (updateClassicOutpaintParam(node, paramKey, field, { scheduleSave: options.scheduleOutpaint !== false })) return true;
-            call('syncTwinParamInputs', undefined, field, '[data-node-param]');
+            actionCall('syncTwinParamInputs', undefined, field, '[data-node-param]');
             updateNodeParam(node.id, paramKey, fieldValue(field), field.type);
             return true;
         }
@@ -80,7 +125,9 @@
             const target = evt.target;
             const inputEvent = eventType === 'input';
             const changeEvent = eventType === 'change';
-            const invoke = (name, ...args) => call(name, undefined, ...args);
+            const invoke = (name, ...args) => name === 'updateNodeParam'
+                ? updateNodeParam(...args)
+                : actionCall(name, undefined, ...args);
             const nodeParam = target.closest?.('[data-node-param]');
             const noteText = target.closest?.('[data-note-text]');
             if (noteText && node.type === 'note') {
@@ -122,7 +169,7 @@
                 invoke('updateWd14Param', node.id, wd14Param.getAttribute('data-wd14-param'), wd14Param.value, wd14Param.type);
                 return true;
             }
-            if (inputEvent && call('isDirectorTimelineNode', false, node)) {
+            if (inputEvent && nodeCall('isDirectorTimelineNode', false, node)) {
                 const directorParam = target.closest?.('[data-director-param]');
                 if (directorParam) {
                     invoke('syncTwinParamInputs', directorParam, '[data-director-param]');
@@ -194,16 +241,16 @@
                 const key = classicParam.getAttribute('data-classic-param');
                 invoke('syncTwinParamInputs', classicParam, '[data-classic-param]');
                 if (changeEvent && key === 'ip_count') {
-                    invoke('pushHistory', 'Change classic IP count');
+                    historyCall('pushHistory', undefined, 'Change classic IP count');
                     Object.assign(node, buildClassicNodeStatePatch(node, {
                         classicIpCount: Math.max(1, Math.min(4, Number(classicParam.value) || 1))
                     }));
-                    invoke('mutate');
+                    uiStateCall('mutate');
                 }
                 return true;
             }
             if (!nodeParam) return false;
-            if (call('isQwenTtsNode', false, node)) {
+            if (nodeCall('isQwenTtsNode', false, node)) {
                 invoke('syncTwinParamInputs', nodeParam, '[data-node-param]');
                 invoke('updateQwenTtsParam', node.id, nodeParam.getAttribute('data-node-param'), fieldValue(nodeParam), nodeParam.type);
                 return true;
@@ -227,21 +274,21 @@
             const node = getNode(nodeId);
             const paramKey = field.getAttribute?.('data-inspector-param');
             if (!paramKey) return false;
-            call('syncTwinParamInputs', undefined, field, '[data-inspector-param]');
-            if (call('isQwenTtsNode', false, node)) {
-                call('updateQwenTtsParam', undefined, nodeId, paramKey, fieldValue(field), field.type);
+            actionCall('syncTwinParamInputs', undefined, field, '[data-inspector-param]');
+            if (nodeCall('isQwenTtsNode', false, node)) {
+                actionCall('updateQwenTtsParam', undefined, nodeId, paramKey, fieldValue(field), field.type);
                 return true;
             }
             if (paramKey === 'inpaint_mode' && node?.type === 'classic') {
-                call('handleInpaintModeChange', undefined, nodeId, field.value);
+                actionCall('handleInpaintModeChange', undefined, nodeId, field.value);
                 return true;
             }
             if (paramKey === 'uov_method' && node?.type === 'classic') {
-                call('handleUovMethodChange', undefined, nodeId, field.value);
+                actionCall('handleUovMethodChange', undefined, nodeId, field.value);
                 return true;
             }
             if ((paramKey === 'enhance_uov_method' || paramKey === 'enhance_uov_processing_order') && node?.type === 'classic') {
-                call('handleEnhanceUovParamChange', undefined, nodeId, paramKey, field.value, field.type);
+                actionCall('handleEnhanceUovParamChange', undefined, nodeId, paramKey, field.value, field.type);
                 return true;
             }
             if (node?.type === 'classic' && paramKey.startsWith('outpaint_') && field.type === 'checkbox') {
@@ -263,21 +310,21 @@
             const node = getNode(nodeId);
             const fieldName = field.getAttribute?.('data-inspector-node-field');
             if (!node || !fieldName) return false;
-            if (call('isNodeLocked', false, node)) {
+            if (nodeCall('isNodeLocked', false, node)) {
                 field.value = node[fieldName] || '';
-                call('showToast', undefined, t('Locked node cannot be edited', '锁定节点无法编辑'));
+                uiStateCall('showToast', undefined, t('Locked node cannot be edited', '锁定节点无法编辑'));
                 return true;
             }
-            call('pushHistoryBatch', undefined, `node-field:${node.id}:${fieldName}`, t('Edit node field', '编辑节点字段'));
+            historyCall('pushHistoryBatch', undefined, `node-field:${node.id}:${fieldName}`, t('Edit node field', '编辑节点字段'));
             const patch = buildNodeFieldPatch(node, fieldName, field.value);
             if (patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, fieldName)) {
                 Object.assign(node, patch);
             } else {
                 Object.assign(node, { [fieldName]: field.value });
             }
-            call('scheduleSave');
-            call('renderNodes');
-            call('renderEdges');
+            persistenceCall('scheduleSave');
+            renderCall('renderNodes');
+            renderCall('renderEdges');
             return true;
         }
 

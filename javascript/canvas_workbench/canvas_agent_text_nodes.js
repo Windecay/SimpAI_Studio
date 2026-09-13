@@ -37,7 +37,13 @@
 
         function getPromptTextSourceNode(node, slot) {
             if (!node || !['prompt', 'negative_prompt'].includes(slot)) return null;
-            const fromId = node.text_inputs?.[slot];
+            const project = getProject();
+            const edge = Array.isArray(project.edges)
+                ? project.edges.find(item => item.type === 'text'
+                    && item.to === node.id
+                    && (item.slot || 'prompt') === slot)
+                : null;
+            const fromId = node.text_inputs?.[slot] || edge?.from || '';
             const source = fromId ? getNode(fromId) : null;
             return isTextOutputNode(source) ? source : null;
         }

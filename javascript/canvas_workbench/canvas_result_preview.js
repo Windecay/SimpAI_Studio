@@ -7,35 +7,63 @@
 
     function createCanvasResultPreviewController(context) {
         const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const frameSrc = (frame, fallback) => call('resultPreviewFrameSrc', '', frame, fallback);
-        const frameAspect = (frame) => Number(call('resultPreviewFrameAspect', 0, frame)) || 0;
-        const aspectSource = (node) => call('resultPreviewAspectSource', null, node);
-        const getNode = (id) => call('getNode', null, id);
-        const getNodeElement = (id) => call('getNodeElement', null, id);
-        const nodeStatusState = (node) => call('nodeStatusState', '', node);
-        const isRunActive = (state) => !!call('isCanvasRunActiveState', false, state);
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const previewSource = sourceObject('previewSource');
+        const nodeSource = sourceObject('nodeSource');
+        const statusSource = sourceObject('statusSource');
+        const resultSource = sourceObject('resultSource');
+        const utilitySource = sourceObject('utilitySource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const frameSrc = (frame, fallback) => typeof previewSource.resultPreviewFrameSrc === 'function'
+            ? previewSource.resultPreviewFrameSrc(frame, fallback)
+            : '';
+        const frameAspect = (frame) => Number(
+            typeof previewSource.resultPreviewFrameAspect === 'function'
+                ? previewSource.resultPreviewFrameAspect(frame)
+                : 0
+        ) || 0;
+        const aspectSource = (node) => typeof previewSource.resultPreviewAspectSource === 'function'
+            ? previewSource.resultPreviewAspectSource(node)
+            : null;
+        const renderPreviewStrip = (...args) => typeof previewSource.renderResultPreviewStripHtml === 'function'
+            ? previewSource.renderResultPreviewStripHtml(...args)
+            : '';
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
+        const getNodeElement = (id) => typeof nodeSource.getNodeElement === 'function'
+            ? nodeSource.getNodeElement(id)
+            : null;
+        const nodeStatusState = (node) => typeof nodeSource.nodeStatusState === 'function'
+            ? nodeSource.nodeStatusState(node)
+            : '';
+        const isRunActive = (state) => typeof statusSource.isCanvasRunActiveState === 'function'
+            ? !!statusSource.isCanvasRunActiveState(state)
+            : false;
         const applyResultPreviewPatch = (node, options) => {
             if (!node) return {};
-            const patch = call('buildResultPreviewPatch', {}, node, options) || {};
+            const patch = typeof resultSource.buildResultPreviewPatch === 'function'
+                ? resultSource.buildResultPreviewPatch(node, options) || {}
+                : {};
             Object.assign(node, patch);
             return patch;
         };
         const cloneValue = (value, fallback) => {
-            if (typeof scope.cloneRunValue === 'function') return scope.cloneRunValue(value, fallback);
+            if (typeof utilitySource.cloneRunValue === 'function') return utilitySource.cloneRunValue(value, fallback);
             try {
                 return JSON.parse(JSON.stringify(value));
             } catch (err) {
                 return fallback;
             }
         };
-        const maxFrames = Math.max(1, Number(scope.maxFrames || 96) || 96);
+        const maxFrames = Math.max(1, Number(runtimeSource.maxFrames || 96) || 96);
         const players = new Map();
-        const setIntervalImpl = typeof scope.setInterval === 'function'
-            ? scope.setInterval
+        const setIntervalImpl = typeof runtimeSource.setInterval === 'function'
+            ? runtimeSource.setInterval
             : (typeof window.setInterval === 'function' ? window.setInterval.bind(window) : null);
-        const clearIntervalImpl = typeof scope.clearInterval === 'function'
-            ? scope.clearInterval
+        const clearIntervalImpl = typeof runtimeSource.clearInterval === 'function'
+            ? runtimeSource.clearInterval
             : (typeof window.clearInterval === 'function' ? window.clearInterval.bind(window) : null);
 
         function resultPreviewHasRenderableSource(node) {
@@ -52,7 +80,11 @@
 
         function resultMediaDisplayAsset(node, selectedAsset) {
             if (shouldShowResultRunningPreview(node)) return null;
-            return arguments.length >= 2 ? (selectedAsset || null) : call('getSelectedResultAsset', null, node);
+            return arguments.length >= 2
+                ? (selectedAsset || null)
+                : (typeof resultSource.getSelectedResultAsset === 'function'
+                    ? resultSource.getSelectedResultAsset(node)
+                    : null);
         }
 
         function applyResultPreviewAspect(mediaEl, frame) {
@@ -134,7 +166,7 @@
             if (img && src && img.getAttribute('src') !== src) img.src = src;
             bindResultPreviewAspectFromImage(img, nodeEl.querySelector?.('.sai-result-media'), frame || resultNode.preview);
             const strip = nodeEl.querySelector?.('[data-result-preview-strip]');
-            if (strip) strip.innerHTML = call('renderResultPreviewStripHtml', '', player.frames, frame?.serial);
+            if (strip) strip.innerHTML = renderPreviewStrip(player.frames, frame?.serial);
             return !!img;
         }
 

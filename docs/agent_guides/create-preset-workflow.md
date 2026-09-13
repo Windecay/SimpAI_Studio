@@ -789,10 +789,11 @@ selection synchronized in:
 - Preset task declarations and capability tests.
 
 Place complete automatic workflows before manual interaction workflows. For
-clothing transfer, the current automatic family order is Qwen Edit (including
-its Nunchaku variants), Flux2 Klein Edit, Krea2 Image Edit, Bernini Image Edit,
-then OneKeyKontext. `Swap+` and its Nunchaku variants require a painted mask and
-remain after the automatic routes.
+clothing transfer, the current automatic family order is Qwen Edit,
+Flux2 Klein Edit, Krea2 Image Edit, Bernini Image Edit, MiniMax H3 R2I,
+then OneKeyKontext. `Swap+` requires a painted mask and remains after the
+automatic routes. Nunchaku variants are retired: keep their archived files,
+but do not add them to download packages or Agent candidates.
 
 Explicit Preset names and product-family aliases are resolved by Studio against
 the live capability catalog. A model-provided hint is not trusted unless the

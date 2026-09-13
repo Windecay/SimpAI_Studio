@@ -30,9 +30,10 @@
         const nodeViewSource = Object.assign({}, scope.nodeViewSource || {});
         const vlmNodeSource = Object.assign({}, nodeViewSource.vlmNodeSource || {});
         const vlmNodeViewSource = Object.assign({}, nodeViewSource.vlmNodeViewSource || {});
+        const vlmNodeViewRenderSource = Object.assign({}, vlmNodeViewSource.renderSource || {});
         const sourceBudgetMax = vlmNodeSource.vlmChatContextBudgetMax;
         const sourceClampBudget = vlmNodeSource.clampVlmChatContextBudget;
-        const sourceRenderChatLog = vlmNodeViewSource.renderVlmChatLog;
+        const sourceRenderChatLog = vlmNodeViewRenderSource.renderVlmChatLog;
         const chatController = () => vlmChatContext.CANVAS_VLM_CHAT_CONTROLLER || {};
 
         vlmNodeSource.vlmChatContextBudgetMax = (...args) => delegatedValue(
@@ -47,12 +48,13 @@
             sourceClampBudget,
             args
         );
-        vlmNodeViewSource.renderVlmChatLog = (...args) => delegatedValue(
+        vlmNodeViewRenderSource.renderVlmChatLog = (...args) => delegatedValue(
             chatController(),
             'renderVlmChatLog',
             sourceRenderChatLog,
             args
         ) || '';
+        vlmNodeViewSource.renderSource = vlmNodeViewRenderSource;
         nodeViewSource.vlmNodeSource = vlmNodeSource;
         nodeViewSource.vlmNodeViewSource = vlmNodeViewSource;
 
@@ -62,23 +64,25 @@
             nodeViewSource
         );
         const nodeController = () => nodeViewContext.CANVAS_VLM_NODE_CONTROLLER || {};
-        const sourceGetCustomKeyValue = (scope.vlmChatSource?.controllerSource || {}).getVlmCustomKeyValue;
-        const sourceSetCustomKeyValue = (scope.vlmChatSource?.controllerSource || {}).setVlmCustomKeyValue;
         const vlmChatSource = Object.assign({}, scope.vlmChatSource || {});
-        vlmChatSource.controllerSource = Object.assign({}, vlmChatSource.controllerSource || {}, {
-            getVlmCustomKeyValue: (...args) => delegatedValue(
-                nodeController(),
-                'getVlmCustomKeyValue',
-                sourceGetCustomKeyValue,
-                args
-            ) || '',
-            setVlmCustomKeyValue: (...args) => delegatedValue(
-                nodeController(),
-                'setVlmCustomKeyValue',
-                sourceSetCustomKeyValue,
-                args
-            )
-        });
+        const vlmChatControllerSource = Object.assign({}, vlmChatSource.controllerSource || {});
+        const customApiSource = Object.assign({}, vlmChatControllerSource.customApiSource || {});
+        const sourceGetCustomKeyValue = customApiSource.getVlmCustomKeyValue;
+        const sourceSetCustomKeyValue = customApiSource.setVlmCustomKeyValue;
+        customApiSource.getVlmCustomKeyValue = (...args) => delegatedValue(
+            nodeController(),
+            'getVlmCustomKeyValue',
+            sourceGetCustomKeyValue,
+            args
+        ) || '';
+        customApiSource.setVlmCustomKeyValue = (...args) => delegatedValue(
+            nodeController(),
+            'setVlmCustomKeyValue',
+            sourceSetCustomKeyValue,
+            args
+        );
+        vlmChatControllerSource.customApiSource = customApiSource;
+        vlmChatSource.controllerSource = vlmChatControllerSource;
 
         vlmChatContext = createController(
             modules.vlmChat,

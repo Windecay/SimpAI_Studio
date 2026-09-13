@@ -72,6 +72,32 @@ def _is_minimax_h3_task(async_task):
     )
 
 
+def _prepare_h3_pose_inputs(task):
+    if str(getattr(task, "task_name", "")).strip().casefold() != "minimax-h3(pose)":
+        return
+    import numpy as np
+    from modules.localization import localized_text
+    from modules.util import normalize_gradio_image_value, normalize_gradio_sketch_value
+
+    source = normalize_gradio_sketch_value(getattr(task, "scene_canvas_image", None), image_mode="RGB")
+    pose = normalize_gradio_image_value(getattr(task, "scene_input_image1", None), image_mode="RGB")
+    if source is None or source.get("image") is None or pose is None:
+        state = getattr(task, "state", None)
+        lang = (state.get("__lang") if isinstance(state, dict) else None) or getattr(task, "simpleai_lang", None) or "en"
+        raise ValueError(localized_text(
+            {"__lang": lang},
+            "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2).",
+        ))
+
+    # Hidden uploads and masks from a previous preset must not become H3 references.
+    task.scene_canvas_image = dict(source, mask=np.zeros_like(source["image"], dtype=np.uint8))
+    task.scene_input_image1 = pose
+    for index in range(2, 9):
+        setattr(task, f"scene_input_image{index}", None)
+    for key in ("video", "reference_video", "reference_video2", "mask_video", "audio", "audio2", "audio3"):
+        task.params_backend.pop(key, None)
+
+
 def _resolve_inpaint_cfg_scale(task_class, task_method, cfg_scale):
     if task_class == 'Flux' and not str(task_method).startswith('flux2_'):
         return 30
@@ -532,6 +558,7 @@ class AsyncTask:
         self.engine_type = self.params_backend.pop('engine_type', None)
         if self.engine_type == 'video':
             self.content_type = 'video'
+        _prepare_h3_pose_inputs(self)
 
 class EarlyReturnException(BaseException):
     pass

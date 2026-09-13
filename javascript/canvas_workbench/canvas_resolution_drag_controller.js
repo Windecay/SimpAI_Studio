@@ -2,30 +2,46 @@
     'use strict';
 
     function createCanvasResolutionDragController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const sourceObject = (name) => {
+            const value = context?.[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const domSource = sourceObject('domSource');
+        const configSource = sourceObject('configSource');
+        const utilitySource = sourceObject('utilitySource');
+        const persistenceSource = sourceObject('persistenceSource');
+        const configCall = (name, fallback, ...args) => typeof configSource[name] === 'function'
+            ? configSource[name](...args)
+            : fallback;
+        const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
+            ? utilitySource[name](...args)
+            : fallback;
+        const persistenceCall = (name, fallback, ...args) => typeof persistenceSource[name] === 'function'
+            ? persistenceSource[name](...args)
+            : fallback;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getResolutionRenderValues = (node) => typeof scope.getResolutionRenderValues === 'function'
-            ? (scope.getResolutionRenderValues(node) || {})
-            : {};
-        const getResolutionPreview = (values) => typeof scope.getResolutionPreview === 'function'
-            ? (scope.getResolutionPreview(values, []) || {})
-            : {};
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const getResolutionRenderValues = (node) => configCall('getResolutionRenderValues', {}, node) || {};
+        const getResolutionPreview = (values) => configCall('getResolutionPreview', {}, values, []) || {};
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
         const quantizeResolutionValue = (value, step) => {
-            if (typeof scope.quantizeResolutionValue === 'function') return scope.quantizeResolutionValue(value, step);
+            if (typeof utilitySource.quantizeResolutionValue === 'function') {
+                return utilitySource.quantizeResolutionValue(value, step);
+            }
             return Math.round(Number(value || 0) / Math.max(1, Number(step || 1))) * Math.max(1, Number(step || 1));
         };
-        const nowIso = () => typeof scope.nowIso === 'function' ? scope.nowIso() : new Date().toISOString();
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const nowIso = () => utilityCall('nowIso', new Date().toISOString());
+        const applyConfigStatePatchSource = (...args) => configCall('buildConfigStatePatch', undefined, ...args);
+        const applyConfigNodeToPreset = (...args) => configCall('applyConfigNodeToPreset', undefined, ...args);
+        const scheduleSave = (...args) => persistenceCall('scheduleSave', undefined, ...args);
         let dragState = null;
 
         function applyConfigStatePatch(node, options) {
             const config = options || {};
-            const patch = call('buildConfigStatePatch', node, config);
+            const patch = applyConfigStatePatchSource(node, config);
             if (patch && typeof patch === 'object' && !Array.isArray(patch)
                 && patch.config && typeof patch.config === 'object' && !Array.isArray(patch.config)) {
                 Object.assign(node, patch);
@@ -112,7 +128,7 @@
                 valuesPatch: { width, height, manual: true },
                 updatedAt: nowIso()
             });
-            call('applyConfigNodeToPreset', node);
+            applyConfigNodeToPreset(node);
             const nodeEl = area.closest?.('[data-node-id]');
             if (nodeEl) {
                 const widthInput = nodeEl.querySelector?.('[data-config-param="width"]');
@@ -148,7 +164,7 @@
             if (evt && dragState.start.pointerId !== undefined && evt.pointerId !== dragState.start.pointerId) return;
             removeDragListeners();
             dragState = null;
-            call('scheduleSave');
+            scheduleSave();
         }
 
         function cancelResolutionDrag() {

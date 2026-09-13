@@ -2,35 +2,83 @@
     'use strict';
 
     function createCanvasNodeRenderController(context) {
-        const scope = context;
+        const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const domSource = sourceObject('domSource');
         const {
-            updateCanvasRenderMode, getNodeRenderWorldRect, getVisibleNodeRecords, getNode,
+            getRoot, getNodesLayer, getGroupsLayer, getEdgesLayer,
+            getChainRunOverlay, getDocument
+        } = domSource;
+        const projectSource = sourceObject('projectSource');
+        const { getProject, getNode } = projectSource;
+        const selectionSource = sourceObject('selectionSource');
+        const { getSelectedNodeId, getSelectedNodeIds } = selectionSource;
+        const runtimeSource = sourceObject('runtimeSource');
+        const {
+            getPerfStats, performanceNow, getMediaBrowserNodeRuntime,
+            getMediaBrowserScrollMemory, getVlmChatScrollMemory,
+            getVlmRenderDebugEnabled, requestAnimationFrame, setTimeout
+        } = runtimeSource;
+        const edgeSource = sourceObject('edgeSource');
+        const {
+            setEdgeRenderCacheKey, setEdgeIncidentIndex, setActiveInlineTagCartNodeId,
+            clearTempEdge, cancelEdgeIncidentIndexWarmup, clearEdgeCanvas,
+            invalidateMinimapStaticCache
+        } = edgeSource;
+        const utilitySource = sourceObject('utilitySource');
+        const { cssEscape } = utilitySource;
+        const viewportSource = sourceObject('viewportSource');
+        const {
+            updateCanvasRenderMode, getNodeRenderWorldRect, getVisibleNodeRecords,
+            isPanning, scheduleMinimapRender, renderMinimap, positionCanvasAgentPanel,
+            renderEdges
+        } = viewportSource;
+        const layoutSource = sourceObject('layoutSource');
+        const {
             getNodeLayoutSize, ensureVlmNodeModeSize, ensureResultNodeReadableSize,
-            getSelectedResultAsset, resultPreviewAspectSource, ensureMediaBrowserNodeReadableSize,
-            mediaBrowserRuntimeFor, refreshMediaBrowserNode, nodeEffectiveRenderMode,
-            captureVlmChatScroll, captureMediaBrowserScroll, logVlmRenderKeyChange,
-            isNodeCollapsed, isNodeLocked, isNodeIgnored, isImageNodeFrameless,
-            isNodeVisuallyRunning, isNodeSchedulerBlocked, isNodeSchedulerWaiting, isResultStale,
-            applyNodeCustomColorVars, defaultNodeSize, supportsCollapsedPromptHeight,
-            collapsedPromptNodeHeight, shouldFixNodeHeight, renderNodeHtml,
+            ensureMediaBrowserNodeReadableSize, defaultNodeSize,
+            supportsCollapsedPromptHeight, collapsedPromptNodeHeight, shouldFixNodeHeight
+        } = layoutSource;
+        const nodeSource = sourceObject('nodeSource');
+        const {
+            nodeEffectiveRenderMode, isNodeCollapsed, isNodeLocked, isNodeIgnored,
+            isImageNodeFrameless, isNodeVisuallyRunning, isNodeSchedulerBlocked,
+            isNodeSchedulerWaiting, isResultStale, nodeOverviewRenderSignature,
+            nodeRenderSignature
+        } = nodeSource;
+        const assetSource = sourceObject('assetSource');
+        const {
+            getSelectedResultAsset, resultPreviewAspectSource, mediaBrowserRuntimeFor,
+            refreshMediaBrowserNode, captureVlmChatScroll, captureMediaBrowserScroll,
+            restoreVlmChatScroll, refreshVlmChatReadabilityDom, restoreMediaBrowserScroll,
+            syncResultPreviewPlayerDom
+        } = assetSource;
+        const renderSource = sourceObject('renderSource');
+        const {
+            logVlmRenderKeyChange, applyNodeCustomColorVars, renderNodeHtml,
             ensureWorkbenchFormFieldNames, ensureNodeCollapseButton, ensureNodeResizeHandle,
-            bindNodeEvents, restoreVlmChatScroll, refreshVlmChatReadabilityDom,
-            restoreMediaBrowserScroll, syncResultPreviewPlayerDom, restoreInlineTagCartAfterRender,
-            syncOutpaintOverlayPosition, isPanning, scheduleMinimapRender, renderMinimap,
-            positionCanvasAgentPanel, getPresetSpecialControllerKind, bindPresetSpecialViewerEvents,
-            refreshPresetSpecialNodeDom, nodeOverviewRenderSignature, nodeRenderSignature,
-            refreshNodeSpatialIndexRecord
-        } = scope;
+            bindNodeEvents, restoreInlineTagCartAfterRender, syncOutpaintOverlayPosition
+        } = renderSource;
+        const presetSource = sourceObject('presetSource');
+        const {
+            getPresetSpecialControllerKind, bindPresetSpecialViewerEvents,
+            refreshPresetSpecialNodeDom
+        } = presetSource;
+        const spatialSource = sourceObject('spatialSource');
+        const { refreshNodeSpatialIndexRecord, invalidateNodeSpatialIndex } = spatialSource;
         const renderedNodeElsById = new Map();
         const nodeLayoutRects = new Map();
         let nodeRenderCoverageRect = null;
 
         function renderNodes(options) {
-            const startedAt = scope.performanceNow();
-            const nodesLayer = scope.getNodesLayer();
-            const document = scope.getDocument();
-            const mediaBrowserNodeRuntime = scope.getMediaBrowserNodeRuntime();
-            const mediaBrowserScrollMemory = scope.getMediaBrowserScrollMemory();
+            const startedAt = performanceNow();
+            const nodesLayer = getNodesLayer();
+            const document = getDocument();
+            const mediaBrowserNodeRuntime = getMediaBrowserNodeRuntime();
+            const mediaBrowserScrollMemory = getMediaBrowserScrollMemory();
             const renderOptions = options || {};
             updateCanvasRenderMode();
             syncRenderedNodeElementMap();
@@ -54,7 +102,7 @@
                 const removeForProject = !projectIds.has(nodeId);
                 if (!nodeEl || !nodeEl.isConnected || nodeEl.parentElement !== nodesLayer || removeForViewport || removeForProject) {
                     const removedNode = getNode(nodeId);
-                    if (scope.getVlmRenderDebugEnabled() && removedNode?.type === 'vlm') {
+                    if (getVlmRenderDebugEnabled() && removedNode?.type === 'vlm') {
                         console.warn('[SimpAI Canvas][VLM node removed from DOM by viewport virtualization]', {
                             node_id: nodeId,
                             title: removedNode.title || '',
@@ -110,8 +158,8 @@
                 }
                 nodeEl.className = `sai-canvas-node sai-canvas-node-${node.type}`;
                 nodeEl.dataset.renderMode = renderMode;
-                nodeEl.classList.toggle('is-selected', node.id === scope.getSelectedNodeId() || scope.getSelectedNodeIds().has(node.id));
-                nodeEl.classList.toggle('is-focused', node.id === scope.getSelectedNodeId());
+                nodeEl.classList.toggle('is-selected', node.id === getSelectedNodeId() || getSelectedNodeIds().has(node.id));
+                nodeEl.classList.toggle('is-focused', node.id === getSelectedNodeId());
                 nodeEl.classList.toggle('is-overview', renderMode === 'overview');
                 nodeEl.classList.toggle('is-lod-placeholder', renderMode === 'overview' && !isNodeCollapsed(node));
                 nodeEl.classList.toggle('is-locked', isNodeLocked(node));
@@ -172,14 +220,14 @@
                     syncResultPreviewPlayerDom(node, nodeEl);
                 }
             }
-            const root = scope.getRoot();
-            const project = scope.getProject();
-            const perfStats = scope.getPerfStats();
+            const root = getRoot();
+            const project = getProject();
+            const perfStats = getPerfStats();
             if (root) {
                 root.dataset.renderedNodes = String(visibleNodes.length);
                 root.dataset.totalNodes = String(project.nodes.length);
             }
-            perfStats.renderNodesMs = scope.performanceNow() - startedAt;
+            perfStats.renderNodesMs = performanceNow() - startedAt;
             perfStats.renderedNodes = visibleNodes.length;
             perfStats.totalNodes = project.nodes.length;
             if (!renderOptions.panPreview) {
@@ -215,7 +263,7 @@
                 nodeEl.innerHTML = html;
                 return;
             }
-            const template = scope.getDocument().createElement('template');
+            const template = getDocument().createElement('template');
             template.innerHTML = html;
             const nextChildren = Array.from(template.content.childNodes);
             const specialIndex = nextChildren.findIndex(child => child.nodeType === 1 && child.matches?.('.sai-preset-special-controller'));
@@ -240,7 +288,7 @@
         }
 
         function syncRenderedNodeElementMap() {
-            const nodesLayer = scope.getNodesLayer();
+            const nodesLayer = getNodesLayer();
             if (!nodesLayer) return;
             if (renderedNodeElsById.size === nodesLayer.children.length) return;
             renderedNodeElsById.clear();
@@ -251,10 +299,10 @@
         }
 
         function resetRenderedProjectDomCache() {
-            const nodesLayer = scope.getNodesLayer();
-            const groupsLayer = scope.getGroupsLayer();
-            const edgesLayer = scope.getEdgesLayer();
-            const chainRunOverlay = scope.getChainRunOverlay();
+            const nodesLayer = getNodesLayer();
+            const groupsLayer = getGroupsLayer();
+            const edgesLayer = getEdgesLayer();
+            const chainRunOverlay = getChainRunOverlay();
             if (nodesLayer) {
                 Array.from(renderedNodeElsById.values()).forEach((nodeEl) => {
                     if (nodeEl?.parentElement) nodeEl.remove();
@@ -264,22 +312,22 @@
             if (groupsLayer) {
                 Array.from(groupsLayer.children || []).forEach((groupEl) => groupEl.remove());
             }
-            scope.clearTempEdge();
+            clearTempEdge();
             if (edgesLayer) edgesLayer.innerHTML = '';
-            scope.setEdgeRenderCacheKey('');
-            scope.cancelEdgeIncidentIndexWarmup();
-            scope.setEdgeIncidentIndex(null);
-            scope.clearEdgeCanvas();
+            setEdgeRenderCacheKey('');
+            cancelEdgeIncidentIndexWarmup();
+            setEdgeIncidentIndex(null);
+            clearEdgeCanvas();
             if (chainRunOverlay) chainRunOverlay.hidden = true;
             renderedNodeElsById.clear();
             nodeLayoutRects.clear();
             nodeRenderCoverageRect = null;
-            scope.getMediaBrowserNodeRuntime().clear();
-            scope.getMediaBrowserScrollMemory().clear();
-            scope.getVlmChatScrollMemory().clear();
-            scope.setActiveInlineTagCartNodeId('');
-            scope.invalidateMinimapStaticCache();
-            scope.invalidateNodeSpatialIndex();
+            getMediaBrowserNodeRuntime().clear();
+            getMediaBrowserScrollMemory().clear();
+            getVlmChatScrollMemory().clear();
+            setActiveInlineTagCartNodeId('');
+            invalidateMinimapStaticCache();
+            invalidateNodeSpatialIndex();
         }
 
         function nodeRenderKey(node, options) {
@@ -291,7 +339,7 @@
         function invalidateRenderedNode(nodeId) {
             const id = String(nodeId || '');
             if (!id) return;
-            const nodeEl = renderedNodeElsById.get(id) || scope.getNodesLayer()?.querySelector?.(`[data-node-id="${scope.cssEscape(id)}"]`);
+            const nodeEl = renderedNodeElsById.get(id) || getNodesLayer()?.querySelector?.(`[data-node-id="${cssEscape(id)}"]`);
             if (nodeEl) nodeEl.__simpaiRenderKey = undefined;
         }
 
@@ -306,6 +354,31 @@
             nodeLayoutRects.set(node.id, { w: measuredW, h: measuredH });
             refreshNodeSpatialIndexRecord(node);
             return true;
+        }
+
+        function refreshNodeLayoutForAgent(nodeId, delayMs) {
+            const nodesLayer = getNodesLayer();
+            if (!nodeId || !nodesLayer) return;
+            const run = () => {
+                const node = getNode(nodeId);
+                const escapedId = typeof cssEscape === 'function'
+                    ? cssEscape(nodeId)
+                    : String(nodeId);
+                const nodeEl = node ? nodesLayer.querySelector(`[data-node-id="${escapedId}"]`) : null;
+                if (!node || !nodeEl) return;
+                const changed = rememberRenderedNodeLayout(node, nodeEl);
+                if (changed) {
+                    if (typeof renderMinimap === 'function') renderMinimap();
+                    if (typeof renderEdges === 'function') renderEdges();
+                }
+                if (typeof positionCanvasAgentPanel === 'function') positionCanvasAgentPanel();
+            };
+            if (delayMs && delayMs > 0) {
+                if (typeof setTimeout === 'function') return setTimeout(run, delayMs);
+                return run();
+            }
+            if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(run);
+            return run();
         }
 
         function nodeLayoutMeasureSignature(node, renderMode) {
@@ -326,6 +399,7 @@
             nodeRenderKey,
             invalidateRenderedNode,
             rememberRenderedNodeLayout,
+            refreshNodeLayoutForAgent,
             getRenderedNodeElement: (id) => renderedNodeElsById.get(id),
             getMeasuredNodeLayout: (id) => nodeLayoutRects.get(id),
             getNodeLayoutCacheSize: () => nodeLayoutRects.size,

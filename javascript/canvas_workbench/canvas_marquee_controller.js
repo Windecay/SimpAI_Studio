@@ -3,25 +3,42 @@
 
     function createCanvasMarqueeController(context) {
         const scope = context || {};
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const viewportSource = sourceObject('viewportSource');
+        const domSource = sourceObject('domSource');
+        const windowSource = sourceObject('windowSource');
+        const selectionSource = sourceObject('selectionSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const spatialSource = sourceObject('spatialSource');
+        const utilitySource = sourceObject('utilitySource');
+        const uiSource = sourceObject('uiSource');
+        const minimapSource = sourceObject('minimapSource');
+        const renderSource = sourceObject('renderSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const getViewport = () => sourceCall(viewportSource, 'getViewport', null);
+        const getRoot = () => sourceCall(domSource, 'getRoot', null);
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => typeof scope.getWindow === 'function'
-            ? (scope.getWindow() || {})
+        const getWindow = () => typeof windowSource.getWindow === 'function'
+            ? (windowSource.getWindow() || {})
             : (typeof window !== 'undefined' ? window : {});
-        const getSelectedNodeIds = () => typeof scope.getSelectedNodeIds === 'function'
-            ? (scope.getSelectedNodeIds() || new Set())
-            : new Set();
-        const getPerfStats = () => typeof scope.getPerfStats === 'function' ? (scope.getPerfStats() || {}) : {};
-        const getMarqueeNodeRecords = (selectionRect) => typeof scope.getMarqueeNodeRecords === 'function'
-            ? (scope.getMarqueeNodeRecords(selectionRect) || [])
-            : [];
-        const getClientWorld = (clientX, clientY) => typeof scope.clientToWorld === 'function'
-            ? (scope.clientToWorld(clientX, clientY) || { x: 0, y: 0 })
-            : { x: clientX, y: clientY };
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const getSelectedNodeIds = () => sourceCall(selectionSource, 'getSelectedNodeIds', new Set()) || new Set();
+        const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
+        const getMarqueeNodeRecords = (selectionRect) => sourceCall(spatialSource, 'getMarqueeNodeRecords', [], selectionRect) || [];
+        const getClientWorld = (clientX, clientY) => sourceCall(utilitySource, 'clientToWorld', { x: 0, y: 0 }, clientX, clientY) || { x: 0, y: 0 };
+        const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
+            ? runtimeSource.performanceNow()
+            : (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const minimapCall = (name, fallback, ...args) => sourceCall(minimapSource, name, fallback, ...args);
+        const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
         let marqueeState = null;
 
         function debugMarqueeEvent(label, evt, extra) {
@@ -66,10 +83,10 @@
         }
 
         function startMarqueeSelection(evt, world) {
-            call('hideCanvasTooltip');
-            call('hideHoverPreview');
-            call('closePreviewSelectMenu');
-            call('setSuppressWheelUntil', (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) + 420);
+            uiCall('hideCanvasTooltip', undefined);
+            uiCall('hideHoverPreview', undefined);
+            uiCall('closePreviewSelectMenu', undefined);
+            uiCall('setSuppressWheelUntil', undefined, getPerformanceNow() + 420);
             let captureOk = true;
             const viewport = getViewport();
             try { viewport?.setPointerCapture?.(evt.pointerId); } catch (err) { captureOk = false; }
@@ -114,10 +131,10 @@
                 if (record?.node?.id) next.add(record.node.id);
             });
             getPerfStats().marqueeSelectedNodes = next.size;
-            call('applyMarqueeSelection', next);
-            call('updateSelectionDomClasses');
-            call('invalidateMinimapStaticCache');
-            call('scheduleMinimapRender');
+            selectionCall('applyMarqueeSelection', undefined, next);
+            selectionCall('updateSelectionDomClasses', undefined);
+            minimapCall('invalidateMinimapStaticCache', undefined);
+            minimapCall('scheduleMinimapRender', undefined);
             updateMarqueeBox(evt.clientX, evt.clientY);
         }
 
@@ -133,11 +150,11 @@
             doc?.removeEventListener('pointermove', onMarqueeMove, true);
             doc?.removeEventListener('pointerup', stopMarqueeSelection, true);
             doc?.removeEventListener('pointercancel', cancelMarqueeSelection, true);
-            call('updateSelectionDomClasses');
-            call('renderSelectedChainOverlay');
-            call('renderInspector');
-            call('flushMinimapRender');
-            call('renderCanvasAgentPanel');
+            selectionCall('updateSelectionDomClasses', undefined);
+            renderCall('renderSelectedChainOverlay', undefined);
+            renderCall('renderInspector', undefined);
+            minimapCall('flushMinimapRender', undefined);
+            uiCall('renderCanvasAgentPanel', undefined);
         }
 
         function cancelMarqueeSelection(evt) {

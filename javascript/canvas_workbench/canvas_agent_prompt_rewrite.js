@@ -64,6 +64,103 @@
             return `${text}. Clear subject, natural pose and action, complete setting, balanced composition, cinematic lighting, rich atmosphere, refined visual detail.`;
         }
 
+        let danbooruRuntimeNoticeKey = '';
+
+        function canvasDanbooruRuntimeStatusMessage(status) {
+            if (!status || typeof status !== 'object') return '';
+            const lang = String(call('runtimeUiLang', 'en') || '').toLowerCase();
+            const message = String(status.message || '').trim();
+            const messageCn = String(status.message_cn || status.messageCn || '').trim();
+            return lang === 'en' || lang.startsWith('en-') ? (message || messageCn) : (messageCn || message);
+        }
+
+        function maybeShowCanvasDanbooruRuntimeNotice(response) {
+            const status = response?.runtime_status || response?.runtimeStatus;
+            if (!status || typeof status !== 'object') return;
+            const state = String(status.state || '').toLowerCase();
+            const level = String(status.level || '').toLowerCase();
+            const shouldShow = level === 'warning' || (state === 'ready' && status.auto_build === true);
+            if (!shouldShow) return;
+            const message = canvasDanbooruRuntimeStatusMessage(status);
+            if (!message) return;
+            const key = `${state}|${level}|${message}`;
+            if (danbooruRuntimeNoticeKey === key) return;
+            danbooruRuntimeNoticeKey = key;
+            call('showToast', null, message, level === 'warning' ? 5200 : 3600);
+        }
+
+        async function canvasAgentDanbooruFallbackRewrite(prompt, target, purpose, options) {
+            if (String(target?.key || '') !== 'sdxl_danbooru') return '';
+            const opts = Object.assign({}, options || {}, { purpose });
+            let matches = [];
+            if (typeof scope.apiDanbooruTagLookup === 'function') {
+                try {
+                    const defaults = opts.presetDefaults || call('canvasAgentPromptDefaultsForPurpose', {}, purpose, opts);
+                    const response = await scope.apiDanbooruTagLookup({
+                        query: prompt,
+                        model_hint: call('canvasAgentPromptTargetContextLine', '', target),
+                        preset_defaults: defaults,
+                        limit: 20
+                    });
+                    maybeShowCanvasDanbooruRuntimeNotice(response);
+                    if (response?.ok && Array.isArray(response.matches)) matches = response.matches;
+                } catch (err) {
+                    console.warn('[SimpAI Canvas Agent] Danbooru fallback lookup failed', err);
+                }
+            }
+            const fallback = call('canvasAgentDanbooruFallbackPrompt', '', prompt, target, opts, matches);
+            return call('canvasAgentPromptLooksDanbooru', false, fallback) ? fallback : '';
+        }
+
+        async function ensureCanvasAgentPromptMatchesTarget(prompt, target, purpose, options) {
+            const current = String(prompt || '').trim();
+            if (!current || !call('canvasAgentPromptNeedsTargetRewrite', false, current, target)) {
+                return { ok: true, prompt: current, source: options?.promptSource || '' };
+            }
+            try {
+                const rewritten = await rewriteCanvasAgentPromptWithLlm(current, purpose, options || {});
+                if (rewritten?.ok && rewritten.prompt) {
+                    const candidate = String(rewritten.prompt || '').trim();
+                    if (!call('canvasAgentPromptNeedsTargetRewrite', false, candidate, target)) {
+                        return { ok: true, prompt: candidate, source: 'target_rewrite' };
+                    }
+                }
+                const fallback = await canvasAgentDanbooruFallbackRewrite(rewritten?.prompt || current, target, purpose, options || {});
+                if (fallback) return { ok: true, prompt: fallback, source: 'target_rewrite_fallback' };
+                return { ok: false, prompt: current, error: rewritten?.error || 'target rewrite failed' };
+            } catch (err) {
+                const fallback = await canvasAgentDanbooruFallbackRewrite(current, target, purpose, options || {});
+                if (fallback) return { ok: true, prompt: fallback, source: 'target_rewrite_fallback' };
+                return { ok: false, prompt: current, error: err?.message || String(err) };
+            }
+        }
+
+        async function canvasAgentDanbooruLookupText(prompt, target, purpose, options) {
+            if (!call('canvasAgentPromptTargetNeedsDanbooru', false, target)) return '';
+            if (typeof scope.apiDanbooruTagLookup !== 'function') return '';
+            const opts = options || {};
+            const defaults = opts.presetDefaults || call('canvasAgentPromptDefaultsForPurpose', {}, purpose, opts);
+            const modelHint = [
+                target?.name || '',
+                target?.backend_engine || '',
+                target?.task_method || '',
+                Array.isArray(defaults.styles) ? defaults.styles.join(', ') : ''
+            ].filter(Boolean).join(' | ');
+            try {
+                const response = await scope.apiDanbooruTagLookup({
+                    query: prompt,
+                    model_hint: modelHint,
+                    preset_defaults: defaults,
+                    limit: 28
+                });
+                maybeShowCanvasDanbooruRuntimeNotice(response);
+                return response?.ok && response.text ? String(response.text).trim() : '';
+            } catch (err) {
+                console.warn('[SimpAI Canvas Agent] Danbooru tag lookup failed', err);
+                return '';
+            }
+        }
+
         async function rewriteCanvasAgentPromptWithLlm(prompt, purpose, options) {
             const model = call('getCanvasAgentRewriteModel', '', null);
             const opts = options || {};
@@ -261,7 +358,11 @@
             rewriteCanvasAgentPromptWithLlm,
             canvasAgentComparablePromptText: comparablePromptText,
             canvasAgentPromptRewriteTooWeak: promptRewriteTooWeak,
-            canvasAgentLocalPromptRewriteFallback: localPromptRewriteFallback
+            canvasAgentLocalPromptRewriteFallback: localPromptRewriteFallback,
+            canvasAgentDanbooruFallbackRewrite,
+            ensureCanvasAgentPromptMatchesTarget,
+            canvasAgentDanbooruLookupText,
+            maybeShowCanvasDanbooruRuntimeNotice
         };
     }
 

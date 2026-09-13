@@ -81,3 +81,33 @@ in English and Chinese stages.
   was created or a generation started before the UI confirms it.
 - Keep the source image and requested edit visible in the confirmation card.
   Ask for missing source media instead of guessing it.
+
+## H3 Pose Source Retention / H3 姿势源图保留
+
+- `MiniMax-H3(Pose)` uses exactly two pictures through the H3 R2I still-image
+  route. `<Picture 1>` is the source image to edit, including its character
+  and original scene. `<Picture 2>` is the Pose Editor output and supplies
+  only the target body pose, orientation, and visible gestures.
+  图 1 同时提供角色和原场景；图 2 只提供姿势，不能沿用人偶外观或纯色背景。
+- Explicitly preserve the original background, surrounding people and objects,
+  camera view, perspective, lighting, and visual style unless the user asks to
+  change them. Reconstruct the original background where the moved body reveals
+  it. Do not remove the environment-preservation instruction during rewriting.
+  修改姿势时仍须保留图 1 的背景、人群、物体、视角和光照，并延续动作后露出的
+  背景。不能因为要求改变姿势，就省略背景保留要求。
+- Preserve character identity, face, hairstyle, body proportions, clothing, and
+  worn accessories. Name visible headwear, glasses, and equipment from picture 1
+  when writing an image-grounded prompt; generic identity-preservation wording
+  alone can omit accessories. Do not invent an item that is absent from the source.
+  有实际图片时，明确描述可见的帽子、眼镜和穿戴装备；源图没有的物品不要添加。
+- Apply the H3 skill's source-grounding and reference-retention principles.
+  This preset still uses one self-contained R2I image-editing instruction, not
+  the Ref2VA video timeline. Its two image labels remain unchanged, and it does
+  not require a mask, video, audio, or an additional pose-specific LoRA.
+  保留 10 步、权重 1.0 的 H3 Turbo 蒸馏设置；界面语言读取 `state.__lang`。
+- Validation on 2026-09-13 used one actual source/pose pair, four candidate
+  prompts, and two seeds per candidate. Explicit scene and worn-item retention
+  kept the hall background and hat in both tested outputs. This is not a
+  guarantee of pixel-identical backgrounds, exact anatomy, or success on other
+  images. The fixed six-section Ref2VA format was also tested directly against
+  the backend; that experiment does not change the Studio R2I format contract.
