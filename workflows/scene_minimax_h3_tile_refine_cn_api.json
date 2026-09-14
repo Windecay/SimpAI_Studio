@@ -22,7 +22,13 @@
   "41": {"class_type": "easy int", "inputs": {"value": 1}},
   "42": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 24], "b": ["41", 0]}},
   "43": {"class_type": "easy ifElse", "inputs": {"boolean": ["42", 0], "on_true": ["3", 0], "on_false": ["40", 0]}},
-  "45": {"class_type": "ModelPatchTorchSettings", "inputs": {"enable_fp16_accumulation": true, "model": ["43", 0]}},
+  "44": {
+    "class_type": "BlockSparseAttention", "_meta": {"title": "MiniMax H3 SLA"},
+    "inputs": {"model": ["43", 0], "selection": "sla", "selection.keep_percent": 10.0,
+      "start_percent": 0.0, "end_percent": 1.0, "min_tokens": 8192,
+      "dense_blocks": "", "extra_tokens": 0, "sink_conditioning": "exact_kv", "verbose": true}
+  },
+  "45": {"class_type": "ModelPatchTorchSettings", "inputs": {"enable_fp16_accumulation": true, "model": ["44", 0]}},
   "46": {"class_type": "CLIPLoaderGGUF", "_meta": {"title": "clip_model"}, "inputs": {"clip_name": "placeholder.safetensors", "type": "minimax"}},
   "47": {"class_type": "easy compare", "inputs": {"comparison": "a == b", "a": ["1", 26], "b": ["41", 0]}},
   "48": {"class_type": "easy ifElse", "inputs": {"boolean": ["47", 0], "on_true": ["4", 0], "on_false": ["46", 0]}},
