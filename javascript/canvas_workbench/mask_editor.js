@@ -1,15 +1,45 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
-    const nowIso = UTILS.nowIso || (() => new Date().toISOString());
-
     function call(context, name, fallback, ...args) {
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
+    }
+
+    function t(context, en, cn) {
+        return call(context, 't', cn || en, en, cn);
+    }
+
+    function escapeHtml(context, value) {
+        return call(context, 'escapeHtml', String(value ?? ''), value);
+    }
+
+    function clamp(context, value, min, max) {
+        return call(context, 'clamp', Math.max(min, Math.min(max, value)), value, min, max);
+    }
+
+    function uid(context, prefix) {
+        const fallback = `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+        return call(context, 'uid', fallback, prefix);
+    }
+
+    function nowIso(context) {
+        return call(context, 'nowIso', new Date().toISOString());
+    }
+
+    function getDocument(context) {
+        return call(context, 'getDocument', typeof document !== 'undefined' ? document : null);
+    }
+
+    function getImageConstructor(context) {
+        return typeof context?.Image === 'function'
+            ? context.Image
+            : (typeof Image !== 'undefined' ? Image : null);
+    }
+
+    function schedule(context, ...args) {
+        if (typeof context?.setTimeout === 'function') return context.setTimeout(...args);
+        if (typeof globalThis?.setTimeout === 'function') return globalThis.setTimeout(...args);
+        return undefined;
     }
 
     function delegate(context, name) {
@@ -18,28 +48,48 @@
     }
 
     function createMaskEditorContext(source) {
-        const context = source || {};
+        const scope = source?.maskEditorSource || source || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const domSource = scope.domSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const viewSource = scope.viewSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const uiSource = scope.uiSource || {};
         return {
-            applyImageFileToNode: delegate(context, 'applyImageFileToNode'),
-            createThumbnailDataUrl: delegate(context, 'createThumbnailDataUrl'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNodeImageSrc: delegate(context, 'getNodeImageSrc'),
-            buildMediaNodeStatePatch: delegate(context, 'buildMediaNodeStatePatch'),
-            isNodeLocked: delegate(context, 'isNodeLocked'),
-            mutate: delegate(context, 'mutate'),
-            pushHistory: delegate(context, 'pushHistory'),
-            showToast: delegate(context, 'showToast')
+            t: typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en),
+            escapeHtml: typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value => String(value ?? '')),
+            clamp: typeof utilitySource.clamp === 'function' ? utilitySource.clamp : ((value, min, max) => Math.max(min, Math.min(max, value))),
+            uid: typeof utilitySource.uid === 'function' ? utilitySource.uid : undefined,
+            nowIso: typeof utilitySource.nowIso === 'function' ? utilitySource.nowIso : undefined,
+            getDocument: () => typeof domSource.getDocument === 'function'
+                ? domSource.getDocument()
+                : domSource.document || (typeof document !== 'undefined' ? document : null),
+            Image: mediaSource.Image || (typeof Image !== 'undefined' ? Image : null),
+            setTimeout: mediaSource.setTimeout || (typeof globalThis?.setTimeout === 'function' ? globalThis.setTimeout : undefined),
+            applyImageFileToNode: delegate(nodeSource, 'applyImageFileToNode'),
+            getNodeImageSrc: delegate(nodeSource, 'getNodeImageSrc'),
+            buildMediaNodeStatePatch: delegate(nodeSource, 'buildMediaNodeStatePatch'),
+            isNodeLocked: delegate(nodeSource, 'isNodeLocked'),
+            detectWorkbenchTheme: delegate(viewSource, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(viewSource, 'ensureWorkbenchFormFieldNames'),
+            createThumbnailDataUrl: delegate(runtimeSource, 'createThumbnailDataUrl'),
+            mutate: delegate(runtimeSource, 'mutate'),
+            pushHistory: delegate(runtimeSource, 'pushHistory'),
+            showToast: delegate(uiSource, 'showToast')
         };
     }
 
     async function replaceNodeImage(node, context) {
         if (!node || !['image', 'result'].includes(node.type)) return;
         if (call(context, 'isNodeLocked', false, node)) {
-            call(context, 'showToast', null, t('Locked node cannot be edited', '锁定节点不能编辑'));
+            call(context, 'showToast', null, t(context, 'Locked node cannot be edited', '锁定节点不能编辑'));
             return;
         }
-        const input = document.createElement('input');
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const input = doc.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.hidden = true;
@@ -52,41 +102,43 @@
                 input.remove();
             }
         }, { once: true });
-        document.body.appendChild(input);
+        doc.body.appendChild(input);
         input.click();
     }
 
     function openMaskEditor(node, context) {
         const src = call(context, 'getNodeImageSrc', '', node);
         if (call(context, 'isNodeLocked', false, node)) {
-            call(context, 'showToast', null, t('Locked node cannot be edited', '锁定节点不能编辑'));
+            call(context, 'showToast', null, t(context, 'Locked node cannot be edited', '锁定节点不能编辑'));
             return;
         }
         if (!node || node.type !== 'image' || !src) {
-            call(context, 'showToast', null, t('Current image node cannot paint a Mask.', '当前图片节点无法绘制 Mask'));
+            call(context, 'showToast', null, t(context, 'Current image node cannot paint a Mask.', '当前图片节点无法绘制 Mask'));
             return;
         }
-        const modal = document.createElement('div');
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
         modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-mask-editor">
   <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(t('Paint Mask', '绘制 Mask'))}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+    <span>${escapeHtml(context, t(context, 'Paint Mask', '绘制 Mask'))}</span>
+    <button type="button" data-modal-close title="${escapeHtml(context, t(context, 'Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="sai-mask-toolbar">
-    <label>${escapeHtml(t('Brush', '笔刷'))} <input data-mask-size type="range" min="4" max="96" value="28"></label>
-    <button type="button" data-mask-clear><i class="fa-solid fa-eraser"></i><span>${escapeHtml(t('Clear', '清空'))}</span></button>
-    <button type="button" data-mask-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(t('Save', '保存'))}</span></button>
+    <label>${escapeHtml(context, t(context, 'Brush', '笔刷'))} <input data-mask-size type="range" min="4" max="96" value="28"></label>
+    <button type="button" data-mask-clear><i class="fa-solid fa-eraser"></i><span>${escapeHtml(context, t(context, 'Clear', '清空'))}</span></button>
+    <button type="button" data-mask-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(context, t(context, 'Save', '保存'))}</span></button>
   </div>
   <div class="sai-mask-canvas-wrap">
-    <img src="${escapeHtml(src)}" alt="">
+    <img src="${escapeHtml(context, src)}" alt="">
     <canvas></canvas>
   </div>
 </div>`;
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, `mask_${node.id || 'node'}`);
-        document.body.appendChild(modal);
+        doc.body.appendChild(modal);
         const img = modal.querySelector('img');
         const canvas = modal.querySelector('canvas');
         const ctx = canvas.getContext('2d');
@@ -100,7 +152,9 @@
         });
         const drawExistingMask = () => {
             if (!existingMaskUrl) return;
-            const mask = new Image();
+            const ImageCtor = getImageConstructor(context);
+            if (!ImageCtor) return;
+            const mask = new ImageCtor();
             mask.onload = () => ctx.drawImage(mask, 0, 0, canvas.width, canvas.height);
             mask.src = existingMaskUrl;
         };
@@ -120,7 +174,7 @@
             canvas.style.top = `${Math.round(rect.top - wrapRect.top + img.parentElement.scrollTop)}px`;
         };
         img.onload = resize;
-        setTimeout(resize, 0);
+        schedule(context, resize, 0);
         const point = (evt) => {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / Math.max(1, rect.width);
@@ -185,14 +239,14 @@
                 call(context, 'pushHistory', null, 'Save mask');
                 const mask = {
                     kind: 'canvas_mask',
-                    asset_id: uid('mask'),
+                    asset_id: uid(context, 'mask'),
                     name: `${node.title || node.id || 'image'}.mask.png`,
                     mime: 'image/png',
                     width: canvas.width,
                     height: canvas.height,
                     data_url: dataUrl,
                     thumb,
-                    updated_at: nowIso()
+                    updated_at: nowIso(context)
                 };
                 const patch = call(context, 'buildMediaNodeStatePatch', {}, node, { mask });
                 Object.assign(node, patch && typeof patch === 'object' && Object.prototype.hasOwnProperty.call(patch, 'mask')
@@ -200,7 +254,7 @@
                     : { mask });
                 modal.remove();
                 call(context, 'mutate', null);
-                call(context, 'showToast', null, t('Mask saved to image node.', 'Mask 已保存到图片节点'));
+                call(context, 'showToast', null, t(context, 'Mask saved to image node.', 'Mask 已保存到图片节点'));
             });
         });
         modal.addEventListener('click', (evt) => {

@@ -1,6 +1,7 @@
 """Small, public help context. Reading help must not load or scan models."""
 
 import csv
+import html
 
 
 def _strings(value):
@@ -40,7 +41,7 @@ def build_preset_help_context(state, theme=""):
     }
 
 
-def vlm_help_marker(status, *, api=False):
+def vlm_help_marker(status, version=None, *, api=False):
     status = status if isinstance(status, dict) else {}
     if not status.get("exists"):
         reason = "api_missing" if api else "files_missing"
@@ -48,6 +49,11 @@ def vlm_help_marker(status, *, api=False):
         reason = "vision_missing"
     else:
         reason = "configured" if api else "files_present"
+    version_value = str(version or "").strip()
+    version_attr = (
+        f' data-studio-help-version="{html.escape(version_value, quote=True)}"'
+        if version_value else ""
+    )
     return (
-        f'<span data-studio-help-notice="{reason}" data-studio-help-source="main"></span>'
+        f'<span data-studio-help-notice="{reason}" data-studio-help-source="main"{version_attr}></span>'
     )

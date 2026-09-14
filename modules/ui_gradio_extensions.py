@@ -172,6 +172,7 @@ def javascript_html():
     studio_help_content_path = webpath('javascript/studio_help_content.js')
     studio_help_path = webpath('javascript/studio_help.js')
     video_region_selector_js_path = webpath('javascript/video_region_selector.js')
+    face_track_editor_js_path = webpath('javascript/face_track_editor.js')
     studio_performance_js_path = webpath('javascript/studio_performance.js')
     script_js_path = webpath('javascript/script.js')
     model_browser_js_path = webpath('javascript/model_browser.js')
@@ -371,6 +372,7 @@ def javascript_html():
     canvas_workbench_project_manager_path = webpath('javascript/canvas_workbench/project_manager.js')
     canvas_workbench_canvas_project_manager_context_path = webpath('javascript/canvas_workbench/canvas_project_manager_context.js')
     canvas_workbench_group_list_path = webpath('javascript/canvas_workbench/group_list.js')
+    canvas_workbench_canvas_group_list_context_path = webpath('javascript/canvas_workbench/canvas_group_list_context.js')
     canvas_workbench_mask_editor_path = webpath('javascript/canvas_workbench/mask_editor.js')
     canvas_workbench_canvas_mask_editor_context_path = webpath('javascript/canvas_workbench/canvas_mask_editor_context.js')
     canvas_workbench_media_viewers_path = webpath('javascript/canvas_workbench/media_viewers.js')
@@ -610,6 +612,7 @@ def javascript_html():
             canvas_workbench_project_manager_path,
             canvas_workbench_canvas_project_manager_context_path,
             canvas_workbench_group_list_path,
+            canvas_workbench_canvas_group_list_context_path,
             canvas_workbench_mask_editor_path,
             canvas_workbench_canvas_mask_editor_context_path,
             canvas_workbench_media_viewers_path,
@@ -727,6 +730,7 @@ def javascript_html():
     head += f'<script type="text/javascript">{prompt_action_catalog_js()}</script>\n'
     head += f'<script type="text/javascript">window.SimpAIDefaultEnhanceMaskModel={json.dumps(modules.config.default_enhance_inpaint_mask_model)};</script>\n'
     head += f'<script type="text/javascript" src="{simpleai_i18n_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{face_track_editor_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{video_region_selector_js_path}"></script>\n'
     from ui.studio_performance import studio_performance_frontend_config
     studio_performance_config = studio_performance_frontend_config()

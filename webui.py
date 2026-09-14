@@ -368,7 +368,7 @@ def _vlm_model_status_html(version, state=None, scan_catalog=True):
             f'<div class="describe-vlm-model-state {"ready" if ready else "missing"}" title="{html.escape(title)}">'
             f'<span class="describe-vlm-model-state-icon">{"✓" if ready else "⚠"}</span>'
             f'<span>{html.escape(label)}</span>'
-            '</div>' + vlm_help_marker({"exists": ready}, api=True)
+            '</div>' + vlm_help_marker({"exists": ready}, version, api=True)
         )
     status = VLM.get_version_status(version, scan_catalog=scan_catalog)
     vision_missing = status.get("vision_status") == "missing" and status["exists"]
@@ -405,7 +405,7 @@ def _vlm_model_status_html(version, state=None, scan_catalog=True):
         f'<div class="describe-vlm-model-state {state_class}" title="{html.escape(title)}">'
         f'<span class="describe-vlm-model-state-icon">{status["icon"]}</span>'
         f'<span>{html.escape(visible_label)}</span>'
-        f'</div>' + vlm_help_marker(status, api=version == VLM.CUSTOM_VERSION)
+        f'</div>' + vlm_help_marker(status, version, api=version == VLM.CUSTOM_VERSION)
     )
 
 
@@ -5780,11 +5780,14 @@ with shared.gradio_root:
                 face_target_request = gr.Textbox(value="", visible="hidden", elem_id="face_target_request", elem_classes=["sai-gradio-hidden-bridge"])
                 face_target_result = gr.Textbox(value="", visible="hidden", elem_id="face_target_result", elem_classes=["sai-gradio-hidden-bridge"])
                 face_target_trigger = gr.Button(visible="hidden", elem_id="face_target_trigger", elem_classes=["sai-gradio-hidden-bridge"])
-                from enhanced.face_target_preview import preview_faces
+                face_target_cancel = gr.Button(visible="hidden", elem_id="face_target_cancel", elem_classes=["sai-gradio-hidden-bridge"])
+                from enhanced.face_target_preview import stream_preview_faces, cancel_face_preview
                 face_target_trigger.click(
-                    fn=preview_faces,
+                    fn=stream_preview_faces,
                     inputs=[scene_video, scene_original_video_path, face_target_request, state_topbar],
-                    outputs=[face_target_result], queue=False, show_progress=False)
+                    outputs=[face_target_result], queue=True, show_progress=False, concurrency_limit=None)
+                face_target_cancel.click(
+                    fn=cancel_face_preview, inputs=[face_target_request], outputs=[], queue=False, show_progress=False)
                 with gr.Accordion("🔧 Advanced Parameters", open=False, visible=True, elem_id="scene_advanced_parameters_accordion"):
                     with gr.Column(elem_id="scene_advanced_values_grid", scale=1, min_width=0):
                         scene_var_number2 = gr.Slider(label='Int Value 2', minimum=0, maximum=60, step=1, value=1, visible=True, elem_id="scene_var_number2", elem_classes=['simpai-mounted-hidden'])
@@ -9712,6 +9715,13 @@ with shared.gradio_root:
                     outputs=[missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
                     queue=False,
                     show_progress=False,
+                ).then(
+                    fn=lambda html: None,
+                    inputs=[missing_model_list],
+                    outputs=None,
+                    queue=False,
+                    show_progress=False,
+                    js="(html)=>{try{reopenMissingModelPopupIfNeeded(html);}catch(e){console.warn('[UI-TRACE] missing_model_modal.vlm_select_reopen_failed', e);}}",
                 )
                 main_vlm_header_model_select_evt = describe_vlm_model_select_btn.click(
                     set_describe_vlm_version,
@@ -9726,6 +9736,13 @@ with shared.gradio_root:
                     outputs=[missing_model_modal, missing_model_title, missing_model_list, missing_model_total_progress, missing_model_btn],
                     queue=False,
                     show_progress=False,
+                ).then(
+                    fn=lambda html: None,
+                    inputs=[missing_model_list],
+                    outputs=None,
+                    queue=False,
+                    show_progress=False,
+                    js="(html)=>{try{reopenMissingModelPopupIfNeeded(html);}catch(e){console.warn('[UI-TRACE] missing_model_modal.vlm_header_select_reopen_failed', e);}}",
                 )
                 vlm_version.input(
                     set_admin_vlm_version,
@@ -10634,6 +10651,7 @@ with shared.gradio_root:
         )
 
         generation_start_js = """async (...args) => {
+            window.SimpAIVideoRegionSelector?.assertFaceTrackReady?.();
             const frontendStartAt = performance.now();
             const perfMark = (event, data = {}) => {
                 try { window.SimpAIStudioPerformance?.mark?.(event, data); } catch (e) {}
@@ -10847,6 +10865,7 @@ with shared.gradio_root:
             scene_audio2, scene_audio3, scene_video_trim_payload
         ] + scene_generation_model_ctrls + ctrls + [model_params_state, resolution_multiplier, resolution_quantize_step, state_topbar]
         scene_batch_region_indices = {
+            "scene_additional_prompt": scene_batch_generation_inputs.index(scene_additional_prompt),
             "scene_var_number2": scene_batch_generation_inputs.index(scene_var_number2),
             "scene_var_number5": scene_batch_generation_inputs.index(scene_var_number5),
             "scene_var_number6": scene_batch_generation_inputs.index(scene_var_number6),
@@ -11821,6 +11840,7 @@ with shared.gradio_root:
         ]
         scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
         scene_region_submit_indices = {
+            "scene_additional_prompt": scene_generation_inputs.index(scene_additional_prompt),
             "scene_var_number2": scene_generation_inputs.index(scene_var_number2),
             "scene_var_number5": scene_generation_inputs.index(scene_var_number5),
             "scene_var_number6": scene_generation_inputs.index(scene_var_number6),
@@ -13815,6 +13835,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/project_manager.js"),
         webpath("javascript/canvas_workbench/canvas_project_manager_context.js"),
         webpath("javascript/canvas_workbench/group_list.js"),
+        webpath("javascript/canvas_workbench/canvas_group_list_context.js"),
         webpath("javascript/canvas_workbench/mask_editor.js"),
         webpath("javascript/canvas_workbench/canvas_mask_editor_context.js"),
         webpath("javascript/canvas_workbench/media_viewers.js"),

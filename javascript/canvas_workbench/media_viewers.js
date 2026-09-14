@@ -1,13 +1,50 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-
     function call(context, name, fallback, ...args) {
         return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
+    }
+
+    function t(context, en, cn) {
+        return call(context, 't', cn || en, en, cn);
+    }
+
+    function escapeHtml(context, value) {
+        return call(context, 'escapeHtml', String(value ?? ''), value);
+    }
+
+    function clamp(context, value, min, max) {
+        return call(context, 'clamp', Math.max(min, Math.min(max, value)), value, min, max);
+    }
+
+    function getDocument(context) {
+        return call(context, 'getDocument', typeof document !== 'undefined' ? document : null);
+    }
+
+    function getWindow(context) {
+        return call(context, 'getWindow', typeof window !== 'undefined' ? window : null);
+    }
+
+    function scheduleFrame(context, callback) {
+        if (typeof context?.requestAnimationFrame === 'function') return context.requestAnimationFrame(callback);
+        const win = getWindow(context);
+        if (typeof win?.requestAnimationFrame === 'function') return win.requestAnimationFrame(callback);
+        if (typeof globalThis?.requestAnimationFrame === 'function') return globalThis.requestAnimationFrame(callback);
+        return undefined;
+    }
+
+    function viewportDimension(context, getterName, propertyName, fallback) {
+        const value = call(context, getterName, null);
+        if (value !== null && value !== undefined && Number.isFinite(Number(value))) return Number(value);
+        const win = getWindow(context);
+        return Number(win?.[propertyName]) || fallback;
+    }
+
+    function assetDisplaySrc(context, asset) {
+        const injected = call(context, 'assetDisplaySrc', '', asset);
+        if (injected) return injected;
+        const assetNodes = getWindow(context)?.SimpAICanvasWorkbenchAssetNodes;
+        return typeof assetNodes?.assetDisplaySrc === 'function' ? assetNodes.assetDisplaySrc(asset) : '';
     }
 
     function delegate(context, name) {
@@ -16,23 +53,44 @@
     }
 
     function createMediaViewerContext(source) {
-        const context = source || {};
+        const scope = source?.mediaViewerSource || source || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const domSource = scope.domSource || {};
+        const browserSource = scope.browserSource || {};
+        const assetSource = scope.assetSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const compareSource = scope.compareSource || {};
+        const viewSource = scope.viewSource || {};
+        const uiSource = scope.uiSource || {};
         return {
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            assetMediaKind: delegate(context, 'assetMediaKind'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNode: delegate(context, 'getNode'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            readAssetInfo: delegate(context, 'readAssetInfo'),
-            readImageInfo: delegate(context, 'readImageInfo'),
-            refreshCompareDom: delegate(context, 'refreshCompareDom'),
-            renderCompareControls: delegate(context, 'renderCompareControls'),
-            renderCompareStageHtml: delegate(context, 'renderCompareStageHtml'),
-            safeAssetDisplaySrc: delegate(context, 'safeAssetDisplaySrc'),
-            showToast: delegate(context, 'showToast'),
-            startComparePositionDrag: delegate(context, 'startComparePositionDrag'),
-            updateCompareParam: delegate(context, 'updateCompareParam')
+            t: typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en),
+            escapeHtml: typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value => String(value ?? '')),
+            clamp: typeof utilitySource.clamp === 'function' ? utilitySource.clamp : ((value, min, max) => Math.max(min, Math.min(max, value))),
+            getDocument: () => typeof domSource.getDocument === 'function'
+                ? domSource.getDocument()
+                : domSource.document || (typeof document !== 'undefined' ? document : null),
+            getWindow: () => typeof browserSource.getWindow === 'function'
+                ? browserSource.getWindow()
+                : browserSource.window || (typeof window !== 'undefined' ? window : null),
+            requestAnimationFrame: delegate(browserSource, 'requestAnimationFrame'),
+            getInnerWidth: delegate(browserSource, 'getInnerWidth'),
+            getInnerHeight: delegate(browserSource, 'getInnerHeight'),
+            assetDisplaySrc: delegate(assetSource, 'assetDisplaySrc'),
+            assetMediaKind: delegate(assetSource, 'assetMediaKind'),
+            readAssetInfo: delegate(assetSource, 'readAssetInfo'),
+            readImageInfo: delegate(assetSource, 'readImageInfo'),
+            safeAssetDisplaySrc: delegate(assetSource, 'safeAssetDisplaySrc'),
+            getNode: delegate(nodeSource, 'getNode'),
+            getSelectedResultAsset: delegate(nodeSource, 'getSelectedResultAsset'),
+            refreshCompareDom: delegate(compareSource, 'refreshCompareDom'),
+            renderCompareControls: delegate(compareSource, 'renderCompareControls'),
+            renderCompareStageHtml: delegate(compareSource, 'renderCompareStageHtml'),
+            startComparePositionDrag: delegate(compareSource, 'startComparePositionDrag'),
+            updateCompareParam: delegate(compareSource, 'updateCompareParam'),
+            detectWorkbenchTheme: delegate(viewSource, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: delegate(viewSource, 'ensureWorkbenchFormFieldNames'),
+            showToast: delegate(uiSource, 'showToast')
         };
     }
 
@@ -63,12 +121,10 @@
         return null;
     }
 
-    function getNodeImageSrc(node) {
+    function getNodeImageSrc(node, context) {
         const asset = node?.asset || {};
-        if (typeof window.SimpAICanvasWorkbenchAssetNodes?.assetDisplaySrc === 'function') {
-            const src = window.SimpAICanvasWorkbenchAssetNodes.assetDisplaySrc(asset);
-            if (src) return src;
-        }
+        const displayedAsset = assetDisplaySrc(context, asset);
+        if (displayedAsset) return displayedAsset;
         if (hasProjectAssetReference(asset)) {
             if (asset.data_url) return asset.data_url;
         } else {
@@ -77,10 +133,8 @@
         }
         const fallback = specialNodeImageAsset(node);
         if (!fallback) return asset.data_url || asset.preview_url || asset.thumb || '';
-        if (typeof window.SimpAICanvasWorkbenchAssetNodes?.assetDisplaySrc === 'function') {
-            const src = window.SimpAICanvasWorkbenchAssetNodes.assetDisplaySrc(fallback);
-            if (src) return src;
-        }
+        const displayedFallback = assetDisplaySrc(context, fallback);
+        if (displayedFallback) return displayedFallback;
         return fallback.data_url || fallback.preview_url || fallback.thumb || '';
     }
 
@@ -94,25 +148,27 @@
     }
 
     function openImageViewer(node, context) {
-        const src = getNodeImageSrc(node);
+        const src = getNodeImageSrc(node, context);
         if (!src) {
-            call(context, 'showToast', null, t('This node has no viewable image.', '当前节点没有可查看的图片'));
+            call(context, 'showToast', null, t(context, 'This node has no viewable image.', '当前节点没有可查看的图片'));
             return;
         }
-        const modal = document.createElement('div');
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
         modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-image-viewer">
   <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(node.title || 'Image')}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+    <span>${escapeHtml(context, node.title || 'Image')}</span>
+    <button type="button" data-modal-close title="${escapeHtml(context, t(context, 'Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
   </div>
-  <div class="sai-image-viewer-body"><img src="${escapeHtml(src)}" alt=""></div>
-  <div class="sai-image-viewer-foot">${escapeHtml(call(context, 'readImageInfo', [], node).join(' / '))}</div>
+  <div class="sai-image-viewer-body"><img src="${escapeHtml(context, src)}" alt=""></div>
+  <div class="sai-image-viewer-foot">${escapeHtml(context, call(context, 'readImageInfo', [], node).join(' / '))}</div>
 </div>`;
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'image_viewer');
-        document.body.appendChild(modal);
+        doc.body.appendChild(modal);
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();
         });
@@ -120,7 +176,7 @@
 
     function openAssetViewer(asset, title, context) {
         if (!asset) {
-            call(context, 'showToast', null, t('Current result has no viewable asset.', '当前结果没有可查看资产'));
+            call(context, 'showToast', null, t(context, 'Current result has no viewable asset.', '当前结果没有可查看资产'));
             return;
         }
         const kind = call(context, 'assetMediaKind', 'image', asset);
@@ -136,32 +192,34 @@
         const src = call(context, 'assetDisplaySrc', '', asset || {});
         const kind = call(context, 'assetMediaKind', 'image', asset || {});
         if (!src || kind !== 'video') {
-            call(context, 'showToast', null, t('This node has no fullscreen video asset.', '当前节点没有可全屏播放的视频资产'));
+            call(context, 'showToast', null, t(context, 'This node has no fullscreen video asset.', '当前节点没有可全屏播放的视频资产'));
             return;
         }
-        const modal = document.createElement('div');
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal sai-media-fullscreen-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
         modal.innerHTML = `
 <div class="sai-media-fullscreen-panel">
-  <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-  <video src="${escapeHtml(src)}" controls controlsList="nofullscreen nodownload noremoteplayback" disablePictureInPicture autoplay playsinline></video>
+  <button type="button" data-modal-close title="${escapeHtml(context, t(context, 'Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+  <video src="${escapeHtml(context, src)}" controls controlsList="nofullscreen nodownload noremoteplayback" disablePictureInPicture autoplay playsinline></video>
 </div>`;
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'media_fullscreen');
         const close = () => {
             if (modal.isConnected) modal.remove();
-            document.removeEventListener('fullscreenchange', onFullscreenChange, true);
+            doc.removeEventListener('fullscreenchange', onFullscreenChange, true);
         };
         const onFullscreenChange = () => {
-            if (!document.fullscreenElement && modal.isConnected) {
+            if (!doc.fullscreenElement && modal.isConnected) {
                 modal.classList.add('is-windowed');
             }
         };
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) close();
         });
-        document.addEventListener('fullscreenchange', onFullscreenChange, true);
-        document.body.appendChild(modal);
+        doc.addEventListener('fullscreenchange', onFullscreenChange, true);
+        doc.body.appendChild(modal);
         const video = modal.querySelector('video');
         const fullscreenTarget = modal?.requestFullscreen ? modal : video;
         const promise = fullscreenTarget?.requestFullscreen?.();
@@ -176,26 +234,28 @@
     function openMediaViewer(node, context) {
         const src = call(context, 'assetDisplaySrc', '', node?.asset || {});
         if (!src) {
-            call(context, 'showToast', null, t('This media node has no playable asset.', '当前媒体节点没有可播放资产'));
+            call(context, 'showToast', null, t(context, 'This media node has no playable asset.', '当前媒体节点没有可播放资产'));
             return;
         }
         const type = node?.type === 'audio' || node?.type === 'video' ? node.type : call(context, 'assetMediaKind', 'image', node?.asset || {});
-        const modal = document.createElement('div');
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal';
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
         modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-image-viewer">
   <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(node.title || type)}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+    <span>${escapeHtml(context, node.title || type)}</span>
+    <button type="button" data-modal-close title="${escapeHtml(context, t(context, 'Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="sai-image-viewer-body">${type === 'audio'
-    ? `<audio src="${escapeHtml(src)}" controls autoplay></audio>`
-    : `<video src="${escapeHtml(src)}" controls controlsList="nofullscreen nodownload noremoteplayback" disablePictureInPicture autoplay></video>`}</div>
-  <div class="sai-image-viewer-foot">${escapeHtml(call(context, 'readAssetInfo', [], node.asset || {}, false).join(' / '))}</div>
+    ? `<audio src="${escapeHtml(context, src)}" controls autoplay></audio>`
+    : `<video src="${escapeHtml(context, src)}" controls controlsList="nofullscreen nodownload noremoteplayback" disablePictureInPicture autoplay></video>`}</div>
+  <div class="sai-image-viewer-foot">${escapeHtml(context, call(context, 'readAssetInfo', [], node.asset || {}, false).join(' / '))}</div>
 </div>`;
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'media_viewer');
-        document.body.appendChild(modal);
+        doc.body.appendChild(modal);
         modal.addEventListener('click', (evt) => {
             if (evt.target === modal || evt.target.closest('[data-modal-close]')) modal.remove();
         });
@@ -203,8 +263,10 @@
 
     function openCompareFullscreen(node, context) {
         if (!node || node.type !== 'compare') return;
+        const doc = getDocument(context);
+        if (!doc?.createElement || !doc.body) return;
         let zoom = 1;
-        const modal = document.createElement('div');
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal sai-compare-fullscreen';
         modal.dataset.compareNodeId = node.id;
         modal.classList.toggle('theme-dark', call(context, 'detectWorkbenchTheme', 'dark') === 'dark');
@@ -212,15 +274,15 @@
             const body = modal.querySelector('.sai-compare-full-body');
             const stageEl = modal.querySelector('.sai-compare-stage');
             if (!body || !stageEl) return;
-            window.requestAnimationFrame(() => {
+            scheduleFrame(context, () => {
                 const bodyRect = body.getBoundingClientRect();
                 const stageRect = stageEl.getBoundingClientRect();
                 if (!bodyRect.width || !bodyRect.height || !stageRect.width || !stageRect.height) return;
                 if (anchor) {
                     const targetX = body.scrollLeft + (stageRect.left - bodyRect.left) + anchor.xRatio * stageRect.width;
                     const targetY = body.scrollTop + (stageRect.top - bodyRect.top) + anchor.yRatio * stageRect.height;
-                    body.scrollLeft = clamp(targetX - anchor.clientX + bodyRect.left, 0, Math.max(0, body.scrollWidth - body.clientWidth));
-                    body.scrollTop = clamp(targetY - anchor.clientY + bodyRect.top, 0, Math.max(0, body.scrollHeight - body.clientHeight));
+                    body.scrollLeft = clamp(context, targetX - anchor.clientX + bodyRect.left, 0, Math.max(0, body.scrollWidth - body.clientWidth));
+                    body.scrollTop = clamp(context, targetY - anchor.clientY + bodyRect.top, 0, Math.max(0, body.scrollHeight - body.clientHeight));
                 } else {
                     body.scrollLeft = Math.max(0, (body.scrollWidth - body.clientWidth) / 2);
                     body.scrollTop = Math.max(0, (body.scrollHeight - body.clientHeight) / 2);
@@ -232,16 +294,16 @@
             modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-compare-viewer">
   <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(current.title || 'Image Compare')}</span>
+    <span>${escapeHtml(context, current.title || 'Image Compare')}</span>
     <div class="sai-compare-full-tools">
       <span>${Math.round(zoom * 100)}%</span>
-      <button type="button" data-compare-zoom="reset" title="${escapeHtml(t('Reset zoom', '重置缩放'))}"><i class="fa-solid fa-crosshairs"></i></button>
-      <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+      <button type="button" data-compare-zoom="reset" title="${escapeHtml(context, t(context, 'Reset zoom', '重置缩放'))}"><i class="fa-solid fa-crosshairs"></i></button>
+      <button type="button" data-modal-close title="${escapeHtml(context, t(context, 'Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
     </div>
   </div>
   ${call(context, 'renderCompareControls', '', current)}
   <div class="sai-compare-full-body">
-    <div class="sai-compare-full-stage">${call(context, 'renderCompareStageHtml', '', current, { maxW: Math.max(360, window.innerWidth), maxH: Math.max(260, window.innerHeight - 104), zoom })}</div>
+    <div class="sai-compare-full-stage">${call(context, 'renderCompareStageHtml', '', current, { maxW: Math.max(360, viewportDimension(context, 'getInnerWidth', 'innerWidth', 1024)), maxH: Math.max(260, viewportDimension(context, 'getInnerHeight', 'innerHeight', 768) - 104), zoom })}</div>
   </div>
 </div>`;
             call(context, 'ensureWorkbenchFormFieldNames', null, modal, 'compare_fullscreen');
@@ -270,7 +332,7 @@
             restoreScroll(anchor || null);
         };
         renderBody();
-        document.body.appendChild(modal);
+        doc.body.appendChild(modal);
         modal.addEventListener('wheel', (evt) => {
             const body = evt.target.closest('.sai-compare-full-body');
             if (!body || !modal.contains(body)) return;
@@ -279,13 +341,13 @@
             const stageEl = body.querySelector('.sai-compare-stage');
             const stageRect = stageEl ? stageEl.getBoundingClientRect() : null;
             const anchor = stageRect && stageRect.width && stageRect.height ? {
-                xRatio: clamp((evt.clientX - stageRect.left) / stageRect.width, 0, 1),
-                yRatio: clamp((evt.clientY - stageRect.top) / stageRect.height, 0, 1),
+                xRatio: clamp(context, (evt.clientX - stageRect.left) / stageRect.width, 0, 1),
+                yRatio: clamp(context, (evt.clientY - stageRect.top) / stageRect.height, 0, 1),
                 clientX: evt.clientX,
                 clientY: evt.clientY
             } : null;
             const factor = Math.exp(-evt.deltaY * 0.0014);
-            zoom = clamp(zoom * factor, 0.25, 8);
+            zoom = clamp(context, zoom * factor, 0.25, 8);
             renderBody(anchor);
         }, { passive: false });
         modal.addEventListener('pointerdown', (evt) => {

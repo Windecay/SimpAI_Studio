@@ -10,7 +10,7 @@
 .sai-face-target-preview img { display: block; width: 100%; height: auto; }
 .sai-face-target-preview [data-face-boxes] { position: absolute; inset: 0; }
 .sai-face-target-preview [data-face-id] { position: absolute; min-width: 0; min-height: 0; padding: 0; border: 2px solid #f0ce50; border-radius: 2px; background: transparent; color: #fff; font-size: 13px; text-align: left; line-height: 1; text-shadow: 0 1px 3px #000; cursor: pointer; }
-.sai-face-target-preview [data-face-id][aria-pressed="true"] { border-color: #4eddad; background: #2dac8626; }
+.sai-face-target-preview [data-face-id][aria-pressed="true"] { border-color: var(--region-accent); background: color-mix(in srgb, var(--region-accent) 15%, transparent); }
 .sai-video-region {
     --region-text: #dedfe3; --region-muted: #969ba5; --region-input: #1b1d21;
     --region-border: #41454d; --region-track: #393c43;
@@ -146,3 +146,72 @@
 .sai-region-source button[aria-label="Trim video"],
 .sai-region-source button[aria-label="Trim video to selection"],
 .sai-region-source button[aria-label="Trim"] { display: none !important; }
+.sai-face-editor {
+    width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px);
+    height: min(900px, calc(100dvh - 24px));
+    padding: 16px; border: 1px solid var(--region-border); border-radius: 6px;
+    background: var(--region-input); color: var(--region-text); box-sizing: border-box;
+    font: 13px/1.5 sans-serif; letter-spacing: 0; overflow: hidden;
+}
+.sai-face-editor[open] { display: flex; flex-direction: column; }
+.sai-face-editor::backdrop { background: #0009; }
+.sai-face-editor *, .sai-face-editor *::before { box-sizing: border-box; }
+.sai-face-editor [hidden] { display: none !important; }
+.sai-face-editor header, .sai-face-editor footer, .sai-face-editor-tools, .sai-face-editor-timeline {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;
+}
+.sai-face-editor header { justify-content: space-between; margin-bottom: 10px; }
+.sai-face-editor header strong { font-size: 16px; font-weight: 600; }
+.sai-face-editor button {
+    flex: 0 0 34px; width: 34px; height: 34px; min-width: 0; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid var(--region-border); border-radius: 4px; background: transparent;
+    color: var(--region-text); font: inherit; cursor: pointer;
+}
+.sai-face-editor button:hover, .sai-face-editor button[aria-pressed="true"] { border-color: var(--region-accent); }
+.sai-face-editor .sai-face-editor-media {
+    flex: 1 1 240px; min-height: 100px; width: 100%; position: relative; margin: 12px 0; background: #111;
+    overflow: auto; touch-action: none; overscroll-behavior: contain;
+}
+.sai-face-editor-stage { position: relative; min-width: 100%; min-height: 100%; }
+.sai-face-editor-image { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.sai-face-editor-view, .sai-face-editor-view [role="group"] { display: flex; align-items: center; gap: 4px; }
+.sai-face-editor-view { gap: 8px; flex-wrap: wrap; }
+.sai-face-editor-media video, .sai-face-editor-media canvas {
+    position: absolute; inset: 0; width: 100% !important; height: 100% !important;
+    min-height: 0 !important; max-height: none !important; object-fit: contain; display: block;
+}
+.sai-face-editor-media canvas { touch-action: none; cursor: crosshair; color: var(--region-accent); }
+.sai-face-editor-media[data-pan="true"], .sai-face-editor-media[data-pan="true"] canvas { cursor: grab; }
+.sai-face-editor-media[data-panning="true"], .sai-face-editor-media[data-panning="true"] canvas { cursor: grabbing; }
+.sai-face-editor input[type="number"] {
+    width: 78px !important; min-width: 0 !important; height: 32px !important; padding: 4px 6px !important;
+    border: 1px solid var(--region-border) !important; border-radius: 4px !important;
+    background: var(--region-input) !important; color: var(--region-text) !important; font: inherit !important;
+}
+.sai-face-editor input[type="range"] { flex: 1 0 100%; width: 100%; margin: 8px 0; accent-color: var(--region-accent); }
+.sai-face-editor-timeline label { display: flex; align-items: center; gap: 6px; }
+.sai-face-editor output { font-size: 12px; overflow-wrap: anywhere; }
+.sai-face-editor [data-track-frame-state] { margin-left: auto; }
+.sai-face-editor footer { margin-top: 8px; justify-content: space-between; }
+.sai-face-editor footer output { flex: 1 1 160px; }
+.sai-face-editor [data-error="true"] { color: #e56a6a; }
+.sai-face-editor [data-track-action="apply"] { width: auto; flex: 0 0 auto; padding: 0 12px; background: var(--region-accent); color: var(--region-on-accent); }
+.sai-face-editor textarea {
+    flex: 1 1 240px; min-height: 100px; width: 100% !important; height: min(50dvh, 420px); margin: 12px 0; padding: 10px;
+    border: 1px solid var(--region-border); background: var(--region-input); color: var(--region-text);
+    font: 12px/1.5 monospace; resize: vertical; letter-spacing: 0;
+}
+.sai-face-editor-progress { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; flex-shrink: 0; }
+.sai-face-editor-progress output { min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+.sai-face-editor progress, .sai-face-target progress {
+    appearance: none; display: block; width: 100%; height: 6px; border: 0;
+    accent-color: var(--region-accent); background: var(--region-border);
+}
+.sai-face-editor progress::-webkit-progress-bar, .sai-face-target progress::-webkit-progress-bar { background: var(--region-border); }
+.sai-face-editor progress::-webkit-progress-value, .sai-face-target progress::-webkit-progress-value { background: var(--region-accent); }
+.sai-face-editor progress::-moz-progress-bar, .sai-face-target progress::-moz-progress-bar { background: var(--region-accent); }
+.sai-face-target [data-face-track-progress] { margin: 8px 0; }
+.sai-face-target [hidden] { display: none !important; }
+.sai-face-target [data-face-generation-notice] { display: block; margin: 6px 0; color: var(--region-muted); font-size: 12px; }
+button[data-face-track-blocked="true"] { opacity: .55; cursor: not-allowed; }

@@ -19,13 +19,18 @@ def validate_source_timeline(path, fps):
     with av.open(path) as container:
         stream = container.streams.video[0]
         unit = float(stream.time_base)
+        rates = (float(stream.guessed_rate or fps), fps)
         timestamps = sorted(packet.pts for packet in container.demux(stream) if packet.pts is not None)
     if not timestamps:
         raise ValueError("The video has no usable presentation timestamps.")
     tolerance = max(1.5 * unit, 1e-5)
     first = timestamps[0]
-    if any(abs((pts - first) * unit - i / fps) > tolerance for i, pts in enumerate(timestamps)):
-        raise ValueError("Region reconstruction currently requires constant-FPS video. Convert this source to constant FPS first.")
+    # A shortened final packet changes average FPS without changing frame times.
+    for rate in rates:
+        if math.isfinite(rate) and rate > 0 and all(
+                abs((pts - first) * unit - i / rate) <= tolerance for i, pts in enumerate(timestamps)):
+            return rate
+    raise ValueError("Region reconstruction currently requires constant-FPS video. Convert this source to constant FPS first.")
 
 
 def region_layout(total, fps, start, end, factor):
@@ -104,8 +109,8 @@ class SimpAIH3RegionSource:
         path = _resolve_video_path(video)
         _, total, _, fps = _load_video_frames(
             path, metadata_only=True, load_audio=False, return_fps=True)
+        fps = validate_source_timeline(path, fps)
         data = region_layout(total, fps, start, end, factor)
-        validate_source_timeline(path, fps)
         if abs(fps - data["rate"]) >= 0.01:
             # This preset never initiates a RIFE model download.
             import folder_paths
@@ -140,14 +145,20 @@ class SimpAIH3RegionCondition:
             "prompt": ("STRING", {"default": "", "multiline": True}),
         }, "optional": {
             "reference1": ("IMAGE",), "reference2": ("IMAGE",), "reference3": ("IMAGE",),
+            "control_video": ("IMAGE",),
         }}
 
     RETURN_TYPES = ("CONDITIONING", "LATENT", "IMAGE")
-    RETURN_NAMES = ("positive", "latent", "canny")
+    RETURN_NAMES = ("positive", "latent", "control_video")
     FUNCTION = "prepare"
     CATEGORY = "SimpAI/MiniMax H3"
 
-    def prepare(self, region, images, clip, vae, prompt, reference1=None, reference2=None, reference3=None):
+    def prepare(self, region, images, clip, vae, prompt, reference1=None, reference2=None, reference3=None,
+                control_video=None):
+        if control_video is not None and (
+                control_video.shape != images.shape or not torch.isfinite(control_video).all()
+                or control_video.min() < 0 or control_video.max() > 1):
+            raise ValueError("Control video must match the source frames and dimensions with finite RGB values in [0, 1].")
         import comfy.nested_tensor
         from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo, MiniMaxH3AddGuide
         from .SimpAIMiniMaxH3VideoUpscaleLatent import SimpAIMiniMaxH3VideoUpscaleLatent
@@ -193,6 +204,8 @@ class SimpAIH3RegionCondition:
             raise ValueError("Region mask and H3 video latent have different temporal shapes.")
         latent = dict(latent, noise_mask=comfy.nested_tensor.NestedTensor((
             weights.reshape(1, 1, -1, 1, 1), torch.ones_like(audio))))
+        if control_video is not None:
+            return positive, latent, control_video
         edges = []
         for frame in images.detach().cpu():
             rgb = (frame.float().clamp(0, 1).numpy() * 255).round().astype(np.uint8)
@@ -221,6 +234,8 @@ class SimpAIH3RegionOutput:
         if _file_hash(data["path"]) != data["digest"]:
             raise ValueError("The source video changed during reconstruction.")
         source, count, audio, fps = _load_video_frames(data["path"], return_fps=True)
+        if abs(fps - data["fps"]) > 1e-6:
+            fps = validate_source_timeline(data["path"], fps)
         if count != data["total"] or abs(fps - data["fps"]) > 1e-6:
             raise ValueError("The source timeline changed during reconstruction.")
         if source_aligned:

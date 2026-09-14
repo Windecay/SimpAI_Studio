@@ -1,12 +1,10 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const tOption = UTILS.tOption || ((value) => String(value ?? ''));
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const translateFallback = (en, cn) => cn || en;
+    const translateOptionFallback = (value) => String(value ?? '');
 
     const DEFAULT_PARAMS = {
         width: 1280,
@@ -59,6 +57,22 @@
         return (...args) => context[name](...args);
     }
 
+    function escapeHtmlValue(context, value) {
+        return call(context, 'escapeHtml', escapeHtmlFallback(value), value);
+    }
+
+    function translateValue(context, en, cn) {
+        return call(context, 't', translateFallback(en, cn), en, cn);
+    }
+
+    function translateOptionValue(context, value, options) {
+        return call(context, 'tOption', translateOptionFallback(value, options), value, options);
+    }
+
+    function clampValue(context, value, min, max) {
+        return call(context, 'clamp', clamp(value, min, max), value, min, max);
+    }
+
     function cloneTimelineValue(value, fallback) {
         try {
             return JSON.parse(JSON.stringify(value ?? fallback));
@@ -68,17 +82,33 @@
     }
 
     function createTimelineNodeContext(source) {
-        const context = source || {};
+        const scope = source?.timelineNodeSource || source || {};
+        const sourceObject = (name) => scope[name] && typeof scope[name] === 'object' ? scope[name] : {};
+        const languageSource = sourceObject('languageSource');
+        const utilitySource = sourceObject('utilitySource');
+        const assetSource = sourceObject('assetSource');
+        const nodeSource = sourceObject('nodeSource');
+        const timeSource = sourceObject('timeSource');
+        const resolve = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            assetMediaKind: delegate(context, 'assetMediaKind'),
-            getNode: delegate(context, 'getNode'),
-            getTimelineSourceAsset: delegate(context, 'getTimelineSourceAsset'),
-            readAssetSize: delegate(context, 'readAssetSize'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            uid: delegate(context, 'uid'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            cloneRunValue: delegate(context, 'cloneRunValue')
+            t: resolve(languageSource, 't'),
+            tOption: resolve(languageSource, 'tOption'),
+            escapeHtml: resolve(utilitySource, 'escapeHtml'),
+            clamp: resolve(utilitySource, 'clamp'),
+            formatDuration: resolve(assetSource, 'formatDuration'),
+            getMediaEditRange: resolve(assetSource, 'getMediaEditRange') || resolve(assetSource, 'mediaEditRange'),
+            assetDisplaySrc: resolve(assetSource, 'assetDisplaySrc'),
+            assetThumbSrc: resolve(assetSource, 'assetThumbSrc'),
+            serializeAssetForRun: resolve(assetSource, 'serializeAssetForRun'),
+            assetMediaKind: resolve(assetSource, 'assetMediaKind'),
+            getNode: resolve(nodeSource, 'getNode'),
+            getTimelineSourceAsset: resolve(nodeSource, 'getTimelineSourceAsset'),
+            readAssetSize: resolve(nodeSource, 'readAssetSize'),
+            renderNodeStateBadges: resolve(nodeSource, 'renderNodeStateBadges'),
+            uid: resolve(nodeSource, 'uid'),
+            defaultNodeSize: resolve(nodeSource, 'defaultNodeSize'),
+            cloneRunValue: resolve(nodeSource, 'cloneRunValue'),
+            now: resolve(timeSource, 'now')
         };
     }
 
@@ -104,8 +134,9 @@
         };
     }
 
-    function formatDuration(seconds) {
-        if (typeof ASSETS.formatDuration === 'function') return ASSETS.formatDuration(seconds);
+    function formatDuration(seconds, context) {
+        const formatted = call(context, 'formatDuration', undefined, seconds);
+        if (formatted !== undefined && formatted !== null) return formatted;
         const value = Number(seconds || 0);
         if (!Number.isFinite(value) || value <= 0) return '0s';
         const mins = Math.floor(value / 60);
@@ -113,13 +144,16 @@
         return mins ? `${mins}:${secs}` : `${Math.round(value * 10) / 10}s`;
     }
 
-    function mediaEditRange(asset) {
-        if (typeof ASSETS.mediaEditRange === 'function') return ASSETS.mediaEditRange(asset || {});
+    function mediaEditRange(asset, context) {
+        const range = call(context, 'getMediaEditRange', undefined, asset || {});
+        if (range !== undefined && range !== null) return range;
         const duration = Math.max(0, Number(asset?.duration || 0) || 0);
         return { start: 0, end: duration, duration, clipped: false };
     }
 
-    function assetMediaKind(asset) {
+    function assetMediaKind(asset, context) {
+        const kind = call(context, 'assetMediaKind', undefined, asset || {});
+        if (kind !== undefined && kind !== null && kind !== '') return kind;
         const mime = String(asset?.mime || '').toLowerCase();
         if (mime.startsWith('video/')) return 'video';
         if (mime.startsWith('audio/')) return 'audio';
@@ -227,7 +261,7 @@
         if (!source || !['image', 'video', 'audio', 'result'].includes(source.type)) return false;
         if (['image', 'video', 'audio'].includes(source.type)) return true;
         const asset = sourceAsset(source, context);
-        return !!asset && ['image', 'video', 'audio'].includes(assetMediaKind(asset));
+        return !!asset && ['image', 'video', 'audio'].includes(assetMediaKind(asset, context));
     }
 
     function defaultTrackId(kind) {
@@ -249,7 +283,7 @@
         if (!node || !clip || clip.kind === 'image') return Infinity;
         const source = call(context, 'getNode', null, clip.source_node_id);
         const asset = sourceAsset(source, context) || {};
-        const range = call(context, 'getMediaEditRange', null, asset) || mediaEditRange(asset);
+        const range = mediaEditRange(asset, context);
         const rangeEnd = Number(range.end || asset.duration || 0);
         const clipIn = Math.max(Number(range.start || 0), Number(clip.in || 0));
         const available = Math.max(0, rangeEnd - clipIn);
@@ -533,8 +567,8 @@
         return Number(clip?.start || 0) + Number(clip?.duration || 0);
     }
 
-    function effectiveClipIn(clip, asset) {
-        const range = mediaEditRange(asset || {});
+    function effectiveClipIn(clip, asset, context) {
+        const range = mediaEditRange(asset || {}, context);
         return Math.max(0, Number(clip?.in || 0), Number(range.start || 0));
     }
 
@@ -567,16 +601,21 @@
         return clips.reduce((max, clip) => Math.max(max, Number(clip.start || 0) + Number(clip.duration || 0)), 0);
     }
 
+    function fallbackClipId(context) {
+        const value = Number(call(context, 'now', 0));
+        return `clip_${Number.isFinite(value) ? value.toString(36) : '0'}`;
+    }
+
     function createClipFromSource(source, options, context) {
         const opts = options || {};
         const asset = sourceAsset(source, context) || {};
-        const kind = assetMediaKind(asset) || (['image', 'video', 'audio'].includes(source?.type) ? source.type : '');
-        const range = mediaEditRange(asset);
+        const kind = assetMediaKind(asset, context) || (['image', 'video', 'audio'].includes(source?.type) ? source.type : '');
+        const range = mediaEditRange(asset, context);
         const sourceDuration = Math.max(0, Number(range.end || 0) - Number(range.start || 0));
         const duration = kind === 'image' ? Number(opts.imageDuration || 4) : (sourceDuration || Number(asset.duration || 1) || 1);
         const trackId = opts.track_id || defaultTrackId(kind);
         return {
-            id: opts.id || call(context, 'uid', `clip_${Date.now().toString(36)}`, 'clip'),
+            id: opts.id || call(context, 'uid', fallbackClipId(context), 'clip'),
             source_node_id: source.id,
             source_type: source.type,
             title: source.title || asset.name || `${kind} clip`,
@@ -605,7 +644,7 @@
     function createFallbackClipFromSource(source, options, context) {
         const opts = options || {};
         return {
-            id: opts.id || call(context, 'uid', `clip_${Date.now().toString(36)}`, 'clip'),
+            id: opts.id || call(context, 'uid', fallbackClipId(context), 'clip'),
             source_node_id: source?.id,
             title: source?.title || 'Clip',
             kind: 'image',
@@ -822,8 +861,9 @@
         return sourceAsset(clipSource(node, clip, context), context);
     }
 
-    function assetSrc(asset) {
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset || {});
+    function assetSrc(asset, context) {
+        const displaySrc = call(context, 'assetDisplaySrc', undefined, asset || {});
+        if (displaySrc !== undefined && displaySrc !== null) return displaySrc;
         if (!asset) return '';
         if (asset.kind === 'browser_upload' && asset.data_url) return asset.data_url;
         return asset.preview_url || asset.data_url || asset.thumb || '';
@@ -836,8 +876,9 @@
         return `${value.split('#')[0]}#t=${seconds.toFixed(3)}`;
     }
 
-    function assetThumbSrc(asset) {
-        if (typeof ASSETS.assetThumbSrc === 'function') return ASSETS.assetThumbSrc(asset || {});
+    function assetThumbSrc(asset, context) {
+        const thumbSrc = call(context, 'assetThumbSrc', undefined, asset || {});
+        if (thumbSrc !== undefined && thumbSrc !== null) return thumbSrc;
         return asset?.thumb || asset?.preview_url || asset?.data_url || '';
     }
 
@@ -848,43 +889,48 @@
     }
 
     function renderClip(node, clip, context, layout) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         const params = normalizeParams(node?.params);
         const source = clipSource(node, clip, context);
         const asset = clipAsset(node, clip, context);
-        const left = clamp((Number(clip.start || 0) / params.duration) * 100, 0, 100);
+        const left = clampForContext((Number(clip.start || 0) / params.duration) * 100, 0, 100);
         const rawWidth = (Number(clip.duration || 0) / params.duration) * 100;
-        const width = clamp(rawWidth, 0.6, Math.max(0.6, 100 - left));
+        const width = clampForContext(rawWidth, 0.6, Math.max(0.6, 100 - left));
         const missing = !source || !asset;
         const icon = clip.kind === 'audio' ? 'fa-wave-square' : (clip.kind === 'video' ? 'fa-film' : 'fa-image');
         const meta = clip.kind === 'audio'
-            ? t(`vol ${Math.round(Number(clip.volume ?? 1) * 100)}%`, `音量 ${Math.round(Number(clip.volume ?? 1) * 100)}%`)
-            : t(
+            ? translate(`vol ${Math.round(Number(clip.volume ?? 1) * 100)}%`, `音量 ${Math.round(Number(clip.volume ?? 1) * 100)}%`)
+            : translate(
                 `op ${Math.round(Number(clip.opacity ?? 1) * 100)}% / scale ${Number(clip.scale ?? 1).toFixed(2)}`,
                 `不透明度 ${Math.round(Number(clip.opacity ?? 1) * 100)}% / 缩放 ${Number(clip.scale ?? 1).toFixed(2)}`
             );
         const selected = clip.id && clip.id === node?.params?.selected_clip_id;
         const row = Math.max(0, Number(layout?.row || 0));
         const rows = Math.max(1, Number(layout?.rows || 1));
-        const mediaStrip = renderClipMediaStrip(clip, asset);
-        const keyframeMarkers = renderClipKeyframeMarkers(clip, params);
-        return `<div class="sai-timeline-clip sai-timeline-clip-${escapeHtml(clip.kind)} ${selected ? 'is-selected' : ''} ${missing ? 'is-missing' : ''}" data-timeline-clip-id="${escapeHtml(clip.id)}" style="left:${left}%;width:${width}%;--timeline-clip-row:${row};--timeline-track-rows:${rows}">
+        const mediaStrip = renderClipMediaStrip(clip, asset, context);
+        const keyframeMarkers = renderClipKeyframeMarkers(clip, params, context);
+        return `<div class="sai-timeline-clip sai-timeline-clip-${escape(clip.kind)} ${selected ? 'is-selected' : ''} ${missing ? 'is-missing' : ''}" data-timeline-clip-id="${escape(clip.id)}" style="left:${left}%;width:${width}%;--timeline-clip-row:${row};--timeline-track-rows:${rows}">
   ${mediaStrip}
   ${keyframeMarkers}
-  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-start" data-timeline-trim="start" title="${escapeHtml(t('Trim start', '裁剪起点'))}"></button>
+  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-start" data-timeline-trim="start" title="${escape(translate('Trim start', '裁剪起点'))}"></button>
   <i class="fa-solid ${icon}"></i>
-  <span>${escapeHtml(clip.title || t('Clip', '片段'))}</span>
-  <small>${escapeHtml(formatDuration(clip.duration))} / ${escapeHtml(meta)}</small>
-  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-end" data-timeline-trim="end" title="${escapeHtml(t('Trim end', '裁剪终点'))}"></button>
+  <span>${escape(clip.title || translate('Clip', '片段'))}</span>
+  <small>${escape(formatDuration(clip.duration, context))} / ${escape(meta)}</small>
+  <button type="button" class="sai-timeline-clip-trim sai-timeline-clip-trim-end" data-timeline-trim="end" title="${escape(translate('Trim end', '裁剪终点'))}"></button>
 </div>`;
     }
 
-    function renderClipMediaStrip(clip, asset) {
+    function renderClipMediaStrip(clip, asset, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         if (!asset || !clip) return '';
         if (clip.kind === 'audio') {
             const values = Array.isArray(asset.waveform) && asset.waveform.length ? asset.waveform.slice(0, 72) : [];
             if (!values.length) return '';
             const bars = values.map((value) => {
-                const h = clamp(Number(value || 0), 0.04, 1);
+                const h = clampForContext(Number(value || 0), 0.04, 1);
                 return `<i style="height:${Math.round(h * 100)}%"></i>`;
             }).join('');
             return `<div class="sai-timeline-clip-waveform" aria-hidden="true">${bars}</div>`;
@@ -892,12 +938,15 @@
         const frames = Array.isArray(asset.preview_frames)
             ? asset.preview_frames.map(item => item?.thumb || item?.data_url || '').filter(Boolean).slice(0, 8)
             : [];
-        const thumbs = frames.length ? frames : [assetThumbSrc(asset)].filter(Boolean);
+        const thumbs = frames.length ? frames : [assetThumbSrc(asset, context)].filter(Boolean);
         if (!thumbs.length) return '';
-        return `<div class="sai-timeline-clip-thumbs" aria-hidden="true">${thumbs.map(src => `<img src="${escapeHtml(src)}" alt="" draggable="false">`).join('')}</div>`;
+        return `<div class="sai-timeline-clip-thumbs" aria-hidden="true">${thumbs.map(src => `<img src="${escape(src)}" alt="" draggable="false">`).join('')}</div>`;
     }
 
-    function renderClipKeyframeMarkers(clip, params) {
+    function renderClipKeyframeMarkers(clip, params, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         if (!clip || clip.kind === 'audio') return '';
         const start = Number(clip.start || 0);
         const duration = Math.max(0.000001, Number(clip.duration || 0));
@@ -907,40 +956,47 @@
             .filter(frame => Number(frame.time || 0) >= start - KEYFRAME_TIME_EPSILON && Number(frame.time || 0) <= end + KEYFRAME_TIME_EPSILON)
             .map((frame) => {
                 const time = Number(frame.time || 0);
-                const pct = clamp(((time - start) / duration) * 100, 0, 100);
+                const pct = clampForContext(((time - start) / duration) * 100, 0, 100);
                 const active = Math.abs(time - playhead) < KEYFRAME_TIME_EPSILON;
-                const title = t(`Keyframe ${formatDuration(time)}`, `关键帧 ${formatDuration(time)}`);
-                const ariaLabel = t(`Jump to keyframe ${formatDuration(time)}`, `跳转到关键帧 ${formatDuration(time)}`);
-                return `<button type="button" class="sai-timeline-keyframe-marker ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="${escapeHtml(title)}" aria-label="${escapeHtml(ariaLabel)}"></button>`;
+                const title = translate(`Keyframe ${formatDuration(time, context)}`, `关键帧 ${formatDuration(time, context)}`);
+                const ariaLabel = translate(`Jump to keyframe ${formatDuration(time, context)}`, `跳转到关键帧 ${formatDuration(time, context)}`);
+                return `<button type="button" class="sai-timeline-keyframe-marker ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escape(clip.id)}:${escape(String(time))}" data-timeline-keyframe-id="${escape(frame.id || '')}" data-timeline-keyframe-time="${escape(String(time))}" style="left:${pct}%" title="${escape(title)}" aria-label="${escape(ariaLabel)}"></button>`;
             });
         return markers.length ? `<div class="sai-timeline-clip-keyframes" aria-hidden="false">${markers.join('')}</div>` : '';
     }
 
     function renderTrack(node, track, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
         const clips = (node.clips || []).filter(clip => clip.track_id === track.id);
         const layout = buildTrackClipLayout(clips);
-        return `<div class="sai-timeline-track sai-timeline-track-${escapeHtml(track.type || 'video')}" data-timeline-track="${escapeHtml(track.id)}" style="--timeline-track-rows:${layout.rows}">
-  <button type="button" class="sai-node-handle sai-node-handle-in sai-timeline-track-port" data-timeline-track-in="${escapeHtml(track.id)}" title="${escapeHtml(t('Connect media to this track', '连接素材到该轨道'))}"></button>
-  <div class="sai-timeline-track-head"><b>${escapeHtml(track.name || track.id)}</b><small>${escapeHtml(t(String(track.type || ''), track.type === 'video' ? '视频' : (track.type === 'audio' ? '音频' : String(track.type || ''))))}</small><span><button type="button" data-timeline-track-action="up" title="${escapeHtml(t('Move track up', '上移轨道'))}"><i class="fa-solid fa-arrow-up"></i></button><button type="button" data-timeline-track-action="down" title="${escapeHtml(t('Move track down', '下移轨道'))}"><i class="fa-solid fa-arrow-down"></i></button></span></div>
-  <div class="sai-timeline-track-lane">${clips.map(clip => renderClip(node, clip, context, layout.map[clip.id])).join('') || `<span class="sai-timeline-empty-lane">${escapeHtml(t('Drop media here', '拖入素材'))}</span>`}</div>
+        return `<div class="sai-timeline-track sai-timeline-track-${escape(track.type || 'video')}" data-timeline-track="${escape(track.id)}" style="--timeline-track-rows:${layout.rows}">
+  <button type="button" class="sai-node-handle sai-node-handle-in sai-timeline-track-port" data-timeline-track-in="${escape(track.id)}" title="${escape(translate('Connect media to this track', '连接素材到该轨道'))}"></button>
+  <div class="sai-timeline-track-head"><b>${escape(track.name || track.id)}</b><small>${escape(translate(String(track.type || ''), track.type === 'video' ? '视频' : (track.type === 'audio' ? '音频' : String(track.type || ''))))}</small><span><button type="button" data-timeline-track-action="up" title="${escape(translate('Move track up', '上移轨道'))}"><i class="fa-solid fa-arrow-up"></i></button><button type="button" data-timeline-track-action="down" title="${escape(translate('Move track down', '下移轨道'))}"><i class="fa-solid fa-arrow-down"></i></button></span></div>
+  <div class="sai-timeline-track-lane">${clips.map(clip => renderClip(node, clip, context, layout.map[clip.id])).join('') || `<span class="sai-timeline-empty-lane">${escape(translate('Drop media here', '拖入素材'))}</span>`}</div>
 </div>`;
     }
 
-    function renderRuler(node) {
+    function renderRuler(node, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         const params = normalizeParams(node?.params);
-        const playheadPct = clamp((Number(params.playhead || 0) / params.duration) * 100, 0, 100);
+        const playheadPct = clampForContext((Number(params.playhead || 0) / params.duration) * 100, 0, 100);
         const marks = [];
         const count = 5;
         for (let i = 0; i <= count; i += 1) {
-            const t = params.duration * i / count;
-            marks.push(`<span style="left:${i * 100 / count}%">${escapeHtml(formatDuration(t))}</span>`);
+            const markTime = params.duration * i / count;
+            marks.push(`<span style="left:${i * 100 / count}%">${escape(formatDuration(markTime, context))}</span>`);
         }
         const selectedClip = (node?.clips || []).find(clip => clip.id === node?.params?.selected_clip_id && clip.kind !== 'audio');
-        const selectedMarkers = renderRulerKeyframeMarkers(selectedClip, params);
-        return `<div class="sai-timeline-ruler" data-timeline-playhead-lane><div class="sai-timeline-ruler-marks">${marks.join('')}</div>${selectedMarkers}<i class="sai-timeline-playhead-line" data-timeline-playhead-line style="left:${playheadPct}%"><b>${escapeHtml(formatDuration(params.playhead))}</b></i></div>`;
+        const selectedMarkers = renderRulerKeyframeMarkers(selectedClip, params, context);
+        return `<div class="sai-timeline-ruler" data-timeline-playhead-lane><div class="sai-timeline-ruler-marks">${marks.join('')}</div>${selectedMarkers}<i class="sai-timeline-playhead-line" data-timeline-playhead-line style="left:${playheadPct}%"><b>${escape(formatDuration(params.playhead, context))}</b></i></div>`;
     }
 
-    function renderRulerKeyframeMarkers(clip, params) {
+    function renderRulerKeyframeMarkers(clip, params, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         if (!clip) return '';
         const duration = Math.max(1, Number(params?.duration || 1));
         const playhead = Number(params?.playhead || 0);
@@ -948,11 +1004,11 @@
             .filter(frame => Number(frame.time || 0) >= 0 && Number(frame.time || 0) <= duration)
             .map((frame) => {
                 const time = Number(frame.time || 0);
-                const pct = clamp((time / duration) * 100, 0, 100);
+                const pct = clampForContext((time / duration) * 100, 0, 100);
                 const active = Math.abs(time - playhead) < KEYFRAME_TIME_EPSILON;
-                const title = t(`Keyframe ${formatDuration(time)}`, `关键帧 ${formatDuration(time)}`);
-                const ariaLabel = t(`Jump to keyframe ${formatDuration(time)}`, `跳转到关键帧 ${formatDuration(time)}`);
-                return `<button type="button" class="sai-timeline-ruler-keyframe ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escapeHtml(clip.id)}:${escapeHtml(String(time))}" data-timeline-keyframe-id="${escapeHtml(frame.id || '')}" data-timeline-keyframe-time="${escapeHtml(String(time))}" style="left:${pct}%" title="${escapeHtml(title)}" aria-label="${escapeHtml(ariaLabel)}"></button>`;
+                const title = translate(`Keyframe ${formatDuration(time, context)}`, `关键帧 ${formatDuration(time, context)}`);
+                const ariaLabel = translate(`Jump to keyframe ${formatDuration(time, context)}`, `跳转到关键帧 ${formatDuration(time, context)}`);
+                return `<button type="button" class="sai-timeline-ruler-keyframe ${active ? 'is-active' : ''}" data-timeline-keyframe-jump="${escape(clip.id)}:${escape(String(time))}" data-timeline-keyframe-id="${escape(frame.id || '')}" data-timeline-keyframe-time="${escape(String(time))}" style="left:${pct}%" title="${escape(title)}" aria-label="${escape(ariaLabel)}"></button>`;
             });
         return markers.length ? `<div class="sai-timeline-ruler-keyframes">${markers.join('')}</div>` : '';
     }
@@ -967,14 +1023,17 @@
 
     function renderPreviewLayer(node, clip, context, playhead) {
         const asset = clipAsset(node, clip, context);
-        const src = assetSrc(asset);
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
+        const src = assetSrc(asset, context);
         if (!src || clip.kind === 'audio') return '';
         const active = clipAtPlayhead(clip, playhead);
         const crop = [
-            clamp(Number(clip.crop_top || 0), 0, 95),
-            clamp(Number(clip.crop_right || 0), 0, 95),
-            clamp(Number(clip.crop_bottom || 0), 0, 95),
-            clamp(Number(clip.crop_left || 0), 0, 95)
+            clampForContext(Number(clip.crop_top || 0), 0, 95),
+            clampForContext(Number(clip.crop_right || 0), 0, 95),
+            clampForContext(Number(clip.crop_bottom || 0), 0, 95),
+            clampForContext(Number(clip.crop_left || 0), 0, 95)
         ];
         const params = normalizeParams(node?.params);
         const effectiveClip = clipAtTime(clip, playhead);
@@ -985,7 +1044,7 @@
             `--clip-x:${offset.x}%`,
             `--clip-y:${offset.y}%`,
             `--clip-scale:1`,
-            `--clip-opacity:${clamp(Number(effectiveClip.opacity ?? 1), 0, 1)}`,
+            `--clip-opacity:${clampForContext(Number(effectiveClip.opacity ?? 1), 0, 1)}`,
             `--clip-crop:inset(${crop[0]}% ${crop[1]}% ${crop[2]}% ${crop[3]}%)`,
             `--clip-fit-width:${fit.fitWidthPct}%`,
             `--clip-fit-height:${fit.fitHeightPct}%`,
@@ -995,17 +1054,20 @@
         const cropBoxStyle = `left:${crop[3]}%;right:${crop[1]}%;top:${crop[0]}%;bottom:${crop[2]}%`;
         const maskSrc = clipMaskDataUrl(clip);
         const videoTime = clip.kind === 'video'
-            ? Math.max(0, effectiveClipIn(clip, asset) + Number(playhead || 0) - Number(clip.start || 0))
+            ? Math.max(0, effectiveClipIn(clip, asset, context) + Number(playhead || 0) - Number(clip.start || 0))
             : 0;
         const mediaSrc = clip.kind === 'video' ? mediaSrcAtTime(src, videoTime) : src;
         const media = clip.kind === 'video'
-            ? `<video src="${escapeHtml(mediaSrc)}" muted playsinline preload="metadata" data-timeline-preview-video></video>`
-            : `<img src="${escapeHtml(mediaSrc)}" alt="" draggable="false">`;
+            ? `<video src="${escape(mediaSrc)}" muted playsinline preload="metadata" data-timeline-preview-video></video>`
+            : `<img src="${escape(mediaSrc)}" alt="" draggable="false">`;
         const selected = clip.id && clip.id === node?.params?.selected_clip_id;
-        return `<div class="sai-timeline-preview-layer ${active ? 'is-active' : ''} ${selected ? 'is-selected' : ''} ${maskSrc ? 'has-mask' : ''}" data-preview-clip="${escapeHtml(clip.id)}" data-preview-start="${escapeHtml(Number(clip.start || 0))}" data-preview-duration="${escapeHtml(Number(clip.duration || 0))}" style="${style}">${media}<div class="sai-timeline-transform-frame"></div><button type="button" data-preview-transform="scale" title="${escapeHtml(t('Scale', '缩放'))}"></button><button type="button" data-preview-transform="rotate" title="${escapeHtml(t('Rotate', '旋转'))}"></button><div class="sai-timeline-crop-box" style="${cropBoxStyle}"><button type="button" data-preview-crop="left" title="${escapeHtml(t('Crop left', '裁剪左侧'))}"></button><button type="button" data-preview-crop="right" title="${escapeHtml(t('Crop right', '裁剪右侧'))}"></button><button type="button" data-preview-crop="top" title="${escapeHtml(t('Crop top', '裁剪顶部'))}"></button><button type="button" data-preview-crop="bottom" title="${escapeHtml(t('Crop bottom', '裁剪底部'))}"></button></div></div>`;
+        return `<div class="sai-timeline-preview-layer ${active ? 'is-active' : ''} ${selected ? 'is-selected' : ''} ${maskSrc ? 'has-mask' : ''}" data-preview-clip="${escape(clip.id)}" data-preview-start="${escape(Number(clip.start || 0))}" data-preview-duration="${escape(Number(clip.duration || 0))}" style="${style}">${media}<div class="sai-timeline-transform-frame"></div><button type="button" data-preview-transform="scale" title="${escape(translate('Scale', '缩放'))}"></button><button type="button" data-preview-transform="rotate" title="${escape(translate('Rotate', '旋转'))}"></button><div class="sai-timeline-crop-box" style="${cropBoxStyle}"><button type="button" data-preview-crop="left" title="${escape(translate('Crop left', '裁剪左侧'))}"></button><button type="button" data-preview-crop="right" title="${escape(translate('Crop right', '裁剪右侧'))}"></button><button type="button" data-preview-crop="top" title="${escape(translate('Crop top', '裁剪顶部'))}"></button><button type="button" data-preview-crop="bottom" title="${escape(translate('Crop bottom', '裁剪底部'))}"></button></div></div>`;
     }
 
-    function renderPenOverlay(clip) {
+    function renderPenOverlay(clip, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         const pendingPoints = Array.isArray(clip?.mask?.pending_pen?.points) ? clip.mask.pending_pen.points : [];
         const strokes = Array.isArray(clip?.mask?.strokes) ? clip.mask.strokes : [];
         const allShapes = [];
@@ -1013,21 +1075,21 @@
         const appendPath = (points, sourceKind, sourceIndex) => {
             if (!Array.isArray(points) || !points.length) return;
             const polyline = points
-                .map(point => `${clamp(Number(point.x || 0), 0, 1) * 100},${clamp(Number(point.y || 0), 0, 1) * 100}`)
+                .map(point => `${clampForContext(Number(point.x || 0), 0, 1) * 100},${clampForContext(Number(point.y || 0), 0, 1) * 100}`)
                 .join(' ');
             const isClosedPath = sourceKind === 'stroke';
             allShapes.push(isClosedPath
-                ? `<polygon points="${escapeHtml(polyline)}"></polygon>`
-                : `<polyline points="${escapeHtml(polyline)}"></polyline>`);
+                ? `<polygon points="${escape(polyline)}"></polygon>`
+                : `<polyline points="${escape(polyline)}"></polyline>`);
             points.forEach((point, index) => {
-                const x = clamp(Number(point.x || 0), 0, 1) * 100;
-                const y = clamp(Number(point.y || 0), 0, 1) * 100;
+                const x = clampForContext(Number(point.x || 0), 0, 1) * 100;
+                const y = clampForContext(Number(point.y || 0), 0, 1) * 100;
                 const isFirst = index === 0;
                 const isLast = index === points.length - 1;
                 const ref = sourceKind === 'pending' ? `pending:${index}` : `${sourceIndex}:${index}`;
                 const closeTarget = !isClosedPath && isFirst && points.length >= 3;
-                const title = closeTarget ? t('Close mask path', '闭合遮罩路径') : (isClosedPath ? t('Drag mask point', '拖动遮罩点') : t('Drag pen point', '拖动钢笔点'));
-                allAnchors.push(`<button type="button" class="sai-timeline-pen-anchor ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''} ${closeTarget ? 'is-close-target' : ''}" data-timeline-pen-anchor="${escapeHtml(ref)}" style="left:${escapeHtml(x.toFixed(3))}%;top:${escapeHtml(y.toFixed(3))}%" title="${escapeHtml(title)}"></button>`);
+                const title = closeTarget ? translate('Close mask path', '闭合遮罩路径') : (isClosedPath ? translate('Drag mask point', '拖动遮罩点') : translate('Drag pen point', '拖动钢笔点'));
+                allAnchors.push(`<button type="button" class="sai-timeline-pen-anchor ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''} ${closeTarget ? 'is-close-target' : ''}" data-timeline-pen-anchor="${escape(ref)}" style="left:${escape(x.toFixed(3))}%;top:${escape(y.toFixed(3))}%" title="${escape(title)}"></button>`);
             });
         };
         strokes.forEach((stroke, index) => {
@@ -1048,26 +1110,29 @@
         const points = sourceKind === 'pending' ? pendingPoints : (closedIndex >= 0 ? strokes[closedIndex].points : []);
         if (!points.length) return '';
         const polyline = points
-            .map(point => `${clamp(Number(point.x || 0), 0, 1) * 100},${clamp(Number(point.y || 0), 0, 1) * 100}`)
+            .map(point => `${clampForContext(Number(point.x || 0), 0, 1) * 100},${clampForContext(Number(point.y || 0), 0, 1) * 100}`)
             .join(' ');
         const isClosed = sourceKind === 'stroke';
         const shape = isClosed
-            ? `<polygon points="${escapeHtml(polyline)}"></polygon>`
-            : `<polyline points="${escapeHtml(polyline)}"></polyline>`;
+            ? `<polygon points="${escape(polyline)}"></polygon>`
+            : `<polyline points="${escape(polyline)}"></polyline>`;
         const anchors = points.map((point, index) => {
-            const x = clamp(Number(point.x || 0), 0, 1) * 100;
-            const y = clamp(Number(point.y || 0), 0, 1) * 100;
+            const x = clampForContext(Number(point.x || 0), 0, 1) * 100;
+            const y = clampForContext(Number(point.y || 0), 0, 1) * 100;
             const isFirst = index === 0;
             const isLast = index === points.length - 1;
             const ref = sourceKind === 'pending' ? `pending:${index}` : `${closedIndex}:${index}`;
             const closeTarget = !isClosed && isFirst && points.length >= 3;
-            const title = closeTarget ? t('Close mask path', '闭合遮罩路径') : (isClosed ? t('Drag mask point', '拖动遮罩点') : t('Drag pen point', '拖动钢笔点'));
-            return `<button type="button" class="sai-timeline-pen-anchor ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''} ${closeTarget ? 'is-close-target' : ''}" data-timeline-pen-anchor="${escapeHtml(ref)}" style="left:${escapeHtml(x.toFixed(3))}%;top:${escapeHtml(y.toFixed(3))}%" title="${escapeHtml(title)}"></button>`;
+            const title = closeTarget ? translate('Close mask path', '闭合遮罩路径') : (isClosed ? translate('Drag mask point', '拖动遮罩点') : translate('Drag pen point', '拖动钢笔点'));
+            return `<button type="button" class="sai-timeline-pen-anchor ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''} ${closeTarget ? 'is-close-target' : ''}" data-timeline-pen-anchor="${escape(ref)}" style="left:${escape(x.toFixed(3))}%;top:${escape(y.toFixed(3))}%" title="${escape(title)}"></button>`;
         }).join('');
         return `<div class="sai-timeline-pen-overlay ${isClosed ? 'is-closed' : ''}" aria-hidden="false"><svg class="sai-timeline-pen-preview" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${shape}</svg>${anchors}</div>`;
     }
 
     function renderPreview(node, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         const params = normalizeParams(node?.params);
         const visuals = (node.clips || [])
             .filter(clip => clip.kind !== 'audio')
@@ -1078,158 +1143,169 @@
         const aspectValue = Math.max(0.05, Number(params.width || 16) / Math.max(1, Number(params.height || 9)));
         const snapActive = params.snap_enabled !== false;
         const guidesActive = params.guides_enabled !== false;
-        const resetTitle = tool === 'crop' ? t('Reset crop', '重置裁剪') : (tool === 'mask' ? t('Reset mask', '重置遮罩') : t('Reset transform', '重置变换'));
+        const resetTitle = tool === 'crop' ? translate('Reset crop', '重置裁剪') : (tool === 'mask' ? translate('Reset mask', '重置遮罩') : translate('Reset transform', '重置变换'));
         const selectedClip = visuals.find(clip => clip.id === params.selected_clip_id && clipAtPlayhead(clip, params.playhead));
         const selectedMask = clipMaskDataUrl(selectedClip);
         const maskedVisuals = visuals.filter(clip => clipAtPlayhead(clip, params.playhead) && clipMaskDataUrl(clip));
-        const maskFeather = clamp(Number(params.mask_feather || 0), 0, 120);
+        const maskFeather = clampForContext(Number(params.mask_feather || 0), 0, 120);
         const maskOverlay = tool === 'mask' && selectedMask
-            ? `<div class="sai-timeline-mask-preview" style="--timeline-mask-image:url(&quot;${escapeHtml(selectedMask)}&quot;)" aria-hidden="true"></div>`
+            ? `<div class="sai-timeline-mask-preview" style="--timeline-mask-image:url(&quot;${escape(selectedMask)}&quot;)" aria-hidden="true"></div>`
             : '';
         const maskCutouts = maskedVisuals.map((clip) => {
             const maskSrc = clipMaskDataUrl(clip);
-            return `<div class="sai-timeline-mask-cutout" data-mask-cutout-clip="${escapeHtml(clip.id)}" style="--timeline-mask-image:url(&quot;${escapeHtml(maskSrc)}&quot;);z-index:${previewLayerZIndex(node, clip)}" aria-hidden="true">${renderPreviewLayer(node, clip, context, params.playhead)}</div>`;
+            return `<div class="sai-timeline-mask-cutout" data-mask-cutout-clip="${escape(clip.id)}" style="--timeline-mask-image:url(&quot;${escape(maskSrc)}&quot;);z-index:${previewLayerZIndex(node, clip)}" aria-hidden="true">${renderPreviewLayer(node, clip, context, params.playhead)}</div>`;
         }).join('');
-        const penOverlay = tool === 'mask' ? renderPenOverlay(selectedClip) : '';
+        const penOverlay = tool === 'mask' ? renderPenOverlay(selectedClip, context) : '';
         return `<div class="sai-timeline-preview-wrap">
   <div class="sai-timeline-preview-toolbar">
-    <button type="button" data-node-action="timeline-preview-play" title="${escapeHtml(params.preview_playing ? t('Pause', '暂停') : t('Play', '播放'))}"><i class="fa-solid ${params.preview_playing ? 'fa-pause' : 'fa-play'}"></i></button>
-    <button type="button" data-node-action="timeline-preview-play-full" title="${escapeHtml(t('Play from start', '从开头播放'))}"><i class="fa-solid fa-backward-step"></i></button>
-    <button type="button" data-timeline-tool="transform" class="${tool === 'transform' ? 'is-active' : ''}">${escapeHtml(t('Transform', '变换'))}</button>
-    <button type="button" data-timeline-tool="crop" class="${tool === 'crop' ? 'is-active' : ''}">${escapeHtml(t('Crop', '裁剪'))}</button>
-    <button type="button" data-timeline-tool="mask" class="${tool === 'mask' ? 'is-active' : ''}" title="${escapeHtml(t('Draw alpha mask; hold Alt to erase', '绘制透明遮罩；按住 Alt 擦除'))}">${escapeHtml(t('Mask', '遮罩'))}</button>
-    ${tool === 'mask' ? `<label class="sai-timeline-feather-control"><i class="fa-solid fa-pen-nib"></i><span>${escapeHtml(t('Feather', '羽化'))}</span><input data-timeline-param="mask_feather" type="range" min="0" max="120" step="1" value="${escapeHtml(maskFeather)}"><b>${escapeHtml(String(Math.round(maskFeather)))}</b></label>` : ''}
-    <button type="button" data-node-action="timeline-reset-active-tool" title="${escapeHtml(resetTitle)}"><i class="fa-solid fa-rotate-left"></i></button>
-    <button type="button" data-timeline-toggle-param="snap_enabled" class="${snapActive ? 'is-active' : ''}" title="${escapeHtml(snapActive ? t('Disable snapping', '关闭吸附') : t('Enable snapping', '开启吸附'))}"><i class="fa-solid fa-magnet"></i></button>
-    <button type="button" data-timeline-toggle-param="guides_enabled" class="${guidesActive ? 'is-active' : ''}" title="${escapeHtml(guidesActive ? t('Hide preview guides', '隐藏预览参考线') : t('Show preview guides', '显示预览参考线'))}"><i class="fa-solid fa-table-cells"></i></button>
-    <button type="button" data-node-action="timeline-duration-playhead" title="${escapeHtml(t('Set duration to playhead', '将时长设为播放头'))}"><i class="fa-solid fa-scissors"></i></button>
-    <button type="button" data-node-action="timeline-duration-content" title="${escapeHtml(t('Set duration to last clip', '将时长设为最后素材'))}"><i class="fa-solid fa-compress"></i></button>
+    <button type="button" data-node-action="timeline-preview-play" title="${escape(params.preview_playing ? translate('Pause', '暂停') : translate('Play', '播放'))}"><i class="fa-solid ${params.preview_playing ? 'fa-pause' : 'fa-play'}"></i></button>
+    <button type="button" data-node-action="timeline-preview-play-full" title="${escape(translate('Play from start', '从开头播放'))}"><i class="fa-solid fa-backward-step"></i></button>
+    <button type="button" data-timeline-tool="transform" class="${tool === 'transform' ? 'is-active' : ''}">${escape(translate('Transform', '变换'))}</button>
+    <button type="button" data-timeline-tool="crop" class="${tool === 'crop' ? 'is-active' : ''}">${escape(translate('Crop', '裁剪'))}</button>
+    <button type="button" data-timeline-tool="mask" class="${tool === 'mask' ? 'is-active' : ''}" title="${escape(translate('Draw alpha mask; hold Alt to erase', '绘制透明遮罩；按住 Alt 擦除'))}">${escape(translate('Mask', '遮罩'))}</button>
+    ${tool === 'mask' ? `<label class="sai-timeline-feather-control"><i class="fa-solid fa-pen-nib"></i><span>${escape(translate('Feather', '羽化'))}</span><input data-timeline-param="mask_feather" type="range" min="0" max="120" step="1" value="${escape(maskFeather)}"><b>${escape(String(Math.round(maskFeather)))}</b></label>` : ''}
+    <button type="button" data-node-action="timeline-reset-active-tool" title="${escape(resetTitle)}"><i class="fa-solid fa-rotate-left"></i></button>
+    <button type="button" data-timeline-toggle-param="snap_enabled" class="${snapActive ? 'is-active' : ''}" title="${escape(snapActive ? translate('Disable snapping', '关闭吸附') : translate('Enable snapping', '开启吸附'))}"><i class="fa-solid fa-magnet"></i></button>
+    <button type="button" data-timeline-toggle-param="guides_enabled" class="${guidesActive ? 'is-active' : ''}" title="${escape(guidesActive ? translate('Hide preview guides', '隐藏预览参考线') : translate('Show preview guides', '显示预览参考线'))}"><i class="fa-solid fa-table-cells"></i></button>
+    <button type="button" data-node-action="timeline-duration-playhead" title="${escape(translate('Set duration to playhead', '将时长设为播放头'))}"><i class="fa-solid fa-scissors"></i></button>
+    <button type="button" data-node-action="timeline-duration-content" title="${escape(translate('Set duration to last clip', '将时长设为最后素材'))}"><i class="fa-solid fa-compress"></i></button>
   </div>
-  <div class="sai-timeline-preview-stage ${hasActiveVisual ? 'has-active' : ''} ${guidesActive ? 'show-guides' : ''} ${maskedVisuals.length ? 'has-mask-cutout' : ''}" data-timeline-tool-state="${escapeHtml(tool)}" style="--timeline-aspect:${params.width}/${params.height};--timeline-aspect-value:${aspectValue};background:${escapeHtml(params.background || '#000000')}">
+  <div class="sai-timeline-preview-stage ${hasActiveVisual ? 'has-active' : ''} ${guidesActive ? 'show-guides' : ''} ${maskedVisuals.length ? 'has-mask-cutout' : ''}" data-timeline-tool-state="${escape(tool)}" style="--timeline-aspect:${params.width}/${params.height};--timeline-aspect-value:${aspectValue};background:${escape(params.background || '#000000')}">
     ${visuals.map(clip => renderPreviewLayer(node, clip, context, params.playhead)).join('')}
     ${maskCutouts}
     ${maskOverlay}
     ${penOverlay}
     <div class="sai-timeline-preview-guides" aria-hidden="true"></div>
-    <div class="sai-timeline-preview-empty sai-timeline-preview-no-active">${escapeHtml(t('No visual clip at playhead', '播放头处没有可视素材'))}</div>
-    ${audioCount ? `<div class="sai-timeline-preview-audio"><i class="fa-solid fa-wave-square"></i><span>${escapeHtml(t('{count} audio active', '{count} 条音频激活').replace('{count}', audioCount))}</span></div>` : ''}
+    <div class="sai-timeline-preview-empty sai-timeline-preview-no-active">${escape(translate('No visual clip at playhead', '播放头处没有可视素材'))}</div>
+    ${audioCount ? `<div class="sai-timeline-preview-audio"><i class="fa-solid fa-wave-square"></i><span>${escape(translate('{count} audio active', '{count} 条音频激活').replace('{count}', audioCount))}</span></div>` : ''}
   </div>
 </div>`;
     }
 
-    function renderInlineClipEditor(node) {
+    function renderInlineClipEditor(node, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
         const clip = (node.clips || []).find(item => item.id === node.params.selected_clip_id);
-        if (!clip) return `<div class="sai-timeline-inline-editor"><span>${escapeHtml(t('Select a clip to edit.', '选择一个剪辑进行编辑。'))}</span></div>`;
+        if (!clip) return `<div class="sai-timeline-inline-editor"><span>${escape(translate('Select a clip to edit.', '选择一个剪辑进行编辑。'))}</span></div>`;
         const keyframeCount = Array.isArray(clip.keyframes) ? clip.keyframes.length : 0;
         const playhead = Number(node.params?.playhead || 0);
         const atKeyframe = clipKeyframeAtPlayhead(clip, playhead);
         const keyframeNavDisabled = keyframeCount ? '' : 'disabled';
         const effectiveClip = clipAtTime(clip, playhead);
         return `<div class="sai-timeline-inline-editor">
-  <div class="sai-timeline-inline-head"><b>${escapeHtml(clip.title || t('Clip', '剪辑'))}</b><small>${escapeHtml(clip.kind)}</small></div>
-  <label><span>${escapeHtml(t('Start', '开始'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escapeHtml(clip.id)}:start" title="${escapeHtml(t('Reset start', '重置开始'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escapeHtml(clip.id)}:start" type="range" min="0" max="${escapeHtml(node.params.duration)}" step="0.05" value="${escapeHtml(clip.start)}"><b>${escapeHtml(formatDuration(clip.start))}</b></label>
-  <label><span>${escapeHtml(t('Duration', '时长'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escapeHtml(clip.id)}:duration" title="${escapeHtml(t('Reset duration', '重置时长'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escapeHtml(clip.id)}:duration" type="range" min="0.05" max="${escapeHtml(Math.max(node.params.duration, clip.duration))}" step="0.05" value="${escapeHtml(clip.duration)}"><b>${escapeHtml(formatDuration(clip.duration))}</b></label>
-  ${clip.kind !== 'audio' ? `<div class="sai-timeline-keyframe-row"><span><i class="fa-solid fa-diamond"></i>${escapeHtml(String(keyframeCount))}</span><div class="sai-timeline-keyframe-nav"><button type="button" data-node-action="timeline-keyframe-prev" ${keyframeNavDisabled} title="${escapeHtml(t('Previous keyframe', '上一个关键帧'))}"><i class="fa-solid fa-backward-step"></i></button><button type="button" data-node-action="timeline-keyframe-next" ${keyframeNavDisabled} title="${escapeHtml(t('Next keyframe', '下一个关键帧'))}"><i class="fa-solid fa-forward-step"></i></button></div><div class="sai-timeline-keyframe-actions"><button type="button" data-node-action="timeline-keyframe-toggle">${escapeHtml(atKeyframe ? t('Update Key Frame', '更新关键帧') : t('Add Key Frame', '添加关键帧'))}</button><button type="button" data-node-action="timeline-keyframe-delete" ${atKeyframe ? '' : 'disabled'} title="${escapeHtml(t('Delete keyframe', '删除关键帧'))}"><i class="fa-solid fa-trash"></i></button></div></div>
-  <label><span>${escapeHtml(t('Scale', '缩放'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escapeHtml(clip.id)}:scale" title="${escapeHtml(t('Reset scale', '重置缩放'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escapeHtml(clip.id)}:scale" type="range" min="0.1" max="3" step="0.01" value="${escapeHtml(effectiveClip.scale ?? 1)}"><b>${escapeHtml(Number(effectiveClip.scale ?? 1).toFixed(2))}</b></label>
-  <label><span>${escapeHtml(t('Opacity', '不透明度'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escapeHtml(clip.id)}:opacity" title="${escapeHtml(t('Reset opacity', '重置不透明度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escapeHtml(clip.id)}:opacity" type="range" min="0" max="1" step="0.01" value="${escapeHtml(effectiveClip.opacity ?? 1)}"><b>${escapeHtml(Math.round(Number(effectiveClip.opacity ?? 1) * 100))}%</b></label>` : `<label><span>${escapeHtml(t('Volume', '音量'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escapeHtml(clip.id)}:volume" title="${escapeHtml(t('Reset volume', '重置音量'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escapeHtml(clip.id)}:volume" type="range" min="0" max="2" step="0.01" value="${escapeHtml(clip.volume ?? 1)}"><b>${escapeHtml(Math.round(Number(clip.volume ?? 1) * 100))}%</b></label>`}
+  <div class="sai-timeline-inline-head"><b>${escape(clip.title || translate('Clip', '剪辑'))}</b><small>${escape(clip.kind)}</small></div>
+  <label><span>${escape(translate('Start', '开始'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escape(clip.id)}:start" title="${escape(translate('Reset start', '重置开始'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escape(clip.id)}:start" type="range" min="0" max="${escape(node.params.duration)}" step="0.05" value="${escape(clip.start)}"><b>${escape(formatDuration(clip.start, context))}</b></label>
+  <label><span>${escape(translate('Duration', '时长'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escape(clip.id)}:duration" title="${escape(translate('Reset duration', '重置时长'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escape(clip.id)}:duration" type="range" min="0.05" max="${escape(Math.max(node.params.duration, clip.duration))}" step="0.05" value="${escape(clip.duration)}"><b>${escape(formatDuration(clip.duration, context))}</b></label>
+  ${clip.kind !== 'audio' ? `<div class="sai-timeline-keyframe-row"><span><i class="fa-solid fa-diamond"></i>${escape(String(keyframeCount))}</span><div class="sai-timeline-keyframe-nav"><button type="button" data-node-action="timeline-keyframe-prev" ${keyframeNavDisabled} title="${escape(translate('Previous keyframe', '上一个关键帧'))}"><i class="fa-solid fa-backward-step"></i></button><button type="button" data-node-action="timeline-keyframe-next" ${keyframeNavDisabled} title="${escape(translate('Next keyframe', '下一个关键帧'))}"><i class="fa-solid fa-forward-step"></i></button></div><div class="sai-timeline-keyframe-actions"><button type="button" data-node-action="timeline-keyframe-toggle">${escape(atKeyframe ? translate('Update Key Frame', '更新关键帧') : translate('Add Key Frame', '添加关键帧'))}</button><button type="button" data-node-action="timeline-keyframe-delete" ${atKeyframe ? '' : 'disabled'} title="${escape(translate('Delete keyframe', '删除关键帧'))}"><i class="fa-solid fa-trash"></i></button></div></div>
+  <label><span>${escape(translate('Scale', '缩放'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escape(clip.id)}:scale" title="${escape(translate('Reset scale', '重置缩放'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escape(clip.id)}:scale" type="range" min="0.1" max="3" step="0.01" value="${escape(effectiveClip.scale ?? 1)}"><b>${escape(Number(effectiveClip.scale ?? 1).toFixed(2))}</b></label>
+  <label><span>${escape(translate('Opacity', '不透明度'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escape(clip.id)}:opacity" title="${escape(translate('Reset opacity', '重置不透明度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escape(clip.id)}:opacity" type="range" min="0" max="1" step="0.01" value="${escape(effectiveClip.opacity ?? 1)}"><b>${escape(Math.round(Number(effectiveClip.opacity ?? 1) * 100))}%</b></label>` : `<label><span>${escape(translate('Volume', '音量'))}<button type="button" class="sai-param-reset" data-timeline-clip-reset="${escape(clip.id)}:volume" title="${escape(translate('Reset volume', '重置音量'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-clip-param="${escape(clip.id)}:volume" type="range" min="0" max="2" step="0.01" value="${escape(clip.volume ?? 1)}"><b>${escape(Math.round(Number(clip.volume ?? 1) * 100))}%</b></label>`}
 </div>`;
     }
 
-    function renderProjectControls(params) {
+    function renderProjectControls(params, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
+        const translateOption = (value, options) => translateOptionValue(context, value, options);
         const sizeValue = SIZE_PRESETS.some(item => item[0] === params.size_preset) ? params.size_preset : 'custom';
         const fpsValue = FPS_PRESETS.includes(String(params.fps_preset)) ? String(params.fps_preset) : 'custom';
         const sizeLabel = SIZE_PRESETS.find(item => item[0] === sizeValue)?.[1] || 'Custom';
         const fpsLabel = fpsValue === 'custom' ? 'Custom' : fpsValue;
-        const customSelect = (key, label, value, display, options) => `<label class="sai-timeline-custom-select-label"><span>${escapeHtml(label)}<button type="button" class="sai-param-reset" data-timeline-reset="${escapeHtml(key)}" title="${escapeHtml(t('Reset {label}', '重置{label}').replace('{label}', label))}"><i class="fa-solid fa-rotate-left"></i></button></span><div class="sai-timeline-custom-select" data-timeline-select="${escapeHtml(key)}"><button type="button" data-timeline-select-button><span>${escapeHtml(tOption(display, { Custom: '自定义' }))}</span><i class="fa-solid fa-chevron-down"></i></button><div class="sai-timeline-select-menu">${options.map(item => {
+        const customSelect = (key, label, value, display, options) => `<label class="sai-timeline-custom-select-label"><span>${escape(label)}<button type="button" class="sai-param-reset" data-timeline-reset="${escape(key)}" title="${escape(translate('Reset {label}', '重置{label}').replace('{label}', label))}"><i class="fa-solid fa-rotate-left"></i></button></span><div class="sai-timeline-custom-select" data-timeline-select="${escape(key)}"><button type="button" data-timeline-select-button><span>${escape(translateOption(display, { Custom: '自定义' }))}</span><i class="fa-solid fa-chevron-down"></i></button><div class="sai-timeline-select-menu">${options.map(item => {
             const optionValue = Array.isArray(item) ? item[0] : item;
             const optionLabel = Array.isArray(item) ? item[1] : (item === 'custom' ? 'Custom' : item);
-            return `<button type="button" class="${String(optionValue) === String(value) ? 'is-active' : ''}" data-timeline-select-option="${escapeHtml(optionValue)}">${escapeHtml(tOption(optionLabel, { Custom: '自定义' }))}</button>`;
+            return `<button type="button" class="${String(optionValue) === String(value) ? 'is-active' : ''}" data-timeline-select-option="${escape(optionValue)}">${escape(translateOption(optionLabel, { Custom: '自定义' }))}</button>`;
         }).join('')}</div></div></label>`;
         return `<div class="sai-timeline-settings">
-  ${customSelect('size_preset', t('Size', '尺寸'), sizeValue, sizeLabel, SIZE_PRESETS)}
-  <button type="button" class="sai-timeline-tool-button" data-node-action="timeline-swap-size" title="${escapeHtml(t('Swap timeline orientation', '交换横竖屏'))}"><i class="fa-solid fa-rotate"></i><span>${escapeHtml(t('Swap orientation', '横竖互换'))}</span></button>
-  ${sizeValue === 'custom' ? `<label><span>${escapeHtml(t('Width', '宽度'))}<button type="button" class="sai-param-reset" data-timeline-reset="width" title="${escapeHtml(t('Reset width', '重置宽度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="width" type="number" min="16" step="8" value="${escapeHtml(params.width)}"></label><label><span>${escapeHtml(t('Height', '高度'))}<button type="button" class="sai-param-reset" data-timeline-reset="height" title="${escapeHtml(t('Reset height', '重置高度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="height" type="number" min="16" step="8" value="${escapeHtml(params.height)}"></label>` : ''}
+  ${customSelect('size_preset', translate('Size', '尺寸'), sizeValue, sizeLabel, SIZE_PRESETS)}
+  <button type="button" class="sai-timeline-tool-button" data-node-action="timeline-swap-size" title="${escape(translate('Swap timeline orientation', '交换横竖屏'))}"><i class="fa-solid fa-rotate"></i><span>${escape(translate('Swap orientation', '横竖互换'))}</span></button>
+  ${sizeValue === 'custom' ? `<label><span>${escape(translate('Width', '宽度'))}<button type="button" class="sai-param-reset" data-timeline-reset="width" title="${escape(translate('Reset width', '重置宽度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="width" type="number" min="16" step="8" value="${escape(params.width)}"></label><label><span>${escape(translate('Height', '高度'))}<button type="button" class="sai-param-reset" data-timeline-reset="height" title="${escape(translate('Reset height', '重置高度'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="height" type="number" min="16" step="8" value="${escape(params.height)}"></label>` : ''}
   ${customSelect('fps_preset', 'FPS', fpsValue, fpsLabel, FPS_PRESETS)}
-  ${fpsValue === 'custom' ? `<label><span>${escapeHtml(t('Custom FPS', '自定义 FPS'))}<button type="button" class="sai-param-reset" data-timeline-reset="fps" title="${escapeHtml(t('Reset FPS', '重置 FPS'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="fps" type="number" min="1" max="120" step="1" value="${escapeHtml(params.fps)}"></label>` : ''}
-  <label><span>${escapeHtml(t('Duration', '时长'))}<button type="button" class="sai-param-reset" data-timeline-reset="duration" title="${escapeHtml(t('Reset duration', '重置时长'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="duration" type="number" min="1" step="0.1" value="${escapeHtml(params.duration)}"></label>
+  ${fpsValue === 'custom' ? `<label><span>${escape(translate('Custom FPS', '自定义 FPS'))}<button type="button" class="sai-param-reset" data-timeline-reset="fps" title="${escape(translate('Reset FPS', '重置 FPS'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="fps" type="number" min="1" max="120" step="1" value="${escape(params.fps)}"></label>` : ''}
+  <label><span>${escape(translate('Duration', '时长'))}<button type="button" class="sai-param-reset" data-timeline-reset="duration" title="${escape(translate('Reset duration', '重置时长'))}"><i class="fa-solid fa-rotate-left"></i></button></span><input data-timeline-param="duration" type="number" min="1" step="0.1" value="${escape(params.duration)}"></label>
 </div>`;
     }
 
     function renderNodeHtml(node, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
         normalizeNode(node);
         const params = node.params;
         return `<div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Timeline', '时间线'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || t('Media Timeline', '媒体时间线'))}</span>
+  <span class="sai-node-kind">${escape(translate('Timeline', '时间线'))}</span>
+  <span class="sai-node-title">${escape(node.title || translate('Media Timeline', '媒体时间线'))}</span>
   ${call(context, 'renderNodeStateBadges', '', node)}
-  <button type="button" data-node-action="timeline-add-selected" title="${escapeHtml(t('Add selected media', '添加选中媒体'))}"><i class="fa-solid fa-plus"></i></button>
-  <button type="button" data-node-action="timeline-render-result" title="${escapeHtml(t('Render current frame to Result', '将当前帧渲染为结果'))}"><i class="fa-solid fa-circle-dot"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  <button type="button" data-node-action="timeline-add-selected" title="${escape(translate('Add selected media', '添加选中媒体'))}"><i class="fa-solid fa-plus"></i></button>
+  <button type="button" data-node-action="timeline-render-result" title="${escape(translate('Render current frame to Result', '将当前帧渲染为结果'))}"><i class="fa-solid fa-circle-dot"></i></button>
+  <button type="button" data-node-action="delete" title="${escape(translate('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
 </div>
 <div class="sai-timeline-input-row">
-  <button type="button" class="sai-node-handle sai-node-handle-in" data-timeline-media-in title="${escapeHtml(t('Connect media to add a clip', '连接媒体以添加剪辑'))}"></button>
-  <i class="fa-solid fa-clapperboard"></i><span>${escapeHtml(t('Media Input', '媒体输入'))}</span><b>${escapeHtml(t('{count} clips', '{count} 个剪辑').replace('{count}', node.clips.length))}</b><small>${escapeHtml(t('Drag connect', '拖拽连接'))}</small>
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-timeline-media-in title="${escape(translate('Connect media to add a clip', '连接媒体以添加剪辑'))}"></button>
+  <i class="fa-solid fa-clapperboard"></i><span>${escape(translate('Media Input', '媒体输入'))}</span><b>${escape(translate('{count} clips', '{count} 个剪辑').replace('{count}', node.clips.length))}</b><small>${escape(translate('Drag connect', '拖拽连接'))}</small>
 </div>
-${renderProjectControls(params)}
+${renderProjectControls(params, context)}
 ${renderPreview(node, context)}
-${renderInlineClipEditor(node)}
-${renderRuler(node)}
+${renderInlineClipEditor(node, context)}
+${renderRuler(node, context)}
 <div class="sai-timeline-tracks">${node.tracks.map(track => renderTrack(node, track, context)).join('')}</div>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="timeline" title="${escapeHtml(t('Timeline output', '时间线输出'))}"></button>`;
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="timeline" title="${escape(translate('Timeline output', '时间线输出'))}"></button>`;
     }
 
-    function renderClipInspector(node, clip) {
+    function renderClipInspector(node, clip, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
         const keyframes = normalizeKeyframes(clip);
         const effectiveClip = clipAtTime(clip, Number(node?.params?.playhead || 0));
         const keyframeList = keyframes.length
-            ? `<div class="sai-timeline-keyframe-list">${keyframes.map(frame => `<button type="button" data-inspector-action="timeline-keyframe-jump" data-timeline-keyframe-time="${escapeHtml(String(frame.time))}" data-timeline-keyframe-clip="${escapeHtml(clip.id)}">${escapeHtml(formatDuration(frame.time))}</button>`).join('')}</div>`
-            : `<p>${escapeHtml(t('No keyframes.', '暂无关键帧。'))}</p>`;
+            ? `<div class="sai-timeline-keyframe-list">${keyframes.map(frame => `<button type="button" data-inspector-action="timeline-keyframe-jump" data-timeline-keyframe-time="${escape(String(frame.time))}" data-timeline-keyframe-clip="${escape(clip.id)}">${escape(formatDuration(frame.time, context))}</button>`).join('')}</div>`
+            : `<p>${escape(translate('No keyframes.', '暂无关键帧。'))}</p>`;
         return `<div class="sai-timeline-clip-inspector">
-  <h4>${escapeHtml(clip.title || clip.id)}</h4>
+  <h4>${escape(clip.title || clip.id)}</h4>
   <div class="sai-inspector-grid2">
-    <label><span>${escapeHtml(t('Start', '开始'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:start" type="number" min="0" step="0.05" value="${escapeHtml(clip.start)}"></label>
-    <label><span>${escapeHtml(t('Duration', '时长'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:duration" type="number" min="0.05" step="0.05" value="${escapeHtml(clip.duration)}"></label>
+    <label><span>${escape(translate('Start', '开始'))}</span><input data-timeline-clip-param="${escape(clip.id)}:start" type="number" min="0" step="0.05" value="${escape(clip.start)}"></label>
+    <label><span>${escape(translate('Duration', '时长'))}</span><input data-timeline-clip-param="${escape(clip.id)}:duration" type="number" min="0.05" step="0.05" value="${escape(clip.duration)}"></label>
   </div>
-  ${clip.kind !== 'audio' ? `<div class="sai-inspector-actions sai-timeline-keyframe-actions"><button type="button" data-inspector-action="timeline-keyframe-prev" ${keyframes.length ? '' : 'disabled'}><i class="fa-solid fa-backward-step"></i><span>${escapeHtml(t('Prev', '上一个'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-next" ${keyframes.length ? '' : 'disabled'}><i class="fa-solid fa-forward-step"></i><span>${escapeHtml(t('Next', '下一个'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-toggle"><i class="fa-solid fa-diamond"></i><span>${escapeHtml(t('Add / update all transform', '添加 / 更新所有变换'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-delete"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete at playhead', '删除播放头关键帧'))}</span></button></div>
+  ${clip.kind !== 'audio' ? `<div class="sai-inspector-actions sai-timeline-keyframe-actions"><button type="button" data-inspector-action="timeline-keyframe-prev" ${keyframes.length ? '' : 'disabled'}><i class="fa-solid fa-backward-step"></i><span>${escape(translate('Prev', '上一个'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-next" ${keyframes.length ? '' : 'disabled'}><i class="fa-solid fa-forward-step"></i><span>${escape(translate('Next', '下一个'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-toggle"><i class="fa-solid fa-diamond"></i><span>${escape(translate('Add / update all transform', '添加 / 更新所有变换'))}</span></button><button type="button" data-inspector-action="timeline-keyframe-delete"><i class="fa-solid fa-trash"></i><span>${escape(translate('Delete at playhead', '删除播放头关键帧'))}</span></button></div>
   ${keyframeList}
   <div class="sai-inspector-grid2">
-    <label><span>${escapeHtml(t('Scale', '缩放'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:scale" type="number" min="0.05" step="0.05" value="${escapeHtml(effectiveClip.scale ?? 1)}"></label>
-    <label><span>${escapeHtml(t('Opacity', '不透明度'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:opacity" type="number" min="0" max="1" step="0.05" value="${escapeHtml(effectiveClip.opacity ?? 1)}"></label>
-    <label><span>X</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:x" type="number" min="-200" max="200" step="1" value="${escapeHtml(effectiveClip.x ?? 0)}"></label>
-    <label><span>Y</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:y" type="number" min="-200" max="200" step="1" value="${escapeHtml(effectiveClip.y ?? 0)}"></label>
-    <label><span>${escapeHtml(t('Rotate', '旋转'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:rotate" type="number" min="-360" max="360" step="1" value="${escapeHtml(effectiveClip.rotate ?? 0)}"></label>
-    <label><span>${escapeHtml(t('Crop L', '裁剪左'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:crop_left" type="number" min="0" max="95" step="1" value="${escapeHtml(clip.crop_left ?? 0)}"></label>
-    <label><span>${escapeHtml(t('Crop R', '裁剪右'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:crop_right" type="number" min="0" max="95" step="1" value="${escapeHtml(clip.crop_right ?? 0)}"></label>
-    <label><span>${escapeHtml(t('Crop T', '裁剪上'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:crop_top" type="number" min="0" max="95" step="1" value="${escapeHtml(clip.crop_top ?? 0)}"></label>
-    <label><span>${escapeHtml(t('Crop B', '裁剪下'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:crop_bottom" type="number" min="0" max="95" step="1" value="${escapeHtml(clip.crop_bottom ?? 0)}"></label>
-  </div>` : `<label><span>${escapeHtml(t('Volume', '音量'))}</span><input data-timeline-clip-param="${escapeHtml(clip.id)}:volume" type="number" min="0" max="2" step="0.05" value="${escapeHtml(clip.volume ?? 1)}"></label>`}
+    <label><span>${escape(translate('Scale', '缩放'))}</span><input data-timeline-clip-param="${escape(clip.id)}:scale" type="number" min="0.05" step="0.05" value="${escape(effectiveClip.scale ?? 1)}"></label>
+    <label><span>${escape(translate('Opacity', '不透明度'))}</span><input data-timeline-clip-param="${escape(clip.id)}:opacity" type="number" min="0" max="1" step="0.05" value="${escape(effectiveClip.opacity ?? 1)}"></label>
+    <label><span>X</span><input data-timeline-clip-param="${escape(clip.id)}:x" type="number" min="-200" max="200" step="1" value="${escape(effectiveClip.x ?? 0)}"></label>
+    <label><span>Y</span><input data-timeline-clip-param="${escape(clip.id)}:y" type="number" min="-200" max="200" step="1" value="${escape(effectiveClip.y ?? 0)}"></label>
+    <label><span>${escape(translate('Rotate', '旋转'))}</span><input data-timeline-clip-param="${escape(clip.id)}:rotate" type="number" min="-360" max="360" step="1" value="${escape(effectiveClip.rotate ?? 0)}"></label>
+    <label><span>${escape(translate('Crop L', '裁剪左'))}</span><input data-timeline-clip-param="${escape(clip.id)}:crop_left" type="number" min="0" max="95" step="1" value="${escape(clip.crop_left ?? 0)}"></label>
+    <label><span>${escape(translate('Crop R', '裁剪右'))}</span><input data-timeline-clip-param="${escape(clip.id)}:crop_right" type="number" min="0" max="95" step="1" value="${escape(clip.crop_right ?? 0)}"></label>
+    <label><span>${escape(translate('Crop T', '裁剪上'))}</span><input data-timeline-clip-param="${escape(clip.id)}:crop_top" type="number" min="0" max="95" step="1" value="${escape(clip.crop_top ?? 0)}"></label>
+    <label><span>${escape(translate('Crop B', '裁剪下'))}</span><input data-timeline-clip-param="${escape(clip.id)}:crop_bottom" type="number" min="0" max="95" step="1" value="${escape(clip.crop_bottom ?? 0)}"></label>
+  </div>` : `<label><span>${escape(translate('Volume', '音量'))}</span><input data-timeline-clip-param="${escape(clip.id)}:volume" type="number" min="0" max="2" step="0.05" value="${escape(clip.volume ?? 1)}"></label>`}
 </div>`;
     }
 
     function renderInspector(node, context) {
+        const escape = (value) => escapeHtmlValue(context, value);
+        const translate = (en, cn) => translateValue(context, en, cn);
         normalizeNode(node);
         const params = node.params;
         return `<div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Media Timeline', '媒体时间线'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
+  <h3>${escape(translate('Media Timeline', '媒体时间线'))}</h3>
+  <label>${escape(translate('Title', '标题'))}<input data-inspector-node-field="title" value="${escape(node.title || '')}"></label>
   <div class="sai-inspector-grid2">
-    <label><span>${escapeHtml(t('Width', '宽度'))}</span><input data-timeline-param="width" type="number" min="16" step="8" value="${escapeHtml(params.width)}"></label>
-    <label><span>${escapeHtml(t('Height', '高度'))}</span><input data-timeline-param="height" type="number" min="16" step="8" value="${escapeHtml(params.height)}"></label>
-    <label><span>FPS</span><input data-timeline-param="fps" type="number" min="1" max="120" step="1" value="${escapeHtml(params.fps)}"></label>
-    <label><span>${escapeHtml(t('Duration', '时长'))}</span><input data-timeline-param="duration" type="number" min="1" step="0.1" value="${escapeHtml(params.duration)}"></label>
+    <label><span>${escape(translate('Width', '宽度'))}</span><input data-timeline-param="width" type="number" min="16" step="8" value="${escape(params.width)}"></label>
+    <label><span>${escape(translate('Height', '高度'))}</span><input data-timeline-param="height" type="number" min="16" step="8" value="${escape(params.height)}"></label>
+    <label><span>FPS</span><input data-timeline-param="fps" type="number" min="1" max="120" step="1" value="${escape(params.fps)}"></label>
+    <label><span>${escape(translate('Duration', '时长'))}</span><input data-timeline-param="duration" type="number" min="1" step="0.1" value="${escape(params.duration)}"></label>
   </div>
-  <label><span>${escapeHtml(t('Background', '背景'))}</span><input data-timeline-param="background" type="color" value="${escapeHtml(params.background || '#000000')}"></label>
-  <p>${escapeHtml(t('Connect Image / Video / Audio / Result nodes to build a composite timeline. Rendering will hand this JSON to a backend compositor.', '连接图像 / 视频 / 音频 / 结果节点来构建合成时间线，渲染时会把 JSON 交给后端合成器。'))}</p>
+  <label><span>${escape(translate('Background', '背景'))}</span><input data-timeline-param="background" type="color" value="${escape(params.background || '#000000')}"></label>
+  <p>${escape(translate('Connect Image / Video / Audio / Result nodes to build a composite timeline. Rendering will hand this JSON to a backend compositor.', '连接图像 / 视频 / 音频 / 结果节点来构建合成时间线，渲染时会把 JSON 交给后端合成器。'))}</p>
 </div>
 <div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="timeline-add-selected"><i class="fa-solid fa-plus"></i><span>${escapeHtml(t('Add selected media', '添加选中媒体'))}</span></button>
-  <button type="button" data-inspector-action="timeline-render-result"><i class="fa-solid fa-circle-dot"></i><span>${escapeHtml(t('To Result', '输出到结果'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+  <button type="button" data-inspector-action="timeline-add-selected"><i class="fa-solid fa-plus"></i><span>${escape(translate('Add selected media', '添加选中媒体'))}</span></button>
+  <button type="button" data-inspector-action="timeline-render-result"><i class="fa-solid fa-circle-dot"></i><span>${escape(translate('To Result', '输出到结果'))}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escape(translate('Duplicate', '复制'))}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escape(translate('Delete', '删除'))}</span></button>
 </div>
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(t('Clips', '剪辑'))}</h3>
-  ${node.clips.length ? node.clips.map(clip => renderClipInspector(node, clip)).join('') : `<p>${escapeHtml(t('No clips yet.', '暂无剪辑。'))}</p>`}
+  <h3>${escape(translate('Clips', '剪辑'))}</h3>
+  ${node.clips.length ? node.clips.map(clip => renderClipInspector(node, clip, context)).join('') : `<p>${escape(translate('No clips yet.', '暂无剪辑。'))}</p>`}
 </div>`;
     }
 
@@ -1243,15 +1319,19 @@ ${renderRuler(node)}
             clips: node.clips.map(clip => {
                 const source = clipSource(node, clip, context);
                 const asset = sourceAsset(source, context);
+                const serializedAsset = call(context, 'serializeAssetForRun', undefined, asset || {});
                 return Object.assign({}, clip, {
                     source_title: source?.title || '',
-                    asset: typeof ASSETS.serializeAssetForRun === 'function' ? ASSETS.serializeAssetForRun(asset || {}) : Object.assign({}, asset || {})
+                    asset: serializedAsset && typeof serializedAsset === 'object'
+                        ? serializedAsset
+                        : Object.assign({}, asset || {})
                 });
             })
         };
     }
 
     function serializeTimelineRenderPayload(node, context) {
+        const clampForContext = (value, min, max) => clampValue(context, value, min, max);
         normalizeNode(node);
         const timeline = serializeTimeline(node, context);
         const trackOrder = new Map(timeline.tracks.map((track, index) => [track.id, index]));
@@ -1274,8 +1354,8 @@ ${renderRuler(node)}
                     timing: {
                         start: Number(clip.start || 0),
                         duration: Number(clip.duration || 0),
-                        in: effectiveClipIn(clip, asset),
-                        out: Math.max(effectiveClipIn(clip, asset), Number(clip.out || effectiveClipIn(clip, asset) + Number(clip.duration || 0)))
+                        in: effectiveClipIn(clip, asset, context),
+                        out: Math.max(effectiveClipIn(clip, asset, context), Number(clip.out || effectiveClipIn(clip, asset, context) + Number(clip.duration || 0)))
                     },
                     transform: {
                         x_percent: offset.x,
@@ -1283,7 +1363,7 @@ ${renderRuler(node)}
                         scale: Number(effectiveClip.scale || 1),
                         rotate_degrees: Number(effectiveClip.rotate || 0),
                         fit: clip.fit || 'contain',
-                        opacity: clamp(Number(effectiveClip.opacity ?? 1), 0, 1),
+                        opacity: clampForContext(Number(effectiveClip.opacity ?? 1), 0, 1),
                         geometry_pixels: {
                             left: offset.left,
                             top: offset.top,
@@ -1293,10 +1373,10 @@ ${renderRuler(node)}
                     },
                     keyframes,
                     crop_percent: {
-                        left: clamp(Number(clip.crop_left || 0), 0, 95),
-                        right: clamp(Number(clip.crop_right || 0), 0, 95),
-                        top: clamp(Number(clip.crop_top || 0), 0, 95),
-                        bottom: clamp(Number(clip.crop_bottom || 0), 0, 95)
+                        left: clampForContext(Number(clip.crop_left || 0), 0, 95),
+                        right: clampForContext(Number(clip.crop_right || 0), 0, 95),
+                        top: clampForContext(Number(clip.crop_top || 0), 0, 95),
+                        bottom: clampForContext(Number(clip.crop_bottom || 0), 0, 95)
                     },
                     mask: clipMaskPayload(clip),
                     asset: clip.asset || {}
@@ -1312,10 +1392,10 @@ ${renderRuler(node)}
                 timing: {
                     start: Number(clip.start || 0),
                     duration: Number(clip.duration || 0),
-                    in: effectiveClipIn(clip, clip.asset || {}),
-                    out: Math.max(effectiveClipIn(clip, clip.asset || {}), Number(clip.out || effectiveClipIn(clip, clip.asset || {}) + Number(clip.duration || 0)))
+                    in: effectiveClipIn(clip, clip.asset || {}, context),
+                    out: Math.max(effectiveClipIn(clip, clip.asset || {}, context), Number(clip.out || effectiveClipIn(clip, clip.asset || {}, context) + Number(clip.duration || 0)))
                 },
-                volume: clamp(Number(clip.volume ?? 1), 0, 2),
+                volume: clampForContext(Number(clip.volume ?? 1), 0, 2),
                 asset: clip.asset || {}
             }));
         return {

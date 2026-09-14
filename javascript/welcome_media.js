@@ -173,9 +173,16 @@
         state.pickerResetTimer = window.setTimeout(() => clearPickerIntent(input), 5 * 60 * 1000);
     }
 
+    function pickerIntentOwnsInput(input) {
+        if (!state.pickerInput) return false;
+        if (!input || state.pickerInput === input) return true;
+        const root = byId("welcome_media_upload");
+        return !!(root && root.contains(input));
+    }
+
     function consumePickerSelection(file) {
         const input = bindUploadInput();
-        const accepted = !!file && !!input && state.pickerInput === input;
+        const accepted = !!file && pickerIntentOwnsInput(input);
         clearPickerIntent();
         return accepted;
     }
@@ -212,7 +219,7 @@
 
     function blockUnrequestedUploadChange(event) {
         const input = welcomeUploadInputForEvent(event);
-        if (!input || state.pickerInput === input) return;
+        if (!input || pickerIntentOwnsInput(input)) return;
         event.preventDefault();
         event.stopPropagation();
         if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();

@@ -222,8 +222,12 @@
                 <div class="sai-face-target-tools">
                     <label><span data-label="Target Face ID"></span><input data-face-id type="number" min="0" max="99" step="1" value="0"></label>
                     <button type="button" data-face-detect><i class="fa-solid fa-crosshairs" aria-hidden="true"></i></button>
+                    <button type="button" data-face-edit><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
+                    <button type="button" data-face-track-cancel hidden><i class="fa-solid fa-stop" aria-hidden="true"></i></button>
                     <output data-face-status role="status"></output>
                 </div>
+                <progress data-face-track-progress max="100" value="0" hidden></progress>
+                <output data-face-generation-notice role="alert" hidden></output>
                 <div class="sai-face-target-preview" data-face-preview hidden><img alt=""><div data-face-boxes></div></div>
             </div>
             <div class="sai-region-legend"><i class="sai-region-core-swatch"></i><span data-label="Rebuild"></span>
@@ -247,6 +251,8 @@
         const faceDetect = host.querySelector('[data-face-detect]');
         const facePreview = host.querySelector('[data-face-preview]');
         const faceBoxes = host.querySelector('[data-face-boxes]');
+        const faceEdit = host.querySelector('[data-face-edit]');
+        let faceEditor = null;
         let faceRequest = '';
         let facePoll = null;
         let faceStatus = '';
@@ -273,9 +279,28 @@
             faceDetect.title = t('Detect Target Faces');
             faceDetect.setAttribute('aria-label', t('Detect Target Faces'));
             faceDetect.disabled = !duration || Boolean(faceRequest);
-            host.querySelector('[data-face-status]').textContent = t(faceStatus);
+            faceEdit.disabled = !duration || Boolean(faceRequest);
+            faceEdit.title = t('Edit Face Track');
+            faceEdit.setAttribute('aria-label', t('Edit Face Track'));
+            const tracking = root.SimpAIFaceTrackEditor?.progress?.();
+            const trackStatus = options.getTrackStatus?.() || '';
+            faceDetect.disabled ||= Boolean(tracking);
+            faceEdit.disabled ||= Boolean(tracking);
+            host.querySelector('[data-face-status]').textContent = tracking
+                ? `${t(tracking.stage)} ${tracking.percent}%${tracking.total > 1 ? ` (${tracking.completed}/${tracking.total})` : ''}`
+                : t(trackStatus || faceStatus);
+            const progress = host.querySelector('[data-face-track-progress]');
+            progress.hidden = !tracking;
+            progress.value = tracking?.percent ?? 0;
+            progress.setAttribute('aria-label', t('Face Track Progress'));
+            const cancel = host.querySelector('[data-face-track-cancel]');
+            cancel.hidden = !tracking;
+            cancel.title = cancel.ariaLabel = t('Cancel Face Tracking');
             for (const box of faceBoxes.children) box.setAttribute('aria-pressed', String(Number(box.dataset.faceId) === target));
+            faceEditor?.updateTheme();
         }
+        if (root.addEventListener) listen(root, 'sai-face-track-state', renderFaceTarget);
+        listen(host.querySelector('[data-face-track-cancel]'), 'click', () => options.cancelTrack?.());
         function selectFace(value) {
             const id = Math.max(0, Math.min(99, Math.trunc(Number(value) || 0)));
             faceId.value = id;
@@ -283,6 +308,35 @@
             renderFaceTarget();
         }
         listen(faceId, 'change', () => selectFace(faceId.value));
+        listen(faceEdit, 'click', () => {
+            if (!duration || faceRequest) return;
+            if (!root.SimpAIFaceTrackEditor) {
+                faceStatus = 'Face preview controls are unavailable. Restart Studio and refresh the page.';
+                renderFaceTarget();
+                return;
+            }
+            faceEditor?.destroy();
+            const key = () => JSON.stringify([video.currentSrc || video.getAttribute('src'), options.getSelection?.() || state,
+                options.getFaceTarget?.() ?? 0, stage.__scene_theme]);
+            const openedKey = key();
+            const selected = normalizeValue(options.getSelection?.() || state);
+            const faceConfig = stage.__scene_temporal_region_control.face_target;
+            const feather = Number(document.querySelector(`#${faceConfig.feather_control} input[type="number"]`)?.value
+                ?? stage.__scene_defaults?.[faceConfig.feather_control] ?? 8);
+            video.pause();
+            faceEditor = root.SimpAIFaceTrackEditor.open(host, video, {
+                stage, stored: options.getFaceTrack?.() || '',
+                request: { start: selected.start, end: selected.end, factor: selected.factor,
+                    target_id: options.getFaceTarget?.() ?? 0, feather },
+                isCurrent: () => !controller.signal.aborted && key() === openedKey,
+                onState: value => options.onEditorState?.(value),
+                onApply(value) {
+                    options.onFaceTrack?.(value);
+                    faceStatus = 'Face Track Applied';
+                    renderFaceTarget();
+                },
+            });
+        });
         listen(faceBoxes, 'click', event => {
             const box = event.target.closest('[data-face-id]');
             if (box) selectFace(box.dataset.faceId);
@@ -697,6 +751,7 @@
             },
             destroy() {
                 clearFaceRequest();
+                faceEditor?.destroy();
                 controller.abort();
                 referenceObserver.disconnect();
                 for (const { container, label } of referenceLabels.values()) {
@@ -728,6 +783,10 @@
     let writing = false;
     let tileValues = {};
     let faceTarget = null;
+    let faceTrackJson = null;
+    let faceDraft = false, faceEditing = false, faceTrackError = '', autoTrack = null, autoTimer = null;
+    let autoRevision = 0, autoKey = '', writingTrack = false;
+    const targetTracks = new Map();
     const lifecycle = typeof document !== 'undefined' ? new AbortController() : null;
     function owner(stage) {
         return JSON.stringify([stage.__scene_theme_preset || stage.__preset || '',
@@ -741,7 +800,8 @@
             : stage.__scene_theme || stage.scene_theme || '';
         const config = stage.__scene_temporal_region_control ?? scene.temporal_region_control ?? {};
         const defaults = { ...stage.__scene_defaults };
-        for (const control of [config.tile_preview?.budget_control, config.tile_preview?.automatic_control, config.face_target?.id_control]) {
+        for (const control of [config.tile_preview?.budget_control, config.tile_preview?.automatic_control,
+                config.face_target?.id_control, config.face_target?.feather_control]) {
             if (!control) continue;
             const raw = scene[control.replace(/^scene_/, '')];
             const value = raw && typeof raw === 'object' ? raw[theme] : raw;
@@ -801,7 +861,115 @@
         try { ['start', 'end', 'factor'].forEach((key, i) => write(ids[i], selection[key])); }
         finally { writing = false; }
     }
+    function readFaceTrack(config) {
+        return faceTrackJson ?? bridge(config?.json_control)?.value ?? '';
+    }
+    function writeFaceTrack(config, value) {
+        faceTrackJson = value;
+        syncGenerationGate();
+        const input = bridge(config?.json_control);
+        if (!input) return;
+        const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        writingTrack = true;
+        try {
+            Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        } finally { writingTrack = false; }
+    }
+    function faceTrackBlockReason() {
+        const config = currentStage.__scene_temporal_region_control?.face_target;
+        if (!selection || !config || config.theme !== currentStage.__scene_theme) return '';
+        const editor = root.SimpAIFaceTrackEditor;
+        if (editor?.isBusy?.() || autoTrack) return 'Face Tracking Must Finish';
+        if (faceDraft) return 'Face Track Changes Need Applying';
+        if (faceTrackError) return faceTrackError;
+        const raw = readFaceTrack(config);
+        if (!raw) return '';
+        if (!editor) return 'Face preview controls are unavailable. Restart Studio and refresh the page.';
+        try {
+            const data = editor.validate(raw);
+            if (!editor.matchesSelection(data, selection, faceTarget ?? 0)) return 'Face Track Interval Changed';
+            editor.validate(data, null, true);
+        } catch (error) { return error.message; }
+        return '';
+    }
+    function faceTrackMessage(key) {
+        return String(currentStage.__lang || 'en').toLowerCase().startsWith('en') ? key : root.localization?.[key] || key;
+    }
+    function assertFaceTrackReady() {
+        const reason = faceTrackBlockReason();
+        if (reason) throw new Error(faceTrackMessage(reason));
+    }
+    function syncGenerationGate() {
+        if (typeof document === 'undefined') return;
+        const reason = faceTrackBlockReason();
+        for (const notice of document.querySelectorAll('[data-face-generation-notice]')) {
+            notice.hidden = !reason;
+            notice.textContent = reason ? faceTrackMessage(reason) : '';
+        }
+        for (const button of document.querySelectorAll('#generate_button button, button#generate_button, .simpleai-batch-start-button button')) {
+            if (reason) {
+                button.dataset.faceTrackBlocked = 'true';
+                button.setAttribute('aria-disabled', 'true');
+            } else if (button.dataset.faceTrackBlocked) {
+                delete button.dataset.faceTrackBlocked;
+                button.removeAttribute('aria-disabled');
+            }
+        }
+    }
+    function scheduleFaceTrackUpdate() {
+        const key = JSON.stringify([mounted?.key, selection, faceTarget, currentStage.__scene_theme]);
+        if (key === autoKey) return;
+        autoKey = key;
+        clearTimeout(autoTimer);
+        autoRevision++;
+        autoTrack?.abort();
+        faceTrackError = '';
+        syncGenerationGate();
+        const config = currentStage.__scene_temporal_region_control?.face_target;
+        const editor = root.SimpAIFaceTrackEditor;
+        if (!config || config.theme !== currentStage.__scene_theme || !editor || faceEditing) return;
+        const stored = readFaceTrack(config);
+        if (!stored) return;
+        let previous;
+        try {
+            previous = editor.validate(stored);
+            if (editor.matchesSelection(previous, selection, faceTarget ?? 0)) return;
+        } catch (error) { faceTrackError = error.message; syncGenerationGate(); return; }
+        const revision = autoRevision;
+        autoTimer = setTimeout(async function update() {
+            if (revision !== autoRevision || faceEditing) return;
+            if (editor.isBusy() || autoTrack) { autoTimer = setTimeout(update, 200); return; }
+            const operation = new AbortController();
+            autoTrack = operation;
+            syncGenerationGate();
+            try {
+                const value = await editor.requestTrack({
+                    ...selection, target_id: faceTarget ?? 0, mode: 'track_rebase', track_json: stored,
+                    feather: Number(bridge(config.feather_control)?.value ?? currentStage.__scene_defaults?.[config.feather_control] ?? 8),
+                }, operation.signal);
+                if (revision !== autoRevision || operation.signal.aborted) return;
+                writeFaceTrack(config, JSON.stringify(editor.validate(value)));
+                faceTrackError = value.needs_target_confirmation ? 'New Interval Requires Target Confirmation' : '';
+            } catch (error) {
+                if (revision === autoRevision && error.name !== 'AbortError') faceTrackError = error.message;
+            } finally {
+                if (autoTrack === operation) autoTrack = null;
+                syncGenerationGate();
+                root.dispatchEvent?.(new Event('sai-face-track-state'));
+            }
+        }, 400);
+    }
+    function changeFaceTarget(value, config) {
+        if (faceTarget !== null) targetTracks.set(faceTarget, readFaceTrack(config));
+        faceTarget = value;
+        faceTrackError = '';
+        writeFaceTrack(config, targetTracks.get(value) || '');
+        scheduleFaceTrackUpdate();
+    }
     function applySubmitValues(args, indices) {
+        assertFaceTrackReady();
         if (!selection || !currentStage.__scene_temporal_region_control?.source) return args;
         const config = currentStage.__scene_temporal_region_control;
         for (const key of ['start', 'end', 'factor']) {
@@ -810,6 +978,10 @@
         }
         const faceIndex = indices[config.face_target?.id_control];
         if (config.face_target?.theme === currentStage.__scene_theme && Number.isInteger(faceIndex)) args[faceIndex] = faceTarget ?? 0;
+        const jsonIndex = indices[config.face_target?.json_control];
+        if (config.face_target?.theme === currentStage.__scene_theme && Number.isInteger(jsonIndex)) {
+            args[jsonIndex] = readFaceTrack(config.face_target);
+        }
         return args;
     }
     function getSelectedControlValues(stage) {
@@ -819,6 +991,9 @@
         const config = nextStage.__scene_temporal_region_control;
         const result = Object.fromEntries(['start', 'end', 'factor'].map(key => [config[`${key}_control`], value[key]]));
         if (config.face_target?.theme === nextStage.__scene_theme) result[config.face_target.id_control] = faceTarget ?? 0;
+        if (config.face_target?.theme === nextStage.__scene_theme && config.face_target.json_control) {
+            result[config.face_target.json_control] = readFaceTrack(config.face_target);
+        }
         return result;
     }
     function unmount() {
@@ -835,8 +1010,13 @@
         const config = currentStage.__scene_temporal_region_control || {};
         const nextOwner = owner(currentStage);
         if (!config.source || nextOwner !== selectionOwner) {
+            clearTimeout(autoTimer); autoRevision++; autoTrack?.abort();
+            autoKey = '';
+            faceDraft = false; faceTrackError = '';
+            targetTracks.clear();
             tileValues = {};
             faceTarget = null;
+            faceTrackJson = null;
             const nextSelection = selectionAfterThemeChange(previousStage, currentStage, selection);
             unmount();
             selection = nextSelection;
@@ -890,15 +1070,20 @@
                 && mounted.ids.join() === ids.join()) {
             mounted.control.update(value, currentStage);
             writeSelection(ids);
+            scheduleFaceTrackUpdate();
             return true;
         }
         const changedSource = key && lastSourceKey && lastSourceKey !== key;
         if (key) lastSourceKey = key;
         unmount();
         if (changedSource) {
+            clearTimeout(autoTimer); autoRevision++; autoTrack?.abort();
+            autoKey = '';
+            faceDraft = false; faceTrackError = ''; targetTracks.clear();
             value.start = 0;
             value.end = Math.min(1, video.duration || 1);
             faceTarget = 0;
+            if (config.face_target?.json_control) writeFaceTrack(config.face_target, '');
         }
         selection = { ...value };
         const host = document.createElement('div');
@@ -911,37 +1096,69 @@
             getTiming: () => sourceTiming(config.source, video),
             getTileValues: () => tileValues,
             getFaceTarget: () => faceTarget,
+            getSelection: () => selection,
+            getFaceTrack: () => readFaceTrack(config.face_target),
+            getTrackStatus: () => faceTrackBlockReason(),
+            cancelTrack: () => { autoRevision++; autoTrack?.abort(); },
+            onEditorState(value) {
+                faceEditing = value.open;
+                faceDraft = value.dirty;
+                if (value.busy || value.applied) faceTrackError = '';
+                syncGenerationGate();
+            },
+            onFaceTrack: value => {
+                faceTrackError = ''; faceDraft = false;
+                writeFaceTrack(config.face_target, value);
+            },
             onFaceTarget(value) {
-                faceTarget = value;
+                changeFaceTarget(value, config.face_target);
                 writing = true;
                 try { write(config.face_target.id_control, value); }
                 finally { writing = false; }
             },
             onChange(next, commit = true) {
                 selection = { ...next };
-                if (commit) writeSelection(ids);
+                if (commit) { writeSelection(ids); scheduleFaceTrackUpdate(); }
+                else syncGenerationGate();
             },
         });
         mounted = { source, video, key, ids, control, empty };
         writeSelection(ids);
+        scheduleFaceTrackUpdate();
         return true;
     }
     function dispose() {
+        clearTimeout(autoTimer); autoRevision++; autoTrack?.abort();
         lifecycle?.abort();
         observer?.disconnect();
         parameterObserver?.disconnect();
         unmount();
         currentStage = {};
     }
-    const api = { normalize, contextRange, boundaryPreviews, tilePreview, captureReference, create, syncSceneControl, applySubmitValues, getSelectedControlValues, snapshotSceneStage, selectionAfterThemeChange, dispose };
+    const api = { normalize, contextRange, boundaryPreviews, tilePreview, captureReference, create, syncSceneControl, applySubmitValues, getSelectedControlValues, snapshotSceneStage, selectionAfterThemeChange, assertFaceTrackReady, faceTrackBlockReason, dispose };
     root.SimpAIVideoRegionSelector = api;
     if (typeof module !== 'undefined') module.exports = api;
     if (typeof document !== 'undefined') {
+        root.addEventListener?.('sai-face-track-state', syncGenerationGate, { signal: lifecycle.signal });
+        document.addEventListener('click', event => {
+            if (!event.target.closest?.('#generate_button, .simpleai-batch-start-button')) return;
+            const reason = faceTrackBlockReason();
+            if (!reason) return;
+            event.preventDefault(); event.stopImmediatePropagation();
+            syncGenerationGate();
+        }, { capture: true, signal: lifecycle.signal });
         document.addEventListener('change', event => {
             if (writing || !mounted) return;
             const faceConfig = currentStage.__scene_temporal_region_control?.face_target;
+            if (faceConfig?.json_control && event.target.closest(`#${faceConfig.json_control}`)) {
+                if (writingTrack) return;
+                faceTrackJson = event.target.value || '';
+                autoRevision++; autoTrack?.abort(); autoKey = ''; faceTrackError = '';
+                syncGenerationGate();
+                return;
+            }
             if (faceConfig && event.target.closest(`#${faceConfig.id_control}`)) {
-                faceTarget = Math.max(0, Math.min(99, Math.trunc(Number(event.target.value) || 0)));
+                changeFaceTarget(Math.max(0, Math.min(99, Math.trunc(Number(event.target.value) || 0))), faceConfig);
                 syncSceneControl(currentStage);
                 return;
             }

@@ -61,9 +61,10 @@
         return parts.join('\n');
     }
 
-    function getRunDurationText(run) {
-        const start = Date.parse(run?.created_at || '');
-        const end = Date.parse(run?.finished_at || run?.updated_at || '');
+    function getRunDurationText(run, context) {
+        const parseDate = context && typeof context.parseDate === 'function' ? context.parseDate : null;
+        const start = parseDate ? Number(parseDate(run?.created_at || '')) : NaN;
+        const end = parseDate ? Number(parseDate(run?.finished_at || run?.updated_at || '')) : NaN;
         if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '';
         const seconds = Math.max(0, Math.round((end - start) / 1000));
         if (seconds < 60) return `${seconds}s`;
@@ -71,19 +72,22 @@
         return `${minutes}m ${seconds % 60}s`;
     }
 
-    function runStateLabel(value) {
+    function runStateLabel(value, context) {
         const state = String(value || 'unknown').toLowerCase();
+        const translate = context && typeof context.t === 'function'
+            ? context.t
+            : (en, cn) => cn || en;
         const labels = {
-            queued: t('queued', '排队中'),
-            running: t('running', '运行中'),
-            waiting: t('waiting', '等待中'),
-            cancelling: t('cancelling', '正在取消'),
-            cancelled: t('cancelled', '已取消'),
-            stopped: t('stopped', '已停止'),
-            finished: t('finished', '已完成'),
-            completed: t('completed', '已完成'),
-            failed: t('failed', '失败'),
-            unknown: t('unknown', '未知')
+            queued: translate('queued', '排队中'),
+            running: translate('running', '运行中'),
+            waiting: translate('waiting', '等待中'),
+            cancelling: translate('cancelling', '正在取消'),
+            cancelled: translate('cancelled', '已取消'),
+            stopped: translate('stopped', '已停止'),
+            finished: translate('finished', '已完成'),
+            completed: translate('completed', '已完成'),
+            failed: translate('failed', '失败'),
+            unknown: translate('unknown', '未知')
         };
         return labels[state] || value || labels.unknown;
     }
@@ -154,7 +158,7 @@
         const state = run.state || node?.status?.state || 'unknown';
         const active = !context.isTerminalRunState(state);
         return `<button type="button" data-run-history-select="${escapeHtml(run.id)}" class="${run.id === selectedRun.id ? 'is-active' : ''}">
-          <span><b data-state="${escapeHtml(state)}">${escapeHtml(runStateLabel(state))}</b>${active ? `<i>${escapeHtml(t('live', '实时'))}</i>` : ''}</span>
+          <span><b data-state="${escapeHtml(state)}">${escapeHtml(runStateLabel(state, context))}</b>${active ? `<i>${escapeHtml(t('live', '实时'))}</i>` : ''}</span>
           <strong>${escapeHtml(preset?.title || itemPreview.display_name || itemPreview.preset || (run.producer_type === 'qwen_tts' ? 'Qwen TTS' : t('Preset', '预设')))}</strong>
           <small>${escapeHtml(context.formatLocalTime(run.updated_at || run.created_at))}</small>
         </button>`;
@@ -163,7 +167,7 @@
   <div class="sai-run-history-detail">
     <div class="sai-run-history-title">
       <h3>${escapeHtml(selectedPreset?.title || preview.display_name || preview.preset || (selectedRun.producer_type === 'qwen_tts' ? t('Qwen TTS Run', 'Qwen TTS 运行记录') : t('Canvas Run', '画布运行记录')))}</h3>
-      <span data-state="${escapeHtml(selectedRun.state || 'unknown')}">${escapeHtml(runStateLabel(selectedRun.state))}</span>
+      <span data-state="${escapeHtml(selectedRun.state || 'unknown')}">${escapeHtml(runStateLabel(selectedRun.state, context))}</span>
     </div>
     <div class="sai-run-history-grid">
       <div><span>${escapeHtml(t('Run ID', '运行 ID'))}</span><code>${escapeHtml(selectedRun.id || '')}</code></div>
@@ -173,7 +177,7 @@
       <div><span>${escapeHtml(t('Inputs', '输入'))}</span><b>${escapeHtml(inputCount)}</b></div>
       <div><span>${escapeHtml(t('Outputs', '输出'))}</span><b>${escapeHtml(outputCount)}</b></div>
       <div><span>${escapeHtml(t('Started', '开始时间'))}</span><b>${escapeHtml(context.formatLocalTime(selectedRun.created_at))}</b></div>
-      <div><span>${escapeHtml(t('Duration', '时长'))}</span><b>${escapeHtml(getRunDurationText(selectedRun))}</b></div>
+      <div><span>${escapeHtml(t('Duration', '时长'))}</span><b>${escapeHtml(getRunDurationText(selectedRun, context))}</b></div>
     </div>
     <div class="sai-run-history-message">${escapeHtml(selectedRun.message || selectedNode?.status?.message || response.message || '')}</div>
     ${errorText ? `<div class="sai-run-history-error"><div><strong>${escapeHtml(t('Error Details', '错误详情'))}</strong><button type="button" data-run-history-action="copy-error" title="${escapeHtml(t('Copy error', '复制错误'))}"><i class="fa-solid fa-copy"></i></button></div><pre>${escapeHtml(errorText)}</pre></div>` : ''}
@@ -214,9 +218,20 @@
         } else if (action === 'copy-error' && run) {
             const text = getRunErrorText(run);
             if (!text) return;
-            navigator.clipboard?.writeText(text).then(
-                () => context.showToast(t('Error details copied', '错误详情已复制')),
-                () => context.showToast(t('Copy failed; please select the error text manually.', '复制失败，请手动选择错误文本'))
+            const translate = typeof context.t === 'function' ? context.t : (en, cn) => cn || en;
+            let result = false;
+            try {
+                result = typeof context.writeClipboardText === 'function'
+                    ? context.writeClipboardText(text)
+                    : false;
+            } catch (err) {
+                result = false;
+            }
+            Promise.resolve(result).then(
+                (ok) => context.showToast?.(ok === true
+                    ? translate('Error details copied', '错误详情已复制')
+                    : translate('Copy failed; please select the error text manually.', '复制失败，请手动选择错误文本')),
+                () => context.showToast?.(translate('Copy failed; please select the error text manually.', '复制失败，请手动选择错误文本'))
             );
         }
     }

@@ -18,6 +18,7 @@
     const WORKBENCH_CANVAS_MEDIA_VIEWER_CONTEXT = window.SimpAICanvasWorkbenchMediaViewerContext || {};
     const WORKBENCH_CANVAS_NODE_BROWSER_CONTEXT = window.SimpAICanvasWorkbenchNodeBrowserContext || {};
     const WORKBENCH_CANVAS_PROJECT_MANAGER_CONTEXT = window.SimpAICanvasWorkbenchProjectManagerContext || {};
+    const WORKBENCH_CANVAS_GROUP_LIST_CONTEXT = window.SimpAICanvasWorkbenchGroupListContext || {};
     const WORKBENCH_CANVAS_ASSET_MANAGER_CONTEXT = window.SimpAICanvasWorkbenchAssetManagerContext || {};
     const WORKBENCH_CANVAS_MASK_EDITOR_CONTEXT = window.SimpAICanvasWorkbenchMaskEditorContext || {};
     const WORKBENCH_CANVAS_TIMELINE_NODE_CONTEXT = window.SimpAICanvasWorkbenchTimelineNodeContext || {};
@@ -317,6 +318,7 @@
     let CANVAS_VLM_NODE_VIEW_CONTROLLER = null;
     let CANVAS_VLM_CHAT_CONTROLLER = null;
     let CANVAS_VLM_AGENT_CONTEXT = {};
+    let GROUP_LIST_CONTEXT = {};
     let CANVAS_PRESET_PARAM_RENDERER = null;
     let CANVAS_INSPECTOR_CONTROLLER = null;
     let CANVAS_NODE_PARAM_CONTROLLER = null;
@@ -458,6 +460,7 @@
     const mediaAspectStyle = WORKBENCH_ASSET_NODES.mediaAspectStyle;
     const assetNodeMediaEditRange = WORKBENCH_ASSET_NODES.mediaEditRange;
     const serializeAssetForRun = WORKBENCH_ASSET_NODES.serializeAssetForRun;
+    const assetNodeThumbSrc = WORKBENCH_ASSET_NODES.assetThumbSrc;
     const assetNodeSerializeAssetSourceForRun = WORKBENCH_ASSET_NODES.serializeAssetSourceForRun;
     const assetNodeFormatDuration = WORKBENCH_ASSET_NODES.formatDuration;
     const readAssetSize = WORKBENCH_ASSET_NODES.readAssetSize;
@@ -2654,6 +2657,17 @@
                      escapeHtml,
                      formatLocalTime,
                  },
+                 timeSource: {
+                     parseDate: (value) => Date.parse(value || ''),
+                 },
+                 clipboardSource: {
+                     writeText: (value) => {
+                         const clipboard = window.navigator?.clipboard;
+                         return clipboard && typeof clipboard.writeText === 'function'
+                             ? clipboard.writeText(value)
+                             : false;
+                     },
+                 },
                  uiSource: {
                      showToast,
                  },
@@ -3567,15 +3581,34 @@
         renderRunnableNodeStatusFoot
     } = CANVAS_RUNTIME_CONTEXT;
     const TIMELINE_NODE_CONTEXT_SOURCE = {
-        getNode,
-        uid,
-        defaultNodeSize,
-        cloneRunValue,
-        renderNodeStateBadges,
-        getTimelineSourceAsset,
-        assetDisplaySrc,
-        readAssetSize,
-        assetMediaKind
+        languageSource: {
+            t,
+            tOption
+        },
+        utilitySource: {
+            escapeHtml,
+            clamp
+        },
+        assetSource: {
+            formatDuration: assetNodeFormatDuration,
+            getMediaEditRange: (asset) => getMediaEditRange(asset),
+            assetDisplaySrc,
+            assetThumbSrc: assetNodeThumbSrc,
+            serializeAssetForRun,
+            assetMediaKind
+        },
+        nodeSource: {
+            getNode,
+            getTimelineSourceAsset,
+            readAssetSize,
+            renderNodeStateBadges,
+            uid,
+            defaultNodeSize,
+            cloneRunValue
+        },
+        timeSource: {
+            now: () => Date.now()
+        }
     };
     const CANVAS_TIMELINE_NODE_CONTEXT = typeof WORKBENCH_CANVAS_TIMELINE_NODE_CONTEXT.createCanvasWorkbenchTimelineNodeContext === 'function'
         ? WORKBENCH_CANVAS_TIMELINE_NODE_CONTEXT.createCanvasWorkbenchTimelineNodeContext({
@@ -19858,18 +19891,7 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     function openGroupListPanel() {
-        return groupListOpenPanel({
-            addAreaGroup,
-            ensureWorkbenchFormFieldNames,
-            focusGroup,
-            getGroup,
-            getGroups: ensureProjectGroups,
-            getNodesInsideGroup,
-            groupShortcutLabel,
-            detectWorkbenchTheme,
-            normalizeCanvasColor,
-            viewportCenterWorld
-        });
+        return groupListOpenPanel(GROUP_LIST_CONTEXT);
     }
 
     function clientToWorld(clientX, clientY) {
@@ -22079,21 +22101,49 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     const MEDIA_VIEWER_CONTEXT_SOURCE = {
-        assetDisplaySrc,
-        assetMediaKind,
-        detectWorkbenchTheme,
-        ensureWorkbenchFormFieldNames,
-        getNode,
-        getSelectedResultAsset,
-        readAssetInfo,
-        readImageInfo,
-        refreshCompareDom,
-        renderCompareControls,
-        renderCompareStageHtml,
-        safeAssetDisplaySrc,
-        showToast,
-        startComparePositionDrag,
-        updateCompareParam
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml,
+            clamp
+        },
+        domSource: {
+            document
+        },
+        browserSource: {
+            getWindow: () => window,
+            requestAnimationFrame: typeof window.requestAnimationFrame === 'function'
+                ? window.requestAnimationFrame.bind(window)
+                : null,
+            getInnerWidth: () => window.innerWidth,
+            getInnerHeight: () => window.innerHeight
+        },
+        assetSource: {
+            assetDisplaySrc,
+            assetMediaKind,
+            readAssetInfo,
+            readImageInfo,
+            safeAssetDisplaySrc
+        },
+        nodeSource: {
+            getNode,
+            getSelectedResultAsset
+        },
+        compareSource: {
+            refreshCompareDom,
+            renderCompareControls,
+            renderCompareStageHtml,
+            startComparePositionDrag,
+            updateCompareParam
+        },
+        viewSource: {
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames
+        },
+        uiSource: {
+            showToast
+        }
     };
 
     const CANVAS_MEDIA_VIEWER_CONTEXT = typeof WORKBENCH_CANVAS_MEDIA_VIEWER_CONTEXT.createCanvasWorkbenchMediaViewerContext === 'function'
@@ -22159,22 +22209,42 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     const NODE_BROWSER_CONTEXT_SOURCE = {
-        getProject: () => project,
-        closeContextMenu,
-        defaultNodeSize,
-        detectWorkbenchTheme,
-        ensureWorkbenchFormFieldNames,
-        getNode,
-        focusNode: (node) => {
-            if (!node) return;
-            selectedNodeId = node.id;
-            selectedNodeIds = new Set([node.id]);
-            selectedEdgeId = null;
-            centerViewportOnWorld((node.x || 0) + (node.w || defaultNodeSize(node.type).w) / 2, (node.y || 0) + (node.h || defaultNodeSize(node.type).h) / 2);
-            renderAll();
+        languageSource: {
+            t
         },
-        readAssetSize,
-        renderIconHtml
+        utilitySource: {
+            escapeHtml
+        },
+        domSource: {
+            document
+        },
+        browserSource: {
+            setTimeout: typeof setTimeout === 'function' ? setTimeout : null
+        },
+        projectSource: {
+            getProject: () => project,
+            getNode
+        },
+        viewportSource: {
+            defaultNodeSize,
+            focusNode: (node) => {
+                if (!node) return;
+                selectedNodeId = node.id;
+                selectedNodeIds = new Set([node.id]);
+                selectedEdgeId = null;
+                centerViewportOnWorld((node.x || 0) + (node.w || defaultNodeSize(node.type).w) / 2, (node.y || 0) + (node.h || defaultNodeSize(node.type).h) / 2);
+                renderAll();
+            }
+        },
+        assetSource: {
+            readAssetSize
+        },
+        viewSource: {
+            closeContextMenu,
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames,
+            renderIconHtml
+        },
     };
 
     const CANVAS_NODE_BROWSER_CONTEXT = typeof WORKBENCH_CANVAS_NODE_BROWSER_CONTEXT.createCanvasWorkbenchNodeBrowserContext === 'function'
@@ -22183,6 +22253,43 @@ ${renderGenerationMetadataInspectorSection(node)}
         })
         : {};
     NODE_BROWSER_CONTEXT = CANVAS_NODE_BROWSER_CONTEXT.NODE_BROWSER_CONTEXT || {};
+
+    const GROUP_LIST_CONTEXT_SOURCE = {
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml
+        },
+        domSource: {
+            document
+        },
+        groupSource: {
+            getGroups: ensureProjectGroups,
+            getGroup,
+            getNodesInsideGroup,
+            groupShortcutLabel,
+            normalizeCanvasColor,
+            focusGroup
+        },
+        actionSource: {
+            addAreaGroup
+        },
+        viewportSource: {
+            viewportCenterWorld
+        },
+        viewSource: {
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames
+        }
+    };
+
+    const CANVAS_GROUP_LIST_CONTEXT = typeof WORKBENCH_CANVAS_GROUP_LIST_CONTEXT.createCanvasWorkbenchGroupListContext === 'function'
+        ? WORKBENCH_CANVAS_GROUP_LIST_CONTEXT.createCanvasWorkbenchGroupListContext({
+            groupListSource: GROUP_LIST_CONTEXT_SOURCE
+        })
+        : {};
+    GROUP_LIST_CONTEXT = CANVAS_GROUP_LIST_CONTEXT.GROUP_LIST_CONTEXT || {};
 
     function openNodeSearchPanel() {
         return nodeBrowserOpenSearchPanel(NODE_BROWSER_CONTEXT);
@@ -22243,17 +22350,34 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     const ASSET_MANAGER_CONTEXT_SOURCE = {
-            getProject: () => project,
-            getProjectId: () => PROJECT_ID,
-            assetDisplaySrc,
-            centerViewportOnWorld,
-            cloneValue: cloneRunValue,
-            closeContextMenu,
-            defaultNodeSize,
-            deleteAssets: sendCanvasDeleteAssetsRequest,
-            detectWorkbenchTheme,
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml,
             formatBytes,
+            cloneValue: cloneRunValue
+        },
+        domSource: {
+            document
+        },
+        browserSource: {
+            getClipboard: () => navigator.clipboard,
+            confirm: (...args) => window.confirm(...args)
+        },
+        projectSource: {
+            getProject: () => project,
+            getProjectId: () => PROJECT_ID
+        },
+        assetSource: {
+            assetDisplaySrc,
+            deleteAssets: sendCanvasDeleteAssetsRequest,
             listAssets: sendCanvasListAssetsRequest,
+            readAssetSize
+        },
+        viewportSource: {
+            centerViewportOnWorld,
+            defaultNodeSize,
             locateNode: (node) => {
                 if (!node) return;
                 selectedNodeId = node.id;
@@ -22261,10 +22385,19 @@ ${renderGenerationMetadataInspectorSection(node)}
                 selectedEdgeId = null;
                 centerViewportOnWorld((node.x || 0) + (node.w || defaultNodeSize(node.type).w) / 2, (node.y || 0) + (node.h || defaultNodeSize(node.type).h) / 2);
                 renderAll();
-            },
-            openAssetViewer,
-            readAssetSize,
+            }
+        },
+        viewSource: {
+            closeContextMenu,
+            detectWorkbenchTheme,
+            openAssetViewer
+        },
+        uiSource: {
             showToast
+        },
+        stateSource: {
+            setAssetRoot: (...args) => setCanvasProjectAssetRoot(...args)
+        }
     };
 
     const CANVAS_ASSET_MANAGER_CONTEXT = typeof WORKBENCH_CANVAS_ASSET_MANAGER_CONTEXT.createCanvasWorkbenchAssetManagerContext === 'function'
@@ -22283,16 +22416,40 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     const MASK_EDITOR_CONTEXT_SOURCE = {
-        applyImageFileToNode,
-        createThumbnailDataUrl,
-        detectWorkbenchTheme,
-        ensureWorkbenchFormFieldNames,
-        getNodeImageSrc,
-        buildMediaNodeStatePatch,
-        isNodeLocked,
-        mutate,
-        pushHistory,
-        showToast
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            uid,
+            nowIso
+        },
+        domSource: {
+            document
+        },
+        mediaSource: {
+            Image: typeof Image !== 'undefined' ? Image : null,
+            setTimeout: typeof setTimeout === 'function' ? setTimeout : null
+        },
+        nodeSource: {
+            applyImageFileToNode,
+            getNodeImageSrc,
+            buildMediaNodeStatePatch,
+            isNodeLocked
+        },
+        viewSource: {
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames
+        },
+        runtimeSource: {
+            createThumbnailDataUrl,
+            mutate,
+            pushHistory
+        },
+        uiSource: {
+            showToast
+        }
     };
 
     const CANVAS_MASK_EDITOR_CONTEXT = typeof WORKBENCH_CANVAS_MASK_EDITOR_CONTEXT.createCanvasWorkbenchMaskEditorContext === 'function'

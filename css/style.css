@@ -10208,6 +10208,25 @@ button.describe-vlm-chat-roleplay-participant-chip {
 
 #describe_vlm_model_status > .html-container {
   padding: 0 !important;
+  min-width: 0 !important;
+}
+
+#describe_vlm_model_status > .html-container > .prose {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+#describe_vlm_model_status > .html-container > .prose > .describe-vlm-model-state {
+  flex: 0 0 auto !important;
+}
+
+#describe_vlm_model_status > .html-container > .prose > [data-studio-help-notice],
+#describe_vlm_model_status > .html-container > .prose > [data-studio-help-model] {
+  display: block !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
 }
 
 #describe_vlm_model_status:has(.describe-vlm-model-state.ready):not(:has(.sai-help-notice)) {
@@ -21922,6 +21941,20 @@ html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not(
 
 .simpleai-welcome-media-actions.is-active {
     display: flex;
+}
+
+.simpleai-gallery-welcome-guard-placeholder .simpleai-welcome-media-actions {
+    pointer-events: none;
+}
+
+html.simpai-gallery-browser-welcome-pending .simpleai-gallery-welcome-guard-placeholder .simpleai-welcome-media-actions,
+html.simpai-gallery-browser-overlay-active .simpleai-gallery-welcome-guard-placeholder .simpleai-welcome-media-actions {
+    pointer-events: auto;
+}
+
+html.simpai-gallery-browser-welcome-pending #preview_generating .simpleai-welcome-media-actions,
+html.simpai-gallery-browser-overlay-active #preview_generating .simpleai-welcome-media-actions {
+    pointer-events: none;
 }
 
 .simpleai-welcome-media-action {

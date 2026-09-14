@@ -12,6 +12,7 @@ from .SimpAIFaceTrack import adaptive_face_track, sam3_follow_contexts
 
 
 LOG = logging.getLogger(__name__)
+DWPOSE_MODEL = "dw-ll_ucoco_384.onnx"
 
 
 def quad_plan(width, height, resolution, magnification):
@@ -101,7 +102,7 @@ def magnify_tile(images):
     return padded, (width, height)
 
 
-def face_refinement_track(bboxes, width, height, fps, feather):
+def face_refinement_track(bboxes, width, height, fps, feather, manual=False):
     if bboxes is None:
         raise ValueError("Face refinement requires frame-aligned face detections.")
     geometry = np.asarray([box if box is not None else [np.nan] * 4 for box in bboxes], dtype=float)
@@ -116,16 +117,19 @@ def face_refinement_track(bboxes, width, height, fps, feather):
             if not any(box is not None for box in section):
                 nearest = good[np.argmin(np.abs(good - (start + stop - 1) / 2))]
                 section = [bboxes[nearest]] * len(section)
-            face, context = face_refinement_track(section, width, height, fps, feather)
+            face, context = face_refinement_track(section, width, height, fps, feather, manual=manual)
             boxes.extend(face)
             contexts.extend(context)
         return boxes, contexts
-    if not np.isfinite(geometry[good[0]:good[-1] + 1]).all():
+    if not manual and not np.isfinite(geometry[good[0]:good[-1] + 1]).all():
         raise ValueError("Face refinement received an unresolved tracking gap.")
     # Only absent leading/trailing frames borrow geometry; their masks stay zero.
     for axis in range(4):
         geometry[:, axis] = np.interp(np.arange(len(geometry)), good, geometry[good, axis])
-    boxes, _ = adaptive_face_track(geometry, width, height, fps, 8, feather)
+    if manual:
+        boxes = np.rint(geometry).astype(int).tolist()
+    else:
+        boxes, _ = adaptive_face_track(geometry, width, height, fps, 8, feather)
     geometry = np.asarray(boxes, dtype=np.float64)
     centers = (geometry[:, :2] + geometry[:, 2:]) / 2
     # Context is independent of the editing mask; include hair, neck and surroundings.
@@ -142,7 +146,8 @@ def face_crop(images, bboxes, fps, resolution, feather):
 
     if bboxes is not None and len(bboxes) != len(images):
         raise ValueError("Face bbox count does not match video frame count.")
-    boxes, contexts = face_refinement_track(bboxes, images.shape[2], images.shape[1], fps, feather)
+    boxes, contexts = face_refinement_track(bboxes, images.shape[2], images.shape[1], fps, feather,
+                                           manual=getattr(bboxes, "manual", False))
     masks = torch.zeros(images.shape[:3], dtype=torch.float32, device="cpu")
     context_masks = torch.zeros_like(masks)
     for index, (x1, y1, x2, y2) in enumerate(boxes):
@@ -182,6 +187,73 @@ def _interpolate(images, region):
         model_name="flownet.pkl", batch_size=2, use_fp16=True,
         scene_detect=True, scene_threshold=0.15,
     )[0]
+
+
+def face_pose_control(images, mask):
+    import folder_paths
+    import onnxruntime as ort
+    from comfy.utils import ProgressBar
+    from custom_controlnet_aux.dwpose.dw_onnx.cv_ox_pose import inference_pose
+    from custom_controlnet_aux.dwpose.types import Keypoint
+    from custom_controlnet_aux.dwpose.util import draw_facepose
+    from .SimpAIH3UpscaleLoop import _throw_if_interrupted
+
+    if (mask.shape != images.shape[:3] or not torch.isfinite(mask).all()
+            or mask.min() < 0 or mask.max() > 1):
+        raise ValueError("DWPose control requires a frame-aligned face mask in [0, 1].")
+    path = (folder_paths.get_full_path("controlnet", DWPOSE_MODEL)
+            or folder_paths.get_full_path("controlnet", "yzd-v/DWPose/" + DWPOSE_MODEL))
+    if path is None:
+        raise FileNotFoundError(f"Face pose control requires the installed model: {DWPOSE_MODEL}")
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 2
+    options.inter_op_num_threads = 1
+    model = ort.InferenceSession(path, providers=["CPUExecutionProvider"], sess_options=options)
+    input_size = tuple(reversed(model.get_inputs()[0].shape[-2:]))
+    height, width = images.shape[1:3]
+    control = torch.zeros(images.shape, dtype=torch.float32, device="cpu")
+    mask = mask.detach().cpu()
+    progress = ProgressBar(len(images))
+    missing, missing_mouth, active = [], [], 0
+    # Use the selected face crop as the top-down pose region; do not redetect people.
+    for index, frame in enumerate(images):
+        _throw_if_interrupted()
+        ys, xs = torch.where(mask[index] > 0)
+        if len(xs):
+            active += 1
+            x1, x2, y1, y2 = xs.min().item(), xs.max().item() + 1, ys.min().item(), ys.max().item() + 1
+            side = max(x2 - x1, y2 - y1) * 2
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            bounds = np.array([[max(0, cx - side / 2), max(0, cy - side / 2),
+                                min(width, cx + side / 2), min(height, cy + side / 2)]], dtype=np.float32)
+            rgb = (frame.detach().cpu().float().clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+            points, scores = inference_pose(model, bounds, rgb, input_size, dtype=np.float32)
+            if points.shape != (1, 133, 2) or scores.shape != (1, 133):
+                raise ValueError("DWPose must return 133 whole-body keypoints for the selected crop.")
+            # DWPose face points plus the two eye centers match its OpenPose renderer.
+            indices = list(range(23, 91)) + [2, 1]
+            face = []
+            for point_index in indices:
+                x, y = points[0, point_index]
+                score = scores[0, point_index]
+                valid = (np.isfinite([x, y, score]).all() and score >= .3
+                         and 0 <= x < width and 0 <= y < height
+                         and mask[index, int(y), int(x)] > 0)
+                face.append(Keypoint(float(x), float(y), float(score), point_index) if valid else None)
+            canvas = draw_facepose(np.zeros((height, width, 3), dtype=np.uint8), face)
+            control[index] = torch.from_numpy(canvas).float().div_(255)
+            control[index].mul_((mask[index] > 0).unsqueeze(-1))
+            if not any(point is not None for point in face):
+                missing.append(index)
+            if not any(point is not None for point in face[48:68]):
+                missing_mouth.append(index)
+        progress.update_absolute(index + 1)
+    LOG.info("H3 DWPose face control: %d/%d active frames with face points, %d with mouth points.",
+             active - len(missing), active, active - len(missing_mouth))
+    if missing_mouth:
+        LOG.warning("DWPose mouth points unavailable on %d active frames (first frames: %s).",
+                    len(missing_mouth), missing_mouth[:16])
+    return control
 
 
 def face_sampling_mask(mask, region, video):
@@ -245,8 +317,17 @@ class SimpAIH3DetailRefine:
         _throw_if_interrupted()
         data = dict(region, width=images.shape[2], height=images.shape[1])
         frames = _interpolate(images, data)
-        positive, latent, canny = SimpAIH3RegionCondition().prepare(
-            data, frames, clip, vae, prompt, **references)
+        control_inputs = {}
+        if generation_mask is not None:
+            if tuple(generation_mask.shape) != tuple(images.shape[:3]):
+                raise ValueError("Face sampling mask must match the cropped video.")
+            indices = (torch.arange(len(frames), device=generation_mask.device)
+                       * data["fps"] / data["rate"]).round().long().clamp_(0, len(generation_mask) - 1)
+            control_inputs["control_video"] = (
+                face_pose_control(frames, generation_mask[indices]) if control_strength > 0
+                else torch.zeros(frames.shape, dtype=torch.float32, device="cpu"))
+        positive, latent, control_video = SimpAIH3RegionCondition().prepare(
+            data, frames, clip, vae, prompt, **references, **control_inputs)
         if generation_mask is not None:
             import comfy.nested_tensor
 
@@ -258,13 +339,13 @@ class SimpAIH3DetailRefine:
             latent = dict(latent, noise_mask=comfy.nested_tensor.NestedTensor((
                 temporal_mask * spatial_mask, audio_mask)))
         patched = _node_result(MiniMaxH3FunControlNetApply.execute(
-            model, model_patch, vae, control_strength, 0, 1, control_video=canny,
+            model, model_patch, vae, control_strength, 0, 1, control_video=control_video,
         ))[0]
         try:
             sigmas = _scheduler(patched, scheduler, steps, denoise_percent / 100)
             sampled, denoised = _sample_advanced(
                 patched, positive, _sampler(sampler_name), sigmas, latent, seed)
-            del denoised, latent, positive, frames, canny
+            del denoised, latent, positive, frames, control_video, control_inputs
             decoded = _decode_video(vae, sampled)
             if len(decoded) < data["length"] or not torch.isfinite(decoded).all():
                 raise ValueError("H3 detail generation returned incomplete or invalid frames.")

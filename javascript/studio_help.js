@@ -23,11 +23,15 @@
         return `<button type="button" class="sai-help-button" data-studio-help="${escape(topic)}" data-studio-help-source="${escape(origin)}" title="${escape(label(topic))}" aria-label="${escape(label(topic))}" aria-haspopup="dialog"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></button>`;
     }
 
-    function notice(status, origin = 'main') {
+    function notice(status, origin = 'main', version = '') {
         const reason = content.availability(typeof status === 'string' ? { reason: status } : status);
         if (!content.notices[reason]) return '';
         const topic = reason === 'files_missing' || reason === 'vision_missing' ? 'local' : 'setup';
-        return `<div class="sai-help-notice"><span>${escape(content.text(content.notices[reason], state()))}</span><button type="button" data-studio-help="${topic}" data-studio-help-source="${escape(origin)}"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i>${escape(label(topic))}</button></div>`;
+        const modelVersion = String(version || '').trim();
+        const action = modelVersion && (reason === 'files_missing' || reason === 'vision_missing')
+            ? `<button type="button" data-studio-help-download-model="${escape(modelVersion)}" data-studio-help-download-source="${escape(origin)}" title="${escape(t('Download model', '下载模型'))}" aria-label="${escape(t('Download model', '下载模型'))}"><i class="fa-solid fa-download" aria-hidden="true"></i>${escape(t('Download model', '下载模型'))}</button>`
+            : `<button type="button" data-studio-help="${topic}" data-studio-help-source="${escape(origin)}"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i>${escape(label(topic))}</button>`;
+        return `<div class="sai-help-notice"><span>${escape(content.text(content.notices[reason], state()))}</span>${action}</div>`;
     }
 
     function modelReason(version, apiMissing) {
@@ -39,7 +43,7 @@
     }
 
     function modelNotice(version, apiMissing = false) {
-        return `<span data-studio-help-model="${escape(version || '')}" data-help-api-missing="${apiMissing ? 'true' : 'false'}">${notice(modelReason(version, apiMissing), 'canvas')}</span>`;
+        return `<span data-studio-help-model="${escape(version || '')}" data-help-api-missing="${apiMissing ? 'true' : 'false'}">${notice(modelReason(version, apiMissing), 'canvas', version)}</span>`;
     }
 
     function sectionsHtml(topic) {
@@ -335,10 +339,10 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
             replaceHtml(slot, caption + button(slot.dataset.studioHelpSlot, slot.dataset.studioHelpSource));
         });
         document.querySelectorAll('[data-studio-help-notice]').forEach(slot => {
-            replaceHtml(slot, notice(slot.dataset.studioHelpNotice, slot.dataset.studioHelpSource));
+            replaceHtml(slot, notice(slot.dataset.studioHelpNotice, slot.dataset.studioHelpSource, slot.dataset.studioHelpVersion));
         });
         document.querySelectorAll('[data-studio-help-model]').forEach(slot => {
-            replaceHtml(slot, notice(modelReason(slot.dataset.studioHelpModel, slot.dataset.helpApiMissing === 'true'), 'canvas'));
+            replaceHtml(slot, notice(modelReason(slot.dataset.studioHelpModel, slot.dataset.helpApiMissing === 'true'), 'canvas', slot.dataset.studioHelpModel));
         });
         document.querySelectorAll('[data-studio-help]').forEach(node => {
             if (!node.classList.contains('sai-help-button')) return;
@@ -387,6 +391,18 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
     }
 
     document.addEventListener('click', event => {
+        const download = event.target.closest?.('[data-studio-help-download-model]');
+        if (download) {
+            const version = String(download.dataset.studioHelpDownloadModel || '').trim();
+            const triggered = version && typeof window.triggerMissingModelCheck === 'function'
+                ? window.triggerMissingModelCheck({ kind: 'vlm', version })
+                : false;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            if (!triggered) console.warn('[UI-TRACE] studio_help.missing_model_download_unavailable', version);
+            return;
+        }
         const target = event.target.closest?.('[data-studio-help]');
         if (!target) {
             if (event.target.closest?.('[role="tab"]') || event.target.closest?.('.sai-help-tabbar .overflow-dropdown button')) schedule();

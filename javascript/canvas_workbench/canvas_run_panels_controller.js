@@ -34,6 +34,8 @@
         const historySource = sourceObject('historySource');
         const statusSource = sourceObject('statusSource');
         const utilitySource = sourceObject('utilitySource');
+        const timeSource = sourceObject('timeSource');
+        const clipboardSource = sourceObject('clipboardSource');
         const uiSource = sourceObject('uiSource');
         const nodeSource = sourceObject('nodeSource');
         const actionSource = sourceObject('actionSource');
@@ -64,6 +66,26 @@
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value) => String(value ?? '');
         const formatLocalTime = typeof utilitySource.formatLocalTime === 'function' ? utilitySource.formatLocalTime : (value) => String(value || '');
+        const parseDate = (value) => {
+            if (typeof timeSource.parseDate !== 'function') return NaN;
+            try {
+                return timeSource.parseDate(value);
+            } catch (err) {
+                return NaN;
+            }
+        };
+        const writeClipboardText = (value) => {
+            if (typeof clipboardSource.writeText !== 'function') return false;
+            try {
+                const result = clipboardSource.writeText(value);
+                if (result && typeof result.then === 'function') {
+                    return Promise.resolve(result).then(() => true, () => false);
+                }
+                return result === true;
+            } catch (err) {
+                return false;
+            }
+        };
         const isTerminalRunState = typeof statusSource.isTerminalRunState === 'function'
             ? statusSource.isTerminalRunState
             : (() => false);
@@ -115,6 +137,8 @@
                 t,
                 escapeHtml,
                 formatLocalTime,
+                parseDate,
+                writeClipboardText,
                 isTerminalRunState,
                 showToast,
                 getNode,

@@ -17,13 +17,13 @@
 }
 .sai-help-button:hover,
 .sai-help-icon:hover {
-    color: var(--body-text-color, #172d29);
-    background: var(--background-fill-secondary, #e7eeeb) !important;
+    color: var(--body-text-color, #252a31);
+    background: var(--background-fill-secondary, #e7eaee) !important;
 }
 .sai-help-button:focus-visible,
 .sai-help-dialog button:focus-visible,
 .sai-help-body:focus-visible {
-    outline: 2px solid #16846b;
+    outline: 2px solid #7f8b99;
     outline-offset: 2px;
 }
 .sai-help-button .fa-circle-question { font-weight: 900; }
@@ -118,8 +118,8 @@
     color: var(--body-text-color-subdued, #59636b) !important;
 }
 [data-simpai-models-js-root] .sai-help-button:hover {
-    background: var(--background-fill-secondary, #e7eeeb) !important;
-    color: var(--body-text-color, #172d29) !important;
+    background: var(--background-fill-secondary, #e7eaee) !important;
+    color: var(--body-text-color, #252a31) !important;
 }
 /* Distinguish the existing introduction without changing its geometry. */
 #preset_instruction_accordion {
@@ -179,33 +179,82 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 12px;
-    padding: 6px 8px;
-    border-left: 3px solid #a77d15;
-    color: var(--body-text-color, #253531);
+    gap: 6px 10px;
+    padding: 5px 8px;
+    border-left: 2px solid #a77d15;
+    color: var(--body-text-color, #4f5661);
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.45;
     overflow-wrap: anywhere;
+}
+.sai-help-notice > span {
+    flex: 1 1 180px;
+    min-width: 0;
 }
 [data-describe-vlm-help-status]:empty,
 [data-studio-help-model]:empty { display: none; }
 .sai-help-notice button {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
     gap: 6px;
-    border: 0;
-    padding: 2px 0;
-    background: transparent;
-    color: var(--link-text-color, #13735f);
-    font-size: inherit;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 24px !important;
+    padding: 0 2px !important;
+    border: 0 !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    color: var(--body-text-color, #4f5661);
+    font: inherit;
+    line-height: 1 !important;
     cursor: pointer;
-    text-align: start;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: none !important;
+}
+.sai-help-notice button:hover {
+    color: var(--body-text-color, #252a31) !important;
+    background: var(--background-fill-secondary, #e7eaee) !important;
+}
+.sai-help-notice [data-studio-help-download-model] {
+    height: 28px !important;
+    padding: 0 10px !important;
+    border: 1px solid #c7cbd2 !important;
+    background: #eef0f3 !important;
+    color: #3d434d !important;
+    font-size: 12px !important;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+.sai-help-notice [data-studio-help-download-model]:hover {
+    border-color: #8c949f !important;
+    background: #e2e5e9 !important;
+    color: #242932 !important;
+}
+.sai-help-notice [data-studio-help-download-model] .fa-download {
+    font-size: 12px;
+}
+#describe_vlm_model_status .sai-help-notice {
+    flex-wrap: nowrap;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+#describe_vlm_model_status .sai-help-notice > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .sai-help-dialog {
     --help-bg: #ffffff;
-    --help-text: #273630;
-    --help-muted: #56615d;
-    --help-border: #dce4df;
+    --help-text: #2b3038;
+    --help-muted: #626b77;
+    --help-border: #d9dde3;
     box-sizing: border-box;
     width: min(720px, calc(100vw - 32px));
     max-width: calc(100vw - 32px);
@@ -223,10 +272,10 @@
 }
 .sai-help-dialog[open] { display: flex; flex-direction: column; }
 .sai-help-dialog.theme-dark {
-    --help-bg: #202523;
-    --help-text: #e5ece8;
-    --help-muted: #b0bdb6;
-    --help-border: #414c46;
+    --help-bg: #202227;
+    --help-text: #e5e7eb;
+    --help-muted: #aeb6c2;
+    --help-border: #41454d;
     color-scheme: dark;
 }
 .sai-help-dialog::backdrop { background: #0006; }
@@ -297,17 +346,31 @@
 .sai-help-action-status { color: var(--help-muted); }
 .theme-dark .sai-help-button,
 .dark .sai-help-button,
-[data-theme="dark"] .sai-help-button { color: #c7d7cd; }
+[data-theme="dark"] .sai-help-button { color: #c7ccd4; }
 .theme-dark .sai-help-button:hover,
 .theme-dark .sai-help-icon:hover,
 .dark .sai-help-button:hover,
-[data-theme="dark"] .sai-help-button:hover { background: #34433b !important; color: #edf5f0; }
+[data-theme="dark"] .sai-help-button:hover { background: #353842 !important; color: #eef1f5; }
 .theme-dark .sai-help-notice,
 .dark .sai-help-notice,
-[data-theme="dark"] .sai-help-notice { color: #dbe8df; }
+[data-theme="dark"] .sai-help-notice { color: #d5d9e0; }
 .theme-dark .sai-help-notice button,
 .dark .sai-help-notice button,
-[data-theme="dark"] .sai-help-notice button { color: #84d1b5; }
+[data-theme="dark"] .sai-help-notice button { color: #d1d5dc !important; }
+.theme-dark .sai-help-notice [data-studio-help-download-model],
+.dark .sai-help-notice [data-studio-help-download-model],
+[data-theme="dark"] .sai-help-notice [data-studio-help-download-model] {
+    border-color: #555b66 !important;
+    background: #3a3d45 !important;
+    color: #e5e7eb !important;
+}
+.theme-dark .sai-help-notice [data-studio-help-download-model]:hover,
+.dark .sai-help-notice [data-studio-help-download-model]:hover,
+[data-theme="dark"] .sai-help-notice [data-studio-help-download-model]:hover {
+    border-color: #7f8793 !important;
+    background: #4a4f59 !important;
+    color: #ffffff !important;
+}
 @media (max-width: 600px) {
     .sai-help-dialog { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 24px); }
     .sai-help-header { padding: 10px; gap: 4px; }
