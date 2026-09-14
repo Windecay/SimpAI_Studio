@@ -370,11 +370,27 @@ def face_windows(width, height):
     return windows
 
 
+def face_execution_settings():
+    import onnxruntime as ort
+    import torch
+
+    device_id = torch.cuda.current_device() if torch.cuda.is_available() else -1
+    device = f"cuda:{device_id}" if device_id >= 0 else "cpu"
+    providers = ["CPUExecutionProvider"]
+    if device_id >= 0 and "CUDAExecutionProvider" in ort.get_available_providers():
+        providers.insert(0, ("CUDAExecutionProvider", {
+            "device_id": device_id, "cudnn_conv_algo_search": "DEFAULT"}))
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 2
+    options.inter_op_num_threads = 1
+    return device, device_id, dict(providers=providers, sess_options=options)
+
+
 class FaceAnalyzer:
     def __init__(self, roots, detection_roots):
         import os
         os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
-        import onnxruntime as ort
+        import logging
         import torch
         from insightface.model_zoo import get_model
         from safetensors.torch import load_file
@@ -388,16 +404,20 @@ class FaceAnalyzer:
                 state["detector." + name[len("detector_short."):]] = tensor
             elif name.startswith(("detector_full.", "mesh.", "blendshapes.")):
                 state[name] = tensor
+        device, device_id, settings = face_execution_settings()
         self.detector = FaceLandmarker(device="cpu", dtype=torch.float32, detector_variant="both").eval()
         self.detector.load_state_dict(state, strict=True)
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = 2
-        options.inter_op_num_threads = 1
-        settings = dict(providers=["CPUExecutionProvider"], sess_options=options)
+        self.detector.to(device=device)
         self.native_detector = get_model(str(paths["det_10g.onnx"]), **settings)
         self.recognition = get_model(str(paths["w600k_r50.onnx"]), **settings)
-        self.native_detector.prepare(ctx_id=-1, input_size=(640, 640), det_thresh=.5)
-        self.recognition.prepare(ctx_id=-1)
+        self.native_detector.prepare(ctx_id=device_id, input_size=(640, 640), det_thresh=.5)
+        self.recognition.prepare(ctx_id=device_id)
+        logger = logging.getLogger("simpai.face_track")
+        for name, model in (("detection", self.native_detector), ("identity", self.recognition)):
+            active = model.session.get_providers()
+            logger.info("Face Track %s providers=%s; MediaPipe device=%s", name, active, device)
+            if device_id >= 0 and "CUDAExecutionProvider" not in active:
+                logger.warning("Face Track %s is using CPU: ONNX CUDA provider is unavailable or failed to initialize.", name)
 
     def get(self, image):
         import cv2
@@ -415,7 +435,9 @@ class FaceAnalyzer:
         windows = face_windows(width, height)
         images = [rgb[y:y + h, x:x + w] for x, y, w, h in windows]
         for variant in ("full", "short"):
-            batches = self.detector.detect_batch(images, num_faces=0, score_thresh=.5, variant=variant)
+            batches = self.detector.detect_batch(
+                images, num_faces=0, score_thresh=.5, variant=variant,
+                compute_blendshapes=False, batch_size=4)
             for (x, y, _, _), faces in zip(windows, batches):
                 for face in faces:
                     # Presence is a logit. Reject non-faces before combining detector variants.

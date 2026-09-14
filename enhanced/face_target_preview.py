@@ -17,6 +17,14 @@ _cancelled = {}
 _jobs_lock = threading.Lock()
 
 
+def _log_worker_device(line):
+    for level, emit in (("INFO", logging.info), ("WARNING", logging.warning)):
+        prefix = f"{level}:simpai.face_track:"
+        if line.startswith(prefix):
+            emit("%s", line[len(prefix):].strip())
+            break
+
+
 def _request(video, original_video, payload, state):
     if not isinstance(payload, str) or len(payload) > 2_100_000:
         raise ValueError("Invalid preview request.")
@@ -65,6 +73,8 @@ def _preview_faces(video, original_video, payload, state):
             [sys.executable, str(worker)], input=json.dumps(request),
             capture_output=True, text=True, encoding="utf-8", timeout=600 if request.get("mode") in ("track", "track_rebase") else 60,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for line in result.stderr.splitlines():
+            _log_worker_device(line)
         if result.returncode:
             raise RuntimeError(result.stderr[-1000:])
         response = json.loads(result.stdout.strip().splitlines()[-1])
@@ -147,6 +157,7 @@ def stream_preview_faces(video, original_video, payload, state, request: gr.Requ
         def read_errors():
             for line in process.stderr:
                 errors.append(line[-2000:])
+                _log_worker_device(line)
 
         def write_input():
             try:

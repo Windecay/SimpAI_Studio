@@ -622,7 +622,8 @@ class FaceLandmarker(nn.Module):
 
     def detect_batch(self, images_rgb_uint8: List[np.ndarray], num_faces: int = 1,
                      score_thresh: float = _BF_MIN_SCORE,
-                     variant: Optional[str] = None) -> List[List[dict]]:
+                     variant: Optional[str] = None, compute_blendshapes: bool = True,
+                     batch_size: int = 0) -> List[List[dict]]:
         """Full pipeline batched across `images_rgb_uint8`. Returns one face-dict
         list per image (empty if nothing detected). Face dict:
             bbox_xyxy (4,) image pixels, blendshapes {52} ∈ [0,1],
@@ -630,7 +631,18 @@ class FaceLandmarker(nn.Module):
             192-canonical (pre-transformation) units, presence float (raw logit).
         On 'both'-mode instances `variant=None` runs both detectors and keeps
         whichever found more faces per frame (tie → short).
+        Optional chunking bounds source-image and mesh memory. Callers needing
+        only landmarks can skip blendshapes; their result dictionaries are empty.
         """
+        if batch_size > 0 and len(images_rgb_uint8) > batch_size:
+            results = []
+            for start in range(0, len(images_rgb_uint8), batch_size):
+                results.extend(self.detect_batch(
+                    images_rgb_uint8[start:start + batch_size], num_faces=num_faces,
+                    score_thresh=score_thresh, variant=variant,
+                    compute_blendshapes=compute_blendshapes))
+            return results
+
         def normalize_detections(sub_rects, sizes, detections):
             # tensor-normalized → image-normalized [0,1] for _detection_to_face_rect.
             for b, decoded in enumerate(detections):
@@ -681,7 +693,7 @@ class FaceLandmarker(nn.Module):
             return results
 
         lmks_canon_b, presence_b = self.mesh(torch.stack(mesh_crops, dim=0))
-        bs_out_b = self.blendshapes(lmks_canon_b[:, self._bs_idx, :2])
+        bs_out_b = self.blendshapes(lmks_canon_b[:, self._bs_idx, :2]) if compute_blendshapes else None
 
         # Batched canonical→image affine
         params_t = torch.tensor(
@@ -700,14 +712,14 @@ class FaceLandmarker(nn.Module):
         lmks_xy_np = lmks_xy_t.float().cpu().numpy()
         lmks_canon_np = lmks_canon_b.float().cpu().numpy()
         presence_np = presence_b.float().cpu().numpy()
-        bs_np = bs_out_b.float().cpu().numpy()
+        bs_np = bs_out_b.float().cpu().numpy() if bs_out_b is not None else None
 
         for i, (b, score, *_) in enumerate(face_params):
             lmks_xy = lmks_xy_np[i]
             mn, mx = lmks_xy.min(0), lmks_xy.max(0)
             results[b].append({
                 "bbox_xyxy": np.array([mn[0], mn[1], mx[0], mx[1]], dtype=np.float32),
-                "blendshapes": dict(zip(BLENDSHAPE_NAMES, bs_np[i].tolist())),
+                "blendshapes": dict(zip(BLENDSHAPE_NAMES, bs_np[i].tolist())) if bs_np is not None else {},
                 "landmarks_xy": lmks_xy,
                 "landmarks_3d": lmks_canon_np[i],
                 "presence": float(presence_np[i]),

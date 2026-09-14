@@ -1,7 +1,8 @@
-"""CPU-only entry point for the isolated face-preview process."""
+"""Isolated face-preview process with automatic CUDA selection."""
 
 import importlib
 import json
+import logging
 from pathlib import Path
 import sys
 import traceback
@@ -31,6 +32,8 @@ PREVIEW_ERRORS = {
 
 
 def main():
+    logging.basicConfig()
+    logging.getLogger("simpai.face_track").setLevel(logging.INFO)
     torch.set_num_threads(2)
     try:
         with torch.inference_mode():
