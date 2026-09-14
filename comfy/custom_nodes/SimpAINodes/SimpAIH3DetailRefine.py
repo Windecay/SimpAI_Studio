@@ -27,12 +27,16 @@ def quad_plan(width, height, resolution, magnification):
              for x1, x2 in ((0, mx + halo), (mx - halo, width))]
     sizes = [(math.ceil((x2 - x1) * 2 / 32) * 32,
               math.ceil((y2 - y1) * 2 / 32) * 32) for x1, y1, x2, y2 in boxes]
-    if any(w * h > resolution ** 2 or max(w, h) > 1536 for w, h in sizes):
+    if any(max(w, h) > 1536 for w, h in sizes):
         raise ValueError(
-            f"Fixed four-tile working sizes {sizes} exceed budget {resolution}x{resolution} "
-            "(maximum side 1536). Enable Automatic Tile Grid, increase the budget, or resize the source. "
-            "\u56fa\u5b9a\u56db\u5206\u533a\u8d85\u51fa\u5de5\u4f5c\u9884\u7b97\uff0c"
-            "\u8bf7\u542f\u7528\u81ea\u52a8\u7f51\u683c\u3001\u63d0\u9ad8\u9884\u7b97\u6216\u7f29\u5c0f\u6e90\u753b\u9762\u3002")
+            f"Fixed four-tile working sizes {sizes} exceed the maximum side 1536. "
+            "Enable Automatic Tile Grid or resize the source. "
+            "\u56fa\u5b9a\u56db\u5206\u533a\u5de5\u4f5c\u5c3a\u5bf8\u8d85\u8fc7\u5355\u8fb9\u4e0a\u9650 1536\uff0c"
+            "\u8bf7\u542f\u7528\u81ea\u52a8\u7f51\u683c\u6216\u7f29\u5c0f\u6e90\u753b\u9762\u3002")
+    required = math.ceil(math.sqrt(max(w * h for w, h in sizes)) / 32) * 32
+    if required > resolution:
+        LOG.info("H3 fixed four-tile budget automatically adjusted: %d -> %d; working sizes=%s",
+                 resolution, required, sizes)
     return boxes
 
 
@@ -109,7 +113,10 @@ def face_refinement_track(bboxes, width, height, fps, feather, manual=False):
     good = np.flatnonzero(np.isfinite(geometry).all(axis=1))
     if not len(good):
         raise ValueError("No valid face confidently matched to the target.")
-    starts = getattr(bboxes, "scene_starts", [0])
+    present = np.isfinite(geometry).all(axis=1)
+    # Missing sections have zero editing masks; smooth each visible run independently.
+    starts = sorted(set(getattr(bboxes, "scene_starts", [0]))
+                    | set((np.flatnonzero(present[1:] != present[:-1]) + 1).tolist()))
     if len(starts) > 1:
         boxes, contexts = [], []
         for start, stop in zip(starts, starts[1:] + [len(bboxes)]):
@@ -121,9 +128,7 @@ def face_refinement_track(bboxes, width, height, fps, feather, manual=False):
             boxes.extend(face)
             contexts.extend(context)
         return boxes, contexts
-    if not manual and not np.isfinite(geometry[good[0]:good[-1] + 1]).all():
-        raise ValueError("Face refinement received an unresolved tracking gap.")
-    # Only absent leading/trailing frames borrow geometry; their masks stay zero.
+    # Borrow geometry only to keep crop tensors frame-aligned; missing masks stay zero.
     for axis in range(4):
         geometry[:, axis] = np.interp(np.arange(len(geometry)), good, geometry[good, axis])
     if manual:
@@ -187,6 +192,21 @@ def _interpolate(images, region):
         model_name="flownet.pkl", batch_size=2, use_fp16=True,
         scene_detect=True, scene_threshold=0.15,
     )[0]
+
+
+def preserved_face_intervals(bboxes, region):
+    begin, stop = region["begin"] - region["first"], region["stop"] - region["first"]
+    intervals = []
+    start = None
+    for index in range(begin, stop + 1):
+        if index < stop and bboxes[index] is None:
+            if start is None:
+                start = index
+        elif start is not None:
+            intervals.append(((region["first"] + start) / region["fps"],
+                              (region["first"] + index) / region["fps"]))
+            start = None
+    return intervals
 
 
 def face_pose_control(images, mask):
@@ -387,6 +407,11 @@ class SimpAIH3DetailRefine:
             import nodes
 
             stitcher, cropped, mask = face_crop(images, bboxes, region["fps"], resolution, feather)
+            preserved = preserved_face_intervals(bboxes, region)
+            if preserved:
+                LOG.warning("H3 face refinement preserves original frames in %d source-time intervals (seconds): %s%s",
+                            len(preserved), ", ".join(f"[{start:.3f}, {stop:.3f})" for start, stop in preserved[:12]),
+                            " ..." if len(preserved) > 12 else "")
             description = (prompt + "\nThe supplied video is a tracked face crop of the original person. "
                            "Refine that same person's facial details without changing identity, expression, "
                            "head pose, gaze, motion or crop framing. Optional pictures depict the original identity.")

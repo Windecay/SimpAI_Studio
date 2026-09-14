@@ -8,8 +8,6 @@
       "input_image_checkbox",
       "prompt_panel_checkbox",
       "performance_selection",
-      "scheduler_name",
-      "sampler_name",
       "guidance_scale",
       "negative_prompt",
       "base_model",
@@ -20,8 +18,6 @@
       "input_image_checkbox",
       "prompt_panel_checkbox",
       "performance_selection",
-      "scheduler_name",
-      "sampler_name",
       "guidance_scale",
       "negative_prompt",
       "base_model",
@@ -60,8 +56,6 @@
         "scene_audio",
         "scene_var_number",
         "scene_var_number2",
-        "scene_var_number4",
-        "scene_var_number5",
         "scene_var_number6",
         "scene_var_number7",
         "scene_var_number8",
@@ -96,6 +90,18 @@
       "var_number3_max": 0.5,
       "var_number3": {
         "Video Upscale": 0.25
+      },
+      "var_number4_title": "Video Shift",
+      "var_number4_min": 0.01,
+      "var_number4_max": 100,
+      "var_number4": {
+        "Video Upscale": 12
+      },
+      "var_number5_title": "Audio Shift",
+      "var_number5_min": 0.01,
+      "var_number5_max": 100,
+      "var_number5": {
+        "Video Upscale": 3
       },
       "scene_steps_title": "Sampling steps",
       "video_duration_title": "Segment duration(s)",

@@ -16,8 +16,8 @@
       "var_number": 0,
       "var_number2": 0,
       "var_number3": 0.25,
-      "var_number4": 0,
-      "var_number5": 0,
+      "var_number4": 12,
+      "var_number5": 3,
       "var_number6": 0,
       "var_number7": 0,
       "var_number8": 0,
@@ -32,7 +32,7 @@
       "clip_type": 1,
       "negative_prompt": "",
       "sampler": "er_sde",
-      "scheduler": "simple",
+      "scheduler": "beta57",
       "video_duration": 4
     },
     "class_type": "SceneInput",
@@ -357,8 +357,8 @@
   },
   "28": {
     "inputs": {
-      "shift_video": 12,
-      "shift_audio": 3,
+      "shift_video": ["1", 13],
+      "shift_audio": ["1", 14],
       "model": [
         "27",
         0

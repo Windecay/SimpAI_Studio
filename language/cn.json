@@ -2277,6 +2277,7 @@
   "Tile Working Budget (square side)": "分区工作预算（等面积方形边长）",
   "Tile Working Sizes": "分区工作尺寸",
   "Tile Budget Exceeded": "超出分区工作预算",
+  "Tile Maximum Side Exceeded": "分区工作尺寸超过单边上限 1536",
   "Invalid Tile Source Size": "源画面尺寸不支持当前分区",
   "tiles": "块",
   "Edit Face Track": "编辑面部跟踪框",

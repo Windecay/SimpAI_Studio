@@ -169,8 +169,11 @@
         const sizes = boxes.map(([x1, y1, x2, y2]) => [
             Math.ceil((x2 - x1) * 2 / 32) * 32, Math.ceil((y2 - y1) * 2 / 32) * 32]);
         const exceeded = automatic ? boxes.length > 64
-            : sizes.some(([w, h]) => w * h > budget * budget || Math.max(w, h) > 1536);
-        return { boxes, sizes, error: exceeded ? 'Tile Budget Exceeded' : '' };
+            : sizes.some(([w, h]) => Math.max(w, h) > 1536);
+        const effectiveBudget = automatic ? budget : Math.max(budget,
+            Math.ceil(Math.sqrt(Math.max(...sizes.map(([w, h]) => w * h))) / 32) * 32);
+        return { boxes, sizes, budget: effectiveBudget,
+            error: exceeded ? (automatic ? 'Tile Budget Exceeded' : 'Tile Maximum Side Exceeded') : '' };
     }
 
     function create(host, video, options) {
@@ -549,7 +552,8 @@
                 const values = options.getTileValues?.() || {};
                 const preview = tilePreview(video.videoWidth, video.videoHeight, values.budget, values.automatic);
                 const sizes = [...new Set(preview.sizes.map(([w, h]) => `${w} x ${h}`))].join(', ');
-                const text = `${t('Tile Working Sizes')}: ${preview.boxes.length} ${t('tiles')} | ${sizes}${preview.error ? ` | ${t(preview.error)}` : ''}`;
+                const budget = preview.budget ? ` | ${t('Tile Working Budget (square side)')}: ${preview.budget}` : '';
+                const text = `${t('Tile Working Sizes')}: ${preview.boxes.length} ${t('tiles')} | ${sizes}${budget}${preview.error ? ` | ${t(preview.error)}` : ''}`;
                 if (tileOutput.textContent !== text) tileOutput.textContent = text;
             }
             host.querySelectorAll('[data-label]').forEach(el => { el.textContent = t(el.dataset.label); });

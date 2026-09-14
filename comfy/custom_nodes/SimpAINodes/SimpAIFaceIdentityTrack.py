@@ -281,7 +281,7 @@ def _continuous_boxes(detections, tracks, selected, starts, fps, padding, allow_
                 boxes[index] = None
                 continue
             raise ValueError("The selected face overlaps another face. Shorten the interval or reduce feathering.")
-    return TrackedFaces(boxes, starts, filled)
+    return TrackedFaces(boxes, starts, [index for index in filled if boxes[index] is not None])
 
 
 def track_faces(detections, anchor_frame, target_id, fps, padding=12, scene_starts=None, allow_incomplete=False):
@@ -499,7 +499,7 @@ class SimpAIFaceIdentityTrack:
         padding = max(12, math.ceil((8 * .375 + 1) / 2)
                       + math.ceil((feather * .375 + 1) / 2) + math.ceil(feather * .5) + 2)
         boxes = track_faces(detections, region["begin"] - region["first"], target_id, region["fps"],
-                            padding, scene_boundaries(signatures))
+                            padding, scene_boundaries(signatures), allow_incomplete=True)
         logging.info("H3 target face %s: %d/%d frames selected, %d short-gap frames recovered.",
                      target_id, sum(box is not None for box in boxes), len(boxes), len(boxes.filled_frames))
         if not any(box is not None for box in boxes[region["begin"] - region["first"]:region["stop"] - region["first"]]):

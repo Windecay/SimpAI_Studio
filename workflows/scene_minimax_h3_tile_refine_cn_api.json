@@ -9,7 +9,7 @@
       "var_number7": 1, "var_number8": 35, "var_number9": 768, "var_number10": 8,
       "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
       "model_type": 1, "model_type2": 1, "clip_type": 1, "negative_prompt": "",
-      "sampler": "er_sde", "scheduler": "beta57", "video_duration": 1
+      "sampler": "er_sde", "scheduler": "normal", "video_duration": 1
     }
   },
   "2": {"class_type": "SeedInput", "_meta": {"title": "SeedInput"}, "inputs": {"seed": 0}},
