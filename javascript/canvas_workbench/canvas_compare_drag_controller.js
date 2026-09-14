@@ -2,19 +2,52 @@
     'use strict';
 
     function createCanvasCompareDragController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.compareDragSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const viewportSource = scope.viewportSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const updateSource = scope.updateSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const uiSource = scope.uiSource || {};
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' ? !!scope.isNodeLocked(node) : false;
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
+        const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function'
+            ? !!nodeSource.isNodeLocked(node)
+            : false;
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const getPerformanceNow = () => typeof utilitySource.performanceNow === 'function'
+            ? utilitySource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const setSuppressWheelUntil = (...args) => typeof viewportSource.setSuppressWheelUntil === 'function'
+            ? viewportSource.setSuppressWheelUntil(...args)
+            : undefined;
+        const isCompareNodeSelected = (...args) => typeof selectionSource.isCompareNodeSelected === 'function'
+            ? selectionSource.isCompareNodeSelected(...args)
+            : false;
+        const selectNodeLight = (...args) => typeof selectionSource.selectNodeLight === 'function'
+            ? selectionSource.selectNodeLight(...args)
+            : undefined;
+        const getSelectedNodeId = (...args) => typeof selectionSource.getSelectedNodeId === 'function'
+            ? selectionSource.getSelectedNodeId(...args)
+            : undefined;
+        const updateCompareParam = (...args) => typeof updateSource.updateCompareParam === 'function'
+            ? updateSource.updateCompareParam(...args)
+            : undefined;
+        const refreshCompareDom = (...args) => typeof updateSource.refreshCompareDom === 'function'
+            ? updateSource.refreshCompareDom(...args)
+            : undefined;
+        const scheduleSave = (...args) => typeof persistenceSource.scheduleSave === 'function'
+            ? persistenceSource.scheduleSave(...args)
+            : undefined;
+        const renderInspector = (...args) => typeof uiSource.renderInspector === 'function'
+            ? uiSource.renderInspector(...args)
+            : undefined;
         let dragState = null;
 
         function updateComparePositionFromPointer(node, stageEl, evt) {
@@ -22,8 +55,8 @@
             const rect = stageEl.getBoundingClientRect?.();
             if (!rect?.width) return null;
             const next = clamp(((evt.clientX - rect.left) / rect.width) * 100, 0, 100);
-            call('updateCompareParam', node.id, 'position', next, 'number', { render: false });
-            call('refreshCompareDom', node.id);
+            updateCompareParam(node.id, 'position', next, 'number', { render: false });
+            refreshCompareDom(node.id);
             return next;
         }
 
@@ -31,8 +64,8 @@
             if (!node || node.type !== 'compare' || !stageEl || !evt || isNodeLocked(node)) return;
             evt.preventDefault();
             evt.stopPropagation();
-            call('setSuppressWheelUntil', getPerformanceNow() + 240);
-            if (!call('isCompareNodeSelected', node.id)) call('selectNodeLight', node.id);
+            setSuppressWheelUntil(getPerformanceNow() + 240);
+            if (!isCompareNodeSelected(node.id)) selectNodeLight(node.id);
             dragState = {
                 pointerId: evt.pointerId,
                 nodeId: node.id,
@@ -62,9 +95,9 @@
             doc?.removeEventListener('pointermove', onComparePositionDragMove, true);
             doc?.removeEventListener('pointerup', stopComparePositionDrag, true);
             doc?.removeEventListener('pointercancel', stopComparePositionDrag, true);
-            call('scheduleSave');
+            scheduleSave();
             const node = getNode(nodeId);
-            if (call('getSelectedNodeId') === nodeId && node?.type === 'compare') call('renderInspector');
+            if (getSelectedNodeId() === nodeId && node?.type === 'compare') renderInspector();
         }
 
         return {

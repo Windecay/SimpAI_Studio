@@ -2,22 +2,30 @@
     'use strict';
 
     function createCanvasDirectorTimelineDragController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.directorTimelineDragSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const timelineSource = scope.timelineSource || {};
+        const historySource = scope.historySource || {};
+        const stateSource = scope.stateSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const isDirectorTimelineNode = (node) => typeof scope.isDirectorTimelineNode === 'function'
-            ? !!scope.isDirectorTimelineNode(node)
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
+        const isDirectorTimelineNode = (node) => typeof nodeSource.isDirectorTimelineNode === 'function'
+            ? !!nodeSource.isDirectorTimelineNode(node)
             : false;
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' ? !!scope.isNodeLocked(node) : false;
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
         const directorTimelineClampSeconds = (value, min, max) => {
-            const result = call('directorTimelineClampSeconds', value, min, max);
+            const result = call(timelineSource, 'directorTimelineClampSeconds', value, min, max);
             return result === undefined ? Math.max(Number(min || 0), Math.min(Number(max || 86400), Number(value || 0))) : result;
         };
         const directorTimelineRoundSeconds = (value) => {
-            const result = call('directorTimelineRoundSeconds', value);
+            const result = call(timelineSource, 'directorTimelineRoundSeconds', value);
             return result === undefined ? Math.round(Number(value || 0) * 10) / 10 : result;
         };
         let dragState = null;
@@ -25,14 +33,14 @@
         function startDirectorTimelinePreviewDrag(node, nodeEl, dragTarget, evt) {
             if (!isDirectorTimelineNode(node) || isNodeLocked(node) || !dragTarget || !evt) return;
             const index = Number(dragTarget.getAttribute?.('data-director-timeline-clip') || 0);
-            const director = call('normalizeDirectorTimelineForNode', node);
+            const director = call(timelineSource, 'normalizeDirectorTimelineForNode', node);
             const segment = director?.segments?.[index];
             const track = dragTarget.closest?.('.sai-director-timeline-video-track');
             const rect = track?.getBoundingClientRect?.();
             if (!segment || !rect || rect.width <= 0) return;
             const modeValue = dragTarget.getAttribute?.('data-director-timeline-drag') || 'move';
-            const bounds = call('directorTimelineNeighborBounds', director, index) || { previousEnd: 0, nextStart: 86400 };
-            call('pushHistoryBatch', `director:${node.id}:timeline-preview:${index}`, 'Edit Director shot time');
+            const bounds = call(timelineSource, 'directorTimelineNeighborBounds', director, index) || { previousEnd: 0, nextStart: 86400 };
+            call(historySource, 'pushHistoryBatch', `director:${node.id}:timeline-preview:${index}`, 'Edit Director shot time');
             dragState = {
                 pointerId: evt.pointerId,
                 nodeId: node.id,
@@ -43,7 +51,7 @@
                 startEnd: Math.max(Number(segment.start || 0) + 0.1, Number(segment.end || 0)),
                 previousEnd: bounds.previousEnd,
                 nextStart: bounds.nextStart,
-                totalSeconds: Math.max(0.1, Number(call('directorTimelineTotalSeconds', director) || 10)),
+                totalSeconds: Math.max(0.1, Number(call(timelineSource, 'directorTimelineTotalSeconds', director) || 10)),
                 trackWidth: rect.width,
                 nodeEl
             };
@@ -63,7 +71,7 @@
             if (!state || !evt || evt.pointerId !== state.pointerId) return;
             const node = getNode(state.nodeId);
             if (!isDirectorTimelineNode(node) || isNodeLocked(node)) return;
-            const director = call('normalizeDirectorTimelineForNode', node);
+            const director = call(timelineSource, 'normalizeDirectorTimelineForNode', node);
             const segment = director?.segments?.[state.index];
             if (!segment) return;
             const secondsPerPx = state.totalSeconds / Math.max(1, state.trackWidth);
@@ -93,13 +101,13 @@
             segment.end = directorTimelineRoundSeconds(Math.min(nextStart, Math.max(segment.start + minDuration, end)));
             segment.unit = 'seconds';
             director.segments[state.index] = segment;
-            const normalized = call('normalizeTimeline', director);
+            const normalized = call(timelineSource, 'normalizeTimeline', director);
             const statePatch = normalized
-                ? call('buildDirectorTimelineStatePatch', node, { directorPatch: normalized })
+                ? call(stateSource, 'buildDirectorTimelineStatePatch', node, { directorPatch: normalized })
                 : null;
             if (statePatch && typeof statePatch === 'object') Object.assign(node, statePatch);
-            call('updateDirectorStatus', node);
-            call('mutate', { inspector: call('getSelectedNodeId') === node.id });
+            call(stateSource, 'updateDirectorStatus', node);
+            call(stateSource, 'mutate', { inspector: call(stateSource, 'getSelectedNodeId') === node.id });
             evt.preventDefault();
         }
 
@@ -113,7 +121,7 @@
             doc?.removeEventListener('pointermove', onDirectorTimelinePreviewDragMove, true);
             doc?.removeEventListener('pointerup', stopDirectorTimelinePreviewDrag, true);
             doc?.removeEventListener('pointercancel', stopDirectorTimelinePreviewDrag, true);
-            call('scheduleSave');
+            call(persistenceSource, 'scheduleSave');
         }
 
         return {

@@ -6,9 +6,10 @@
     }
 
     function createCanvasVlmChatStateFactoryController(context) {
-        const scope = context || {};
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.vlmChatStateFactorySource || context || {};
+        const serializationSource = scope.serializationSource || {};
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

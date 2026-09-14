@@ -20,40 +20,48 @@
         return controller && typeof controller[name] === 'function' ? controller[name] : undefined;
     }
 
-    function canvasAgentRunNodeSelection(scope, node) {
+    function canvasAgentRunNodeSelection(uiSource, node) {
         if (!node) return;
-        if (typeof scope.dockCanvasAgentPanelBottomLeft === 'function') {
-            scope.dockCanvasAgentPanelBottomLeft({ render: false });
+        if (typeof uiSource.dockCanvasAgentPanelBottomLeft === 'function') {
+            uiSource.dockCanvasAgentPanelBottomLeft({ render: false });
         }
-        if (typeof scope.setCanvasAgentSelection === 'function') {
-            scope.setCanvasAgentSelection(node.id, [node.id]);
+        if (typeof uiSource.setCanvasAgentSelection === 'function') {
+            uiSource.setCanvasAgentSelection(node.id, [node.id]);
         }
-        if (typeof scope.mutate === 'function') scope.mutate({ inspector: true });
+        if (typeof uiSource.mutate === 'function') uiSource.mutate({ inspector: true });
     }
 
-    function prepareVlmAgentImageActionStart(scope, prompt) {
-        const settings = typeof scope?.getCanvasAgentSettings === 'function'
-            ? (scope.getCanvasAgentSettings() || {})
+    function prepareVlmAgentImageActionStart(uiSource, prompt) {
+        const settings = typeof uiSource?.getCanvasAgentSettings === 'function'
+            ? (uiSource.getCanvasAgentSettings() || {})
             : {};
-        if (!settings.enabled && typeof scope?.setCanvasAgentSettingsPatch === 'function') {
-            scope.setCanvasAgentSettingsPatch({ enabled: true }, { silentHistory: true });
+        if (!settings.enabled && typeof uiSource?.setCanvasAgentSettingsPatch === 'function') {
+            uiSource.setCanvasAgentSettingsPatch({ enabled: true }, { silentHistory: true });
         }
-        const state = typeof scope?.getAgentState === 'function' ? (scope.getAgentState() || {}) : {};
+        const state = typeof uiSource?.getAgentState === 'function' ? (uiSource.getAgentState() || {}) : {};
         state.input = prompt;
-        const t = scope?.t || ((en, cn) => cn || en);
+        const t = uiSource?.t || ((en, cn) => cn || en);
         state.lastMessage = t(
             'VLM Chat confirmed a tool call. Starting with the prepared prompt...',
             'VLM Chat 已确认工具调用，正在使用准备好的提示词启动...'
         );
-        if (typeof scope?.renderCanvasAgentPanel === 'function') scope.renderCanvasAgentPanel();
+        if (typeof uiSource?.renderCanvasAgentPanel === 'function') uiSource.renderCanvasAgentPanel();
     }
 
     function createCanvasWorkbenchAgentContext(source) {
         const scope = source?.agentSource || source || {};
+        const generationSource = scope.generationSource || {};
+        const referencesSource = scope.referencesSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const promptRewriteSource = scope.promptRewriteSource || {};
+        const promptResolverSource = scope.promptResolverSource || {};
+        const textWorkflowsSource = scope.textWorkflowsSource || {};
+        const textNodesSource = scope.textNodesSource || {};
+        const uiSource = scope.uiSource || {};
         const generation = createController(
             modules.generation,
             'createCanvasAgentGenerationController',
-            scope.generationSource || {}
+            generationSource
         );
         const generationMethod = (name, ...args) => method(generation, name)?.(...args);
         let promptRewrite = {};
@@ -64,163 +72,72 @@
         const references = createController(
             modules.references,
             'createCanvasAgentReferencesController',
-            {
-                t: scope.t,
-                uid: scope.uid,
-                getAgentState: scope.getAgentState,
-                getNode: scope.getNode,
-                getCanvasAgentReferenceAsset: scope.getCanvasAgentReferenceAsset,
-                getCanvasAgentReferenceKind: scope.getCanvasAgentReferenceKind,
-                canvasAgentShortNodeLabel: scope.canvasAgentShortNodeLabel,
-                getNodeTextOutput: scope.getNodeTextOutput,
-                assetDisplaySrc: scope.assetDisplaySrc,
-                isCanvasAgentMediaReferenceTarget: scope.isCanvasAgentMediaReferenceTarget,
-                getCanvasAgentTargetMediaKind: scope.getCanvasAgentTargetMediaKind,
-                getSelectedNodeIdList: scope.getSelectedNodeIdList,
-                getCanvasAgentTargetNode: scope.getCanvasAgentTargetNode,
-                setCanvasAgentMessage: scope.setCanvasAgentMessage,
-                showToast: scope.showToast,
-                renderCanvasAgentPanel: scope.renderCanvasAgentPanel,
-                getMaxImageReferences: scope.getMaxImageReferences,
-                getMaxExtraImageReferences: scope.getMaxExtraImageReferences,
-                getMaxVideoReferences: scope.getMaxVideoReferences,
-                getMaxAudioReferences: scope.getMaxAudioReferences,
-                getMaxTextReferences: scope.getMaxTextReferences
-            }
+            referencesSource
         );
         const referencesMethod = (name, ...args) => method(references, name)?.(...args);
 
         const decision = createController(
             modules.decision,
             'createCanvasAgentDecisionController',
-            {
-                t: scope.t,
-                normalizePresetName: scope.normalizePresetName,
-                getPresetCatalog: scope.getPresetCatalog,
-                getReadyPresetEntries: scope.getReadyPresetEntries,
-                createCanvasAgentPresetProbeNode: scope.createCanvasAgentPresetProbeNode,
-                canvasAgentUploadSlotsForNode: scope.canvasAgentUploadSlotsForNode,
-                getUploadSlotMediaKind: scope.getUploadSlotMediaKind,
-                isCanvasAgentMaskSlot: scope.isCanvasAgentMaskSlot,
-                getCanvasAgentSettings: scope.getCanvasAgentSettings,
-                canvasAgentPresetQueueConfig: scope.canvasAgentPresetQueueConfig,
-                getCanvasAgentPresetQueue: scope.getCanvasAgentPresetQueue,
-                findCanvasAgentPresetEntryByAlias: scope.findCanvasAgentPresetEntryByAlias,
-                findCanvasAgentPresetInstructionOverride: scope.findCanvasAgentPresetInstructionOverride,
-                findPresetCatalogEntryByName: scope.findPresetCatalogEntryByName,
-                getCanvasAgentPresetStatus: scope.getCanvasAgentPresetStatus,
-                canvasAgentPresetPromptDefaults: scope.canvasAgentPresetPromptDefaults,
-                promptPreflight: scope.promptPreflight,
-                canvasAgentPromptValidationFact: scope.canvasAgentPromptValidationFact,
-                wildcardPreviewFacts: scope.wildcardPreviewFacts,
-                askCanvasAgentDecision: scope.askCanvasAgentDecision,
-                canvasAgentPromptTargetFact: scope.canvasAgentPromptTargetFact,
-                rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
-            }
+            Object.assign({}, decisionSource, {
+                rewriteSource: Object.assign({}, decisionSource.rewriteSource || {}, {
+                    rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
+                })
+            })
         );
         const decisionMethod = (name, ...args) => method(decision, name)?.(...args);
 
         promptRewrite = createController(
             modules.promptRewrite,
             'createCanvasAgentPromptRewriteController',
-            {
-                t: scope.t,
-                uid: scope.uid,
-                normalizePresetName: scope.normalizePresetName,
-                getPromptRewriteTimeoutMs: scope.getPromptRewriteTimeoutMs,
-                getDefaultProjectId: scope.getDefaultProjectId,
-                getProject: scope.getProject,
-                getCanvasAgentSettings: scope.getCanvasAgentSettings,
-                getCanvasAgentRewriteModel: scope.getCanvasAgentRewriteModel,
-                getCanvasAgentVlmReferenceSources: (...args) => referencesMethod('getCanvasAgentVlmReferenceSources', ...args),
-                canvasAgentReferenceSummaryText: (...args) => referencesMethod('canvasAgentReferenceSummaryText', ...args),
-                runtimeUiLang: scope.runtimeUiLang,
-                getCanvasAgentTargetNode: scope.getCanvasAgentTargetNode,
-                isCanvasAgentImageTarget: scope.isCanvasAgentImageTarget,
-                canvasAgentPromptTargetFromPurpose: scope.canvasAgentPromptTargetFromPurpose,
-                canvasAgentPromptDefaultsForPurpose: scope.canvasAgentPromptDefaultsForPurpose,
-                canvasAgentPromptTargetNeedsDanbooru: scope.canvasAgentPromptTargetNeedsDanbooru,
-                canvasAgentPromptLooksDanbooru: scope.canvasAgentPromptLooksDanbooru,
-                canvasAgentPromptNeedsTargetRewrite: scope.canvasAgentPromptNeedsTargetRewrite,
-                canvasAgentPromptTargetContextLine: scope.canvasAgentPromptTargetContextLine,
-                canvasAgentPromptTargetInstruction: scope.canvasAgentPromptTargetInstruction,
-                canvasAgentVlmAgentContextPayload: scope.canvasAgentVlmAgentContextPayload,
-                sendCanvasVlmRunRequest: scope.sendCanvasVlmRunRequest,
-                getCanvasAgentCustomRuntimeParams: scope.getCanvasAgentCustomRuntimeParams,
-                canvasAgentDanbooruFallbackPrompt: scope.canvasAgentDanbooruFallbackPrompt,
-                apiDanbooruTagLookup: scope.apiDanbooruTagLookup,
-                showToast: scope.showToast
-            }
+            Object.assign({}, promptRewriteSource, {
+                referenceSource: Object.assign({}, promptRewriteSource.referenceSource || {}, {
+                    getCanvasAgentVlmReferenceSources: (...args) => referencesMethod('getCanvasAgentVlmReferenceSources', ...args),
+                    canvasAgentReferenceSummaryText: (...args) => referencesMethod('canvasAgentReferenceSummaryText', ...args)
+                })
+            })
         );
 
         const promptResolver = createController(
             modules.promptResolver,
             'createCanvasAgentPromptResolverController',
-            {
-                t: scope.t,
-                uid: scope.uid,
-                getCanvasAgentSettings: scope.getCanvasAgentSettings,
-                canvasAgentPromptTargetFromPurpose: scope.canvasAgentPromptTargetFromPurpose,
-                canvasAgentPromptDefaultsForPurpose: scope.canvasAgentPromptDefaultsForPurpose,
-                askCanvasAgentDecision: scope.askCanvasAgentDecision,
-                canvasAgentPromptPreflight: decisionMethod.bind(null, 'canvasAgentPromptPreflight'),
-                canvasAgentPromptPreflightFacts: decisionMethod.bind(null, 'canvasAgentPromptPreflightFacts'),
-                canvasAgentPromptTargetFact: scope.canvasAgentPromptTargetFact,
-                canvasAgentPromptValidationFact: scope.canvasAgentPromptValidationFact,
-                getCanvasAgentRewriteModel: scope.getCanvasAgentRewriteModel,
-                setCanvasAgentRunInfo: scope.setCanvasAgentRunInfo,
-                setCanvasAgentMessage: scope.setCanvasAgentMessage,
-                rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args),
-                resetCanvasAgentRunInfo: scope.resetCanvasAgentRunInfo
-            }
+            Object.assign({}, promptResolverSource, {
+                promptSource: Object.assign({}, promptResolverSource.promptSource || {}, {
+                    canvasAgentPromptPreflight: decisionMethod.bind(null, 'canvasAgentPromptPreflight'),
+                    canvasAgentPromptPreflightFacts: decisionMethod.bind(null, 'canvasAgentPromptPreflightFacts')
+                }),
+                rewriteSource: Object.assign({}, promptResolverSource.rewriteSource || {}, {
+                    rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
+                })
+            })
         );
         const promptResolverMethod = (name, ...args) => method(promptResolver, name)?.(...args);
 
         const textWorkflows = createController(
             modules.textWorkflows,
             'createCanvasAgentTextWorkflowController',
-            {
-                t: scope.t,
-                uid: scope.uid,
-                getCanvasAgentTargetNode: scope.getCanvasAgentTargetNode,
-                isCanvasAgentTextTarget: scope.isCanvasAgentTextTarget,
-                getTextNodeInputSource: (...args) => textNodesMethod('getTextNodeInputSource', ...args),
-                getNodeTextOutput: (...args) => textNodesMethod('getNodeTextOutput', ...args),
-                getCanvasAgentRewriteModel: scope.getCanvasAgentRewriteModel,
-                setCanvasAgentRunInfo: scope.setCanvasAgentRunInfo,
-                resetCanvasAgentRunInfo: scope.resetCanvasAgentRunInfo,
-                setCanvasAgentMessage: scope.setCanvasAgentMessage,
-                showToast: scope.showToast,
-                waitNextFrame: scope.waitNextFrame,
-                rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args),
-                askCanvasAgentDecision: scope.askCanvasAgentDecision,
-                updateTextNodeValue: scope.updateTextNodeValue,
-                setCanvasAgentInput: scope.setCanvasAgentInput,
-                mutate: scope.mutate
-            }
+            Object.assign({}, textWorkflowsSource, {
+                nodeSource: Object.assign({}, textWorkflowsSource.nodeSource || {}, {
+                    getTextNodeInputSource: (...args) => textNodesMethod('getTextNodeInputSource', ...args),
+                    getNodeTextOutput: (...args) => textNodesMethod('getNodeTextOutput', ...args)
+                }),
+                rewriteSource: Object.assign({}, textWorkflowsSource.rewriteSource || {}, {
+                    rewriteCanvasAgentPromptWithLlm: (...args) => promptRewriteMethod('rewriteCanvasAgentPromptWithLlm', ...args)
+                })
+            })
         );
         const textWorkflowsMethod = (name, ...args) => method(textWorkflows, name)?.(...args);
 
         textNodes = createController(
             modules.textNodes,
             'createCanvasAgentTextNodesController',
-            {
-                getProject: scope.getProject,
-                getNode: scope.getNode,
-                buildTextMergeStatePatch: scope.buildTextMergeStatePatch,
-                batchAnyMediaKind: scope.batchAnyMediaKind,
-                batchAnyCurrentItem: scope.batchAnyCurrentItem,
-                batchAnyTextFromItem: scope.batchAnyTextFromItem,
-                isDirectorTimelineNode: scope.isDirectorTimelineNode,
-                directorTimelinePayload: scope.directorTimelinePayload,
-                getStyleSelectorPrompt: scope.getStyleSelectorPrompt
-            }
+            textNodesSource
         );
 
         return {
             CANVAS_AGENT_GENERATION_CONTROLLER: generation,
-            canvasAgentRunNodeSelection: node => canvasAgentRunNodeSelection(scope, node),
-            prepareVlmAgentImageActionStart: prompt => prepareVlmAgentImageActionStart(scope, prompt),
+            canvasAgentRunNodeSelection: node => canvasAgentRunNodeSelection(uiSource, node),
+            prepareVlmAgentImageActionStart: prompt => prepareVlmAgentImageActionStart(uiSource, prompt),
             canvasAgentUserExplicitNegativePrompt: generationMethod.bind(null, 'canvasAgentUserExplicitNegativePrompt'),
             normalizeCanvasAgentAspect: generationMethod.bind(null, 'normalizeCanvasAgentAspect'),
             extractCanvasAgentAspectFromText: generationMethod.bind(null, 'extractCanvasAgentAspectFromText'),

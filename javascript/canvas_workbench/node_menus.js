@@ -2,11 +2,58 @@
     'use strict';
 
     function createNodeMenuTools(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function'
-            ? scope[name](...args)
-            : fallback;
+        const scope = context?.nodeMenusSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const catalogSource = scope.catalogSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const importSource = scope.importSource || {};
+        const paletteSource = scope.paletteSource || {};
+        const viewSource = scope.viewSource || {};
+        const uiSource = scope.uiSource || {};
+        const callbackSources = {
+            getPresetCatalog: catalogSource,
+            resolvePresetCatalogEntry: catalogSource,
+            addPresetNode: nodeSource,
+            addMediaBrowserNode: nodeSource,
+            addBatchAnyNode: nodeSource,
+            importSelectedTransferAt: importSource,
+            openImageFilePicker: importSource,
+            openPresetPalette: paletteSource,
+            addManualOutputNode: nodeSource,
+            addStyleSelectorNode: nodeSource,
+            addTextNode: nodeSource,
+            addTextMergeNode: nodeSource,
+            addWildcardsHelperNode: nodeSource,
+            addTranslationNode: nodeSource,
+            addTagCartNode: nodeSource,
+            addWd14Node: nodeSource,
+            addVlmNode: nodeSource,
+            addMaskNode: nodeSource,
+            addSam3VideoMaskNode: nodeSource,
+            addCameraMotionNode: nodeSource,
+            addPoseStudioNode: nodeSource,
+            addGaussianStudioNode: nodeSource,
+            addLivePortraitExpressionNode: nodeSource,
+            addCompareNode: nodeSource,
+            addDirectorTimelineNode: nodeSource,
+            addTimelineNode: nodeSource,
+            addQwenTtsNode: nodeSource,
+            addNoteNode: nodeSource,
+            addAreaGroup: nodeSource,
+            centerCanvas: viewSource,
+            fitAll: viewSource,
+            clearCanvasWithConfirm: viewSource,
+            showToast: uiSource
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const localizeCanvasLabel = typeof utilitySource.localizeCanvasLabel === 'function'
+            ? utilitySource.localizeCanvasLabel
+            : (value) => value;
+        const call = (name, fallback, ...args) => {
+            const source = callbackSources[name] || {};
+            return typeof source[name] === 'function' ? source[name](...args) : fallback;
+        };
 
         function buildAddNodeContextMenuItems(targetWorld, includeViewActions) {
             const items = [

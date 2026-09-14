@@ -24,149 +24,81 @@
 
     function createCanvasWorkbenchInputInteractionContext(source) {
         const scope = source || {};
+        const viewportWheelSource = scope.viewportWheelSource || {};
+        const mediaBrowserDragSource = scope.mediaBrowserDragSource || {};
+        const viewportDropSource = scope.viewportDropSource || {};
+        const viewportContextSource = scope.viewportContextSource || {};
+        const keyboardSource = scope.keyboardSource || {};
+        const documentPasteSource = scope.documentPasteSource || {};
+        const inputHandleSource = scope.inputHandleSource || {};
+        const noteTailSource = scope.noteTailSource || {};
+        const edgeInteractionSource = scope.edgeInteractionSource || {};
         const controllers = {};
 
-        controllers.viewportWheel = createController(modules.viewportWheel, 'createCanvasViewportWheelController', {
-            getRoot: scope.getRoot,
-            getDocument: scope.getDocument,
-            getWindow: scope.getWindow,
-            performanceNow: scope.performanceNow,
-            getSuppressWheelUntil: scope.getSuppressWheelUntil,
-            isInteractiveTarget: scope.isInteractiveTarget,
-            isNodeDragging: scope.isNodeDragging,
-            isPanning: scope.isPanning,
-            isMarqueeSelecting: scope.isMarqueeSelecting,
-            isConnecting: scope.isConnecting,
-            zoomAtClient: scope.zoomAtClient
-        });
+        controllers.viewportWheel = createController(
+            modules.viewportWheel,
+            'createCanvasViewportWheelController',
+            viewportWheelSource
+        );
 
-        controllers.mediaBrowserDrag = createController(modules.mediaBrowserDrag, 'createCanvasMediaBrowserDragController', {
-            getDragMime: scope.getDragMime,
-            getMediaBrowserNodeState: scope.getMediaBrowserNodeState,
-            getMediaBrowserItems: scope.getMediaBrowserItems,
-            serializableMediaBrowserState: scope.serializableMediaBrowserState,
-            getViewport: scope.getViewport
-        });
+        controllers.mediaBrowserDrag = createController(
+            modules.mediaBrowserDrag,
+            'createCanvasMediaBrowserDragController',
+            mediaBrowserDragSource
+        );
         const mediaBrowserDragMethod = name => method(controllers.mediaBrowserDrag, name);
 
-        controllers.viewportDrop = createController(modules.viewportDrop, 'createCanvasViewportDropController', {
-            getViewport: scope.getViewport,
-            getTransferStation: scope.getTransferStation,
-            clientToWorld: scope.clientToWorld,
-            setLastPointerWorld: scope.setLastPointerWorld,
-            mediaBrowserPayloadFromDataTransfer: (...args) => mediaBrowserDragMethod('mediaBrowserPayloadFromDataTransfer')?.(...args),
-            clearMediaBrowserDragPayload: (...args) => mediaBrowserDragMethod('clearMediaBrowserDragPayload')?.(...args),
-            addMediaBrowserPayloadToCanvas: scope.addMediaBrowserPayloadToCanvas,
-            importTransferItemAt: scope.importTransferItemAt,
-            isWorkbenchProjectFile: scope.isWorkbenchProjectFile,
-            importWorkbenchProjectFromFile: scope.importWorkbenchProjectFromFile,
-            isMediaFile: scope.isMediaFile,
-            addMediaNodeFromFile: scope.addMediaNodeFromFile
-        });
+        controllers.viewportDrop = createController(
+            modules.viewportDrop,
+            'createCanvasViewportDropController',
+            Object.assign({}, viewportDropSource, {
+                mediaBrowserSource: Object.assign({}, viewportDropSource.mediaBrowserSource || {}, {
+                    mediaBrowserPayloadFromDataTransfer: (...args) => mediaBrowserDragMethod('mediaBrowserPayloadFromDataTransfer')?.(...args),
+                    clearMediaBrowserDragPayload: (...args) => mediaBrowserDragMethod('clearMediaBrowserDragPayload')?.(...args),
+                    addMediaBrowserPayloadToCanvas: (...args) => mediaBrowserDragMethod('addMediaBrowserPayloadToCanvas')?.(...args),
+                })
+            })
+        );
 
-        controllers.viewportContext = createController(modules.viewportContext, 'createCanvasViewportContextController', {
-            getRoot: scope.getRoot,
-            clientToWorld: scope.clientToWorld,
-            setLastPointerWorld: scope.setLastPointerWorld,
-            findCanvasEdgeAtClient: scope.findCanvasEdgeAtClient,
-            selectEdge: scope.selectEdge,
-            openEdgeContextMenu: scope.openEdgeContextMenu,
-            openAddNodeMenu: scope.openAddNodeMenu
-        });
+        controllers.viewportContext = createController(
+            modules.viewportContext,
+            'createCanvasViewportContextController',
+            viewportContextSource
+        );
 
-        controllers.keyboard = createController(modules.keyboard, 'createCanvasKeyboardController', {
-            getRoot: scope.getRoot,
-            getTextareaEditorState: scope.getTextareaEditorState,
-            getProject: scope.getProject,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            getNode: scope.getNode,
-            isEditableElement: scope.isEditableElement,
-            consumeWorkbenchShortcut: scope.consumeWorkbenchShortcut,
-            handleCanvasAgentAction: scope.handleCanvasAgentAction,
-            canvasAgentPrimaryAction: scope.canvasAgentPrimaryAction,
-            isOutpaintOverlayActive: scope.isOutpaintOverlayActive,
-            hideOutpaintOverlay: scope.hideOutpaintOverlay,
-            renderCanvasAgentPanel: scope.renderCanvasAgentPanel,
-            isConnecting: scope.isConnecting,
-            cancelConnection: scope.cancelConnection,
-            isPresetPaletteOpen: scope.isPresetPaletteOpen,
-            closePresetPalette: scope.closePresetPalette,
-            closeContextMenu: scope.closeContextMenu,
-            ensureProjectGroups: scope.ensureProjectGroups,
-            focusGroup: scope.focusGroup,
-            saveProject: scope.saveProject,
-            undoCanvasEdit: scope.undoCanvasEdit,
-            redoCanvasEdit: scope.redoCanvasEdit,
-            openPresetPalette: scope.openPresetPalette,
-            copyCanvasSelection: scope.copyCanvasSelection,
-            pasteCanvasClipboard: scope.pasteCanvasClipboard,
-            duplicateSelection: scope.duplicateSelection,
-            resetViewportZoom: scope.resetViewportZoom,
-            zoomAtViewportCenter: scope.zoomAtViewportCenter,
-            runSelectedChain: scope.runSelectedChain,
-            runPresetNodeFromUi: scope.runPresetNodeFromUi,
-            toggleTimelinePreviewPlayback: scope.toggleTimelinePreviewPlayback,
-            playMediaSelection: scope.playMediaSelection,
-            toggleSelectedResultMediaPlayback: scope.toggleSelectedResultMediaPlayback,
-            fitAll: scope.fitAll,
-            fitSelection: scope.fitSelection,
-            alignSelectedNodes: scope.alignSelectedNodes,
-            deleteSelection: scope.deleteSelection,
-            setMode: scope.setMode,
-            toggleSelectedNodesFlag: scope.toggleSelectedNodesFlag,
-            importSelectedTransferAt: scope.importSelectedTransferAt,
-            viewportCenterWorld: scope.viewportCenterWorld
-        });
+        controllers.keyboard = createController(
+            modules.keyboard,
+            'createCanvasKeyboardController',
+            keyboardSource
+        );
 
-        controllers.documentPaste = createController(modules.documentPaste, 'createCanvasDocumentPasteController', {
-            getRoot: scope.getRoot,
-            isEditableElement: scope.isEditableElement,
-            viewportCenterWorld: scope.viewportCenterWorld,
-            addImageNodeFromFile: scope.addImageNodeFromFile
-        });
+        controllers.documentPaste = createController(
+            modules.documentPaste,
+            'createCanvasDocumentPasteController',
+            documentPasteSource
+        );
 
-        controllers.inputHandle = createController(modules.inputHandle, 'createCanvasInputHandleController', {
-            getProject: scope.getProject,
-            getNode: scope.getNode,
-            t: scope.t,
-            startInputConnection: scope.startInputConnection,
-            startConnection: scope.startConnection,
-            deleteUploadSlot: scope.deleteUploadSlot,
-            deleteEdge: scope.deleteEdge,
-            renderAll: scope.renderAll,
-            isQwenTtsNode: scope.isQwenTtsNode,
-            isDirectorTimelineNode: scope.isDirectorTimelineNode,
-            directorMediaSourceKind: scope.directorMediaSourceKind,
-            batchAnyInputEdgeForDrag: scope.batchAnyInputEdgeForDrag,
-            showToast: scope.showToast
-        });
+        controllers.inputHandle = createController(
+            modules.inputHandle,
+            'createCanvasInputHandleController',
+            inputHandleSource
+        );
 
-        controllers.noteTail = createController(modules.noteTail, 'createCanvasNoteTailController', {
-            getProject: scope.getProject,
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            buildNoteStatePatch: scope.buildNoteStatePatch,
-            ensureNoteTailTarget: scope.ensureNoteTailTarget,
-            snapCanvasCoord: scope.snapCanvasCoord,
-            t: scope.t,
-            showToast: scope.showToast,
-            selectNodeForTailDrag: scope.selectNodeForTailDrag,
-            updateSelectionDomClasses: scope.updateSelectionDomClasses,
-            renderEdges: scope.renderEdges,
-            renderInspector: scope.renderInspector,
-            pushHistory: scope.pushHistory,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId
-        });
+        controllers.noteTail = createController(
+            modules.noteTail,
+            'createCanvasNoteTailController',
+            noteTailSource
+        );
 
-        controllers.edgeInteraction = createController(modules.edgeInteraction, 'createCanvasEdgeInteractionController', {
-            getEdgesLayer: scope.getEdgesLayer,
-            getNode: scope.getNode,
-            selectEdge: scope.selectEdge,
-            openEdgeContextMenu: scope.openEdgeContextMenu,
-            startNoteTailDrag: (...args) => method(controllers.noteTail, 'startNoteTailDrag')?.(...args)
-        });
+        controllers.edgeInteraction = createController(
+            modules.edgeInteraction,
+            'createCanvasEdgeInteractionController',
+            Object.assign({}, edgeInteractionSource, {
+                noteTailSource: Object.assign({}, edgeInteractionSource.noteTailSource || {}, {
+                    startNoteTailDrag: (...args) => method(controllers.noteTail, 'startNoteTailDrag')?.(...args)
+                })
+            })
+        );
 
         return {
             CANVAS_VIEWPORT_WHEEL_CONTROLLER: controllers.viewportWheel,

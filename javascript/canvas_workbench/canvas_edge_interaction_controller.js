@@ -2,10 +2,20 @@
     'use strict';
 
     function createCanvasEdgeInteractionController(context) {
-        const scope = context || {};
-        const getEdgesLayer = () => typeof scope.getEdgesLayer === 'function' ? scope.getEdgesLayer() : null;
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const scope = context?.edgeInteractionSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const edgeSource = scope.edgeSource || {};
+        const menuSource = scope.menuSource || {};
+        const noteTailSource = scope.noteTailSource || {};
+        const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getEdgesLayer = () => sourceCall(domSource, 'getEdgesLayer', null);
+        const getNode = (id) => sourceCall(nodeSource, 'getNode', null, id);
+        const edgeCall = (name, fallback, ...args) => sourceCall(edgeSource, name, fallback, ...args);
+        const menuCall = (name, fallback, ...args) => sourceCall(menuSource, name, fallback, ...args);
+        const noteTailCall = (name, fallback, ...args) => sourceCall(noteTailSource, name, fallback, ...args);
 
         function edgeElementFromEvent(evt) {
             const edgeEl = evt?.target?.closest?.('[data-edge-id]');
@@ -17,7 +27,7 @@
             const edgeEl = edgeElementFromEvent(evt);
             if (!edgeEl) return;
             evt.stopPropagation();
-            call('selectEdge', edgeEl.getAttribute('data-edge-id'));
+            edgeCall('selectEdge', undefined, edgeEl.getAttribute('data-edge-id'));
         }
 
         function handleEdgeLayerContextMenu(evt) {
@@ -26,8 +36,8 @@
             evt.preventDefault();
             evt.stopPropagation();
             const edgeId = edgeEl.getAttribute('data-edge-id');
-            call('selectEdge', edgeId);
-            call('openEdgeContextMenu', edgeId, evt.clientX, evt.clientY);
+            edgeCall('selectEdge', undefined, edgeId);
+            menuCall('openEdgeContextMenu', undefined, edgeId, evt.clientX, evt.clientY);
         }
 
         function handleEdgeLayerPointerDown(evt) {
@@ -38,7 +48,7 @@
             if (!node || node.type !== 'note') return;
             evt.preventDefault();
             evt.stopPropagation();
-            call('startNoteTailDrag', node, evt);
+            noteTailCall('startNoteTailDrag', undefined, node, evt);
         }
 
         return {

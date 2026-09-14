@@ -2,19 +2,61 @@
     'use strict';
 
     function createCanvasTimelineCompareController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = typeof scope.t === 'function' ? scope.t : ((en) => en);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const scope = context?.timelineCompareSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const languageSource = scope.languageSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const stateSource = scope.stateSource || {};
+        const timeSource = scope.timeSource || {};
+        const renderSource = scope.renderSource || {};
+        const frameSource = scope.frameSource || {};
+        const backendSource = scope.backendSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const resultSource = scope.resultSource || {};
+        const uiSource = scope.uiSource || {};
+        const callbackSources = {
+            getProject: projectSource,
+            getProjectId: projectSource,
+            buildProjectNodeAppendPatch: projectSource,
+            clamp: interactionSource,
+            defaultNodeSize: layoutSource,
+            placeNodeAvoidingOverlap: layoutSource,
+            setSelectedNodeId: selectionSource,
+            setSelectedNodeIds: selectionSource,
+            setSelectedEdgeId: selectionSource,
+            mutate: stateSource,
+            nowIso: timeSource,
+            normalizeTimelineNode: renderSource,
+            serializeTimelineRenderPayload: renderSource,
+            buildTimelineResultPatch: renderSource,
+            buildTimelineDebugPatch: renderSource,
+            sendCanvasRenderTimelineFrameRequest: backendSource,
+            assetDisplaySrc: mediaSource,
+            buildTimelineCompareResultNode: resultSource,
+            buildTimelineCompareAsset: resultSource,
+            showToast: uiSource
+        };
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en) => en);
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
         const getProject = () => call('getProject', {}, []) || {};
         const getProjectId = () => call('getProjectId', 'default');
         const serializeTimelineRenderPayload = (node) => call('serializeTimelineRenderPayload', {}, node) || {};
-        const renderTimelinePreviewFrameDataUrl = (...args) => call('renderTimelinePreviewFrameDataUrl', '', ...args);
-        const getActiveTimelineVisualClips = (node) => call('getActiveTimelineVisualClips', [], node) || [];
+        const renderTimelinePreviewFrameDataUrl = (...args) => typeof frameSource.renderTimelinePreviewFrameDataUrl === 'function'
+            ? frameSource.renderTimelinePreviewFrameDataUrl(...args)
+            : '';
+        const getActiveTimelineVisualClips = (node) => typeof frameSource.getActiveTimelineVisualClips === 'function'
+            ? (frameSource.getActiveTimelineVisualClips(node) || [])
+            : [];
         const compareTimelineFrameImages = (...args) => {
-            if (typeof scope.compareTimelineFrameImages === 'function') return scope.compareTimelineFrameImages(...args);
+            if (typeof frameSource.compareTimelineFrameImages === 'function') return frameSource.compareTimelineFrameImages(...args);
             return Promise.reject(new Error('timeline frame compare helper unavailable'));
         };
         const sendCanvasRenderTimelineFrameRequest = (...args) => call('sendCanvasRenderTimelineFrameRequest', null, ...args);

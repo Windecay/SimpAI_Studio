@@ -18,139 +18,51 @@
 
     function createCanvasWorkbenchProjectContext(source) {
         const scope = source?.projectSource || source || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const assetsSource = scope.assetsSource || {};
+        const actionsSource = scope.actionsSource || {};
         const persistence = createController(
             modules.persistence,
             'createCanvasProjectPersistenceController',
-            {
-                t: scope.t,
-                getProject: scope.getProject,
-                setProject: scope.setProject,
-                getDefaultProjectId: scope.getDefaultProjectId,
-                getStorage: scope.getStorage,
-                getStorageScope: scope.getStorageScope,
-                getCurrentStorageScope: scope.getCurrentStorageScope,
-                getStorageKey: scope.getStorageKey,
-                getStorageBaseKey: scope.getStorageBaseKey,
-                setStorageScope: scope.setStorageScope,
-                setStorageBaseKey: scope.setStorageBaseKey,
-                setStorageKey: scope.setStorageKey,
-                initialBrowserStorageKey: scope.initialBrowserStorageKey,
-                browserCacheProjectScope: scope.browserCacheProjectScope,
-                setActiveBrowserCacheProject: scope.setActiveBrowserCacheProject,
-                getBackendLoadedStorageKey: scope.getBackendLoadedStorageKey,
-                setBackendLoadedStorageKey: scope.setBackendLoadedStorageKey,
-                isProjectEmpty: scope.isProjectEmpty,
-                buildProjectStorageInfoPatch: scope.buildProjectStorageInfoPatch,
-                buildProjectStoragePatch: scope.buildProjectStoragePatch,
-                projectStoreBuildProjectStorageInfo: scope.projectStoreBuildProjectStorageInfo,
-                nowIso: scope.nowIso,
-                compactProjectForStorage: scope.compactProjectForStorage,
-                sanitizeProject: scope.sanitizeProject,
-                createDefaultProject: scope.createDefaultProject,
-                loadProject: scope.loadProject,
-                materializeInlineProjectAssets: (...args) => assetsMethod('materializeInlineProjectAssets', ...args),
-                syncCanvasProjectAssetRoot: (...args) => assetsMethod('syncCanvasProjectAssetRoot', ...args),
-                setCanvasProjectAssetRoot: (...args) => assetsMethod('setCanvasProjectAssetRoot', ...args),
-                sendCanvasProjectSaveRequest: scope.sendCanvasProjectSaveRequest,
-                sendCanvasProjectLoadRequest: scope.sendCanvasProjectLoadRequest,
-                isCanvasBridgeReady: scope.isCanvasBridgeReady,
-                bindCanvasBridgeResponseListener: scope.bindCanvasBridgeResponseListener,
-                sendCanvasBridgeRequest: scope.sendCanvasBridgeRequest,
-                resetRenderedProjectDomCache: scope.resetRenderedProjectDomCache,
-                resetSelectionState: scope.resetSelectionState,
-                resetHistory: scope.resetHistory,
-                renderAll: scope.renderAll,
-                resetGalleryFrostReveals: scope.resetGalleryFrostReveals,
-                scheduleAutoPresetModelChecks: scope.scheduleAutoPresetModelChecks,
-                getRoot: scope.getRoot,
-                renderStatus: scope.renderStatus,
-                showToast: scope.showToast,
-                warn: scope.warn
-            }
+            Object.assign({}, persistenceSource, {
+                assetSource: Object.assign({}, persistenceSource.assetSource || {}, {
+                    materializeInlineProjectAssets: (...args) => assetsMethod('materializeInlineProjectAssets', ...args),
+                    syncCanvasProjectAssetRoot: (...args) => assetsMethod('syncCanvasProjectAssetRoot', ...args),
+                    setCanvasProjectAssetRoot: (...args) => assetsMethod('setCanvasProjectAssetRoot', ...args)
+                })
+            })
         );
         const persistenceMethod = (name, ...args) => method(persistence, name)?.(...args);
 
         const assets = createController(
             modules.assets,
             'createCanvasProjectAssetsController',
-            {
-                getProject: scope.getProject,
-                setProject: scope.setProject,
-                getProjectId: scope.getProjectId,
-                getStorageScope: scope.getStorageScope,
-                getStorageKey: scope.getStorageKey,
-                buildProjectStorageInfo: (...args) => persistenceMethod('buildProjectStorageInfo', ...args),
-                buildProjectStoragePatch: scope.buildProjectStoragePatch,
-                getRoot: scope.getRoot,
-                renderAll: scope.renderAll,
-                sendCanvasListAssetsRequest: scope.sendCanvasListAssetsRequest,
-                saveProjectToBrowserCache: (...args) => persistenceMethod('saveProjectToBrowserCache', ...args),
-                loadProjectFromBackend: (...args) => persistenceMethod('loadProjectFromBackend', ...args),
-                materializeNodeAssetForStorage: scope.materializeNodeAssetForStorage,
-                assetDisplaySrc: scope.assetDisplaySrc,
-                warn: scope.warn
-            }
+            Object.assign({}, assetsSource, {
+                storageSource: Object.assign({}, assetsSource.storageSource || {}, {
+                    buildProjectStorageInfo: (...args) => persistenceMethod('buildProjectStorageInfo', ...args)
+                }),
+                persistenceSource: Object.assign({}, assetsSource.persistenceSource || {}, {
+                    saveProjectToBrowserCache: (...args) => persistenceMethod('saveProjectToBrowserCache', ...args),
+                    loadProjectFromBackend: (...args) => persistenceMethod('loadProjectFromBackend', ...args)
+                })
+            })
         );
         const assetsMethod = (name, ...args) => method(assets, name)?.(...args);
 
         const actions = createController(
             modules.actions,
             'createCanvasProjectActionsController',
-            {
-                t: scope.t,
-                getDocument: scope.getDocument,
-                getStorage: scope.getStorage,
-                getStorageScope: scope.getStorageScope,
-                getStorageKey: scope.getStorageKey,
-                getStorageBaseKey: scope.getStorageBaseKey,
-                getLegacyStorageKey: scope.getLegacyStorageKey,
-                browserCacheProjectIndex: scope.browserCacheProjectIndex,
-                browserCacheActiveProjectIdKey: scope.browserCacheActiveProjectIdKey,
-                browserCacheProjectIndexKey: scope.browserCacheProjectIndexKey,
-                browserCacheProjectScope: scope.browserCacheProjectScope,
-                getCurrentProject: scope.getCurrentProject,
-                getCurrentProjectId: scope.getCurrentProjectId,
-                getDefaultProjectId: scope.getDefaultProjectId,
-                isProjectEmpty: scope.isProjectEmpty,
-                ensureProjectGroups: scope.ensureProjectGroups,
-                createDemoWorkbenchProject: scope.createDemoWorkbenchProject,
-                buildProjectStorageInfo: (...args) => persistenceMethod('buildProjectStorageInfo', ...args),
-                nowIso: scope.nowIso,
-                sanitizeStoragePart: scope.sanitizeStoragePart,
-                sanitizeProject: scope.sanitizeProject,
-                createDefaultProject: scope.createDefaultProject,
-                buildProjectCanvasClearPatch: scope.buildProjectCanvasClearPatch,
-                buildProjectIdentityPatch: scope.buildProjectIdentityPatch,
-                buildProjectSettingsMergePatch: scope.buildProjectSettingsMergePatch,
-                buildProjectStoragePatch: scope.buildProjectStoragePatch,
-                sendCanvasProjectClearRequest: scope.sendCanvasProjectClearRequest,
-                setProject: scope.setProject,
-                setActiveBrowserCacheProject: scope.setActiveBrowserCacheProject,
-                syncCanvasProjectAssetRoot: (...args) => assetsMethod('syncCanvasProjectAssetRoot', ...args),
-                resetRenderedProjectDomCache: scope.resetRenderedProjectDomCache,
-                saveProjectToBrowserCache: (...args) => persistenceMethod('saveProjectToBrowserCache', ...args),
-                setBackendLoadedStorageKey: scope.setBackendLoadedStorageKey,
-                resetSelectionState: scope.resetSelectionState,
-                getSelectionState: scope.getSelectionState,
-                setSelectionState: scope.setSelectionState,
-                getBackendLoadedStorageKey: scope.getBackendLoadedStorageKey,
-                resetHistory: scope.resetHistory,
-                renderAll: scope.renderAll,
-                resetGalleryFrostReveals: scope.resetGalleryFrostReveals,
-                mutate: scope.mutate,
-                pushHistory: scope.pushHistory,
-                interruptDeletedResultRuns: scope.interruptDeletedResultRuns,
-                stopTimelinePlayback: scope.stopTimelinePlayback,
-                confirm: scope.confirm,
-                prompt: scope.prompt,
-                saveProject: (...args) => persistenceMethod('saveProject', ...args),
-                loadProject: scope.loadProject,
-                loadProjectFromBackend: (...args) => persistenceMethod('loadProjectFromBackend', ...args),
-                readFileAsText: scope.readFileAsText,
-                warn: scope.warn,
-                renderStatus: scope.renderStatus,
-                showToast: scope.showToast
-            }
+            Object.assign({}, actionsSource, {
+                persistenceSource: Object.assign({}, actionsSource.persistenceSource || {}, {
+                    buildProjectStorageInfo: (...args) => persistenceMethod('buildProjectStorageInfo', ...args),
+                    saveProjectToBrowserCache: (...args) => persistenceMethod('saveProjectToBrowserCache', ...args),
+                    saveProject: (...args) => persistenceMethod('saveProject', ...args),
+                    loadProjectFromBackend: (...args) => persistenceMethod('loadProjectFromBackend', ...args)
+                }),
+                assetSource: Object.assign({}, actionsSource.assetSource || {}, {
+                    syncCanvasProjectAssetRoot: (...args) => assetsMethod('syncCanvasProjectAssetRoot', ...args)
+                })
+            })
         );
         const actionsMethod = (name, ...args) => method(actions, name)?.(...args);
 

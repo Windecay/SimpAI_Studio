@@ -49,8 +49,15 @@ function simpaiUiTrace(level, ...args) {
 (function initSimpleAISam3EmptyUploadClickBridge() {
     if (window.__simpleaiSam3EmptyUploadClickBridge) return;
     window.__simpleaiSam3EmptyUploadClickBridge = true;
+    let activePickerInput = null;
 
     const handleSam3EmptyUploadClick = (event) => {
+        // The compatibility click must not reach the upload button's click handlers.
+        if (!event.isTrusted && event.target === activePickerInput) {
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+            return;
+        }
         if (!event.isTrusted || event.defaultPrevented || event.button !== 0) return;
         const target = event.target;
         if (!(target instanceof Element)) return;
@@ -64,20 +71,36 @@ function simpaiUiTrace(level, ...args) {
         const input = uploadContainer.querySelector('input[type="file"]');
         if (!input || input.disabled || !input.isConnected || target === input || input.contains(target)) return;
 
-        try {
-            input.click();
-        } catch (error) {
-            simpaiUiTrace("warn", "[UI-TRACE] sam3.empty_upload_click_bridge.failed", {
-                component: root.id || "",
-                error: String(error || ""),
-            });
-            return;
-        }
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
-        simpaiUiTrace("log", "[UI-TRACE] sam3.empty_upload_click_bridge.opened", {
+        const method = typeof input.showPicker === "function" ? "showPicker" : "click";
+        try {
+            input.value = "";
+            if (method === "showPicker") {
+                input.showPicker();
+            } else {
+                activePickerInput = input;
+                input.click();
+            }
+        } catch (error) {
+            console.warn("[SAM3] Failed to open file picker.", root.id, error);
+            window.SimpAIStudioPerformance?.mark("sam3.file_picker.failed", {
+                component_id: root.id || "",
+                method,
+                error: String(error || ""),
+            }, { urgent: true });
+            return;
+        } finally {
+            activePickerInput = null;
+        }
+        simpaiUiTrace("log", "[UI-TRACE] sam3.empty_upload_click_bridge.requested", {
             component: root.id || "",
+            method,
+        });
+        window.SimpAIStudioPerformance?.mark("sam3.file_picker.requested", {
+            component_id: root.id || "",
+            method,
         });
     };
 

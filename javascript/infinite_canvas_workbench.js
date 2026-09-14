@@ -415,14 +415,43 @@
     const createThumbnailDataUrl = WORKBENCH_MEDIA_HELPERS.createThumbnailDataUrl;
     const createVideoStoryboardDataUrls = WORKBENCH_MEDIA_HELPERS.createVideoStoryboardDataUrls;
     const createAudioWaveformPeaks = WORKBENCH_MEDIA_HELPERS.createAudioWaveformPeaks;
-    const projectStoreBuildProjectStorageInfo = WORKBENCH_PROJECT.buildProjectStorageInfo;
-    const projectStoreGetCanvasTitle = WORKBENCH_PROJECT.getCanvasTitle;
-    const projectStoreGetStorageScope = WORKBENCH_PROJECT.getStorageScope;
-    const projectStoreGetStorageKey = WORKBENCH_PROJECT.getStorageKey;
-    const projectStoreCreateDefaultProject = WORKBENCH_PROJECT.createDefaultProject;
-    const projectStoreSanitizeProject = WORKBENCH_PROJECT.sanitizeProject;
-    const projectStoreLoadProject = WORKBENCH_PROJECT.loadProject;
-    const projectStoreCompactProjectForStorage = WORKBENCH_PROJECT.compactProjectForStorage;
+    const PROJECT_STORE_SOURCE = {
+        languageSource: {
+            t,
+            getUiLang
+        },
+        utilitySource: {
+            nowIso: WORKBENCH_UTILS.nowIso,
+            clamp: WORKBENCH_UTILS.clamp,
+            sanitizeStoragePart: WORKBENCH_UTILS.sanitizeStoragePart,
+            shortIdentity: WORKBENCH_UTILS.shortIdentity
+        },
+        systemSource: {
+            getSystemParams: () => window.simpleaiTopbarSystemParams
+        },
+        storageSource: {
+            getStorage: () => typeof localStorage !== 'undefined' ? localStorage : null
+        },
+        registrySource: {
+            defaultNodeSize
+        },
+        builderSource: {
+            getProjectStoreOptions: () => projectStoreOptions()
+        }
+    };
+    const WORKBENCH_PROJECT_STORE = typeof WORKBENCH_PROJECT.createCanvasProjectStoreController === 'function'
+        ? WORKBENCH_PROJECT.createCanvasProjectStoreController({
+            projectStoreSource: PROJECT_STORE_SOURCE
+        })
+        : WORKBENCH_PROJECT;
+    const projectStoreBuildProjectStorageInfo = WORKBENCH_PROJECT_STORE.buildProjectStorageInfo;
+    const projectStoreGetCanvasTitle = WORKBENCH_PROJECT_STORE.getCanvasTitle;
+    const projectStoreGetStorageScope = WORKBENCH_PROJECT_STORE.getStorageScope;
+    const projectStoreGetStorageKey = WORKBENCH_PROJECT_STORE.getStorageKey;
+    const projectStoreCreateDefaultProject = WORKBENCH_PROJECT_STORE.createDefaultProject;
+    const projectStoreSanitizeProject = WORKBENCH_PROJECT_STORE.sanitizeProject;
+    const projectStoreLoadProject = WORKBENCH_PROJECT_STORE.loadProject;
+    const projectStoreCompactProjectForStorage = WORKBENCH_PROJECT_STORE.compactProjectForStorage;
     const readImageInfo = WORKBENCH_ASSET_NODES.readImageInfo;
     const assetDisplaySrc = WORKBENCH_ASSET_NODES.assetDisplaySrc;
     const readAssetInfo = WORKBENCH_ASSET_NODES.readAssetInfo;
@@ -1231,23 +1260,244 @@
     const syncVlmCustomFromAgent = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.syncVlmCustomFromAgent?.(...args);
     const syncVlmCustomToAgent = (...args) => CANVAS_VLM_CHAT_CONTROLLER?.syncVlmCustomToAgent?.(...args);
     const FACTORY_CONTEXT_SOURCE = {
-            uid,
-            nowIso,
-            t,
-            defaultNodeSize,
-            defaultResultNodeSize: (...args) => defaultResultNodeSize(...args),
-            cloneRunValue,
-            tagCartLabel,
-            mediaBrowserLabel,
-            mediaBrowserInitialState,
-            serializableMediaBrowserState,
-            viewportCenterWorld: () => viewportCenterWorld(),
-            advancedMaskingLabel,
-            assetMediaKind,
-            xyzPlotScriptName: XYZ_PLOT_SCRIPT_NAME,
-            clamp,
-            normalizeCanvasColor,
-            isTerminalRunState
+            textNodeSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                languageSource: {
+                    t,
+                    tagCartLabel
+                },
+                layoutSource: {
+                    defaultNodeSize
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            auxNodeSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                languageSource: {
+                    t,
+                    mediaBrowserLabel
+                },
+                layoutSource: {
+                    defaultNodeSize
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                mediaBrowserSource: {
+                    mediaBrowserInitialState,
+                    serializableMediaBrowserState
+                },
+                viewportSource: {
+                    getViewportCenterWorld: () => viewportCenterWorld()
+                }
+            },
+            batchAnyNodeSource: {
+                identitySource: {
+                    uid
+                },
+                layoutSource: {
+                    defaultNodeSize
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            maskNodeSource: {
+                identitySource: {
+                    uid
+                },
+                languageSource: {
+                    advancedMaskingLabel
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            resultNodeSource: {
+                identitySource: {
+                    uid
+                },
+                languageSource: {
+                    t
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                timeSource: {
+                    nowIso
+                },
+                layoutSource: {
+                    defaultResultNodeSize: (...args) => defaultResultNodeSize(...args)
+                }
+            },
+            mediaNodeSource: {
+                identitySource: {
+                    uid
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                layoutSource: {
+                    defaultNodeSize
+                },
+                mediaSource: {
+                    getAssetMediaKind: assetMediaKind
+                }
+            },
+            inputNodeSource: {
+                identitySource: {
+                    uid
+                },
+                languageSource: {
+                    t
+                },
+                layoutSource: {
+                    defaultNodeSize
+                }
+            },
+            uploadNodeSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                layoutSource: {
+                    defaultNodeSize
+                }
+            },
+            batchItemSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                languageSource: {
+                    t
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            configNodeSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            xyzMatrixNodeSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                languageSource: {
+                    t
+                },
+                layoutSource: {
+                    defaultNodeSize
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                scriptSource: {
+                    script: XYZ_PLOT_SCRIPT_NAME
+                }
+            },
+            groupSource: {
+                identitySource: {
+                    uid
+                },
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    clamp,
+                    normalizeCanvasColor
+                }
+            },
+            runRecordSource: {
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                utilitySource: {
+                    clamp
+                },
+                statusSource: {
+                    isTerminalRunState
+                }
+            },
+            batchJobSource: {
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                },
+                scriptSource: {
+                    xyzScript: XYZ_PLOT_SCRIPT_NAME
+                }
+            },
+            edgeSource: {
+                identitySource: {
+                    uid
+                }
+            },
+            projectPatchSource: {},
+            assetSource: {
+                identitySource: {
+                    uid
+                },
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            specialNodePatchSource: {
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            agentPatchSource: {
+                timeSource: {
+                    nowIso
+                },
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
+            vlmChatStateSource: {
+                serializationSource: {
+                    cloneRunValue
+                }
+            },
     };
     const CANVAS_FACTORY_CONTEXT = typeof WORKBENCH_CANVAS_FACTORY_CONTEXT.createCanvasWorkbenchFactoryContext === 'function'
         ? WORKBENCH_CANVAS_FACTORY_CONTEXT.createCanvasWorkbenchFactoryContext({
@@ -1537,45 +1787,78 @@
                     },
                 },
                 bridgeSource: {
-                    document,
-                    uid,
-                    setGradioTextboxValue,
-                    clickGradioButton,
-                    setTimeout: (...args) => window.setTimeout(...args),
-                    clearTimeout: (...args) => window.clearTimeout(...args),
+                    domSource: {
+                        getDocument: () => document,
+                    },
+                    transportSource: {
+                        setGradioTextboxValue,
+                        clickGradioButton,
+                    },
+                    runtimeSource: {
+                        now: () => Date.now(),
+                        setTimeout: (...args) => window.setTimeout(...args),
+                        clearTimeout: (...args) => window.clearTimeout(...args),
+                    },
+                    utilitySource: {
+                        uid,
+                    },
                 },
                 historySource: {
-                    t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
-                    getHistoryLimit,
-                    getHistoryMemoryBudgetBytes,
-                    getProject: () => project,
-                    setProject: (...args) => setProject(...args),
-                    compactProjectForStorage,
-                    buildProjectStorageInfo,
-                    getStorageKey: () => storageKey,
-                    getStorageScope: () => storageScope,
-                    sanitizeProject,
-                    getSelectionState: () => ({
-                        selectedNodeId,
-                        selectedNodeIds: new Set(selectedNodeIds),
-                        selectedEdgeId,
-                        selectedGroupId,
-                    }),
-                    setSelectionState: (state) => {
-                        const next = state || {};
-                        selectedNodeId = next.selectedNodeId || null;
-                        selectedNodeIds = next.selectedNodeIds instanceof Set
-                            ? new Set(next.selectedNodeIds)
-                            : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
-                        selectedEdgeId = next.selectedEdgeId || null;
-                        selectedGroupId = next.selectedGroupId || null;
+                    languageSource: {
+                        t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
                     },
-                    closeContextMenu,
-                    scheduleSave: (...args) => scheduleSave(...args),
-                    showToast,
-                    getRoot: () => root,
-                    setTimeout: (...args) => window.setTimeout(...args),
-                    clearTimeout: (...args) => window.clearTimeout(...args),
+                    configSource: {
+                        getHistoryLimit,
+                        getHistoryMemoryBudgetBytes,
+                    },
+                    projectSource: {
+                        getProject: () => project,
+                        setProject: (...args) => setProject(...args),
+                        compactProjectForStorage,
+                        sanitizeProject,
+                    },
+                    storageSource: {
+                        buildProjectStorageInfo,
+                        getStorageKey: () => storageKey,
+                        getStorageScope: () => storageScope,
+                    },
+                    selectionSource: {
+                        getSelectionState: () => ({
+                            selectedNodeId,
+                            selectedNodeIds: new Set(selectedNodeIds),
+                            selectedEdgeId,
+                            selectedGroupId,
+                        }),
+                        setSelectionState: (state) => {
+                            const next = state || {};
+                            selectedNodeId = next.selectedNodeId || null;
+                            selectedNodeIds = next.selectedNodeIds instanceof Set
+                                ? new Set(next.selectedNodeIds)
+                                : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                            selectedEdgeId = next.selectedEdgeId || null;
+                            selectedGroupId = next.selectedGroupId || null;
+                        },
+                    },
+                    domSource: {
+                        getRoot: () => root,
+                    },
+                    runtimeSource: {
+                        setTimeout: (...args) => window.setTimeout(...args),
+                        clearTimeout: (...args) => window.clearTimeout(...args),
+                    },
+                    renderSource: {
+                        resetRenderedProjectDomCache: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.resetRenderedProjectDomCache?.(...args),
+                        renderAll: (...args) => CANVAS_RENDER_CONTROLLER?.renderAll?.(...args),
+                    },
+                    interactionSource: {
+                        closeContextMenu,
+                    },
+                    persistenceSource: {
+                        scheduleSave: (...args) => scheduleSave(...args),
+                    },
+                    uiSource: {
+                        showToast,
+                    },
                 },
             },
             assetNodeRenderSource: {
@@ -3485,153 +3768,455 @@
         cancelConnection
     } = CANVAS_RUNTIME_CONTEXT;
     const INPUT_CONTEXT_SOURCE = {
-            t,
-            clamp,
-            getAgentState: () => canvasAgentState,
-            setAgentInput: (value) => { canvasAgentState.input = value || ''; },
-            buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
-            setCanvasAgentResolutionPatch: (...args) => setCanvasAgentResolutionPatchBeforeUi(...args),
-            setCanvasAgentResolutionOpen: (...args) => setCanvasAgentResolutionOpenBeforeUi(...args),
-            handleCanvasAgentDecisionFieldInput: (...args) => handleCanvasAgentDecisionFieldInput(...args),
-            onOutpaintSliderInput: (...args) => onOutpaintSliderInput(...args),
-            handleCanvasAgentSettingInput: (...args) => handleCanvasAgentSettingInput(...args),
-            handleCanvasAgentModelModeInput: (...args) => handleCanvasAgentModelModeInputBeforeUi(...args),
-            consumeWorkbenchShortcut: (...args) => consumeWorkbenchShortcut(...args),
-            handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
-            canvasAgentPrimaryAction: (...args) => canvasAgentPrimaryAction(...args),
+        interactionSource: {
+            viewportWheelSource: {
+                domSource: {
+                    getRoot: () => root,
+                    getDocument: () => document,
+                },
+                environmentSource: {
+                    getWindow: () => window,
+                },
+                runtimeSource: {
+                    performanceNow: () => performance.now(),
+                },
+                viewportSource: {
+                    getSuppressWheelUntil: () => suppressWheelUntil,
+                    zoomAtClient: (clientX, clientY, factor) => zoomAtClient(clientX, clientY, factor),
+                },
+                interactionSource: {
+                    isInteractiveTarget: (target) => isInteractiveTarget(target),
+                    isNodeDragging: () => isNodeDragging(),
+                    isPanning: () => isPanning(),
+                    isMarqueeSelecting: () => isMarqueeSelecting(),
+                    isConnecting: () => isConnecting(),
+                },
+            },
+            mediaBrowserDragSource: {
+                configSource: {
+                    getDragMime: () => MEDIA_BROWSER_DRAG_MIME,
+                },
+                mediaSource: {
+                    getMediaBrowserNodeState: (node) => mediaBrowserNodeState(node),
+                    getMediaBrowserItems: (node) => mediaBrowserRuntimeFor(node.id).data?.items || [],
+                    serializableMediaBrowserState: (state) => serializableMediaBrowserState(state),
+                },
+                viewportSource: {
+                    getViewport: () => viewport,
+                },
+            },
+            viewportDropSource: {
+                domSource: {
+                    getViewport: () => viewport,
+                },
+                transferSource: {
+                    getTransferStation: () => window.SimpAITransferStation,
+                    importTransferItemAt: (...args) => importTransferItemAt(...args),
+                },
+                mediaBrowserSource: {
+                    addMediaBrowserPayloadToCanvas: (...args) => addMediaBrowserPayloadToCanvas(...args),
+                },
+                fileSource: {
+                    isWorkbenchProjectFile: (file) => isWorkbenchProjectFile(file),
+                    importWorkbenchProjectFromFile: (...args) => importWorkbenchProjectFromFile(...args),
+                    isMediaFile: (file) => isMediaFile(file),
+                    addMediaNodeFromFile: (...args) => addMediaNodeFromFile(...args),
+                },
+                viewportSource: {
+                    clientToWorld: (clientX, clientY) => clientToWorld(clientX, clientY),
+                    setLastPointerWorld: (world) => { lastPointerWorld = world; },
+                },
+            },
+            viewportContextSource: {
+                domSource: {
+                    getRoot: () => root,
+                },
+                viewportSource: {
+                    clientToWorld: (clientX, clientY) => clientToWorld(clientX, clientY),
+                    setLastPointerWorld: (world) => { lastPointerWorld = world; },
+                },
+                edgeSource: {
+                    findCanvasEdgeAtClient: (...args) => findCanvasEdgeAtClient(...args),
+                    selectEdge: (id) => selectEdge(id),
+                },
+                menuSource: {
+                    openEdgeContextMenu: (...args) => openEdgeContextMenu(...args),
+                    openAddNodeMenu: (...args) => openAddNodeMenu(...args),
+                },
+            },
+            keyboardSource: {
+                domSource: {
+                    getRoot: () => root,
+                },
+                inputSource: {
+                    getTextareaEditorState: () => textareaEditorState,
+                    isEditableElement: (target) => isEditableElement(target),
+                },
+                shortcutSource: {
+                    consumeWorkbenchShortcut: (evt) => consumeWorkbenchShortcut(evt),
+                },
+                agentSource: {
+                    handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
+                    canvasAgentPrimaryAction: () => canvasAgentPrimaryAction(),
+                    isOutpaintOverlayActive: () => !!outpaintOverlayState.active,
+                    hideOutpaintOverlay: () => hideOutpaintOverlay(),
+                    renderCanvasAgentPanel: () => renderCanvasAgentPanel(),
+                    confirmOutpaintFromOverlay: (...args) => confirmOutpaintFromOverlay(...args),
+                },
+                projectSource: {
+                    getProject: () => project,
+                    ensureProjectGroups: () => ensureProjectGroups(),
+                    focusGroup: (group) => focusGroup(group),
+                    saveProject: (...args) => saveProject(...args),
+                    undoCanvasEdit: () => undoCanvasEdit(),
+                    redoCanvasEdit: () => redoCanvasEdit(),
+                },
+                nodeSource: {
+                    getSelectedNodeId: () => selectedNodeId,
+                    getNode: (id) => getNode(id),
+                },
+                connectionSource: {
+                    isConnecting: () => isConnecting(),
+                    cancelConnection: () => cancelConnection(),
+                },
+                paletteSource: {
+                    isPresetPaletteOpen: () => !palette.hidden,
+                    closePresetPalette: () => closePresetPalette(),
+                    openPresetPalette: (...args) => openPresetPalette(...args),
+                },
+                clipboardSource: {
+                    copyCanvasSelection: () => copyCanvasSelection(),
+                    pasteCanvasClipboard: (...args) => pasteCanvasClipboard(...args),
+                    duplicateSelection: () => duplicateSelection(),
+                },
+                viewportSource: {
+                    resetViewportZoom: () => {
+                        applyProjectViewportPatch({ zoom: 1 });
+                        renderAll({ inspector: false });
+                        scheduleSave();
+                    },
+                    zoomAtViewportCenter: (factor) => zoomAtViewportCenter(factor),
+                    fitAll: () => fitAll(),
+                    fitSelection: () => fitSelection(),
+                    alignSelectedNodes: (kind) => alignSelectedNodes(kind),
+                    setMode: (modeName) => setMode(modeName),
+                    viewportCenterWorld: () => viewportCenterWorld(),
+                },
+                runSource: {
+                    runSelectedChain: () => runSelectedChain(),
+                    runPresetNodeFromUi: (node) => runPresetNodeFromUi(node),
+                    toggleTimelinePreviewPlayback: (node) => toggleTimelinePreviewPlayback(node),
+                    playMediaSelection: (node) => playMediaSelection(node),
+                    toggleSelectedResultMediaPlayback: (node) => {
+                        const media = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"] video, [data-node-id="${cssEscape(node.id)}"] audio`);
+                        if (!media) return false;
+                        if (media.paused) media.play().catch(() => {});
+                        else media.pause();
+                        return true;
+                    },
+                },
+                selectionSource: {
+                    deleteSelection: () => deleteSelection(),
+                    toggleSelectedNodesFlag: (flag) => toggleSelectedNodesFlag(flag),
+                },
+                transferSource: {
+                    importSelectedTransferAt: (...args) => importSelectedTransferAt(...args),
+                },
+                uiSource: {
+                    closeContextMenu: () => closeContextMenu(),
+                },
+            },
+            documentPasteSource: {
+                domSource: {
+                    getRoot: () => root,
+                },
+                inputSource: {
+                    isEditableElement: (target) => isEditableElement(target),
+                },
+                viewportSource: {
+                    viewportCenterWorld: () => viewportCenterWorld(),
+                },
+                actionSource: {
+                    addImageNodeFromFile: (...args) => addImageNodeFromFile(...args),
+                },
+            },
+            inputHandleSource: {
+                projectSource: {
+                    getProject: () => project,
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id),
+                    isQwenTtsNode: (node) => isQwenTtsNode(node),
+                    isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
+                    directorMediaSourceKind: (node) => directorMediaSourceKind(node),
+                    batchAnyInputEdgeForDrag: (node) => batchAnyInputEdgeForDrag(node),
+                },
+                connectionSource: {
+                    startInputConnection: (...args) => startInputConnection(...args),
+                    startConnection: (...args) => startConnection(...args),
+                    deleteUploadSlot: (...args) => deleteUploadSlot(...args),
+                    deleteEdge: (...args) => deleteEdge(...args),
+                },
+                renderSource: {
+                    renderAll: () => renderAll(),
+                },
+                languageSource: {
+                    t,
+                },
+                uiSource: {
+                    showToast: (...args) => showToast(...args),
+                },
+            },
+            noteTailSource: {
+                projectSource: {
+                    getProject: () => project,
+                },
+                domSource: {
+                    getDocument: () => document,
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id),
+                    isNodeLocked: (node) => isNodeLocked(node),
+                    ensureNoteTailTarget: (node) => ensureNoteTailTarget(node),
+                },
+                geometrySource: {
+                    buildNoteStatePatch: (...args) => buildNoteStatePatch(...args),
+                    snapCanvasCoord: (value) => snapCanvasCoord(value),
+                },
+                languageSource: {
+                    t,
+                },
+                uiSource: {
+                    showToast: (...args) => showToast(...args),
+                },
+                selectionSource: {
+                    selectNodeForTailDrag: (nodeId) => {
+                        selectedNodeId = nodeId;
+                        selectedNodeIds = new Set([nodeId]);
+                        selectedEdgeId = null;
+                        selectedGroupId = null;
+                    },
+                    updateSelectionDomClasses: () => updateSelectionDomClasses(),
+                    getSelectedNodeId: () => selectedNodeId,
+                },
+                renderSource: {
+                    renderEdges: () => renderEdges(),
+                    renderInspector: () => renderInspector(),
+                },
+                historySource: {
+                    pushHistory: (...args) => pushHistory(...args),
+                },
+                persistenceSource: {
+                    scheduleSave: (...args) => scheduleSave(...args),
+                },
+            },
+            edgeInteractionSource: {
+                domSource: {
+                    getEdgesLayer: () => edgesLayer,
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id),
+                },
+                edgeSource: {
+                    selectEdge: (id) => selectEdge(id),
+                },
+                menuSource: {
+                    openEdgeContextMenu: (...args) => openEdgeContextMenu(...args),
+                },
+                noteTailSource: {},
+            }
+            },
+            controlSource: {
+                textControlSource: {
+                    domSource: {
+                        getDocument: () => document,
+                    },
+                    environmentSource: {
+                        getWindow: () => window,
+                    },
+                    languageSource: {
+                        t,
+                    },
+                    menuSource: {
+                        openContextMenu: (...args) => openContextMenu(...args),
+                    },
+                    notificationSource: {
+                        showToast: (...args) => showToast(...args),
+                    },
+                },
+            compareDragSource: {
+                domSource: {
+                    getDocument: () => document,
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id),
+                    isNodeLocked: (node) => isNodeLocked(node),
+                },
+                utilitySource: {
+                    clamp,
+                    performanceNow: () => performance.now(),
+                },
+                viewportSource: {
+                    setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
+                },
+                selectionSource: {
+                    isCompareNodeSelected: (nodeId) => selectedNodeIds.has(nodeId) && selectedEdgeId === null,
+                    selectNodeLight: (nodeId) => selectNodeLight(nodeId),
+                    getSelectedNodeId: () => selectedNodeId,
+                },
+                updateSource: {
+                    updateCompareParam: (...args) => updateCompareParam(...args),
+                    refreshCompareDom: (nodeId) => refreshCompareDom(nodeId),
+                },
+                persistenceSource: {
+                    scheduleSave: (...args) => scheduleSave(...args),
+                },
+                uiSource: {
+                    renderInspector: () => renderInspector(),
+                },
+            },
+            textControlPointerSource: {
+                domSource: {
+                    getRoot: () => root,
+                    getDocument: () => document,
+                },
+                environmentSource: {
+                    getWindow: () => window,
+                },
+                textControlSource: {
+                    isEditableElement: (target) => isEditableElement(target),
+                },
+            },
+            agentInputSource: {
+                stateSource: {
+                    getAgentState: () => canvasAgentState,
+                    setAgentInput: (value) => { canvasAgentState.input = value || ''; }
+                },
+                decisionSource: {
+                    buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
+                    handleCanvasAgentDecisionFieldInput: (...args) => handleCanvasAgentDecisionFieldInput(...args)
+                },
+                resolutionSource: {
+                    setCanvasAgentResolutionPatch: (...args) => setCanvasAgentResolutionPatchBeforeUi(...args),
+                    setCanvasAgentResolutionOpen: (...args) => setCanvasAgentResolutionOpenBeforeUi(...args)
+                },
+                outpaintSource: {
+                    onOutpaintSliderInput: (...args) => onOutpaintSliderInput(...args)
+                },
+                settingsSource: {
+                    handleCanvasAgentSettingInput: (...args) => handleCanvasAgentSettingInput(...args),
+                    handleCanvasAgentModelModeInput: (...args) => handleCanvasAgentModelModeInputBeforeUi(...args)
+                },
+                shortcutSource: {
+                    consumeWorkbenchShortcut: (...args) => consumeWorkbenchShortcut(...args)
+                },
+                actionSource: {
+                    handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
+                    canvasAgentPrimaryAction: (...args) => canvasAgentPrimaryAction(...args)
+                }
+            }
+        },
+        previewSource: {
+            tooltipSource: {
+                domSource: {
+                    document,
+                    getRoot: () => root,
+                },
+                viewportSource: {
+                    window,
+                },
+                gestureSource: {
+                    isCanvasPointerGestureActive: () => isCanvasPointerGestureActive(),
+                },
+            },
+            hoverPreviewSource: {
+                domSource: {
+                    document,
+                    getRoot: () => root,
+                    getNodesLayer: () => nodesLayer,
+                },
+                viewportSource: {
+                    window,
+                    isCanvasPointerGestureActive: () => isCanvasPointerGestureActive(),
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id),
+                },
+                languageSource: {
+                    t,
+                },
+                utilitySource: {
+                    escapeHtml,
+                },
+                configSource: {
+                    getSystemParams: () => window.simpleaiTopbarSystemParams || {},
+                    workbenchStaticFilePath,
+                },
+                networkSource: {
+                    fetch: typeof window.fetch === 'function' ? window.fetch.bind(window) : null,
+                    Image: window.Image,
+                },
+                tooltipSource: {},
+            },
+            previewSelectSource: {
+                domSource: {
+                    document,
+                    getRoot: () => root,
+                },
+                viewportSource: {
+                    window,
+                },
+                utilitySource: {
+                    escapeHtml,
+                },
+                hoverPreviewSource: {},
+                eventSource: {
+                    Event: window.Event,
+                },
+            },
+            danbooruAutocompleteSource: {
+                apiSource: {
+                    danbooruAutocomplete: apiDanbooruAutocomplete,
+                },
+                domSource: {
+                    document,
+                    getRoot: () => root,
+                },
+                viewportSource: {
+                    window,
+                },
+                utilitySource: {
+                    escapeHtml,
+                },
+                languageSource: {
+                    t,
+                },
+                runtimeSource: {
+                    maybeShowRuntimeNotice: (...args) => maybeShowCanvasDanbooruRuntimeNotice(...args),
+                },
+                inputSource: {},
+            },
+            scrollSource: {
+                vlmSource: {
+                    updateVlmChatJumpButton: (...args) => updateVlmChatJumpButton(...args)
+                },
+                mediaSource: {
+                    mediaBrowserShouldAutoLoadMore: (...args) => mediaBrowserShouldAutoLoadMore(...args),
+                    mediaBrowserRuntimeFor: (...args) => mediaBrowserRuntimeFor(...args),
+                    loadMoreMediaBrowserNode: (...args) => loadMoreMediaBrowserNode(...args)
+                },
+                nodeSource: {
+                    getNode: (id) => getNode(id)
+                },
+                runtimeSource: {
+                    warn: (...args) => console.warn(...args)
+                }
+            }
+        },
+        eventSource: {
             getRoot: () => root,
-            getDocument: () => document,
-            getWindow: () => window,
-            performanceNow: () => performance.now(),
-            getSuppressWheelUntil: () => suppressWheelUntil,
-            isInteractiveTarget: (target) => isInteractiveTarget(target),
-            isNodeDragging: () => isNodeDragging(),
-            isPanning: () => isPanning(),
-            isMarqueeSelecting: () => isMarqueeSelecting(),
-            isConnecting: () => isConnecting(),
-            isCanvasPointerGestureActive: () => isCanvasPointerGestureActive(),
-            getNodesLayer: () => nodesLayer,
-            getSystemParams: () => window.simpleaiTopbarSystemParams || {},
-            escapeHtml,
-            workbenchStaticFilePath,
-            fetch: typeof window.fetch === 'function' ? window.fetch.bind(window) : null,
-            Image: window.Image,
-            getNodeElement: (id) => id && nodesLayer ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`) : null,
-            isImageFile: (file) => isImageFile(file),
-            isNodeLocked: (node) => isNodeLocked(node),
-            disconnectVlmImageInput: (...args) => disconnectVlmImageInput(...args),
-            updateVlmParam,
-            runVlmNode,
-            isVlmNodeBusy,
-            showToast,
-            danbooruAutocomplete: apiDanbooruAutocomplete,
-            maybeShowRuntimeNotice: (...args) => maybeShowCanvasDanbooruRuntimeNotice(...args),
-            updateVlmChatJumpButton: (...args) => updateVlmChatJumpButton(...args),
-            mediaBrowserShouldAutoLoadMore: (...args) => mediaBrowserShouldAutoLoadMore(...args),
-            mediaBrowserRuntimeFor: (...args) => mediaBrowserRuntimeFor(...args),
-            loadMoreMediaBrowserNode: (...args) => loadMoreMediaBrowserNode(...args),
-            warn: (...args) => console.warn(...args),
-            zoomAtClient: (clientX, clientY, factor) => zoomAtClient(clientX, clientY, factor),
-            getViewport: () => viewport,
-            getDragMime: () => MEDIA_BROWSER_DRAG_MIME,
-            getMediaBrowserNodeState: (node) => mediaBrowserNodeState(node),
-            getMediaBrowserItems: (node) => mediaBrowserRuntimeFor(node.id).data?.items || [],
-            serializableMediaBrowserState: (state) => serializableMediaBrowserState(state),
-            getTransferStation: () => window.SimpAITransferStation,
-            clientToWorld: (clientX, clientY) => clientToWorld(clientX, clientY),
-            setLastPointerWorld: (world) => { lastPointerWorld = world; },
-            addMediaBrowserPayloadToCanvas: (...args) => addMediaBrowserPayloadToCanvas(...args),
-            importTransferItemAt: (...args) => importTransferItemAt(...args),
-            isWorkbenchProjectFile: (file) => isWorkbenchProjectFile(file),
-            importWorkbenchProjectFromFile: (...args) => importWorkbenchProjectFromFile(...args),
-            isMediaFile: (file) => isMediaFile(file),
-            addMediaNodeFromFile: (...args) => addMediaNodeFromFile(...args),
-            findCanvasEdgeAtClient: (...args) => findCanvasEdgeAtClient(...args),
-            selectEdge: (id) => selectEdge(id),
-            openEdgeContextMenu: (...args) => openEdgeContextMenu(...args),
-            openAddNodeMenu: (...args) => openAddNodeMenu(...args),
-            getTextareaEditorState: () => textareaEditorState,
-            getProject: () => project,
-            getSelectedNodeId: () => selectedNodeId,
-            getNode: (id) => getNode(id),
-            isEditableElement: (target) => isEditableElement(target),
-            openContextMenu: (...args) => openContextMenu(...args),
-            consumeWorkbenchShortcut: (evt) => consumeWorkbenchShortcut(evt),
-            handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
-            canvasAgentPrimaryAction: () => canvasAgentPrimaryAction(),
-            isOutpaintOverlayActive: () => !!outpaintOverlayState.active,
-            hideOutpaintOverlay: () => hideOutpaintOverlay(),
-            renderCanvasAgentPanel: () => renderCanvasAgentPanel(),
-            cancelConnection: () => cancelConnection(),
-            isPresetPaletteOpen: () => !palette.hidden,
-            closePresetPalette: () => closePresetPalette(),
-            closeContextMenu: () => closeContextMenu(),
-            ensureProjectGroups: () => ensureProjectGroups(),
-            focusGroup: (group) => focusGroup(group),
-            saveProject: (...args) => saveProject(...args),
-            undoCanvasEdit: () => undoCanvasEdit(),
-            redoCanvasEdit: () => redoCanvasEdit(),
-            openPresetPalette: (...args) => openPresetPalette(...args),
-            copyCanvasSelection: () => copyCanvasSelection(),
-            pasteCanvasClipboard: (...args) => pasteCanvasClipboard(...args),
-            duplicateSelection: () => duplicateSelection(),
-            resetViewportZoom: () => {
-                applyProjectViewportPatch({ zoom: 1 });
-                renderAll({ inspector: false });
-                scheduleSave();
-            },
-            zoomAtViewportCenter: (factor) => zoomAtViewportCenter(factor),
-            runSelectedChain: () => runSelectedChain(),
-            runPresetNodeFromUi: (node) => runPresetNodeFromUi(node),
-            toggleTimelinePreviewPlayback: (node) => toggleTimelinePreviewPlayback(node),
-            playMediaSelection: (node) => playMediaSelection(node),
-            toggleSelectedResultMediaPlayback: (node) => {
-                const media = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"] video, [data-node-id="${cssEscape(node.id)}"] audio`);
-                if (!media) return false;
-                if (media.paused) media.play().catch(() => {});
-                else media.pause();
-                return true;
-            },
-            fitAll: () => fitAll(),
-            fitSelection: () => fitSelection(),
-            alignSelectedNodes: (kind) => alignSelectedNodes(kind),
-            deleteSelection: () => deleteSelection(),
-            setMode: (modeName) => setMode(modeName),
-            toggleSelectedNodesFlag: (flag) => toggleSelectedNodesFlag(flag),
-            importSelectedTransferAt: (...args) => importSelectedTransferAt(...args),
-            viewportCenterWorld: () => viewportCenterWorld(),
-            addImageNodeFromFile: (...args) => addImageNodeFromFile(...args),
-            startInputConnection: (...args) => startInputConnection(...args),
-            startConnection: (...args) => startConnection(...args),
-            deleteUploadSlot: (...args) => deleteUploadSlot(...args),
-            deleteEdge: (...args) => deleteEdge(...args),
-            renderAll: () => renderAll(),
-            isQwenTtsNode: (node) => isQwenTtsNode(node),
-            isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
-            directorMediaSourceKind: (node) => directorMediaSourceKind(node),
-            batchAnyInputEdgeForDrag: (node) => batchAnyInputEdgeForDrag(node),
-            showToast: (...args) => showToast(...args),
-            isNodeLocked: (node) => isNodeLocked(node),
-            buildNoteStatePatch: (...args) => buildNoteStatePatch(...args),
-            ensureNoteTailTarget: (node) => ensureNoteTailTarget(node),
-            snapCanvasCoord: (value) => snapCanvasCoord(value),
-            selectNodeForTailDrag: (nodeId) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set([nodeId]);
-                selectedEdgeId = null;
-                selectedGroupId = null;
-            },
-            updateSelectionDomClasses: () => updateSelectionDomClasses(),
-            renderEdges: () => renderEdges(),
-            renderInspector: () => renderInspector(),
-            pushHistory: (...args) => pushHistory(...args),
-            scheduleSave: (...args) => scheduleSave(...args),
-            getEdgesLayer: () => edgesLayer,
-            setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
-            isCompareNodeSelected: (nodeId) => selectedNodeIds.has(nodeId) && selectedEdgeId === null,
-            selectNodeLight: (nodeId) => selectNodeLight(nodeId),
-            updateCompareParam: (...args) => updateCompareParam(...args),
-            refreshCompareDom: (nodeId) => refreshCompareDom(nodeId)
+            getDocument: () => document
+        }
     };
     const CANVAS_INPUT_CONTEXT = typeof WORKBENCH_CANVAS_INPUT_CONTEXT.createCanvasWorkbenchInputContext === 'function'
         ? WORKBENCH_CANVAS_INPUT_CONTEXT.createCanvasWorkbenchInputContext({
@@ -3720,137 +4305,499 @@
         onCanvasWorkbenchScroll
     } = CANVAS_INPUT_CONTEXT;
     const TIMELINE_CONTEXT_SOURCE = {
-            getDocument: () => document,
-            cssEscape: (value) => cssEscape(value),
-            clamp,
-            formatAssetDuration,
-            timelineBuildTrackClipLayout: (clips) => typeof timelineBuildTrackClipLayout === 'function'
-                ? timelineBuildTrackClipLayout(clips)
-                : null,
-            timelineNormalizeKeyframes: (clip) => typeof timelineNormalizeKeyframes === 'function'
-                ? timelineNormalizeKeyframes(clip)
-                : null,
-            getNode: (id) => getNode(id),
-            isNodeLocked: (node) => isNodeLocked(node),
-            performanceNow: () => performance.now(),
-            getNodeElement: (id) => id && nodesLayer ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`) : null,
-            requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
-            cancelAnimationFrame: (handle) => window.cancelAnimationFrame(handle),
-            syncTimelinePreviewVideos: (nodeEl, node) => syncTimelinePreviewVideos(nodeEl, node),
-            setSuppressWheelUntil: (value) => { suppressWheelUntil = value; },
-            pushHistory: (...args) => pushHistory(...args),
-            pushHistoryBatch: (...args) => pushHistoryBatch(...args),
-            refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node),
-            buildTimelineParamsPatch: timelineBuildParamsPatch,
-            buildTimelineParamUpdatePatch: timelineBuildParamUpdatePatch,
-            buildTimelineClipParamUpdatePatch: timelineBuildClipParamUpdatePatch,
-            buildTimelineTracksPatch: timelineBuildTracksPatch,
-            buildTimelineKeyframesPatch: timelineBuildKeyframesPatch,
-            buildTimelineClipResetPatch: timelineBuildClipResetPatch,
-            buildTimelineClipDeletePatch: timelineBuildClipDeletePatch,
-            buildProjectTimelineClipEdgeDeletePatch,
-            scheduleSave: (...args) => scheduleSave(...args),
-            getClipAtTime: (clip, playhead) => typeof timelineClipAtTime === 'function'
-                ? timelineClipAtTime(clip, playhead)
-                : clip,
-            selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options),
-            updateTimelineParam: (...args) => updateTimelineParam(...args),
-            resetTimelineParam: (...args) => resetTimelineParam(...args),
-            resetTimelineClipParam: (...args) => resetTimelineClipParam(...args),
-            timelineMaskLayerGeometry: (node, clip) => timelineMaskLayerGeometry(node, clip),
-            captureTimelineMaskGeometry: (node) => captureTimelineMaskGeometry(node),
-            remapTimelineMasksAfterCanvasResize: (node, snapshot) => remapTimelineMasksAfterCanvasResize(node, snapshot),
-            remapTimelineClipMaskForGeometryChange: (node, clip, snapshot) => remapTimelineClipMaskForGeometryChange(node, clip, snapshot),
-            applyTimelineMaskFeatherToSelectedClip: (node) => applyTimelineMaskFeatherToSelectedClip(node),
-            syncTimelineClipTransformKeyframeAtPlayhead: (node, clip, keys) => syncTimelineClipTransformKeyframeAtPlayhead(node, clip, keys),
-            buildTimelineClipPatch: timelineBuildClipPatch,
-            refreshTimelinePreviewClipLayersDom: (nodeEl, node, clip) => refreshTimelinePreviewClipLayersDom(nodeEl, node, clip),
-            getTimelinePenAnchorTarget: (clip, ref) => getTimelinePenAnchorTarget(clip, ref),
-            closeTimelinePendingPenPath: (node, clip, stageEl) => closeTimelinePendingPenPath(node, clip, stageEl),
-            buildTimelineClipMaskPatch: timelineBuildClipMaskPatch,
-            buildTimelineClipMaskPointPatch: timelineBuildClipMaskPointPatch,
-            timelineMaskPointFromEvent: (stageEl, evt) => timelineMaskPointFromEvent(stageEl, evt),
-            timelineMaskDimensions: (node) => timelineMaskDimensions(node),
-            timelineMaskPointDistancePx: (a, b, stageEl) => timelineMaskPointDistancePx(a, b, stageEl),
-            timelineMaskCloseSnapPx: (stageEl) => timelineMaskCloseSnapPx(stageEl),
-            exportTimelineMaskDataUrl: (node, clip) => exportTimelineMaskDataUrl(node, clip),
-            refreshTimelinePenOverlayDom: (stageEl, clip, options) => refreshTimelinePenOverlayDom(stageEl, clip, options),
-            isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
-            normalizeDirectorTimelineForNode: (node) => normalizeDirectorTimelineForNode(node),
-            normalizeTimeline: (director) => typeof directorTimelineNormalizeTimeline === 'function'
-                ? directorTimelineNormalizeTimeline(director)
-                : director,
-            directorTimelineNeighborBounds: (director, index) => directorTimelineNeighborBounds(director, index),
-            directorTimelineTotalSeconds: (director) => directorTimelineTotalSeconds(director),
-            directorTimelineClampSeconds: (value, min, max) => directorTimelineClampSeconds(value, min, max),
-            directorTimelineRoundSeconds: (value) => directorTimelineRoundSeconds(value),
-            buildDirectorTimelineStatePatch: (node, options) => buildDirectorTimelineStatePatch(node, options),
-            updateDirectorStatus: (node) => updateDirectorStatus(node),
-            mutate: (...args) => mutate(...args),
-            getNodesLayer: () => nodesLayer,
-            getTimelineSourceAsset: (source) => getTimelineSourceAsset(source),
-            assetMediaKind: (asset) => assetMediaKind(asset),
-            assetDisplaySrc: (asset) => assetDisplaySrc(asset),
-            getMediaEditRange: (asset) => getMediaEditRange(asset),
-            loadImageElementForCanvas: (src) => loadImageElementForCanvas(src),
-            effectiveClipIn: (clip, asset) => typeof timelineEffectiveClipIn === 'function'
-                ? timelineEffectiveClipIn(clip, asset)
-                : Math.max(0, Number(clip?.in || 0), Number(getMediaEditRange(asset).start || 0)),
-            normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function'
-                ? timelineNormalizeNode(node)
-                : undefined,
-            enforceTimelineClipMediaBounds: (node, clip) => enforceTimelineClipMediaBounds(node, clip),
-            getTimelineDefaultParams: () => timelineDefaultParams || {},
-            serializeTimelineRenderPayload: (node) => typeof timelineSerializeTimelineRenderPayload === 'function'
-                ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT)
-                : null,
-            clipMaskDataUrl: (clip) => typeof timelineClipMaskDataUrl === 'function'
-                ? timelineClipMaskDataUrl(clip)
-                : (clip?.mask?.data_url || clip?.mask_data_url || ''),
-            timelineClipLayerGeometry: (...args) => timelineClipLayerGeometry(...args),
-            getProject: () => project,
-            getProjectId: () => project?.id || PROJECT_ID,
-            defaultNodeSize: (...args) => defaultNodeSize(...args),
-            centerViewportOnWorld: (...args) => centerViewportOnWorld(...args),
-            uid,
-            t,
-            placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args),
-            ensureGenerateEdge: (...args) => ensureGenerateEdge(...args),
-            setSelectedNodeId: (nodeId) => { selectedNodeId = nodeId; },
-            setSelectedNodeIds: (nodeIds) => { selectedNodeIds = new Set(nodeIds || []); },
-            setSelectedEdgeId: (edgeId) => { selectedEdgeId = edgeId; },
-            showToast: (...args) => showToast(...args),
-            openContextMenu: (...args) => openContextMenu(...args),
-            deleteEdge: (...args) => deleteEdge(...args),
-            timelineSelectedVisualClip: (node) => timelineSelectedVisualClip(node),
-            timelineKeyframeTime: (node) => timelineKeyframeTime(node),
-            timelineKeyframeIndexAt: (clip, time) => timelineKeyframeIndexAt(clip, time),
-            timelineKeyframeValuesAtPlayhead: (node, clip) => timelineKeyframeValuesAtPlayhead(node, clip),
-            timelineNormalizedKeyframes: (...args) => timelineNormalizedKeyframes(...args),
-            timelineDuration: (node) => typeof timelineDuration === 'function'
-                ? timelineDuration(node)
-                : Math.max(1, ...(node?.clips || []).map(timelineClipEnd)),
-            buildTimelineOutputResultNode: (...args) => buildTimelineOutputResultNode(...args),
-            buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args),
-            buildTimelineResultPatch: (...args) => buildTimelineResultPatch(...args),
-            buildTimelineRenderAsset: (...args) => buildTimelineRenderAsset(...args),
-            buildTimelinePreviewAsset: (...args) => buildTimelinePreviewAsset(...args),
-            stableHash: (...args) => stableHash(...args),
-            renderTimelinePreviewFrameDataUrl: (...args) => renderTimelinePreviewFrameDataUrl(...args),
-            sendCanvasRenderTimelineRequest: (...args) => CANVAS_BACKEND_REQUEST_CONTROLLER?.sendCanvasRenderTimelineRequest?.(...args),
-            refreshMainGalleryAfterCanvasRun: (...args) => refreshMainGalleryAfterCanvasRun(...args),
-            nowIso: (...args) => nowIso(...args),
-            buildTimelineCompareResultNode: (...args) => buildTimelineCompareResultNode(...args),
-            buildTimelineCompareAsset: (...args) => buildTimelineCompareAsset(...args),
-            buildTimelineDebugPatch: (...args) => timelineBuildDebugPatch(...args),
-            getActiveTimelineVisualClips: (...args) => getActiveTimelineVisualClips(...args),
-            compareTimelineFrameImages: (...args) => compareTimelineFrameImages(...args),
-            sendCanvasRenderTimelineFrameRequest: (...args) => CANVAS_BACKEND_REQUEST_CONTROLLER?.sendCanvasRenderTimelineFrameRequest?.(...args),
-            getSelectedNodeId: () => selectedNodeId,
-            renderInspector: (...args) => renderInspector(...args),
-            refreshTimelineFeatherControlDom: (...args) => refreshTimelineFeatherControlDom(...args),
-            refreshTimelineMaskFeatherDom: (...args) => refreshTimelineMaskFeatherDom(...args),
-            refreshTimelineInlineValue: (...args) => refreshTimelineInlineValue(...args)
+        domSource: {
+            documentSource: {
+                getDocument: () => document,
+                cssEscape: (value) => cssEscape(value)
+            },
+            interactionSource: {
+                clamp
+            },
+            mediaSource: {
+                formatAssetDuration
+            },
+            timelineSource: {
+                timelineBuildTrackClipLayout: (clips) => typeof timelineBuildTrackClipLayout === 'function'
+                    ? timelineBuildTrackClipLayout(clips)
+                    : null,
+                timelineNormalizeKeyframes: (clip) => typeof timelineNormalizeKeyframes === 'function'
+                    ? timelineNormalizeKeyframes(clip)
+                    : null
+            }
+        },
+        playheadSource: {
+            domSource: {
+                getDocument: () => document
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            interactionSource: {
+                clamp,
+                performanceNow: () => performance.now(),
+                setSuppressWheelUntil: (value) => { suppressWheelUntil = value; }
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            playheadOperationSource: {
+                buildTimelineParamsPatch: timelineBuildParamsPatch
+            },
+            renderSource: {
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        previewSource: {
+            domSource: {
+                getDocument: () => document
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            clipSource: {
+                getClipAtTime: (clip, playhead) => typeof timelineClipAtTime === 'function' ? timelineClipAtTime(clip, playhead) : clip,
+                selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options),
+                buildTimelineClipPatch: timelineBuildClipPatch
+            },
+            interactionSource: {
+                clamp
+            },
+            maskSource: {
+                timelineMaskLayerGeometry: (node, clip) => timelineMaskLayerGeometry(node, clip),
+                remapTimelineClipMaskForGeometryChange: (node, clip, snapshot) => remapTimelineClipMaskForGeometryChange(node, clip, snapshot)
+            },
+            keyframeSource: {
+                syncTimelineClipTransformKeyframeAtPlayhead: (node, clip, keys) => syncTimelineClipTransformKeyframeAtPlayhead(node, clip, keys)
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            renderSource: {
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node),
+                refreshTimelinePreviewClipLayersDom: (nodeEl, node, clip) => refreshTimelinePreviewClipLayersDom(nodeEl, node, clip)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId,
+                renderInspector: (...args) => renderInspector(...args)
+            }
+        },
+        playbackSource: {
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                getNodeElement: (id) => id && nodesLayer ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`) : null
+            },
+            timingSource: {
+                performanceNow: () => performance.now(),
+                requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
+                cancelAnimationFrame: (handle) => window.cancelAnimationFrame(handle)
+            },
+            mediaSource: {
+                syncTimelinePreviewVideos: (nodeEl, node) => syncTimelinePreviewVideos(nodeEl, node)
+            },
+            domSource: {},
+            renderSource: {
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node)
+            },
+            playbackOperationSource: {
+                buildTimelineParamsPatch: timelineBuildParamsPatch
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        keyframeSource: {
+            domSource: {
+                getDocument: () => document
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            interactionSource: {
+                clamp,
+                performanceNow: () => performance.now(),
+                setSuppressWheelUntil: (value) => { suppressWheelUntil = value; }
+            },
+            keyframeOperationSource: {
+                buildTimelineKeyframesPatch: timelineBuildKeyframesPatch,
+                buildTimelineParamsPatch: timelineBuildParamsPatch
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            renderSource: {
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node)
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId,
+                renderInspector: (...args) => renderInspector(...args)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        clipSource: {
+            domSource: {
+                getDocument: () => document
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node),
+                normalizeNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined
+            },
+            interactionSource: {
+                clamp,
+                performanceNow: () => performance.now(),
+                setSuppressWheelUntil: (value) => { suppressWheelUntil = value; }
+            },
+            clipOperationSource: {
+                selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options),
+                buildTimelineClipPatch: timelineBuildClipPatch,
+                buildTimelineParamsPatch: timelineBuildParamsPatch,
+                snapTimelineTime,
+                timelineTrackCompatible,
+                timelineClipAvailableDuration,
+                enforceTimelineClipMediaBounds: (node, clip) => enforceTimelineClipMediaBounds(node, clip)
+            },
+            historySource: {
+                pushHistory: (...args) => pushHistory(...args)
+            },
+            renderSource: {
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node),
+                renderEdges: (...args) => renderEdges(...args)
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId,
+                renderInspector: (...args) => renderInspector(...args)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        maskSource: {
+            domSource: {
+                getDocument: () => document,
+                refreshTimelinePenOverlayDom: (stageEl, clip, options) => refreshTimelinePenOverlayDom(stageEl, clip, options)
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            interactionSource: {
+                clamp,
+                performanceNow: () => performance.now(),
+                setSuppressWheelUntil: (value) => { suppressWheelUntil = value; }
+            },
+            maskOperationSource: {
+                getTimelinePenAnchorTarget: (clip, ref) => getTimelinePenAnchorTarget(clip, ref),
+                closeTimelinePendingPenPath: (node, clip, stageEl) => closeTimelinePendingPenPath(node, clip, stageEl),
+                buildTimelineClipMaskPatch: timelineBuildClipMaskPatch,
+                buildTimelineClipMaskPointPatch: timelineBuildClipMaskPointPatch,
+                timelineMaskPointFromEvent: (stageEl, evt) => timelineMaskPointFromEvent(stageEl, evt),
+                timelineMaskDimensions: (node) => timelineMaskDimensions(node),
+                timelineMaskPointDistancePx: (a, b, stageEl) => timelineMaskPointDistancePx(a, b, stageEl),
+                timelineMaskCloseSnapPx: (stageEl) => timelineMaskCloseSnapPx(stageEl),
+                exportTimelineMaskDataUrl: (node, clip) => exportTimelineMaskDataUrl(node, clip)
+            },
+            clipSource: {
+                selectTimelineClip: (node, clipId, options) => selectTimelineClip(node, clipId, options)
+            },
+            mediaSource: {
+                syncTimelinePreviewVideos: (nodeEl, node) => syncTimelinePreviewVideos(nodeEl, node)
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId,
+                renderInspector: (...args) => renderInspector(...args)
+            }
+        },
+        directorTimelineDragSource: {
+            domSource: {
+                getDocument: () => document
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isDirectorTimelineNode: (node) => isDirectorTimelineNode(node),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            timelineSource: {
+                normalizeDirectorTimelineForNode: (node) => normalizeDirectorTimelineForNode(node),
+                normalizeTimeline: (director) => typeof directorTimelineNormalizeTimeline === 'function' ? directorTimelineNormalizeTimeline(director) : director,
+                directorTimelineNeighborBounds: (director, index) => directorTimelineNeighborBounds(director, index),
+                directorTimelineTotalSeconds: (director) => directorTimelineTotalSeconds(director),
+                directorTimelineClampSeconds: (value, min, max) => directorTimelineClampSeconds(value, min, max),
+                directorTimelineRoundSeconds: (value) => directorTimelineRoundSeconds(value)
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            stateSource: {
+                buildDirectorTimelineStatePatch: (node, options) => buildDirectorTimelineStatePatch(node, options),
+                updateDirectorStatus: (node) => updateDirectorStatus(node),
+                mutate: (...args) => mutate(...args),
+                getSelectedNodeId: () => selectedNodeId
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            }
+        },
+        frameSource: {
+            domSource: {
+                getDocument: () => document,
+                getNodesLayer: () => nodesLayer,
+                cssEscape: (value) => cssEscape(value)
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id)
+            },
+            interactionSource: {
+                clamp
+            },
+            mediaSource: {
+                getTimelineSourceAsset: (source) => getTimelineSourceAsset(source),
+                assetMediaKind: (asset) => assetMediaKind(asset),
+                assetDisplaySrc: (asset) => assetDisplaySrc(asset),
+                getMediaEditRange: (asset) => getMediaEditRange(asset),
+                loadImageElementForCanvas: (src) => loadImageElementForCanvas(src),
+                effectiveClipIn: (clip, asset) => typeof timelineEffectiveClipIn === 'function' ? timelineEffectiveClipIn(clip, asset) : Math.max(0, Number(clip?.in || 0), Number(getMediaEditRange(asset).start || 0))
+            },
+            renderSource: {
+                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined,
+                serializeTimelineRenderPayload: (node) => typeof timelineSerializeTimelineRenderPayload === 'function' ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT) : null,
+                timelineClipLayerGeometry: (...args) => timelineClipLayerGeometry(...args)
+            },
+            maskSource: {
+                clipMaskDataUrl: (clip) => typeof timelineClipMaskDataUrl === 'function' ? timelineClipMaskDataUrl(clip) : (clip?.mask?.data_url || clip?.mask_data_url || '')
+            }
+        },
+        renderSource: {
+            projectSource: {
+                getProject: () => project,
+                getProjectId: () => project?.id || PROJECT_ID,
+                buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args),
+                ensureGenerateEdge: (...args) => ensureGenerateEdge(...args)
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node)
+            },
+            layoutSource: {
+                defaultNodeSize: (...args) => defaultNodeSize(...args),
+                placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args)
+            },
+            languageSource: {
+                t
+            },
+            historySource: {
+                pushHistory: (...args) => pushHistory(...args)
+            },
+            selectionSource: {
+                setSelectedNodeId: (nodeId) => { selectedNodeId = nodeId; },
+                setSelectedNodeIds: (nodeIds) => { selectedNodeIds = new Set(nodeIds || []); },
+                setSelectedEdgeId: (edgeId) => { selectedEdgeId = edgeId; }
+            },
+            stateSource: {
+                mutate: (...args) => mutate(...args)
+            },
+            renderSource: {
+                serializeTimelineRenderPayload: (node) => typeof timelineSerializeTimelineRenderPayload === 'function' ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT) : null,
+                buildTimelineOutputResultNode: (...args) => buildTimelineOutputResultNode(...args),
+                buildTimelineResultPatch: (...args) => buildTimelineResultPatch(...args),
+                stableHash: (...args) => stableHash(...args),
+                renderTimelinePreviewFrameDataUrl: (...args) => renderTimelinePreviewFrameDataUrl(...args)
+            },
+            assetSource: {
+                buildTimelineRenderAsset: (...args) => buildTimelineRenderAsset(...args),
+                buildTimelinePreviewAsset: (...args) => buildTimelinePreviewAsset(...args)
+            },
+            backendSource: {
+                sendCanvasRenderTimelineRequest: (...args) => CANVAS_BACKEND_REQUEST_CONTROLLER?.sendCanvasRenderTimelineRequest?.(...args)
+            },
+            uiSource: {
+                showToast: (...args) => showToast(...args),
+                refreshMainGalleryAfterCanvasRun: (...args) => refreshMainGalleryAfterCanvasRun(...args)
+            }
+        },
+        compareSource: {
+            projectSource: {
+                getProject: () => project,
+                getProjectId: () => project?.id || PROJECT_ID,
+                buildProjectNodeAppendPatch: (...args) => buildProjectNodeAppendPatch(...args)
+            },
+            interactionSource: {
+                clamp
+            },
+            languageSource: {
+                t
+            },
+            layoutSource: {
+                defaultNodeSize: (...args) => defaultNodeSize(...args),
+                placeNodeAvoidingOverlap: (...args) => placeNodeAvoidingOverlap(...args)
+            },
+            selectionSource: {
+                setSelectedNodeId: (nodeId) => { selectedNodeId = nodeId; },
+                setSelectedNodeIds: (nodeIds) => { selectedNodeIds = new Set(nodeIds || []); },
+                setSelectedEdgeId: (edgeId) => { selectedEdgeId = edgeId; }
+            },
+            stateSource: {
+                mutate: (...args) => mutate(...args)
+            },
+            timeSource: {
+                nowIso: (...args) => nowIso(...args)
+            },
+            renderSource: {
+                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined,
+                serializeTimelineRenderPayload: (node) => typeof timelineSerializeTimelineRenderPayload === 'function' ? timelineSerializeTimelineRenderPayload(node, TIMELINE_NODE_CONTEXT) : null,
+                buildTimelineResultPatch: (...args) => buildTimelineResultPatch(...args),
+                buildTimelineDebugPatch: (...args) => timelineBuildDebugPatch(...args)
+            },
+            frameSource: {
+                renderTimelinePreviewFrameDataUrl: (...args) => renderTimelinePreviewFrameDataUrl(...args),
+                getActiveTimelineVisualClips: (...args) => getActiveTimelineVisualClips(...args),
+                compareTimelineFrameImages: (...args) => compareTimelineFrameImages(...args)
+            },
+            backendSource: {
+                sendCanvasRenderTimelineFrameRequest: (...args) => CANVAS_BACKEND_REQUEST_CONTROLLER?.sendCanvasRenderTimelineFrameRequest?.(...args)
+            },
+            mediaSource: {
+                assetDisplaySrc: (asset) => assetDisplaySrc(asset)
+            },
+            resultSource: {
+                buildTimelineCompareResultNode: (...args) => buildTimelineCompareResultNode(...args),
+                buildTimelineCompareAsset: (...args) => buildTimelineCompareAsset(...args)
+            },
+            uiSource: {
+                showToast: (...args) => showToast(...args)
+            }
+        },
+        paramSource: {
+            domSource: {
+                getNodeElement: (id) => id && nodesLayer ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`) : null,
+                refreshTimelineFeatherControlDom: (...args) => refreshTimelineFeatherControlDom(...args),
+                refreshTimelineMaskFeatherDom: (...args) => refreshTimelineMaskFeatherDom(...args),
+                refreshTimelinePreviewDom: (nodeEl, node) => refreshTimelinePreviewDom(nodeEl, node),
+                refreshTimelineInlineValue: (...args) => refreshTimelineInlineValue(...args)
+            },
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node),
+                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined
+            },
+            selectionSource: {
+                getSelectedNodeId: () => selectedNodeId
+            },
+            interactionSource: {
+                clamp
+            },
+            maskSource: {
+                captureTimelineMaskGeometry: (node) => captureTimelineMaskGeometry(node),
+                remapTimelineMasksAfterCanvasResize: (node, snapshot) => remapTimelineMasksAfterCanvasResize(node, snapshot),
+                applyTimelineMaskFeatherToSelectedClip: (node) => applyTimelineMaskFeatherToSelectedClip(node),
+                timelineMaskLayerGeometry: (node, clip) => timelineMaskLayerGeometry(node, clip),
+                remapTimelineClipMaskForGeometryChange: (node, clip, snapshot) => remapTimelineClipMaskForGeometryChange(node, clip, snapshot)
+            },
+            paramOperationSource: {
+                buildTimelineParamsPatch: timelineBuildParamsPatch,
+                buildTimelineParamUpdatePatch: timelineBuildParamUpdatePatch,
+                buildTimelineClipParamUpdatePatch: timelineBuildClipParamUpdatePatch,
+                getTimelineDefaultParams: () => timelineDefaultParams || {}
+            },
+            mediaSource: {
+                enforceTimelineClipMediaBounds: (node, clip) => enforceTimelineClipMediaBounds(node, clip),
+                getTimelineSourceAsset: (source) => getTimelineSourceAsset(source),
+                getMediaEditRange: (asset) => getMediaEditRange(asset)
+            },
+            keyframeSource: {
+                syncTimelineClipTransformKeyframeAtPlayhead: (node, clip, keys) => syncTimelineClipTransformKeyframeAtPlayhead(node, clip, keys)
+            },
+            historySource: {
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            },
+            stateSource: {
+                mutate: (...args) => mutate(...args)
+            }
+        },
+        commandSource: {
+            domSource: {},
+            nodeSource: {
+                getNode: (id) => getNode(id),
+                isNodeLocked: (node) => isNodeLocked(node),
+                normalizeTimelineNode: (node) => typeof timelineNormalizeNode === 'function' ? timelineNormalizeNode(node) : undefined
+            },
+            interactionSource: {
+                clamp
+            },
+            selectionSource: {
+                setSelectedNodeId: (nodeId) => { selectedNodeId = nodeId; },
+                setSelectedNodeIds: (nodeIds) => { selectedNodeIds = new Set(nodeIds || []); },
+                setSelectedEdgeId: (edgeId) => { selectedEdgeId = edgeId; }
+            },
+            paramSource: {},
+            clipSource: {
+                timelineSelectedVisualClip: (node) => timelineSelectedVisualClip(node)
+            },
+            keyframeSource: {
+                timelineKeyframeTime: (node) => timelineKeyframeTime(node),
+                timelineKeyframeIndexAt: (clip, time) => timelineKeyframeIndexAt(clip, time),
+                timelineKeyframeValuesAtPlayhead: (node, clip) => timelineKeyframeValuesAtPlayhead(node, clip),
+                syncTimelineClipTransformKeyframeAtPlayhead: (node, clip, keys) => syncTimelineClipTransformKeyframeAtPlayhead(node, clip, keys),
+                uid
+            },
+            commandOperationSource: {
+                buildTimelineParamsPatch: timelineBuildParamsPatch,
+                buildTimelineTracksPatch: timelineBuildTracksPatch,
+                buildTimelineKeyframesPatch: timelineBuildKeyframesPatch,
+                buildTimelineClipResetPatch: timelineBuildClipResetPatch,
+                buildTimelineClipDeletePatch: timelineBuildClipDeletePatch,
+                buildProjectTimelineClipEdgeDeletePatch,
+                captureTimelineMaskGeometry: (node) => captureTimelineMaskGeometry(node),
+                remapTimelineMasksAfterCanvasResize: (node, snapshot) => remapTimelineMasksAfterCanvasResize(node, snapshot),
+                timelineDuration: (node) => typeof timelineDuration === 'function' ? timelineDuration(node) : Math.max(1, ...(node?.clips || []).map(timelineClipEnd))
+            },
+            historySource: {
+                pushHistory: (...args) => pushHistory(...args),
+                pushHistoryBatch: (...args) => pushHistoryBatch(...args)
+            },
+            persistenceSource: {
+                scheduleSave: (...args) => scheduleSave(...args)
+            },
+            stateSource: {
+                mutate: (...args) => mutate(...args)
+            },
+            projectSource: {
+                getProject: () => project,
+                deleteEdge: (...args) => deleteEdge(...args),
+            },
+            layoutSource: {
+                defaultNodeSize: (...args) => defaultNodeSize(...args)
+            },
+            viewportSource: {
+                centerViewportOnWorld: (...args) => centerViewportOnWorld(...args)
+            },
+            languageSource: {
+                t
+            },
+            uiSource: {
+                showToast: (...args) => showToast(...args),
+                openContextMenu: (...args) => openContextMenu(...args)
+            }
+        }
     };
     const CANVAS_TIMELINE_CONTEXT = typeof WORKBENCH_CANVAS_TIMELINE_CONTEXT.createCanvasWorkbenchTimelineContext === 'function'
         ? WORKBENCH_CANVAS_TIMELINE_CONTEXT.createCanvasWorkbenchTimelineContext({
@@ -3895,23 +4842,46 @@
     CANVAS_TIMELINE_RENDER_CONTROLLER = timelineRenderController || null;
     CANVAS_TIMELINE_COMPARE_CONTROLLER = timelineCompareController || null;
     const BACKEND_CONTEXT_SOURCE = {
-            getApiMethod: name => BACKEND_API_FACADE[name],
-            getProjectId: () => project?.id || PROJECT_ID,
-            getStorageScope: () => storageScope,
-            getSystemParams: () => window.simpleaiTopbarSystemParams || {},
-            runtimeUiLang: () => runtimeUiLang(),
-            serializeClassicNodeForRun,
-            serializePresetForRun,
-            getVlmCustomApiKey,
-            getVlmCustomRuntimeParams,
-            cloneRunValue,
-            isBridgeReady: () => isCanvasBridgeReady(),
-            sendBridgeRequest: (...args) => sendCanvasBridgeRequest(...args),
-            nowIso,
-            mutate,
-            warn: (...args) => console.warn(...args),
-            sendVlmRunRequest: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.sendVlmRunRequest?.(...args),
-            sendVlmCancelRequest: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.sendVlmCancelRequest?.(...args)
+            backendRequestSource: {
+                apiSource: {
+                    getApiMethod: name => BACKEND_API_FACADE[name]
+                },
+                projectSource: {
+                    getProjectId: () => project?.id || PROJECT_ID
+                },
+                storageSource: {
+                    getStorageScope: () => storageScope
+                },
+                systemSource: {
+                    getSystemParams: () => window.simpleaiTopbarSystemParams || {}
+                },
+                languageSource: {
+                    runtimeUiLang: () => runtimeUiLang()
+                },
+                serializationSource: {
+                    serializeClassicNodeForRun,
+                    serializePresetForRun,
+                    cloneRunValue
+                },
+                bridgeSource: {
+                    isBridgeReady: () => isCanvasBridgeReady(),
+                    sendBridgeRequest: (...args) => sendCanvasBridgeRequest(...args)
+                },
+                vlmSource: {
+                    getVlmCustomApiKey,
+                    getVlmCustomRuntimeParams,
+                    sendVlmRunRequest: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.sendVlmRunRequest?.(...args),
+                    sendVlmCancelRequest: (...args) => CANVAS_VLM_CHAT_CONTROLLER?.sendVlmCancelRequest?.(...args)
+                },
+                networkSource: {
+                    fetch: typeof window.fetch === 'function' ? window.fetch.bind(window) : null
+                }
+            },
+            qwenTtsPresetsSource: {
+                nowIso,
+                mutate,
+                warn: (...args) => console.warn(...args),
+            },
     };
     const CANVAS_BACKEND_CONTEXT = typeof WORKBENCH_CANVAS_BACKEND_CONTEXT.createCanvasWorkbenchBackendContext === 'function'
         ? WORKBENCH_CANVAS_BACKEND_CONTEXT.createCanvasWorkbenchBackendContext({
@@ -3972,18 +4942,39 @@
                 getPresetThemeInfo
             },
             presetCatalogSource: {
-                t,
-                normalizePresetName,
-                getSystemParams: () => window.simpleaiTopbarSystemParams || {},
-                presetCatalog: (payload) => apiPresetCatalog(payload),
-                getWorkbenchUserContext,
-                isPaletteOpen: () => !!(palette && !palette.hidden),
-                renderPresetPalette,
-                reconcilePresetNodesWithCatalog,
-                mutate,
-                showToast,
-                isWorkbenchOpen: () => !!(root && !root.hidden),
-                renderAll
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    normalizePresetName
+                },
+                systemSource: {
+                    getSystemParams: () => window.simpleaiTopbarSystemParams || {}
+                },
+                apiSource: {
+                    presetCatalog: (payload) => apiPresetCatalog(payload)
+                },
+                userSource: {
+                    getWorkbenchUserContext
+                },
+                paletteSource: {
+                    isPaletteOpen: () => !!(palette && !palette.hidden),
+                    renderPresetPalette
+                },
+                nodeSource: {
+                    reconcilePresetNodesWithCatalog
+                },
+                stateSource: {
+                    mutate
+                },
+                uiSource: {
+                    showToast,
+                    isWorkbenchOpen: () => !!(root && !root.hidden),
+                    renderAll
+                },
+                diagnosticsSource: {
+                    warn: (...args) => console.warn(...args)
+                }
             }
     };
     const CANVAS_PRESET_CONTEXT = typeof WORKBENCH_CANVAS_PRESET_CONTEXT.createCanvasWorkbenchPresetContext === 'function'
@@ -4008,58 +4999,143 @@
     const CANVAS_TEMPLATE_CONTEXT = typeof WORKBENCH_CANVAS_TEMPLATE_CONTEXT.createCanvasWorkbenchTemplateContext === 'function'
         ? WORKBENCH_CANVAS_TEMPLATE_CONTEXT.createCanvasWorkbenchTemplateContext({
             templateLibrarySource: {
-                t,
-                apiSaveTemplate,
-                apiListTemplates,
-                apiLoadTemplate,
-                apiDeleteTemplate,
-                isCanvasBridgeReady: () => isCanvasBridgeReady(),
-                sendCanvasBridgeRequest: (...args) => sendCanvasBridgeRequest(...args),
-                getWorkbenchUserContext: () => getWorkbenchUserContext(),
-                document,
-                escapeHtml,
-                detectWorkbenchTheme,
-                sanitizeStoragePart,
-                resolveStaticPath: resolveWorkbenchStaticPath,
-                getTemplateLibraryManifestPath: () => TEMPLATE_LIBRARY_MANIFEST_PATH,
-                getTemplatePreviewRoot: () => TEMPLATE_PREVIEW_ROOT,
-                fetchTemplateManifest: (path, options) => fetch(path, options),
-                fetchTemplateProject: (path, options) => fetch(path, options),
-                createTemplateFallbackProject: () => createDemoWorkbenchProject({ id: project.id || PROJECT_ID, storage: project.storage || buildProjectStorageInfo(storageKey, storageScope) }),
-                showToast,
-                isTemplateLibraryModalConnected: (modal) => !!(modal && document.body.contains(modal)),
-                saveCurrentCanvasAsTemplate: (...args) => saveCurrentCanvasAsTemplate(...args),
-                deleteUserWorkbenchTemplate: (...args) => deleteUserWorkbenchTemplate(...args),
-                createWorkbenchFromTemplate: (...args) => createWorkbenchFromTemplate(...args),
-                getCurrentProject: () => project,
-                getDefaultProjectId: () => PROJECT_ID,
-                getStorageScope: () => storageScope,
-                getStorageKey: () => storageKey,
-                saveProject: (...args) => saveProject(...args),
-                compactProjectForStorage,
-                getDefaultSettings: () => DEFAULT_SETTINGS,
-                closeContextMenu: (...args) => closeContextMenu(...args),
-                closeCanvasSettingsPanel: (...args) => closeCanvasSettingsPanel(...args),
-                sanitizeProject,
-                createDefaultProject,
-                nowIso,
-                buildProjectStorageInfo: (...args) => buildProjectStorageInfo(...args),
-                cloneRunValue,
-                setProject: (value) => { project = value; },
-                syncCanvasProjectAssetRoot: (...args) => syncCanvasProjectAssetRoot(...args),
-                resetRenderedProjectDomCache,
-                refreshCanvasProjectAssetRoot: (...args) => refreshCanvasProjectAssetRoot(...args),
-                setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
-                resetSelectionState: () => {
-                    selectedNodeId = null;
-                    selectedNodeIds = new Set();
-                    selectedEdgeId = null;
-                    selectedGroupId = null;
+                defaultsSource: {
+                    languageSource: {
+                        t
+                    }
                 },
-                resetHistory,
-                mutate,
-                resetGalleryFrostReveals,
-                setActiveBrowserCacheProject
+                apiSource: {
+                    getApiMethod: name => ({
+                        saveTemplate: apiSaveTemplate,
+                        listTemplates: apiListTemplates,
+                        loadTemplate: apiLoadTemplate,
+                        deleteTemplate: apiDeleteTemplate
+                    }[name])
+                },
+                bridgeSource: {
+                    isBridgeReady: () => isCanvasBridgeReady(),
+                    sendBridgeRequest: (...args) => sendCanvasBridgeRequest(...args)
+                },
+                userSource: {
+                    getUserContext: () => getWorkbenchUserContext()
+                },
+                confirmSource: {
+                    languageSource: {
+                        t
+                    },
+                    utilitySource: {
+                        escapeHtml
+                    },
+                    domSource: {
+                        document
+                    },
+                    uiSource: {
+                        detectWorkbenchTheme
+                    }
+                },
+                dataSource: {
+                    languageSource: {
+                        t
+                    },
+                    utilitySource: {
+                        sanitizeStoragePart
+                    },
+                    pathSource: {
+                        resolveStaticPath: resolveWorkbenchStaticPath,
+                        getManifestPath: () => TEMPLATE_LIBRARY_MANIFEST_PATH,
+                        getPreviewRoot: () => TEMPLATE_PREVIEW_ROOT
+                    },
+                    networkSource: {
+                        fetchManifest: (path, options) => fetch(path, options),
+                        fetchTemplateProject: (path, options) => fetch(path, options)
+                    },
+                    projectSource: {
+                        createFallbackProject: () => createDemoWorkbenchProject({ id: project.id || PROJECT_ID, storage: project.storage || buildProjectStorageInfo(storageKey, storageScope) })
+                    },
+                    uiSource: {
+                        showToast
+                    },
+                    diagnosticsSource: {
+                        warn: (...args) => console.warn(...args)
+                    }
+                },
+                viewsSource: {
+                    languageSource: {
+                        t
+                    },
+                    utilitySource: {
+                        escapeHtml
+                    }
+                },
+                librarySource: {
+                    languageSource: {
+                        t
+                    },
+                    domSource: {
+                        document
+                    },
+                    viewSource: {
+                        escapeHtml
+                    },
+                    actionSource: {
+                        saveCurrentCanvasAsTemplate: (...args) => saveCurrentCanvasAsTemplate(...args),
+                        deleteUserWorkbenchTemplate: (...args) => deleteUserWorkbenchTemplate(...args),
+                        createWorkbenchFromTemplate: (...args) => createWorkbenchFromTemplate(...args)
+                    },
+                    dataSource: {},
+                    apiSource: {},
+                    projectSource: {
+                        getCurrentProject: () => project,
+                        getDefaultProjectId: () => PROJECT_ID,
+                        sanitizeProject,
+                        createDefaultProject,
+                        setProject: (value) => { project = value; }
+                    },
+                    storageSource: {
+                        getStorageScope: () => storageScope,
+                        getStorageKey: () => storageKey,
+                        setActiveBrowserCacheProject
+                    },
+                    persistenceSource: {
+                        saveProject: (...args) => saveProject(...args),
+                        compactProjectForStorage,
+                        getDefaultSettings: () => DEFAULT_SETTINGS,
+                        buildProjectStorageInfo: (...args) => buildProjectStorageInfo(...args)
+                    },
+                    uiSource: {
+                        isTemplateLibraryModalConnected: (modal) => !!(modal && document.body.contains(modal)),
+                        detectWorkbenchTheme,
+                        showToast,
+                        closeContextMenu: (...args) => closeContextMenu(...args),
+                        closeCanvasSettingsPanel: (...args) => closeCanvasSettingsPanel(...args)
+                    },
+                    dialogSource: {},
+                    assetSource: {
+                        syncCanvasProjectAssetRoot: (...args) => syncCanvasProjectAssetRoot(...args),
+                        resetRenderedProjectDomCache,
+                        refreshCanvasProjectAssetRoot: (...args) => refreshCanvasProjectAssetRoot(...args)
+                    },
+                    stateSource: {
+                        setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
+                        resetSelectionState: () => {
+                            selectedNodeId = null;
+                            selectedNodeIds = new Set();
+                            selectedEdgeId = null;
+                            selectedGroupId = null;
+                        },
+                        resetHistory,
+                        mutate,
+                        resetGalleryFrostReveals
+                    },
+                    utilitySource: {
+                        sanitizeStoragePart,
+                        nowIso,
+                        cloneRunValue
+                    },
+                    diagnosticsSource: {
+                        warn: (...args) => console.warn(...args)
+                    }
+                }
             }
         })
         : {};
@@ -4114,64 +5190,152 @@
         restoreTemplateWorkbenchCreation
     } = CANVAS_TEMPLATE_CONTEXT;
     const UI_CONTEXT_SOURCE = {
-            t,
-            escapeHtml,
-            openTemplateLibrary,
-            saveCurrentCanvasAsTemplate,
-            getCanvasAgentDefaultSettings: () => CANVAS_AGENT_DEFAULT_SETTINGS,
-            getVersionChoices: () => VLM_VERSION_CHOICES,
-            vlmModelDisplayLabel,
-             canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS,
-             normalizePresetName,
-             clamp,
-             getVlmCustomProvider: (...args) => getVlmCustomProvider(...args),
-             getVlmCustomApiProfile: (...args) => getVlmCustomApiProfile(...args),
-             getVlmCustomProfileKey: (...args) => getVlmCustomProfileKey(...args),
-             readVlmCustomApiProfiles: (...args) => readVlmCustomApiProfiles(...args),
-             writeVlmCustomApiProfiles: (...args) => writeVlmCustomApiProfiles(...args),
-             getCanvasSettingsPanel: () => canvasSettingsPanel,
-             decodeCanvasAgentVideoToolChoice: (...args) => CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER?.decodeCanvasAgentVideoToolChoice?.(...args) || {},
-             getCanvasAgentState: () => canvasAgentState,
-             getSelectedNodeId: () => selectedNodeId,
-             getNode: (...args) => getNode(...args),
-             getCurrentProjectId: () => project.id || PROJECT_ID,
-             pushHistoryBatch: (...args) => pushHistoryBatch(...args),
-             pushHistory: (...args) => pushHistory(...args),
-             scheduleSave: (...args) => scheduleSave(...args),
-             mutate: (...args) => mutate(...args),
-             showToast: (...args) => showToast(...args),
-             nowIso: (...args) => nowIso(...args),
-             buildVlmModelUnknownStatus: (...args) => buildVlmModelUnknownStatus(...args),
-             buildVlmParamsPatch: (...args) => buildVlmParamsPatch(...args),
-             buildVlmModelStatusPatch: (...args) => buildVlmModelStatusPatch(...args),
-             sendCanvasVlmRunRequest: (...args) => sendCanvasVlmRunRequest(...args),
-             sendCanvasAgentCustomModelsRequest: (params) => typeof apiCustomLlmModels === 'function'
-                 ? apiCustomLlmModels(Object.assign({}, params || {}, { user_context: getWorkbenchUserContext() }))
-                 : { ok: false, error: 'Custom model API is unavailable' },
-             renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
-            renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
-            renderStatus: (...args) => renderStatus(...args),
-            buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args),
-            getDocument: () => document,
-            getOutpaintOverlayState: () => outpaintOverlayState,
-            getOutpaintOverlayElement: () => outpaintOverlayEl,
-            getProject: () => project,
-            getOutpaintNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
-            getOutpaintStage: () => stage,
-            defaultNodeSize,
-             isCanvasAgentImageTarget: (...args) => CANVAS_AGENT_TARGET_CONTROLLER?.isCanvasAgentImageTarget?.(...args) || false,
-            getViewportZoom: () => project.viewport?.zoom || 1,
-            getCanvasAgentPanel: () => canvasAgentPanel,
-            getCanvasSettingsPanel: () => canvasSettingsPanel,
-            getCanvasSettingsTab: () => canvasSettingsState.tab,
-            setCanvasSettingsTab: (tab) => { canvasSettingsState.tab = tab; },
-             isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
-             refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args),
-             closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
-             closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args),
-             toggleSetting: (...args) => toggleSetting(...args),
-            clearBrowserCache: (...args) => clearBrowserCache(...args),
-            clearProjectFileWithConfirm: (...args) => clearProjectFileWithConfirm(...args)
+            settingsViewsSource: {
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    escapeHtml
+                }
+            },
+            agentSettingsSource: {
+                languageSource: {
+                    t
+                },
+                configSource: {
+                    getCanvasAgentDefaultSettings: () => CANVAS_AGENT_DEFAULT_SETTINGS,
+                    getDefaultSettings: () => DEFAULT_SETTINGS,
+                    getVersionChoices: () => VLM_VERSION_CHOICES,
+                    canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS
+                },
+                utilitySource: {
+                    normalizePresetName,
+                    clamp
+                },
+                modelSource: {
+                    vlmModelDisplayLabel
+                },
+                customApiSource: {
+                    getVlmCustomProvider: (...args) => getVlmCustomProvider(...args),
+                    getVlmCustomApiProfile: (...args) => getVlmCustomApiProfile(...args),
+                    getVlmCustomProfileKey: (...args) => getVlmCustomProfileKey(...args),
+                    readVlmCustomApiProfiles: (...args) => readVlmCustomApiProfiles(...args),
+                    writeVlmCustomApiProfiles: (...args) => writeVlmCustomApiProfiles(...args),
+                    getCanvasAgentCustomKeyValue: () => canvasSettingsPanel?.querySelector?.('[data-canvas-agent-custom-key]')?.value || ''
+                },
+                projectSource: {
+                    getProject: () => project,
+                    getCurrentProjectId: () => project.id || PROJECT_ID,
+                    buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args)
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState,
+                    mutate: (...args) => mutate(...args)
+                },
+                nodeSource: {
+                    getSelectedNodeId: () => selectedNodeId,
+                    getNode: (...args) => getNode(...args)
+                },
+                patchSource: {
+                    buildVlmModelUnknownStatus: (...args) => buildVlmModelUnknownStatus(...args),
+                    buildVlmParamsPatch: (...args) => buildVlmParamsPatch(...args),
+                    buildVlmModelStatusPatch: (...args) => buildVlmModelStatusPatch(...args)
+                },
+                historySource: {
+                    pushHistoryBatch: (...args) => pushHistoryBatch(...args),
+                    pushHistory: (...args) => pushHistory(...args)
+                },
+                persistenceSource: {
+                    scheduleSave: (...args) => scheduleSave(...args),
+                    nowIso: (...args) => nowIso(...args)
+                },
+                requestSource: {
+                    sendCanvasVlmRunRequest: (...args) => sendCanvasVlmRunRequest(...args),
+                    sendCanvasAgentCustomModelsRequest: (params) => typeof apiCustomLlmModels === 'function'
+                        ? apiCustomLlmModels(Object.assign({}, params || {}, { user_context: getWorkbenchUserContext() }))
+                        : { ok: false, error: 'Custom model API is unavailable' }
+                },
+                uiSource: {
+                    showToast: (...args) => showToast(...args),
+                    renderCanvasAgentPanel: (...args) => renderCanvasAgentPanel(...args),
+                    renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
+                    renderStatus: (...args) => renderStatus(...args),
+                    getCanvasAgentPanel: () => canvasAgentPanel,
+                    getCanvasSettingsPanel: () => canvasSettingsPanel
+                },
+                documentSource: {
+                    getDocument: () => document
+                },
+                toolSource: {
+                    decodeCanvasAgentVideoToolChoice: (...args) => CANVAS_AGENT_VIDEO_TOOLS_CONTROLLER?.decodeCanvasAgentVideoToolChoice?.(...args) || {}
+                }
+            },
+            outpaintSource: {
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    escapeHtml,
+                    defaultNodeSize,
+                    clamp
+                },
+                documentSource: {
+                    getDocument: () => document
+                },
+                overlaySource: {
+                    getOutpaintOverlayState: () => outpaintOverlayState,
+                    getOutpaintOverlayElement: () => outpaintOverlayEl,
+                    getOutpaintNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
+                    getOutpaintStage: () => stage
+                },
+                projectSource: {
+                    getProject: () => project
+                },
+                targetSource: {
+                    isCanvasAgentImageTarget: (...args) => CANVAS_AGENT_TARGET_CONTROLLER?.isCanvasAgentImageTarget?.(...args) || false
+                },
+                viewportSource: {
+                    getViewportZoom: () => project.viewport?.zoom || 1
+                },
+                panelSource: {
+                    getCanvasAgentPanel: () => canvasAgentPanel
+                }
+            },
+            settingsSource: {
+                panelSource: {
+                    getCanvasSettingsPanel: () => canvasSettingsPanel,
+                    getCanvasSettingsTab: () => canvasSettingsState.tab,
+                    setCanvasSettingsTab: (tab) => { canvasSettingsState.tab = tab; }
+                },
+                renderSource: {
+                    renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
+                    isCanvasAgentPresetScanIdle: () => getCanvasAgentPresetScanState().state === 'idle',
+                    refreshCanvasAgentAvailablePresets: (...args) => refreshCanvasAgentAvailablePresets(...args)
+                },
+                agentSettingsSource: {
+                    getCanvasAgentSettings: (...args) => getCanvasAgentSettings(...args),
+                    setCanvasAgentSettingsPatch: (...args) => setCanvasAgentSettingsPatch(...args),
+                    saveCanvasAgentCustomSecret: (...args) => saveCanvasAgentCustomSecret(...args),
+                    fetchCanvasAgentCustomModels: (...args) => fetchCanvasAgentCustomModels(...args),
+                    testCanvasAgentCustomApi: (...args) => testCanvasAgentCustomApi(...args),
+                    syncCanvasAgentCustomFromSelectedVlm: (...args) => syncCanvasAgentCustomFromSelectedVlm(...args),
+                    syncSelectedVlmCustomFromCanvasAgent: (...args) => syncSelectedVlmCustomFromCanvasAgent(...args)
+                },
+                templateSource: {
+                    openTemplateLibrary,
+                    saveCurrentCanvasAsTemplate
+                },
+                generalSource: {
+                    toggleSetting: (...args) => toggleSetting(...args),
+                    clearBrowserCache: (...args) => clearBrowserCache(...args),
+                    clearProjectFileWithConfirm: (...args) => clearProjectFileWithConfirm(...args)
+                },
+                siblingPanelSource: {
+                    closeContextMenu: (...args) => closeContextMenu(...args),
+                    closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
+                    closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args)
+                }
+            }
     };
     const CANVAS_UI_CONTEXT = typeof WORKBENCH_CANVAS_UI_CONTEXT.createCanvasWorkbenchUiContext === 'function'
         ? WORKBENCH_CANVAS_UI_CONTEXT.createCanvasWorkbenchUiContext({
@@ -4218,31 +5382,53 @@
     CANVAS_AGENT_PRESET_RUNTIME_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_PRESET_RUNTIME.createCanvasAgentPresetRuntimeController === 'function'
         ? WORKBENCH_CANVAS_AGENT_PRESET_RUNTIME.createCanvasAgentPresetRuntimeController({
             presetRuntimeSource: {
-                t,
-                escapeHtml,
-                uid,
-                nowIso,
-                normalizePresetName,
-                getPresetCatalog: (...args) => typeof getPresetCatalog === 'function' ? getPresetCatalog(...args) : [],
-                getCanvasAgentSettings: (...args) => typeof getCanvasAgentSettings === 'function' ? getCanvasAgentSettings(...args) : {},
-                getStorage: () => localStorage,
-                apiBuildPresetRunNode,
-                cloneRunValue,
-                sendCanvasPresetModelStatusRequest,
-                renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args),
-                canvasAgentPresetDefaultPrompt: (...args) => canvasAgentPresetDefaultPrompt(...args),
-                presetQueueStorageKey: CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY,
-                defaultT2iPresetQueue: CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE,
-                defaultEditPresetQueue: CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE,
-                defaultI2vPresetQueue: CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE,
-                defaultT2vPresetQueue: CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE,
-                defaultVideoEditPresetQueue: CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE,
-                defaultReferenceToVideoPresetQueue: CANVAS_AGENT_DEFAULT_REFERENCE_TO_VIDEO_PRESET_QUEUE,
-                defaultAudioToVideoPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE,
-                defaultAudioImageToVideoPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE,
-                defaultAudioPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_PRESET_QUEUE,
-                presetStatusCacheTtlMs: CANVAS_AGENT_PRESET_STATUS_CACHE_TTL_MS,
-                presetStatusScanConcurrency: CANVAS_AGENT_PRESET_STATUS_SCAN_CONCURRENCY
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    escapeHtml,
+                    normalizePresetName,
+                    cloneRunValue
+                },
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                catalogSource: {
+                    getPresetCatalog: (...args) => typeof getPresetCatalog === 'function' ? getPresetCatalog(...args) : []
+                },
+                settingsSource: {
+                    getCanvasAgentSettings: (...args) => typeof getCanvasAgentSettings === 'function' ? getCanvasAgentSettings(...args) : {}
+                },
+                storageSource: {
+                    getStorage: () => localStorage
+                },
+                nodeSource: {
+                    apiBuildPresetRunNode
+                },
+                requestSource: {
+                    sendCanvasPresetModelStatusRequest
+                },
+                uiSource: {
+                    renderCanvasSettingsPanel: (...args) => renderCanvasSettingsPanel(...args)
+                },
+                promptSource: {
+                    canvasAgentPresetDefaultPrompt: (...args) => canvasAgentPresetDefaultPrompt(...args)
+                },
+                configSource: {
+                    presetQueueStorageKey: CANVAS_AGENT_PRESET_QUEUE_STORAGE_KEY,
+                    defaultT2iPresetQueue: CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE,
+                    defaultEditPresetQueue: CANVAS_AGENT_DEFAULT_EDIT_PRESET_QUEUE,
+                    defaultI2vPresetQueue: CANVAS_AGENT_DEFAULT_I2V_PRESET_QUEUE,
+                    defaultT2vPresetQueue: CANVAS_AGENT_DEFAULT_T2V_PRESET_QUEUE,
+                    defaultVideoEditPresetQueue: CANVAS_AGENT_DEFAULT_VIDEO_EDIT_PRESET_QUEUE,
+                    defaultReferenceToVideoPresetQueue: CANVAS_AGENT_DEFAULT_REFERENCE_TO_VIDEO_PRESET_QUEUE,
+                    defaultAudioToVideoPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_TO_VIDEO_PRESET_QUEUE,
+                    defaultAudioImageToVideoPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_IMAGE_TO_VIDEO_PRESET_QUEUE,
+                    defaultAudioPresetQueue: CANVAS_AGENT_DEFAULT_AUDIO_PRESET_QUEUE,
+                    presetStatusCacheTtlMs: CANVAS_AGENT_PRESET_STATUS_CACHE_TTL_MS,
+                    presetStatusScanConcurrency: CANVAS_AGENT_PRESET_STATUS_SCAN_CONCURRENCY
+                }
             }
         })
         : {};
@@ -4263,33 +5449,47 @@
     const CANVAS_LIFECYCLE_CONTEXT = typeof WORKBENCH_CANVAS_LIFECYCLE_CONTEXT.createCanvasWorkbenchLifecycleContext === 'function'
         ? WORKBENCH_CANVAS_LIFECYCLE_CONTEXT.createCanvasWorkbenchLifecycleContext({
             lifecycleSource: {
-                getRoot: () => root,
-                getProject: () => project,
-                ensureWorkbench: (...args) => ensureWorkbench(...args),
-                syncStorageScope: (...args) => syncStorageScope(...args),
-                ensureInitialDemoProject: (...args) => ensureInitialDemoProject(...args),
-                applyThemeClass: (...args) => applyThemeClass(...args),
-                resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args),
-                renderAll: (...args) => renderAll(...args),
-                refreshCanvasProjectFromBackendOnOpen: (...args) => refreshCanvasProjectFromBackendOnOpen(...args),
-                refreshPresetCatalog: (...args) => refreshPresetCatalog(...args),
-                startPerformanceHud: (...args) => startPerformanceHud(...args),
-                startStandaloneStatusMonitor: (...args) => startStandaloneStatusMonitor(...args),
-                scheduleAutoPresetModelChecks: (...args) => scheduleAutoPresetModelChecks(...args),
-                setTimeout: (...args) => window.setTimeout(...args),
-                getViewport: () => viewport,
-                closePresetPalette: (...args) => closePresetPalette(...args),
-                closeContextMenu: (...args) => closeContextMenu(...args),
-                closeCanvasSettingsPanel: (...args) => closeCanvasSettingsPanel(...args),
-                closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
-                closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args),
-                cancelPanEdgeSettleRender: (...args) => cancelPanEdgeSettleRender(...args),
-                cancelDragEdgeSettleRender: (...args) => cancelDragEdgeSettleRender(...args),
-                endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
-                cancelEdgeIncidentIndexWarmup: (...args) => cancelEdgeIncidentIndexWarmup(...args),
-                stopTimelinePlayback: (...args) => stopTimelinePlayback(...args),
-                stopStandaloneStatusMonitor: (...args) => stopStandaloneStatusMonitor(...args),
-                stopPerformanceHud: (...args) => stopPerformanceHud(...args)
+                domSource: {
+                    getRoot: () => root,
+                    getViewport: () => viewport
+                },
+                projectSource: {
+                    getProject: () => project,
+                    ensureWorkbench: (...args) => ensureWorkbench(...args),
+                    syncStorageScope: (...args) => syncStorageScope(...args),
+                    ensureInitialDemoProject: (...args) => ensureInitialDemoProject(...args),
+                    refreshCanvasProjectFromBackendOnOpen: (...args) => refreshCanvasProjectFromBackendOnOpen(...args)
+                },
+                renderSource: {
+                    applyThemeClass: (...args) => applyThemeClass(...args),
+                    resetGalleryFrostReveals: (...args) => resetGalleryFrostReveals(...args),
+                    renderAll: (...args) => renderAll(...args)
+                },
+                presetSource: {
+                    refreshPresetCatalog: (...args) => refreshPresetCatalog(...args),
+                    scheduleAutoPresetModelChecks: (...args) => scheduleAutoPresetModelChecks(...args)
+                },
+                runtimeSource: {
+                    startPerformanceHud: (...args) => startPerformanceHud(...args),
+                    startStandaloneStatusMonitor: (...args) => startStandaloneStatusMonitor(...args),
+                    cancelPanEdgeSettleRender: (...args) => cancelPanEdgeSettleRender(...args),
+                    cancelDragEdgeSettleRender: (...args) => cancelDragEdgeSettleRender(...args),
+                    endDragEdgeLodVisual: (...args) => endDragEdgeLodVisual(...args),
+                    cancelEdgeIncidentIndexWarmup: (...args) => cancelEdgeIncidentIndexWarmup(...args),
+                    stopTimelinePlayback: (...args) => stopTimelinePlayback(...args),
+                    stopStandaloneStatusMonitor: (...args) => stopStandaloneStatusMonitor(...args),
+                    stopPerformanceHud: (...args) => stopPerformanceHud(...args)
+                },
+                panelSource: {
+                    closePresetPalette: (...args) => closePresetPalette(...args),
+                    closeContextMenu: (...args) => closeContextMenu(...args),
+                    closeCanvasSettingsPanel: (...args) => closeCanvasSettingsPanel(...args),
+                    closeRunQueuePanel: (...args) => closeRunQueuePanel(...args),
+                    closeRunHistoryPanel: (...args) => closeRunHistoryPanel(...args)
+                },
+                timerSource: {
+                    setTimeout: (...args) => window.setTimeout(...args)
+                }
             }
         })
         : {};
@@ -4299,78 +5499,134 @@
         closeWorkbench
     } = CANVAS_LIFECYCLE_CONTEXT;
     const CONTROL_CONTEXT_SOURCE = {
-            t,
-            setModeState: (value) => { mode = value; },
-            openPresetPalette: (...args) => openPresetPalette(...args),
-            viewportCenterWorld: (...args) => viewportCenterWorld(...args),
-            getRoot: () => root,
-            getViewport: () => viewport,
-            getMode: () => mode,
-            getProject: () => project,
-            renderAll: (...args) => renderAll(...args),
-            closeContextMenu: (...args) => closeContextMenu(...args),
-            saveProject: (...args) => saveProject(...args),
-            openProjectListPanel: (...args) => openProjectListPanel(...args),
-            openProjectJsonPicker: (...args) => openProjectJsonPicker(...args),
-            undoCanvasEdit: (...args) => undoCanvasEdit(...args),
-            redoCanvasEdit: (...args) => redoCanvasEdit(...args),
-            isStandaloneCanvasWorkbench: (...args) => isStandaloneCanvasWorkbench(...args),
-            showToast: (...args) => showToast(...args),
-            closeWorkbench: (...args) => closeWorkbench(...args),
-            importSelectedTransferAt: (...args) => importSelectedTransferAt(...args),
-            openImageFilePicker: (...args) => openImageFilePicker(...args),
-            addMediaBrowserNode: (...args) => addMediaBrowserNode(...args),
-            addStyleSelectorNode: (...args) => addStyleSelectorNode(...args),
-            addTextNode: (...args) => addTextNode(...args),
-            addTextMergeNode: (...args) => addTextMergeNode(...args),
-            addWildcardsHelperNode: (...args) => addWildcardsHelperNode(...args),
-            addNoteNode: (...args) => addNoteNode(...args),
-            addAreaGroup: (...args) => addAreaGroup(...args),
-            openGroupListPanel: (...args) => openGroupListPanel(...args),
-            openTemplateLibrary: (...args) => openTemplateLibrary(...args),
-            addTranslationNode: (...args) => addTranslationNode(...args),
-            addTagCartNode: (...args) => addTagCartNode(...args),
-            addWd14Node: (...args) => addWd14Node(...args),
-            addVlmNode: (...args) => addVlmNode(...args),
-            addQwenTtsNode: (...args) => addQwenTtsNode(...args),
-            addSam3VideoMaskNode: (...args) => addSam3VideoMaskNode(...args),
-            addCameraMotionNode: (...args) => addCameraMotionNode(...args),
-            addPoseStudioNode: (...args) => addPoseStudioNode(...args),
-            addGaussianStudioNode: (...args) => addGaussianStudioNode(...args),
-            addLivePortraitExpressionNode: (...args) => addLivePortraitExpressionNode(...args),
-            addCompareNode: (...args) => addCompareNode(...args),
-            addDirectorTimelineNode: (...args) => addDirectorTimelineNode(...args),
-            addTimelineNode: (...args) => addTimelineNode(...args),
-            addManualOutputNode: (...args) => addManualOutputNode(...args),
-            openRunHistoryPanel: (...args) => openRunHistoryPanel(...args),
-            openRunQueuePanel: (...args) => openRunQueuePanel(...args),
-            runSelectedChain: (...args) => runSelectedChain(...args),
-            getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
-            getNode: (...args) => getNode(...args),
-            isImageCompareSource: (...args) => isImageCompareSource(...args),
-            createCompareNodeFromSources: (...args) => createCompareNodeFromSources(...args),
-            isTimelineSource: (...args) => isTimelineSource(...args),
-            createTimelineNodeFromSources: (...args) => createTimelineNodeFromSources(...args),
-            openNodeSearchPanel: (...args) => openNodeSearchPanel(...args),
-            openAssetManagerPanel: (...args) => openAssetManagerPanel(...args),
-            openCanvasManual: (...args) => openCanvasManual(...args),
-            toggleSetting: (...args) => toggleSetting(...args),
-            deleteSelection: (...args) => deleteSelection(...args),
-            clearCanvasWithConfirm: (...args) => clearCanvasWithConfirm(...args),
-            openCanvasSettingsPanel: (...args) => openCanvasSettingsPanel(...args),
-            zoomAtViewportCenter: (...args) => zoomAtViewportCenter(...args),
-            scheduleSave: (...args) => scheduleSave(...args),
-            fitAll: (...args) => fitAll(...args),
-            centerCanvas: (...args) => centerCanvas(...args),
-            now: () => Date.now(),
-            getCanvasAgentSuppressClickUntil: () => canvasAgentSuppressClickUntil,
-            handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args),
-            handleRunHistoryAction: (...args) => handleRunHistoryAction(...args),
-            handleRunQueueAction: (...args) => handleRunQueueAction(...args),
-            handleCanvasSettingsAction: (...args) => handleCanvasSettingsAction(...args),
-            updateVlmChatJumpButton: (...args) => updateVlmChatJumpButton(...args),
-            textareaEditorFieldFromTitleClick: (...args) => textareaEditorFieldFromTitleClick(...args),
-            openTextareaEditor: (...args) => openTextareaEditor(...args)
+            modeSource: {
+                domSource: {
+                    getRoot: () => root,
+                    getViewport: () => viewport
+                },
+                stateSource: {
+                    setModeState: (value) => { mode = value; },
+                    getMode: () => mode
+                },
+                paletteSource: {
+                    openPresetPalette: (...args) => openPresetPalette(...args),
+                    viewportCenterWorld: (...args) => viewportCenterWorld(...args)
+                }
+            },
+            actionSource: {
+                languageSource: {
+                    t
+                },
+                projectSource: {
+                    getProject: () => project
+                },
+                viewportSource: {
+                    renderAll: (...args) => renderAll(...args),
+                    viewportCenterWorld: (...args) => viewportCenterWorld(...args),
+                    zoomAtViewportCenter: (...args) => zoomAtViewportCenter(...args),
+                    fitAll: (...args) => fitAll(...args),
+                    centerCanvas: (...args) => centerCanvas(...args)
+                },
+                persistenceSource: {
+                    saveProject: (...args) => saveProject(...args),
+                    scheduleSave: (...args) => scheduleSave(...args)
+                },
+                contextSource: {
+                    closeContextMenu: (...args) => closeContextMenu(...args)
+                },
+                lifecycleSource: {
+                    isStandaloneCanvasWorkbench: (...args) => isStandaloneCanvasWorkbench(...args),
+                    closeWorkbench: (...args) => closeWorkbench(...args)
+                },
+                importSource: {
+                    importSelectedTransferAt: (...args) => importSelectedTransferAt(...args),
+                    openImageFilePicker: (...args) => openImageFilePicker(...args)
+                },
+                nodeSource: {
+                    addMediaBrowserNode: (...args) => addMediaBrowserNode(...args),
+                    addStyleSelectorNode: (...args) => addStyleSelectorNode(...args),
+                    addTextNode: (...args) => addTextNode(...args),
+                    addTextMergeNode: (...args) => addTextMergeNode(...args),
+                    addWildcardsHelperNode: (...args) => addWildcardsHelperNode(...args),
+                    addNoteNode: (...args) => addNoteNode(...args),
+                    addAreaGroup: (...args) => addAreaGroup(...args),
+                    addTranslationNode: (...args) => addTranslationNode(...args),
+                    addTagCartNode: (...args) => addTagCartNode(...args),
+                    addWd14Node: (...args) => addWd14Node(...args),
+                    addVlmNode: (...args) => addVlmNode(...args),
+                    addQwenTtsNode: (...args) => addQwenTtsNode(...args),
+                    addSam3VideoMaskNode: (...args) => addSam3VideoMaskNode(...args),
+                    addCameraMotionNode: (...args) => addCameraMotionNode(...args),
+                    addPoseStudioNode: (...args) => addPoseStudioNode(...args),
+                    addGaussianStudioNode: (...args) => addGaussianStudioNode(...args),
+                    addLivePortraitExpressionNode: (...args) => addLivePortraitExpressionNode(...args),
+                    addCompareNode: (...args) => addCompareNode(...args),
+                    addDirectorTimelineNode: (...args) => addDirectorTimelineNode(...args),
+                    addTimelineNode: (...args) => addTimelineNode(...args),
+                    addManualOutputNode: (...args) => addManualOutputNode(...args)
+                },
+                navigationSource: {
+                    openProjectListPanel: (...args) => openProjectListPanel(...args),
+                    openProjectJsonPicker: (...args) => openProjectJsonPicker(...args),
+                    openPresetPalette: (...args) => openPresetPalette(...args),
+                    openGroupListPanel: (...args) => openGroupListPanel(...args),
+                    openTemplateLibrary: (...args) => openTemplateLibrary(...args),
+                    openRunHistoryPanel: (...args) => openRunHistoryPanel(...args),
+                    openRunQueuePanel: (...args) => openRunQueuePanel(...args),
+                    openNodeSearchPanel: (...args) => openNodeSearchPanel(...args),
+                    openAssetManagerPanel: (...args) => openAssetManagerPanel(...args),
+                    openCanvasManual: (...args) => openCanvasManual(...args),
+                    openCanvasSettingsPanel: (...args) => openCanvasSettingsPanel(...args)
+                },
+                editSource: {
+                    undoCanvasEdit: (...args) => undoCanvasEdit(...args),
+                    redoCanvasEdit: (...args) => redoCanvasEdit(...args),
+                    deleteSelection: (...args) => deleteSelection(...args),
+                    clearCanvasWithConfirm: (...args) => clearCanvasWithConfirm(...args)
+                },
+                runSource: {
+                    runSelectedChain: (...args) => runSelectedChain(...args)
+                },
+                selectionSource: {
+                    getSelectedNodeIdList: (...args) => getSelectedNodeIdList(...args),
+                    getNode: (...args) => getNode(...args),
+                    isImageCompareSource: (...args) => isImageCompareSource(...args),
+                    createCompareNodeFromSources: (...args) => createCompareNodeFromSources(...args),
+                    isTimelineSource: (...args) => isTimelineSource(...args),
+                    createTimelineNodeFromSources: (...args) => createTimelineNodeFromSources(...args)
+                },
+                settingsSource: {
+                    toggleSetting: (...args) => toggleSetting(...args)
+                },
+                uiSource: {
+                    showToast: (...args) => showToast(...args)
+                }
+            },
+            clickSource: {
+                timingSource: {
+                    now: () => Date.now()
+                },
+                agentSource: {
+                    getCanvasAgentSuppressClickUntil: () => canvasAgentSuppressClickUntil,
+                    handleCanvasAgentAction: (...args) => handleCanvasAgentAction(...args)
+                },
+                historySource: {
+                    handleRunHistoryAction: (...args) => handleRunHistoryAction(...args)
+                },
+                queueSource: {
+                    handleRunQueueAction: (...args) => handleRunQueueAction(...args)
+                },
+                settingsSource: {
+                    handleCanvasSettingsAction: (...args) => handleCanvasSettingsAction(...args)
+                },
+                vlmSource: {
+                    updateVlmChatJumpButton: (...args) => updateVlmChatJumpButton(...args)
+                },
+                textSource: {
+                    textareaEditorFieldFromTitleClick: (...args) => textareaEditorFieldFromTitleClick(...args),
+                    openTextareaEditor: (...args) => openTextareaEditor(...args)
+                },
+            }
     };
     const CANVAS_CONTROL_CONTEXT = typeof WORKBENCH_CANVAS_CONTROL_CONTEXT.createCanvasWorkbenchControlContext === 'function'
         ? WORKBENCH_CANVAS_CONTROL_CONTEXT.createCanvasWorkbenchControlContext({
@@ -4387,95 +5643,215 @@
         onCanvasWorkbenchClick
     } = CANVAS_CONTROL_CONTEXT;
     const PROJECT_CONTEXT_SOURCE = {
-            t,
-            getProject: () => project,
-            setProject: (value) => { project = value; },
-            getDefaultProjectId: () => PROJECT_ID,
-            getStorage: () => localStorage,
-            getStorageScope: () => getStorageScope(),
-            getCurrentStorageScope: () => storageScope,
-            getStorageKey: (scope) => getStorageKey(scope),
-            getStorageBaseKey: () => storageBaseKey,
-            setStorageScope: (value) => { storageScope = value; },
-            setStorageBaseKey: (value) => { storageBaseKey = value; },
-            setStorageKey: (value) => { storageKey = value; },
-            initialBrowserStorageKey,
-            browserCacheProjectScope,
-            setActiveBrowserCacheProject,
-            getBackendLoadedStorageKey: () => backendLoadedStorageKey,
-            setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
-            isProjectEmpty,
-            buildProjectStorageInfoPatch: (key, scope, options) => buildProjectStorageInfoPatch(key, scope, options),
-            buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args),
-            projectStoreBuildProjectStorageInfo: (key, scope, migrated) => typeof projectStoreBuildProjectStorageInfo === 'function'
-                ? projectStoreBuildProjectStorageInfo(key, scope, migrated, {
-                    buildProjectStorageInfoPatch: (...args) => buildProjectStorageInfoPatch(...args)
-                })
-                : null,
-            nowIso,
-            compactProjectForStorage,
-            sanitizeProject,
-            createDefaultProject,
-            loadProject,
-            sendCanvasProjectSaveRequest,
-            sendCanvasProjectLoadRequest,
-            isCanvasBridgeReady,
-            bindCanvasBridgeResponseListener,
-            sendCanvasBridgeRequest,
-            resetRenderedProjectDomCache,
-            resetSelectionState: () => {
-                selectedNodeId = null;
-                selectedNodeIds = new Set();
-                selectedEdgeId = null;
-                selectedGroupId = null;
+        persistenceSource: {
+            languageSource: {
+                t
             },
-            resetHistory,
-            renderAll,
-            resetGalleryFrostReveals,
-            scheduleAutoPresetModelChecks,
-            getRoot: () => root,
-            renderStatus,
-            showToast,
-            warn: (...args) => console.warn(...args),
-            getProjectId: () => project?.id || PROJECT_ID,
-            sendCanvasListAssetsRequest,
-            materializeNodeAssetForStorage,
-            assetDisplaySrc,
-            getDocument: () => document,
-            getLegacyStorageKey: () => LEGACY_STORAGE_KEY,
-            browserCacheProjectIndex,
-            browserCacheActiveProjectIdKey,
-            browserCacheProjectIndexKey,
-            getCurrentProject: () => project,
-            getCurrentProjectId: () => project.id || PROJECT_ID,
-            ensureProjectGroups,
-            createDemoWorkbenchProject,
-            sanitizeStoragePart,
-            buildProjectCanvasClearPatch: (...args) => buildProjectCanvasClearPatch(...args),
-            buildProjectIdentityPatch: (...args) => buildProjectIdentityPatch(...args),
-            buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args),
-            sendCanvasProjectClearRequest,
-            getSelectionState: () => ({
-                selectedNodeId,
-                selectedNodeIds: new Set(selectedNodeIds),
-                selectedEdgeId,
-                selectedGroupId
-            }),
-            setSelectionState: (state) => {
-                const next = state || {};
-                selectedNodeId = next.selectedNodeId || null;
-                selectedNodeIds = next.selectedNodeIds instanceof Set
-                    ? new Set(next.selectedNodeIds)
-                    : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
-                selectedEdgeId = next.selectedEdgeId || null;
-                selectedGroupId = next.selectedGroupId || null;
+            projectSource: {
+                getProject: () => project,
+                setProject: (value) => { project = value; },
+                getDefaultProjectId: () => PROJECT_ID,
+                getBackendLoadedStorageKey: () => backendLoadedStorageKey,
+                setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
+                isProjectEmpty,
+                sanitizeProject,
+                createDefaultProject,
+                loadProject
             },
-            pushHistory,
-            interruptDeletedResultRuns,
-            stopTimelinePlayback,
-            confirm: (message) => window.confirm(message),
-            prompt: (...args) => window.prompt(...args),
-            readFileAsText
+            storageSource: {
+                getStorage: () => localStorage,
+                getStorageScope: () => getStorageScope(),
+                getCurrentStorageScope: () => storageScope,
+                getStorageKey: (scope) => getStorageKey(scope),
+                getStorageBaseKey: () => storageBaseKey,
+                setStorageScope: (value) => { storageScope = value; },
+                setStorageBaseKey: (value) => { storageBaseKey = value; },
+                setStorageKey: (value) => { storageKey = value; },
+                initialBrowserStorageKey,
+                browserCacheProjectScope,
+                setActiveBrowserCacheProject
+            },
+            patchSource: {
+                buildProjectUpdatedAtPatch: (...args) => buildProjectUpdatedAtPatch(...args),
+                buildProjectStorageInfoPatch: (key, scope, options) => buildProjectStorageInfoPatch(key, scope, options),
+                buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args),
+                projectStoreBuildProjectStorageInfo: (key, scope, migrated) => typeof projectStoreBuildProjectStorageInfo === 'function'
+                    ? projectStoreBuildProjectStorageInfo(key, scope, migrated, {
+                        buildProjectStorageInfoPatch: (...args) => buildProjectStorageInfoPatch(...args)
+                    })
+                    : null
+            },
+            serializationSource: {
+                compactProjectForStorage
+            },
+            backendSource: {
+                sendCanvasProjectSaveRequest,
+                sendCanvasProjectLoadRequest,
+                isCanvasBridgeReady,
+                bindCanvasBridgeResponseListener,
+                sendCanvasBridgeRequest
+            },
+            assetSource: {
+                materializeInlineProjectAssets: (...args) => materializeInlineProjectAssets(...args),
+                syncCanvasProjectAssetRoot: (...args) => syncCanvasProjectAssetRoot(...args),
+                setCanvasProjectAssetRoot: (...args) => setCanvasProjectAssetRoot(...args)
+            },
+            selectionSource: {
+                resetSelectionState: () => {
+                    selectedNodeId = null;
+                    selectedNodeIds = new Set();
+                    selectedEdgeId = null;
+                    selectedGroupId = null;
+                }
+            },
+            historySource: {
+                resetHistory
+            },
+            renderSource: {
+                resetRenderedProjectDomCache,
+                renderAll,
+                resetGalleryFrostReveals
+            },
+            domSource: {
+                getRoot: () => root
+            },
+            modelSource: {
+                scheduleAutoPresetModelChecks
+            },
+            uiSource: {
+                renderStatus,
+                showToast,
+                warn: (...args) => console.warn(...args)
+            },
+            timeSource: {
+                nowIso
+            }
+        },
+        assetsSource: {
+            projectSource: {
+                getProject: () => project,
+                setProject: (value) => { project = value; },
+                getProjectId: () => project?.id || PROJECT_ID
+            },
+            patchSource: {
+                buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args)
+            },
+            storageSource: {
+                getStorageScope: () => storageScope,
+                getStorageKey: (scope) => getStorageKey(scope)
+            },
+            assetSource: {
+                sendCanvasListAssetsRequest,
+                materializeNodeAssetForStorage,
+                assetDisplaySrc
+            },
+            persistenceSource: {},
+            domSource: {
+                getRoot: () => root
+            },
+            renderSource: {
+                renderAll
+            },
+            uiSource: {
+                warn: (...args) => console.warn(...args)
+            }
+        },
+        actionsSource: {
+            languageSource: {
+                t
+            },
+            documentSource: {
+                getDocument: () => document
+            },
+            storageSource: {
+                getStorage: () => localStorage,
+                getStorageScope: () => getStorageScope(),
+                getStorageKey: (scope) => getStorageKey(scope),
+                getStorageBaseKey: () => storageBaseKey,
+                getLegacyStorageKey: () => LEGACY_STORAGE_KEY,
+                browserCacheProjectIndex,
+                browserCacheActiveProjectIdKey,
+                browserCacheProjectIndexKey,
+                browserCacheProjectScope,
+                setActiveBrowserCacheProject
+            },
+            projectSource: {
+                getCurrentProject: () => project,
+                getCurrentProjectId: () => project.id || PROJECT_ID,
+                getDefaultProjectId: () => PROJECT_ID,
+                isProjectEmpty,
+                ensureProjectGroups,
+                createDemoWorkbenchProject,
+                sanitizeStoragePart,
+                sanitizeProject,
+                createDefaultProject,
+                setProject: (value) => { project = value; },
+                setBackendLoadedStorageKey: (value) => { backendLoadedStorageKey = value; },
+                getBackendLoadedStorageKey: () => backendLoadedStorageKey,
+                loadProject
+            },
+            patchSource: {
+                buildProjectCanvasClearPatch: (...args) => buildProjectCanvasClearPatch(...args),
+                buildProjectIdentityPatch: (...args) => buildProjectIdentityPatch(...args),
+                buildProjectSettingsMergePatch: (...args) => buildProjectSettingsMergePatch(...args),
+                buildProjectStoragePatch: (...args) => buildProjectStoragePatch(...args)
+            },
+            persistenceSource: {},
+            assetSource: {},
+            selectionSource: {
+                resetSelectionState: () => {
+                    selectedNodeId = null;
+                    selectedNodeIds = new Set();
+                    selectedEdgeId = null;
+                    selectedGroupId = null;
+                },
+                getSelectionState: () => ({
+                    selectedNodeId,
+                    selectedNodeIds: new Set(selectedNodeIds),
+                    selectedEdgeId,
+                    selectedGroupId
+                }),
+                setSelectionState: (state) => {
+                    const next = state || {};
+                    selectedNodeId = next.selectedNodeId || null;
+                    selectedNodeIds = next.selectedNodeIds instanceof Set
+                        ? new Set(next.selectedNodeIds)
+                        : new Set(Array.isArray(next.selectedNodeIds) ? next.selectedNodeIds : []);
+                    selectedEdgeId = next.selectedEdgeId || null;
+                    selectedGroupId = next.selectedGroupId || null;
+                }
+            },
+            historySource: {
+                resetHistory,
+                pushHistory
+            },
+            renderSource: {
+                resetRenderedProjectDomCache,
+                renderAll,
+                resetGalleryFrostReveals,
+                renderStatus
+            },
+            runtimeSource: {
+                mutate,
+                interruptDeletedResultRuns,
+                stopTimelinePlayback
+            },
+            dialogSource: {
+                confirm: (message) => window.confirm(message),
+                prompt: (...args) => window.prompt(...args)
+            },
+            requestSource: {
+                sendCanvasProjectClearRequest,
+                readFileAsText
+            },
+            uiSource: {
+                warn: (...args) => console.warn(...args),
+                showToast
+            },
+            timeSource: {
+                nowIso
+            }
+        }
     };
     const CANVAS_PROJECT_CONTEXT = typeof WORKBENCH_CANVAS_PROJECT_CONTEXT.createCanvasWorkbenchProjectContext === 'function'
         ? WORKBENCH_CANVAS_PROJECT_CONTEXT.createCanvasWorkbenchProjectContext({
@@ -4516,20 +5892,36 @@
         importWorkbenchProjectFromFile
     } = CANVAS_PROJECT_CONTEXT;
     const AGENT_TARGET_CONTEXT_SOURCE = {
-            t,
-            getNode,
-            getSelectedNodeIdList,
-            getSelectedNodeId: () => selectedNodeId,
-            hasSelectedNode: (id) => selectedNodeIds?.has?.(id),
-            isNodeIgnored,
-            getSelectedResultAsset,
-            safeAssetDisplaySrc,
-            assetMediaKind,
-            isPoseStudioImageSource,
-            isGaussianStudioImageSource,
-            isLivePortraitExpressionImageSource,
-            mediaViewerNodeHasViewableImage,
-            getMediaViewerContext: () => MEDIA_VIEWER_CONTEXT
+            targetSource: {
+                languageSource: {
+                    t,
+                },
+                nodeSource: {
+                    getNode,
+                },
+                selectionSource: {
+                    getSelectedNodeIdList,
+                    getSelectedNodeId: () => selectedNodeId,
+                    hasSelectedNode: (id) => selectedNodeIds?.has?.(id),
+                },
+                filterSource: {
+                    isNodeIgnored,
+                },
+                assetSource: {
+                    getSelectedResultAsset,
+                    safeAssetDisplaySrc,
+                    assetMediaKind,
+                },
+                imageSource: {
+                    isPoseStudioImageSource,
+                    isGaussianStudioImageSource,
+                    isLivePortraitExpressionImageSource,
+                },
+                mediaViewerSource: {
+                    mediaViewerNodeHasViewableImage,
+                    getMediaViewerContext: () => MEDIA_VIEWER_CONTEXT,
+                },
+            }
     };
     CANVAS_AGENT_TARGET_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_TARGET.createCanvasAgentTargetController === 'function'
         ? WORKBENCH_CANVAS_AGENT_TARGET.createCanvasAgentTargetController(AGENT_TARGET_CONTEXT_SOURCE)
@@ -4549,128 +5941,301 @@
     const getCanvasAgentReferenceKind = CANVAS_AGENT_TARGET_CONTROLLER.getCanvasAgentReferenceKind;
     const AGENT_CONTEXT_SOURCE = {
             generationSource: {
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    clamp,
+                    cloneRunValue
+                },
+                resolutionSource: {
+                    canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS,
+                    getCanvasAgentResolutionState,
+                    canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
+                    canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
+                    normalizeResolutionProfile,
+                    resolveResolutionBaseDims
+                },
+                presetSource: {
+                    getVisiblePresetParams,
+                    canvasAgentPresetPromptDefaults
+                },
+                patchSource: {
+                    buildNodeParamsPatch,
+                    buildPresetSnapshotPatch,
+                    buildClassicNodeStatePatch,
+                    buildPresetGenerationConfigPatch,
+                    buildConfigStatePatch,
+                    buildCanvasNodeStatusPatch,
+                    buildPresetConfigPatch
+                },
+                nodeSource: {
+                    createCanvasAgentPresetProbeNode,
+                    getNode,
+                    applyConfigNodeToPreset,
+                    isNodeLocked
+                },
+                mediaSource: {
+                    getVisibleClassicUploadSlots,
+                    getVisibleUploadSlots,
+                    canNodeConnectToUploadSlot,
+                    isCanvasAgentMaskSlot
+                },
+                configSource: {
+                    generationConfigValueForPresetSchema,
+                    getPresetConfigSource,
+                    buildInitialConfigValues
+                },
+                uiSource: {
+                    showToast
+                },
+                historySource: {
+                    pushHistoryBatch
+                },
+                stateSource: {
+                    mutate
+                },
+                identitySource: {
+                    nowIso
+                }
+            },
+            referencesSource: {
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid
+                },
+                capacitySource: {
+                    getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
+                    getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
+                    getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
+                    getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
+                    getMaxTextReferences: () => CANVAS_AGENT_MAX_TEXT_REFERENCES
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState,
+                    setCanvasAgentMessage
+                },
+                nodeSource: {
+                    getNode: (nodeId) => getNode(nodeId),
+                    canvasAgentShortNodeLabel,
+                    getNodeTextOutput
+                },
+                assetSource: {
+                    getCanvasAgentReferenceAsset,
+                    getCanvasAgentReferenceKind,
+                    assetDisplaySrc,
+                    serializeAssetSourceForRun
+                },
+                targetSource: {
+                    isCanvasAgentMediaReferenceTarget,
+                    getCanvasAgentTargetMediaKind,
+                    getCanvasAgentTargetNode
+                },
+                selectionSource: {
+                    getSelectedNodeIdList
+                },
+                uiSource: {
+                    showToast,
+                    renderCanvasAgentPanel
+                }
+            },
+            decisionSource: {
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    normalizePresetName
+                },
+                catalogSource: {
+                    getPresetCatalog,
+                    getReadyPresetEntries: canvasAgentReadyPresetEntries,
+                    canvasAgentPresetQueueConfig,
+                    getCanvasAgentPresetQueue,
+                    findCanvasAgentPresetEntryByAlias,
+                    findCanvasAgentPresetInstructionOverride,
+                    findPresetCatalogEntryByName,
+                    getCanvasAgentPresetStatus
+                },
+                mediaSource: {
+                    createCanvasAgentPresetProbeNode,
+                    canvasAgentUploadSlotsForNode,
+                    getUploadSlotMediaKind,
+                    isCanvasAgentMaskSlot
+                },
+                settingsSource: {
+                    getCanvasAgentSettings
+                },
+                promptSource: {
+                    canvasAgentPresetPromptDefaults,
+                    promptPreflight: (payload) => typeof apiPromptPreflight === 'function'
+                        ? apiPromptPreflight(payload)
+                        : null,
+                    canvasAgentPromptValidationFact,
+                    wildcardPreviewFacts,
+                    canvasAgentPromptTargetFact
+                },
+                decisionSource: {
+                    askCanvasAgentDecision
+                },
+                rewriteSource: {}
+            },
+            promptRewriteSource: {
+                languageSource: {
+                    t,
+                    runtimeUiLang
+                },
+                identitySource: {
+                    uid
+                },
+                utilitySource: {
+                    normalizePresetName
+                },
+                runtimeSource: {
+                    getPromptRewriteTimeoutMs: () => CANVAS_AGENT_PROMPT_REWRITE_TIMEOUT_MS
+                },
+                projectSource: {
+                    getDefaultProjectId: () => PROJECT_ID,
+                    getProject: () => project
+                },
+                settingsSource: {
+                    getCanvasAgentSettings
+                },
+                targetSource: {
+                    isCanvasAgentImageTarget,
+                    canvasAgentPromptTargetFromPurpose,
+                    canvasAgentPromptTargetNeedsDanbooru,
+                    canvasAgentPromptLooksDanbooru,
+                    canvasAgentPromptNeedsTargetRewrite,
+                    canvasAgentPromptTargetContextLine,
+                    canvasAgentPromptTargetInstruction
+                },
+                promptSource: {
+                    canvasAgentPromptDefaultsForPurpose
+                },
+                referenceSource: {},
+                vlmSource: {
+                    getCanvasAgentRewriteModel,
+                    canvasAgentVlmAgentContextPayload: (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.canvasAgentVlmAgentContextPayload?.(...args) || {},
+                    sendCanvasVlmRunRequest,
+                    getCanvasAgentCustomRuntimeParams
+                },
+                danbooruSource: {
+                    canvasAgentDanbooruFallbackPrompt,
+                    apiDanbooruTagLookup
+                },
+                uiSource: {
+                    showToast
+                }
+            },
+            promptResolverSource: {
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid
+                },
+                settingsSource: {
+                    getCanvasAgentSettings
+                },
+                targetSource: {
+                    canvasAgentPromptTargetFromPurpose,
+                    canvasAgentPromptTargetFact
+                },
+                promptSource: {
+                    canvasAgentPromptDefaultsForPurpose,
+                    canvasAgentPromptValidationFact
+                },
+                decisionSource: {
+                    askCanvasAgentDecision
+                },
+                modelSource: {
+                    getCanvasAgentRewriteModel
+                },
+                stateSource: {
+                    setCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    resetCanvasAgentRunInfo
+                },
+                rewriteSource: {}
+            },
+            textWorkflowsSource: {
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentTextTarget
+                },
+                nodeSource: {
+                    updateTextNodeValue
+                },
+                modelSource: {
+                    getCanvasAgentRewriteModel
+                },
+                stateSource: {
+                    setCanvasAgentRunInfo,
+                    resetCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    setCanvasAgentInput: (value) => {
+                        canvasAgentState.input = String(value || '');
+                    },
+                    mutate
+                },
+                runtimeSource: {
+                    waitNextFrame
+                },
+                rewriteSource: {},
+                decisionSource: {
+                    askCanvasAgentDecision
+                },
+                uiSource: {
+                    showToast
+                },
+            },
+            textNodesSource: {
+                projectSource: {
+                    getProject: () => project
+                },
+                nodeSource: {
+                    getNode: (nodeId) => getNode(nodeId)
+                },
+                patchSource: {
+                    buildTextMergeStatePatch
+                },
+                batchSource: {
+                    batchAnyMediaKind,
+                    batchAnyCurrentItem,
+                    batchAnyTextFromItem
+                },
+                timelineSource: {
+                    isDirectorTimelineNode,
+                    directorTimelinePayload
+                },
+                styleSource: {
+                    getStyleSelectorPrompt: (node) => styleSelectorGetPrompt?.(node, STYLE_SELECTOR_NODE_CONTEXT)
+                }
+            },
+            uiSource: {
                 t,
-                clamp,
-                canvasAgentAspectOptions: CANVAS_AGENT_ASPECT_OPTIONS,
-                getCanvasAgentResolutionState,
-                canvasAgentResolutionLabel: canvasAgentResolutionLabelFromSettings,
-                canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
-                getVisiblePresetParams,
-                buildNodeParamsPatch,
-                canvasAgentPresetPromptDefaults,
-                buildPresetSnapshotPatch,
-                cloneRunValue,
-                createCanvasAgentPresetProbeNode,
-                buildClassicNodeStatePatch,
-                getVisibleClassicUploadSlots,
-                getVisibleUploadSlots,
-                canNodeConnectToUploadSlot,
-                isCanvasAgentMaskSlot,
-                generationConfigValueForPresetSchema,
-                buildPresetGenerationConfigPatch,
-                getNode,
-                buildConfigStatePatch,
-                applyConfigNodeToPreset,
-                isNodeLocked,
-                showToast,
-                pushHistoryBatch,
-                buildCanvasNodeStatusPatch,
+                getCanvasAgentSettings,
+                setCanvasAgentSettingsPatch,
+                getAgentState: () => canvasAgentState,
+                renderCanvasAgentPanel,
+                dockCanvasAgentPanelBottomLeft,
+                setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                    selectedNodeId = nodeId;
+                    selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                    selectedEdgeId = null;
+                    if (options?.clearGroup) selectedGroupId = null;
+                    else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+                },
                 mutate,
-                getPresetConfigSource,
-                buildInitialConfigValues,
-                normalizeResolutionProfile,
-                resolveResolutionBaseDims,
-                buildPresetConfigPatch,
-                nowIso
-            },
-            t,
-            uid,
-            getAgentState: () => canvasAgentState,
-            getNode: (nodeId) => getNode(nodeId),
-            getCanvasAgentReferenceAsset,
-            getCanvasAgentReferenceKind,
-            serializeAssetSourceForRun,
-            canvasAgentShortNodeLabel,
-            getNodeTextOutput,
-            assetDisplaySrc,
-            isCanvasAgentMediaReferenceTarget,
-            getCanvasAgentTargetMediaKind,
-            getSelectedNodeIdList,
-            getCanvasAgentTargetNode,
-            dockCanvasAgentPanelBottomLeft,
-            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                selectedNodeId = nodeId;
-                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                selectedEdgeId = null;
-                if (options?.clearGroup) selectedGroupId = null;
-                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
-            },
-            mutate,
-            setCanvasAgentMessage,
-            setCanvasAgentSettingsPatch,
-            showToast,
-            renderCanvasAgentPanel,
-            getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
-            getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
-            getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
-            getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
-            getMaxTextReferences: () => CANVAS_AGENT_MAX_TEXT_REFERENCES,
-            normalizePresetName,
-            getPresetCatalog,
-            getReadyPresetEntries: canvasAgentReadyPresetEntries,
-            createCanvasAgentPresetProbeNode,
-            canvasAgentUploadSlotsForNode,
-            getUploadSlotMediaKind,
-            isCanvasAgentMaskSlot,
-            getCanvasAgentSettings,
-            canvasAgentPresetQueueConfig,
-            getCanvasAgentPresetQueue,
-            findCanvasAgentPresetEntryByAlias,
-            findCanvasAgentPresetInstructionOverride,
-            findPresetCatalogEntryByName,
-            getCanvasAgentPresetStatus,
-            canvasAgentPresetPromptDefaults,
-            promptPreflight: (payload) => typeof apiPromptPreflight === 'function'
-                ? apiPromptPreflight(payload)
-                : null,
-            canvasAgentPromptValidationFact,
-            wildcardPreviewFacts,
-            askCanvasAgentDecision,
-            canvasAgentPromptTargetFact,
-            getPromptRewriteTimeoutMs: () => CANVAS_AGENT_PROMPT_REWRITE_TIMEOUT_MS,
-            getDefaultProjectId: () => PROJECT_ID,
-            getProject: () => project,
-            getCanvasAgentRewriteModel,
-            runtimeUiLang,
-            isCanvasAgentImageTarget,
-            canvasAgentPromptTargetFromPurpose,
-            canvasAgentPromptDefaultsForPurpose,
-            canvasAgentPromptTargetNeedsDanbooru,
-            canvasAgentPromptLooksDanbooru,
-            canvasAgentPromptNeedsTargetRewrite,
-            canvasAgentPromptTargetContextLine,
-            canvasAgentPromptTargetInstruction,
-            canvasAgentVlmAgentContextPayload: (...args) => CANVAS_AGENT_VLM_INSTRUCTION_CONTROLLER?.canvasAgentVlmAgentContextPayload?.(...args) || {},
-            sendCanvasVlmRunRequest,
-            getCanvasAgentCustomRuntimeParams,
-            canvasAgentDanbooruFallbackPrompt,
-            apiDanbooruTagLookup,
-            isCanvasAgentTextTarget,
-            setCanvasAgentRunInfo,
-            resetCanvasAgentRunInfo,
-            waitNextFrame,
-            updateTextNodeValue,
-            setCanvasAgentInput: (value) => {
-                canvasAgentState.input = String(value || '');
-            },
-            mutate,
-            buildTextMergeStatePatch,
-            batchAnyMediaKind,
-            batchAnyCurrentItem,
-            batchAnyTextFromItem,
-            isDirectorTimelineNode,
-            directorTimelinePayload,
-            getStyleSelectorPrompt: (node) => styleSelectorGetPrompt?.(node, STYLE_SELECTOR_NODE_CONTEXT)
+            }
     };
     const CANVAS_AGENT_CONTEXT = typeof WORKBENCH_CANVAS_AGENT_CONTEXT.createCanvasWorkbenchAgentContext === 'function'
         ? WORKBENCH_CANVAS_AGENT_CONTEXT.createCanvasWorkbenchAgentContext({
@@ -4748,16 +6313,26 @@
     CANVAS_AGENT_ACTION_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_ACTION.createCanvasAgentActionController === 'function'
         ? WORKBENCH_CANVAS_AGENT_ACTION.createCanvasAgentActionController({
             actionSource: {
-                t,
-                getCanvasAgentState: () => canvasAgentState,
-                getCanvasAgentTargetNode,
-                canvasAgentReferenceCounts,
-                canvasAgentPromptMediaIntent,
-                getCanvasAgentTargetMediaKind,
-                isCanvasAgentGeneratorTarget,
-                isCanvasAgentImageTarget,
-                isCanvasAgentTextTarget,
-                isCanvasAgentMediaReferenceTarget
+                languageSource: {
+                    t,
+                },
+                stateSource: {
+                    getCanvasAgentState: () => canvasAgentState,
+                },
+                referenceSource: {
+                    canvasAgentReferenceCounts,
+                },
+                promptSource: {
+                    canvasAgentPromptMediaIntent,
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    getCanvasAgentTargetMediaKind,
+                    isCanvasAgentGeneratorTarget,
+                    isCanvasAgentImageTarget,
+                    isCanvasAgentTextTarget,
+                    isCanvasAgentMediaReferenceTarget,
+                },
             }
         })
         : {};
@@ -4770,24 +6345,36 @@
     let CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER = {};
     const VLM_NODE_VIEW_CONTEXT_SOURCE = {
         textNodeRendererSource: {
-            t,
-            tOption,
-            escapeHtml,
-            getNode,
-            getNodeTextOutput,
-            getTextNodeInputSource,
-            textMergeInputSlots,
-            getTextMergeInputSource,
-            getTextMergeOutput,
-            translationDirectionLabel,
-            tagCartLabel,
-            localizedDefaultTitle,
-            renderIconHtml,
-            renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
-            renderTranslatableTextarea,
-            getTranslationFieldState,
-            danbooruAutocompleteAttrs,
-            notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接')
+            languageSource: {
+                t,
+                tOption,
+                translationDirectionLabel,
+                tagCartLabel,
+                localizedDefaultTitle,
+                notConnectedText: (...args) => CANVAS_NODE_RENDERER?.notConnectedText?.(...args) || t('Not connected', '未连接')
+            },
+            utilitySource: {
+                escapeHtml,
+                renderIconHtml,
+            },
+            nodeSource: {
+                getNode,
+                getNodeTextOutput,
+                getTextNodeInputSource,
+                textMergeInputSlots,
+                getTextMergeInputSource,
+                getTextMergeOutput,
+            },
+            translationSource: {
+                getTranslationFieldState,
+            },
+            renderSource: {
+                renderNodeStateBadges: (...args) => CANVAS_NODE_RENDERER?.renderNodeStateBadges?.(...args) || '',
+                renderTranslatableTextarea,
+            },
+            autocompleteSource: {
+                danbooruAutocompleteAttrs,
+            }
         },
         vlmNodeSource: {
             languageSource: {
@@ -4902,21 +6489,32 @@
     };
     const AGENT_PROMPT_BOOTSTRAP_CONTEXT_SOURCE = {
             promptSource: {
-                t,
-                getSlotOrder: () => SLOT_ORDER,
-                normalizePresetName,
-                getPresetUploadRunEdges,
-                getUploadSlotMediaKind,
-                getNode,
-                getSelectedResultAsset,
-                normalizeCanvasAgentReferences,
-                getCanvasAgentPrimaryMediaNode,
-                getPresetCatalogEntryForNode,
-                findCanvasAgentPresetEntryByAlias,
-                findPresetCatalogEntryByName,
-                getCanvasAgentPresetQueue,
-                canvasAgentReferenceNode,
-                runtimeUiLang
+                languageSource: {
+                    t,
+                    runtimeUiLang,
+                },
+                presetSource: {
+                    getSlotOrder: () => SLOT_ORDER,
+                    normalizePresetName,
+                    getPresetUploadRunEdges,
+                    getUploadSlotMediaKind,
+                    getPresetCatalogEntryForNode,
+                    findCanvasAgentPresetEntryByAlias,
+                    findPresetCatalogEntryByName,
+                    getCanvasAgentPresetQueue,
+                },
+                nodeSource: {
+                    getNode,
+                },
+                assetSource: {
+                    getSelectedResultAsset,
+                },
+                referenceSource: {
+                    normalizeCanvasAgentReferences,
+                    getCanvasAgentPrimaryMediaNode,
+                    canvasAgentReferenceNode,
+                },
+                danbooruSource: {},
             }
     };
     const CANVAS_AGENT_PROMPT_BOOTSTRAP_CONTEXT = typeof WORKBENCH_CANVAS_AGENT_PROMPT_BOOTSTRAP_CONTEXT.createCanvasWorkbenchAgentPromptBootstrapContext === 'function'
@@ -5275,25 +6873,53 @@
         }
     };
     const VLM_CHAT_IMAGE_PREVIEW_CONTEXT_SOURCE = {
-        document,
-        window,
-        getTargetPixels: () => VLM_CHAT_IMAGE_PREVIEW_TARGET_PIXELS,
-        getRoot: () => root,
-        escapeHtml,
-        hideCanvasTooltip: (...args) => hideCanvasTooltip(...args)
+        domSource: {
+            document,
+            getRoot: () => root,
+        },
+        viewportSource: {
+            window,
+        },
+        configSource: {
+            getTargetPixels: () => VLM_CHAT_IMAGE_PREVIEW_TARGET_PIXELS,
+        },
+        utilitySource: {
+            escapeHtml,
+        },
+        tooltipSource: {
+            hideCanvasTooltip: (...args) => hideCanvasTooltip(...args),
+        },
     };
     const VLM_CHAT_INPUT_CONTEXT_SOURCE = {
-        getDocument: () => document,
-        getViewport: () => viewport,
-        getNodeElement: (id) => id && nodesLayer ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`) : null,
-        isImageFile: (file) => isImageFile(file),
-        isNodeLocked: (node) => isNodeLocked(node),
-        disconnectVlmImageInput: (...args) => disconnectVlmImageInput(...args),
-        updateVlmParam,
-        runVlmNode,
-        isVlmNodeBusy,
-        showToast,
-        t
+        domSource: {
+            getDocument: () => document,
+            getNodeElement: (id) => id && nodesLayer
+                ? nodesLayer.querySelector(`[data-node-id="${cssEscape(id)}"]`)
+                : null,
+        },
+        viewportSource: {
+            getViewport: () => viewport,
+        },
+        mediaSource: {
+            isImageFile: (file) => isImageFile(file),
+            disconnectVlmImageInput: (...args) => disconnectVlmImageInput(...args),
+        },
+        nodeSource: {
+            isNodeLocked: (node) => isNodeLocked(node),
+        },
+        runSource: {
+            updateVlmParam,
+            runVlmNode,
+        },
+        stateSource: {
+            isVlmNodeBusy,
+        },
+        uiSource: {
+            showToast,
+        },
+        languageSource: {
+            t,
+        },
     };
     const VLM_CONTEXT_SOURCE = {
             nodeViewSource: VLM_NODE_VIEW_CONTEXT_SOURCE,
@@ -5340,29 +6966,41 @@
         focusVlmChatPromptInput
     } = CANVAS_VLM_CONTEXT;
     const AGENT_WORKFLOW_LAYOUT_SOURCE = {
-        getProject: () => project,
-        getNodeRect,
-        getVisibleWorldRect,
-        defaultNodeSize,
-        defaultResultNodeSize,
-        viewportCenterWorld: () => viewportCenterWorld(),
-        ensureProjectGroups,
-        getGroup,
-        updateGroupPositionDom,
-        centerViewportOnWorld,
-        buildNodeLayoutPatch,
-        buildResultLayoutPatch,
-        buildGroupFieldPatch,
-        buildAgentWorkflowGroup,
-        buildProjectGroupAppendPatch,
-        buildAgentCreatedNodePatch,
-        buildAgentWorkflowPresetPatch,
-        normalizePresetName,
-        getCollapsedPromptNodeDefaultHeight: () => COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT,
-        setSelectedGroupId: (value) => {
-            selectedGroupId = value || null;
+        projectSource: {
+            getProject: () => project,
+            ensureProjectGroups,
+            getGroup,
+            setSelectedGroupId: (value) => {
+                selectedGroupId = value || null;
+            }
         },
-        rectsOverlap
+        geometrySource: {
+            getNodeRect,
+            defaultNodeSize,
+            defaultResultNodeSize,
+            getCollapsedPromptNodeDefaultHeight: () => COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT,
+            rectsOverlap
+        },
+        viewportSource: {
+            getVisibleWorldRect,
+            viewportCenterWorld: () => viewportCenterWorld(),
+            centerViewportOnWorld
+        },
+        layoutSource: {
+            buildNodeLayoutPatch,
+            buildResultLayoutPatch
+        },
+        groupSource: {
+            updateGroupPositionDom,
+            buildGroupFieldPatch,
+            buildAgentWorkflowGroup,
+            buildProjectGroupAppendPatch
+        },
+        metadataSource: {
+            buildAgentCreatedNodePatch,
+            buildAgentWorkflowPresetPatch,
+            normalizePresetName
+        },
     };
     CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT.createCanvasAgentWorkflowLayoutController === 'function'
         ? WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT.createCanvasAgentWorkflowLayoutController({
@@ -5388,53 +7026,73 @@
     const createCanvasAgentWorkflowGroup = CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER.createCanvasAgentWorkflowGroup;
     let CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER = {};
     const AGENT_MASK_WORKFLOW_SOURCE = {
-        t,
-        uid,
-        getProject: () => project,
-        getNode,
-        getAgentState: () => canvasAgentState,
-        getNodeLayerForgeAsset,
-        assetMediaKind,
-        assetDisplaySrc,
-        getNodeImageSrc,
-        createImageNodeFromSketchOutput,
-        ensureWorkbenchLazyRuntime,
-        canvasAgentMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMaskUploadSlot?.(...args) || '',
-        canvasAgentUploadSlotsForNode,
-        isCanvasAgentMaskSlot,
-        canNodeConnectToUploadSlot,
-        createUploadEdge,
-        syncResolutionConfigForPresetInputs,
-        generatedResultNodesForPreset,
-        isResultRefreshing,
-        isCanvasRunActiveState,
-        nodeStatusState,
-        ensureGenerateEdge,
-        buildReservedResultNode,
-        buildProjectNodeAppendPatch,
-        buildCanvasAgentReservedResultSource,
-        presetGenerationStepValue,
-        presetResultBasePosition,
-        defaultNodeSize,
-        dockCanvasAgentPanelBottomLeft,
-        applyNodeLayoutPatch,
-        createCanvasAgentWorkflowGroup,
-        fitCanvasAgentWorkflowGroup,
-        centerCanvasAgentWorkflow,
-        mutate,
-        setCanvasAgentMessage,
-        showToast,
-        clearCanvasAgentRunInfo,
-        runPresetNode,
-        setCanvasAgentRunInfo,
-        setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-            selectedNodeId = nodeId;
-            selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-            selectedEdgeId = null;
-            if (options?.clearGroup) selectedGroupId = null;
-            else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+        languageSource: {
+            t
         },
-         setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        identitySource: {
+            uid
+        },
+        projectSource: {
+            getProject: () => project,
+            getNode
+        },
+        assetSource: {
+            getNodeLayerForgeAsset,
+            assetMediaKind,
+            assetDisplaySrc,
+            getNodeImageSrc,
+            createImageNodeFromSketchOutput
+        },
+        mediaSource: {
+            canvasAgentMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMaskUploadSlot?.(...args) || '',
+            canvasAgentUploadSlotsForNode,
+            isCanvasAgentMaskSlot,
+            canNodeConnectToUploadSlot,
+            createUploadEdge,
+            syncResolutionConfigForPresetInputs
+        },
+        resultSource: {
+            generatedResultNodesForPreset,
+            isResultRefreshing,
+            isCanvasRunActiveState,
+            nodeStatusState,
+            ensureGenerateEdge,
+            buildReservedResultNode,
+            buildProjectNodeAppendPatch,
+            buildCanvasAgentReservedResultSource,
+            presetGenerationStepValue,
+            presetResultBasePosition
+        },
+        layoutSource: {
+            defaultNodeSize,
+            applyNodeLayoutPatch,
+            createCanvasAgentWorkflowGroup,
+            fitCanvasAgentWorkflowGroup,
+            centerCanvasAgentWorkflow
+        },
+        agentSource: {
+            getAgentState: () => canvasAgentState,
+            dockCanvasAgentPanelBottomLeft,
+            mutate,
+            setCanvasAgentMessage,
+            showToast,
+            clearCanvasAgentRunInfo,
+            setCanvasAgentRunInfo,
+            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                selectedEdgeId = null;
+                if (options?.clearGroup) selectedGroupId = null;
+                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+            }
+        },
+        runtimeSource: {
+            ensureWorkbenchLazyRuntime,
+            runPresetNode
+        },
+        schedulerSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        },
     };
     CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController === 'function'
         ? WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController({
@@ -5448,60 +7106,84 @@
     const prepareCanvasAgentManualMaskWorkflow = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.prepareCanvasAgentManualMaskWorkflow;
     let CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = {};
     const AGENT_SAM3_WORKFLOW_SOURCE = {
-        t,
-        uid,
-        nowIso,
-        getProject: () => project,
-        getNode,
-        getGroup,
-        getAgentState: () => canvasAgentState,
-        getNodeRect,
-        defaultNodeSize,
-        isCanvasAgentVideoTarget,
-        canvasAgentVideoMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoMaskUploadSlot?.(...args) || '',
-        canvasAgentVideoSourceUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoSourceUploadSlot?.(...args) || '',
-        createCanvasAgentReservedResultNode,
-        dockCanvasAgentPanelBottomLeft,
-        applyNodeLayoutPatch,
-        buildNodeLayoutPatch,
-        addSam3VideoMaskNode,
-        positionCanvasAgentVideoMaskWorkflow,
-        createSam3VideoMaskEdge,
-        createUploadEdge,
-        buildResultSourcePatch,
-        fitCanvasAgentWorkflowGroup,
-        createCanvasAgentWorkflowGroup,
-        centerCanvasAgentWorkflow,
-        centerViewportOnWorld,
-        renderNodes,
-        renderEdges,
-        mutate,
-        setCanvasAgentRunInfo,
-        clearCanvasAgentRunInfo,
-        runPresetNode,
-        canvasAgentManualMaskWorkflowNodes,
-        showToast,
-        findActiveResultNodeForPreset,
-        isCanvasRunActiveState,
-        nodeStatusState,
-        getPendingPresetRuns: () => pendingPresetRuns,
-        openSam3PointEditor,
-        setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-            selectedNodeId = nodeId;
-            selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-            selectedEdgeId = null;
-            if (options?.clearGroup) selectedGroupId = null;
-            else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+        languageSource: {
+            t
         },
-        buildSam3SourcePatch,
-        buildSam3StatePatch,
-        buildGroupFieldPatch,
-        mergeCanvasRunStatus,
-        renderGroups,
-        findCanvasAgentReservedResultNodeForPreset,
-        setCanvasAgentMessage,
-        scheduleSave,
-         setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        identitySource: {
+            uid,
+            nowIso
+        },
+        projectSource: {
+            getProject: () => project,
+            getNode,
+            getGroup
+        },
+        stateSource: {
+            getAgentState: () => canvasAgentState,
+            isCanvasRunActiveState,
+            nodeStatusState,
+            getPendingPresetRuns: () => pendingPresetRuns,
+            mergeCanvasRunStatus
+        },
+        mediaSource: {
+            isCanvasAgentVideoTarget,
+            canvasAgentVideoMaskUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoMaskUploadSlot?.(...args) || '',
+            canvasAgentVideoSourceUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoSourceUploadSlot?.(...args) || '',
+            createSam3VideoMaskEdge,
+            createUploadEdge
+        },
+        resultSource: {
+            createCanvasAgentReservedResultNode,
+            findActiveResultNodeForPreset,
+            findCanvasAgentReservedResultNodeForPreset
+        },
+        layoutSource: {
+            getNodeRect,
+            defaultNodeSize,
+            applyNodeLayoutPatch,
+            buildNodeLayoutPatch,
+            addSam3VideoMaskNode,
+            positionCanvasAgentVideoMaskWorkflow,
+            fitCanvasAgentWorkflowGroup,
+            createCanvasAgentWorkflowGroup,
+            centerCanvasAgentWorkflow,
+            centerViewportOnWorld
+        },
+        renderSource: {
+            renderNodes,
+            renderEdges,
+            renderGroups
+        },
+        agentSource: {
+            dockCanvasAgentPanelBottomLeft,
+            mutate,
+            setCanvasAgentRunInfo,
+            clearCanvasAgentRunInfo,
+            runPresetNode,
+            showToast,
+            setCanvasAgentMessage,
+            setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                selectedNodeId = nodeId;
+                selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                selectedEdgeId = null;
+                if (options?.clearGroup) selectedGroupId = null;
+                else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+            }
+        },
+        patchSource: {
+            buildResultSourcePatch,
+            buildSam3SourcePatch,
+            buildSam3StatePatch,
+            buildGroupFieldPatch
+        },
+        editorSource: {
+            canvasAgentManualMaskWorkflowNodes,
+            openSam3PointEditor
+        },
+        persistenceSource: {
+            scheduleSave,
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        },
     };
     CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW.createCanvasAgentSam3WorkflowController === 'function'
         ? WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW.createCanvasAgentSam3WorkflowController({
@@ -5523,355 +7205,529 @@
 
     const AGENT_MEDIA_CONTEXT_SOURCE = {
             mediaConnectionsSource: {
-                t,
-                runtimeUiLang,
-                getUploadSlotMediaKind,
-                canNodeConnectToUploadSlot,
-                createUploadEdge,
-                createCanvasAgentPresetProbeNode,
-                getCanvasAgentTargetMediaKind,
-                getVisibleClassicUploadSlots,
-                getVisibleUploadSlots,
-                buildClassicNodeStatePatch,
-                createEmptyImageNodeForInput,
-                getSlotLabel,
-                buildMediaNodeStatePatch,
-                buildAgentReferencePlaceholderPatch
+                languageSource: {
+                    t,
+                    runtimeUiLang
+                },
+                slotSource: {
+                    getUploadSlotMediaKind,
+                    getVisibleClassicUploadSlots,
+                    getVisibleUploadSlots,
+                    getSlotLabel
+                },
+                connectionSource: {
+                    canNodeConnectToUploadSlot,
+                    createUploadEdge
+                },
+                probeSource: {
+                    createCanvasAgentPresetProbeNode,
+                    getCanvasAgentTargetMediaKind,
+                    buildClassicNodeStatePatch
+                },
+                nodeSource: {
+                    createEmptyImageNodeForInput,
+                    buildMediaNodeStatePatch,
+                    buildAgentReferencePlaceholderPatch
+                }
             },
             imageWorkflowSource: {
-                t,
-                uid,
-                nowIso,
-                normalizePresetName,
-                getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
-                refreshPresetCatalog,
-                getCanvasAgentTargetNode,
-                isCanvasAgentGeneratorTarget,
-                getNode,
-                findCanvasAgentWorkflowPresetByKey,
-                resolveCanvasAgentPrompt,
-                resetCanvasAgentRunInfo,
-                setCanvasAgentMessage,
-                chooseCanvasAgentPresetEntry,
-                getPresetCatalog,
-                canvasAgentPresetSupportsTask,
-                showToast,
-                canvasAgentPromptTargetFromNode,
-                canvasAgentPromptTargetFromEntry,
-                ensureCanvasAgentPromptMatchesTarget,
-                canvasAgentPresetPromptDefaults,
-                ensureCanvasAgentPromptPreflightAllows,
-                askCanvasAgentDecision,
-                canvasAgentPresetDecisionOptions,
-                canvasAgentPromptDecisionField,
-                canvasAgentReferenceFacts,
-                canvasAgentResolutionLabel,
-                canvasAgentPromptSourceLabel,
-                canvasAgentPromptTargetFact,
-                canvasAgentPromptValidationFact,
-                canvasAgentPromptPreflightFacts,
-                canvasAgentPresetPromptDefaultsFacts,
-                canvasAgentModelStatusLabel,
-                canvasAgentPromptFromDecision,
-                findPresetCatalogEntryByName,
-                vlmCanvasAgentWorkflowKey,
-                addPresetNode,
-                canvasAgentWorkflowPresetPosition,
-                markCanvasAgentCreatedNode,
-                applyCanvasAgentPresetDefaultsToGenerator,
-                tagCanvasAgentWorkflowPreset,
-                normalizeCanvasAgentGenerationOptions,
-                getPromptTextSourceNode,
-                mergeCommaPromptText,
-                prepareCanvasAgentGenerator,
-                getCanvasAgentRewriteModel,
-                runPresetNode,
-                getCanvasAgentPrimaryImageReference,
-                isCanvasAgentImageTarget,
-                canvasAgentReferenceNode,
-                getCanvasAgentExtraImageReferences,
-                previewCanvasAgentEditInputSlot,
-                canvasAgentShortNodeLabel,
-                findCanvasAgentPresetEntryByAlias,
-                applyCanvasAgentPromptToGenerator,
-                applyCanvasAgentGenerationOptionsToGenerator,
-                canvasAgentUploadSlotsForNode,
-                isCanvasAgentMaskSlot,
-                canNodeConnectToUploadSlot,
-                createUploadEdge,
-                applyCanvasAgentResolutionToGenerator,
-                mutate,
-                setCanvasAgentRunInfo,
-                clearCanvasAgentRunInfo,
-                setCanvasAgentSelection: (nodeId) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set([nodeId]);
-                    selectedEdgeId = null;
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                catalogSource: {
+                    normalizePresetName,
+                    getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
+                    refreshPresetCatalog,
+                    chooseCanvasAgentPresetEntry,
+                    getPresetCatalog,
+                    canvasAgentPresetSupportsTask,
+                    findPresetCatalogEntryByName,
+                    findCanvasAgentPresetEntryByAlias
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentGeneratorTarget,
+                    getNode,
+                    findCanvasAgentWorkflowPresetByKey,
+                    getPromptTextSourceNode,
+                    getCanvasAgentPrimaryImageReference,
+                    isCanvasAgentImageTarget,
+                    canvasAgentReferenceNode,
+                    getCanvasAgentExtraImageReferences,
+                    canvasAgentShortNodeLabel
+                },
+                promptSource: {
+                    resolveCanvasAgentPrompt,
+                    canvasAgentPromptTargetFromNode,
+                    canvasAgentPromptTargetFromEntry,
+                    ensureCanvasAgentPromptMatchesTarget,
+                    canvasAgentPresetPromptDefaults,
+                    ensureCanvasAgentPromptPreflightAllows,
+                    canvasAgentReferenceFacts,
+                    canvasAgentResolutionLabel,
+                    canvasAgentPromptSourceLabel,
+                    canvasAgentPromptTargetFact,
+                    canvasAgentPromptValidationFact,
+                    canvasAgentPromptPreflightFacts,
+                    canvasAgentPresetPromptDefaultsFacts,
+                    canvasAgentModelStatusLabel,
+                    canvasAgentPromptFromDecision,
+                    mergeCommaPromptText,
+                    getCanvasAgentRewriteModel
+                },
+                decisionSource: {
+                    askCanvasAgentDecision,
+                    canvasAgentPresetDecisionOptions,
+                    canvasAgentPromptDecisionField
+                },
+                nodeSource: {
+                    vlmCanvasAgentWorkflowKey,
+                    addPresetNode,
+                    canvasAgentWorkflowPresetPosition,
+                    markCanvasAgentCreatedNode,
+                    applyCanvasAgentPresetDefaultsToGenerator,
+                    tagCanvasAgentWorkflowPreset,
+                    normalizeCanvasAgentGenerationOptions
+                },
+                generatorSource: {
+                    prepareCanvasAgentGenerator,
+                    applyCanvasAgentPromptToGenerator,
+                    applyCanvasAgentGenerationOptionsToGenerator,
+                    applyCanvasAgentResolutionToGenerator
+                },
+                mediaSource: {
+                    previewCanvasAgentEditInputSlot,
+                    canvasAgentUploadSlotsForNode,
+                    isCanvasAgentMaskSlot,
+                    canNodeConnectToUploadSlot,
+                    createUploadEdge
+                },
+                stateSource: {
+                    resetCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    showToast,
+                    mutate,
+                    setCanvasAgentRunInfo,
+                    clearCanvasAgentRunInfo,
+                    setCanvasAgentSelection: (nodeId) => {
+                        selectedNodeId = nodeId;
+                        selectedNodeIds = new Set([nodeId]);
+                        selectedEdgeId = null;
+                    }
+                },
+                runtimeSource: {
+                    runPresetNode
                 }
             },
             videoWorkflowSource: {
-                t,
-                uid,
-                nowIso,
-                normalizePresetName,
-                getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
-                getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
-                getCanvasAgentTargetNode,
-                isCanvasAgentGeneratorTarget,
-                resolveCanvasAgentPrompt,
-                resetCanvasAgentRunInfo,
-                setCanvasAgentMessage,
-                chooseCanvasAgentPresetEntry,
-                showToast,
-                getCanvasAgentPrimaryMediaNode,
-                isCanvasAgentAudioTarget,
-                isCanvasAgentVideoTarget,
-                isCanvasAgentImageTarget,
-                getCanvasAgentMediaReferenceNodes,
-                canvasAgentMediaNodeCounts,
-                canvasAgentVideoTaskForMedia,
-                canvasAgentVideoTaskLabel,
-                canvasAgentPresetSupportsTask,
-                canvasAgentPromptTargetFromNode,
-                canvasAgentPromptTargetFromEntry,
-                ensureCanvasAgentPromptPreflightAllows,
-                askCanvasAgentDecision,
-                canvasAgentPresetDecisionOptions,
-                canvasAgentPromptDecisionField,
-                canvasAgentReferenceFacts,
-                canvasAgentMediaNodeFacts,
-                canvasAgentShortNodeLabel,
-                canvasAgentResolutionLabel,
-                canvasAgentPromptSourceLabel,
-                canvasAgentPromptTargetFact,
-                canvasAgentPromptValidationFact,
-                canvasAgentPromptPreflightFacts,
-                canvasAgentPresetPromptDefaultsFacts,
-                canvasAgentModelStatusLabel,
-                canvasAgentPromptFromDecision,
-                canvasAgentPresetSupportsMediaRequest,
-                findCanvasAgentPresetEntryByAlias,
-                canvasAgentReferenceKey,
-                getCanvasAgentExtraImageReferences,
-                canvasAgentReferenceNode,
-                addPresetNode,
-                canvasAgentWorkflowPresetPosition,
-                markCanvasAgentCreatedNode,
-                applyCanvasAgentPromptToGenerator,
-                applyCanvasAgentResolutionToGenerator,
-                canvasAgentRunNodeSelection,
-                setCanvasAgentRunInfo,
-                getCanvasAgentRewriteModel,
-                runPresetNode,
-                clearCanvasAgentRunInfo,
-                prepareCanvasAgentGenerator,
-                createUploadEdge
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                catalogSource: {
+                    normalizePresetName,
+                    getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
+                    getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
+                    chooseCanvasAgentPresetEntry,
+                    canvasAgentPresetSupportsTask,
+                    canvasAgentPresetSupportsMediaRequest,
+                    findCanvasAgentPresetEntryByAlias
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentGeneratorTarget,
+                    getCanvasAgentPrimaryMediaNode,
+                    isCanvasAgentAudioTarget,
+                    isCanvasAgentVideoTarget,
+                    isCanvasAgentImageTarget,
+                    canvasAgentShortNodeLabel
+                },
+                mediaSource: {
+                    getCanvasAgentMediaReferenceNodes,
+                    canvasAgentMediaNodeCounts,
+                    canvasAgentVideoTaskForMedia,
+                    canvasAgentVideoTaskLabel,
+                    canvasAgentReferenceKey,
+                    getCanvasAgentExtraImageReferences,
+                    canvasAgentReferenceNode,
+                    previewCanvasAgentMediaInputSlot,
+                    connectCanvasAgentMediaToGenerator: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentMediaToGenerator?.(...args) || { ok: false },
+                    canvasAgentMediaConnectionError: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMediaConnectionError?.(...args) || '',
+                    findCanvasAgentUploadSlotForTarget,
+                    createUploadEdge
+                },
+                promptSource: {
+                    resolveCanvasAgentPrompt,
+                    canvasAgentPromptTargetFromNode,
+                    canvasAgentPromptTargetFromEntry,
+                    ensureCanvasAgentPromptPreflightAllows,
+                    canvasAgentReferenceFacts,
+                    canvasAgentMediaNodeFacts,
+                    canvasAgentResolutionLabel,
+                    canvasAgentPromptSourceLabel,
+                    canvasAgentPromptTargetFact,
+                    canvasAgentPromptValidationFact,
+                    canvasAgentPromptPreflightFacts,
+                    canvasAgentPresetPromptDefaultsFacts,
+                    canvasAgentModelStatusLabel,
+                    canvasAgentPromptFromDecision,
+                    getCanvasAgentRewriteModel
+                },
+                decisionSource: {
+                    askCanvasAgentDecision,
+                    canvasAgentPresetDecisionOptions,
+                    canvasAgentPromptDecisionField
+                },
+                nodeSource: {
+                    addPresetNode,
+                    canvasAgentWorkflowPresetPosition,
+                    markCanvasAgentCreatedNode
+                },
+                generatorSource: {
+                    applyCanvasAgentPromptToGenerator,
+                    applyCanvasAgentResolutionToGenerator,
+                    prepareCanvasAgentGenerator
+                },
+                stateSource: {
+                    resetCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    showToast,
+                    canvasAgentRunNodeSelection,
+                    setCanvasAgentRunInfo,
+                    clearCanvasAgentRunInfo
+                },
+                runtimeSource: {
+                    runPresetNode
+                }
             },
             videoToolsSource: {
-                t,
-                uid,
-                nowIso,
-                normalizePresetName,
-                getAgentState: () => canvasAgentState,
-                getCanvasAgentSettings,
-                getDefaultVideoOutpaintPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET,
-                getDefaultVideoErasePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET,
-                getDefaultVideoReplacePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET,
-                getDefaultVideoFaceSwapPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET,
-                getDefaultVideoFaceSwapTheme: () => CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME,
-                getDefaultVideoMotionTransferPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET,
-                getDefaultVideoMotionTransferTheme: () => CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME,
-                getDefaultVideoUpscalePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_UPSCALE_PRESET,
-                getNode,
-                getCanvasAgentTargetNode,
-                getCanvasAgentPrimaryReferenceByKind,
-                canvasAgentReferenceNode,
-                normalizeCanvasAgentReferences,
-                addCanvasAgentReferenceFromNode,
-                isCanvasAgentImageTarget,
-                isCanvasAgentVideoTarget,
-                showToast,
-                setCanvasAgentMessage,
-                renderCanvasAgentPanel,
-                revealCanvasAgentPanelForToolCard,
-                askCanvasAgentDecision,
-                canvasAgentPresetDecisionOptions,
-                canvasAgentPromptDecisionField,
-                canvasAgentPromptFromDecision,
-                findCanvasAgentPresetEntryByAlias,
-                canvasAgentPresetDefaultPromptForTheme,
-                canvasAgentShortNodeLabel,
-                addPresetNode,
-                canvasAgentWorkflowPresetPosition,
-                markCanvasAgentCreatedNode,
-                applyCanvasAgentPromptToGenerator,
-                canvasAgentUploadSlotsForNode,
-                canNodeConnectToUploadSlot,
-                createUploadEdge,
-                applyCanvasAgentResolutionToGenerator,
-                getUploadSlotMediaKind,
-                isCanvasAgentMaskSlot,
-                createCanvasAgentWorkflowGroup,
-                centerCanvasAgentWorkflow,
-                prepareCanvasAgentVideoMaskWorkflow,
-                mutate,
-                setCanvasAgentRunInfo,
-                runPresetNode,
-                clearCanvasAgentRunInfo,
-                getNodeRect,
-                defaultNodeSize,
-                viewportCenterWorld,
-                findOpenNodePosition,
-                addLivePortraitExpressionNode,
-                applyNodeLayoutPatch,
-                createLivePortraitExpressionImageEdge,
-                openLivePortraitExpressionEditor,
-                escapeHtml,
-                setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                    selectedEdgeId = null;
-                    if (options?.clearGroup) selectedGroupId = null;
-                    else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                utilitySource: {
+                    normalizePresetName,
+                    escapeHtml
+                },
+                catalogSource: {
+                    getDefaultVideoOutpaintPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET,
+                    getDefaultVideoErasePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET,
+                    getDefaultVideoReplacePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET,
+                    getDefaultVideoFaceSwapPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET,
+                    getDefaultVideoFaceSwapTheme: () => CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME,
+                    getDefaultVideoMotionTransferPreset: () => CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET,
+                    getDefaultVideoMotionTransferTheme: () => CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME,
+                    getDefaultVideoUpscalePreset: () => CANVAS_AGENT_DEFAULT_VIDEO_UPSCALE_PRESET,
+                    findCanvasAgentPresetEntryByAlias
+                },
+                settingsSource: {
+                    getCanvasAgentSettings
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState,
+                    mutate,
+                    setCanvasAgentRunInfo,
+                    clearCanvasAgentRunInfo
+                },
+                referenceSource: {
+                    getCanvasAgentPrimaryReferenceByKind,
+                    canvasAgentReferenceNode,
+                    normalizeCanvasAgentReferences,
+                    addCanvasAgentReferenceFromNode
+                },
+                targetSource: {
+                    getNode,
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentImageTarget,
+                    isCanvasAgentVideoTarget,
+                    canvasAgentShortNodeLabel
+                },
+                uiSource: {
+                    showToast,
+                    setCanvasAgentMessage,
+                    renderCanvasAgentPanel,
+                    revealCanvasAgentPanelForToolCard,
+                    setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                        selectedNodeId = nodeId;
+                        selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                        selectedEdgeId = null;
+                        if (options?.clearGroup) selectedGroupId = null;
+                        else if (groupId !== undefined && groupId) selectedGroupId = groupId;
+                    }
+                },
+                decisionSource: {
+                    askCanvasAgentDecision,
+                    canvasAgentPresetDecisionOptions,
+                    canvasAgentPromptDecisionField,
+                    canvasAgentPromptFromDecision
+                },
+                promptSource: {
+                    canvasAgentPresetDefaultPromptForTheme
+                },
+                nodeSource: {
+                    addPresetNode,
+                    canvasAgentWorkflowPresetPosition,
+                    markCanvasAgentCreatedNode,
+                    addLivePortraitExpressionNode,
+                    applyNodeLayoutPatch,
+                    createLivePortraitExpressionImageEdge,
+                    openLivePortraitExpressionEditor
+                },
+                generatorSource: {
+                    applyCanvasAgentPromptToGenerator,
+                    applyCanvasAgentResolutionToGenerator
+                },
+                mediaSource: {
+                    canvasAgentUploadSlotsForNode,
+                    canvasAgentVideoSourceUploadSlot,
+                    canNodeConnectToUploadSlot,
+                    createUploadEdge,
+                    createCanvasAgentReferencePlaceholderForGenerator,
+                    canvasAgentReferenceUploadSlotForGenerator,
+                    getUploadSlotMediaKind,
+                    isCanvasAgentMaskSlot
+                },
+                workflowSource: {
+                    createCanvasAgentWorkflowGroup,
+                    centerCanvasAgentWorkflow,
+                    prepareCanvasAgentVideoMaskWorkflow
+                },
+                layoutSource: {
+                    getNodeRect,
+                    defaultNodeSize,
+                    viewportCenterWorld,
+                    findOpenNodePosition
+                },
+                runtimeSource: {
+                    runPresetNode
                 }
             },
             imageToolsSource: {
-                t,
-                uid,
-                nowIso,
-                normalizePresetName,
-                getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
-                getDefaultT2iPresetQueue: () => CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE,
-                getCollapsedPromptNodeDefaultHeight: () => COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT,
-                getClassicOutpaintDirs: () => registryClassicOutpaintDirs || ['Left', 'Right', 'Top', 'Bottom'],
-                getAgentState: () => canvasAgentState,
-                getCanvasAgentSettings,
-                getNode,
-                getCanvasAgentTargetNode,
-                getCanvasAgentPrimaryImageReference,
-                getCanvasAgentExtraImageReferences,
-                canvasAgentReferenceNode,
-                addCanvasAgentReferenceFromNode,
-                isCanvasAgentImageTarget,
-                showToast,
-                setCanvasAgentMessage,
-                renderCanvasAgentPanel,
-                revealCanvasAgentPanelForToolCard,
-                showOutpaintOverlay,
-                hideOutpaintOverlay,
-                askCanvasAgentDecision,
-                canvasAgentPresetDecisionOptions,
-                canvasAgentUpscalePresetEntries,
-                canvasAgentPromptDecisionField,
-                canvasAgentPromptFromDecision,
-                canvasAgentResolutionLabel,
-                findCanvasAgentPresetEntryByAlias,
-                canvasAgentPresetDefaultPrompt,
-                canvasAgentPreferredUpscalePresetEntry,
-                getOutpaintOverlayState: () => outpaintOverlayState,
-                setCanvasAgentSettingsPatch,
-                canvasAgentPromptTargetFromEntry,
-                canvasAgentPresetPromptDefaults,
-                ensureCanvasAgentPromptMatchesTarget,
-                ensureCanvasAgentPromptPreflightAllows,
-                addPresetNode,
-                canvasAgentWorkflowPresetPosition,
-                markCanvasAgentCreatedNode,
-                applyCanvasAgentPromptToGenerator,
-                canvasAgentUploadSlotsForNode,
-                isCanvasAgentMaskSlot,
-                canNodeConnectToUploadSlot,
-                createUploadEdge,
-                applyCanvasAgentResolutionToGenerator,
-                positionCanvasAgentReferenceWorkflow,
-                createCanvasAgentWorkflowGroup,
-                centerCanvasAgentWorkflow,
-                prepareCanvasAgentManualMaskWorkflow,
-                ensureStyleSelectorForPreset,
-                buildNodeParamsPatch,
-                buildNodeLayoutPatch,
-                buildClassicNodeStatePatch,
-                mutate,
-                setCanvasAgentRunInfo,
-                runPresetNode,
-                clearCanvasAgentRunInfo,
-                getNodeRect,
-                getVisibleWorldRect,
-                defaultNodeSize,
-                viewportCenterWorld,
-                canvasAgentWorkflowOccupiedRects,
-                rectsOverlap,
-                setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
-                    selectedEdgeId = null;
-                    if (options?.clearGroup) selectedGroupId = null;
-                    else if (groupId !== undefined) selectedGroupId = groupId || null;
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                utilitySource: {
+                    normalizePresetName
+                },
+                configSource: {
+                    getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
+                    getDefaultT2iPresetQueue: () => CANVAS_AGENT_DEFAULT_T2I_PRESET_QUEUE,
+                    getCollapsedPromptNodeDefaultHeight: () => COLLAPSED_PROMPT_NODE_DEFAULT_HEIGHT,
+                    getClassicOutpaintDirs: () => registryClassicOutpaintDirs || ['Left', 'Right', 'Top', 'Bottom']
+                },
+                catalogSource: {
+                    findCanvasAgentPresetEntryByAlias,
+                    canvasAgentPreferredUpscalePresetEntry
+                },
+                patchSource: {
+                    buildNodeParamsPatch,
+                    buildClassicNodeStatePatch
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState,
+                    mutate,
+                    setCanvasAgentRunInfo,
+                    clearCanvasAgentRunInfo
+                },
+                settingsSource: {
+                    getCanvasAgentSettings,
+                    getOutpaintOverlayState: () => outpaintOverlayState,
+                    setCanvasAgentSettingsPatch
+                },
+                targetSource: {
+                    getNode,
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentImageTarget,
+                    canvasAgentShortNodeLabel
+                },
+                referenceSource: {
+                    getCanvasAgentPrimaryImageReference,
+                    getCanvasAgentExtraImageReferences,
+                    canvasAgentReferenceNode,
+                    addCanvasAgentReferenceFromNode
+                },
+                uiSource: {
+                    showToast,
+                    setCanvasAgentMessage,
+                    renderCanvasAgentPanel,
+                    revealCanvasAgentPanelForToolCard,
+                    showOutpaintOverlay,
+                    hideOutpaintOverlay,
+                    setCanvasAgentSelection: (nodeId, nodeIds, groupId, options) => {
+                        selectedNodeId = nodeId;
+                        selectedNodeIds = new Set(Array.isArray(nodeIds) && nodeIds.length ? nodeIds : (nodeId ? [nodeId] : []));
+                        selectedEdgeId = null;
+                        if (options?.clearGroup) selectedGroupId = null;
+                        else if (groupId !== undefined) selectedGroupId = groupId || null;
+                    }
+                },
+                decisionSource: {
+                    askCanvasAgentDecision,
+                    canvasAgentPresetDecisionOptions,
+                    canvasAgentUpscalePresetEntries,
+                    canvasAgentPromptDecisionField,
+                    canvasAgentPromptFromDecision
+                },
+                promptSource: {
+                    canvasAgentPromptTargetFromEntry,
+                    canvasAgentPresetPromptDefaults,
+                    ensureCanvasAgentPromptMatchesTarget,
+                    ensureCanvasAgentPromptPreflightAllows,
+                    canvasAgentResolutionLabel,
+                    canvasAgentPresetDefaultPrompt
+                },
+                workflowSource: {
+                    runCanvasAgentLivePortraitExpressionQuickTool,
+                    positionCanvasAgentReferenceWorkflow,
+                    createCanvasAgentWorkflowGroup,
+                    centerCanvasAgentWorkflow,
+                    prepareCanvasAgentManualMaskWorkflow,
+                    ensureStyleSelectorForPreset
+                },
+                nodeSource: {
+                    addPresetNode,
+                    canvasAgentWorkflowPresetPosition,
+                    markCanvasAgentCreatedNode
+                },
+                generatorSource: {
+                    applyCanvasAgentPromptToGenerator,
+                    applyCanvasAgentResolutionToGenerator
+                },
+                mediaSource: {
+                    canvasAgentUploadSlotsForNode,
+                    isCanvasAgentMaskSlot,
+                    canNodeConnectToUploadSlot,
+                    createUploadEdge,
+                    connectCanvasAgentImagesToGenerator,
+                    createCanvasAgentReferencePlaceholderForGenerator
+                },
+                layoutSource: {
+                    buildNodeLayoutPatch,
+                    getNodeRect,
+                    getVisibleWorldRect,
+                    defaultNodeSize,
+                    viewportCenterWorld,
+                    canvasAgentWorkflowOccupiedRects,
+                    rectsOverlap
+                },
+                runtimeSource: {
+                    runPresetNode
                 }
             },
             audioWorkflowSource: {
-                t,
-                uid,
-                nowIso,
-                normalizePresetName,
-                chooseCanvasAgentPresetEntry,
-                resolveCanvasAgentPrompt,
-                resetCanvasAgentRunInfo,
-                setCanvasAgentMessage,
-                showToast,
-                getCanvasAgentPrimaryMediaNode,
-                isCanvasAgentAudioTarget,
-                askCanvasAgentDecision,
-                canvasAgentPromptSourceLabel,
-                canvasAgentReferenceFacts,
-                canvasAgentModelStatusLabel,
-                canvasAgentPresetDecisionOptions,
-                canvasAgentPromptDecisionField,
-                canvasAgentPromptFromDecision,
-                findCanvasAgentPresetEntryByAlias,
-                addPresetNode,
-                addQwenTtsNode,
-                qwenTtsModeLabel,
-                markCanvasAgentCreatedNode,
-                canvasAgentWorkflowPresetPosition,
-                prepareCanvasAgentGenerator,
-                setCanvasAgentRunInfo,
-                getCanvasAgentRewriteModel,
-                runQwenTtsNode,
-                runPresetNode,
-                clearCanvasAgentRunInfo,
-                canvasAgentShortNodeLabel,
-                applyCanvasAgentPromptToGenerator,
-                createUploadEdge,
-                applyCanvasAgentResolutionToGenerator,
-                canvasAgentRunNodeSelection
-            },
-            audioToolsSource: {
-                t,
-                getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
-                getAgentState: () => canvasAgentState,
-                showToast,
-                setCanvasAgentMessage,
-                renderCanvasAgentPanel,
-                normalizeCanvasAgentReferences,
-                canvasAgentReferenceKey,
-                canvasAgentReferenceCounts,
-                addCanvasAgentReferenceFromNode,
-                isCanvasAgentAudioTarget,
-                setCanvasAgentSelection: (nodeId) => {
-                    selectedNodeId = nodeId;
-                    selectedNodeIds = new Set([nodeId]);
-                    selectedEdgeId = null;
+                languageSource: {
+                    t
+                },
+                identitySource: {
+                    uid
+                },
+                presetSource: {
+                    normalizePresetName,
+                    chooseCanvasAgentPresetEntry,
+                    findCanvasAgentPresetEntryByAlias,
+                    addPresetNode,
+                    addQwenTtsNode,
+                    qwenTtsModeLabel,
+                    markCanvasAgentCreatedNode,
+                    canvasAgentWorkflowPresetPosition
+                },
+                promptSource: {
+                    resolveCanvasAgentPrompt,
+                    canvasAgentPromptSourceLabel,
+                    canvasAgentReferenceFacts,
+                    canvasAgentModelStatusLabel,
+                    canvasAgentPresetDecisionOptions,
+                    canvasAgentPromptDecisionField,
+                    canvasAgentPromptFromDecision,
+                    getCanvasAgentRewriteModel
+                },
+                targetSource: {
+                    getCanvasAgentPrimaryMediaNode,
+                    isCanvasAgentAudioTarget,
+                    canvasAgentShortNodeLabel
+                },
+                decisionSource: {
+                    askCanvasAgentDecision
+                },
+                generatorSource: {
+                    prepareCanvasAgentGenerator,
+                    applyCanvasAgentPromptToGenerator,
+                    applyCanvasAgentResolutionToGenerator
+                },
+                mediaSource: {
+                    createUploadEdge
+                },
+                stateSource: {
+                    resetCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    showToast,
+                    setCanvasAgentRunInfo,
+                    clearCanvasAgentRunInfo,
+                    canvasAgentRunNodeSelection
+                },
+                runtimeSource: {
+                    runQwenTtsNode,
+                    runPresetNode
                 }
             },
+            audioToolsSource: {
+                languageSource: {
+                    t
+                },
+                capacitySource: {
+                    getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState
+                },
+                uiSource: {
+                    showToast,
+                    setCanvasAgentMessage,
+                    renderCanvasAgentPanel,
+                    setCanvasAgentSelection: (nodeId) => {
+                        selectedNodeId = nodeId;
+                        selectedNodeIds = new Set([nodeId]);
+                        selectedEdgeId = null;
+                    }
+                },
+                referenceSource: {
+                    normalizeCanvasAgentReferences,
+                    canvasAgentReferenceKey,
+                    canvasAgentReferenceCounts,
+                    addCanvasAgentReferenceFromNode
+                },
+                targetSource: {
+                    isCanvasAgentAudioTarget
+                },
+                workflowSource: {}
+            },
             toolDispatchSource: {
-                getCanvasAgentTargetNode,
-                getCanvasAgentPrimaryImageReference,
-                getCanvasAgentPrimaryReferenceByKind,
-                canvasAgentReferenceNode,
-                isCanvasAgentImageTarget,
-                isCanvasAgentVideoTarget,
-                isCanvasAgentAudioTarget
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    isCanvasAgentImageTarget,
+                    isCanvasAgentVideoTarget,
+                    isCanvasAgentAudioTarget
+                },
+                referenceSource: {
+                    getCanvasAgentPrimaryImageReference,
+                    getCanvasAgentPrimaryReferenceByKind,
+                    canvasAgentReferenceNode
+                },
+                toolSource: {}
             }
     };
     const CANVAS_AGENT_MEDIA_CONTEXT = typeof WORKBENCH_CANVAS_AGENT_MEDIA_CONTEXT.createCanvasWorkbenchAgentMediaContext === 'function'
@@ -5951,87 +7807,147 @@
     let cancelCanvasAgentVlmInstruction = async () => ({ ok: false, cancelled: false, error: 'VLM planner is unavailable' });
     const AGENT_PANEL_CONTEXT_SOURCE = {
             panelViewsSource: {
-                t,
-                escapeHtml,
-                getAgentState: () => canvasAgentState,
-                normalizeCanvasAgentReferences,
-                canvasAgentReferenceNode,
-                getCanvasAgentReferenceKind,
-                canvasAgentReferenceIcon,
-                getCanvasAgentReferenceAsset,
-                assetDisplaySrc,
-                shouldEnableDanbooruAutocomplete,
-                danbooruAutocompleteAttrs,
-                canvasAgentContextualQuickTools,
-                getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
-                getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
-                getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
-                getCanvasAgentResolutionState,
-                canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
-                canvasAgentModelSummary,
-                 canvasAgentDefaultLocalRewriteModel,
-                 canvasAgentLocalRewriteModels,
-                 getVlmCustomProvider,
-                 canvasAgentCustomParamsFromSettings,
-                 getVlmCustomApiProfile,
-                 getCanvasAgentCustomModelChoices,
-                canvasAgentPresetOptionHtml,
-                vlmModelOptionsHtml,
-                canvasAgentVideoQuickToolChoiceFromSettings,
-                canvasAgentVideoQuickToolChoiceOptionHtml,
-                canvasAgentVideoUpscalePresetEntries,
-                vlmModelDisplayLabel,
-                getAspectOptions: () => CANVAS_AGENT_ASPECT_OPTIONS,
-                getCustomApiProviders: () => VLM_CUSTOM_API_PROVIDERS
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    escapeHtml
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState
+                },
+                referenceSource: {
+                    normalizeCanvasAgentReferences,
+                    canvasAgentReferenceNode,
+                    getCanvasAgentReferenceKind,
+                    canvasAgentReferenceIcon,
+                    getCanvasAgentReferenceAsset,
+                    assetDisplaySrc
+                },
+                autocompleteSource: {
+                    shouldEnableDanbooruAutocomplete,
+                    danbooruAutocompleteAttrs
+                },
+                toolSource: {
+                    canvasAgentContextualQuickTools
+                },
+                capacitySource: {
+                    getMaxExtraImageReferences: () => CANVAS_AGENT_MAX_EXTRA_IMAGE_REFERENCES,
+                    getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
+                    getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES
+                },
+                resolutionSource: {
+                    getCanvasAgentResolutionState,
+                    canvasAgentResolutionCompactLabel: canvasAgentResolutionCompactLabelFromSettings,
+                    getAspectOptions: () => CANVAS_AGENT_ASPECT_OPTIONS
+                },
+                modelSource: {
+                    canvasAgentModelSummary,
+                    canvasAgentDefaultLocalRewriteModel,
+                    canvasAgentLocalRewriteModels,
+                    vlmModelOptionsHtml,
+                    vlmModelDisplayLabel
+                },
+                customApiSource: {
+                    getVlmCustomProvider,
+                    canvasAgentCustomParamsFromSettings,
+                    getVlmCustomApiProfile,
+                    getCanvasAgentCustomModelChoices,
+                    getCustomApiProviders: () => VLM_CUSTOM_API_PROVIDERS
+                },
+                presetSource: {
+                    canvasAgentPresetOptionHtml,
+                    canvasAgentVideoQuickToolChoiceFromSettings,
+                    canvasAgentVideoQuickToolChoiceOptionHtml,
+                    canvasAgentVideoUpscalePresetEntries
+                }
             },
             panelControllerSource: {
-                t,
-                uid,
-                nowIso,
-                escapeHtml,
-                getAgentState: () => canvasAgentState,
-                getCanvasAgentPanel: () => canvasAgentPanel,
-                getViewport: () => viewport,
-                getWorkbenchRoot: () => root,
-                getCanvasAgentSettings,
-                getCanvasAgentTargetNode,
-                getProject: () => project,
-                getNodeRect,
-                getOutpaintOverlayState: () => outpaintOverlayState,
-                canvasAgentReferenceCounts,
-                normalizeCanvasAgentReferences,
-                canvasAgentPrimaryActionMeta,
-                canvasAgentTargetLabel,
-                renderOutpaintControlPanel,
-                ensureOutpaintOverlayMatchesAgentTarget,
-                syncOutpaintOverlayPosition,
-                ensureWorkbenchFormFieldNames,
-                getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
-                getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
-                getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES,
-                buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
-                setCanvasAgentLayoutPatch,
-                setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
-                setCanvasAgentSuppressClickUntil: (value) => {
-                    canvasAgentSuppressClickUntil = Number(value || 0);
+                languageSource: {
+                    t
                 },
-                clamp,
-                renderCanvasAgentPanel,
-                revealCanvasAgentPanelForToolCard,
-                decodeCanvasAgentVideoToolChoice,
-                findCanvasAgentPresetEntryByAlias,
-                canvasAgentPresetDefaultPromptForTheme,
-                openCanvasSettingsPanel,
-                showToast,
-                fetchCanvasAgentCustomModels,
-                cancelCanvasAgentVlmInstruction: (...args) => cancelCanvasAgentVlmInstruction(...args),
-                addSelectedCanvasAgentReferences,
-                removeCanvasAgentReference,
-                promoteCanvasAgentReference,
-                confirmOutpaintFromOverlay,
-                hideOutpaintOverlay,
-                setCanvasAgentResolutionPatch,
-                runCanvasAgentTool
+                identitySource: {
+                    uid,
+                    nowIso
+                },
+                utilitySource: {
+                    escapeHtml,
+                    clamp
+                },
+                capacitySource: {
+                    getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
+                    getMaxVideoReferences: () => CANVAS_AGENT_MAX_VIDEO_REFERENCES,
+                    getMaxAudioReferences: () => CANVAS_AGENT_MAX_AUDIO_REFERENCES
+                },
+                stateSource: {
+                    getAgentState: () => canvasAgentState
+                },
+                domSource: {
+                    getCanvasAgentPanel: () => canvasAgentPanel,
+                    getViewport: () => viewport,
+                    getWorkbenchRoot: () => root,
+                    setCanvasAgentSuppressClickUntil: (value) => {
+                        canvasAgentSuppressClickUntil = Number(value || 0);
+                    }
+                },
+                settingsSource: {
+                    getCanvasAgentSettings,
+                    getOutpaintOverlayState: () => outpaintOverlayState,
+                    setCanvasAgentLayoutPatch,
+                    setCanvasAgentResolutionOpen: setCanvasAgentResolutionOpenFromSettings,
+                    setCanvasAgentResolutionPatch
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    canvasAgentPrimaryActionMeta,
+                    canvasAgentTargetLabel
+                },
+                projectSource: {
+                    getProject: () => project
+                },
+                layoutSource: {
+                    getNodeRect
+                },
+                referenceSource: {
+                    canvasAgentReferenceCounts,
+                    normalizeCanvasAgentReferences,
+                    addSelectedCanvasAgentReferences,
+                    removeCanvasAgentReference,
+                    promoteCanvasAgentReference
+                },
+                outpaintSource: {
+                    renderOutpaintControlPanel,
+                    ensureOutpaintOverlayMatchesAgentTarget,
+                    syncOutpaintOverlayPosition,
+                    confirmOutpaintFromOverlay,
+                    hideOutpaintOverlay
+                },
+                formSource: {
+                    ensureWorkbenchFormFieldNames
+                },
+                renderSource: {
+                    renderCanvasAgentPanel
+                },
+                decisionSource: {
+                    buildAgentDecisionFormPatch: (...args) => buildAgentDecisionFormPatch(...args),
+                    decodeCanvasAgentVideoToolChoice,
+                    findCanvasAgentPresetEntryByAlias,
+                    canvasAgentPresetDefaultPromptForTheme
+                },
+                uiSource: {
+                    revealCanvasAgentPanelForToolCard,
+                    openCanvasSettingsPanel,
+                    showToast
+                },
+                instructionSource: {
+                    cancelCanvasAgentVlmInstruction: (...args) => cancelCanvasAgentVlmInstruction(...args)
+                },
+                customApiSource: {
+                    fetchCanvasAgentCustomModels
+                },
+                toolSource: {
+                    runCanvasAgentTool
+                },
             }
     };
     const CANVAS_AGENT_PANEL_CONTEXT = typeof WORKBENCH_CANVAS_AGENT_PANEL_CONTEXT.createCanvasWorkbenchAgentPanelContext === 'function'
@@ -6057,47 +7973,78 @@
 
     const AGENT_INSTRUCTION_CONTEXT_SOURCE = {
             plannerSource: {
-                t,
-                normalizePresetName,
-                normalizeCanvasAgentGenerationOptions,
-                getCanvasAgentTargetNode,
-                canvasAgentReferenceCounts,
-                getCanvasAgentTargetMediaKind,
-                getCanvasAgentMediaReferenceNodes,
-                canvasAgentMediaNodeCounts,
-                canvasAgentVideoTaskForMedia,
-                canvasAgentPromptMediaIntent,
-                isCanvasAgentImageTarget,
-                findCanvasAgentPresetInstructionOverride,
-                getPresetCatalog,
-                getCanvasAgentPresetQueue,
-                findPresetCatalogEntryByName,
-                canvasAgentInstructionAliasPresetNames,
-                canvasAgentPromptMentionsPreset,
-                canvasAgentReadyPresetEntries,
-                canvasAgentPromptTargetContextLine,
-                canvasAgentPromptTargetFromEntry,
-                canvasAgentPromptTargetFromPurpose,
-                canvasAgentReferenceSummaryText,
-                canvasAgentResolutionLabel,
-                canvasAgentPresetMatchTokens,
-                canvasAgentPresetAliasTokensForEntry
+                languageSource: {
+                    t,
+                },
+                normalizationSource: {
+                    normalizePresetName,
+                    normalizeCanvasAgentGenerationOptions,
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    getCanvasAgentTargetMediaKind,
+                    isCanvasAgentImageTarget,
+                },
+                referenceSource: {
+                    canvasAgentReferenceCounts,
+                    getCanvasAgentMediaReferenceNodes,
+                    canvasAgentMediaNodeCounts,
+                    canvasAgentVideoTaskForMedia,
+                    canvasAgentReferenceSummaryText,
+                },
+                promptSource: {
+                    canvasAgentPromptMediaIntent,
+                    canvasAgentPromptTargetContextLine,
+                    canvasAgentPromptTargetFromEntry,
+                    canvasAgentPromptTargetFromPurpose,
+                },
+                presetSource: {
+                    findCanvasAgentPresetInstructionOverride,
+                    getPresetCatalog,
+                    getCanvasAgentPresetQueue,
+                    findPresetCatalogEntryByName,
+                    canvasAgentInstructionAliasPresetNames,
+                    canvasAgentPromptMentionsPreset,
+                    canvasAgentReadyPresetEntries,
+                    canvasAgentPresetMatchTokens,
+                    canvasAgentPresetAliasTokensForEntry,
+                },
+                settingsSource: {
+                    getCanvasAgentSettings,
+                    canvasAgentResolutionLabel,
+                },
+                projectSource: {
+                    getProject,
+                },
             },
             vlmInstructionSource: {
-                t,
-                uid,
-                getDefaultProjectId: () => PROJECT_ID,
-                getPlannerTimeoutMs: () => CANVAS_AGENT_VLM_PLAN_TIMEOUT_MS,
-                getProject: () => project,
-                getCanvasAgentTargetNode,
-                getCanvasAgentRewriteModel,
-                getCanvasAgentSettings,
-                getCanvasAgentVlmReferenceSources,
-                buildVlmAgentContext: CANVAS_VLM_AGENT_CONTEXT.buildVlmAgentContext,
-                normalizeCanvasAgentReferences,
-                getCanvasAgentCustomRuntimeParams,
-                sendCanvasVlmRunRequest,
-                sendCanvasVlmCancelRequest
+                languageSource: {
+                    t,
+                },
+                runtimeSource: {
+                    uid,
+                    getPlannerTimeoutMs: () => CANVAS_AGENT_VLM_PLAN_TIMEOUT_MS,
+                },
+                projectSource: {
+                    getDefaultProjectId: () => PROJECT_ID,
+                    getProject: () => project,
+                },
+                referenceSource: {
+                    getCanvasAgentTargetNode,
+                    getCanvasAgentVlmReferenceSources,
+                    buildVlmAgentContext: CANVAS_VLM_AGENT_CONTEXT.buildVlmAgentContext,
+                    normalizeCanvasAgentReferences,
+                },
+                settingsSource: {
+                    getCanvasAgentRewriteModel,
+                    getCanvasAgentSettings,
+                    getCanvasAgentCustomRuntimeParams,
+                },
+                plannerSource: {},
+                transportSource: {
+                    sendCanvasVlmRunRequest,
+                    sendCanvasVlmCancelRequest,
+                },
             }
     };
     const CANVAS_AGENT_INSTRUCTION_CONTEXT = typeof WORKBENCH_CANVAS_AGENT_INSTRUCTION_CONTEXT.createCanvasWorkbenchAgentInstructionContext === 'function'
@@ -6128,53 +8075,77 @@
     CANVAS_AGENT_ACTION_EXECUTION_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_ACTION_EXECUTION.createCanvasAgentActionExecutionController === 'function'
         ? WORKBENCH_CANVAS_AGENT_ACTION_EXECUTION.createCanvasAgentActionExecutionController({
             actionExecutionSource: {
-                t,
-                getCanvasAgentState: () => canvasAgentState,
-                handleCanvasAgentPanelAction,
-                canvasAgentPrimaryActionMeta,
-                getCanvasAgentTargetNode,
-                getCanvasAgentSettings,
-                uid,
-                waitNextFrame,
-                requestCanvasAgentVlmInstructionPlan,
-                clearCanvasAgentRunInfo,
-                canvasAgentVideoTaskForMedia,
-                canvasAgentMediaNodeCounts,
-                getCanvasAgentMediaReferenceNodes,
-                getCanvasAgentPrimaryImageReference,
-                getCanvasAgentTargetMediaKind,
-                isCanvasAgentImageTarget,
-                buildCanvasAgentLocalInstructionPlan,
-                runCanvasAgentTextToImage,
-                runCanvasAgentImageEdit,
-                runCanvasAgentTextToVideo,
-                runCanvasAgentImageToVideo,
-                runCanvasAgentVideoReferenceToVideo,
-                runCanvasAgentVideoEdit,
-                runCanvasAgentAudioToVideo,
-                runCanvasAgentTextToAudio,
-                runCanvasAgentAudioEdit,
-                runCanvasAgentTextRefine,
-                setCanvasAgentRunInfo,
-                resetCanvasAgentRunInfo,
-                setCanvasAgentMessage,
-                showToast
+                languageSource: {
+                    t,
+                },
+                stateSource: {
+                    getCanvasAgentState: () => canvasAgentState,
+                    getCanvasAgentSettings,
+                },
+                panelSource: {
+                    handleCanvasAgentPanelAction,
+                },
+                decisionSource: {
+                    canvasAgentPrimaryActionMeta,
+                },
+                targetSource: {
+                    getCanvasAgentTargetNode,
+                    getCanvasAgentTargetMediaKind,
+                    isCanvasAgentImageTarget,
+                },
+                mediaSource: {
+                    canvasAgentVideoTaskForMedia,
+                    canvasAgentMediaNodeCounts,
+                    getCanvasAgentMediaReferenceNodes,
+                    getCanvasAgentPrimaryImageReference,
+                },
+                plannerSource: {
+                    getCanvasAgentRewriteModel,
+                    requestCanvasAgentVlmInstructionPlan,
+                    buildCanvasAgentLocalInstructionPlan,
+                },
+                runtimeSource: {
+                    uid,
+                    waitNextFrame,
+                },
+                workflowSource: {
+                    runCanvasAgentTextToImage,
+                    runCanvasAgentImageEdit,
+                    runCanvasAgentTextToVideo,
+                    runCanvasAgentImageToVideo,
+                    runCanvasAgentVideoReferenceToVideo,
+                    runCanvasAgentVideoEdit,
+                    runCanvasAgentAudioToVideo,
+                    runCanvasAgentTextToAudio,
+                    runCanvasAgentAudioEdit,
+                    runCanvasAgentTextRefine,
+                },
+                uiSource: {
+                    clearCanvasAgentRunInfo,
+                    setCanvasAgentRunInfo,
+                    resetCanvasAgentRunInfo,
+                    setCanvasAgentMessage,
+                    showToast,
+                },
             }
         })
         : {};
     const NODE_MENU_CONTEXT_SOURCE = {
-            nodeMenusSource: {
+        nodeMenusSource: {
+            languageSource: {
                 t,
+            },
+            utilitySource: {
+                localizeCanvasLabel,
+            },
+            catalogSource: {
                 getPresetCatalog,
                 resolvePresetCatalogEntry,
-                localizeCanvasLabel,
-                showToast,
+            },
+            nodeSource: {
                 addPresetNode,
                 addMediaBrowserNode,
                 addBatchAnyNode,
-                importSelectedTransferAt,
-                openImageFilePicker,
-                openPresetPalette,
                 addManualOutputNode,
                 addStyleSelectorNode,
                 addTextNode,
@@ -6196,10 +8167,23 @@
                 addQwenTtsNode,
                 addNoteNode,
                 addAreaGroup,
+            },
+            importSource: {
+                importSelectedTransferAt,
+                openImageFilePicker,
+            },
+            paletteSource: {
+                openPresetPalette,
+            },
+            viewSource: {
                 centerCanvas,
                 fitAll,
-                clearCanvasWithConfirm
-            }
+                clearCanvasWithConfirm,
+            },
+            uiSource: {
+                showToast,
+            },
+        }
     };
     const CANVAS_NODE_MENU_CONTEXT = typeof WORKBENCH_CANVAS_NODE_MENU_CONTEXT.createCanvasWorkbenchNodeMenuContext === 'function'
         ? WORKBENCH_CANVAS_NODE_MENU_CONTEXT.createCanvasWorkbenchNodeMenuContext({
@@ -11091,7 +13075,12 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function isMiniMaxH3PresetNode(node) {
         if (!node || node.type !== 'preset') return false;
+        const schema = getPresetSchema(node);
+        const hidden = Array.isArray(schema.disvisible) ? schema.disvisible : String(schema.disvisible || '').split(',').map((item) => item.trim());
+        if (hidden.includes('minimax_h3_storyboard_control')) return false;
+        if (String(node.runtime?.engine_type || schema.engine_type || '').toLowerCase() === 'image') return false;
         const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
+        if (/minimax_h3_(?:r2i|upscale|region)(?:_|$)/.test(taskMethod)) return false;
         if (taskMethod.includes('minimax_h3')) return true;
         const text = [
             node.title,
@@ -11222,17 +13211,22 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     function h3StoryboardModeForPreset(node) {
         const inventory = h3StoryboardInventoryForPreset(node);
         const target = canvasAgentPromptTargetFromNode(node, 'video');
+        const modeHint = target?.prompt_compiler
+            || getPresetThemeInfo(node).task_method
+            || node.runtime?.task_method
+            || node.preset?.name
+            || '';
         if (window.SimpAIH3StoryboardEditor?.normalizeMode) {
-            return window.SimpAIH3StoryboardEditor.normalizeMode(target?.prompt_compiler || '', { inventory });
+            return window.SimpAIH3StoryboardEditor.normalizeMode(modeHint, { inventory });
         }
-        const compiler = typeof target?.prompt_compiler === 'string'
-            ? target.prompt_compiler
-            : JSON.stringify(target?.prompt_compiler || {});
+        const compiler = typeof modeHint === 'string' ? modeHint : JSON.stringify(modeHint);
         const compact = String(compiler || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (compact.includes('ref2va') || compact.includes('reference')) return 'Ref2VA';
-        if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
+        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v') || compact.includes('r2c') || compact.includes('minimaxh3avatar')) return 'Ref2VA';
+        if (compact.includes('fl2va') || compact.includes('firstlast')) return 'FL2VA';
         if (compact.includes('l2va') || compact.includes('lastframe')) return 'L2VA';
+        if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
         if (compact.includes('i2va')) return 'I2VA';
+        if (compact.includes('i2v')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
         return 'T2VA';
     }
 
@@ -20199,19 +22193,42 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     const PROJECT_MANAGER_CONTEXT_SOURCE = {
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml,
+            formatBytes
+        },
+        domSource: {
+            document
+        },
+        browserSource: {
+            prompt: (...args) => window.prompt(...args)
+        },
+        projectSource: {
             getProject: () => project,
             getProjectId: () => PROJECT_ID,
-            closeContextMenu,
-            detectWorkbenchTheme,
-            deleteProject: sendCanvasProjectDeleteRequest,
-            formatBytes,
             getCurrentProjectId: () => project.id || PROJECT_ID,
             handleProjectDeleted,
-            listProjects: sendCanvasProjectListRequest,
             openProjectJsonPicker,
             saveCurrentProject: () => saveProject(false, { persist: true, backupExisting: true }),
-            showToast,
             switchProjectById
+        },
+        requestSource: {
+            deleteProject: sendCanvasProjectDeleteRequest,
+            listProjects: sendCanvasProjectListRequest
+        },
+        viewSource: {
+            closeContextMenu,
+            detectWorkbenchTheme
+        },
+        uiSource: {
+            showToast
+        },
+        timeSource: {
+            nowIso
+        }
     };
 
     const CANVAS_PROJECT_MANAGER_CONTEXT = typeof WORKBENCH_CANVAS_PROJECT_MANAGER_CONTEXT.createCanvasWorkbenchProjectManagerContext === 'function'

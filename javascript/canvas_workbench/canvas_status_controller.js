@@ -2,16 +2,12 @@
     'use strict';
 
     function createCanvasStatusController(context) {
-        const scope = context || {};
-        const sourceObject = (name) => {
-            const value = scope[name];
-            return value && typeof value === 'object' ? value : {};
-        };
-        const languageSource = sourceObject('languageSource');
-        const domSource = sourceObject('domSource');
-        const projectSource = sourceObject('projectSource');
-        const storageSource = sourceObject('storageSource');
-        const uiSource = sourceObject('uiSource');
+        const scope = context?.statusSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const domSource = scope.domSource || {};
+        const projectSource = scope.projectSource || {};
+        const storageSource = scope.storageSource || {};
+        const uiSource = scope.uiSource || {};
         const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args)
             : fallback;

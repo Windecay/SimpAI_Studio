@@ -2,44 +2,52 @@
     'use strict';
 
     function createCanvasAgentReferencesController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-
-        function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        }
-
-        const maxImageReferences = () => Number(call('getMaxImageReferences', 9) || 9);
+        const scope = context?.referencesSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const capacitySource = scope.capacitySource || {};
+        const stateSource = scope.stateSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const assetSource = scope.assetSource || {};
+        const targetSource = scope.targetSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const uiSource = scope.uiSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const maxImageReferences = () => Number(call(capacitySource, 'getMaxImageReferences', 9) || 9);
         const maxExtraImageReferences = () => Number(call(
+            capacitySource,
             'getMaxExtraImageReferences',
             Math.max(0, maxImageReferences() - 1)
         ) || Math.max(0, maxImageReferences() - 1));
-        const maxVideoReferences = () => Number(call('getMaxVideoReferences', 3) || 3);
-        const maxAudioReferences = () => Number(call('getMaxAudioReferences', 3) || 3);
-        const maxTextReferences = () => Number(call('getMaxTextReferences', 4) || 4);
-        const serializeAssetSourceForRun = (...args) => call('serializeAssetSourceForRun', null, ...args);
-
-        function getAgentState() {
-            return call('getAgentState', {}) || {};
-        }
+        const maxVideoReferences = () => Number(call(capacitySource, 'getMaxVideoReferences', 3) || 3);
+        const maxAudioReferences = () => Number(call(capacitySource, 'getMaxAudioReferences', 3) || 3);
+        const maxTextReferences = () => Number(call(capacitySource, 'getMaxTextReferences', 4) || 4);
+        const getAgentState = (...args) => call(stateSource, 'getAgentState', {}, ...args) || {};
+        const getNode = (...args) => call(nodeSource, 'getNode', null, ...args);
+        const getCanvasAgentReferenceAsset = (...args) => call(assetSource, 'getCanvasAgentReferenceAsset', null, ...args);
+        const getCanvasAgentReferenceKind = (...args) => call(assetSource, 'getCanvasAgentReferenceKind', '', ...args);
+        const getReferenceAsset = getCanvasAgentReferenceAsset;
+        const getReferenceKind = getCanvasAgentReferenceKind;
+        const serializeAssetSourceForRun = (...args) => call(assetSource, 'serializeAssetSourceForRun', null, ...args);
+        const getNodeTextOutput = (...args) => call(nodeSource, 'getNodeTextOutput', '', ...args);
+        const getCanvasAgentShortNodeLabel = (...args) => call(nodeSource, 'canvasAgentShortNodeLabel', '', ...args);
+        const assetDisplaySrc = (...args) => call(assetSource, 'assetDisplaySrc', '', ...args);
+        const isCanvasAgentMediaReferenceTarget = (...args) => !!call(targetSource, 'isCanvasAgentMediaReferenceTarget', false, ...args);
+        const getCanvasAgentTargetMediaKind = (...args) => call(targetSource, 'getCanvasAgentTargetMediaKind', '', ...args);
+        const getCanvasAgentTargetNode = (...args) => call(targetSource, 'getCanvasAgentTargetNode', null, ...args);
+        const getSelectedNodeIdList = (...args) => call(selectionSource, 'getSelectedNodeIdList', [], ...args) || [];
+        const setCanvasAgentMessage = (...args) => call(stateSource, 'setCanvasAgentMessage', null, ...args);
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
+        const renderCanvasAgentPanel = (...args) => call(uiSource, 'renderCanvasAgentPanel', null, ...args);
 
         function getReferences() {
             const state = getAgentState();
             if (!Array.isArray(state.references)) state.references = [];
             return state.references;
-        }
-
-        function getNode(nodeId) {
-            return call('getNode', null, nodeId);
-        }
-
-        function getReferenceAsset(node) {
-            return call('getCanvasAgentReferenceAsset', null, node);
-        }
-
-        function getReferenceKind(node) {
-            return call('getCanvasAgentReferenceKind', '', node);
         }
 
         function getCanvasAgentVlmReferenceSources(options) {
@@ -69,7 +77,7 @@
             if (opts.includeCanvasAgentReferences !== false) {
                 refs.forEach((ref) => addNode(canvasAgentReferenceNode(ref), ref));
             }
-            if (opts.fallbackTarget && call('isCanvasAgentMediaReferenceTarget', false, opts.fallbackTarget)) {
+            if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) {
                 addNode(opts.fallbackTarget);
             }
             const defaultLimit = opts.imagesOnly
@@ -83,7 +91,7 @@
                 getReferenceKind(entry?.node),
             )));
             const required = [];
-            if (opts.fallbackTarget && call('isCanvasAgentMediaReferenceTarget', false, opts.fallbackTarget)) {
+            if (opts.fallbackTarget && isCanvasAgentMediaReferenceTarget(opts.fallbackTarget)) {
                 required.push(opts.fallbackTarget);
             }
             nodes.forEach((entry) => {
@@ -169,7 +177,7 @@
             const next = [];
             getReferences().forEach((ref) => {
                 const node = getNode(ref?.nodeId);
-                if (!node || !call('isCanvasAgentMediaReferenceTarget', false, node)) return;
+                if (!node || !isCanvasAgentMediaReferenceTarget(node)) return;
                 const kind = getReferenceKind(node);
                 if (!kind) return;
                 const key = canvasAgentReferenceKey(node, kind);
@@ -180,7 +188,7 @@
                     key,
                     kind,
                     nodeId: node.id,
-                    label: ref.label || call('canvasAgentShortNodeLabel', node.id || '', node),
+                    label: ref.label || getCanvasAgentShortNodeLabel(node),
                     role: ref.role || (kind === 'text' ? 'prompt' : 'reference')
                 }));
             });
@@ -241,8 +249,8 @@
             const kind = getReferenceKind(node);
             if (!kind) return null;
             const asset = getReferenceAsset(node);
-            const label = call('canvasAgentShortNodeLabel', node?.id || '', node);
-            const textValue = kind === 'text' ? String(call('getNodeTextOutput', '', node) || '').trim() : '';
+            const label = getCanvasAgentShortNodeLabel(node);
+            const textValue = kind === 'text' ? String(getNodeTextOutput(node) || '').trim() : '';
             const meta = kind === 'text' ? {
                 chars: textValue.length,
                 excerpt: textValue.slice(0, 360)
@@ -262,15 +270,15 @@
                 kind,
                 role: role || (kind === 'text' ? 'prompt' : 'reference'),
                 label,
-                thumb: call('assetDisplaySrc', '', asset) || asset?.thumb || '',
+                thumb: assetDisplaySrc(asset) || asset?.thumb || '',
                 meta
             };
         }
 
         function addCanvasAgentReferenceFromNode(node, options) {
             const opts = options || {};
-            if (!call('isCanvasAgentMediaReferenceTarget', false, node)) {
-                if (!opts.silent) call('showToast', null, t('Select an image, result, video, audio, or Text node as reference.', '请选择图片、结果、视频、音频或 Text 节点作为引用。'));
+            if (!isCanvasAgentMediaReferenceTarget(node)) {
+                if (!opts.silent) showToast(t('Select an image, result, video, audio, or Text node as reference.', '请选择图片、结果、视频、音频或 Text 节点作为引用。'));
                 return false;
             }
             const kind = getReferenceKind(node);
@@ -278,13 +286,13 @@
             const key = canvasAgentReferenceKey(node, kind);
             const state = getAgentState();
             if (state.references.some(ref => ref.key === key)) {
-                if (!opts.silent) call('showToast', null, t('Reference is already added.', '该引用已添加。'));
+                if (!opts.silent) showToast(t('Reference is already added.', '该引用已添加。'));
                 return false;
             }
             let role = opts.role || '';
             if (kind === 'image') {
                 if (counts.images >= maxImageReferences()) {
-                    if (!opts.silent) call('showToast', null, t(
+                    if (!opts.silent) showToast(t(
                         'Agent references support at most {count} images.',
                         'Agent 引用最多支持 {count} 张图片。'
                     ).replace('{count}', maxImageReferences()));
@@ -292,7 +300,7 @@
                 }
                 role = role || (counts.hasPrimaryImage ? 'reference' : 'primary');
                 if (role !== 'primary' && counts.imageReferences >= maxExtraImageReferences()) {
-                    if (!opts.silent) call('showToast', null, t(
+                    if (!opts.silent) showToast(t(
                         'Only {count} extra image references are supported.',
                         '额外图片参考最多 {count} 张。'
                     ).replace('{count}', maxExtraImageReferences()));
@@ -300,7 +308,7 @@
                 }
             } else if (kind === 'video') {
                 if (counts.videos >= maxVideoReferences()) {
-                    if (!opts.silent) call('showToast', null, t(
+                    if (!opts.silent) showToast(t(
                         'Only {count} video references are supported.',
                         '最多支持 {count} 个视频引用。'
                     ).replace('{count}', maxVideoReferences()));
@@ -309,7 +317,7 @@
                 role = 'reference';
             } else if (kind === 'audio') {
                 if (counts.audio >= maxAudioReferences()) {
-                    if (!opts.silent) call('showToast', null, t(
+                    if (!opts.silent) showToast(t(
                         'Only {count} audio references are supported.',
                         '最多支持 {count} 个音频引用。'
                     ).replace('{count}', maxAudioReferences()));
@@ -318,7 +326,7 @@
                 role = 'audio';
             } else if (kind === 'text') {
                 if (counts.texts >= maxTextReferences()) {
-                    if (!opts.silent) call('showToast', null, t('Too many Text references.', 'Text 引用过多。'));
+                    if (!opts.silent) showToast(t('Too many Text references.', 'Text 引用过多。'));
                     return false;
                 }
                 role = 'prompt';
@@ -328,25 +336,25 @@
             state.references.push(ref);
             normalizeCanvasAgentReferences();
             if (!opts.silent) {
-                call('setCanvasAgentMessage', null, t('Reference added: {label}', '已添加引用：{label}').replace('{label}', ref.label));
-                call('renderCanvasAgentPanel', null);
+                setCanvasAgentMessage(t('Reference added: {label}', '已添加引用：{label}').replace('{label}', ref.label));
+                renderCanvasAgentPanel();
             }
             return true;
         }
 
         function addSelectedCanvasAgentReferences() {
-            const selectedIds = call('getSelectedNodeIdList', [], []);
+            const selectedIds = getSelectedNodeIdList();
             const nodes = (Array.isArray(selectedIds) ? selectedIds : []).map(id => getNode(id)).filter(Boolean);
-            const target = call('getCanvasAgentTargetNode', null);
+            const target = getCanvasAgentTargetNode();
             const list = nodes.length ? nodes : [target].filter(Boolean);
             let added = 0;
             list.forEach((node) => {
                 if (addCanvasAgentReferenceFromNode(node, { silent: true })) added += 1;
             });
-            if (!added && !list.length) call('showToast', null, t('No selected reference node.', '当前没有选中的引用节点。'));
-            else if (!added) call('showToast', null, t('No new references were added. They may already be present or over the limit.', '没有添加新的引用，可能已存在或已达到上限。'));
-            else if (added) call('setCanvasAgentMessage', null, t('Added {count} reference(s).', '已添加 {count} 个引用。').replace('{count}', added));
-            call('renderCanvasAgentPanel', null);
+            if (!added && !list.length) showToast(t('No selected reference node.', '当前没有选中的引用节点。'));
+            else if (!added) showToast(t('No new references were added. They may already be present or over the limit.', '没有添加新的引用，可能已存在或已达到上限。'));
+            else if (added) setCanvasAgentMessage(t('Added {count} reference(s).', '已添加 {count} 个引用。').replace('{count}', added));
+            renderCanvasAgentPanel();
         }
 
         function removeCanvasAgentReference(index) {
@@ -356,7 +364,7 @@
             if (!Number.isFinite(idx) || idx < 0 || idx >= refs.length) return;
             refs.splice(idx, 1);
             normalizeCanvasAgentReferences();
-            call('renderCanvasAgentPanel', null);
+            renderCanvasAgentPanel();
         }
 
         function promoteCanvasAgentReference(index) {
@@ -368,7 +376,7 @@
             refs.forEach(item => {
                 if (item.kind === 'image') item.role = item === ref ? 'primary' : 'reference';
             });
-            call('renderCanvasAgentPanel', null);
+            renderCanvasAgentPanel();
         }
 
         function canvasAgentReferenceNode(ref) {
@@ -390,11 +398,11 @@
             const cleanKind = String(kind || '').trim().toLowerCase();
             if (!cleanKind) return null;
             const explicitNode = getNode(opts.targetNodeId || '');
-            if (explicitNode && call('getCanvasAgentTargetMediaKind', '', explicitNode) === cleanKind) return explicitNode;
+            if (explicitNode && getCanvasAgentTargetMediaKind(explicitNode) === cleanKind) return explicitNode;
             const refNode = canvasAgentReferenceNode(getCanvasAgentPrimaryReferenceByKind(cleanKind));
-            if (refNode && call('getCanvasAgentTargetMediaKind', '', refNode) === cleanKind) return refNode;
-            const target = call('getCanvasAgentTargetNode', null);
-            return call('getCanvasAgentTargetMediaKind', '', target) === cleanKind ? target : null;
+            if (refNode && getCanvasAgentTargetMediaKind(refNode) === cleanKind) return refNode;
+            const target = getCanvasAgentTargetNode();
+            return getCanvasAgentTargetMediaKind(target) === cleanKind ? target : null;
         }
 
         function getCanvasAgentExtraImageReferences() {
@@ -414,7 +422,7 @@
             const grouped = { image: [], video: [], audio: [] };
             const seen = new Set();
             const add = (kind, node) => {
-                if (!grouped[kind] || !node || call('getCanvasAgentTargetMediaKind', '', node) !== kind) return;
+                if (!grouped[kind] || !node || getCanvasAgentTargetMediaKind(node) !== kind) return;
                 const key = canvasAgentReferenceKey(node, kind);
                 if (!key || seen.has(key) || grouped[kind].length >= canvasAgentMediaReferenceLimit(kind)) return;
                 seen.add(key);

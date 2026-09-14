@@ -649,6 +649,7 @@ def _plan_upscaler_tiles(
     tile_frames=None,
     tile_overlap=None,
     tile_temporal_overlap=None,
+    conservative_3d=False,
 ):
     source_shape = tuple(video_latent.shape)
     _, _, frames, source_h, source_w = map(int, source_shape)
@@ -664,6 +665,22 @@ def _plan_upscaler_tiles(
     )
     requested_spatial = bool(tile_width or tile_height)
     requested_temporal = bool(tile_frames)
+    if (
+        conservative_3d
+        and variant == "3d"
+        and frames > 64
+        and not (requested_spatial or requested_temporal)
+    ):
+        # Long 3D convolutions can exceed the activation-only memory estimate.
+        tile_width = max(2, source_w // 2)
+        tile_height = max(2, source_h // 2)
+        tile_frames = max(1, frames // 2)
+        requested_spatial = requested_temporal = True
+        LOG.info(
+            "H3 learned latent upscaler: proactive long-video tiling "
+            "for limited GPU memory, requested core=%dx%dx%d",
+            tile_width, tile_height, tile_frames,
+        )
     force_tiling = requested_spatial or requested_temporal
     full_plan = _build_tile_plan(
         source_shape,
@@ -1118,6 +1135,7 @@ def upscale_h3_video_latent(
             precision,
             variant,
             available_memory=free_memory,
+            conservative_3d=auto_device and free_memory <= 16 * 1024**3,
             tile_width=tile_width,
             tile_height=tile_height,
             tile_frames=tile_frames,

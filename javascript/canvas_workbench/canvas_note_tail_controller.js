@@ -2,38 +2,53 @@
     'use strict';
 
     function createCanvasNoteTailController(context) {
-        const scope = context || {};
-        const getProject = () => typeof scope.getProject === 'function'
-            ? (scope.getProject() || {})
-            : {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.noteTailSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const geometrySource = scope.geometrySource || {};
+        const languageSource = scope.languageSource || {};
+        const uiSource = scope.uiSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const renderSource = scope.renderSource || {};
+        const historySource = scope.historySource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const projectCall = (name, fallback, ...args) => sourceCall(projectSource, name, fallback, ...args);
+        const getProject = () => projectCall('getProject', {}) || {};
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' ? !!scope.isNodeLocked(node) : false;
-        const ensureNoteTailTarget = (node) => typeof scope.ensureNoteTailTarget === 'function'
-            ? scope.ensureNoteTailTarget(node)
-            : null;
-        const snapCanvasCoord = (value) => typeof scope.snapCanvasCoord === 'function'
-            ? scope.snapCanvasCoord(value)
-            : value;
+        const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);
+        const geometryCall = (name, fallback, ...args) => sourceCall(geometrySource, name, fallback, ...args);
+        const languageCall = (name, fallback, ...args) => sourceCall(languageSource, name, fallback, ...args);
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
+        const historyCall = (name, fallback, ...args) => sourceCall(historySource, name, fallback, ...args);
+        const persistenceCall = (name, fallback, ...args) => sourceCall(persistenceSource, name, fallback, ...args);
+        const getNode = (id) => nodeCall('getNode', null, id);
+        const isNodeLocked = (node) => !!nodeCall('isNodeLocked', false, node);
+        const ensureNoteTailTarget = (node) => nodeCall('ensureNoteTailTarget', null, node);
+        const snapCanvasCoord = (value) => geometryCall('snapCanvasCoord', value, value);
         const buildNoteStatePatch = (node, options) => {
-            const patch = call('buildNoteStatePatch', node, options || {});
+            const patch = geometryCall('buildNoteStatePatch', {}, node, options || {});
             return patch && typeof patch === 'object' ? patch : {};
         };
-        const t = typeof scope.t === 'function' ? scope.t : (en) => en;
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : (en) => en;
         let dragState = null;
 
         function startNoteTailDrag(node, evt) {
             if (!node || node.type !== 'note' || !evt) return;
             if (isNodeLocked(node)) {
-                call('showToast', t('Locked note pointer cannot be moved.', '锁定的提示贴不能移动指引点。'));
+                uiCall('showToast', undefined, t('Locked note pointer cannot be moved.', '锁定的提示贴不能移动指引点。'));
                 return;
             }
             const target = ensureNoteTailTarget(node);
             if (!target) return;
-            call('selectNodeForTailDrag', node.id);
+            selectionCall('selectNodeForTailDrag', undefined, node.id);
             dragState = {
                 pointerId: evt.pointerId,
                 nodeId: node.id,
@@ -43,9 +58,9 @@
                 startY: Number(target.y || 0),
                 historyPushed: false
             };
-            call('updateSelectionDomClasses');
-            call('renderEdges');
-            call('renderInspector');
+            selectionCall('updateSelectionDomClasses', undefined);
+            renderCall('renderEdges', undefined);
+            renderCall('renderInspector', undefined);
             const doc = getDocument();
             doc?.addEventListener('pointermove', onNoteTailDragMove, true);
             doc?.addEventListener('pointerup', stopNoteTailDrag, true);
@@ -62,7 +77,7 @@
             const dx = (evt.clientX - dragState.startClientX) / zoom;
             const dy = (evt.clientY - dragState.startClientY) / zoom;
             if (!dragState.historyPushed && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
-                call('pushHistory', 'Move tip note pointer');
+                historyCall('pushHistory', undefined, 'Move tip note pointer');
                 dragState.historyPushed = true;
             }
             const nextTarget = {
@@ -77,7 +92,7 @@
                 tailPatch: { enabled: true },
                 tailTargetPatch: nextTarget
             }));
-            call('renderEdges');
+            renderCall('renderEdges', undefined);
         }
 
         function stopNoteTailDrag(evt) {
@@ -89,8 +104,8 @@
             doc?.removeEventListener('pointermove', onNoteTailDragMove, true);
             doc?.removeEventListener('pointerup', stopNoteTailDrag, true);
             doc?.removeEventListener('pointercancel', stopNoteTailDrag, true);
-            call('scheduleSave');
-            if (call('getSelectedNodeId') === nodeId) call('renderInspector');
+            persistenceCall('scheduleSave', undefined);
+            if (selectionCall('getSelectedNodeId', null) === nodeId) renderCall('renderInspector', undefined);
         }
 
         return {

@@ -2,27 +2,52 @@
     'use strict';
 
     function createCanvasAgentPromptRewriteController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
-
-        function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        }
-
-        const getPromptRewriteTimeoutMs = () => Math.max(5000, Number(call('getPromptRewriteTimeoutMs', 25000) || 25000));
+        const scope = context?.promptRewriteSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const utilitySource = scope.utilitySource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const projectSource = scope.projectSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const targetSource = scope.targetSource || {};
+        const promptSource = scope.promptSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const vlmSource = scope.vlmSource || {};
+        const danbooruSource = scope.danbooruSource || {};
+        const uiSource = scope.uiSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
+        const runtimeUiLang = (...args) => call(languageSource, 'runtimeUiLang', 'cn', ...args);
+        const getPromptRewriteTimeoutMs = () => Math.max(5000, Number(call(runtimeSource, 'getPromptRewriteTimeoutMs', 25000) || 25000));
+        const getCanvasAgentRewriteModel = (...args) => call(vlmSource, 'getCanvasAgentRewriteModel', '', ...args);
+        const getCanvasAgentCustomRuntimeParams = (...args) => call(vlmSource, 'getCanvasAgentCustomRuntimeParams', {}, ...args) || {};
+        const canvasAgentVlmAgentContextPayload = (...args) => call(vlmSource, 'canvasAgentVlmAgentContextPayload', {}, ...args) || {};
+        const sendCanvasVlmRunRequest = (...args) => call(vlmSource, 'sendCanvasVlmRunRequest', null, ...args);
+        const getCanvasAgentSettings = (...args) => call(settingsSource, 'getCanvasAgentSettings', {}, ...args) || {};
+        const isCanvasAgentImageTarget = (...args) => !!call(targetSource, 'isCanvasAgentImageTarget', false, ...args);
+        const canvasAgentPromptTargetFromPurpose = (...args) => call(targetSource, 'canvasAgentPromptTargetFromPurpose', {}, ...args) || {};
+        const canvasAgentPromptTargetNeedsDanbooru = (...args) => !!call(targetSource, 'canvasAgentPromptTargetNeedsDanbooru', false, ...args);
+        const canvasAgentPromptLooksDanbooru = (...args) => !!call(targetSource, 'canvasAgentPromptLooksDanbooru', false, ...args);
+        const canvasAgentPromptNeedsTargetRewrite = (...args) => !!call(targetSource, 'canvasAgentPromptNeedsTargetRewrite', false, ...args);
+        const canvasAgentPromptTargetContextLine = (...args) => call(targetSource, 'canvasAgentPromptTargetContextLine', '', ...args);
+        const canvasAgentPromptTargetInstruction = (...args) => call(targetSource, 'canvasAgentPromptTargetInstruction', '', ...args);
+        const canvasAgentPromptDefaultsForPurpose = (...args) => call(promptSource, 'canvasAgentPromptDefaultsForPurpose', {}, ...args) || {};
+        const getCanvasAgentVlmReferenceSources = (...args) => call(referenceSource, 'getCanvasAgentVlmReferenceSources', [], ...args) || [];
+        const canvasAgentReferenceSummaryText = (...args) => call(referenceSource, 'canvasAgentReferenceSummaryText', '', ...args);
+        const canvasAgentDanbooruFallbackPrompt = (...args) => call(danbooruSource, 'canvasAgentDanbooruFallbackPrompt', '', ...args);
+        const apiDanbooruTagLookup = (...args) => call(danbooruSource, 'apiDanbooruTagLookup', null, ...args);
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
 
         function getProject() {
-            return call('getProject', {}) || {};
-        }
-
-        function getSettings() {
-            return call('getCanvasAgentSettings', {}) || {};
+            return call(projectSource, 'getProject', {}) || {};
         }
 
         function getDefaultProjectId() {
-            return String(call('getDefaultProjectId', 'default') || 'default').trim() || 'default';
+            return String(call(projectSource, 'getDefaultProjectId', 'default') || 'default').trim() || 'default';
         }
 
         function projectId() {
@@ -54,8 +79,8 @@
                 return 'seamless outpainting, natural image-border expansion, preserve the original subject, preserve lighting and perspective, match camera angle and composition, match style, color palette, texture, and depth, coherent background continuation, clean seamless edges';
             }
             if ((key.includes('flux') || key.includes('t5') || key.endsWith('_en')) && hasChinese) return '';
-            if (call('canvasAgentPromptTargetNeedsDanbooru', false, target)) {
-                return call('canvasAgentDanbooruFallbackPrompt', '', text, target, {}, [])
+            if (canvasAgentPromptTargetNeedsDanbooru(target)) {
+                return canvasAgentDanbooruFallbackPrompt(text, target, {}, [])
                     || (text.includes(',') ? text : `${text}, detailed, high quality, atmospheric lighting, dynamic composition`);
             }
             if (hasChinese) {
@@ -68,7 +93,7 @@
 
         function canvasDanbooruRuntimeStatusMessage(status) {
             if (!status || typeof status !== 'object') return '';
-            const lang = String(call('runtimeUiLang', 'en') || '').toLowerCase();
+            const lang = String(runtimeUiLang() || 'en').toLowerCase();
             const message = String(status.message || '').trim();
             const messageCn = String(status.message_cn || status.messageCn || '').trim();
             return lang === 'en' || lang.startsWith('en-') ? (message || messageCn) : (messageCn || message);
@@ -86,19 +111,19 @@
             const key = `${state}|${level}|${message}`;
             if (danbooruRuntimeNoticeKey === key) return;
             danbooruRuntimeNoticeKey = key;
-            call('showToast', null, message, level === 'warning' ? 5200 : 3600);
+            showToast(message, level === 'warning' ? 5200 : 3600);
         }
 
         async function canvasAgentDanbooruFallbackRewrite(prompt, target, purpose, options) {
             if (String(target?.key || '') !== 'sdxl_danbooru') return '';
             const opts = Object.assign({}, options || {}, { purpose });
             let matches = [];
-            if (typeof scope.apiDanbooruTagLookup === 'function') {
+            if (typeof danbooruSource.apiDanbooruTagLookup === 'function') {
                 try {
-                    const defaults = opts.presetDefaults || call('canvasAgentPromptDefaultsForPurpose', {}, purpose, opts);
-                    const response = await scope.apiDanbooruTagLookup({
+                    const defaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, opts);
+                    const response = await apiDanbooruTagLookup({
                         query: prompt,
-                        model_hint: call('canvasAgentPromptTargetContextLine', '', target),
+                        model_hint: canvasAgentPromptTargetContextLine(target),
                         preset_defaults: defaults,
                         limit: 20
                     });
@@ -108,20 +133,20 @@
                     console.warn('[SimpAI Canvas Agent] Danbooru fallback lookup failed', err);
                 }
             }
-            const fallback = call('canvasAgentDanbooruFallbackPrompt', '', prompt, target, opts, matches);
-            return call('canvasAgentPromptLooksDanbooru', false, fallback) ? fallback : '';
+            const fallback = canvasAgentDanbooruFallbackPrompt(prompt, target, opts, matches);
+            return canvasAgentPromptLooksDanbooru(fallback) ? fallback : '';
         }
 
         async function ensureCanvasAgentPromptMatchesTarget(prompt, target, purpose, options) {
             const current = String(prompt || '').trim();
-            if (!current || !call('canvasAgentPromptNeedsTargetRewrite', false, current, target)) {
+            if (!current || !canvasAgentPromptNeedsTargetRewrite(current, target)) {
                 return { ok: true, prompt: current, source: options?.promptSource || '' };
             }
             try {
                 const rewritten = await rewriteCanvasAgentPromptWithLlm(current, purpose, options || {});
                 if (rewritten?.ok && rewritten.prompt) {
                     const candidate = String(rewritten.prompt || '').trim();
-                    if (!call('canvasAgentPromptNeedsTargetRewrite', false, candidate, target)) {
+                    if (!canvasAgentPromptNeedsTargetRewrite(candidate, target)) {
                         return { ok: true, prompt: candidate, source: 'target_rewrite' };
                     }
                 }
@@ -136,10 +161,10 @@
         }
 
         async function canvasAgentDanbooruLookupText(prompt, target, purpose, options) {
-            if (!call('canvasAgentPromptTargetNeedsDanbooru', false, target)) return '';
-            if (typeof scope.apiDanbooruTagLookup !== 'function') return '';
+            if (!canvasAgentPromptTargetNeedsDanbooru(target)) return '';
+            if (typeof danbooruSource.apiDanbooruTagLookup !== 'function') return '';
             const opts = options || {};
-            const defaults = opts.presetDefaults || call('canvasAgentPromptDefaultsForPurpose', {}, purpose, opts);
+            const defaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, opts);
             const modelHint = [
                 target?.name || '',
                 target?.backend_engine || '',
@@ -147,7 +172,7 @@
                 Array.isArray(defaults.styles) ? defaults.styles.join(', ') : ''
             ].filter(Boolean).join(' | ');
             try {
-                const response = await scope.apiDanbooruTagLookup({
+                const response = await apiDanbooruTagLookup({
                     query: prompt,
                     model_hint: modelHint,
                     preset_defaults: defaults,
@@ -162,7 +187,7 @@
         }
 
         async function rewriteCanvasAgentPromptWithLlm(prompt, purpose, options) {
-            const model = call('getCanvasAgentRewriteModel', '', null);
+            const model = getCanvasAgentRewriteModel(null);
             const opts = options || {};
             const isH3StoryboardCell = !!opts.h3StoryboardCell;
             const imageTarget = opts.imageTarget || null;
@@ -171,13 +196,13 @@
             const isVideoPurpose = purposeText.includes('video');
             const isAudioPurpose = purposeText.includes('audio');
             const isOutpaintPurpose = purposeText.includes('outpaint');
-            const visualFallbackTarget = isAudioPurpose && imageTarget && call('isCanvasAgentImageTarget', false, imageTarget)
+            const visualFallbackTarget = isAudioPurpose && imageTarget && isCanvasAgentImageTarget(imageTarget)
                 ? imageTarget
                 : (mediaTarget || imageTarget);
             const referenceImagesOnly = typeof opts.referenceImagesOnly === 'boolean'
                 ? opts.referenceImagesOnly
                 : (isAudioPurpose || (!isVideoPurpose && !isAudioPurpose));
-            const assetSources = call('getCanvasAgentVlmReferenceSources', [], {
+            const assetSources = getCanvasAgentVlmReferenceSources({
                 fallbackTarget: visualFallbackTarget,
                 imagesOnly: referenceImagesOnly,
                 referenceNodes: opts.referenceNodes,
@@ -186,10 +211,10 @@
                 maxSources: opts.maxReferenceSources
             });
             const explicitReferenceSummary = String(opts.referenceSummary || '').trim();
-            const referenceSummary = explicitReferenceSummary || (assetSources.length ? call('canvasAgentReferenceSummaryText', '', null) : '');
+            const referenceSummary = explicitReferenceSummary || (assetSources.length ? canvasAgentReferenceSummaryText(null) : '');
             const motionReferenceToken = String(opts.motionReferenceToken || '').trim();
             const motionTransferInstruction = motionReferenceToken && /<Picture\s+\d+>/i.test(referenceSummary)
-                ? (call('runtimeUiLang', 'cn') === 'en'
+                ? (runtimeUiLang() === 'en'
                     ? `Motion transfer binding: ${motionReferenceToken} is the motion/timing source. The Picture token in each shot defines the visible identity; apply this video's pose, action, timing, and compatible camera movement to that picture-defined subject. Never replace the picture subject with the video's actor and never leave the picture subject in its static pose when the video shows a different action.`
                     : `动作迁移绑定：${motionReferenceToken} 是运动与时序来源。每个 Shot 中的 Picture token 决定画面角色身份；把该视频的姿态、动作、节奏和兼容的镜头运动应用到图片角色。不得用视频人物替换图片角色；视频显示了不同动作时，不得让图片角色继续保持静止输入姿态。`)
                 : '';
@@ -197,8 +222,8 @@
             const isRefine = purposeText.includes('refine');
             const presetHint = normalizePresetName(opts.presetName || opts.plan?.preset || '');
             const basePromptTarget = opts.promptTarget
-                || call('canvasAgentPromptTargetFromPurpose', {}, purpose, Object.assign({}, opts, { presetName: presetHint }));
-            const uiLanguage = call('runtimeUiLang', 'cn');
+                || canvasAgentPromptTargetFromPurpose(purpose, Object.assign({}, opts, { presetName: presetHint }));
+            const uiLanguage = runtimeUiLang();
             const promptTarget = isH3StoryboardCell ? {
                 key: 'qwen_natural',
                 label: 'MiniMax H3 storyboard field',
@@ -214,10 +239,10 @@
                 : JSON.stringify(promptTarget?.prompt_compiler || {});
             const isH3Target = String(promptTarget?.key || '') === 'minimax_h3' || /minimax[_\s-]*h3/i.test(h3CompilerText);
             const isH3ReferenceTarget = isH3Target && /ref2va|reference|r2v/i.test(h3CompilerText);
-            const presetDefaults = opts.presetDefaults || call('canvasAgentPromptDefaultsForPurpose', {}, purpose, Object.assign({}, opts, { presetName: presetHint }));
-            const isDanbooruTarget = call('canvasAgentPromptTargetNeedsDanbooru', false, promptTarget);
+            const presetDefaults = opts.presetDefaults || canvasAgentPromptDefaultsForPurpose(purpose, Object.assign({}, opts, { presetName: presetHint }));
+            const isDanbooruTarget = canvasAgentPromptTargetNeedsDanbooru(promptTarget);
             const danbooruLookupText = isDanbooruTarget
-                ? await call('canvasAgentDanbooruLookupText', '', prompt, promptTarget, purpose, Object.assign({}, opts, { presetName: presetHint, presetDefaults }))
+                ? await canvasAgentDanbooruLookupText(prompt, promptTarget, purpose, Object.assign({}, opts, { presetName: presetHint, presetDefaults }))
                 : '';
             const rewritePrompt = [
                 isH3StoryboardCell
@@ -264,8 +289,8 @@
                     ? 'No source image was attached. Do not invent image-specific facts.'
                     : '',
                 presetHint ? `Target preset hint: ${presetHint}` : '',
-                `Target: ${call('canvasAgentPromptTargetContextLine', '', promptTarget)}`,
-                call('canvasAgentPromptTargetInstruction', '', promptTarget),
+                `Target: ${canvasAgentPromptTargetContextLine(promptTarget)}`,
+                canvasAgentPromptTargetInstruction(promptTarget),
                 !isH3StoryboardCell && !isVideoPurpose && !isAudioPurpose && !isOutpaintPurpose
                     ? 'For natural-language image prompts, write one coherent scene prompt with subject, visible action, setting, composition/camera, lighting, and mood.'
                     : '',
@@ -291,13 +316,13 @@
                 `User request: ${prompt}`
             ].filter(Boolean).join('\n');
             const rewriteRequestId = uid('vlm_rewrite');
-            const response = await call('sendCanvasVlmRunRequest', null, {
+            const response = await sendCanvasVlmRunRequest({
                 project_id: projectId(),
                 node_id: isImageEdit ? 'canvas_agent_prompt_rewrite:image_edit' : 'canvas_agent_prompt_rewrite:text_to_image',
                 asset_sources: assetSources,
                 conversation_id: '',
                 chat_messages: [],
-                agent_context: call('canvasAgentVlmAgentContextPayload', {}, {
+                agent_context: canvasAgentVlmAgentContextPayload({
                     userPrompt: opts.userPrompt || prompt,
                     promptTarget
                 }),
@@ -324,7 +349,7 @@
                     agent_action_hints: false,
                     agent_use_danbooru_lookup: isDanbooruTarget,
                     output_chinese: uiLanguage !== 'en' && (isH3Target || isH3StoryboardCell),
-                    video_frames: getSettings().videoFrames,
+                    video_frames: getCanvasAgentSettings().videoFrames,
                     max_tokens: isH3StoryboardCell ? 256 : (isH3ReferenceTarget ? 1800 : (isH3Target ? 1200 : 384)),
                     temperature: 0.45,
                     top_p: 0.9,
@@ -334,7 +359,7 @@
                     disable_thinking: true,
                     h3_visual_reference_max_side: (isH3Target || isH3StoryboardCell) ? 512 : 0,
                     free_after: false
-                }, model === 'Custom' ? call('getCanvasAgentCustomRuntimeParams', {}, null) : {})
+                }, model === 'Custom' ? getCanvasAgentCustomRuntimeParams(null) : {})
             }, {
                 timeoutMs: getPromptRewriteTimeoutMs(),
                 timeoutError: t('Prompt rewrite timed out. Please run with the current prompt or try again.', '提示词改写超时。请使用当前提示词运行，或稍后重试。')

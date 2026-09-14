@@ -2,9 +2,48 @@
     'use strict';
 
     function createCanvasAgentInstructionPlanner(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.plannerSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const normalizationSource = scope.normalizationSource || {};
+        const targetSource = scope.targetSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const promptSource = scope.promptSource || {};
+        const presetSource = scope.presetSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const projectSource = scope.projectSource || {};
+        const callSources = {
+            normalizePresetName: normalizationSource,
+            normalizeCanvasAgentGenerationOptions: normalizationSource,
+            getCanvasAgentTargetNode: targetSource,
+            getCanvasAgentTargetMediaKind: targetSource,
+            isCanvasAgentImageTarget: targetSource,
+            canvasAgentReferenceCounts: referenceSource,
+            getCanvasAgentMediaReferenceNodes: referenceSource,
+            canvasAgentMediaNodeCounts: referenceSource,
+            canvasAgentVideoTaskForMedia: referenceSource,
+            canvasAgentReferenceSummaryText: referenceSource,
+            canvasAgentPromptMediaIntent: promptSource,
+            canvasAgentPromptTargetContextLine: promptSource,
+            canvasAgentPromptTargetFromEntry: promptSource,
+            canvasAgentPromptTargetFromPurpose: promptSource,
+            findCanvasAgentPresetInstructionOverride: presetSource,
+            getPresetCatalog: presetSource,
+            getCanvasAgentPresetQueue: presetSource,
+            findPresetCatalogEntryByName: presetSource,
+            canvasAgentInstructionAliasPresetNames: presetSource,
+            canvasAgentPromptMentionsPreset: presetSource,
+            canvasAgentReadyPresetEntries: presetSource,
+            canvasAgentPresetMatchTokens: presetSource,
+            canvasAgentPresetAliasTokensForEntry: presetSource,
+            getCanvasAgentSettings: settingsSource,
+            canvasAgentResolutionLabel: settingsSource,
+            getProject: projectSource,
+        };
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
         const normalizePresetName = (...args) => call('normalizePresetName', String(args[0] || '').trim(), ...args);
         const normalizeGenerationOptions = (...args) => call('normalizeCanvasAgentGenerationOptions', {}, ...args) || {};
         const getAgentTargetNode = () => call('getCanvasAgentTargetNode', null);

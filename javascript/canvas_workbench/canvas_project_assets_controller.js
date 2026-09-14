@@ -2,8 +2,37 @@
     'use strict';
 
     function createCanvasProjectAssetsController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.projectAssetsSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const patchSource = scope.patchSource || {};
+        const storageSource = scope.storageSource || {};
+        const assetSource = scope.assetSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const domSource = scope.domSource || {};
+        const renderSource = scope.renderSource || {};
+        const uiSource = scope.uiSource || {};
+        const callbackSources = {
+            getProject: projectSource,
+            setProject: projectSource,
+            getProjectId: projectSource,
+            buildProjectStoragePatch: patchSource,
+            getStorageScope: storageSource,
+            getStorageKey: storageSource,
+            buildProjectStorageInfo: storageSource,
+            assetDisplaySrc: assetSource,
+            sendCanvasListAssetsRequest: assetSource,
+            materializeNodeAssetForStorage: assetSource,
+            saveProjectToBrowserCache: persistenceSource,
+            loadProjectFromBackend: persistenceSource,
+            getRoot: domSource,
+            renderAll: renderSource,
+            warn: uiSource
+        };
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
+        const warn = typeof uiSource.warn === 'function' ? uiSource.warn : console.warn;
         let canvasProjectAssetCatalog = [];
 
         function project() {
@@ -303,7 +332,6 @@
                 }
                 return true;
             } catch (err) {
-                const warn = typeof scope.warn === 'function' ? scope.warn : console.warn;
                 warn('[SimpAI Canvas] asset root refresh failed:', err);
                 return false;
             }
@@ -323,7 +351,6 @@
                 try {
                     await call('materializeNodeAssetForStorage', null, node.id);
                 } catch (err) {
-                    const warn = typeof scope.warn === 'function' ? scope.warn : console.warn;
                     warn('[SimpAI Canvas] asset materialize before save skipped:', err);
                 }
             }

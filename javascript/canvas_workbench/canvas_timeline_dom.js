@@ -2,17 +2,23 @@
     'use strict';
 
     function createCanvasTimelineDomController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getDocument = () => call('getDocument', typeof document !== 'undefined' ? document : null);
-        const cssEscape = (value) => call('cssEscape', String(value || ''), value);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const scope = context?.timelineDomSource || context || {};
+        const documentSource = scope.documentSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const timelineSource = scope.timelineSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getDocument = () => call(documentSource, 'getDocument', typeof document !== 'undefined' ? document : null);
+        const cssEscape = (value) => call(documentSource, 'cssEscape', String(value || ''), value);
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const formatAssetDuration = (value) => call('formatAssetDuration', String(value || 0), value);
+        const formatAssetDuration = (value) => call(mediaSource, 'formatAssetDuration', String(value || 0), value);
 
         function normalizeKeyframes(clip) {
-            const frames = call('timelineNormalizeKeyframes', null, clip);
+            const frames = call(timelineSource, 'timelineNormalizeKeyframes', null, clip);
             if (Array.isArray(frames)) return frames;
             return Array.isArray(clip?.keyframes)
                 ? clip.keyframes.slice().sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
@@ -31,7 +37,7 @@
 
         function timelineTrackClipLayout(node, trackId) {
             const clips = (node?.clips || []).filter(clip => clip.track_id === trackId);
-            const layout = call('timelineBuildTrackClipLayout', null, clips);
+            const layout = call(timelineSource, 'timelineBuildTrackClipLayout', null, clips);
             if (layout) return layout;
             return { rows: 1, map: Object.fromEntries(clips.map(clip => [clip.id, { row: 0, rows: 1 }])) };
         }

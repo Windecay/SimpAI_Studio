@@ -139,6 +139,40 @@
         return true;
     }
 
+    function tilePreview(width, height, budget = 768, automatic = false) {
+        if (!Number.isInteger(budget) || budget < 128 || budget > 1536 || budget % 32) {
+            return { boxes: [], sizes: [], error: 'Tile Budget Exceeded' };
+        }
+        if (!Number.isInteger(width) || !Number.isInteger(height) || Math.min(width, height) < (automatic ? 1 : 2)) {
+            return { boxes: [], sizes: [], error: 'Invalid Tile Source Size' };
+        }
+        let xs, ys;
+        if (automatic) {
+            const axis = length => {
+                const size = Math.min(length, Math.max(32, budget / 2));
+                const step = size * 0.75;
+                const stride = Math.max(1, step % 1 === 0.5
+                    ? Math.floor(step) + Math.floor(step) % 2 : Math.round(step));
+                const positions = [];
+                for (let p = 0; p <= length - size; p += stride) positions.push(p);
+                if (positions.at(-1) !== length - size) positions.push(length - size);
+                return positions.map(p => [p, p + size]);
+            };
+            xs = axis(width); ys = axis(height);
+        } else {
+            const mx = Math.floor(width / 2), my = Math.floor(height / 2);
+            const halo = Math.min(32, Math.floor(Math.min(mx, my) / 4));
+            xs = [[0, mx + halo], [mx - halo, width]];
+            ys = [[0, my + halo], [my - halo, height]];
+        }
+        const boxes = ys.flatMap(([y1, y2]) => xs.map(([x1, x2]) => [x1, y1, x2, y2]));
+        const sizes = boxes.map(([x1, y1, x2, y2]) => [
+            Math.ceil((x2 - x1) * 2 / 32) * 32, Math.ceil((y2 - y1) * 2 / 32) * 32]);
+        const exceeded = automatic ? boxes.length > 64
+            : sizes.some(([w, h]) => w * h > budget * budget || Math.max(w, h) > 1536);
+        return { boxes, sizes, error: exceeded ? 'Tile Budget Exceeded' : '' };
+    }
+
     function create(host, video, options) {
         let stage = options.stage || {};
         let duration = Number.isFinite(video.duration) ? video.duration : 0;
@@ -183,6 +217,15 @@
                 <div class="sai-region-factors" role="radiogroup">
                     ${[1, 2, 3, 4].map(n => `<button type="button" role="radio" data-factor="${n}">${n}x</button>`).join('')}
                 </div></div>
+            <output data-tile-preview aria-live="polite" hidden></output>
+            <div class="sai-face-target" data-face-target hidden>
+                <div class="sai-face-target-tools">
+                    <label><span data-label="Target Face ID"></span><input data-face-id type="number" min="0" max="99" step="1" value="0"></label>
+                    <button type="button" data-face-detect><i class="fa-solid fa-crosshairs" aria-hidden="true"></i></button>
+                    <output data-face-status role="status"></output>
+                </div>
+                <div class="sai-face-target-preview" data-face-preview hidden><img alt=""><div data-face-boxes></div></div>
+            </div>
             <div class="sai-region-legend"><i class="sai-region-core-swatch"></i><span data-label="Rebuild"></span>
                 <i class="sai-region-context-swatch"></i><span data-label="Context"></span></div>
             ${referenceIds.length ? `<div class="sai-region-references">
@@ -199,6 +242,107 @@
         const playhead = host.querySelector('[data-playhead]');
         const field = key => host.querySelector(`[data-field="${key}"]`);
         const previews = {};
+        const facePanel = host.querySelector('[data-face-target]');
+        const faceId = host.querySelector('[data-face-id]');
+        const faceDetect = host.querySelector('[data-face-detect]');
+        const facePreview = host.querySelector('[data-face-preview]');
+        const faceBoxes = host.querySelector('[data-face-boxes]');
+        let faceRequest = '';
+        let facePoll = null;
+        let faceStatus = '';
+        let faceKey = '';
+        function clearFaceRequest() {
+            root.clearInterval(facePoll);
+            facePoll = null;
+            faceRequest = '';
+        }
+        function renderFaceTarget() {
+            const config = stage.__scene_temporal_region_control?.face_target;
+            facePanel.hidden = !config || config.theme !== stage.__scene_theme;
+            const key = `${facePanel.hidden}|${video.currentSrc || video.getAttribute('src') || ''}|${state.start}`;
+            if (key !== faceKey) {
+                faceKey = key;
+                clearFaceRequest();
+                faceStatus = '';
+                facePreview.hidden = true;
+                faceBoxes.replaceChildren();
+            }
+            const target = options.getFaceTarget?.() ?? 0;
+            if (document.activeElement !== faceId) faceId.value = target;
+            faceId.setAttribute('aria-label', t('Target Face ID'));
+            faceDetect.title = t('Detect Target Faces');
+            faceDetect.setAttribute('aria-label', t('Detect Target Faces'));
+            faceDetect.disabled = !duration || Boolean(faceRequest);
+            host.querySelector('[data-face-status]').textContent = t(faceStatus);
+            for (const box of faceBoxes.children) box.setAttribute('aria-pressed', String(Number(box.dataset.faceId) === target));
+        }
+        function selectFace(value) {
+            const id = Math.max(0, Math.min(99, Math.trunc(Number(value) || 0)));
+            faceId.value = id;
+            options.onFaceTarget?.(id);
+            renderFaceTarget();
+        }
+        listen(faceId, 'change', () => selectFace(faceId.value));
+        listen(faceBoxes, 'click', event => {
+            const box = event.target.closest('[data-face-id]');
+            if (box) selectFace(box.dataset.faceId);
+        });
+        listen(faceDetect, 'click', () => {
+            if (!duration) return;
+            const request = document.querySelector('#face_target_request textarea, #face_target_request input');
+            const result = document.querySelector('#face_target_result textarea, #face_target_result input');
+            const trigger = document.querySelector('#face_target_trigger button') || document.getElementById('face_target_trigger');
+            if (!request || !result || !trigger) {
+                clearFaceRequest();
+                faceStatus = 'Face preview controls are unavailable. Restart Studio and refresh the page.';
+                renderFaceTarget();
+                return;
+            }
+            clearFaceRequest();
+            faceRequest = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            faceStatus = 'Detecting Target Faces';
+            const proto = request.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            Object.getOwnPropertyDescriptor(proto, 'value').set.call(request, JSON.stringify({ id: faceRequest, start: state.start }));
+            request.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            request.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            const requestedKey = faceKey;
+            const expires = Date.now() + 65000;
+            facePoll = root.setInterval(() => {
+                if (Date.now() > expires) {
+                    clearFaceRequest();
+                    faceStatus = 'Face preview timed out';
+                    renderFaceTarget();
+                    return;
+                }
+                const result = document.querySelector('#face_target_result textarea, #face_target_result input')?.value;
+                let data;
+                try { data = JSON.parse(result); } catch (_) { return; }
+                if (data.id !== faceRequest || requestedKey !== faceKey) return;
+                clearFaceRequest();
+                faceStatus = data.ok ? (data.faces.length ? '' : 'No Faces at Region Start') : data.error;
+                faceBoxes.replaceChildren();
+                if (data.ok && /^data:image\/jpeg;base64,/.test(data.image)) {
+                    facePreview.querySelector('img').src = data.image;
+                    facePreview.hidden = false;
+                    for (const face of data.faces) {
+                        const [x1, y1, x2, y2] = face.bbox;
+                        const box = document.createElement('button');
+                        box.type = 'button';
+                        box.dataset.faceId = face.id;
+                        box.textContent = face.id;
+                        box.title = `${t('Target Face ID')} ${face.id}`;
+                        box.setAttribute('aria-label', box.title);
+                        Object.assign(box.style, { left: `${x1 / data.width * 100}%`, top: `${y1 / data.height * 100}%`,
+                            width: `${(x2 - x1) / data.width * 100}%`, height: `${(y2 - y1) / data.height * 100}%` });
+                        faceBoxes.append(box);
+                    }
+                }
+                renderFaceTarget();
+            }, 150);
+            // Allow Gradio to receive the request field update before the button event.
+            root.setTimeout(() => { if (faceRequest && requestedKey === faceKey) trigger.click(); }, 0);
+            renderFaceTarget();
+        });
         const referenceSelect = host.querySelector('[data-reference-target]');
         const referenceLabels = new Map();
         const referenceObserver = new MutationObserver(renderReferences);
@@ -342,7 +486,20 @@
         }
         function render() {
             host.dataset.theme = String(stage.__theme || '').includes('light') ? 'light' : 'dark';
+            host.dataset.sceneTheme = stage.__scene_theme || stage.scene_theme || '';
+            host.dataset.defaultSlowdown = stage.__scene_defaults?.[stage.__scene_temporal_region_control?.factor_control] ?? '';
+            const tileConfig = stage.__scene_temporal_region_control?.tile_preview;
+            const tileOutput = host.querySelector('[data-tile-preview]');
+            tileOutput.hidden = !tileConfig || tileConfig.theme !== stage.__scene_theme || !video.videoWidth;
+            if (!tileOutput.hidden) {
+                const values = options.getTileValues?.() || {};
+                const preview = tilePreview(video.videoWidth, video.videoHeight, values.budget, values.automatic);
+                const sizes = [...new Set(preview.sizes.map(([w, h]) => `${w} x ${h}`))].join(', ');
+                const text = `${t('Tile Working Sizes')}: ${preview.boxes.length} ${t('tiles')} | ${sizes}${preview.error ? ` | ${t(preview.error)}` : ''}`;
+                if (tileOutput.textContent !== text) tileOutput.textContent = text;
+            }
             host.querySelectorAll('[data-label]').forEach(el => { el.textContent = t(el.dataset.label); });
+            renderFaceTarget();
             for (const key of ['start', 'end']) {
                 const input = field(key);
                 if (document.activeElement !== input) input.value = state[key];
@@ -539,6 +696,7 @@
                 render();
             },
             destroy() {
+                clearFaceRequest();
                 controller.abort();
                 referenceObserver.disconnect();
                 for (const { container, label } of referenceLabels.values()) {
@@ -568,10 +726,56 @@
     let selection = null;
     let selectionOwner = '';
     let writing = false;
+    let tileValues = {};
+    let faceTarget = null;
     const lifecycle = typeof document !== 'undefined' ? new AbortController() : null;
     function owner(stage) {
         return JSON.stringify([stage.__scene_theme_preset || stage.__preset || '',
-            stage.__scene_theme || '', stage.__scene_theme_revision || 0]);
+            stage.__scene_theme || '', stage.__scene_theme_revision || 0,
+            stage.__scene_defaults?.scene_theme || '']);
+    }
+    function snapshotSceneStage(stage = {}) {
+        const scene = stage.scene_frontend || {};
+        const theme = stage.scene_frontend
+            ? stage.scene_theme || stage.__scene_theme || ''
+            : stage.__scene_theme || stage.scene_theme || '';
+        const config = stage.__scene_temporal_region_control ?? scene.temporal_region_control ?? {};
+        const defaults = { ...stage.__scene_defaults };
+        for (const control of [config.tile_preview?.budget_control, config.tile_preview?.automatic_control, config.face_target?.id_control]) {
+            if (!control) continue;
+            const raw = scene[control.replace(/^scene_/, '')];
+            const value = raw && typeof raw === 'object' ? raw[theme] : raw;
+            if (value !== undefined) defaults[control] = value;
+        }
+        for (const key of ['start_control', 'end_control', 'factor_control']) {
+            const control = config[key];
+            if (!control) continue;
+            const raw = scene[control.replace(/^scene_/, '')];
+            const value = raw && typeof raw === 'object' ? raw[theme] : raw;
+            if (value !== undefined) {
+                defaults[control] = value;
+                defaults.scene_theme = theme;
+            }
+        }
+        return { ...stage,
+            __scene_theme: theme,
+            __scene_temporal_region_control: { ...config },
+            __scene_defaults: defaults,
+        };
+    }
+    function selectionAfterThemeChange(previousStage, stage, value) {
+        const preset = item => item.__scene_theme_preset || item.__preset || '';
+        const previousConfig = previousStage.__scene_temporal_region_control || {};
+        const config = stage.__scene_temporal_region_control || {};
+        if (!value || !preset(stage) || preset(previousStage) !== preset(stage)
+                || !config.source || config.source !== previousConfig.source
+                || ['start_control', 'end_control', 'factor_control'].some(key => config[key] !== previousConfig[key])) return null;
+        const changedTheme = previousStage.__scene_theme !== stage.__scene_theme
+            || (previousStage.__scene_defaults?.scene_theme
+                && previousStage.__scene_defaults.scene_theme !== stage.__scene_theme
+                && stage.__scene_defaults?.scene_theme === stage.__scene_theme);
+        return { ...value, factor: changedTheme
+            ? Number(stage.__scene_defaults?.[config.factor_control] ?? value.factor) : value.factor };
     }
     function bridge(id) { return document.getElementById(id)?.querySelector('input[type="number"], textarea, input'); }
     function write(id, value) {
@@ -604,7 +808,18 @@
             const index = indices[config[`${key}_control`]];
             if (Number.isInteger(index)) args[index] = selection[key];
         }
+        const faceIndex = indices[config.face_target?.id_control];
+        if (config.face_target?.theme === currentStage.__scene_theme && Number.isInteger(faceIndex)) args[faceIndex] = faceTarget ?? 0;
         return args;
+    }
+    function getSelectedControlValues(stage) {
+        const nextStage = snapshotSceneStage(stage || {});
+        const value = selectionAfterThemeChange(currentStage, nextStage, selection);
+        if (!value) return {};
+        const config = nextStage.__scene_temporal_region_control;
+        const result = Object.fromEntries(['start', 'end', 'factor'].map(key => [config[`${key}_control`], value[key]]));
+        if (config.face_target?.theme === nextStage.__scene_theme) result[config.face_target.id_control] = faceTarget ?? 0;
+        return result;
     }
     function unmount() {
         if (!mounted) return;
@@ -614,14 +829,19 @@
         mounted = null;
     }
     function syncSceneControl(stage) {
-        currentStage = stage || {};
+        const previousStage = currentStage;
+        // Theme selection mutates the shared topbar object before this callback.
+        currentStage = snapshotSceneStage(stage || {});
         const config = currentStage.__scene_temporal_region_control || {};
         const nextOwner = owner(currentStage);
         if (!config.source || nextOwner !== selectionOwner) {
+            tileValues = {};
+            faceTarget = null;
+            const nextSelection = selectionAfterThemeChange(previousStage, currentStage, selection);
             unmount();
-            selection = null;
+            selection = nextSelection;
             selectionOwner = nextOwner;
-            lastSourceKey = '';
+            if (!selection) lastSourceKey = '';
         }
         const source = config.source && document.getElementById(config.source);
         const parameters = config.source && document.getElementById('scene_advanced_parameters_accordion');
@@ -655,6 +875,12 @@
         const key = rawKey ? new URL(rawKey, document.baseURI).href : '';
         const ids = [config.start_control, config.end_control, config.factor_control];
         const defaults = currentStage.__scene_defaults || {};
+        if (faceTarget === null && config.face_target) faceTarget = Number(defaults[config.face_target.id_control] ?? 0);
+        if (config.tile_preview) {
+            for (const [key, control] of [['budget', config.tile_preview.budget_control], ['automatic', config.tile_preview.automatic_control]]) {
+                if (tileValues[key] === undefined) tileValues[key] = defaults[control] ?? (key === 'budget' ? 768 : false);
+            }
+        }
         const value = selection || {
             start: Number(bridge(ids[0])?.value ?? defaults[ids[0]] ?? 0),
             end: Number(bridge(ids[1])?.value ?? defaults[ids[1]] ?? 1),
@@ -669,7 +895,11 @@
         const changedSource = key && lastSourceKey && lastSourceKey !== key;
         if (key) lastSourceKey = key;
         unmount();
-        if (changedSource) { value.start = 0; value.end = Math.min(1, video.duration || 1); }
+        if (changedSource) {
+            value.start = 0;
+            value.end = Math.min(1, video.duration || 1);
+            faceTarget = 0;
+        }
         selection = { ...value };
         const host = document.createElement('div');
         source.after(host);
@@ -679,6 +909,14 @@
             stage: currentStage, value, contextSlowSeconds: config.context_slow_seconds,
             referenceControls: config.reference_controls,
             getTiming: () => sourceTiming(config.source, video),
+            getTileValues: () => tileValues,
+            getFaceTarget: () => faceTarget,
+            onFaceTarget(value) {
+                faceTarget = value;
+                writing = true;
+                try { write(config.face_target.id_control, value); }
+                finally { writing = false; }
+            },
             onChange(next, commit = true) {
                 selection = { ...next };
                 if (commit) writeSelection(ids);
@@ -695,12 +933,28 @@
         unmount();
         currentStage = {};
     }
-    const api = { normalize, contextRange, boundaryPreviews, captureReference, create, syncSceneControl, applySubmitValues, dispose };
+    const api = { normalize, contextRange, boundaryPreviews, tilePreview, captureReference, create, syncSceneControl, applySubmitValues, getSelectedControlValues, snapshotSceneStage, selectionAfterThemeChange, dispose };
     root.SimpAIVideoRegionSelector = api;
     if (typeof module !== 'undefined') module.exports = api;
     if (typeof document !== 'undefined') {
         document.addEventListener('change', event => {
             if (writing || !mounted) return;
+            const faceConfig = currentStage.__scene_temporal_region_control?.face_target;
+            if (faceConfig && event.target.closest(`#${faceConfig.id_control}`)) {
+                faceTarget = Math.max(0, Math.min(99, Math.trunc(Number(event.target.value) || 0)));
+                syncSceneControl(currentStage);
+                return;
+            }
+            const tileConfig = currentStage.__scene_temporal_region_control?.tile_preview;
+            if (tileConfig) {
+                for (const [key, control] of [['budget', tileConfig.budget_control], ['automatic', tileConfig.automatic_control]]) {
+                    if (event.target.closest(`#${control}`)) {
+                        tileValues[key] = key === 'automatic' ? event.target.checked : Number(event.target.value);
+                        syncSceneControl(currentStage);
+                        return;
+                    }
+                }
+            }
             if (event.target.closest('#resolution_source_meta')) {
                 syncSceneControl(currentStage);
                 return;

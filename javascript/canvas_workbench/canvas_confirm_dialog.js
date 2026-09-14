@@ -2,9 +2,13 @@
     'use strict';
 
     function createCanvasConfirmDialogController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? '')
+        const scope = context?.confirmDialogSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const domSource = scope.domSource || {};
+        const uiSource = scope.uiSource || {};
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value => String(value ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -12,7 +16,7 @@
             .replace(/'/g, '&#39;'));
 
         function getDocument() {
-            return scope.document || (typeof document !== 'undefined' ? document : null);
+            return domSource.document || (typeof document !== 'undefined' ? document : null);
         }
 
         function requestCanvasConfirmDialog(options) {
@@ -21,7 +25,7 @@
             if (!doc?.createElement) return Promise.resolve(false);
             return new Promise((resolve) => {
                 const modal = doc.createElement('div');
-                const theme = typeof scope.detectWorkbenchTheme === 'function' ? scope.detectWorkbenchTheme() : '';
+                const theme = typeof uiSource.detectWorkbenchTheme === 'function' ? uiSource.detectWorkbenchTheme() : '';
                 modal.className = `sai-canvas-modal sai-canvas-confirm-modal ${theme === 'dark' ? 'theme-dark' : ''}`;
                 modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-canvas-confirm-panel ${opts.danger ? 'is-danger' : ''}">

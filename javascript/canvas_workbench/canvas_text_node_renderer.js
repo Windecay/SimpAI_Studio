@@ -2,11 +2,41 @@
     'use strict';
 
     function createCanvasTextNodeRenderer(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const tOption = scope.tOption || ((value) => String(value ?? ''));
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.textNodeRendererSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const nodeSource = scope.nodeSource || {};
+        const translationSource = scope.translationSource || {};
+        const renderSource = scope.renderSource || {};
+        const autocompleteSource = scope.autocompleteSource || {};
+        const callbackSources = {
+            getNode: nodeSource,
+            getNodeTextOutput: nodeSource,
+            getTextNodeInputSource: nodeSource,
+            textMergeInputSlots: nodeSource,
+            getTextMergeInputSource: nodeSource,
+            getTextMergeOutput: nodeSource,
+            translationDirectionLabel: languageSource,
+            tagCartLabel: languageSource,
+            localizedDefaultTitle: languageSource,
+            notConnectedText: languageSource,
+            renderIconHtml: utilitySource,
+            renderNodeStateBadges: renderSource,
+            renderTranslatableTextarea: renderSource,
+            getTranslationFieldState: translationSource,
+            danbooruAutocompleteAttrs: autocompleteSource
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const tOption = typeof languageSource.tOption === 'function'
+            ? languageSource.tOption
+            : ((value) => String(value ?? ''));
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : (value => String(value ?? ''));
+        const call = (name, fallback, ...args) => {
+            const source = callbackSources[name] || {};
+            return typeof source[name] === 'function' ? source[name](...args) : fallback;
+        };
         const getNode = (...args) => call('getNode', null, ...args);
         const getNodeTextOutput = (...args) => call('getNodeTextOutput', '', ...args);
         const getTextNodeInputSource = (...args) => call('getTextNodeInputSource', null, ...args);

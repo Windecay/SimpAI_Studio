@@ -2,177 +2,206 @@
     'use strict';
 
     function createCanvasActionController(context) {
-        const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const viewportCenterWorld = () => call('viewportCenterWorld');
+        const scope = context?.actionSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const projectSource = scope.projectSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const contextSource = scope.contextSource || {};
+        const lifecycleSource = scope.lifecycleSource || {};
+        const importSource = scope.importSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const navigationSource = scope.navigationSource || {};
+        const editSource = scope.editSource || {};
+        const runSource = scope.runSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const uiSource = scope.uiSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const projectCall = (name, ...args) => call(projectSource, name, ...args);
+        const viewportCall = (name, ...args) => call(viewportSource, name, ...args);
+        const persistenceCall = (name, ...args) => call(persistenceSource, name, ...args);
+        const contextCall = (name, ...args) => call(contextSource, name, ...args);
+        const lifecycleCall = (name, ...args) => call(lifecycleSource, name, ...args);
+        const importCall = (name, ...args) => call(importSource, name, ...args);
+        const nodeCall = (name, ...args) => call(nodeSource, name, ...args);
+        const navigationCall = (name, ...args) => call(navigationSource, name, ...args);
+        const editCall = (name, ...args) => call(editSource, name, ...args);
+        const runCall = (name, ...args) => call(runSource, name, ...args);
+        const selectionCall = (name, ...args) => call(selectionSource, name, ...args);
+        const settingsCall = (name, ...args) => call(settingsSource, name, ...args);
+        const uiCall = (name, ...args) => call(uiSource, name, ...args);
+        const getProject = () => projectCall('getProject') || {};
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const viewportCenterWorld = () => viewportCall('viewportCenterWorld');
 
         function saveFromAction() {
-            const result = call('saveProject', false);
+            const result = persistenceCall('saveProject') || false;
             if (result && typeof result.catch === 'function') {
                 result.catch((err) => console.warn('[SimpAI Canvas] save action failed:', err));
             }
         }
 
         function handleAction(action, evt, actionButton) {
-            call('closeContextMenu');
+            contextCall('closeContextMenu');
             switch (action) {
                 case 'save':
                     saveFromAction();
                     break;
                 case 'project-list':
-                    call('openProjectListPanel');
+                    navigationCall('openProjectListPanel');
                     break;
                 case 'import-project-json':
-                    call('openProjectJsonPicker');
+                    navigationCall('openProjectJsonPicker');
                     break;
                 case 'undo':
-                    call('undoCanvasEdit');
+                    editCall('undoCanvasEdit');
                     break;
                 case 'redo':
-                    call('redoCanvasEdit');
+                    editCall('redoCanvasEdit');
                     break;
                 case 'close':
-                    if (call('isStandaloneCanvasWorkbench')) {
-                        call('showToast', t('Close this browser tab to leave the standalone canvas page.', '关闭浏览器标签即可退出独立画布页面。'));
+                    if (lifecycleCall('isStandaloneCanvasWorkbench')) {
+                        uiCall('showToast', t('Close this browser tab to leave the standalone canvas page.', '关闭浏览器标签即可退出独立画布页面。'));
                         break;
                     }
-                    call('closeWorkbench');
+                    lifecycleCall('closeWorkbench');
                     break;
                 case 'import-selected':
-                    call('importSelectedTransferAt', viewportCenterWorld());
+                    importCall('importSelectedTransferAt', viewportCenterWorld());
                     break;
                 case 'import-files':
-                    call('openImageFilePicker', viewportCenterWorld());
+                    importCall('openImageFilePicker', viewportCenterWorld());
                     break;
                 case 'media-browser':
-                    call('addMediaBrowserNode', viewportCenterWorld());
+                    nodeCall('addMediaBrowserNode', viewportCenterWorld());
                     break;
                 case 'add-preset':
-                    call('openPresetPalette', viewportCenterWorld());
+                    navigationCall('openPresetPalette', viewportCenterWorld());
                     break;
                 case 'add-style-selector':
-                    call('addStyleSelectorNode', viewportCenterWorld());
+                    nodeCall('addStyleSelectorNode', viewportCenterWorld());
                     break;
                 case 'add-text':
-                    call('addTextNode', viewportCenterWorld());
+                    nodeCall('addTextNode', viewportCenterWorld());
                     break;
                 case 'add-text-merge':
-                    call('addTextMergeNode', viewportCenterWorld());
+                    nodeCall('addTextMergeNode', viewportCenterWorld());
                     break;
                 case 'add-wildcards-helper':
-                    call('addWildcardsHelperNode', viewportCenterWorld());
+                    nodeCall('addWildcardsHelperNode', viewportCenterWorld());
                     break;
                 case 'add-note':
-                    call('addNoteNode', viewportCenterWorld());
+                    nodeCall('addNoteNode', viewportCenterWorld());
                     break;
                 case 'add-group':
-                    call('addAreaGroup', viewportCenterWorld());
+                    nodeCall('addAreaGroup', viewportCenterWorld());
                     break;
                 case 'group-list':
-                    call('openGroupListPanel');
+                    navigationCall('openGroupListPanel');
                     break;
                 case 'load-demo-workbench':
-                    call('openTemplateLibrary');
+                    navigationCall('openTemplateLibrary');
                     break;
                 case 'add-translation':
-                    call('addTranslationNode', viewportCenterWorld());
+                    nodeCall('addTranslationNode', viewportCenterWorld());
                     break;
                 case 'add-tag-cart':
-                    call('addTagCartNode', viewportCenterWorld());
+                    nodeCall('addTagCartNode', viewportCenterWorld());
                     break;
                 case 'add-wd14':
-                    call('addWd14Node', viewportCenterWorld());
+                    nodeCall('addWd14Node', viewportCenterWorld());
                     break;
                 case 'add-vlm':
-                    call('addVlmNode', viewportCenterWorld());
+                    nodeCall('addVlmNode', viewportCenterWorld());
                     break;
                 case 'add-qwen-tts':
-                    call('addQwenTtsNode', 'voice_design', viewportCenterWorld());
+                    nodeCall('addQwenTtsNode', 'voice_design', viewportCenterWorld());
                     break;
                 case 'add-sam3-video-mask':
-                    call('addSam3VideoMaskNode', viewportCenterWorld());
+                    nodeCall('addSam3VideoMaskNode', viewportCenterWorld());
                     break;
                 case 'add-camera-motion':
-                    call('addCameraMotionNode', viewportCenterWorld());
+                    nodeCall('addCameraMotionNode', viewportCenterWorld());
                     break;
                 case 'add-pose-studio':
-                    call('addPoseStudioNode', viewportCenterWorld());
+                    nodeCall('addPoseStudioNode', viewportCenterWorld());
                     break;
                 case 'add-gaussian-studio':
-                    call('addGaussianStudioNode', viewportCenterWorld());
+                    nodeCall('addGaussianStudioNode', viewportCenterWorld());
                     break;
                 case 'add-liveportrait-expression':
-                    call('addLivePortraitExpressionNode', viewportCenterWorld());
+                    nodeCall('addLivePortraitExpressionNode', viewportCenterWorld());
                     break;
                 case 'add-compare':
-                    call('addCompareNode', viewportCenterWorld());
+                    nodeCall('addCompareNode', viewportCenterWorld());
                     break;
                 case 'add-director-timeline':
-                    call('addDirectorTimelineNode', viewportCenterWorld());
+                    nodeCall('addDirectorTimelineNode', viewportCenterWorld());
                     break;
                 case 'add-timeline':
-                    call('addTimelineNode', viewportCenterWorld());
+                    nodeCall('addTimelineNode', viewportCenterWorld());
                     break;
                 case 'add-output':
-                    call('addManualOutputNode', viewportCenterWorld());
+                    nodeCall('addManualOutputNode', viewportCenterWorld());
                     break;
                 case 'run-history':
-                    call('openRunHistoryPanel');
+                    navigationCall('openRunHistoryPanel');
                     break;
                 case 'run-queue':
-                    call('openRunQueuePanel');
+                    navigationCall('openRunQueuePanel');
                     break;
                 case 'run-selected-chain':
-                    call('runSelectedChain');
+                    runCall('runSelectedChain');
                     break;
                 case 'compare-selected-nodes':
-                    call('createCompareNodeFromSources', call('getSelectedNodeIdList').map((id) => call('getNode', id)).filter((node) => call('isImageCompareSource', node)).slice(0, 2));
+                    selectionCall('createCompareNodeFromSources', selectionCall('getSelectedNodeIdList').map((id) => selectionCall('getNode', id)).filter((node) => selectionCall('isImageCompareSource', node)).slice(0, 2));
                     break;
                 case 'timeline-selected-nodes':
-                    call('createTimelineNodeFromSources', call('getSelectedNodeIdList').map((id) => call('getNode', id)).filter((node) => call('isTimelineSource', node)));
+                    selectionCall('createTimelineNodeFromSources', selectionCall('getSelectedNodeIdList').map((id) => selectionCall('getNode', id)).filter((node) => selectionCall('isTimelineSource', node)));
                     break;
                 case 'node-search':
-                    call('openNodeSearchPanel');
+                    navigationCall('openNodeSearchPanel');
                     break;
                 case 'asset-manager':
-                    call('openAssetManagerPanel');
+                    navigationCall('openAssetManagerPanel');
                     break;
                 case 'canvas-manual':
-                    call('openCanvasManual');
+                    navigationCall('openCanvasManual');
                     break;
                 case 'toggle-inspector':
-                    call('toggleSetting', 'inspectorCollapsed');
+                    settingsCall('toggleSetting', 'inspectorCollapsed');
                     break;
                 case 'toggle-minimap':
-                    call('toggleSetting', 'minimap');
+                    settingsCall('toggleSetting', 'minimap');
                     break;
                 case 'delete':
-                    call('deleteSelection');
+                    editCall('deleteSelection');
                     break;
                 case 'clear':
-                    call('clearCanvasWithConfirm');
+                    editCall('clearCanvasWithConfirm');
                     break;
                 case 'settings':
-                    call('openCanvasSettingsPanel', 'agent');
+                    navigationCall('openCanvasSettingsPanel', 'agent');
                     break;
                 case 'zoom-in':
-                    call('zoomAtViewportCenter', 1.15);
+                    viewportCall('zoomAtViewportCenter', 1.15);
                     break;
                 case 'zoom-out':
-                    call('zoomAtViewportCenter', 1 / 1.15);
+                    viewportCall('zoomAtViewportCenter', 1 / 1.15);
                     break;
                 case 'zoom-reset':
                     getProject().viewport.zoom = 1;
-                    call('renderAll', { inspector: false });
-                    call('scheduleSave');
+                    viewportCall('renderAll', { inspector: false });
+                    persistenceCall('scheduleSave');
                     break;
                 case 'fit-all':
-                    call('fitAll');
+                    viewportCall('fitAll');
                     break;
                 case 'center':
-                    call('centerCanvas');
+                    viewportCall('centerCanvas');
                     break;
             }
         }

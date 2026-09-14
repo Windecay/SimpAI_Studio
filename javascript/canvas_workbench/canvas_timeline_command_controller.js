@@ -2,11 +2,69 @@
     'use strict';
 
     function createCanvasTimelineCommandController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.timelineCommandSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const paramSource = scope.paramSource || {};
+        const clipSource = scope.clipSource || {};
+        const keyframeSource = scope.keyframeSource || {};
+        const commandOperationSource = scope.commandOperationSource || {};
+        const historySource = scope.historySource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const stateSource = scope.stateSource || {};
+        const projectSource = scope.projectSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const languageSource = scope.languageSource || {};
+        const uiSource = scope.uiSource || {};
+        const callbackSources = {
+            timelineNormalizedKeyframes: domSource,
+            getNode: nodeSource,
+            isNodeLocked: nodeSource,
+            normalizeTimelineNode: nodeSource,
+            clamp: interactionSource,
+            setSelectedNodeId: selectionSource,
+            setSelectedNodeIds: selectionSource,
+            setSelectedEdgeId: selectionSource,
+            updateTimelineParam: paramSource,
+            resetTimelineParam: paramSource,
+            resetTimelineClipParam: paramSource,
+            timelineSelectedVisualClip: clipSource,
+            timelineKeyframeTime: keyframeSource,
+            timelineKeyframeIndexAt: keyframeSource,
+            timelineKeyframeValuesAtPlayhead: keyframeSource,
+            syncTimelineClipTransformKeyframeAtPlayhead: keyframeSource,
+            uid: keyframeSource,
+            buildTimelineParamsPatch: commandOperationSource,
+            buildTimelineTracksPatch: commandOperationSource,
+            buildTimelineKeyframesPatch: commandOperationSource,
+            buildTimelineClipResetPatch: commandOperationSource,
+            buildTimelineClipDeletePatch: commandOperationSource,
+            buildProjectTimelineClipEdgeDeletePatch: commandOperationSource,
+            captureTimelineMaskGeometry: commandOperationSource,
+            remapTimelineMasksAfterCanvasResize: commandOperationSource,
+            timelineDuration: commandOperationSource,
+            pushHistory: historySource,
+            pushHistoryBatch: historySource,
+            scheduleSave: persistenceSource,
+            mutate: stateSource,
+            getProject: projectSource,
+            deleteEdge: projectSource,
+            defaultNodeSize: layoutSource,
+            centerViewportOnWorld: viewportSource,
+            t: languageSource,
+            showToast: uiSource,
+            openContextMenu: uiSource
+        };
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
         const isNodeLocked = (node) => !!call('isNodeLocked', false, node);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
 
         const selectedVisualClip = (node) => call('timelineSelectedVisualClip', null, node);

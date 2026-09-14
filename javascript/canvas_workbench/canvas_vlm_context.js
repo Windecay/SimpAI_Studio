@@ -95,22 +95,25 @@
             scope.vlmChatImagePreviewSource || {}
         );
         const vlmChatInputSource = scope.vlmChatInputSource || {};
+        const vlmChatInputMediaSource = vlmChatInputSource.mediaSource || {};
         const vlmChatInput = createController(
             modules.vlmChatInput,
             'createCanvasVlmChatInputController',
             Object.assign({}, vlmChatInputSource, {
-                addVlmPendingImageFromFile: (...args) => delegatedValue(
-                    chatController(),
-                    'addVlmPendingImageFromFile',
-                    vlmChatInputSource.addVlmPendingImageFromFile,
-                    args
-                ) || false,
-                removeVlmPendingImage: (...args) => delegatedValue(
-                    chatController(),
-                    'removeVlmPendingImage',
-                    vlmChatInputSource.removeVlmPendingImage,
-                    args
-                )
+                mediaSource: Object.assign({}, vlmChatInputMediaSource, {
+                    addVlmPendingImageFromFile: (...args) => delegatedValue(
+                        chatController(),
+                        'addVlmPendingImageFromFile',
+                        vlmChatInputMediaSource.addVlmPendingImageFromFile,
+                        args
+                    ) || false,
+                    removeVlmPendingImage: (...args) => delegatedValue(
+                        chatController(),
+                        'removeVlmPendingImage',
+                        vlmChatInputMediaSource.removeVlmPendingImage,
+                        args
+                    )
+                })
             })
         );
         const nodeInteractionContext = createController(

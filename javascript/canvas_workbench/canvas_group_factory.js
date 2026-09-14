@@ -2,14 +2,17 @@
     'use strict';
 
     function createCanvasGroupFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const scope = context?.groupFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
             : ((value, min, max) => Math.max(min, Math.min(max, value)));
-        const normalizeCanvasColor = typeof scope.normalizeCanvasColor === 'function'
-            ? scope.normalizeCanvasColor
+        const normalizeCanvasColor = typeof utilitySource.normalizeCanvasColor === 'function'
+            ? utilitySource.normalizeCanvasColor
             : ((value, fallback) => {
                 const text = String(value || '').trim();
                 return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(text) ? text : fallback;

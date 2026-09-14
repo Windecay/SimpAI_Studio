@@ -2,9 +2,23 @@
     'use strict';
 
     function createCanvasAgentPromptContext(source) {
-        const scope = source || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
+        const scope = source?.promptSource || source || {};
+        const languageSource = scope.languageSource || {};
+        const presetSource = scope.presetSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const assetSource = scope.assetSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const danbooruSource = scope.danbooruSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const languageCall = (name, fallback, ...args) => call(languageSource, name, fallback, ...args);
+        const presetCall = (name, fallback, ...args) => call(presetSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => call(nodeSource, name, fallback, ...args);
+        const assetCall = (name, fallback, ...args) => call(assetSource, name, fallback, ...args);
+        const referenceCall = (name, fallback, ...args) => call(referenceSource, name, fallback, ...args);
+        const danbooruCall = (name, fallback, ...args) => call(danbooruSource, name, fallback, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
         function canvasAgentPromptMediaIntent(prompt) {
             const text = String(prompt || '').toLowerCase();
             const compact = text.replace(/\s+/g, '');
@@ -25,20 +39,20 @@
         }
 
         const getSlotOrder = () => {
-            const value = call('getSlotOrder', []);
+            const value = presetCall('getSlotOrder', []);
             return Array.isArray(value) ? value : [];
         };
 
         function normalizePresetName(value) {
-            return call('normalizePresetName', String(value || '').trim(), value);
+            return presetCall('normalizePresetName', String(value || '').trim(), value);
         }
 
         function getNode(id) {
-            return call('getNode', null, id);
+            return nodeCall('getNode', null, id);
         }
 
         function getSelectedResultAsset(node) {
-            return call('getSelectedResultAsset', null, node);
+            return assetCall('getSelectedResultAsset', null, node);
         }
 
         function assetIsAvailable(asset) {
@@ -55,7 +69,7 @@
         }
 
         function sortedUploadEdges(node) {
-            const edges = call('getPresetUploadRunEdges', [], node);
+            const edges = presetCall('getPresetUploadRunEdges', [], node);
             return (Array.isArray(edges) ? edges : [])
                 .slice()
                 .sort((left, right) => getSlotOrder().indexOf(left?.slot || '') - getSlotOrder().indexOf(right?.slot || ''));
@@ -72,7 +86,7 @@
             const uploadEdges = node ? sortedUploadEdges(node) : [];
             if (node) {
                 uploadEdges.forEach((edge) => {
-                    const kind = call('getUploadSlotMediaKind', '', edge?.slot || '');
+                    const kind = presetCall('getUploadSlotMediaKind', '', edge?.slot || '');
                     const sourceNode = getNode(edge?.from);
                     const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
                     if (!assetIsAvailable(asset)) return;
@@ -81,20 +95,20 @@
                     else if (kind === 'audio') audioIds.add(edge.from);
                 });
             } else {
-                const refs = call('normalizeCanvasAgentReferences', []);
+                const refs = referenceCall('normalizeCanvasAgentReferences', []);
                 (Array.isArray(refs) ? refs : []).forEach((ref) => {
                     if (ref.kind === 'image') imageIds.add(ref.nodeId);
                     else if (ref.kind === 'video') videoIds.add(ref.nodeId);
                     else if (ref.kind === 'audio') audioIds.add(ref.nodeId);
                 });
-                const primaryImage = call('getCanvasAgentPrimaryMediaNode', null, 'image');
+                const primaryImage = referenceCall('getCanvasAgentPrimaryMediaNode', null, 'image');
                 if (primaryImage?.id) imageIds.add(primaryImage.id);
-                const primaryVideo = call('getCanvasAgentPrimaryMediaNode', null, 'video');
+                const primaryVideo = referenceCall('getCanvasAgentPrimaryMediaNode', null, 'video');
                 if (primaryVideo?.id) videoIds.add(primaryVideo.id);
-                const primaryAudio = call('getCanvasAgentPrimaryMediaNode', null, 'audio');
+                const primaryAudio = referenceCall('getCanvasAgentPrimaryMediaNode', null, 'audio');
                 if (primaryAudio?.id) audioIds.add(primaryAudio.id);
             }
-            const entry = node ? call('getPresetCatalogEntryForNode', null, node) : entryOrNode;
+            const entry = node ? presetCall('getPresetCatalogEntryForNode', null, node) : entryOrNode;
             const schema = (node?.schema && typeof node.schema === 'object')
                 ? node.schema
                 : (entry?.schema && typeof entry.schema === 'object' ? entry.schema : {});
@@ -131,15 +145,15 @@
             };
             if (node) {
                 uploadEdges.forEach((edge) => {
-                    const kind = call('getUploadSlotMediaKind', '', edge?.slot || '');
+                    const kind = presetCall('getUploadSlotMediaKind', '', edge?.slot || '');
                     if (!['image', 'video', 'audio'].includes(kind)) return;
                     addDescriptor(kind, edge?.slot || '', getNode(edge?.from));
                 });
             } else {
-                const refs = call('normalizeCanvasAgentReferences', []);
+                const refs = referenceCall('normalizeCanvasAgentReferences', []);
                 (Array.isArray(refs) ? refs : []).forEach((ref) => {
                     if (!['image', 'video', 'audio'].includes(ref.kind)) return;
-                    addDescriptor(ref.kind, ref.slot || '', call('canvasAgentReferenceNode', null, ref));
+                    addDescriptor(ref.kind, ref.slot || '', referenceCall('canvasAgentReferenceNode', null, ref));
                 });
             }
             const theme = node?.runtime?.scene_theme || schema.default_theme || (Array.isArray(schema.themes) ? schema.themes[0] : '') || '';
@@ -181,7 +195,7 @@
                 reference_video_content_available: referenceVideos.some((item) => item.available),
                 duration_seconds: Number.isFinite(duration) && duration > 0 ? duration : null,
                 inventory_known: true,
-                language: call('runtimeUiLang', 'en')
+                language: languageCall('runtimeUiLang', 'en')
             };
         }
 
@@ -195,18 +209,18 @@
             if (String(target?.key || '') !== 'sdxl_danbooru') return prompt;
             const base = String(prompt || '').trim();
             const context = String(contextText || '').trim();
-            const formatPrompt = (tags) => typeof scope.canvasAgentFormatDanbooruPrompt === 'function'
-                ? scope.canvasAgentFormatDanbooruPrompt(tags, true)
+            const formatPrompt = (tags) => typeof danbooruSource.canvasAgentFormatDanbooruPrompt === 'function'
+                ? danbooruCall('canvasAgentFormatDanbooruPrompt', '', tags, true)
                 : canvasAgentFormatDanbooruPrompt(tags, true);
             if (!base || !context) return formatPrompt(String(base || '').split(','));
             const fallbackOptions = Object.assign({}, options || {}, { purpose });
-            const extra = typeof scope.canvasAgentDanbooruFallbackPrompt === 'function'
-                ? scope.canvasAgentDanbooruFallbackPrompt(context, target, fallbackOptions, [])
+            const extra = typeof danbooruSource.canvasAgentDanbooruFallbackPrompt === 'function'
+                ? danbooruCall('canvasAgentDanbooruFallbackPrompt', '', context, target, fallbackOptions, [])
                 : canvasAgentDanbooruFallbackPrompt(context, target, fallbackOptions, []);
             if (!extra) return formatPrompt(base.split(','));
             const tags = [];
             const push = (tag) => {
-                if (typeof scope.canvasAgentPushDanbooruTag === 'function') scope.canvasAgentPushDanbooruTag(tags, tag);
+                if (typeof danbooruSource.canvasAgentPushDanbooruTag === 'function') danbooruCall('canvasAgentPushDanbooruTag', undefined, tags, tag);
                 else canvasAgentPushDanbooruTag(tags, tag);
             };
             base.split(',').forEach(push);
@@ -266,8 +280,8 @@
         }
 
         function canvasAgentDanbooruTagLooksFabricatedForContext(tag) {
-            return typeof scope.canvasAgentDanbooruTagLooksFabricated === 'function'
-                ? !!scope.canvasAgentDanbooruTagLooksFabricated(tag)
+            return typeof danbooruSource.canvasAgentDanbooruTagLooksFabricated === 'function'
+                ? !!danbooruCall('canvasAgentDanbooruTagLooksFabricated', false, tag)
                 : canvasAgentDanbooruTagLooksFabricated(tag);
         }
 
@@ -665,7 +679,7 @@
 
         function canvasAgentPresetPromptDefaults(entryOrNode) {
             const entry = ['preset', 'classic'].includes(entryOrNode?.type)
-                ? call('getPresetCatalogEntryForNode', null, entryOrNode)
+                ? presetCall('getPresetCatalogEntryForNode', null, entryOrNode)
                 : entryOrNode;
             const preset = entryOrNode?.preset && typeof entryOrNode.preset === 'object' ? entryOrNode.preset : {};
             const snapshot = preset.snapshot && typeof preset.snapshot === 'object' ? preset.snapshot : {};
@@ -945,7 +959,7 @@
             const requirements = entryOrNode.model_requirements && typeof entryOrNode.model_requirements === 'object' ? entryOrNode.model_requirements : {};
             if (Array.isArray(requirements.model_list)) return requirements.model_list.slice();
             if (Array.isArray(entryOrNode.model_list)) return entryOrNode.model_list.slice();
-            const catalogEntry = entryOrNode.type === 'preset' ? call('getPresetCatalogEntryForNode', null, entryOrNode) : null;
+            const catalogEntry = entryOrNode.type === 'preset' ? presetCall('getPresetCatalogEntryForNode', null, entryOrNode) : null;
             if (Array.isArray(catalogEntry?.model_list)) return catalogEntry.model_list.slice();
             return [];
         }
@@ -1033,7 +1047,7 @@
         function canvasAgentPromptTargetFromNode(node, purpose) {
             if (!node || typeof node !== 'object') return canvasAgentPromptTargetFromPurpose(purpose, {});
             if (node.type === 'preset') {
-                const entry = call('getPresetCatalogEntryForNode', null, node);
+                const entry = presetCall('getPresetCatalogEntryForNode', null, node);
                 return canvasAgentAttachPromptCompilerContext(canvasAgentPromptTargetFromMeta({
                     name: node.preset?.name || node.title || entry?.name || '',
                     display_name: node.title || entry?.display_name || '',
@@ -1072,9 +1086,9 @@
                 : (purposeText.includes('audio+image-to-video') || purposeText.includes('audio to video') || purposeText.includes('audio-to-video') ? 'audio_to_video'
                 : (purposeText.includes('text-to-video') || purposeText.includes('text to video') || purposeText.includes('t2v') || purposeText.includes('video') ? 't2v'
                 : (purposeText.includes('edit') ? 'edit' : 't2i'))));
-            return call('findCanvasAgentPresetEntryByAlias', null, planPreset)
-                || call('findPresetCatalogEntryByName', null, planPreset)
-                || call('findPresetCatalogEntryByName', null, call('getCanvasAgentPresetQueue', [], requestedKind)[0] || '')
+            return presetCall('findCanvasAgentPresetEntryByAlias', null, planPreset)
+                || presetCall('findPresetCatalogEntryByName', null, planPreset)
+                || presetCall('findPresetCatalogEntryByName', null, presetCall('getCanvasAgentPresetQueue', [], requestedKind)[0] || '')
                 || null;
         }
 

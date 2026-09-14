@@ -368,7 +368,12 @@
 
     function createCanvasVlmChatController(context) {
         const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const agentContextSource = scope.agentContextSource && typeof scope.agentContextSource === 'object'
+            ? scope.agentContextSource
+            : {};
+        const agentContextCall = (name, fallback, ...args) => typeof agentContextSource[name] === 'function'
+            ? agentContextSource[name](...args)
+            : fallback;
         const generationSource = scope.generationSource && typeof scope.generationSource === 'object'
             ? scope.generationSource
             : {};
@@ -587,7 +592,7 @@
         const renderMinimap = (...args) => renderCall('renderMinimap', undefined, ...args);
         const selectNodeLight = (...args) => renderCall('selectNodeLight', undefined, ...args);
         const getProject = (...args) => nodeCall('getProject', null, ...args);
-        const buildVlmAgentContext = (...args) => call('buildVlmAgentContext', null, ...args);
+        const buildVlmAgentContext = (...args) => agentContextCall('buildVlmAgentContext', null, ...args);
         const isVlmMediaSource = (...args) => !!nodeCall('isVlmMediaSource', false, ...args);
         const sendVlmModelStatus = (...args) => modelStatusCall('sendVlmModelStatus', null, ...args);
         const getVlmModelStatusCacheTtlMs = (...args) => Number(configCall('getVlmModelStatusCacheTtlMs', 5 * 60 * 1000, ...args)) || 5 * 60 * 1000;

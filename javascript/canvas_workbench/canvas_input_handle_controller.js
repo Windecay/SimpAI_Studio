@@ -2,13 +2,24 @@
     'use strict';
 
     function createCanvasInputHandleController(context) {
-        const scope = context || {};
-        const getProject = () => typeof scope.getProject === 'function'
-            ? (scope.getProject() || {})
-            : {};
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const t = typeof scope.t === 'function' ? scope.t : (en) => en;
+        const scope = context?.inputHandleSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const connectionSource = scope.connectionSource || {};
+        const renderSource = scope.renderSource || {};
+        const languageSource = scope.languageSource || {};
+        const uiSource = scope.uiSource || {};
+        const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const projectCall = (name, fallback, ...args) => sourceCall(projectSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);
+        const connectionCall = (name, ...args) => sourceCall(connectionSource, name, undefined, ...args);
+        const renderCall = (name, ...args) => sourceCall(renderSource, name, undefined, ...args);
+        const uiCall = (name, ...args) => sourceCall(uiSource, name, undefined, ...args);
+        const getProject = () => projectCall('getProject', {}) || {};
+        const getNode = (id) => nodeCall('getNode', null, id);
+        const t = typeof languageSource.t === 'function' ? languageSource.t : (en) => en;
 
         function getEdges() {
             const project = getProject();
@@ -22,9 +33,9 @@
         function reconnectEdge(edge, evt) {
             if (!edge) return;
             const fromNode = getNode(edge.from);
-            call('deleteEdge', edge.id, { render: false });
-            if (fromNode) call('startConnection', fromNode, evt);
-            else call('renderAll');
+            connectionCall('deleteEdge', edge.id, { render: false });
+            if (fromNode) connectionCall('startConnection', fromNode, evt);
+            else renderCall('renderAll');
         }
 
         function getConnectionTargetFromHandle(handle) {
@@ -63,7 +74,7 @@
             const activeHandle = Object.values(inputHandles).find(Boolean);
             const inputTarget = getConnectionTargetFromHandle(activeHandle);
             if (inputTarget) {
-                call('startInputConnection', inputTarget, evt);
+                connectionCall('startInputConnection', inputTarget, evt);
                 return;
             }
 
@@ -94,9 +105,9 @@
                 const fromId = node.upload_slots?.[slot];
                 if (fromId) {
                     const fromNode = getNode(fromId);
-                    call('deleteUploadSlot', node.id, slot, { render: false });
-                    if (fromNode) call('startConnection', fromNode, evt);
-                    else call('renderAll');
+                    connectionCall('deleteUploadSlot', node.id, slot, { render: false });
+                    if (fromNode) connectionCall('startConnection', fromNode, evt);
+                    else renderCall('renderAll');
                 }
                 return;
             }
@@ -151,24 +162,24 @@
                 const slot = livePortraitReferenceInHandle ? 'reference' : 'source';
                 reconnectEdge(findEdge(item => item.type === 'image' && item.to === node.id && item.slot === slot), evt);
             }
-            if (qwenTtsAudioInHandle && call('isQwenTtsNode', node)) {
+            if (qwenTtsAudioInHandle && nodeCall('isQwenTtsNode', false, node)) {
                 const slot = qwenTtsAudioInHandle.getAttribute('data-qwen-tts-audio-in') || '';
                 reconnectEdge(findEdge(item => item.type === 'media' && item.to === node.id && item.slot === slot), evt);
             }
-            if (directorMediaInHandle && call('isDirectorTimelineNode', node)) {
+            if (directorMediaInHandle && nodeCall('isDirectorTimelineNode', false, node)) {
                 const slot = directorMediaInHandle.getAttribute('data-director-media-in') || '';
                 reconnectEdge(findEdge(item => item.type === 'media' && item.to === node.id && item.slot === slot), evt);
             }
-            if (directorMediaGroupInHandle && call('isDirectorTimelineNode', node)) {
+            if (directorMediaGroupInHandle && nodeCall('isDirectorTimelineNode', false, node)) {
                 const kind = directorMediaGroupInHandle.getAttribute('data-director-media-group-in') || '';
                 const edge = findEdge(item => item.type === 'media'
                     && item.to === node.id
-                    && call('directorMediaSourceKind', getNode(item.from)) === kind);
+                    && nodeCall('directorMediaSourceKind', '', getNode(item.from)) === kind);
                 if (edge) {
                     reconnectEdge(edge, evt);
                     return;
                 }
-                call('showToast', t('Drop a matching media output onto this pool.', '把同类型媒体输出拖到这个素材池入口。'));
+                uiCall('showToast', t('Drop a matching media output onto this pool.', '把同类型媒体输出拖到这个素材池入口。'));
                 return;
             }
             if (compareImageInHandle && node.type === 'compare') {
@@ -176,15 +187,15 @@
                 reconnectEdge(findEdge(item => item.type === 'compare' && item.to === node.id && item.slot === slot), evt);
             }
             if (batchAnyInHandle && node.type === 'batch_any') {
-                const edge = call('batchAnyInputEdgeForDrag', node);
+                const edge = nodeCall('batchAnyInputEdgeForDrag', null, node);
                 if (edge) {
                     reconnectEdge(edge, evt);
                     return;
                 }
-                call('showToast', t('Drag text, image, video, audio, or result outputs into Batch Any.', '可把文本、图片、视频、音频或 Result 输出拖入 Batch Any。'));
+                uiCall('showToast', t('Drag text, image, video, audio, or result outputs into Batch Any.', '可把文本、图片、视频、音频或 Result 输出拖入 Batch Any。'));
             }
             if (timelineMediaInHandle && node.type === 'timeline') {
-                call('showToast', t('Drag a media node output into this timeline input, or use Add selected media.', '将媒体节点输出拖到 Timeline 输入，或使用“添加选中媒体”。'));
+                uiCall('showToast', t('Drag a media node output into this timeline input, or use Add selected media.', '将媒体节点输出拖到 Timeline 输入，或使用“添加选中媒体”。'));
             }
         }
 

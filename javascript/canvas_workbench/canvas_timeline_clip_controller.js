@@ -2,47 +2,57 @@
     'use strict';
 
     function createCanvasTimelineClipController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.timelineClipSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const clipOperationSource = scope.clipOperationSource || {};
+        const historySource = scope.historySource || {};
+        const renderSource = scope.renderSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' ? !!scope.isNodeLocked(node) : false;
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
+        const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const getPerformanceNow = () => typeof interactionSource.performanceNow === 'function'
+            ? interactionSource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const buildTimelineClipPatch = (fields) => typeof scope.buildTimelineClipPatch === 'function'
-            ? scope.buildTimelineClipPatch(fields)
+        const buildTimelineClipPatch = (fields) => typeof clipOperationSource.buildTimelineClipPatch === 'function'
+            ? clipOperationSource.buildTimelineClipPatch(fields)
             : Object.assign({}, fields || {});
-        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
-            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof clipOperationSource.buildTimelineParamsPatch === 'function'
+            ? clipOperationSource.buildTimelineParamsPatch(node, paramsPatch)
             : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         const snapTimelineTime = (...args) => {
-            const value = call('snapTimelineTime', ...args);
+            const value = call(clipOperationSource, 'snapTimelineTime', ...args);
             return value === undefined ? args[1] : value;
         };
         const timelineClipAvailableDuration = (...args) => {
-            const value = call('timelineClipAvailableDuration', ...args);
+            const value = call(clipOperationSource, 'timelineClipAvailableDuration', ...args);
             return value === undefined ? Infinity : value;
         };
-        const timelineTrackCompatible = (...args) => call('timelineTrackCompatible', ...args) !== false;
+        const timelineTrackCompatible = (...args) => call(clipOperationSource, 'timelineTrackCompatible', ...args) !== false;
         let dragState = null;
 
         function startTimelineClipDrag(node, clipId, modeName, evt) {
             if (!node || node.type !== 'timeline' || isNodeLocked(node) || !evt) return;
             const nodeEl = evt.target?.closest?.('[data-node-id]');
-            const clip = call('selectTimelineClip', node, clipId, { render: false });
+            const clip = call(clipOperationSource, 'selectTimelineClip', node, clipId, { render: false });
             if (!clip || !nodeEl) return;
-            const laneInfo = call('timelineLaneInfoFromTarget', evt.target, nodeEl);
+            const laneInfo = call(domSource, 'timelineLaneInfoFromTarget', evt.target, nodeEl);
             if (!laneInfo) return;
             evt.preventDefault();
             evt.stopPropagation();
-            call('setSuppressWheelUntil', getPerformanceNow() + 420);
-            call('pushHistory', modeName === 'move' ? 'Move timeline clip' : 'Trim timeline clip');
+            call(interactionSource, 'setSuppressWheelUntil', getPerformanceNow() + 420);
+            call(historySource, 'pushHistory', modeName === 'move' ? 'Move timeline clip' : 'Trim timeline clip');
             try { evt.target.setPointerCapture?.(evt.pointerId); } catch (err) {}
             dragState = {
                 pointerId: evt.pointerId,
@@ -69,7 +79,7 @@
                 el.classList.toggle('is-selected', el.getAttribute('data-timeline-clip-id') === clip.id);
             });
             laneInfo.lane?.closest?.('.sai-timeline-track')?.classList.add('is-drop-target');
-            if (call('getSelectedNodeId') === node.id) call('renderInspector');
+            if (call(selectionSource, 'getSelectedNodeId') === node.id) call(selectionSource, 'renderInspector');
         }
 
         function onTimelineClipDragMove(evt) {
@@ -98,7 +108,7 @@
                     start: nextStart,
                     in: Math.max(0, state.startIn + (nextStart - state.startStart))
                 }));
-                call('enforceTimelineClipMediaBounds', node, clip);
+                call(clipOperationSource, 'enforceTimelineClipMediaBounds', node, clip);
             } else if (state.mode === 'trim-end') {
                 const maxDuration = timelineClipAvailableDuration(node, clip);
                 const maxEnd = Number.isFinite(maxDuration) ? state.startStart + maxDuration : Infinity;
@@ -112,7 +122,7 @@
                 Object.assign(clip, buildTimelineClipPatch({
                     duration: Math.max(minDuration, Math.min(snappedEnd - state.startStart, Number.isFinite(maxDuration) ? maxDuration : Infinity))
                 }));
-                call('enforceTimelineClipMediaBounds', node, clip);
+                call(clipOperationSource, 'enforceTimelineClipMediaBounds', node, clip);
             } else {
                 let rawStart = Math.max(0, state.startStart + delta);
                 const doc = getDocument();
@@ -145,18 +155,18 @@
                     rawStart = snappedStart;
                 }
                 Object.assign(clip, buildTimelineClipPatch({ start: Math.max(0, rawStart) }));
-                call('enforceTimelineClipMediaBounds', node, clip);
+                call(clipOperationSource, 'enforceTimelineClipMediaBounds', node, clip);
             }
             Object.assign(node, buildTimelineParamsPatch(node, {
                 selected_clip_id: clip.id,
                 playhead: clamp(Number(clip.start || 0), 0, Number(node.params?.duration || 1))
             }));
-            call('normalizeNode', node);
-            call('refreshTimelineClipDom', state.nodeEl, node, clip);
-            call('refreshTimelineTrackRowsDom', state.nodeEl, node);
-            call('refreshTimelinePlayheadDom', state.nodeEl, node);
-            call('refreshTimelinePreviewDom', state.nodeEl, node);
-            call('renderEdges');
+            call(nodeSource, 'normalizeNode', node);
+            call(domSource, 'refreshTimelineClipDom', state.nodeEl, node, clip);
+            call(domSource, 'refreshTimelineTrackRowsDom', state.nodeEl, node);
+            call(domSource, 'refreshTimelinePlayheadDom', state.nodeEl, node);
+            call(renderSource, 'refreshTimelinePreviewDom', state.nodeEl, node);
+            call(renderSource, 'renderEdges');
         }
 
         function stopTimelineClipDrag(evt) {
@@ -169,8 +179,8 @@
             doc?.removeEventListener('pointermove', onTimelineClipDragMove, true);
             doc?.removeEventListener('pointerup', stopTimelineClipDrag, true);
             doc?.removeEventListener('pointercancel', stopTimelineClipDrag, true);
-            call('scheduleSave');
-            if (call('getSelectedNodeId') === nodeId) call('renderInspector');
+            call(persistenceSource, 'scheduleSave');
+            if (call(selectionSource, 'getSelectedNodeId') === nodeId) call(selectionSource, 'renderInspector');
         }
 
         return {

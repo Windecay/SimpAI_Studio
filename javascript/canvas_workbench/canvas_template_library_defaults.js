@@ -2,8 +2,9 @@
     'use strict';
 
     function createCanvasTemplateLibraryDefaults(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
+        const scope = context?.templateLibraryDefaultsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
 
         function getDefaultWorkbenchTemplateLibraryItems() {
             return [
@@ -462,4 +463,3 @@
         createCanvasTemplateLibraryDefaults
     });
 })();
-

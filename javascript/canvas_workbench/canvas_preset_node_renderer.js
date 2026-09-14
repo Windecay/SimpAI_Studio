@@ -240,6 +240,7 @@
 
         function getVisiblePresetParams(node) {
             const schema = getPresetSchema(node);
+            const themeHidden = new Set(getPresetThemeInfo(node)?.disvisible || []);
             const prepend = [
                 { key: 'prompt', label: t('Positive Prompt', '正向提示词'), type: 'textarea', default: '' },
                 { key: 'negative_prompt', label: t('Negative Prompt', '负向提示词'), type: 'textarea', default: '' }
@@ -249,7 +250,7 @@
                 { key: 'image_seed', label: 'Seed', type: 'number', min: 0, max: 1125899906842623, step: 1, default: 0 }
             ];
             if (Array.isArray(schema.params) && schema.params.length) {
-                const params = schema.params.filter(param => param && param.visible !== false && param.key && !isResolutionOwnedPresetParam(param.key));
+                const params = schema.params.filter(param => param && param.visible !== false && param.key && !themeHidden.has(param.key) && !isResolutionOwnedPresetParam(param.key));
                 const keys = new Set(params.map(item => item.key));
                 return filterVisiblePresetParamsForSpecial(node, [...prepend.filter(item => !keys.has(item.key)), ...seedParams.filter(item => !keys.has(item.key)), ...params]
                     .filter(param => shouldShowPresetParam(node, param)));

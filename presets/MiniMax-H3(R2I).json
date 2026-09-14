@@ -34,8 +34,9 @@
         "audio_output": "silent",
         "mixed_segments": false
       },
-      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8", "minimax_h3_storyboard_control"],
+      "divisible": ["scene_input_image3", "scene_input_image4", "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8"],
       "disvisible": [
+        "minimax_h3_storyboard_control",
         "scene_additional_prompt",
         "scene_additional_prompt_2",
         "scene_var_number",

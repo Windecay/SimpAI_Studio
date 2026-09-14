@@ -1440,7 +1440,7 @@ def get_scene_theme_choices():
     return choices or ["Scene Theme / 场景主题"]
 
 
-def _scene_disvisible_with_optional_inputs(scene_frontend):
+def _scene_disvisible_with_optional_inputs(scene_frontend, theme=None):
     if not isinstance(scene_frontend, dict):
         return []
 
@@ -1457,7 +1457,7 @@ def _scene_disvisible_with_optional_inputs(scene_frontend):
                 hidden.append(text)
 
     try:
-        _extend_hidden(meta_parser.scene_disvisible_with_optional_inputs(scene_frontend))
+        _extend_hidden(meta_parser.scene_disvisible_with_optional_inputs(scene_frontend, theme))
     except Exception:
         pass
     _extend_hidden(scene_frontend.get("disvisible", []))
@@ -1659,6 +1659,8 @@ def _build_canvas_scene_schema(scene_frontend):
                 "overwrite_step": _canvas_scene_generation_step_props(scene_frontend, theme),
             },
         }
+        if scene_frontend.get("theme_disvisible"):
+            per_theme[theme]["disvisible"] = _scene_disvisible_with_optional_inputs(scene_frontend, theme)
 
     return {
         "version": scene_frontend.get("version", ""),
@@ -2187,7 +2189,7 @@ def avoid_empty_prompt_for_scene(prompt, state, canvas_image, input_image1, scen
 
     describe_prompt = None
     if not prompt and 'scene_frontend' in state:
-        visible = _scene_disvisible_with_optional_inputs(state["scene_frontend"])
+        visible = _scene_disvisible_with_optional_inputs(state["scene_frontend"], scene_theme)
         canvas_visible = 'scene_canvas_image' not in visible
         canvas_img = meta_parser.extract_scene_image(canvas_image) if canvas_visible else None
         input_img = meta_parser.extract_scene_image(input_image1)
@@ -2552,7 +2554,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
     if 'scene_frontend' in state_params:
         scene_frontend = state_params['scene_frontend']
         scene_theme = _resolve_scene_generation_theme(state_params, scene_frontend, scene_theme)
-        disvisible = _scene_disvisible_with_optional_inputs(scene_frontend)
+        disvisible = _scene_disvisible_with_optional_inputs(scene_frontend, scene_theme)
         disvisible = set(disvisible)
 
         scene_switch_option3 = _resolve_scene_generation_switch_option3(
@@ -3637,7 +3639,8 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
     hidden_models = set(engine_disvisible if isinstance(engine_disvisible, list) else [])
     scenes_disvisible = []
     if isinstance(scenes, dict):
-        scenes_disvisible = _scene_disvisible_with_optional_inputs(scenes)
+        scenes_disvisible = _scene_disvisible_with_optional_inputs(
+            scenes, _resolve_scene_theme(scenes, state_params.get("scene_theme")))
         hidden_models.update(scenes_disvisible)
         if "scene_base_model" in hidden_models:
             hidden_models.add("base_model")
@@ -4507,6 +4510,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
     current_preset = str(state.get("__preset") or "").strip()
     preferred_scene_theme = state.get("scene_theme", None) if current_preset and scene_theme_owner == current_preset else None
     scene_theme = _resolve_scene_theme(scene_frontend, preferred_scene_theme)
+    scene_disvisible = _scene_disvisible_with_optional_inputs(scene_frontend, scene_theme)
     resolved_scene_theme_owner = current_preset if scene_theme else ""
     scene_task_method = ""
     if isinstance(scene_frontend, dict):

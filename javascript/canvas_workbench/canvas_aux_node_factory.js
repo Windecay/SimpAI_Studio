@@ -2,27 +2,34 @@
     'use strict';
 
     function createCanvasAuxNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const scope = context?.auxNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const languageSource = scope.languageSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const mediaBrowserSource = scope.mediaBrowserSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : () => ({ w: 340, h: 430 });
-        const mediaBrowserLabel = typeof scope.mediaBrowserLabel === 'function'
-            ? scope.mediaBrowserLabel
+        const mediaBrowserLabel = typeof languageSource.mediaBrowserLabel === 'function'
+            ? languageSource.mediaBrowserLabel
             : () => t('Media Browser', '媒体浏览器');
-        const mediaBrowserInitialState = typeof scope.mediaBrowserInitialState === 'function'
-            ? scope.mediaBrowserInitialState
+        const mediaBrowserInitialState = typeof mediaBrowserSource.mediaBrowserInitialState === 'function'
+            ? mediaBrowserSource.mediaBrowserInitialState
             : world => ({ world: { x: Math.round(Number(world?.x || 0)), y: Math.round(Number(world?.y || 0)) } });
-        const serializableMediaBrowserState = typeof scope.serializableMediaBrowserState === 'function'
-            ? scope.serializableMediaBrowserState
+        const serializableMediaBrowserState = typeof mediaBrowserSource.serializableMediaBrowserState === 'function'
+            ? mediaBrowserSource.serializableMediaBrowserState
             : state => state || {};
-        const getViewportCenterWorld = typeof scope.getViewportCenterWorld === 'function'
-            ? scope.getViewportCenterWorld
+        const getViewportCenterWorld = typeof viewportSource.getViewportCenterWorld === 'function'
+            ? viewportSource.getViewportCenterWorld
             : () => ({ x: 0, y: 0 });
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

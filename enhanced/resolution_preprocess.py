@@ -72,6 +72,8 @@ def get_resolution_profile(state_params, scene_theme=None):
     profile = scene_frontend.get("resolution_control", {})
     if not isinstance(profile, dict):
         return {}
+    if isinstance(scene_theme, str) and isinstance(profile.get(scene_theme), dict):
+        profile = profile[scene_theme]
     return dict(profile)
 
 

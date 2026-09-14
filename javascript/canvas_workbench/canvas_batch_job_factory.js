@@ -2,14 +2,17 @@
     'use strict';
 
     function createCanvasBatchJobFactoryController(context) {
-        const scope = context || {};
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.batchJobFactorySource || context || {};
+        const serializationSource = scope.serializationSource || {};
+        const timeSource = scope.timeSource || {};
+        const scriptSource = scope.scriptSource || {};
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => value ?? fallback);
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const defaultXyzScript = scope.xyzScript || '';
+        const defaultXyzScript = scriptSource.xyzScript || '';
 
         function buildXyzBatchJob(options) {
             const config = options || {};

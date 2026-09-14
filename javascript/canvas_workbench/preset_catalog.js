@@ -2,15 +2,48 @@
     'use strict';
 
     function createPresetCatalogService(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
+        const scope = context?.presetCatalogSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const systemSource = scope.systemSource || {};
+        const apiSource = scope.apiSource || {};
+        const userSource = scope.userSource || {};
+        const paletteSource = scope.paletteSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const stateSource = scope.stateSource || {};
+        const uiSource = scope.uiSource || {};
+        const diagnosticsSource = scope.diagnosticsSource || {};
+        const callbackSources = {
+            getSystemParams: systemSource,
+            presetCatalog: apiSource,
+            getWorkbenchUserContext: userSource,
+            isPaletteOpen: paletteSource,
+            renderPresetPalette: paletteSource,
+            reconcilePresetNodesWithCatalog: nodeSource,
+            mutate: stateSource,
+            showToast: uiSource,
+            isWorkbenchOpen: uiSource,
+            renderAll: uiSource
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const normalizePresetName = typeof utilitySource.normalizePresetName === 'function'
+            ? utilitySource.normalizePresetName
+            : ((value) => String(value || '').trim());
         let authoritativePresetCatalog = null;
         let authoritativePresetCatalogPromise = null;
         let authoritativePresetCatalogState = 'idle';
 
         function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        }
+
+        function warn(...args) {
+            if (typeof diagnosticsSource.warn === 'function') {
+                diagnosticsSource.warn(...args);
+                return;
+            }
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn(...args);
         }
 
         function normalizePresetCatalog(source) {
@@ -82,7 +115,7 @@
                 })
                 .catch((err) => {
                     authoritativePresetCatalogState = 'error';
-                    console.warn('[SimpAI Canvas] preset catalog refresh failed', err);
+                    warn('[SimpAI Canvas] preset catalog refresh failed', err);
                     return getPresetCatalog();
                 })
                 .finally(() => {

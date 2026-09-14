@@ -2,18 +2,29 @@
     'use strict';
 
     function createCanvasDanbooruAutocompleteController(context) {
-        const scope = context || {};
-        const danbooruAutocomplete = typeof scope.danbooruAutocomplete === 'function' ? scope.danbooruAutocomplete : null;
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => scope.window || (typeof window !== 'undefined' ? window : {});
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : value => String(value ?? '');
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const maybeShowRuntimeNotice = typeof scope.maybeShowRuntimeNotice === 'function'
-            ? scope.maybeShowRuntimeNotice
+        const scope = context?.danbooruAutocompleteSource || context || {};
+        const apiSource = scope.apiSource || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const languageSource = scope.languageSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const inputSource = scope.inputSource || {};
+        const danbooruAutocomplete = typeof apiSource.danbooruAutocomplete === 'function'
+            ? apiSource.danbooruAutocomplete
+            : null;
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : {});
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : value => String(value ?? '');
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const maybeShowRuntimeNotice = typeof runtimeSource.maybeShowRuntimeNotice === 'function'
+            ? runtimeSource.maybeShowRuntimeNotice
             : () => {};
-        const dispatchTextControlInput = typeof scope.dispatchTextControlInput === 'function'
-            ? scope.dispatchTextControlInput
+        const dispatchTextControlInput = typeof inputSource.dispatchTextControlInput === 'function'
+            ? inputSource.dispatchTextControlInput
             : () => {};
         const state = {
             field: null,

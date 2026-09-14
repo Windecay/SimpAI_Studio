@@ -1,4 +1,13 @@
 {
+  "Target Face ID": "目标人脸编号",
+  "Detect Target Faces": "检测目标人脸",
+  "Detecting Target Faces": "正在检测人脸",
+  "No Faces at Region Start": "片段起始帧未检测到人脸",
+  "Face identity models are missing": "缺少人脸身份识别模型",
+  "Face preview failed": "人脸预览失败",
+  "Face preview timed out": "人脸预览超时",
+  "Face preview is busy": "正在处理其他人脸预览，请稍后重试",
+  "Face preview controls are unavailable. Restart Studio and refresh the page.": "人脸检测控件未加载，请重启 Studio 后刷新页面。",
   "MiniMax-H3(Region)": "MiniMax-H3片段重建",
   "MiniMax H3 Region Reconstruction": "MiniMax H3 片段重建",
   "Video Region": "视频区间",
@@ -2249,5 +2258,18 @@
   "No text-to-image Preset is available.": "没有可用的文生图 Preset。",
   "Selected image Preset is unavailable.": "所选生图 Preset 已不可用，请重新选择。",
   "The selected private parameter profile is no longer available.": "所选私人参数预设已不存在，请重新选择。",
-  "Open Infinite Canvas in standalone page": "打开独立无限画布页面"
+  "Open Infinite Canvas in standalone page": "打开独立无限画布页面",
+  "MiniMax-H3(Region)\u2B07": "MiniMax-H3片段重建\u2B07",
+  "Region Reconstruction": "动态重建",
+  "Motion Reconstruction": "动态重建",
+  "Face Refinement": "面部优化",
+  "Tiled Refinement": "分区优化",
+  "Detail Working Resolution": "局部重绘分辨率",
+  "Face Feathering (px)": "面部回填羽化（像素）",
+  "Automatic Tile Grid": "自动分区网格",
+  "Tile Working Budget (square side)": "分区工作预算（等面积方形边长）",
+  "Tile Working Sizes": "分区工作尺寸",
+  "Tile Budget Exceeded": "超出分区工作预算",
+  "Invalid Tile Source Size": "源画面尺寸不支持当前分区",
+  "tiles": "块"
 }

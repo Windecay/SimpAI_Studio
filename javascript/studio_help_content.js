@@ -22,6 +22,7 @@
         image_inpaint: pair('Inpaint and Outpaint guide', '内外重绘指引'),
         image_enhance: pair('Enhance guide', '增强修图指引'),
         mask: pair('Masks and controls', '蒙版与条件控制'),
+        sam3: pair('SAM3 video mask guide', 'SAM3 视频蒙版指引'),
         cfg: pair('CFG / Guidance', 'CFG / 引导强度'),
         models: pair('Generation models', '生成模型指引'),
         refiner: pair('Refiner / Low-noise model', '精修 / 低噪声模型'),
@@ -50,7 +51,7 @@
     const topics = {
         home: {
             intro: pair('Choose a topic for the part of Studio you are using.', '选择当前需要了解的区域。'),
-            links: ['preset', 'store', 'general', 'sampling', 'cfg', 'resolution', 'profiles', 'styles', 'models', 'agent', 'setup', 'prompt', 'media', 'metadata', 'application'],
+            links: ['preset', 'store', 'general', 'sampling', 'cfg', 'resolution', 'profiles', 'styles', 'models', 'agent', 'setup', 'prompt', 'media', 'sam3', 'metadata', 'application'],
         },
         general: {
             intro: pair('These settings control the current generation task. Their availability and effect follow the selected preset and engine.', '这里设置当前生成任务。各项是否可用、如何生效，取决于所选预置和引擎。'),
@@ -372,7 +373,7 @@
                     pair('In Canvas Agent, select or explicitly reference the intended nodes. Review the reference list before submitting.', '使用画布 Agent 时，选中或明确引用所需节点。提交前检查引用列表。'),
                 ]],
             ],
-            links: ['preset', 'image_prompt', 'image_uov', 'image_inpaint', 'image_enhance', 'mask', 'agent'],
+            links: ['preset', 'image_prompt', 'image_uov', 'image_inpaint', 'image_enhance', 'mask', 'sam3', 'agent'],
         },
         image_prompt: {
             intro: pair('Use images as conditioning for a compatible generation workflow. This is different from editing the source image in Upscale or Variation or Inpaint or Outpaint.', '在兼容的生成流程中，用图片提供条件约束。这里与“放大与变化”“内外重绘”中直接修改源图的用途不同。'),
@@ -454,6 +455,36 @@
             ],
             links: ['image_uov', 'image_inpaint', 'inpaint', 'preset'],
         },
+        sam3: {
+            intro: pair('The SAM3 Video Mask panel defines which part of a source video a compatible preset will process. Choose target tracking, fixed polygons, or an uploaded mask video. Preparing a mask does not generate the final edited video.', 'SAM3 视频蒙版面板用于指定兼容预置要处理的源视频区域。可选择目标跟踪、固定多边形或上传 mask 视频。制作蒙版不会直接生成最终编辑视频。'),
+            sections: [
+                [pair('Prepare the source and choose a method', '准备源视频并选择方式'), [
+                    pair('Expand SAM3 Video Mask and upload the source to the left Video input. Finish any source trimming before preparing the mask. The right Mask Video area shows or accepts the mask video, not the replacement reference image.', '展开“SAM3 视频蒙版”，在左侧视频输入区上传源视频。需要裁剪时，完成裁剪后再制作蒙版。右侧“蒙版视频”区域用于预览或上传 mask 视频，不是替换参考图的位置。'),
+                    pair('Track a moving person or object with Point Mode. Use Polygon Mask for an area fixed in screen coordinates. Upload a prepared mask video when you already have an accurate selection. Normally white selects the region and black leaves it unselected; the preset decides whether to replace, remove or otherwise edit that region.', '移动的人物或物体使用 Point Mode 点选跟踪；固定在画面同一位置的区域使用 Polygon Mask 多边形；已有准确选区时直接上传 mask 视频。通常白色表示选中区域、黑色表示未选中，选区用于替换、移除还是其他编辑，由当前预置决定。'),
+                ]],
+                [pair('Target tracking with SAM3', '使用 SAM3 跟踪目标'), [
+                    pair('After the source video loads, double-click the video picture on the left to open the frames editor. Choose Point Mode and use the frame slider to find a frame where the target is clearly visible.', '源视频加载后，双击左侧视频画面打开逐帧编辑器。选择 Point Mode 点选模式，拖动帧滑块，找到目标清晰可见的一帧。'),
+                    pair('Left-click inside the target to add positive points; right-click unwanted areas to add exclusion points. For face replacement, select the intended face rather than the whole person. These points initialize tracking from the selected frame; they are not a frame-by-frame hand-drawn mask.', '左键点击目标内部添加正向点，右键点击不需要的区域添加排除点。换脸时应选择目标脸部，不要把整个人都选入。这些点用于从选定帧建立跟踪，不是逐帧手绘蒙版。'),
+                    pair('Confirm submits mask generation and closes the editor; it does not merely save the points. Wait for the right Mask Video preview to update, then inspect the beginning, middle, end and any occlusions. If the selection drifts or includes the wrong object, choose clearer points and regenerate before the main generation.', '点击“确认”会提交蒙版生成并关闭编辑器，不只是保存点位。等待右侧蒙版视频更新，再检查开头、中间、结尾以及遮挡处。出现漂移或误选时，重新选择更明确的点并生成蒙版，再执行主生成。'),
+                    pair('Alternatively, expand SAM3 Prompt Segmentation, enter a target description such as woman or dress, and click Generate Mask. This prompt selects an object, not its replacement appearance. Point or text tracking requires the SAM3 model; a configured LLM agent is not required for point tracking.', '也可以展开“SAM3 语义分割”，输入 woman、dress 等目标描述，再点击“生成蒙版”。这里的提示词用于选择对象，不用于描述替换后的外观。点选或文字跟踪需要 SAM3 模型；点选跟踪不要求配置 LLM 智能体。'),
+                ]],
+                [pair('Fixed polygons without tracking', '固定多边形，不跟踪目标'), [
+                    pair('In the same frames editor, switch to Polygon Mask. Left-click at least three vertices around the intended area; click near the first point or double-click to close the polygon. You can draw several polygons, and their areas are combined.', '在同一逐帧编辑器中选择 Polygon Mask。沿目标区域左键添加至少三个顶点，靠近首点点击或双击闭合多边形。可以绘制多个多边形，所有区域按并集合并。'),
+                    pair('Select a polygon to edit it: drag a vertex to adjust it, click an edge to add a vertex, right-click a vertex to remove it, or right-click inside to delete the polygon. Undo, Redo and Clear operate on the current editor selections.', '选中多边形后可以拖动顶点调整，点击边线增加顶点，右键顶点删除该点，右键内部删除该多边形。撤销、重做和清空用于当前编辑器选区。'),
+                    pair('Confirm creates a mask using the same polygon coordinates on every frame, without running SAM3. It does not follow object or camera movement. This suits a fixed screen area such as a stationary watermark; for a moving target use tracking or a frame-aligned mask video.', '点击“确认”会按相同多边形坐标生成所有帧的蒙版，不运行 SAM3，也不会跟随目标或镜头运动。适合固定水印等画面位置不变的区域；移动目标应使用跟踪或逐帧对齐的 mask 视频。'),
+                ]],
+                [pair('Upload a mask video', '手动上传 mask 视频'), [
+                    pair('Upload the source video first. Upload or drop a prepared mask video into the right Mask Video area. This area accepts video files only; images and other non-video files are not supported.', '先上传源视频，再将制作好的 mask 视频上传或拖入右侧蒙版视频区域。此区域仅接受视频文件，不接受图片或其他非视频文件。'),
+                    pair('An uploaded mask video is used without SAM3 tracking. For a fixed area, draw a Polygon Mask in the frames editor and confirm to generate a mask video; do not upload a still image.', '上传的 mask 视频不经过 SAM3 跟踪。固定区域可以在逐帧编辑器中绘制 Polygon Mask，确认后生成蒙版视频，不要上传静态图片。'),
+                    pair('Studio matches mask size, FPS and frame count to the source. A longer mask video is truncated; a shorter one repeats its last frame. This does not track the target or align mismatched action timing. Prepare matching frames yourself and inspect the resulting preview, especially after changing or trimming the source.', 'Studio 会按源视频匹配蒙版尺寸、FPS 和帧数：过长的 mask 视频截断，过短的延续最后一帧。这不会自动跟踪目标，也不会校正动作时间错位。请自行准备对应帧，更换或裁剪源视频后尤其要检查转换后的预览。'),
+                ]],
+                [pair('Check the mask before the final generation', '主生成前检查蒙版'), [
+                    pair('Inspect the actual mask preview, including its white/black meaning, boundaries, motion and duration. SAM3 Params such as smoothing and inversion affect mask generation; changing them does not automatically rewrite an already generated or uploaded mask.', '检查实际蒙版预览的黑白含义、边缘、运动和时长。SAM3 高级参数中的平滑、翻转等设置作用于蒙版生成，修改这些参数不会自动重写已有或已上传的 mask。'),
+                    pair('Generate Mask and the editor Confirm button prepare a mask; the main Generate button runs the selected editing preset. Check replacement references and prompts before that final step. Stop requests cancellation of mask generation; a failed or cancelled attempt can leave the previous mask in place, so verify that the preview is the intended version.', '“生成蒙版”和编辑器中的“确认”用于制作 mask，主界面的“生成”才会执行所选编辑预置。执行前检查替换参考图和提示词。“停止”用于请求取消蒙版生成；失败或取消后可能仍保留旧蒙版，请确认预览确实是需要的版本。'),
+                ]],
+            ],
+            links: ['preset', 'mask', 'media', 'models'],
+        },
         mask: {
             intro: pair('Mask and condition support depend on the selected preset and mode.', '蒙版和条件控制的支持范围取决于当前预置包与模式。'),
             sections: [
@@ -463,7 +494,7 @@
                     pair('For video masks, inspect multiple frames and the selected time range. Return to the task after confirming the preview.', '视频蒙版需要检查多个画面和所选时间范围，确认预览后返回任务。'),
                 ]],
             ],
-            links: ['media', 'preset'],
+            links: ['sam3', 'media', 'preset'],
         },
     };
     const taskNames = {
@@ -684,8 +715,50 @@
         pair('Basic: generate with a single sampling stage.', '基础：单次采样生成。'),
         pair('2 pass: combine a low-resolution first sampling stage with a high-resolution second sampling stage to balance image quality and speed. This may slightly affect consistency.', '双采样：通过低分辨率一采与高分辨率二采，平衡画质与速度，可能略微影响一致性。'),
     ];
+    const sam3Presets = new Set([
+        'MiniMax-H3(Edit)', 'MiniMax-H3(Swap-SAM3)', 'Wan-Animate', 'Wan-Remover', 'Wan-SCAIL2-SAM3',
+    ]);
+    const sam3Summary = pair(
+        'SAM3 mask: upload the source, then double-click its video for point tracking or fixed polygons, or upload a mask video to the right (video files only). Inspect the mask before the final generation.',
+        'SAM3 蒙版：上传源视频后，双击画面选择目标点选跟踪或固定多边形，也可在右侧上传 mask 视频（仅支持视频文件）。检查蒙版后再执行主生成。'
+    );
+
+    function presetUsesSam3(state, preset, data) {
+        const hidden = [state?.__scene_disvisible, state?.__engine_disvisible].flatMap(value =>
+            Array.isArray(value) ? value : String(value || '').split(',')).map(value => String(value).trim());
+        if (['sam3_video_mask_accordion', 'sam3_input_video', 'sam3_mask_video'].some(id => hidden.includes(id))) return false;
+        if (sam3Presets.has(preset)) return true;
+        const ownsScene = !state?.__scene_theme_preset || state.__scene_theme_preset === preset;
+        return /sam3(?!d)/i.test(String(data.theme || ''))
+            || (ownsScene && /sam3(?!d)/i.test([state?.__scene_theme, state?.__scene_task_method].filter(Boolean).join(' ')));
+    }
 
     const presetGuides = {
+        'MiniMax-H3(Region)': {
+            intro: pair('Rework a selected time range in an existing video. Motion Rebuild regenerates motion and can slow it down; Face Refine improves facial detail; Tile Refine enlarges and redraws individual image regions to improve detail across the frame.', '针对已有视频的指定时间片段进行重建与细节优化。动态重建用于重新生成动作或制作慢动作；面部优化用于改善人脸细节；分区优化将画面分区放大重绘，改善全画面细节。'),
+            inputs: pair('A source video, the start and end times, and a prompt describing the desired result. Optionally add up to 3 appearance reference images; no manually prepared mask is required.', '源视频、处理片段的起止时间，以及描述目标效果的提示词。可选添加最多 3 张外观参考图，无需手动制作蒙版。'),
+            keyPoint: pair('Face Refine and Tile Refine merge the refined regions back at the original video dimensions. Tile enlargement is an intermediate refinement step, not an increase in output resolution. Review identity and consistency between frames after generation.', '面部优化和分区优化均将重绘区域合回原尺寸视频，分区放大不改变成片分辨率。生成后需检查人物外观与前后帧细节是否一致。'),
+        },
+        'MiniMax-H3(Edit)': {
+            intro: pair('Edit or replace the area selected by a SAM3 temporal mask in an existing video. Define the change in text and optionally provide a replacement reference image.', '通过 SAM3 时序蒙版指定已有视频中的区域，进行局部修改或替换。用文字说明改动，也可提供替换参考图。'),
+            inputs: pair('Required: a source video in the SAM3 panel and its mask. Optional: one replacement reference image in the reference-image input.', '必需：SAM3 面板中的源视频及对应蒙版。可选：在参考图输入区放置一张替换参考图。'),
+        },
+        'MiniMax-H3(Swap-SAM3)': {
+            intro: pair('Replace the face selected by a SAM3 temporal mask using a facial reference. Select only the intended face, keeping unrelated people and areas outside the mask.', '用人脸参考图替换 SAM3 时序蒙版选中的脸部。蒙版应仅选择目标脸部，将无关人物和区域留在选区之外。'),
+            inputs: pair('Required: the source video, a mask video selecting its target face, and one face reference image. Upload the reference separately from the mask video.', '必需：源视频、选中目标脸部的蒙版视频，以及一张人脸参考图。参考图与 mask 视频分别上传。'),
+        },
+        'Wan-Animate': {
+            intro: pair('Use a SAM3 video mask and a replacement reference to replace an object, face or person. Choose the matching mode before preparing the target selection.', '结合 SAM3 视频蒙版与替换参考图，进行物体替换、换脸或人物替换。制作目标选区前，选择对应模式。'),
+            inputs: pair('A source video in the SAM3 panel, its target mask, and a replacement reference appropriate to the selected mode.', 'SAM3 面板中的源视频、目标蒙版，以及与当前模式匹配的替换参考图。'),
+        },
+        'Wan-Remover': {
+            intro: pair('Remove the object selected by a SAM3 video mask and reconstruct the vacated area. Select the unwanted content, not the area you want to keep.', '移除 SAM3 视频蒙版选中的对象，并重建被移除的区域。蒙版应选择要消除的内容，不要反过来选中希望保留的区域。'),
+            inputs: pair('The source video and a mask selecting the object to remove. The right Mask Video input is for the mask video, not a replacement image.', '源视频，以及选中待移除对象的蒙版。右侧蒙版视频输入用于 mask 视频，不用于替换参考图。'),
+        },
+        'Wan-SCAIL2-SAM3': {
+            intro: pair('Replace a character using the manually prepared SAM3-panel mask and a character reference. Use tracking, fixed polygons or a supplied mask video according to the target motion.', '使用 SAM3 面板中手动准备的蒙版和角色参考图替换人物。根据目标运动情况，选择点选跟踪、固定多边形或已有 mask 视频。'),
+            inputs: pair('A source video, its target-character mask, and a character reference image in the reference input.', '源视频、对应目标人物蒙版，以及参考图输入区中的角色参考图。'),
+        },
         'MiniMax-H3(R2C)': {
             intro: pair('Continue an existing video with a new segment of picture and sound. Use it to extend a shot or carry an action forward from the previous ending.', '接着已有视频的结尾生成新的画面和声音，适合延长镜头、继续人物动作或推进下一段情节。续写从前段的结束状态出发。'),
             inputs: pair('Required: the previous video. Optional: 1-9 images for identity or appearance references. No separate audio input is used in this preset.', '必需：前一段视频。可选：1 至 9 张人物或外观参考图。此预置包不使用单独上传的音频。'),
@@ -726,6 +799,7 @@
         const tasks = Array.isArray(data.tasks) ? data.tasks : [];
         const knownTasks = tasks.filter(key => Object.hasOwn(taskGuides, key));
         const dedicated = Object.hasOwn(presetGuides, preset) ? presetGuides[preset] : null;
+        const sam3 = presetUsesSam3(state, preset, data);
         const guide = dedicated || taskGuides[knownTasks[0]] || {
             intro: pair('This custom preset has no declared task description. Its name alone does not identify its intended result.', '此自定义预置包尚未声明任务用途，仅凭名称无法判断它会生成或处理什么内容。'),
             inputs: pair('Input requirements have not been declared; check the preset author instructions and the visible input labels.', '尚未声明素材要求，请查看作者提供的说明及当前输入位置的标注。'),
@@ -740,6 +814,7 @@
         ];
         if (modes.length) sections.push([pair('Sampling modes', '采样模式'), modes]);
         sections.push([pair('First use', '首次使用'), steps]);
+        if (sam3) sections.push(...topics.sam3.sections);
         const notes = [...(guide.notes || [])];
         if (guide.keyPoint) notes.unshift(guide.keyPoint);
         notes.push(pair('If model files are missing, use the model check and the installation guide before generation. The help dialog does not install or load models.', '模型文件缺失时，生成前查看模型检查和安装指引。打开帮助不会安装或加载模型。'));
@@ -751,10 +826,10 @@
             title: preset || text(titles.preset, state),
             intro: text(guide.intro, state),
             inputs: text(guide.inputs, state),
-            keyPoint: text(guide.keyPoint, state),
+            keyPoint: [guide.keyPoint, sam3 ? sam3Summary : null].filter(Boolean).map(value => text(value, state)).join(' '),
             mode: modes.map(mode => text(mode, state)).join(' '),
             sections,
-            links: ['media', 'prompt', 'setup'],
+            links: sam3 ? ['sam3', 'media', 'prompt', 'models'] : ['media', 'prompt', 'setup'],
         };
     }
 

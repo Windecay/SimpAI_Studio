@@ -2,19 +2,26 @@
     'use strict';
 
     function createCanvasTextControlContextController(context) {
-        const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.textControlSource || context || {};
+        const domSource = scope.domSource || {};
+        const environmentSource = scope.environmentSource || {};
+        const languageSource = scope.languageSource || {};
+        const menuSource = scope.menuSource || {};
+        const notificationSource = scope.notificationSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => typeof scope.getWindow === 'function'
-            ? scope.getWindow()
+        const getWindow = () => typeof environmentSource.getWindow === 'function'
+            ? environmentSource.getWindow()
             : (typeof window !== 'undefined' ? window : null);
         const getNavigator = () => {
             const win = getWindow();
             return win?.navigator || (typeof navigator !== 'undefined' ? navigator : null);
         };
-        const translate = typeof scope.t === 'function' ? scope.t : (en, cn) => cn || en;
+        const translate = typeof languageSource.t === 'function' ? languageSource.t : (en, cn) => cn || en;
 
         function editableTextControlFromTarget(target) {
             const el = target?.closest?.('textarea,input,[contenteditable="true"],[contenteditable="plaintext-only"]');
@@ -222,7 +229,7 @@
             const selection = textControlSelection(field);
             const selectedText = selection.text;
             const readonly = textControlIsReadonly(field);
-            call('openContextMenu', x, y, [
+            call(menuSource, 'openContextMenu', x, y, [
                 {
                     label: translate('Select all', '全选'),
                     icon: 'fa-i-cursor',
@@ -235,7 +242,7 @@
                     disabled: !(selectedText || value),
                     action: async () => {
                         const ok = await writeClipboardText(selectedText || value);
-                        call('showToast', ok ? translate('Text copied.', '文本已复制') : translate('Copy failed.', '复制失败'));
+                            call(notificationSource, 'showToast', ok ? translate('Text copied.', '文本已复制') : translate('Copy failed.', '复制失败'));
                     }
                 },
                 {
@@ -247,12 +254,12 @@
                             const text = await getNavigator()?.clipboard?.readText?.();
                             if (text == null) throw new Error('clipboard read unavailable');
                             if (insertTextIntoControl(field, text)) {
-                                call('showToast', translate('Text pasted.', '文本已黏贴'));
+                                call(notificationSource, 'showToast', translate('Text pasted.', '文本已黏贴'));
                             } else {
-                                call('showToast', translate('Paste failed.', '黏贴失败'));
+                                call(notificationSource, 'showToast', translate('Paste failed.', '黏贴失败'));
                             }
                         } catch (err) {
-                            call('showToast', translate('Clipboard paste is blocked by the browser. Use Ctrl+V.', '浏览器阻止了菜单黏贴，请使用 Ctrl+V。'));
+                            call(notificationSource, 'showToast', translate('Clipboard paste is blocked by the browser. Use Ctrl+V.', '浏览器阻止了菜单黏贴，请使用 Ctrl+V。'));
                         }
                     }
                 },
@@ -265,9 +272,9 @@
                         const ok = await writeClipboardText(text);
                         if (ok) {
                             cutTextControlSelection(field);
-                            call('showToast', translate('Text cut.', '文本已剪切'));
+                            call(notificationSource, 'showToast', translate('Text cut.', '文本已剪切'));
                         } else {
-                            call('showToast', translate('Cut failed.', '剪切失败'));
+                            call(notificationSource, 'showToast', translate('Cut failed.', '剪切失败'));
                         }
                     }
                 }

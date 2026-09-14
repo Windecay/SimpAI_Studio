@@ -2,10 +2,14 @@
     'use strict';
 
     function createCanvasMediaNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (prefix) => `${prefix}-node`;
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.mediaNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const serializationSource = scope.serializationSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -13,11 +17,11 @@
                     return fallback;
                 }
             });
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : (type) => type === 'image' ? { w: 264, h: 300 } : { w: 220, h: 250 };
-        const getAssetMediaKind = typeof scope.getAssetMediaKind === 'function'
-            ? scope.getAssetMediaKind
+        const getAssetMediaKind = typeof mediaSource.getAssetMediaKind === 'function'
+            ? mediaSource.getAssetMediaKind
             : (asset) => {
                 const mime = String(asset?.mime || '').toLowerCase();
                 if (mime.startsWith('video/')) return 'video';

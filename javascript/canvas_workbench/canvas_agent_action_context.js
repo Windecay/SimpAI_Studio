@@ -2,21 +2,33 @@
     'use strict';
 
     function createCanvasAgentActionController(source) {
-        const scope = source || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
+        const scope = source?.actionSource || source || {};
+        const languageSource = scope.languageSource || {};
+        const stateSource = scope.stateSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const promptSource = scope.promptSource || {};
+        const targetSource = scope.targetSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const languageCall = (name, fallback, ...args) => call(languageSource, name, fallback, ...args);
+        const stateCall = (name, fallback, ...args) => call(stateSource, name, fallback, ...args);
+        const referenceCall = (name, fallback, ...args) => call(referenceSource, name, fallback, ...args);
+        const promptCall = (name, fallback, ...args) => call(promptSource, name, fallback, ...args);
+        const targetCall = (name, fallback, ...args) => call(targetSource, name, fallback, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
 
         function canvasAgentPrimaryAction() {
-            const target = call('getCanvasAgentTargetNode', null);
+            const target = targetCall('getCanvasAgentTargetNode', null);
             const meta = canvasAgentPrimaryActionMeta(target);
             return meta.enabled ? meta.action : '';
         }
 
         function canvasAgentPrimaryActionMeta(target) {
-            const counts = call('canvasAgentReferenceCounts', {},) || {};
-            const state = call('getCanvasAgentState', {}) || {};
-            const intent = call('canvasAgentPromptMediaIntent', {}, state.input || '') || {};
-            const targetKind = call('getCanvasAgentTargetMediaKind', '', target);
+            const counts = referenceCall('canvasAgentReferenceCounts', {},) || {};
+            const state = stateCall('getCanvasAgentState', {}) || {};
+            const intent = promptCall('canvasAgentPromptMediaIntent', {}, state.input || '') || {};
+            const targetKind = targetCall('getCanvasAgentTargetMediaKind', '', target);
             const hasImage = targetKind === 'image' || Number(counts.images) > 0;
             const hasVideo = targetKind === 'video' || Number(counts.videos) > 0;
             const hasAudio = targetKind === 'audio' || Number(counts.audio) > 0;
@@ -57,7 +69,7 @@
                     action: 'generate-video',
                     label: t('New video', '新建视频'),
                     icon: 'fa-film',
-                    enabled: !target || call('isCanvasAgentGeneratorTarget', false, target)
+                    enabled: !target || targetCall('isCanvasAgentGeneratorTarget', false, target)
                 };
             }
             if ((intent.wantsAudio || targetKind === 'audio' || Number(counts.audio) > 0) && hasAudio) {
@@ -73,7 +85,7 @@
                     action: 'generate-audio',
                     label: t('New audio', '新建音频'),
                     icon: 'fa-music',
-                    enabled: !target || call('isCanvasAgentGeneratorTarget', false, target)
+                    enabled: !target || targetCall('isCanvasAgentGeneratorTarget', false, target)
                 };
             }
             if (targetKind === 'video') {
@@ -84,7 +96,7 @@
                     enabled: true
                 };
             }
-            if (!call('isCanvasAgentImageTarget', false, target) && Number(counts.images) > 0) {
+            if (!targetCall('isCanvasAgentImageTarget', false, target) && Number(counts.images) > 0) {
                 return {
                     action: 'edit-image',
                     label: t('Edit image', '编辑图片'),
@@ -92,7 +104,7 @@
                     enabled: true
                 };
             }
-            if (call('isCanvasAgentImageTarget', false, target)) {
+            if (targetCall('isCanvasAgentImageTarget', false, target)) {
                 return {
                     action: 'edit-image',
                     label: t('Edit image', '编辑图片'),
@@ -100,7 +112,7 @@
                     enabled: true
                 };
             }
-            if (call('isCanvasAgentTextTarget', false, target)) {
+            if (targetCall('isCanvasAgentTextTarget', false, target)) {
                 return {
                     action: 'refine-text',
                     label: t('Refine', '优化'),
@@ -108,7 +120,7 @@
                     enabled: true
                 };
             }
-            if (target && call('isCanvasAgentMediaReferenceTarget', false, target)) {
+            if (target && targetCall('isCanvasAgentMediaReferenceTarget', false, target)) {
                 return {
                     action: 'use-selected',
                     label: t('Use reference', '引用素材'),

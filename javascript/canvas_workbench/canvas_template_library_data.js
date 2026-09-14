@@ -4,21 +4,33 @@
     const TEMPLATE_MEDIA_CATEGORIES = Object.freeze(['starter', 'image', 'video', 'audio']);
 
     function createCanvasTemplateLibraryDataController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const sanitizeStoragePart = scope.sanitizeStoragePart || ((value) => String(value || '').trim());
-        const resolveStaticPath = scope.resolveStaticPath || ((value) => String(value || ''));
-        const manifestPath = String(call('getManifestPath', '') || '');
-        const previewRoot = String(call('getPreviewRoot', '') || '');
+        const scope = context?.templateLibraryDataSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const pathSource = scope.pathSource || {};
+        const networkSource = scope.networkSource || {};
+        const apiSource = scope.apiSource || {};
+        const defaultsSource = scope.defaultsSource || {};
+        const projectSource = scope.projectSource || {};
+        const uiSource = scope.uiSource || {};
+        const diagnosticsSource = scope.diagnosticsSource || {};
+        const call = (source, name, fallback, ...args) => typeof source?.[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const sanitizeStoragePart = typeof utilitySource.sanitizeStoragePart === 'function'
+            ? utilitySource.sanitizeStoragePart
+            : ((value) => String(value || '').trim());
+        const resolveStaticPath = typeof pathSource.resolveStaticPath === 'function'
+            ? pathSource.resolveStaticPath
+            : ((value) => String(value || ''));
+        const manifestPath = String(call(pathSource, 'getManifestPath', '') || '');
+        const previewRoot = String(call(pathSource, 'getPreviewRoot', '') || '');
         let itemsCache = null;
 
-        function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        }
-
         function warn(...args) {
-            if (typeof scope.warn === 'function') {
-                scope.warn(...args);
+            if (typeof diagnosticsSource.warn === 'function') {
+                diagnosticsSource.warn(...args);
                 return;
             }
             if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn(...args);
@@ -133,7 +145,7 @@
 
         async function getUserWorkbenchTemplateLibraryItems() {
             try {
-                const response = await call('sendTemplateListRequest', null, {});
+                const response = await call(apiSource, 'sendTemplateListRequest', null, {});
                 const rows = Array.isArray(response?.templates) ? response.templates : [];
                 return rows.map(normalizeTemplateLibraryItem).filter((item) => item.id && item.path);
             } catch (err) {
@@ -145,7 +157,7 @@
         async function getWorkbenchTemplateLibraryItems(options) {
             if (itemsCache && !options?.force) return itemsCache;
             try {
-                const response = await call('fetchManifest', null, manifestPath, { cache: 'no-store' });
+                const response = await call(networkSource, 'fetchManifest', null, manifestPath, { cache: 'no-store' });
                 if (response?.ok) {
                     const manifest = await response.json();
                     const rows = Array.isArray(manifest) ? manifest : Array.isArray(manifest.templates) ? manifest.templates : [];
@@ -160,7 +172,7 @@
             } catch (err) {
                 warn('[SimpAI Canvas] template library manifest unavailable, using built-in defaults:', err);
             }
-            const fallbackItems = (call('getDefaultTemplateItems', [], []) || []).map(normalizeTemplateLibraryItem);
+            const fallbackItems = (call(defaultsSource, 'getDefaultTemplateItems', [], []) || []).map(normalizeTemplateLibraryItem);
             const userItems = await getUserWorkbenchTemplateLibraryItems();
             itemsCache = fallbackItems.concat(userItems);
             return itemsCache;
@@ -169,21 +181,21 @@
         async function loadWorkbenchTemplateData(item) {
             if (item?.source === 'user' || String(item?.path || '').startsWith('user:')) {
                 const templateId = String(item?.id || String(item?.path || '').replace(/^user:/, '')).trim();
-                const response = await call('sendTemplateLoadRequest', null, templateId);
+                const response = await call(apiSource, 'sendTemplateLoadRequest', null, templateId);
                 if (response?.ok && response.project) return response.project;
                 const error = response?.error || 'unknown';
-                call('showToast', null, t('Failed to load user template: {error}', '读取用户模板失败：{error}').replace('{error}', error));
-                return call('createFallbackProject', null);
+                call(uiSource, 'showToast', null, t('Failed to load user template: {error}', '读取用户模板失败：{error}').replace('{error}', error));
+                return call(projectSource, 'createFallbackProject', null);
             }
             if (item?.path) {
                 try {
-                    const response = await call('fetchTemplateProject', null, item.path, { cache: 'no-store' });
+                    const response = await call(networkSource, 'fetchTemplateProject', null, item.path, { cache: 'no-store' });
                     if (response?.ok) return await response.json();
                 } catch (err) {
                     warn('[SimpAI Canvas] template fetch failed, using fallback demo:', err);
                 }
             }
-            return call('createFallbackProject', null);
+            return call(projectSource, 'createFallbackProject', null);
         }
 
         function invalidateTemplateLibraryItems() {

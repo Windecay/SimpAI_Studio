@@ -2,31 +2,39 @@
     'use strict';
 
     function createCanvasHoverPreviewController(context) {
-        const scope = context || {};
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => scope.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getNodesLayer = () => typeof scope.getNodesLayer === 'function' ? scope.getNodesLayer() : null;
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
+        const scope = context?.hoverPreviewSource || context || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const configSource = scope.configSource || {};
+        const networkSource = scope.networkSource || {};
+        const tooltipSource = scope.tooltipSource || {};
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
+        const getNodesLayer = () => typeof domSource.getNodesLayer === 'function' ? domSource.getNodesLayer() : null;
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const isCanvasPointerGestureActive = () => (
-            typeof scope.isCanvasPointerGestureActive === 'function'
-            && scope.isCanvasPointerGestureActive()
+            typeof viewportSource.isCanvasPointerGestureActive === 'function'
+            && viewportSource.isCanvasPointerGestureActive()
         );
-        const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : value => String(value ?? '');
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const getSystemParams = () => typeof scope.getSystemParams === 'function'
-            ? (scope.getSystemParams() || {})
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : value => String(value ?? '');
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const getSystemParams = () => typeof configSource.getSystemParams === 'function'
+            ? (configSource.getSystemParams() || {})
             : (getWindow().simpleaiTopbarSystemParams || {});
-        const workbenchStaticFilePath = value => typeof scope.workbenchStaticFilePath === 'function'
-            ? scope.workbenchStaticFilePath(value)
+        const workbenchStaticFilePath = value => typeof configSource.workbenchStaticFilePath === 'function'
+            ? configSource.workbenchStaticFilePath(value)
             : String(value || '');
         const cssEscape = value => {
-            if (typeof scope.cssEscape === 'function') return scope.cssEscape(value);
+            if (typeof utilitySource.cssEscape === 'function') return utilitySource.cssEscape(value);
             if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
             return String(value || '').replace(/["\\]/g, '\\$&');
         };
-        const fetchImpl = scope.fetch || (typeof fetch !== 'undefined' ? fetch : null);
-        const ImageCtor = scope.Image || (typeof Image !== 'undefined' ? Image : null);
+        const fetchImpl = networkSource.fetch || (typeof fetch !== 'undefined' ? fetch : null);
+        const ImageCtor = networkSource.Image || (typeof Image !== 'undefined' ? Image : null);
         let hoverPreviewEl = null;
         let hoverPreviewTarget = null;
         let hoverPreviewImageRequestId = 0;
@@ -459,7 +467,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             if (!target || root?.hidden) return;
             const payload = hoverPreviewPayloadFromElement(target);
             if (!payload || !payload.title) return;
-            if (typeof scope.hideCanvasTooltip === 'function') scope.hideCanvasTooltip();
+            if (typeof tooltipSource.hideCanvasTooltip === 'function') tooltipSource.hideCanvasTooltip();
             hoverPreviewTarget = target;
             const requestId = ++hoverPreviewImageRequestId;
             const initialImage = modelBrowserPreviewRoute(payload.image || '') || payload.image || '';

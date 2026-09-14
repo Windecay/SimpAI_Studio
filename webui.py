@@ -5776,6 +5776,15 @@ with shared.gradio_root:
                         scene_reference_video2.clear(lambda: (None, ""), outputs=[scene_reference_video2_original_path, scene_reference_video2_trim_payload], queue=False, show_progress=False)
 
                         gr.HTML(value="", elem_id="scene_panel_bottom_fill")
+                # Gradio mounts accordion children lazily; preview transport must stay outside.
+                face_target_request = gr.Textbox(value="", visible="hidden", elem_id="face_target_request", elem_classes=["sai-gradio-hidden-bridge"])
+                face_target_result = gr.Textbox(value="", visible="hidden", elem_id="face_target_result", elem_classes=["sai-gradio-hidden-bridge"])
+                face_target_trigger = gr.Button(visible="hidden", elem_id="face_target_trigger", elem_classes=["sai-gradio-hidden-bridge"])
+                from enhanced.face_target_preview import preview_faces
+                face_target_trigger.click(
+                    fn=preview_faces,
+                    inputs=[scene_video, scene_original_video_path, face_target_request, state_topbar],
+                    outputs=[face_target_result], queue=False, show_progress=False)
                 with gr.Accordion("🔧 Advanced Parameters", open=False, visible=True, elem_id="scene_advanced_parameters_accordion"):
                     with gr.Column(elem_id="scene_advanced_values_grid", scale=1, min_width=0):
                         scene_var_number2 = gr.Slider(label='Int Value 2', minimum=0, maximum=60, step=1, value=1, visible=True, elem_id="scene_var_number2", elem_classes=['simpai-mounted-hidden'])
@@ -10838,6 +10847,7 @@ with shared.gradio_root:
             scene_audio2, scene_audio3, scene_video_trim_payload
         ] + scene_generation_model_ctrls + ctrls + [model_params_state, resolution_multiplier, resolution_quantize_step, state_topbar]
         scene_batch_region_indices = {
+            "scene_var_number2": scene_batch_generation_inputs.index(scene_var_number2),
             "scene_var_number5": scene_batch_generation_inputs.index(scene_var_number5),
             "scene_var_number6": scene_batch_generation_inputs.index(scene_var_number6),
             "scene_var_number7": scene_batch_generation_inputs.index(scene_var_number7),
@@ -11811,6 +11821,7 @@ with shared.gradio_root:
         ]
         scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
         scene_region_submit_indices = {
+            "scene_var_number2": scene_generation_inputs.index(scene_var_number2),
             "scene_var_number5": scene_generation_inputs.index(scene_var_number5),
             "scene_var_number6": scene_generation_inputs.index(scene_var_number6),
             "scene_var_number7": scene_generation_inputs.index(scene_var_number7),
@@ -12236,6 +12247,17 @@ with shared.gradio_root:
                         "__scene_theme": state.get("scene_theme"),
                         "__scene_theme_preset": state.get("__scene_theme_preset"),
                         "__scene_theme_revision": int(state.get("__scene_theme_revision", 0) or 0),
+                        "__scene_defaults": topbar._build_scene_default_payload(
+                            state["scene_frontend"],
+                            state.get("scene_theme"),
+                            topbar._scene_standard_overwrite_step_default_from_state(state),
+                        ),
+                        "__scene_control_props": topbar._build_scene_control_props(
+                            state["scene_frontend"], state.get("scene_theme"),
+                        ),
+                        "__scene_temporal_region_control": dict(
+                            state["scene_frontend"].get("temporal_region_control") or {}
+                        ),
                     }
                 )
             else:
@@ -12243,12 +12265,13 @@ with shared.gradio_root:
             topbar_params["__scene_theme_event_rejected"] = False
             return state, overwrite_step_update, topbar_params
 
+        # Gradio 6 does not continue .then after a JS-only dependency.
         scene_theme.input(switch_scene_theme_ui_state, inputs=[state_topbar, scene_theme, system_params], outputs=[state_topbar, overwrite_step, system_params], queue=False, show_progress=False, js='(state,theme,params)=>{try{const pending=(typeof topbarPendingPreset!=="undefined"&&topbarPendingPreset&&Date.now()<topbarPendingPresetUntil)?topbarPendingPreset:""; const latest=(typeof topbarLastPreset!=="undefined"&&topbarLastPreset)?topbarLastPreset:""; const source=String((state&&state.__preset)||pending||latest||(params&&params.__scene_theme_preset)||(params&&params.__preset)||"").trim(); return [state,theme,Object.assign({},params||{},{__scene_theme_event_preset:source})];}catch(e){console.warn("[UI-TRACE] scene_theme_event_context_failed",e);return [state,theme,params];}}') \
                    .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, relight_light_control, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(_sync_scene_model_params_for_theme, inputs=[state_topbar, model_params_state], outputs=[model_params_state] + model_bridge_rehydrate_targets + [models_js_panel, models_js_payload, models_nav_rehydrate_payload], queue=False, show_progress=False) \
-                   .then(fn=None, inputs=[model_params_state], outputs=None, js="(modelState)=>{try{window.simpleaiApplyPresetModelsPanelState?.({seq:String(Date.now()),model_state:modelState});}catch(e){console.warn('[UI-TRACE] scene_theme_models_panel_apply_failed',e);}}", queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state,theme)=>{try{const resolvedTheme=String(theme||(state&&state.scene_theme)||'').trim(); if(typeof markSimpleAISceneThemeChanged==='function') markSimpleAISceneThemeChanged(resolvedTheme,state); if(typeof window.syncSimpleAISceneModeCheckbox==='function') window.syncSimpleAISceneModeCheckbox(state,resolvedTheme); if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
-                   .then(lambda state: None, inputs=[state_topbar], js='(state)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", state); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
+                   .then(fn=lambda model_state: None, inputs=[model_params_state], outputs=None, js="(modelState)=>{try{window.simpleaiApplyPresetModelsPanelState?.({seq:String(Date.now()),model_state:modelState});}catch(e){console.warn('[UI-TRACE] scene_theme_models_panel_apply_failed',e);}return [modelState];}", queue=False, show_progress=False) \
+                   .then(fn=lambda state, theme, params: None, inputs=[state_topbar, scene_theme, system_params], js="(state,theme,params)=>{try{const resolvedTheme=String(theme||(state&&state.scene_theme)||'').trim(); const sceneParams=params||state; if(typeof markSimpleAISceneThemeChanged==='function') markSimpleAISceneThemeChanged(resolvedTheme,sceneParams); if(params&&typeof refresh_topbar_status_js==='function') refresh_topbar_status_js(params); if(typeof window.syncSimpleAISceneModeCheckbox==='function') window.syncSimpleAISceneModeCheckbox(sceneParams,resolvedTheme); if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(window.SimpAILTXGuideEditor?.closeScenePreset) window.SimpAILTXGuideEditor.closeScenePreset(); if(window.SimpAIH3StoryboardEditor?.closeScenePreset) window.SimpAIH3StoryboardEditor.closeScenePreset(); if(state&&typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, resolvedTheme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}return [state,theme,params];}", queue=False, show_progress=False) \
+                   .then(lambda params: None, inputs=[system_params], js='(params)=>{try{if(window.syncGradio6MountedDynamicVisibilityWithState) window.syncGradio6MountedDynamicVisibilityWithState("scene_theme", params); else if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}return [params];}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
                    .then(batch_utils.refresh_scene_batch_target, inputs=[state_topbar, scene_batch_target], outputs=[scene_batch_target], queue=False, show_progress=False)

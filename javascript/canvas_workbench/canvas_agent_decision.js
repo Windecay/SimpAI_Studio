@@ -2,13 +2,23 @@
     'use strict';
 
     function createCanvasAgentDecisionController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
+        const scope = context?.decisionSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const catalogSource = scope.catalogSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const promptSource = scope.promptSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const rewriteSource = scope.rewriteSource || {};
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
 
-        function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        function call(sourceObject, name, fallback, ...args) {
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
         }
+
+        const promptPreflight = (...args) => call(promptSource, 'promptPreflight', null, ...args);
 
         function canvasAgentPresetDecisionOptions(selectedEntry, options) {
             const opts = options || {};
@@ -22,8 +32,8 @@
             if (!opts.task || canvasAgentPresetSupportsTask(selectedEntry, opts.task)) {
                 add(selectedName, selectedEntry?.display_name || selectedEntry?.name || selectedName);
             }
-            const catalog = call('getPresetCatalog', []);
-            const readyEntries = call('getReadyPresetEntries', []);
+            const catalog = call(catalogSource, 'getPresetCatalog', []);
+            const readyEntries = call(catalogSource, 'getReadyPresetEntries', []);
             const entries = Array.isArray(opts.entries) ? opts.entries
                 : (opts.task
                     ? (Array.isArray(catalog) ? catalog : []).filter(entry => canvasAgentPresetSupportsTask(entry, opts.task))
@@ -36,10 +46,10 @@
         function canvasAgentPresetImageCapacity(entry) {
             const declared = Number(entry?.media_capability?.max_images ?? entry?.schema?.director_capability?.max_images);
             if (Number.isFinite(declared)) return Math.max(0, Math.round(declared));
-            const probe = call('createCanvasAgentPresetProbeNode', null, entry);
-            const slots = call('canvasAgentUploadSlotsForNode', [], probe);
+            const probe = call(mediaSource, 'createCanvasAgentPresetProbeNode', null, entry);
+            const slots = call(mediaSource, 'canvasAgentUploadSlotsForNode', [], probe);
             return (Array.isArray(slots) ? slots : [])
-                .filter(slot => call('getUploadSlotMediaKind', '', slot?.key) === 'image')
+                .filter(slot => call(mediaSource, 'getUploadSlotMediaKind', '', slot?.key) === 'image')
                 .length;
         }
 
@@ -48,10 +58,10 @@
             const plural = kind === 'video' ? 'videos' : 'audios';
             const declared = Number(entry?.media_capability?.[`max_${plural}`] ?? entry?.schema?.director_capability?.[`max_${plural}`]);
             if (Number.isFinite(declared)) return Math.max(0, Math.round(declared));
-            const probe = call('createCanvasAgentPresetProbeNode', null, entry);
-            const slots = call('canvasAgentUploadSlotsForNode', [], probe);
+            const probe = call(mediaSource, 'createCanvasAgentPresetProbeNode', null, entry);
+            const slots = call(mediaSource, 'canvasAgentUploadSlotsForNode', [], probe);
             return (Array.isArray(slots) ? slots : [])
-                .filter(slot => !call('isCanvasAgentMaskSlot', false, slot) && call('getUploadSlotMediaKind', '', slot?.key) === kind)
+                .filter(slot => !call(mediaSource, 'isCanvasAgentMaskSlot', false, slot) && call(mediaSource, 'getUploadSlotMediaKind', '', slot?.key) === kind)
                 .length;
         }
 
@@ -105,19 +115,19 @@
 
         async function chooseCanvasAgentPresetEntry(kind, options) {
             const opts = options || {};
-            const settings = call('getCanvasAgentSettings', {}) || {};
-            const queueConfig = call('canvasAgentPresetQueueConfig', {
+            const settings = call(settingsSource, 'getCanvasAgentSettings', {}) || {};
+            const queueConfig = call(catalogSource, 'canvasAgentPresetQueueConfig', {
                 key: 't2i',
                 setting: 't2iPreset',
                 fallback: []
             }, kind);
             const preferred = normalizePresetName(settings[queueConfig.setting] || '');
-            const queued = call('getCanvasAgentPresetQueue', [], kind);
+            const queued = call(catalogSource, 'getCanvasAgentPresetQueue', [], kind);
             const queue = Array.isArray(queued)
                 ? queued.slice()
                 : [];
-            const explicitOverride = call('findCanvasAgentPresetEntryByAlias', null, opts.presetName || opts.overridePreset || '');
-            const overrideEntry = explicitOverride || call('findCanvasAgentPresetInstructionOverride', null, opts.prompt || '');
+            const explicitOverride = call(catalogSource, 'findCanvasAgentPresetEntryByAlias', null, opts.presetName || opts.overridePreset || '');
+            const overrideEntry = explicitOverride || call(catalogSource, 'findCanvasAgentPresetInstructionOverride', null, opts.prompt || '');
             const overrideName = normalizePresetName(overrideEntry?.name || overrideEntry?.display_name || '');
             if (overrideName && !queue.includes(overrideName)) {
                 if (preferred && queue[0] === preferred) queue.splice(1, 0, overrideName);
@@ -129,7 +139,7 @@
             const requiredImageCount = requiredMediaCounts.image;
             const requiredTask = String(opts.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
             for (const name of uniqueQueue) {
-                const entry = call('findPresetCatalogEntryByName', null, name);
+                const entry = call(catalogSource, 'findPresetCatalogEntryByName', null, name);
                 if (!entry) {
                     checked.push(`${name}: not in preset list`);
                     continue;
@@ -166,7 +176,7 @@
                     ).replace('{preset}', name).replace('{task}', requiredTask));
                     continue;
                 }
-                const status = await call('getCanvasAgentPresetStatus', null, entry);
+                const status = await call(catalogSource, 'getCanvasAgentPresetStatus', null, entry);
                 if (status?.ok && status.ready) {
                     return {
                         entry,
@@ -179,14 +189,14 @@
                 checked.push(`${name}: ${status?.message || status?.error || 'not ready'}`);
             }
             const firstAvailable = uniqueQueue
-                .map(name => call('findPresetCatalogEntryByName', null, name))
+                .map(name => call(catalogSource, 'findPresetCatalogEntryByName', null, name))
                 .find(entry => canvasAgentPresetSupportsMediaRequest(entry, requiredMediaCounts, requiredTask));
             return { entry: firstAvailable || null, status: null, queue: uniqueQueue, checked, override: false };
         }
 
         async function canvasAgentPromptPreflight(prompt, target, purpose, options) {
             const opts = options || {};
-            const defaults = opts.presetDefaults || call('canvasAgentPresetPromptDefaults', {}, opts.entry || opts.node || null);
+            const defaults = opts.presetDefaults || call(promptSource, 'canvasAgentPresetPromptDefaults', {}, opts.entry || opts.node || null);
             const payload = {
                 prompt: String(prompt || '').trim(),
                 action: opts.action || purpose || '',
@@ -196,15 +206,15 @@
                 preset_defaults: defaults,
                 wildcard_preview: opts.wildcardPreview || null
             };
-            if (typeof scope.promptPreflight === 'function') {
+            if (typeof promptSource.promptPreflight === 'function') {
                 try {
-                    const response = await scope.promptPreflight(payload);
+                    const response = await promptPreflight(payload);
                     if (response?.ok) return response;
                 } catch (err) {
                     console.warn('[SimpAI Canvas Agent] prompt preflight failed', err);
                 }
             }
-            const fallbackCheck = call('canvasAgentPromptValidationFact', null, prompt, target);
+            const fallbackCheck = call(promptSource, 'canvasAgentPromptValidationFact', null, prompt, target);
             return {
                 ok: true,
                 state: fallbackCheck ? 'warning' : 'pass',
@@ -243,7 +253,7 @@
             if (unknownCharacterTags.length) facts.push({ label: t('Unknown character tags', 'Unknown character tags'), value: unknownCharacterTags.slice(0, 6).join(', ') });
             const unmatched = Array.isArray(preflight.unmatched_terms) ? preflight.unmatched_terms : [];
             if (unmatched.length) facts.push({ label: t('Unmatched terms', '未命中词'), value: unmatched.slice(0, 8).join(', ') });
-            facts.push(...call('wildcardPreviewFacts', [], preflight.wildcard_preview));
+            facts.push(...call(promptSource, 'wildcardPreviewFacts', [], preflight.wildcard_preview));
             return facts.filter(item => item && item.value);
         }
 
@@ -257,13 +267,13 @@
             }
             while (String(preflight?.state || '') === 'block') {
                 const form = { prompt: currentPrompt };
-                const choice = await call('askCanvasAgentDecision', 'cancel', {
+                const choice = await call(decisionSource, 'askCanvasAgentDecision', 'cancel', {
                     title: t('Prompt preflight blocked', '提示词预检查已阻止'),
                     message: t('The final prompt does not match the target model format. Edit it, regenerate it, or cancel.', '最终提示词不符合目标模型格式。请编辑、重新生成或取消。'),
                     form,
                     fields: [canvasAgentPromptDecisionField(t('Prompt to fix', '需要修正的提示词'))],
                     facts: [
-                        call('canvasAgentPromptTargetFact', null, target),
+                        call(promptSource, 'canvasAgentPromptTargetFact', null, target),
                         ...canvasAgentPromptPreflightFacts(preflight)
                     ].filter(Boolean),
                     details: currentPrompt,
@@ -277,7 +287,7 @@
                 currentPrompt = String(form.prompt || currentPrompt).trim();
                 if (choice === 'rewrite') {
                     try {
-                        const rewritten = await call('rewriteCanvasAgentPromptWithLlm', null,
+                        const rewritten = await call(rewriteSource, 'rewriteCanvasAgentPromptWithLlm', null,
                             currentPrompt,
                             purpose,
                             Object.assign({}, opts, { promptTarget: target })

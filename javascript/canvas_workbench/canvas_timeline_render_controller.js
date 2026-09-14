@@ -2,9 +2,48 @@
     'use strict';
 
     function createCanvasTimelineRenderController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = typeof scope.t === 'function' ? scope.t : ((en) => en);
+        const scope = context?.timelineRenderSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const languageSource = scope.languageSource || {};
+        const historySource = scope.historySource || {};
+        const selectionSource = scope.selectionSource || {};
+        const stateSource = scope.stateSource || {};
+        const renderSource = scope.renderSource || {};
+        const assetSource = scope.assetSource || {};
+        const backendSource = scope.backendSource || {};
+        const uiSource = scope.uiSource || {};
+        const callbackSources = {
+            getProject: projectSource,
+            getProjectId: projectSource,
+            buildProjectNodeAppendPatch: projectSource,
+            ensureGenerateEdge: projectSource,
+            getNode: nodeSource,
+            isNodeLocked: nodeSource,
+            defaultNodeSize: layoutSource,
+            placeNodeAvoidingOverlap: layoutSource,
+            pushHistory: historySource,
+            setSelectedNodeId: selectionSource,
+            setSelectedNodeIds: selectionSource,
+            setSelectedEdgeId: selectionSource,
+            mutate: stateSource,
+            serializeTimelineRenderPayload: renderSource,
+            buildTimelineOutputResultNode: renderSource,
+            buildTimelineResultPatch: renderSource,
+            stableHash: renderSource,
+            renderTimelinePreviewFrameDataUrl: renderSource,
+            buildTimelineRenderAsset: assetSource,
+            buildTimelinePreviewAsset: assetSource,
+            sendCanvasRenderTimelineRequest: backendSource,
+            showToast: uiSource,
+            refreshMainGalleryAfterCanvasRun: uiSource
+        };
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en) => en);
         const getProject = () => call('getProject', {}, []) || {};
         const getNode = (id) => call('getNode', null, id);
         const serializeTimelineRenderPayload = (node) => call('serializeTimelineRenderPayload', {}, node) || {};

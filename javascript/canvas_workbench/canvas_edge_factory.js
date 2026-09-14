@@ -2,8 +2,9 @@
     'use strict';
 
     function createCanvasEdgeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-edge`;
+        const scope = context?.edgeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-edge`;
 
         function buildCanvasEdge(type, options) {
             const config = options || {};

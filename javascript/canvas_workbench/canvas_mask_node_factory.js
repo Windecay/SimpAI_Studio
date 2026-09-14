@@ -2,13 +2,17 @@
     'use strict';
 
     function createCanvasMaskNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const advancedMaskingLabel = typeof scope.advancedMaskingLabel === 'function'
-            ? scope.advancedMaskingLabel
+        const scope = context?.maskNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const languageSource = scope.languageSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const assetSource = scope.assetSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const advancedMaskingLabel = typeof languageSource.advancedMaskingLabel === 'function'
+            ? languageSource.advancedMaskingLabel
             : () => 'Advanced Masking';
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -16,8 +20,8 @@
                     return fallback;
                 }
             });
-        const buildAssetReference = typeof scope.buildAssetReference === 'function'
-            ? scope.buildAssetReference
+        const buildAssetReference = typeof assetSource.buildAssetReference === 'function'
+            ? assetSource.buildAssetReference
             : (asset) => asset === null || asset === undefined ? null : cloneRunValue(asset, asset);
 
         function cloneValue(value, fallback) {

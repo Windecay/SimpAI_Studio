@@ -2,93 +2,115 @@
     'use strict';
 
     function createCanvasAgentImageToolsController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
-        const maxExtraImageReferences = () => Math.max(0, Number(call('getMaxExtraImageReferences', 0) || 0));
+        const scope = context?.imageToolsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const utilitySource = scope.utilitySource || {};
+        const configSource = scope.configSource || {};
+        const catalogSource = scope.catalogSource || {};
+        const patchSource = scope.patchSource || {};
+        const stateSource = scope.stateSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const targetSource = scope.targetSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const uiSource = scope.uiSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const promptSource = scope.promptSource || {};
+        const workflowSource = scope.workflowSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const generatorSource = scope.generatorSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const normalizePresetName = utilitySource.normalizePresetName || (value => String(value || '').trim());
+        const maxExtraImageReferences = () => Math.max(0, Number(call(configSource, 'getMaxExtraImageReferences', 0) || 0));
         const getDefaultT2iPresetQueue = () => {
-            const value = call('getDefaultT2iPresetQueue', ['Z-imageT']);
+            const value = call(configSource, 'getDefaultT2iPresetQueue', ['Z-imageT']);
             return Array.isArray(value) && value.length ? value : ['Z-imageT'];
         };
-        const getCollapsedPromptNodeDefaultHeight = () => Number(call('getCollapsedPromptNodeDefaultHeight', 280) || 280);
+        const getCollapsedPromptNodeDefaultHeight = () => Number(call(configSource, 'getCollapsedPromptNodeDefaultHeight', 280) || 280);
         const getClassicOutpaintDirs = () => {
-            const value = call('getClassicOutpaintDirs', ['Left', 'Right', 'Top', 'Bottom']);
+            const value = call(configSource, 'getClassicOutpaintDirs', ['Left', 'Right', 'Top', 'Bottom']);
             return Array.isArray(value) && value.length ? value : ['Left', 'Right', 'Top', 'Bottom'];
         };
-        const buildNodeParamsPatch = (...args) => call('buildNodeParamsPatch', {}, ...args) || {};
-        const buildNodeLayoutPatch = (...args) => call('buildNodeLayoutPatch', {}, ...args) || {};
-        const buildClassicNodeStatePatch = (...args) => call('buildClassicNodeStatePatch', {}, ...args) || {};
+        const buildNodeParamsPatch = (...args) => call(patchSource, 'buildNodeParamsPatch', {}, ...args) || {};
+        const buildNodeLayoutPatch = (...args) => call(layoutSource, 'buildNodeLayoutPatch', {}, ...args) || {};
+        const buildClassicNodeStatePatch = (...args) => call(patchSource, 'buildClassicNodeStatePatch', {}, ...args) || {};
         const applyNodeParamsPatch = (node, options) => Object.assign(node, buildNodeParamsPatch(node, options || {}));
         const applyClassicNodeStatePatch = (node, options) => Object.assign(node, buildClassicNodeStatePatch(node, options || {}));
 
-        const getAgentState = (...args) => call('getAgentState', {}, ...args) || {};
-        const getCanvasAgentSettings = (...args) => call('getCanvasAgentSettings', {}, ...args) || {};
-        const getNode = (...args) => call('getNode', null, ...args);
-        const getCanvasAgentTargetNode = (...args) => call('getCanvasAgentTargetNode', null, ...args);
-        const getCanvasAgentPrimaryImageReference = (...args) => call('getCanvasAgentPrimaryImageReference', null, ...args);
-        const getCanvasAgentExtraImageReferences = (...args) => call('getCanvasAgentExtraImageReferences', [], ...args) || [];
-        const canvasAgentReferenceNode = (...args) => call('canvasAgentReferenceNode', null, ...args);
-        const addCanvasAgentReferenceFromNode = (...args) => call('addCanvasAgentReferenceFromNode', null, ...args);
-        const isCanvasAgentImageTarget = (...args) => call('isCanvasAgentImageTarget', false, ...args);
-        const showToast = (...args) => call('showToast', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const renderCanvasAgentPanel = (...args) => call('renderCanvasAgentPanel', null, ...args);
-        const revealCanvasAgentPanelForToolCard = (...args) => call('revealCanvasAgentPanelForToolCard', null, ...args);
-        const showOutpaintOverlay = (...args) => call('showOutpaintOverlay', null, ...args);
-        const hideOutpaintOverlay = (...args) => call('hideOutpaintOverlay', null, ...args);
-        const getOutpaintOverlayState = (...args) => call('getOutpaintOverlayState', {}, ...args) || {};
-        const setCanvasAgentSettingsPatch = (...args) => call('setCanvasAgentSettingsPatch', null, ...args);
-        const askCanvasAgentDecision = (...args) => call('askCanvasAgentDecision', 'cancel', ...args);
-        const canvasAgentPresetDecisionOptions = (...args) => call('canvasAgentPresetDecisionOptions', [], ...args);
-        const canvasAgentUpscalePresetEntries = (...args) => call('canvasAgentUpscalePresetEntries', [], ...args) || [];
-        const canvasAgentPromptDecisionField = (...args) => call('canvasAgentPromptDecisionField', {}, ...args);
-        const canvasAgentPromptFromDecision = (...args) => call('canvasAgentPromptFromDecision', fallback => fallback, ...args);
-        const canvasAgentPromptTargetFromEntry = (...args) => call('canvasAgentPromptTargetFromEntry', null, ...args);
-        const canvasAgentPresetPromptDefaults = (...args) => call('canvasAgentPresetPromptDefaults', {}, ...args) || {};
-        const ensureCanvasAgentPromptMatchesTarget = (...args) => call('ensureCanvasAgentPromptMatchesTarget', {
+        const getAgentState = (...args) => call(stateSource, 'getAgentState', {}, ...args) || {};
+        const getCanvasAgentSettings = (...args) => call(settingsSource, 'getCanvasAgentSettings', {}, ...args) || {};
+        const getNode = (...args) => call(targetSource, 'getNode', null, ...args);
+        const getCanvasAgentTargetNode = (...args) => call(targetSource, 'getCanvasAgentTargetNode', null, ...args);
+        const getCanvasAgentPrimaryImageReference = (...args) => call(referenceSource, 'getCanvasAgentPrimaryImageReference', null, ...args);
+        const getCanvasAgentExtraImageReferences = (...args) => call(referenceSource, 'getCanvasAgentExtraImageReferences', [], ...args) || [];
+        const canvasAgentReferenceNode = (...args) => call(referenceSource, 'canvasAgentReferenceNode', null, ...args);
+        const addCanvasAgentReferenceFromNode = (...args) => call(referenceSource, 'addCanvasAgentReferenceFromNode', null, ...args);
+        const isCanvasAgentImageTarget = (...args) => call(targetSource, 'isCanvasAgentImageTarget', false, ...args);
+        const canvasAgentShortNodeLabel = (...args) => call(targetSource, 'canvasAgentShortNodeLabel', '', ...args);
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(uiSource, 'setCanvasAgentMessage', null, ...args);
+        const renderCanvasAgentPanel = (...args) => call(uiSource, 'renderCanvasAgentPanel', null, ...args);
+        const revealCanvasAgentPanelForToolCard = (...args) => call(uiSource, 'revealCanvasAgentPanelForToolCard', null, ...args);
+        const showOutpaintOverlay = (...args) => call(uiSource, 'showOutpaintOverlay', null, ...args);
+        const hideOutpaintOverlay = (...args) => call(uiSource, 'hideOutpaintOverlay', null, ...args);
+        const getOutpaintOverlayState = (...args) => call(settingsSource, 'getOutpaintOverlayState', {}, ...args) || {};
+        const setCanvasAgentSettingsPatch = (...args) => call(settingsSource, 'setCanvasAgentSettingsPatch', null, ...args);
+        const askCanvasAgentDecision = (...args) => call(decisionSource, 'askCanvasAgentDecision', 'cancel', ...args);
+        const canvasAgentPresetDecisionOptions = (...args) => call(decisionSource, 'canvasAgentPresetDecisionOptions', [], ...args);
+        const canvasAgentUpscalePresetEntries = (...args) => call(decisionSource, 'canvasAgentUpscalePresetEntries', [], ...args) || [];
+        const canvasAgentPromptDecisionField = (...args) => call(decisionSource, 'canvasAgentPromptDecisionField', {}, ...args);
+        const canvasAgentPromptFromDecision = (...args) => call(decisionSource, 'canvasAgentPromptFromDecision', fallback => fallback, ...args);
+        const canvasAgentPromptTargetFromEntry = (...args) => call(promptSource, 'canvasAgentPromptTargetFromEntry', null, ...args);
+        const canvasAgentPresetPromptDefaults = (...args) => call(promptSource, 'canvasAgentPresetPromptDefaults', {}, ...args) || {};
+        const ensureCanvasAgentPromptMatchesTarget = (...args) => call(promptSource, 'ensureCanvasAgentPromptMatchesTarget', {
             ok: false,
             prompt: String(args[0] || ''),
             error: 'Prompt target rewrite is unavailable'
         }, ...args);
-        const ensureCanvasAgentPromptPreflightAllows = (...args) => call('ensureCanvasAgentPromptPreflightAllows', {
+        const ensureCanvasAgentPromptPreflightAllows = (...args) => call(promptSource, 'ensureCanvasAgentPromptPreflightAllows', {
             ok: false,
             prompt: String(args[0] || ''),
             error: 'Prompt preflight is unavailable'
         }, ...args);
-        const canvasAgentResolutionLabel = (...args) => call('canvasAgentResolutionLabel', '', ...args);
-        const findCanvasAgentPresetEntryByAlias = (...args) => call('findCanvasAgentPresetEntryByAlias', null, ...args);
-        const canvasAgentPresetDefaultPrompt = (...args) => call('canvasAgentPresetDefaultPrompt', '', ...args);
-        const canvasAgentPreferredUpscalePresetEntry = (...args) => call('canvasAgentPreferredUpscalePresetEntry', null, ...args);
-        const runCanvasAgentLivePortraitExpressionQuickTool = (...args) => call('runCanvasAgentLivePortraitExpressionQuickTool', null, ...args);
-        const addPresetNode = (...args) => call('addPresetNode', null, ...args);
-        const canvasAgentWorkflowPresetPosition = (...args) => call('canvasAgentWorkflowPresetPosition', {}, ...args);
-        const markCanvasAgentCreatedNode = (...args) => call('markCanvasAgentCreatedNode', node => node, ...args);
-        const applyCanvasAgentPromptToGenerator = (...args) => call('applyCanvasAgentPromptToGenerator', null, ...args);
-        const canvasAgentUploadSlotsForNode = (...args) => call('canvasAgentUploadSlotsForNode', [], ...args);
-        const isCanvasAgentMaskSlot = (...args) => call('isCanvasAgentMaskSlot', false, ...args);
-        const canNodeConnectToUploadSlot = (...args) => call('canNodeConnectToUploadSlot', false, ...args);
-        const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
-        const applyCanvasAgentResolutionToGenerator = (...args) => call('applyCanvasAgentResolutionToGenerator', null, ...args);
-        const connectCanvasAgentImagesToGenerator = (...args) => call('connectCanvasAgentImagesToGenerator', { ok: false, mainSlot: '', refCount: 0 }, ...args);
-        const createCanvasAgentReferencePlaceholderForGenerator = (...args) => call('createCanvasAgentReferencePlaceholderForGenerator', null, ...args);
-        const positionCanvasAgentReferenceWorkflow = (...args) => call('positionCanvasAgentReferenceWorkflow', null, ...args);
-        const createCanvasAgentWorkflowGroup = (...args) => call('createCanvasAgentWorkflowGroup', null, ...args);
-        const centerCanvasAgentWorkflow = (...args) => call('centerCanvasAgentWorkflow', null, ...args);
-        const prepareCanvasAgentManualMaskWorkflow = (...args) => call('prepareCanvasAgentManualMaskWorkflow', null, ...args);
-        const ensureStyleSelectorForPreset = (...args) => call('ensureStyleSelectorForPreset', null, ...args);
-        const mutate = (...args) => call('mutate', null, ...args);
-        const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
-        const runPresetNode = (...args) => call('runPresetNode', null, ...args);
-        const clearCanvasAgentRunInfo = (...args) => call('clearCanvasAgentRunInfo', null, ...args);
-        const getNodeRect = (...args) => call('getNodeRect', null, ...args);
-        const getVisibleWorldRect = (...args) => call('getVisibleWorldRect', null, ...args);
-        const defaultNodeSize = (...args) => call('defaultNodeSize', null, ...args);
-        const viewportCenterWorld = (...args) => call('viewportCenterWorld', { x: 0, y: 0 }, ...args);
-        const canvasAgentWorkflowOccupiedRects = (...args) => call('canvasAgentWorkflowOccupiedRects', [], ...args) || [];
+        const canvasAgentResolutionLabel = (...args) => call(promptSource, 'canvasAgentResolutionLabel', '', ...args);
+        const findCanvasAgentPresetEntryByAlias = (...args) => call(catalogSource, 'findCanvasAgentPresetEntryByAlias', null, ...args);
+        const canvasAgentPresetDefaultPrompt = (...args) => call(promptSource, 'canvasAgentPresetDefaultPrompt', '', ...args);
+        const canvasAgentPreferredUpscalePresetEntry = (...args) => call(catalogSource, 'canvasAgentPreferredUpscalePresetEntry', null, ...args);
+        const runCanvasAgentLivePortraitExpressionQuickTool = (...args) => call(workflowSource, 'runCanvasAgentLivePortraitExpressionQuickTool', null, ...args);
+        const addPresetNode = (...args) => call(nodeSource, 'addPresetNode', null, ...args);
+        const canvasAgentWorkflowPresetPosition = (...args) => call(nodeSource, 'canvasAgentWorkflowPresetPosition', {}, ...args);
+        const markCanvasAgentCreatedNode = (...args) => call(nodeSource, 'markCanvasAgentCreatedNode', node => node, ...args);
+        const applyCanvasAgentPromptToGenerator = (...args) => call(generatorSource, 'applyCanvasAgentPromptToGenerator', null, ...args);
+        const canvasAgentUploadSlotsForNode = (...args) => call(mediaSource, 'canvasAgentUploadSlotsForNode', [], ...args);
+        const isCanvasAgentMaskSlot = (...args) => call(mediaSource, 'isCanvasAgentMaskSlot', false, ...args);
+        const canNodeConnectToUploadSlot = (...args) => call(mediaSource, 'canNodeConnectToUploadSlot', false, ...args);
+        const createUploadEdge = (...args) => call(mediaSource, 'createUploadEdge', null, ...args);
+        const applyCanvasAgentResolutionToGenerator = (...args) => call(generatorSource, 'applyCanvasAgentResolutionToGenerator', null, ...args);
+        const connectCanvasAgentImagesToGenerator = (...args) => call(mediaSource, 'connectCanvasAgentImagesToGenerator', { ok: false, mainSlot: '', refCount: 0 }, ...args);
+        const createCanvasAgentReferencePlaceholderForGenerator = (...args) => call(mediaSource, 'createCanvasAgentReferencePlaceholderForGenerator', null, ...args);
+        const positionCanvasAgentReferenceWorkflow = (...args) => call(workflowSource, 'positionCanvasAgentReferenceWorkflow', null, ...args);
+        const createCanvasAgentWorkflowGroup = (...args) => call(workflowSource, 'createCanvasAgentWorkflowGroup', null, ...args);
+        const centerCanvasAgentWorkflow = (...args) => call(workflowSource, 'centerCanvasAgentWorkflow', null, ...args);
+        const prepareCanvasAgentManualMaskWorkflow = (...args) => call(workflowSource, 'prepareCanvasAgentManualMaskWorkflow', null, ...args);
+        const ensureStyleSelectorForPreset = (...args) => call(workflowSource, 'ensureStyleSelectorForPreset', null, ...args);
+        const mutate = (...args) => call(stateSource, 'mutate', null, ...args);
+        const setCanvasAgentRunInfo = (...args) => call(stateSource, 'setCanvasAgentRunInfo', null, ...args);
+        const runPresetNode = (...args) => call(runtimeSource, 'runPresetNode', null, ...args);
+        const clearCanvasAgentRunInfo = (...args) => call(stateSource, 'clearCanvasAgentRunInfo', null, ...args);
+        const getNodeRect = (...args) => call(layoutSource, 'getNodeRect', null, ...args);
+        const getVisibleWorldRect = (...args) => call(layoutSource, 'getVisibleWorldRect', null, ...args);
+        const defaultNodeSize = (...args) => call(layoutSource, 'defaultNodeSize', null, ...args);
+        const viewportCenterWorld = (...args) => call(layoutSource, 'viewportCenterWorld', { x: 0, y: 0 }, ...args);
+        const canvasAgentWorkflowOccupiedRects = (...args) => call(layoutSource, 'canvasAgentWorkflowOccupiedRects', [], ...args) || [];
         const rectsOverlap = (...args) => {
-            if (typeof scope.rectsOverlap === 'function') return scope.rectsOverlap(...args);
+            if (typeof layoutSource.rectsOverlap === 'function') return layoutSource.rectsOverlap(...args);
             const [a, b, padding] = args;
             const pad = Number(padding || 0);
             return !!a && !!b
@@ -97,7 +119,7 @@
                 && a.y < b.y + b.h + pad
                 && a.y + a.h + pad > b.y;
         };
-        const setCanvasAgentSelection = (...args) => call('setCanvasAgentSelection', null, ...args);
+        const setCanvasAgentSelection = (...args) => call(uiSource, 'setCanvasAgentSelection', null, ...args);
 
         function startCanvasAgentReferencePickForTool(target, spec) {
             const state = getAgentState();
@@ -418,7 +440,7 @@
                 facts: [
                     { label: t('Action', '动作'), value: spec.label },
                     { label: t('Preset', '预设'), value: entry.display_name || entry.name || initialPresetName },
-                    { label: t('Source', '源图'), value: call('canvasAgentShortNodeLabel', '', target) },
+                    { label: t('Source', '源图'), value: canvasAgentShortNodeLabel(target) },
                     extraImageRefs.length ? { label: t('Image refs', '图片参考'), value: String(extraImageRefs.length) } : null,
                     spec.wantsReference && !extraImageRefs.length ? { label: t('Reference', '参考图'), value: t('Recommended before manual run', '建议在手动运行前补充') } : null,
                     spec.requiresMask ? { label: t('Mask', '蒙版'), value: t('Paint, then auto-run', '绘制后自动运行') } : null,

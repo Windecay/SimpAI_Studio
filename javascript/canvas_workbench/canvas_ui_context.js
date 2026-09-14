@@ -19,106 +19,39 @@
 
     function createCanvasWorkbenchUiContext(source) {
         const scope = source?.uiSource || source || {};
+        const settingsViewsSource = scope.settingsViewsSource || {};
+        const agentSettingsSource = scope.agentSettingsSource || {};
+        const outpaintSource = scope.outpaintSource || {};
+        const settingsSource = scope.settingsSource || {};
         const settingsViews = createController(
             modules.settingsViews,
             'createCanvasSettingsViewsController',
-            { t: scope.t, escapeHtml: scope.escapeHtml }
+            settingsViewsSource
         );
         const settingsViewsMethod = name => method(settingsViews, name);
 
         const agentSettings = createController(
             modules.agentSettings,
             'createCanvasAgentSettingsController',
-            {
-                getDefaultSettings: scope.getCanvasAgentDefaultSettings,
-                getDefaultProjectSettings: scope.getDefaultSettings,
-                getVersionChoices: scope.getVersionChoices,
-                t: scope.t,
-                clamp: scope.clamp,
-                vlmModelDisplayLabel: scope.vlmModelDisplayLabel,
-                canvasAgentAspectOptions: scope.canvasAgentAspectOptions,
-                normalizePresetName: scope.normalizePresetName,
-                getVlmCustomProvider: scope.getVlmCustomProvider,
-                getVlmCustomApiProfile: scope.getVlmCustomApiProfile,
-                getVlmCustomProfileKey: scope.getVlmCustomProfileKey,
-                readVlmCustomApiProfiles: scope.readVlmCustomApiProfiles,
-                writeVlmCustomApiProfiles: scope.writeVlmCustomApiProfiles,
-                getCanvasSettingsPanel: scope.getCanvasSettingsPanel,
-                decodeCanvasAgentVideoToolChoice: scope.decodeCanvasAgentVideoToolChoice,
-                getProject: scope.getCurrentProject,
-                getCurrentProjectId: scope.getCurrentProjectId,
-                getAgentState: scope.getCanvasAgentState,
-                getSelectedNodeId: scope.getSelectedNodeId,
-                getNode: scope.getNode,
-                pushHistoryBatch: scope.pushHistoryBatch,
-                pushHistory: scope.pushHistory,
-                scheduleSave: scope.scheduleSave,
-                mutate: scope.mutate,
-                showToast: scope.showToast,
-                nowIso: scope.nowIso,
-                buildVlmModelUnknownStatus: scope.buildVlmModelUnknownStatus,
-                buildVlmParamsPatch: scope.buildVlmParamsPatch,
-                buildVlmModelStatusPatch: scope.buildVlmModelStatusPatch,
-                sendCanvasVlmRunRequest: scope.sendCanvasVlmRunRequest,
-                sendCanvasAgentCustomModelsRequest: scope.sendCanvasAgentCustomModelsRequest,
-                renderCanvasAgentPanel: scope.renderCanvasAgentPanel,
-                renderCanvasSettingsPanel: scope.renderCanvasSettingsPanel,
-                renderStatus: scope.renderStatus,
-                getCanvasAgentPanel: scope.getCanvasAgentPanel,
-                getDocument: scope.getDocument,
-                buildProjectSettingsMergePatch: scope.buildProjectSettingsMergePatch
-            }
+            agentSettingsSource
         );
         const agentSettingsMethod = name => method(agentSettings, name);
 
         const outpaint = createController(
             modules.outpaint,
             'createCanvasOutpaintController',
-            {
-                t: scope.t,
-                escapeHtml: scope.escapeHtml,
-                getDocument: scope.getDocument,
-                getOutpaintOverlayState: scope.getOutpaintOverlayState,
-                getOutpaintOverlayElement: scope.getOutpaintOverlayElement,
-                getProject: scope.getProject,
-                getOutpaintNodeElement: scope.getOutpaintNodeElement,
-                getOutpaintStage: scope.getOutpaintStage,
-                defaultNodeSize: scope.defaultNodeSize,
-                isCanvasAgentImageTarget: scope.isCanvasAgentImageTarget,
-                getViewportZoom: scope.getViewportZoom,
-                clamp: scope.clamp,
-                getCanvasAgentPanel: scope.getCanvasAgentPanel,
-                getCanvasAgentSettings: agentSettingsMethod('getCanvasAgentSettings'),
-                setCanvasAgentSettingsPatch: agentSettingsMethod('setCanvasAgentSettingsPatch')
-            }
+            Object.assign({}, outpaintSource, {
+                projectSource: Object.assign({}, outpaintSource.projectSource || {}, {
+                    getCanvasAgentSettings: agentSettingsMethod('getCanvasAgentSettings'),
+                    setCanvasAgentSettingsPatch: agentSettingsMethod('setCanvasAgentSettingsPatch')
+                })
+            })
         );
 
         const settingsController = createController(
             modules.settingsController,
             'createCanvasSettingsController',
-            {
-                getCanvasSettingsPanel: scope.getCanvasSettingsPanel,
-                getCanvasSettingsTab: scope.getCanvasSettingsTab,
-                setCanvasSettingsTab: scope.setCanvasSettingsTab,
-                renderCanvasSettingsPanel: scope.renderCanvasSettingsPanel,
-                isCanvasAgentPresetScanIdle: scope.isCanvasAgentPresetScanIdle,
-                refreshCanvasAgentAvailablePresets: scope.refreshCanvasAgentAvailablePresets,
-                closeContextMenu: scope.closeContextMenu,
-                closeRunQueuePanel: scope.closeRunQueuePanel,
-                closeRunHistoryPanel: scope.closeRunHistoryPanel,
-                getCanvasAgentSettings: agentSettingsMethod('getCanvasAgentSettings'),
-                setCanvasAgentSettingsPatch: agentSettingsMethod('setCanvasAgentSettingsPatch'),
-                saveCanvasAgentCustomSecret: agentSettingsMethod('saveCanvasAgentCustomSecret'),
-                fetchCanvasAgentCustomModels: agentSettingsMethod('fetchCanvasAgentCustomModels'),
-                testCanvasAgentCustomApi: agentSettingsMethod('testCanvasAgentCustomApi'),
-                syncCanvasAgentCustomFromSelectedVlm: agentSettingsMethod('syncCanvasAgentCustomFromSelectedVlm'),
-                syncSelectedVlmCustomFromCanvasAgent: agentSettingsMethod('syncSelectedVlmCustomFromCanvasAgent'),
-                toggleSetting: scope.toggleSetting,
-                openTemplateLibrary: scope.openTemplateLibrary,
-                saveCurrentCanvasAsTemplate: scope.saveCurrentCanvasAsTemplate,
-                clearBrowserCache: scope.clearBrowserCache,
-                clearProjectFileWithConfirm: scope.clearProjectFileWithConfirm
-            }
+            settingsSource
         );
         const outpaintMethod = name => method(outpaint, name);
         const settingsControllerMethod = name => method(settingsController, name);

@@ -3,56 +3,70 @@
 
     function createCanvasAgentSam3WorkflowController(source) {
         const scope = source?.sam3WorkflowSource || source || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function'
-            ? scope[name](...args)
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const projectSource = scope.projectSource || {};
+        const stateSource = scope.stateSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const resultSource = scope.resultSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const renderSource = scope.renderSource || {};
+        const agentSource = scope.agentSource || {};
+        const patchSource = scope.patchSource || {};
+        const editorSource = scope.editorSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
             : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = scope.nowIso || (() => new Date().toISOString());
-        const getProject = () => call('getProject', {}) || {};
-        const getNode = (...args) => call('getNode', null, ...args);
-        const getGroup = (...args) => call('getGroup', null, ...args);
-        const getAgentState = () => call('getAgentState', {}) || {};
-        const getNodeRect = (...args) => call('getNodeRect', null, ...args);
-        const defaultNodeSize = (...args) => call('defaultNodeSize', { w: 160, h: 120 }, ...args) || { w: 160, h: 120 };
-        const getVideoMaskUploadSlot = (...args) => call('canvasAgentVideoMaskUploadSlot', '', ...args) || '';
-        const getVideoSourceUploadSlot = (...args) => call('canvasAgentVideoSourceUploadSlot', '', ...args) || '';
-        const getCanvasAgentReservedResultNode = (...args) => call('createCanvasAgentReservedResultNode', null, ...args);
-        const isCanvasAgentVideoTarget = (...args) => !!call('isCanvasAgentVideoTarget', false, ...args);
-        const findActiveResultNodeForPreset = (...args) => call('findActiveResultNodeForPreset', null, ...args);
-        const isCanvasRunActiveState = (...args) => !!call('isCanvasRunActiveState', false, ...args);
-        const nodeStatusState = (...args) => call('nodeStatusState', '', ...args);
-        const getPendingPresetRuns = () => call('getPendingPresetRuns', new Set()) || new Set();
-        const getResultNode = (...args) => call('getNode', null, ...args);
-        const canvasAgentManualMaskWorkflowNodes = (...args) => call('canvasAgentManualMaskWorkflowNodes', [], ...args) || [];
-        const dockCanvasAgentPanelBottomLeft = (...args) => call('dockCanvasAgentPanelBottomLeft', null, ...args);
-        const applyNodeLayoutPatch = (...args) => call('applyNodeLayoutPatch', null, ...args);
-        const buildNodeLayoutPatch = (...args) => call('buildNodeLayoutPatch', {}, ...args) || {};
-        const addSam3VideoMaskNode = (...args) => call('addSam3VideoMaskNode', null, ...args);
-        const positionCanvasAgentVideoMaskWorkflow = (...args) => call('positionCanvasAgentVideoMaskWorkflow', null, ...args);
-        const createSam3VideoMaskEdge = (...args) => call('createSam3VideoMaskEdge', null, ...args);
-        const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
-        const buildResultSourcePatch = (...args) => call('buildResultSourcePatch', {}, ...args) || {};
-        const fitCanvasAgentWorkflowGroup = (...args) => call('fitCanvasAgentWorkflowGroup', null, ...args);
-        const createCanvasAgentWorkflowGroup = (...args) => call('createCanvasAgentWorkflowGroup', null, ...args);
-        const centerCanvasAgentWorkflow = (...args) => call('centerCanvasAgentWorkflow', null, ...args);
-        const centerViewportOnWorld = (...args) => call('centerViewportOnWorld', null, ...args);
-        const renderNodes = (...args) => call('renderNodes', null, ...args);
-        const renderEdges = (...args) => call('renderEdges', null, ...args);
-        const mutate = (...args) => call('mutate', null, ...args);
-        const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
-        const clearCanvasAgentRunInfo = (...args) => call('clearCanvasAgentRunInfo', null, ...args);
-        const runPresetNode = (...args) => call('runPresetNode', null, ...args);
-        const showToast = (...args) => call('showToast', null, ...args);
-        const setCanvasAgentSelection = (...args) => call('setCanvasAgentSelection', null, ...args);
-        const schedule = typeof scope.setTimeout === 'function' ? scope.setTimeout : globalThis.setTimeout;
-        const buildSam3SourcePatch = (...args) => call('buildSam3SourcePatch', {}, ...args) || {};
-        const buildSam3StatePatch = (...args) => call('buildSam3StatePatch', {}, ...args) || {};
-        const buildGroupFieldPatch = (...args) => call('buildGroupFieldPatch', {}, ...args) || {};
-        const renderGroups = (...args) => call('renderGroups', null, ...args);
-        const findCanvasAgentReservedResultNodeForPreset = (...args) => call('findCanvasAgentReservedResultNodeForPreset', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const scheduleSave = (...args) => call('scheduleSave', null, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const nowIso = identitySource.nowIso || (() => new Date().toISOString());
+        const getProject = () => call(projectSource, 'getProject', {}) || {};
+        const getNode = (...args) => call(projectSource, 'getNode', null, ...args);
+        const getGroup = (...args) => call(projectSource, 'getGroup', null, ...args);
+        const getAgentState = () => call(stateSource, 'getAgentState', {}) || {};
+        const getNodeRect = (...args) => call(layoutSource, 'getNodeRect', null, ...args);
+        const defaultNodeSize = (...args) => call(layoutSource, 'defaultNodeSize', { w: 160, h: 120 }, ...args) || { w: 160, h: 120 };
+        const getVideoMaskUploadSlot = (...args) => call(mediaSource, 'canvasAgentVideoMaskUploadSlot', '', ...args) || '';
+        const getVideoSourceUploadSlot = (...args) => call(mediaSource, 'canvasAgentVideoSourceUploadSlot', '', ...args) || '';
+        const getCanvasAgentReservedResultNode = (...args) => call(resultSource, 'createCanvasAgentReservedResultNode', null, ...args);
+        const isCanvasAgentVideoTarget = (...args) => !!call(mediaSource, 'isCanvasAgentVideoTarget', false, ...args);
+        const findActiveResultNodeForPreset = (...args) => call(resultSource, 'findActiveResultNodeForPreset', null, ...args);
+        const isCanvasRunActiveState = (...args) => !!call(stateSource, 'isCanvasRunActiveState', false, ...args);
+        const nodeStatusState = (...args) => call(stateSource, 'nodeStatusState', '', ...args);
+        const getPendingPresetRuns = () => call(stateSource, 'getPendingPresetRuns', new Set()) || new Set();
+        const getResultNode = (...args) => call(projectSource, 'getNode', null, ...args);
+        const canvasAgentManualMaskWorkflowNodes = (...args) => call(editorSource, 'canvasAgentManualMaskWorkflowNodes', [], ...args) || [];
+        const dockCanvasAgentPanelBottomLeft = (...args) => call(agentSource, 'dockCanvasAgentPanelBottomLeft', null, ...args);
+        const applyNodeLayoutPatch = (...args) => call(layoutSource, 'applyNodeLayoutPatch', null, ...args);
+        const buildNodeLayoutPatch = (...args) => call(layoutSource, 'buildNodeLayoutPatch', {}, ...args) || {};
+        const addSam3VideoMaskNode = (...args) => call(layoutSource, 'addSam3VideoMaskNode', null, ...args);
+        const positionCanvasAgentVideoMaskWorkflow = (...args) => call(layoutSource, 'positionCanvasAgentVideoMaskWorkflow', null, ...args);
+        const createSam3VideoMaskEdge = (...args) => call(mediaSource, 'createSam3VideoMaskEdge', null, ...args);
+        const createUploadEdge = (...args) => call(mediaSource, 'createUploadEdge', null, ...args);
+        const buildResultSourcePatch = (...args) => call(patchSource, 'buildResultSourcePatch', {}, ...args) || {};
+        const fitCanvasAgentWorkflowGroup = (...args) => call(layoutSource, 'fitCanvasAgentWorkflowGroup', null, ...args);
+        const createCanvasAgentWorkflowGroup = (...args) => call(layoutSource, 'createCanvasAgentWorkflowGroup', null, ...args);
+        const centerCanvasAgentWorkflow = (...args) => call(layoutSource, 'centerCanvasAgentWorkflow', null, ...args);
+        const centerViewportOnWorld = (...args) => call(layoutSource, 'centerViewportOnWorld', null, ...args);
+        const renderNodes = (...args) => call(renderSource, 'renderNodes', null, ...args);
+        const renderEdges = (...args) => call(renderSource, 'renderEdges', null, ...args);
+        const mutate = (...args) => call(agentSource, 'mutate', null, ...args);
+        const setCanvasAgentRunInfo = (...args) => call(agentSource, 'setCanvasAgentRunInfo', null, ...args);
+        const clearCanvasAgentRunInfo = (...args) => call(agentSource, 'clearCanvasAgentRunInfo', null, ...args);
+        const runPresetNode = (...args) => call(agentSource, 'runPresetNode', null, ...args);
+        const showToast = (...args) => call(agentSource, 'showToast', null, ...args);
+        const setCanvasAgentSelection = (...args) => call(agentSource, 'setCanvasAgentSelection', null, ...args);
+        const schedule = typeof persistenceSource.setTimeout === 'function' ? persistenceSource.setTimeout : globalThis.setTimeout;
+        const buildSam3SourcePatch = (...args) => call(patchSource, 'buildSam3SourcePatch', {}, ...args) || {};
+        const buildSam3StatePatch = (...args) => call(patchSource, 'buildSam3StatePatch', {}, ...args) || {};
+        const buildGroupFieldPatch = (...args) => call(patchSource, 'buildGroupFieldPatch', {}, ...args) || {};
+        const renderGroups = (...args) => call(renderSource, 'renderGroups', null, ...args);
+        const findCanvasAgentReservedResultNodeForPreset = (...args) => call(resultSource, 'findCanvasAgentReservedResultNodeForPreset', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(agentSource, 'setCanvasAgentMessage', null, ...args);
+        const scheduleSave = (...args) => call(persistenceSource, 'scheduleSave', null, ...args);
+        const openSam3PointEditor = (...args) => call(editorSource, 'openSam3PointEditor', null, ...args);
+        const mergeCanvasRunStatus = (...args) => call(stateSource, 'mergeCanvasRunStatus', null, ...args);
 
         function canvasAgentSam3WorkflowNodes(workflow, sam3Node, presetNode, resultNode) {
             return canvasAgentManualMaskWorkflowNodes(presetNode, resultNode, sam3Node);
@@ -197,7 +211,7 @@
             if (opts.openEditor !== false) {
                 schedule(() => {
                     const currentSam3 = getNode(sam3Node.id);
-                    if (currentSam3) call('openSam3PointEditor', null, currentSam3);
+                    if (currentSam3) openSam3PointEditor(currentSam3);
                 }, 80);
             }
             setCanvasAgentMessage(t('{tool} workflow is grouped. Generate or upload the SAM3 mask to auto-run the reserved result.', '{tool} 工作流已分组。生成或上传 SAM3 蒙版后将自动运行预留结果。').replace('{tool}', spec?.label || t('Video quick tool', '视频快捷工具')));
@@ -388,7 +402,7 @@
                         }
                     }));
                     Object.assign(node, buildSam3StatePatch(node, {
-                        status: call('mergeCanvasRunStatus', node.status, 'idle', 'Source video removed; reconnect a video before continuing.')
+                        status: mergeCanvasRunStatus(node.status, 'idle', 'Source video removed; reconnect a video before continuing.')
                     }));
                     if (workflow.group_id) {
                         const group = getGroup(workflow.group_id);

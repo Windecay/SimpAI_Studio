@@ -2,13 +2,16 @@
     'use strict';
 
     function createCanvasBatchAnyNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const scope = context?.batchAnyNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const layoutSource = scope.layoutSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : () => ({ w: 360, h: 460 });
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

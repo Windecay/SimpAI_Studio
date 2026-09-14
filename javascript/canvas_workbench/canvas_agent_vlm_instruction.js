@@ -3,17 +3,33 @@
 
 
     function createCanvasAgentVlmInstructionController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const schedule = typeof scope.setTimeout === 'function' ? scope.setTimeout : globalThis.setTimeout;
-        const unschedule = typeof scope.clearTimeout === 'function' ? scope.clearTimeout : globalThis.clearTimeout;
-        const getPlannerTimeoutMs = () => Math.max(5000, Number(call('getPlannerTimeoutMs', 90000) || 90000));
+        const scope = context?.vlmInstructionSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const projectSource = scope.projectSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const plannerSource = scope.plannerSource || {};
+        const transportSource = scope.transportSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const languageCall = (name, fallback, ...args) => call(languageSource, name, fallback, ...args);
+        const runtimeCall = (name, fallback, ...args) => call(runtimeSource, name, fallback, ...args);
+        const projectCall = (name, fallback, ...args) => call(projectSource, name, fallback, ...args);
+        const referenceCall = (name, fallback, ...args) => call(referenceSource, name, fallback, ...args);
+        const settingsCall = (name, fallback, ...args) => call(settingsSource, name, fallback, ...args);
+        const plannerCall = (name, fallback, ...args) => call(plannerSource, name, fallback, ...args);
+        const transportCall = (name, fallback, ...args) => call(transportSource, name, fallback, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = runtimeSource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const schedule = typeof runtimeSource.setTimeout === 'function' ? runtimeSource.setTimeout : globalThis.setTimeout;
+        const unschedule = typeof runtimeSource.clearTimeout === 'function' ? runtimeSource.clearTimeout : globalThis.clearTimeout;
+        const getPlannerTimeoutMs = () => Math.max(5000, Number(runtimeCall('getPlannerTimeoutMs', 90000) || 90000));
         let activeRequest = null;
 
         function getDefaultProjectId() {
-            return String(call('getDefaultProjectId', 'default') || 'default').trim() || 'default';
+            return String(projectCall('getDefaultProjectId', 'default') || 'default').trim() || 'default';
         }
 
         function projectIdFor(project) {
@@ -33,10 +49,10 @@
 
         function canvasAgentVlmAgentContextPayload(options) {
             const opts = options || {};
-            const context = Object.assign({}, call('buildVlmAgentContext', {}, null, {
+            const context = Object.assign({}, referenceCall('buildVlmAgentContext', {}, null, {
                 userPrompt: opts.userPrompt || opts.prompt || ''
             }) || {}, {
-                agent_references: call('normalizeCanvasAgentReferences', []).map(ref => ({
+                agent_references: referenceCall('normalizeCanvasAgentReferences', []).map(ref => ({
                     role: ref.role,
                     kind: ref.kind,
                     node_id: ref.nodeId || ref.node_id,
@@ -53,11 +69,11 @@
         }
 
         function projectRequestStillCurrent(request) {
-            const currentProject = call('getProject', {}) || {};
+            const currentProject = projectCall('getProject', {}) || {};
             const currentId = projectIdFor(currentProject);
             if (currentId !== request.projectId) return false;
-            if (typeof scope.isProjectRequestCurrent === 'function') {
-                return scope.isProjectRequestCurrent(request, currentProject) !== false;
+            if (typeof projectSource.isProjectRequestCurrent === 'function') {
+                return projectCall('isProjectRequestCurrent', true, request, currentProject) !== false;
             }
             return !request.projectRef || currentProject === request.projectRef;
         }
@@ -78,9 +94,8 @@
         }
 
         function scheduleBackendCancel(request) {
-            const sendCancel = scope.sendCanvasVlmCancelRequest;
-            if (typeof sendCancel !== 'function') return Promise.resolve({ ok: false, error: 'VLM cancel API is unavailable' });
-            return Promise.resolve(sendCancel(canvasAgentVlmCancelPayload(request.payload))).catch((err) => ({
+            if (typeof transportSource.sendCanvasVlmCancelRequest !== 'function') return Promise.resolve({ ok: false, error: 'VLM cancel API is unavailable' });
+            return Promise.resolve(transportCall('sendCanvasVlmCancelRequest', null, canvasAgentVlmCancelPayload(request.payload))).catch((err) => ({
                 ok: false,
                 error: err?.message || String(err || 'VLM cancel failed')
             }));
@@ -115,16 +130,16 @@
                 await scheduleBackendCancel(previousRequest);
             }
 
-            const project = call('getProject', {}) || {};
+            const project = projectCall('getProject', {}) || {};
             const projectId = projectIdFor(project);
-            const model = String(call('getCanvasAgentRewriteModel', '') || '').trim();
-            const target = call('getCanvasAgentTargetNode', null);
+            const model = String(settingsCall('getCanvasAgentRewriteModel', '') || '').trim();
+            const target = referenceCall('getCanvasAgentTargetNode', null);
             const requestId = uid('vlm_plan');
             const payload = {
                 project_id: projectId,
                 node_id: 'canvas_agent_instruction_planner',
                 request_id: requestId,
-                asset_sources: call('getCanvasAgentVlmReferenceSources', [], { fallbackTarget: target }),
+                asset_sources: referenceCall('getCanvasAgentVlmReferenceSources', [], { fallbackTarget: target }),
                 conversation_id: `canvas_agent_plan:${projectId}`,
                 chat_messages: [],
                 agent_context: canvasAgentVlmAgentContextPayload({ userPrompt: prompt }),
@@ -132,14 +147,14 @@
                     version: model,
                     mode: 'chat',
                     request_id: requestId,
-                    prompt: call('canvasAgentInstructionPlanPrompt', '', prompt, requestedAction),
+                    prompt: plannerCall('canvasAgentInstructionPlanPrompt', '', prompt, requestedAction),
                     system_prompt: 'You are a strict JSON planner and prompt recommender for SimpAI Studio. Use built-in skill docs and image prompting target rules. Return one JSON object only.',
                     save_context: false,
                     agent_use_skills: true,
                     agent_use_canvas_context: true,
                     agent_action_hints: false,
                     output_chinese: false,
-                    video_frames: Number(call('getCanvasAgentSettings', {})?.videoFrames || 0),
+                    video_frames: Number(settingsCall('getCanvasAgentSettings', {})?.videoFrames || 0),
                     max_tokens: 900,
                     temperature: 0.1,
                     top_p: 0.8,
@@ -147,7 +162,7 @@
                     repetition_penalty: 1.05,
                     seed: -1,
                     free_after: false
-                }, model === 'Custom' ? (call('getCanvasAgentCustomRuntimeParams', {}) || {}) : {})
+                }, model === 'Custom' ? (settingsCall('getCanvasAgentCustomRuntimeParams', {}) || {}) : {})
             };
             const controller = typeof AbortController === 'function' ? new AbortController() : null;
             const request = {
@@ -169,7 +184,7 @@
                 request.resolveInterrupted = resolve;
             });
             const responsePromise = Promise.resolve()
-                .then(() => call('sendCanvasVlmRunRequest', null, payload, controller ? { signal: controller.signal } : {}))
+                .then(() => transportCall('sendCanvasVlmRunRequest', null, payload, controller ? { signal: controller.signal } : {}))
                 .catch(err => ({ ok: false, error: err?.message || String(err || 'VLM planner failed') }));
             if (getPlannerTimeoutMs() > 0) {
                 timer = schedule(() => {
@@ -205,11 +220,11 @@
                 if (!response?.ok) {
                     return { ok: false, error: response?.details || response?.error || t('VLM planner failed.', 'VLM 计划失败。') };
                 }
-                const parsed = call('extractCanvasAgentJsonObject', null, response.text || '');
+                const parsed = plannerCall('extractCanvasAgentJsonObject', null, response.text || '');
                 if (!parsed) {
                     return { ok: false, error: t('VLM planner returned no JSON.', 'VLM 计划没有返回 JSON。'), text: response.text || '' };
                 }
-                const plan = call('normalizeCanvasAgentInstructionPlan', null, parsed, prompt, 'vlm_agent');
+                const plan = plannerCall('normalizeCanvasAgentInstructionPlan', null, parsed, prompt, 'vlm_agent');
                 if (!plan) {
                     return { ok: false, error: t('VLM planner returned an invalid plan.', 'VLM 计划格式无效。'), text: response.text || '' };
                 }

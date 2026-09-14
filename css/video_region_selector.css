@@ -1,4 +1,16 @@
 .sai-region-bridge { display: none !important; }
+.sai-face-target[hidden], .sai-face-target-preview[hidden] { display: none !important; }
+.sai-face-target-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; }
+.sai-face-target-tools label { display: flex; align-items: center; gap: 8px; }
+.sai-video-region .sai-face-target-tools input { width: 64px !important; min-width: 0 !important; height: 32px !important; padding: 4px 8px !important; border: 1px solid var(--region-border) !important; border-radius: 4px !important; background: var(--region-input) !important; color: var(--region-text) !important; }
+.sai-video-region .sai-face-target-tools button { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 1px solid var(--region-border); border-radius: 4px; background: var(--region-input); color: var(--region-text); cursor: pointer; }
+.sai-face-target-tools button:hover { border-color: var(--region-accent); }
+.sai-face-target-tools output { font-size: 12px; overflow-wrap: anywhere; }
+.sai-face-target-preview { position: relative; width: min(100%, 320px); margin: 4px auto 8px; }
+.sai-face-target-preview img { display: block; width: 100%; height: auto; }
+.sai-face-target-preview [data-face-boxes] { position: absolute; inset: 0; }
+.sai-face-target-preview [data-face-id] { position: absolute; min-width: 0; min-height: 0; padding: 0; border: 2px solid #f0ce50; border-radius: 2px; background: transparent; color: #fff; font-size: 13px; text-align: left; line-height: 1; text-shadow: 0 1px 3px #000; cursor: pointer; }
+.sai-face-target-preview [data-face-id][aria-pressed="true"] { border-color: #4eddad; background: #2dac8626; }
 .sai-video-region {
     --region-text: #dedfe3; --region-muted: #969ba5; --region-input: #1b1d21;
     --region-border: #41454d; --region-track: #393c43;

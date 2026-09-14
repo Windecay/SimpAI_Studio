@@ -2,12 +2,57 @@
     'use strict';
 
     function createCanvasTimelineParamController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.timelineParamSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const maskSource = scope.maskSource || {};
+        const paramOperationSource = scope.paramOperationSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const keyframeSource = scope.keyframeSource || {};
+        const historySource = scope.historySource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const stateSource = scope.stateSource || {};
+        const callbackSources = {
+            getNode: nodeSource,
+            isNodeLocked: nodeSource,
+            normalizeTimelineNode: nodeSource,
+            getSelectedNodeId: selectionSource,
+            clamp: interactionSource,
+            getNodeElement: domSource,
+            captureTimelineMaskGeometry: maskSource,
+            remapTimelineMasksAfterCanvasResize: maskSource,
+            applyTimelineMaskFeatherToSelectedClip: maskSource,
+            timelineMaskLayerGeometry: maskSource,
+            remapTimelineClipMaskForGeometryChange: maskSource,
+            buildTimelineParamsPatch: paramOperationSource,
+            buildTimelineParamUpdatePatch: paramOperationSource,
+            buildTimelineClipParamUpdatePatch: paramOperationSource,
+            getTimelineDefaultParams: paramOperationSource,
+            enforceTimelineClipMediaBounds: mediaSource,
+            getTimelineSourceAsset: mediaSource,
+            getMediaEditRange: mediaSource,
+            syncTimelineClipTransformKeyframeAtPlayhead: keyframeSource,
+            pushHistoryBatch: historySource,
+            scheduleSave: persistenceSource,
+            mutate: stateSource,
+            refreshTimelineFeatherControlDom: domSource,
+            refreshTimelineMaskFeatherDom: domSource,
+            refreshTimelineAllClipDom: domSource,
+            refreshTimelinePlayheadDom: domSource,
+            refreshTimelinePreviewDom: domSource,
+            refreshTimelineClipDom: domSource,
+            refreshTimelineInlineValue: domSource
+        };
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
         const getNode = (id) => call('getNode', null, id);
         const getSelectedNodeId = () => call('getSelectedNodeId', null);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
 
         function fieldValue(field) {

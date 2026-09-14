@@ -2,18 +2,24 @@
     'use strict';
 
     function createCanvasVlmChatImagePreviewController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => scope.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
+        const scope = context?.vlmChatImagePreviewSource || context || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const configSource = scope.configSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const tooltipSource = scope.tooltipSource || {};
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         let previewEl = null;
         let previewTarget = null;
 
         function sizeFromDimensions(sourceW, sourceH) {
             const width = Number.isFinite(sourceW) && sourceW > 0 ? sourceW : 1;
             const height = Number.isFinite(sourceH) && sourceH > 0 ? sourceH : 1;
-            const configuredTargetPixels = Number(call('getTargetPixels', 40000));
+            const configuredTargetPixels = Number(typeof configSource.getTargetPixels === 'function'
+                ? configSource.getTargetPixels()
+                : 40000);
             const targetPixels = configuredTargetPixels > 0 ? configuredTargetPixels : 40000;
             let scale = Math.sqrt(targetPixels / Math.max(1, width * height));
             const longSide = Math.max(width, height) * scale;
@@ -45,7 +51,9 @@
         }
 
         function breakablePreviewName(name) {
-            const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : value => String(value || '');
+            const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+                ? utilitySource.escapeHtml
+                : value => String(value || '');
             const escaped = escapeHtml(name);
             return escaped
                 .replace(/([_.-])/g, '$1<wbr>')
@@ -73,7 +81,7 @@
             const src = img?.currentSrc || img?.src || '';
             const name = String(target.getAttribute?.('data-vlm-chat-image-name') || target.querySelector?.('em')?.textContent || '').trim();
             if (!src && !name) return false;
-            if (typeof scope.hideCanvasTooltip === 'function') scope.hideCanvasTooltip();
+            if (typeof tooltipSource.hideCanvasTooltip === 'function') tooltipSource.hideCanvasTooltip();
             previewTarget = target;
             const preview = ensureVlmChatImagePreview();
             if (!preview) return false;
@@ -84,7 +92,8 @@
             const imageHeight = Math.max(36, Math.round(size.height * imageScale));
             preview.style.width = `${panelWidth}px`;
             preview.style.maxWidth = 'calc(100vw - 24px)';
-            preview.innerHTML = `${src ? `<img src="${(scope.escapeHtml || String)(src)}" alt="" style="width:${imageWidth}px;height:${imageHeight}px">` : '<i class="fa-solid fa-image"></i>'}${name ? `<span class="sai-vlm-chat-image-preview-name">${breakablePreviewName(name)}</span>` : ''}`;
+            const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : String;
+            preview.innerHTML = `${src ? `<img src="${escapeHtml(src)}" alt="" style="width:${imageWidth}px;height:${imageHeight}px">` : '<i class="fa-solid fa-image"></i>'}${name ? `<span class="sai-vlm-chat-image-preview-name">${breakablePreviewName(name)}</span>` : ''}`;
             preview.hidden = false;
             preview.classList.add('is-visible');
             positionVlmChatImagePreview(clientX, clientY);

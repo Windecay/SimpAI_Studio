@@ -2,24 +2,46 @@
     'use strict';
 
     function createCanvasAgentPresetRuntimeController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const queueStorageKey = String(scope.presetQueueStorageKey || 'simpai.canvas.agentPresetQueues.v1');
+        const scope = context?.presetRuntimeSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const identitySource = scope.identitySource || {};
+        const catalogSource = scope.catalogSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const storageSource = scope.storageSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const requestSource = scope.requestSource || {};
+        const uiSource = scope.uiSource || {};
+        const promptSource = scope.promptSource || {};
+        const configSource = scope.configSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const catalogCall = (name, fallback, ...args) => call(catalogSource, name, fallback, ...args);
+        const settingsCall = (name, fallback, ...args) => call(settingsSource, name, fallback, ...args);
+        const storageCall = (name, fallback, ...args) => call(storageSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => call(nodeSource, name, fallback, ...args);
+        const requestCall = (name, fallback, ...args) => call(requestSource, name, fallback, ...args);
+        const uiCall = (name, fallback, ...args) => call(uiSource, name, fallback, ...args);
+        const promptCall = (name, fallback, ...args) => call(promptSource, name, fallback, ...args);
+        const identityCall = (name, fallback, ...args) => call(identitySource, name, fallback, ...args);
+        const utilityCall = (name, fallback, ...args) => call(utilitySource, name, fallback, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
+        const queueStorageKey = String(configSource.presetQueueStorageKey || 'simpai.canvas.agentPresetQueues.v1');
         const defaultQueues = {
-            t2i: Array.isArray(scope.defaultT2iPresetQueue) ? scope.defaultT2iPresetQueue : ['Z-imageT'],
-            edit: Array.isArray(scope.defaultEditPresetQueue) ? scope.defaultEditPresetQueue : ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'],
-            i2v: Array.isArray(scope.defaultI2vPresetQueue) ? scope.defaultI2vPresetQueue : ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'],
-            t2v: Array.isArray(scope.defaultT2vPresetQueue) ? scope.defaultT2vPresetQueue : ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'],
-            video_edit: Array.isArray(scope.defaultVideoEditPresetQueue) ? scope.defaultVideoEditPresetQueue : ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'],
-            reference_to_video: Array.isArray(scope.defaultReferenceToVideoPresetQueue) ? scope.defaultReferenceToVideoPresetQueue : ['MiniMax-H3(R2V)'],
-            audio_to_video: Array.isArray(scope.defaultAudioToVideoPresetQueue) ? scope.defaultAudioToVideoPresetQueue : ['MiniMax-H3(R2V)', 'LTX(TA2V)', 'LTX(IA2V)'],
-            audio_image_to_video: Array.isArray(scope.defaultAudioImageToVideoPresetQueue) ? scope.defaultAudioImageToVideoPresetQueue : ['MiniMax-H3(R2V)', 'LTX(IA2V)', 'LTX(TA2V)'],
-            audio: Array.isArray(scope.defaultAudioPresetQueue) ? scope.defaultAudioPresetQueue : []
+            t2i: Array.isArray(configSource.defaultT2iPresetQueue) ? configSource.defaultT2iPresetQueue : ['Z-imageT'],
+            edit: Array.isArray(configSource.defaultEditPresetQueue) ? configSource.defaultEditPresetQueue : ['Flux2-KleinEdit', 'MiniMax-H3(R2I)'],
+            i2v: Array.isArray(configSource.defaultI2vPresetQueue) ? configSource.defaultI2vPresetQueue : ['Wan(I2V)', 'MiniMax-H3(I2V)', 'MiniMax-H3(R2V)', 'Dasiwa(I2V)'],
+            t2v: Array.isArray(configSource.defaultT2vPresetQueue) ? configSource.defaultT2vPresetQueue : ['Wan(T2V)', 'MiniMax-H3(T2V)', 'Wan-TTP'],
+            video_edit: Array.isArray(configSource.defaultVideoEditPresetQueue) ? configSource.defaultVideoEditPresetQueue : ['Bernini-VideoEdit', 'Wan-Extent', 'Dasiwa-Extent'],
+            reference_to_video: Array.isArray(configSource.defaultReferenceToVideoPresetQueue) ? configSource.defaultReferenceToVideoPresetQueue : ['MiniMax-H3(R2V)'],
+            audio_to_video: Array.isArray(configSource.defaultAudioToVideoPresetQueue) ? configSource.defaultAudioToVideoPresetQueue : ['MiniMax-H3(R2V)', 'LTX(TA2V)', 'LTX(IA2V)'],
+            audio_image_to_video: Array.isArray(configSource.defaultAudioImageToVideoPresetQueue) ? configSource.defaultAudioImageToVideoPresetQueue : ['MiniMax-H3(R2V)', 'LTX(IA2V)', 'LTX(TA2V)'],
+            audio: Array.isArray(configSource.defaultAudioPresetQueue) ? configSource.defaultAudioPresetQueue : []
         };
-        const statusCacheTtlMs = Math.max(0, Number(scope.presetStatusCacheTtlMs ?? 5 * 60 * 1000));
-        const statusScanConcurrency = Math.max(1, Number(scope.presetStatusScanConcurrency || 4));
+        const statusCacheTtlMs = Math.max(0, Number(configSource.presetStatusCacheTtlMs ?? 5 * 60 * 1000));
+        const statusScanConcurrency = Math.max(1, Number(configSource.presetStatusScanConcurrency || 4));
         const statusCache = new Map();
         let scanState = {
             state: 'idle',
@@ -31,17 +53,17 @@
         };
 
         function getPresetCatalog() {
-            const catalog = call('getPresetCatalog', []);
+            const catalog = catalogCall('getPresetCatalog', []);
             return Array.isArray(catalog) ? catalog : [];
         }
 
         function getCanvasAgentSettings() {
-            const settings = call('getCanvasAgentSettings', {});
+            const settings = settingsCall('getCanvasAgentSettings', {});
             return settings && typeof settings === 'object' ? settings : {};
         }
 
         function cloneRunValue(value, fallback) {
-            if (typeof scope.cloneRunValue === 'function') return scope.cloneRunValue(value, fallback);
+            if (typeof utilitySource.cloneRunValue === 'function') return utilitySource.cloneRunValue(value, fallback);
             try {
                 return JSON.parse(JSON.stringify(value ?? fallback));
             } catch (err) {
@@ -50,23 +72,23 @@
         }
 
         function getStorage() {
-            if (typeof scope.getStorage === 'function') return scope.getStorage();
+            if (typeof storageSource.getStorage === 'function') return storageSource.getStorage();
             if (typeof globalThis !== 'undefined' && globalThis.localStorage) return globalThis.localStorage;
             return null;
         }
 
         function nowIso() {
-            const value = call('nowIso', '', ...[]);
+            const value = identityCall('nowIso', '', ...[]);
             return String(value || new Date().toISOString());
         }
 
         function nextUid(prefix) {
-            const value = call('uid', '', prefix);
+            const value = identityCall('uid', '', prefix);
             return String(value || `${prefix || 'id'}_${Date.now()}`);
         }
 
         function escapeHtml(value) {
-            return call('escapeHtml', String(value ?? ''), value);
+            return utilityCall('escapeHtml', String(value ?? ''), value);
         }
 
         function canvasAgentPresetSearchText(entry) {
@@ -286,7 +308,7 @@
         function createCanvasAgentPresetProbeNode(entry, options) {
             const opts = options || {};
             const cleanName = normalizePresetName(entry?.name || entry?.display_name || '');
-            const sharedProbe = call('apiBuildPresetRunNode', null, entry, {
+            const sharedProbe = nodeCall('apiBuildPresetRunNode', null, entry, {
                 id: `agent_probe_${cleanName || 'preset'}`,
                 sceneTheme: opts.sceneTheme,
                 prompt: ''
@@ -350,7 +372,7 @@
             const probe = createCanvasAgentPresetProbeNode(entry);
             let status = null;
             try {
-                status = await call('sendCanvasPresetModelStatusRequest', null, probe);
+                status = await requestCall('sendCanvasPresetModelStatusRequest', null, probe);
             } catch (err) {
                 status = { ok: false, error: err?.message || String(err) };
             }
@@ -417,14 +439,14 @@
                     ? t('Checking preset model files...', '正在检查 preset 模型文件...')
                     : t('Checking preset model files with cache...', '正在使用缓存检查 preset 模型文件...')
             };
-            call('renderCanvasSettingsPanel', null);
+            uiCall('renderCanvasSettingsPanel', null);
             let nextIndex = 0;
             let lastRenderAt = 0;
             const maybeRenderProgress = () => {
                 const now = Date.now();
                 if (scanState.checked === scanState.total || now - lastRenderAt > 180) {
                     lastRenderAt = now;
-                    call('renderCanvasSettingsPanel', null);
+                    uiCall('renderCanvasSettingsPanel', null);
                 }
             };
             const worker = async () => {
@@ -453,14 +475,14 @@
             scanState.state = 'ready';
             scanState.checkedAt = nowIso();
             scanState.message = t('{count} ready preset(s) found.', '已找到 {count} 个可用 preset。').replace('{count}', scanState.entries.length);
-            call('renderCanvasSettingsPanel', null);
+            uiCall('renderCanvasSettingsPanel', null);
         }
 
         function canvasAgentPresetDefaultPromptForTheme(entry, theme, fallback) {
             if (!entry) return fallback || '';
-            const promptSource = theme ? createCanvasAgentPresetProbeNode(entry, { sceneTheme: theme }) : entry;
-            return typeof scope.canvasAgentPresetDefaultPrompt === 'function'
-                ? (scope.canvasAgentPresetDefaultPrompt(promptSource, fallback) || '')
+            const promptInput = theme ? createCanvasAgentPresetProbeNode(entry, { sceneTheme: theme }) : entry;
+            return typeof promptSource.canvasAgentPresetDefaultPrompt === 'function'
+                ? (promptCall('canvasAgentPresetDefaultPrompt', '', promptInput, fallback) || '')
                 : (fallback || '');
         }
 

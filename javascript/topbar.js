@@ -4944,7 +4944,7 @@ function syncScenePresetResetDefaultFromCurrentParams(root, controlId) {
     return true;
 }
 
-function applyScenePresetDefaultValue(controlId, value, props) {
+function applyScenePresetDefaultValue(controlId, value, props, currentValue = value) {
     const root = getSimpleAIElementById(controlId);
     if (!root) return 0;
     const isCheckbox = controlId.indexOf("scene_switch_option") === 0;
@@ -4953,7 +4953,7 @@ function applyScenePresetDefaultValue(controlId, value, props) {
     let changed = rememberScenePresetResetDefault(root, controlId, value);
     for (const input of orderScenePresetValueInputs(inputs)) {
         changed += applyScenePresetControlProps(input, props);
-        if (setNativeInputValue(input, value, isCheckbox ? "checkbox" : "value")) {
+        if (setNativeInputValue(input, currentValue, isCheckbox ? "checkbox" : "value")) {
             changed += 1;
         }
     }
@@ -4991,13 +4991,15 @@ function applyScenePresetDefaults(system_params, traceLabel) {
     const propsByControl = system_params.__scene_control_props && typeof system_params.__scene_control_props === "object"
         ? system_params.__scene_control_props
         : {};
+    const regionValues = window.SimpAIVideoRegionSelector?.getSelectedControlValues?.(system_params) || {};
 
     let changed = 0;
     scenePresetDefaultSyncApplying = true;
     try {
         for (const controlId of SCENE_PRESET_DEFAULT_CONTROL_IDS) {
             if (!Object.prototype.hasOwnProperty.call(defaults, controlId)) continue;
-            changed += applyScenePresetDefaultValue(controlId, defaults[controlId], propsByControl[controlId]);
+            changed += applyScenePresetDefaultValue(
+                controlId, defaults[controlId], propsByControl[controlId], regionValues[controlId] ?? defaults[controlId]);
         }
         if (Object.prototype.hasOwnProperty.call(defaults, "scene_steps")) {
             changed += applyScenePresetDefaultValue("overwrite_step", defaults.scene_steps, propsByControl.overwrite_step || null);

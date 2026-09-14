@@ -2,44 +2,44 @@
     'use strict';
 
     function createCanvasOutpaintController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
-        const getState = () => typeof scope.getOutpaintOverlayState === 'function'
-            ? scope.getOutpaintOverlayState()
-            : null;
-        const getProject = () => typeof scope.getProject === 'function'
-            ? scope.getProject()
-            : null;
-        const getOverlayElement = () => typeof scope.getOutpaintOverlayElement === 'function'
-            ? scope.getOutpaintOverlayElement()
-            : null;
-        const getCanvasAgentSettings = () => typeof scope.getCanvasAgentSettings === 'function'
-            ? (scope.getCanvasAgentSettings() || {})
-            : {};
+        const scope = context?.outpaintSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const documentSource = scope.documentSource || {};
+        const overlaySource = scope.overlaySource || {};
+        const projectSource = scope.projectSource || {};
+        const targetSource = scope.targetSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const panelSource = scope.panelSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const documentCall = (name, ...args) => call(documentSource, name, ...args);
+        const overlayCall = (name, ...args) => call(overlaySource, name, ...args);
+        const projectCall = (name, ...args) => call(projectSource, name, ...args);
+        const targetCall = (name, ...args) => call(targetSource, name, ...args);
+        const viewportCall = (name, ...args) => call(viewportSource, name, ...args);
+        const panelCall = (name, ...args) => call(panelSource, name, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
+        const getDocument = () => documentCall('getDocument')
+            || (typeof document !== 'undefined' ? document : null);
+        const getState = () => overlayCall('getOutpaintOverlayState') || null;
+        const getProject = () => projectCall('getProject') || null;
+        const getOverlayElement = () => overlayCall('getOutpaintOverlayElement') || null;
+        const getCanvasAgentSettings = () => projectCall('getCanvasAgentSettings') || {};
         const getNodeElement = (nodeId) => {
-            if (typeof scope.getOutpaintNodeElement === 'function') {
-                return scope.getOutpaintNodeElement(nodeId);
-            }
-            return null;
+            return overlayCall('getOutpaintNodeElement', nodeId) || null;
         };
-        const getStage = () => typeof scope.getOutpaintStage === 'function'
-            ? scope.getOutpaintStage()
-            : null;
-        const getDefaultNodeSize = (type) => typeof scope.defaultNodeSize === 'function'
-            ? (scope.defaultNodeSize(type) || {})
-            : {};
+        const getStage = () => overlayCall('getOutpaintStage') || null;
+        const getDefaultNodeSize = (type) => utilitySource.defaultNodeSize?.(type) || {};
         const getViewportZoom = () => {
-            const value = typeof scope.getViewportZoom === 'function' ? scope.getViewportZoom() : 1;
+            const value = viewportCall('getViewportZoom') || 1;
             return Math.max(0.01, Number(value) || 1);
         };
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
         const edgeKeys = {
             top: 'up',
             bottom: 'down',
@@ -49,9 +49,8 @@
         let dragState = null;
 
         const getTargetNode = () => {
-            if (typeof scope.getOutpaintTargetNode === 'function') {
-                return scope.getOutpaintTargetNode();
-            }
+            const provided = targetCall('getOutpaintTargetNode');
+            if (provided) return provided;
             const state = getState();
             const project = getProject();
             return state?.nodeId
@@ -59,19 +58,17 @@
                 : null;
         };
 
-        const isImageTarget = (node) => typeof scope.isCanvasAgentImageTarget === 'function'
-            ? !!scope.isCanvasAgentImageTarget(node)
+        const isImageTarget = (node) => typeof targetSource.isCanvasAgentImageTarget === 'function'
+            ? !!targetSource.isCanvasAgentImageTarget(node)
             : true;
 
         const requestOverlaySync = () => {
-            if (typeof scope.syncOutpaintOverlayPosition === 'function') {
-                return scope.syncOutpaintOverlayPosition();
-            }
+            if (typeof targetSource.syncOutpaintOverlayPosition === 'function') return targetSource.syncOutpaintOverlayPosition();
             return syncOutpaintOverlayPosition();
         };
 
-        const getMediaSize = (node) => typeof scope.getOutpaintMediaSize === 'function'
-            ? scope.getOutpaintMediaSize(node)
+        const getMediaSize = (node) => typeof targetSource.getOutpaintMediaSize === 'function'
+            ? targetSource.getOutpaintMediaSize(node)
             : getOutpaintMediaSize(node);
 
         function edgeValue(state, edge) {
@@ -130,7 +127,7 @@
             const state = getState();
             if (!state) return;
             try {
-                call('setCanvasAgentSettingsPatch', {
+                projectCall('setCanvasAgentSettingsPatch', {
                     outpaintUpPercent: state.up,
                     outpaintDownPercent: state.down,
                     outpaintLeftPercent: state.left,
@@ -183,7 +180,7 @@
             const state = getState();
             if (!slider || !state?.active) return false;
             const edge = slider.getAttribute('data-outpaint-slider');
-            const panel = typeof scope.getCanvasAgentPanel === 'function' ? scope.getCanvasAgentPanel() : null;
+            const panel = panelCall('getCanvasAgentPanel') || null;
             const output = panel?.querySelector?.(`[data-outpaint-output="${edge}"]`);
             if (output) output.textContent = slider.value + '%';
             updateOutpaintFromSlider(edge, slider.value);
@@ -192,7 +189,7 @@
 
         function syncOutpaintAgentPanel() {
             const state = getState();
-            const panel = typeof scope.getCanvasAgentPanel === 'function' ? scope.getCanvasAgentPanel() : null;
+            const panel = panelCall('getCanvasAgentPanel') || null;
             if (!state?.active || !panel) return;
             Object.keys(edgeKeys).forEach(edge => {
                 const slider = panel.querySelector?.(`[data-outpaint-slider="${edge}"]`);

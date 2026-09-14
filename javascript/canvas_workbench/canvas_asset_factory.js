@@ -2,13 +2,16 @@
     'use strict';
 
     function createCanvasAssetFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-asset`;
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const scope = context?.assetFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-asset`;
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

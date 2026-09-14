@@ -28,311 +28,113 @@
 
     function createCanvasWorkbenchTimelineContext(source) {
         const scope = source?.timelineSource || source || {};
+        const domSource = scope.domSource || {};
+        const playheadSource = scope.playheadSource || {};
+        const previewSource = scope.previewSource || {};
+        const playbackSource = scope.playbackSource || {};
+        const keyframeSource = scope.keyframeSource || {};
+        const clipSource = scope.clipSource || {};
+        const maskSource = scope.maskSource || {};
+        const directorTimelineDragSource = scope.directorTimelineDragSource || {};
+        const frameSource = scope.frameSource || {};
+        const renderSource = scope.renderSource || {};
+        const compareSource = scope.compareSource || {};
+        const paramSource = scope.paramSource || {};
+        const commandSource = scope.commandSource || {};
         const controllers = {};
 
-        controllers.dom = createController(modules.dom, 'createCanvasTimelineDomController', {
-            getDocument: scope.getDocument,
-            cssEscape: scope.cssEscape,
-            clamp: scope.clamp,
-            formatAssetDuration: scope.formatAssetDuration,
-            timelineBuildTrackClipLayout: scope.timelineBuildTrackClipLayout,
-            timelineNormalizeKeyframes: scope.timelineNormalizeKeyframes
-        });
+        controllers.dom = createController(modules.dom, 'createCanvasTimelineDomController', domSource);
         const domMethod = name => method(controllers.dom, name);
 
-        controllers.playhead = createController(modules.playhead, 'createCanvasTimelinePlayheadController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            performanceNow: scope.performanceNow,
-            setSuppressWheelUntil: scope.setSuppressWheelUntil,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            scheduleSave: scope.scheduleSave
+        const playheadControllerSource = Object.assign({}, playheadSource, {
+            domSource: Object.assign({}, playheadSource.domSource || {}, {
+                refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args)
+            })
         });
+        controllers.playhead = createController(modules.playhead, 'createCanvasTimelinePlayheadController', playheadControllerSource);
         const playheadMethod = name => method(controllers.playhead, name);
 
-        controllers.preview = createController(modules.preview, 'createCanvasTimelinePreviewController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            getClipAtTime: scope.getClipAtTime,
-            clamp: scope.clamp,
-            selectTimelineClip: scope.selectTimelineClip,
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            timelineMaskLayerGeometry: scope.timelineMaskLayerGeometry,
-            remapTimelineClipMaskForGeometryChange: scope.remapTimelineClipMaskForGeometryChange,
-            syncTimelineClipTransformKeyframeAtPlayhead: scope.syncTimelineClipTransformKeyframeAtPlayhead,
-            buildTimelineClipPatch: scope.buildTimelineClipPatch,
-            refreshTimelineKeyframeMarkersDom: (...args) => domMethod('refreshTimelineKeyframeMarkersDom')?.(...args),
-            refreshTimelinePreviewClipLayersDom: scope.refreshTimelinePreviewClipLayersDom,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            renderInspector: scope.renderInspector
+        const previewControllerSource = Object.assign({}, previewSource, {
+            domSource: Object.assign({}, previewSource.domSource || {}, {
+                refreshTimelineKeyframeMarkersDom: (...args) => domMethod('refreshTimelineKeyframeMarkersDom')?.(...args)
+            })
         });
+        controllers.preview = createController(modules.preview, 'createCanvasTimelinePreviewController', previewControllerSource);
         const previewMethod = name => method(controllers.preview, name);
 
-        controllers.playback = createController(modules.playback, 'createCanvasTimelinePlaybackController', {
-            getNode: scope.getNode,
-            getNodeElement: scope.getNodeElement,
-            performanceNow: scope.performanceNow,
-            requestAnimationFrame: scope.requestAnimationFrame,
-            cancelAnimationFrame: scope.cancelAnimationFrame,
-            syncTimelinePreviewVideos: scope.syncTimelinePreviewVideos,
-            refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            scheduleSave: scope.scheduleSave
+        const playbackControllerSource = Object.assign({}, playbackSource, {
+            domSource: Object.assign({}, playbackSource.domSource || {}, {
+                refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args)
+            })
         });
+        controllers.playback = createController(modules.playback, 'createCanvasTimelinePlaybackController', playbackControllerSource);
         const playbackMethod = name => method(controllers.playback, name);
 
-        controllers.keyframe = createController(modules.keyframe, 'createCanvasTimelineKeyframeController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            performanceNow: scope.performanceNow,
-            setSuppressWheelUntil: scope.setSuppressWheelUntil,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            refreshTimelineKeyframeMarkersDom: (...args) => domMethod('refreshTimelineKeyframeMarkersDom')?.(...args),
-            refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            buildTimelineKeyframesPatch: scope.buildTimelineKeyframesPatch,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            renderInspector: scope.renderInspector
+        const keyframeControllerSource = Object.assign({}, keyframeSource, {
+            domSource: Object.assign({}, keyframeSource.domSource || {}, {
+                refreshTimelineKeyframeMarkersDom: (...args) => domMethod('refreshTimelineKeyframeMarkersDom')?.(...args),
+                refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args)
+            })
         });
+        controllers.keyframe = createController(modules.keyframe, 'createCanvasTimelineKeyframeController', keyframeControllerSource);
         const keyframeMethod = name => method(controllers.keyframe, name);
 
-        controllers.clip = createController(modules.clip, 'createCanvasTimelineClipController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            performanceNow: scope.performanceNow,
-            setSuppressWheelUntil: scope.setSuppressWheelUntil,
-            pushHistory: scope.pushHistory,
-            selectTimelineClip: scope.selectTimelineClip,
-            timelineLaneInfoFromTarget: (...args) => domMethod('timelineLaneInfoFromTarget')?.(...args),
-            buildTimelineClipPatch: scope.buildTimelineClipPatch,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            snapTimelineTime: scope.snapTimelineTime,
-            timelineTrackCompatible: scope.timelineTrackCompatible,
-            timelineClipAvailableDuration: scope.timelineClipAvailableDuration,
-            enforceTimelineClipMediaBounds: scope.enforceTimelineClipMediaBounds,
-            normalizeNode: scope.normalizeNode,
-            refreshTimelineClipDom: (...args) => domMethod('refreshTimelineClipDom')?.(...args),
-            refreshTimelineTrackRowsDom: (...args) => domMethod('refreshTimelineTrackRowsDom')?.(...args),
-            refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            renderEdges: scope.renderEdges,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            renderInspector: scope.renderInspector
+        const clipControllerSource = Object.assign({}, clipSource, {
+            domSource: Object.assign({}, clipSource.domSource || {}, {
+                timelineLaneInfoFromTarget: (...args) => domMethod('timelineLaneInfoFromTarget')?.(...args),
+                refreshTimelineClipDom: (...args) => domMethod('refreshTimelineClipDom')?.(...args),
+                refreshTimelineTrackRowsDom: (...args) => domMethod('refreshTimelineTrackRowsDom')?.(...args),
+                refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args)
+            })
         });
+        controllers.clip = createController(modules.clip, 'createCanvasTimelineClipController', clipControllerSource);
         const clipMethod = name => method(controllers.clip, name);
 
-        controllers.mask = createController(modules.mask, 'createCanvasTimelineMaskController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            performanceNow: scope.performanceNow,
-            setSuppressWheelUntil: scope.setSuppressWheelUntil,
-            getTimelinePenAnchorTarget: scope.getTimelinePenAnchorTarget,
-            closeTimelinePendingPenPath: scope.closeTimelinePendingPenPath,
-            buildTimelineClipMaskPatch: scope.buildTimelineClipMaskPatch,
-            buildTimelineClipMaskPointPatch: scope.buildTimelineClipMaskPointPatch,
-            syncTimelinePreviewVideos: scope.syncTimelinePreviewVideos,
-            timelineMaskPointFromEvent: scope.timelineMaskPointFromEvent,
-            timelineMaskDimensions: scope.timelineMaskDimensions,
-            timelineMaskPointDistancePx: scope.timelineMaskPointDistancePx,
-            timelineMaskCloseSnapPx: scope.timelineMaskCloseSnapPx,
-            exportTimelineMaskDataUrl: scope.exportTimelineMaskDataUrl,
-            selectTimelineClip: scope.selectTimelineClip,
-            refreshTimelinePenOverlayDom: scope.refreshTimelinePenOverlayDom,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            renderInspector: scope.renderInspector
-        });
+        controllers.mask = createController(modules.mask, 'createCanvasTimelineMaskController', maskSource);
         const maskMethod = name => method(controllers.mask, name);
 
         controllers.directorTimelineDrag = createController(
             modules.directorTimelineDrag,
             'createCanvasDirectorTimelineDragController',
-            {
-                getDocument: scope.getDocument,
-                getNode: scope.getNode,
-                isDirectorTimelineNode: scope.isDirectorTimelineNode,
-                isNodeLocked: scope.isNodeLocked,
-                normalizeDirectorTimelineForNode: scope.normalizeDirectorTimelineForNode,
-                normalizeTimeline: scope.normalizeTimeline,
-                directorTimelineNeighborBounds: scope.directorTimelineNeighborBounds,
-                directorTimelineTotalSeconds: scope.directorTimelineTotalSeconds,
-                directorTimelineClampSeconds: scope.directorTimelineClampSeconds,
-                directorTimelineRoundSeconds: scope.directorTimelineRoundSeconds,
-                buildDirectorTimelineStatePatch: scope.buildDirectorTimelineStatePatch,
-                pushHistoryBatch: scope.pushHistoryBatch,
-                updateDirectorStatus: scope.updateDirectorStatus,
-                mutate: scope.mutate,
-                getSelectedNodeId: scope.getSelectedNodeId,
-                scheduleSave: scope.scheduleSave
-            }
+            directorTimelineDragSource
         );
         const directorTimelineDragMethod = name => method(controllers.directorTimelineDrag, name);
 
-        controllers.frame = createController(modules.frame, 'createCanvasTimelineFrameController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            getNodesLayer: scope.getNodesLayer,
-            cssEscape: scope.cssEscape,
-            clamp: scope.clamp,
-            getTimelineSourceAsset: scope.getTimelineSourceAsset,
-            assetMediaKind: scope.assetMediaKind,
-            assetDisplaySrc: scope.assetDisplaySrc,
-            getMediaEditRange: scope.getMediaEditRange,
-            loadImageElementForCanvas: scope.loadImageElementForCanvas,
-            effectiveClipIn: scope.effectiveClipIn,
-            normalizeTimelineNode: scope.normalizeTimelineNode,
-            serializeTimelineRenderPayload: scope.serializeTimelineRenderPayload,
-            clipMaskDataUrl: scope.clipMaskDataUrl,
-            timelineClipLayerGeometry: scope.timelineClipLayerGeometry
-        });
+        controllers.frame = createController(modules.frame, 'createCanvasTimelineFrameController', frameSource);
+        const frameMethod = name => method(controllers.frame, name);
 
-        controllers.render = createController(modules.render, 'createCanvasTimelineRenderController', {
-            getProject: scope.getProject,
-            getProjectId: scope.getProjectId,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            defaultNodeSize: scope.defaultNodeSize,
-            uid: scope.uid,
-            t: scope.t,
-            placeNodeAvoidingOverlap: scope.placeNodeAvoidingOverlap,
-            ensureGenerateEdge: scope.ensureGenerateEdge,
-            setSelectedNodeId: scope.setSelectedNodeId,
-            setSelectedNodeIds: scope.setSelectedNodeIds,
-            setSelectedEdgeId: scope.setSelectedEdgeId,
-            pushHistory: scope.pushHistory,
-            mutate: scope.mutate,
-            showToast: scope.showToast,
-            serializeTimelineRenderPayload: scope.serializeTimelineRenderPayload,
-            buildTimelineOutputResultNode: scope.buildTimelineOutputResultNode,
-            buildProjectNodeAppendPatch: scope.buildProjectNodeAppendPatch,
-            buildTimelineResultPatch: scope.buildTimelineResultPatch,
-            buildTimelineRenderAsset: scope.buildTimelineRenderAsset,
-            buildTimelinePreviewAsset: scope.buildTimelinePreviewAsset,
-            stableHash: scope.stableHash,
-            renderTimelinePreviewFrameDataUrl: scope.renderTimelinePreviewFrameDataUrl,
-            sendCanvasRenderTimelineRequest: scope.sendCanvasRenderTimelineRequest,
-            refreshMainGalleryAfterCanvasRun: scope.refreshMainGalleryAfterCanvasRun
-        });
+        controllers.render = createController(modules.render, 'createCanvasTimelineRenderController', renderSource);
 
-        controllers.compare = createController(modules.compare, 'createCanvasTimelineCompareController', {
-            getProject: scope.getProject,
-            getProjectId: scope.getProjectId,
-            uid: scope.uid,
-            t: scope.t,
-            clamp: scope.clamp,
-            defaultNodeSize: scope.defaultNodeSize,
-            placeNodeAvoidingOverlap: scope.placeNodeAvoidingOverlap,
-            setSelectedNodeId: scope.setSelectedNodeId,
-            setSelectedNodeIds: scope.setSelectedNodeIds,
-            setSelectedEdgeId: scope.setSelectedEdgeId,
-            mutate: scope.mutate,
-            showToast: scope.showToast,
-            nowIso: scope.nowIso,
-            normalizeTimelineNode: scope.normalizeTimelineNode,
-            serializeTimelineRenderPayload: scope.serializeTimelineRenderPayload,
-            buildTimelineCompareResultNode: scope.buildTimelineCompareResultNode,
-            buildProjectNodeAppendPatch: scope.buildProjectNodeAppendPatch,
-            buildTimelineResultPatch: scope.buildTimelineResultPatch,
-            buildTimelineCompareAsset: scope.buildTimelineCompareAsset,
-            buildTimelineDebugPatch: scope.buildTimelineDebugPatch,
-            renderTimelinePreviewFrameDataUrl: scope.renderTimelinePreviewFrameDataUrl,
-            getActiveTimelineVisualClips: scope.getActiveTimelineVisualClips,
-            compareTimelineFrameImages: scope.compareTimelineFrameImages,
-            sendCanvasRenderTimelineFrameRequest: scope.sendCanvasRenderTimelineFrameRequest,
-            assetDisplaySrc: scope.assetDisplaySrc
+        const compareControllerSource = Object.assign({}, compareSource, {
+            frameSource: Object.assign({}, compareSource.frameSource || {}, {
+                renderTimelinePreviewFrameDataUrl: (...args) => frameMethod('renderTimelinePreviewFrameDataUrl')?.(...args),
+                getActiveTimelineVisualClips: (...args) => frameMethod('getActiveTimelineVisualClips')?.(...args),
+                compareTimelineFrameImages: (...args) => frameMethod('compareTimelineFrameImages')?.(...args)
+            })
         });
+        controllers.compare = createController(modules.compare, 'createCanvasTimelineCompareController', compareControllerSource);
 
-        controllers.param = createController(modules.param, 'createCanvasTimelineParamController', {
-            getNode: scope.getNode,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            getNodeElement: scope.getNodeElement,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            captureTimelineMaskGeometry: scope.captureTimelineMaskGeometry,
-            remapTimelineMasksAfterCanvasResize: scope.remapTimelineMasksAfterCanvasResize,
-            applyTimelineMaskFeatherToSelectedClip: scope.applyTimelineMaskFeatherToSelectedClip,
-            normalizeTimelineNode: scope.normalizeTimelineNode,
-            enforceTimelineClipMediaBounds: scope.enforceTimelineClipMediaBounds,
-            timelineMaskLayerGeometry: scope.timelineMaskLayerGeometry,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            buildTimelineParamUpdatePatch: scope.buildTimelineParamUpdatePatch,
-            buildTimelineClipParamUpdatePatch: scope.buildTimelineClipParamUpdatePatch,
-            syncTimelineClipTransformKeyframeAtPlayhead: scope.syncTimelineClipTransformKeyframeAtPlayhead,
-            remapTimelineClipMaskForGeometryChange: scope.remapTimelineClipMaskForGeometryChange,
-            getTimelineDefaultParams: scope.getTimelineDefaultParams,
-            getTimelineSourceAsset: scope.getTimelineSourceAsset,
-            getMediaEditRange: scope.getMediaEditRange,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            scheduleSave: scope.scheduleSave,
-            mutate: scope.mutate,
-            refreshTimelineFeatherControlDom: scope.refreshTimelineFeatherControlDom,
-            refreshTimelineMaskFeatherDom: scope.refreshTimelineMaskFeatherDom,
-            refreshTimelineAllClipDom: (...args) => domMethod('refreshTimelineAllClipDom')?.(...args),
-            refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
-            refreshTimelinePreviewDom: scope.refreshTimelinePreviewDom,
-            refreshTimelineClipDom: (...args) => domMethod('refreshTimelineClipDom')?.(...args),
-            refreshTimelineInlineValue: scope.refreshTimelineInlineValue
+        const paramControllerSource = Object.assign({}, paramSource, {
+            domSource: Object.assign({}, paramSource.domSource || {}, {
+                refreshTimelineAllClipDom: (...args) => domMethod('refreshTimelineAllClipDom')?.(...args),
+                refreshTimelinePlayheadDom: (...args) => domMethod('refreshTimelinePlayheadDom')?.(...args),
+                refreshTimelineClipDom: (...args) => domMethod('refreshTimelineClipDom')?.(...args)
+            })
         });
+        controllers.param = createController(modules.param, 'createCanvasTimelineParamController', paramControllerSource);
         const paramMethod = name => method(controllers.param, name);
 
-        controllers.command = createController(modules.command, 'createCanvasTimelineCommandController', {
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            setSelectedNodeId: scope.setSelectedNodeId,
-            setSelectedNodeIds: scope.setSelectedNodeIds,
-            setSelectedEdgeId: scope.setSelectedEdgeId,
-            updateTimelineParam: (...args) => paramMethod('updateTimelineParam')?.(...args),
-            resetTimelineParam: (...args) => paramMethod('resetTimelineParam')?.(...args),
-            resetTimelineClipParam: (...args) => paramMethod('resetTimelineClipParam')?.(...args),
-            timelineSelectedVisualClip: scope.timelineSelectedVisualClip,
-            timelineKeyframeTime: scope.timelineKeyframeTime,
-            timelineKeyframeIndexAt: scope.timelineKeyframeIndexAt,
-            timelineKeyframeValuesAtPlayhead: scope.timelineKeyframeValuesAtPlayhead,
-            timelineNormalizedKeyframes: (...args) => domMethod('timelineNormalizedKeyframes')?.(...args),
-            syncTimelineClipTransformKeyframeAtPlayhead: scope.syncTimelineClipTransformKeyframeAtPlayhead,
-            buildTimelineParamsPatch: scope.buildTimelineParamsPatch,
-            buildTimelineTracksPatch: scope.buildTimelineTracksPatch,
-            buildTimelineKeyframesPatch: scope.buildTimelineKeyframesPatch,
-            buildTimelineClipResetPatch: scope.buildTimelineClipResetPatch,
-            buildTimelineClipDeletePatch: scope.buildTimelineClipDeletePatch,
-            buildProjectTimelineClipEdgeDeletePatch: scope.buildProjectTimelineClipEdgeDeletePatch,
-            normalizeTimelineNode: scope.normalizeTimelineNode,
-            uid: scope.uid,
-            pushHistory: scope.pushHistory,
-            pushHistoryBatch: scope.pushHistoryBatch,
-            scheduleSave: scope.scheduleSave,
-            mutate: scope.mutate,
-            showToast: scope.showToast,
-            t: scope.t,
-            openContextMenu: scope.openContextMenu,
-            getProject: scope.getProject,
-            deleteEdge: scope.deleteEdge,
-            centerViewportOnWorld: scope.centerViewportOnWorld,
-            defaultNodeSize: scope.defaultNodeSize,
-            captureTimelineMaskGeometry: scope.captureTimelineMaskGeometry,
-            remapTimelineMasksAfterCanvasResize: scope.remapTimelineMasksAfterCanvasResize,
-            timelineDuration: scope.timelineDuration
+        const commandControllerSource = Object.assign({}, commandSource, {
+            domSource: Object.assign({}, commandSource.domSource || {}, {
+                timelineNormalizedKeyframes: (...args) => domMethod('timelineNormalizedKeyframes')?.(...args)
+            }),
+            paramSource: Object.assign({}, commandSource.paramSource || {}, {
+                updateTimelineParam: (...args) => paramMethod('updateTimelineParam')?.(...args),
+                resetTimelineParam: (...args) => paramMethod('resetTimelineParam')?.(...args),
+                resetTimelineClipParam: (...args) => paramMethod('resetTimelineClipParam')?.(...args)
+            })
         });
+        controllers.command = createController(modules.command, 'createCanvasTimelineCommandController', commandControllerSource);
         const commandMethod = name => method(controllers.command, name);
 
         return {

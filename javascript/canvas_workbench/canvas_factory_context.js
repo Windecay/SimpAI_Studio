@@ -31,6 +31,26 @@
 
     function createCanvasWorkbenchFactoryContext(source) {
         const scope = source?.factorySource || source || {};
+        const textNodeSource = scope.textNodeSource || {};
+        const auxNodeSource = scope.auxNodeSource || {};
+        const batchAnyNodeSource = scope.batchAnyNodeSource || {};
+        const maskNodeSource = scope.maskNodeSource || {};
+        const resultNodeSource = scope.resultNodeSource || {};
+        const mediaNodeSource = scope.mediaNodeSource || {};
+        const inputNodeSource = scope.inputNodeSource || {};
+        const uploadNodeSource = scope.uploadNodeSource || {};
+        const batchItemSource = scope.batchItemSource || {};
+        const configNodeSource = scope.configNodeSource || {};
+        const xyzMatrixNodeSource = scope.xyzMatrixNodeSource || {};
+        const groupSource = scope.groupSource || {};
+        const runRecordSource = scope.runRecordSource || {};
+        const batchJobSource = scope.batchJobSource || {};
+        const edgeSource = scope.edgeSource || {};
+        const projectPatchSource = scope.projectPatchSource || {};
+        const assetSource = scope.assetSource || {};
+        const specialNodePatchSource = scope.specialNodePatchSource || {};
+        const agentPatchSource = scope.agentPatchSource || {};
+        const vlmChatStateSource = scope.vlmChatStateSource || {};
         const controllers = {};
 
         function invoke(controllerKey, methodName, fallbackKind, args) {
@@ -42,119 +62,41 @@
         }
 
         const buildAssetReference = (...args) => invoke('asset', 'buildAssetReference', 'null', args);
+        const maskNodeFactorySource = Object.assign({}, maskNodeSource, {
+            assetSource: Object.assign({}, maskNodeSource.assetSource || {}, { buildAssetReference })
+        });
 
-        controllers.textNode = createController(modules.textNode, 'createCanvasTextNodeFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            t: scope.t,
-            defaultNodeSize: scope.defaultNodeSize,
-            cloneRunValue: scope.cloneRunValue,
-            tagCartLabel: scope.tagCartLabel
+        controllers.textNode = createController(modules.textNode, 'createCanvasTextNodeFactoryController', textNodeSource);
+        controllers.auxNode = createController(modules.auxNode, 'createCanvasAuxNodeFactoryController', auxNodeSource);
+        controllers.batchAnyNode = createController(modules.batchAnyNode, 'createCanvasBatchAnyNodeFactoryController', batchAnyNodeSource);
+        controllers.maskNode = createController(
+            modules.maskNode,
+            'createCanvasMaskNodeFactoryController',
+            maskNodeFactorySource
+        );
+        controllers.resultNode = createController(modules.resultNode, 'createCanvasResultNodeFactoryController', resultNodeSource);
+        controllers.mediaNode = createController(modules.mediaNode, 'createCanvasMediaNodeFactoryController', mediaNodeSource);
+        controllers.inputNode = createController(modules.inputNode, 'createCanvasInputNodeFactoryController', inputNodeSource);
+        controllers.uploadNode = createController(modules.uploadNode, 'createCanvasUploadNodeFactoryController', uploadNodeSource);
+        controllers.batchItem = createController(modules.batchItem, 'createCanvasBatchItemFactoryController', batchItemSource);
+        controllers.configNode = createController(modules.configNode, 'createCanvasConfigNodeFactoryController', configNodeSource);
+        controllers.xyzMatrixNode = createController(modules.xyzMatrixNode, 'createCanvasXyzMatrixNodeFactoryController', xyzMatrixNodeSource);
+        controllers.group = createController(modules.group, 'createCanvasGroupFactoryController', groupSource);
+        controllers.runRecord = createController(modules.runRecord, 'createCanvasRunRecordFactoryController', runRecordSource);
+        controllers.batchJob = createController(modules.batchJob, 'createCanvasBatchJobFactoryController', batchJobSource);
+        controllers.edge = createController(modules.edge, 'createCanvasEdgeFactoryController', edgeSource);
+        controllers.projectPatch = createController(modules.projectPatch, 'createCanvasProjectPatchFactoryController', projectPatchSource);
+        controllers.asset = createController(modules.asset, 'createCanvasAssetFactoryController', assetSource);
+        const specialNodePatchFactorySource = Object.assign({}, specialNodePatchSource, {
+            assetSource: Object.assign({}, specialNodePatchSource.assetSource || {}, { buildAssetReference })
         });
-        controllers.auxNode = createController(modules.auxNode, 'createCanvasAuxNodeFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            t: scope.t,
-            defaultNodeSize: scope.defaultNodeSize,
-            cloneRunValue: scope.cloneRunValue,
-            mediaBrowserLabel: scope.mediaBrowserLabel,
-            mediaBrowserInitialState: scope.mediaBrowserInitialState,
-            serializableMediaBrowserState: scope.serializableMediaBrowserState,
-            getViewportCenterWorld: () => typeof scope.viewportCenterWorld === 'function'
-                ? scope.viewportCenterWorld()
-                : {}
-        });
-        controllers.batchAnyNode = createController(modules.batchAnyNode, 'createCanvasBatchAnyNodeFactoryController', {
-            uid: scope.uid,
-            defaultNodeSize: scope.defaultNodeSize,
-            cloneRunValue: scope.cloneRunValue
-        });
-        controllers.maskNode = createController(modules.maskNode, 'createCanvasMaskNodeFactoryController', {
-            uid: scope.uid,
-            advancedMaskingLabel: scope.advancedMaskingLabel,
-            cloneRunValue: scope.cloneRunValue,
-            buildAssetReference
-        });
-        controllers.resultNode = createController(modules.resultNode, 'createCanvasResultNodeFactoryController', {
-            uid: scope.uid,
-            t: scope.t,
-            cloneRunValue: scope.cloneRunValue,
-            nowIso: scope.nowIso,
-            defaultResultNodeSize: scope.defaultResultNodeSize
-        });
-        controllers.mediaNode = createController(modules.mediaNode, 'createCanvasMediaNodeFactoryController', {
-            uid: scope.uid,
-            cloneRunValue: scope.cloneRunValue,
-            defaultNodeSize: scope.defaultNodeSize,
-            getAssetMediaKind: scope.assetMediaKind
-        });
-        controllers.inputNode = createController(modules.inputNode, 'createCanvasInputNodeFactoryController', {
-            uid: scope.uid,
-            t: scope.t,
-            defaultNodeSize: scope.defaultNodeSize
-        });
-        controllers.uploadNode = createController(modules.uploadNode, 'createCanvasUploadNodeFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            defaultNodeSize: scope.defaultNodeSize
-        });
-        controllers.batchItem = createController(modules.batchItem, 'createCanvasBatchItemFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            t: scope.t,
-            cloneRunValue: scope.cloneRunValue
-        });
-        controllers.configNode = createController(modules.configNode, 'createCanvasConfigNodeFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue
-        });
-        controllers.xyzMatrixNode = createController(modules.xyzMatrixNode, 'createCanvasXyzMatrixNodeFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            t: scope.t,
-            defaultNodeSize: scope.defaultNodeSize,
-            cloneRunValue: scope.cloneRunValue,
-            script: scope.xyzPlotScriptName
-        });
-        controllers.group = createController(modules.group, 'createCanvasGroupFactoryController', {
-            uid: scope.uid,
-            t: scope.t,
-            clamp: scope.clamp,
-            normalizeCanvasColor: scope.normalizeCanvasColor
-        });
-        controllers.runRecord = createController(modules.runRecord, 'createCanvasRunRecordFactoryController', {
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue,
-            clamp: scope.clamp,
-            isTerminalRunState: scope.isTerminalRunState
-        });
-        controllers.batchJob = createController(modules.batchJob, 'createCanvasBatchJobFactoryController', {
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue,
-            xyzScript: scope.xyzPlotScriptName
-        });
-        controllers.edge = createController(modules.edge, 'createCanvasEdgeFactoryController', {
-            uid: scope.uid
-        });
-        controllers.projectPatch = createController(modules.projectPatch, 'createCanvasProjectPatchFactoryController', {});
-        controllers.asset = createController(modules.asset, 'createCanvasAssetFactoryController', {
-            uid: scope.uid,
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue
-        });
-        controllers.specialNodePatch = createController(modules.specialNodePatch, 'createCanvasSpecialNodePatchFactoryController', {
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue,
-            buildAssetReference
-        });
-        controllers.agentPatch = createController(modules.agentPatch, 'createCanvasAgentPatchFactoryController', {
-            nowIso: scope.nowIso,
-            cloneRunValue: scope.cloneRunValue
-        });
-        controllers.vlmChatState = createController(modules.vlmChatState, 'createCanvasVlmChatStateFactoryController', {
-            cloneRunValue: scope.cloneRunValue
-        });
+        controllers.specialNodePatch = createController(
+            modules.specialNodePatch,
+            'createCanvasSpecialNodePatchFactoryController',
+            specialNodePatchFactorySource
+        );
+        controllers.agentPatch = createController(modules.agentPatch, 'createCanvasAgentPatchFactoryController', agentPatchSource);
+        controllers.vlmChatState = createController(modules.vlmChatState, 'createCanvasVlmChatStateFactoryController', vlmChatStateSource);
 
         const api = { controllers };
         const expose = (controllerKey, fallbackKind, names) => {

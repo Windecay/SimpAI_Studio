@@ -2,9 +2,13 @@
     'use strict';
 
     function createCanvasRunRecordFactoryController(context) {
-        const scope = context || {};
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.runRecordFactorySource || context || {};
+        const timeSource = scope.timeSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const statusSource = scope.statusSource || {};
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -12,14 +16,14 @@
                     return fallback;
                 }
             });
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
             : ((value, min, max) => Math.max(min, Math.min(max, value)));
-        const isTerminalRunState = typeof scope.isTerminalRunState === 'function'
-            ? scope.isTerminalRunState
+        const isTerminalRunState = typeof statusSource.isTerminalRunState === 'function'
+            ? statusSource.isTerminalRunState
             : (state => ['finished', 'failed', 'canceled', 'skipped'].includes(String(state || '').toLowerCase()));
 
         function compactCanvasRunResponse(response) {

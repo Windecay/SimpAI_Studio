@@ -2,12 +2,14 @@
     'use strict';
 
     function createCanvasAgentPatchFactoryController(context) {
-        const scope = context || {};
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const scope = context?.agentPatchFactorySource || context || {};
+        const timeSource = scope.timeSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

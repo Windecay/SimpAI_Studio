@@ -2,18 +2,23 @@
     'use strict';
 
     function createCanvasModeController(context) {
-        const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
-        const getMode = () => typeof scope.getMode === 'function' ? scope.getMode() : null;
+        const scope = context?.modeSource || context || {};
+        const domSource = scope.domSource || {};
+        const stateSource = scope.stateSource || {};
+        const paletteSource = scope.paletteSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getRoot = () => call(domSource, 'getRoot') || null;
+        const getViewport = () => call(domSource, 'getViewport') || null;
+        const getMode = () => call(stateSource, 'getMode');
 
         function setMode(nextMode) {
             const resolvedMode = ['select', 'hand', 'connect', 'preset'].includes(nextMode) ? nextMode : 'select';
-            call('setModeState', resolvedMode);
+            call(stateSource, 'setModeState', resolvedMode);
             if (resolvedMode === 'preset') {
-                call('openPresetPalette', call('viewportCenterWorld'));
-                call('setModeState', 'select');
+                call(paletteSource, 'openPresetPalette', call(paletteSource, 'viewportCenterWorld'));
+                call(stateSource, 'setModeState', 'select');
             }
             renderMode();
         }

@@ -2,36 +2,51 @@
     'use strict';
 
     function createCanvasVlmChatInputController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.vlmChatInputSource || context || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const runSource = scope.runSource || {};
+        const stateSource = scope.stateSource || {};
+        const uiSource = scope.uiSource || {};
+        const languageSource = scope.languageSource || {};
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
-        const getNodeElement = (nodeId) => typeof scope.getNodeElement === 'function'
-            ? scope.getNodeElement(nodeId)
+        const getViewport = () => typeof viewportSource.getViewport === 'function'
+            ? viewportSource.getViewport()
             : null;
-        const isImageFile = (file) => typeof scope.isImageFile === 'function'
-            ? !!scope.isImageFile(file)
+        const getNodeElement = (nodeId) => typeof domSource.getNodeElement === 'function'
+            ? domSource.getNodeElement(nodeId)
+            : null;
+        const isImageFile = (file) => typeof mediaSource.isImageFile === 'function'
+            ? !!mediaSource.isImageFile(file)
             : !!file?.type && String(file.type).startsWith('image/');
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' && !!scope.isNodeLocked(node);
-        const addVlmPendingImageFromFile = (...args) => typeof scope.addVlmPendingImageFromFile === 'function'
-            ? scope.addVlmPendingImageFromFile(...args)
+        const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' && !!nodeSource.isNodeLocked(node);
+        const addVlmPendingImageFromFile = (...args) => typeof mediaSource.addVlmPendingImageFromFile === 'function'
+            ? mediaSource.addVlmPendingImageFromFile(...args)
             : false;
-        const removeVlmPendingImage = (...args) => typeof scope.removeVlmPendingImage === 'function'
-            ? scope.removeVlmPendingImage(...args)
+        const removeVlmPendingImage = (...args) => typeof mediaSource.removeVlmPendingImage === 'function'
+            ? mediaSource.removeVlmPendingImage(...args)
             : undefined;
-        const disconnectVlmImageInput = (...args) => typeof scope.disconnectVlmImageInput === 'function'
-            ? scope.disconnectVlmImageInput(...args)
+        const disconnectVlmImageInput = (...args) => typeof mediaSource.disconnectVlmImageInput === 'function'
+            ? mediaSource.disconnectVlmImageInput(...args)
             : undefined;
-        const updateVlmParam = (...args) => typeof scope.updateVlmParam === 'function'
-            ? scope.updateVlmParam(...args)
+        const updateVlmParam = (...args) => typeof runSource.updateVlmParam === 'function'
+            ? runSource.updateVlmParam(...args)
             : undefined;
-        const runVlmNode = (...args) => typeof scope.runVlmNode === 'function'
-            ? scope.runVlmNode(...args)
+        const runVlmNode = (...args) => typeof runSource.runVlmNode === 'function'
+            ? runSource.runVlmNode(...args)
             : undefined;
-        const isVlmNodeBusy = (...args) => typeof scope.isVlmNodeBusy === 'function' && !!scope.isVlmNodeBusy(...args);
-        const showToast = (...args) => typeof scope.showToast === 'function' ? scope.showToast(...args) : undefined;
-        const t = (...args) => typeof scope.t === 'function' ? scope.t(...args) : String(args[0] || '');
+        const isVlmNodeBusy = (...args) => typeof stateSource.isVlmNodeBusy === 'function'
+            && !!stateSource.isVlmNodeBusy(...args);
+        const showToast = (...args) => typeof uiSource.showToast === 'function'
+            ? uiSource.showToast(...args)
+            : undefined;
+        const t = (...args) => typeof languageSource.t === 'function'
+            ? languageSource.t(...args)
+            : String(args[0] || '');
 
         function promptInputForNode(node) {
             return getNodeElement(node?.id)?.querySelector?.('.sai-vlm-compose textarea[data-vlm-param="prompt"]') || null;

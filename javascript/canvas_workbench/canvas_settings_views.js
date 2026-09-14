@@ -2,9 +2,11 @@
     'use strict';
 
     function createCanvasSettingsViewsController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
+        const scope = context?.settingsViewsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
 
         function renderCanvasSettingsGeneralTab(projectSettings) {
             const settings = projectSettings || {};

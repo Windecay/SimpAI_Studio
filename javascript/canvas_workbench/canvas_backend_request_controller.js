@@ -2,9 +2,18 @@
     'use strict';
 
     function createCanvasBackendRequestController(context) {
-        const scope = context || {};
-        const getApiMethod = (name) => typeof scope.getApiMethod === 'function' ? scope.getApiMethod(name) : null;
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.backendRequestSource || context || {};
+        const apiSource = scope.apiSource || {};
+        const projectSource = scope.projectSource || {};
+        const storageSource = scope.storageSource || {};
+        const systemSource = scope.systemSource || {};
+        const languageSource = scope.languageSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const bridgeSource = scope.bridgeSource || {};
+        const vlmSource = scope.vlmSource || {};
+        const networkSource = scope.networkSource || {};
+        const getApiMethod = (name) => typeof apiSource.getApiMethod === 'function' ? apiSource.getApiMethod(name) : null;
+        const call = (source, name, fallback, ...args) => typeof source?.[name] === 'function' ? source[name](...args) : fallback;
 
         function unavailable(name) {
             return { ok: false, error: `${name} API is unavailable` };
@@ -16,18 +25,18 @@
         }
 
         function projectId() {
-            return call('getProjectId', 'default', []) || 'default';
+            return call(projectSource, 'getProjectId', 'default') || 'default';
         }
 
         function getWorkbenchUserContext() {
-            const systemParams = call('getSystemParams', {}, []) || {};
-            const storageScope = call('getStorageScope', {}, []) || {};
+            const systemParams = call(systemSource, 'getSystemParams', {}) || {};
+            const storageScope = call(storageSource, 'getStorageScope', {}) || {};
             return {
                 user_did: systemParams.user_did || systemParams.__user_did || storageScope.owner || '',
                 owner: storageScope.owner || '',
                 scope: storageScope.mode || '',
                 nickname: systemParams.nickname || systemParams.user_name || '',
-                __lang: call('runtimeUiLang', 'en', [])
+                __lang: call(languageSource, 'runtimeUiLang', 'en')
             };
         }
 
@@ -79,7 +88,7 @@
                 ? !!opts.use_model_filter
                 : (Object.prototype.hasOwnProperty.call(opts, 'useModelFilter') ? !!opts.useModelFilter : true);
             return apiCall('modelCatalog', {
-                preset_node: call('serializePresetForRun', {}, presetNode),
+                preset_node: call(serializationSource, 'serializePresetForRun', {}, presetNode),
                 use_model_filter: useModelFilter
             });
         }
@@ -89,8 +98,8 @@
             return apiCall('presetModelStatus', {
                 project_id: projectId(),
                 preset_node: isClassic
-                    ? call('serializeClassicNodeForRun', {}, presetNode)
-                    : call('serializePresetForRun', {}, presetNode),
+                    ? call(serializationSource, 'serializeClassicNodeForRun', {}, presetNode)
+                    : call(serializationSource, 'serializePresetForRun', {}, presetNode),
                 user_context: getWorkbenchUserContext()
             });
         }
@@ -101,8 +110,8 @@
             return apiCall('presetModelDownloads', {
                 project_id: projectId(),
                 preset_node: isClassic
-                    ? call('serializeClassicNodeForRun', {}, presetNode)
-                    : call('serializePresetForRun', {}, presetNode),
+                    ? call(serializationSource, 'serializeClassicNodeForRun', {}, presetNode)
+                    : call(serializationSource, 'serializePresetForRun', {}, presetNode),
                 user_context: getWorkbenchUserContext(),
                 missing_model: opts.missingModel || null
             });
@@ -112,8 +121,8 @@
             return apiCall('vlmModelStatus', {
                 project_id: projectId(),
                 node_id: node?.id || '',
-                params: call('getVlmCustomRuntimeParams', {}, node),
-                api_key: call('getVlmCustomApiKey', '', node),
+                params: call(vlmSource, 'getVlmCustomRuntimeParams', {}, node),
+                api_key: call(vlmSource, 'getVlmCustomApiKey', '', node),
                 user_context: getWorkbenchUserContext()
             });
         }
@@ -123,8 +132,8 @@
             return apiCall('vlmModelDownloads', {
                 project_id: projectId(),
                 node_id: node?.id || '',
-                params: call('getVlmCustomRuntimeParams', {}, node),
-                api_key: call('getVlmCustomApiKey', '', node),
+                params: call(vlmSource, 'getVlmCustomRuntimeParams', {}, node),
+                api_key: call(vlmSource, 'getVlmCustomApiKey', '', node),
                 user_context: getWorkbenchUserContext(),
                 missing_model: opts.missingModel || null
             });
@@ -134,8 +143,8 @@
             return apiCall('customLlmModels', {
                 project_id: projectId(),
                 node_id: node?.id || '',
-                params: call('cloneRunValue', {}, node?.params || {}),
-                api_key: call('getVlmCustomApiKey', '', node),
+                params: call(serializationSource, 'cloneRunValue', {}, node?.params || {}),
+                api_key: call(vlmSource, 'getVlmCustomApiKey', '', node),
                 user_context: getWorkbenchUserContext()
             });
         }
@@ -145,7 +154,7 @@
             if (typeof method === 'function') {
                 return method({ user_context: getWorkbenchUserContext() });
             }
-            const fetchImpl = scope.fetch || (typeof fetch === 'function' ? fetch : null);
+            const fetchImpl = networkSource.fetch || (typeof fetch === 'function' ? fetch : null);
             if (!fetchImpl) return unavailable('vlmSystemPromptTemplates');
             const response = await fetchImpl('/vlm-system-prompt-templates', {
                 method: 'POST',
@@ -200,12 +209,12 @@
         }
 
         async function sendCanvasVlmRunRequest(payload, options) {
-            const handler = scope.sendVlmRunRequest;
+            const handler = vlmSource.sendVlmRunRequest;
             return typeof handler === 'function' ? handler(payload, options) : { ok: false, error: 'VLM run API is unavailable' };
         }
 
         async function sendCanvasVlmCancelRequest(payload) {
-            const handler = scope.sendVlmCancelRequest;
+            const handler = vlmSource.sendVlmCancelRequest;
             return typeof handler === 'function' ? handler(payload) : { ok: false, error: 'VLM cancel API is unavailable' };
         }
 
@@ -233,8 +242,8 @@
             const body = withWorkbenchUserContext(payload);
             const method = getApiMethod('deleteProject');
             if (typeof method === 'function') return method(body);
-            if (call('isBridgeReady', false, [])) {
-                return call('sendBridgeRequest', unavailable('project-delete'), 'delete_project', body, 45000);
+            if (call(bridgeSource, 'isBridgeReady', false)) {
+                return call(bridgeSource, 'sendBridgeRequest', unavailable('project-delete'), 'delete_project', body, 45000);
             }
             return unavailable('project-delete');
         }
@@ -243,8 +252,8 @@
             const body = withWorkbenchUserContext(payload);
             const method = getApiMethod('clearProject');
             if (typeof method === 'function') return method(body);
-            if (call('isBridgeReady', false, [])) {
-                return call('sendBridgeRequest', unavailable('project-clear'), 'clear_project', body, 45000);
+            if (call(bridgeSource, 'isBridgeReady', false)) {
+                return call(bridgeSource, 'sendBridgeRequest', unavailable('project-clear'), 'clear_project', body, 45000);
             }
             return unavailable('project-clear');
         }

@@ -2,16 +2,21 @@
     'use strict';
 
     function createCanvasPreviewSelectController(context) {
-        const scope = context || {};
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => scope.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const escapeHtml = typeof scope.escapeHtml === 'function' ? scope.escapeHtml : value => String(value ?? '');
-        const breakablePreviewText = typeof scope.breakablePreviewText === 'function'
-            ? scope.breakablePreviewText
+        const scope = context?.previewSelectSource || context || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const hoverPreviewSource = scope.hoverPreviewSource || {};
+        const eventSource = scope.eventSource || {};
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : value => String(value ?? '');
+        const breakablePreviewText = typeof utilitySource.breakablePreviewText === 'function'
+            ? utilitySource.breakablePreviewText
             : value => escapeHtml(value);
-        const hideHoverPreview = typeof scope.hideHoverPreview === 'function' ? scope.hideHoverPreview : () => {};
-        const EventCtor = scope.Event || (typeof Event !== 'undefined' ? Event : null);
+        const hideHoverPreview = typeof hoverPreviewSource.hideHoverPreview === 'function' ? hoverPreviewSource.hideHoverPreview : () => {};
+        const EventCtor = eventSource.Event || (typeof Event !== 'undefined' ? Event : null);
         let previewSelectMenuEl = null;
         let previewSelectAnchor = null;
 

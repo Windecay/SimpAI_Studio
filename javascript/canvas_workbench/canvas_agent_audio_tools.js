@@ -2,23 +2,32 @@
     'use strict';
 
     function createCanvasAgentAudioToolsController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const maxAudioReferences = () => Math.max(1, Number(call('getMaxAudioReferences', 3) || 3));
-        const getAgentState = () => call('getAgentState', {}) || {};
-        const showToast = (...args) => call('showToast', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const renderCanvasAgentPanel = (...args) => call('renderCanvasAgentPanel', null, ...args);
-        const normalizeCanvasAgentReferences = (...args) => call('normalizeCanvasAgentReferences', [], ...args);
-        const canvasAgentReferenceKey = (...args) => call('canvasAgentReferenceKey', '', ...args);
-        const canvasAgentReferenceCounts = (...args) => call('canvasAgentReferenceCounts', {}, ...args);
-        const addCanvasAgentReferenceFromNode = (...args) => call('addCanvasAgentReferenceFromNode', false, ...args);
-        const isCanvasAgentAudioTarget = (...args) => call('isCanvasAgentAudioTarget', false, ...args);
-        const runCanvasAgentAudioEdit = (...args) => call('runCanvasAgentAudioEdit', null, ...args);
-        const runCanvasAgentTextToAudio = (...args) => call('runCanvasAgentTextToAudio', null, ...args);
-        const runCanvasAgentAudioToVideo = (...args) => call('runCanvasAgentAudioToVideo', null, ...args);
-        const setCanvasAgentSelection = (...args) => call('setCanvasAgentSelection', null, ...args);
+        const scope = context?.audioToolsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const capacitySource = scope.capacitySource || {};
+        const stateSource = scope.stateSource || {};
+        const uiSource = scope.uiSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const targetSource = scope.targetSource || {};
+        const workflowSource = scope.workflowSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const maxAudioReferences = () => Math.max(1, Number(call(capacitySource, 'getMaxAudioReferences', 3) || 3));
+        const getAgentState = () => call(stateSource, 'getAgentState', {}) || {};
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(uiSource, 'setCanvasAgentMessage', null, ...args);
+        const renderCanvasAgentPanel = (...args) => call(uiSource, 'renderCanvasAgentPanel', null, ...args);
+        const normalizeCanvasAgentReferences = (...args) => call(referenceSource, 'normalizeCanvasAgentReferences', [], ...args);
+        const canvasAgentReferenceKey = (...args) => call(referenceSource, 'canvasAgentReferenceKey', '', ...args);
+        const canvasAgentReferenceCounts = (...args) => call(referenceSource, 'canvasAgentReferenceCounts', {}, ...args);
+        const addCanvasAgentReferenceFromNode = (...args) => call(referenceSource, 'addCanvasAgentReferenceFromNode', false, ...args);
+        const isCanvasAgentAudioTarget = (...args) => call(targetSource, 'isCanvasAgentAudioTarget', false, ...args);
+        const runCanvasAgentAudioEdit = (...args) => call(workflowSource, 'runCanvasAgentAudioEdit', null, ...args);
+        const runCanvasAgentTextToAudio = (...args) => call(workflowSource, 'runCanvasAgentTextToAudio', null, ...args);
+        const runCanvasAgentAudioToVideo = (...args) => call(workflowSource, 'runCanvasAgentAudioToVideo', null, ...args);
+        const setCanvasAgentSelection = (...args) => call(uiSource, 'setCanvasAgentSelection', null, ...args);
 
         function canvasAgentAudioQuickToolSpec(key) {
             const specs = {

@@ -2,20 +2,28 @@
     'use strict';
 
     function createCanvasAgentTextNodesController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getProject = () => call('getProject', {}) || {};
-        const getNode = (...args) => call('getNode', null, ...args);
+        const scope = context?.textNodesSource || context || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const patchSource = scope.patchSource || {};
+        const batchSource = scope.batchSource || {};
+        const timelineSource = scope.timelineSource || {};
+        const styleSource = scope.styleSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getProject = () => call(projectSource, 'getProject', {}) || {};
+        const getNode = (...args) => call(nodeSource, 'getNode', null, ...args);
         const applyTextMergeStatePatch = (node, options) => {
-            const patch = call('buildTextMergeStatePatch', node, options || {});
+            const patch = call(patchSource, 'buildTextMergeStatePatch', node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         };
-        const batchAnyMediaKind = (...args) => call('batchAnyMediaKind', '', ...args);
-        const batchAnyCurrentItem = (...args) => call('batchAnyCurrentItem', null, ...args);
-        const batchAnyTextFromItem = (...args) => call('batchAnyTextFromItem', '', ...args);
-        const isDirectorTimelineNode = (...args) => !!call('isDirectorTimelineNode', false, ...args);
-        const directorTimelinePayload = (...args) => call('directorTimelinePayload', null, ...args);
-        const getStyleSelectorPrompt = (...args) => call('getStyleSelectorPrompt', '', ...args);
+        const batchAnyMediaKind = (...args) => call(batchSource, 'batchAnyMediaKind', '', ...args);
+        const batchAnyCurrentItem = (...args) => call(batchSource, 'batchAnyCurrentItem', null, ...args);
+        const batchAnyTextFromItem = (...args) => call(batchSource, 'batchAnyTextFromItem', '', ...args);
+        const isDirectorTimelineNode = (...args) => !!call(timelineSource, 'isDirectorTimelineNode', false, ...args);
+        const directorTimelinePayload = (...args) => call(timelineSource, 'directorTimelinePayload', null, ...args);
+        const getStyleSelectorPrompt = (...args) => call(styleSource, 'getStyleSelectorPrompt', '', ...args);
 
         function isTextOutputNode(node) {
             if (!node) return false;

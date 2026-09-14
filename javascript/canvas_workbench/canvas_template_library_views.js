@@ -2,9 +2,13 @@
     'use strict';
 
     function createCanvasTemplateLibraryViewsController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
+        const scope = context?.templateLibraryViewsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : (value => String(value ?? ''));
         const mediaCategories = ['starter', 'image', 'video', 'audio'];
         const libraryCategories = ['starter', 'image', 'video', 'audio', 'user'];
 

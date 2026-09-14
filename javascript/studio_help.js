@@ -73,7 +73,10 @@
         const fields = [];
         if (preset.theme) fields.push(`<p><b>${escape(t('Mode', '当前模式'))}</b> ${escape(preset.theme_label || preset.theme)}</p>`);
         if (preset.requirements?.length) {
-            const requirements = preset.requirements.map(key => key === 'mask' ? t('Draw a mask', '绘制蒙版') : key);
+            const maskLabel = content.presetTopic(state()).links.includes('sam3')
+                ? t('Prepare a video mask: track, draw fixed polygons, or upload a mask video', '准备视频蒙版：跟踪、固定多边形或上传 mask 视频')
+                : t('Draw a mask', '绘制蒙版');
+            const requirements = preset.requirements.map(key => key === 'mask' ? maskLabel : key);
             fields.push(`<p><b>${escape(t('Required interactions', '操作要求'))}</b> ${escape(requirements.join(', '))}</p>`);
         }
         if (preset.model_files?.length) {
@@ -270,10 +273,12 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
             styleSearch.classList.add('sai-help-search-row');
             mountInlineHelp(styleSearch, 'styles');
         }
-        const resolution = document.getElementById('aspect_ratios_accordion');
-        if (resolution) {
-            resolution.classList.add('sai-help-accordion');
-            mountInlineHelp(resolution, 'resolution');
+        for (const [id, topic] of [['aspect_ratios_accordion', 'resolution'], ['sam3_video_mask_accordion', 'sam3']]) {
+            const accordion = document.getElementById(id);
+            if (accordion) {
+                accordion.classList.add('sai-help-accordion');
+                mountInlineHelp(accordion, topic);
+            }
         }
     }
 
@@ -358,7 +363,11 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
             const hidden = !safeLegacyUrl(state().__preset_url);
             if (legacyTitle.parentElement.hidden !== hidden) legacyTitle.parentElement.hidden = hidden;
         }
-        const next = JSON.stringify([state().__lang, state().__theme, state().__preset_url, state().__studio_help]);
+        const next = JSON.stringify([
+            state().__lang, state().__theme, state().__preset_url, state().__studio_help,
+            state().__scene_theme, state().__scene_theme_preset, state().__scene_task_method,
+            state().__scene_disvisible, state().__engine_disvisible,
+        ]);
         if (next !== revision) {
             revision = next;
             if (dialog?.open) {

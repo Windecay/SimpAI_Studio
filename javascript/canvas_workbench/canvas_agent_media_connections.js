@@ -2,22 +2,29 @@
     'use strict';
 
     function createCanvasAgentMediaConnectionsController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const runtimeUiLang = (...args) => call('runtimeUiLang', 'en', ...args);
-        const getUploadSlotMediaKind = (...args) => call('getUploadSlotMediaKind', 'image', ...args);
-        const canNodeConnectToUploadSlot = (...args) => !!call('canNodeConnectToUploadSlot', false, ...args);
-        const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
-        const createCanvasAgentPresetProbeNode = (...args) => call('createCanvasAgentPresetProbeNode', null, ...args);
-        const getCanvasAgentTargetMediaKind = (...args) => call('getCanvasAgentTargetMediaKind', '', ...args);
-        const getVisibleClassicUploadSlots = (...args) => call('getVisibleClassicUploadSlots', [], ...args);
-        const getVisibleUploadSlots = (...args) => call('getVisibleUploadSlots', [], ...args);
-        const buildClassicNodeStatePatch = (...args) => call('buildClassicNodeStatePatch', {}, ...args) || {};
-        const createEmptyImageNodeForInput = (...args) => call('createEmptyImageNodeForInput', null, ...args);
-        const getSlotLabel = (...args) => call('getSlotLabel', 'upload', ...args);
-        const buildMediaNodeStatePatch = (...args) => call('buildMediaNodeStatePatch', {}, ...args) || {};
-        const buildAgentReferencePlaceholderPatch = (...args) => call('buildAgentReferencePlaceholderPatch', {}, ...args) || {};
+        const scope = context?.mediaConnectionsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const slotSource = scope.slotSource || {};
+        const connectionSource = scope.connectionSource || {};
+        const probeSource = scope.probeSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const runtimeUiLang = (...args) => call(languageSource, 'runtimeUiLang', 'en', ...args);
+        const getUploadSlotMediaKind = (...args) => call(slotSource, 'getUploadSlotMediaKind', 'image', ...args);
+        const canNodeConnectToUploadSlot = (...args) => !!call(connectionSource, 'canNodeConnectToUploadSlot', false, ...args);
+        const createUploadEdge = (...args) => call(connectionSource, 'createUploadEdge', null, ...args);
+        const createCanvasAgentPresetProbeNode = (...args) => call(probeSource, 'createCanvasAgentPresetProbeNode', null, ...args);
+        const getCanvasAgentTargetMediaKind = (...args) => call(probeSource, 'getCanvasAgentTargetMediaKind', '', ...args);
+        const getVisibleClassicUploadSlots = (...args) => call(slotSource, 'getVisibleClassicUploadSlots', [], ...args);
+        const getVisibleUploadSlots = (...args) => call(slotSource, 'getVisibleUploadSlots', [], ...args);
+        const buildClassicNodeStatePatch = (...args) => call(probeSource, 'buildClassicNodeStatePatch', {}, ...args) || {};
+        const createEmptyImageNodeForInput = (...args) => call(nodeSource, 'createEmptyImageNodeForInput', null, ...args);
+        const getSlotLabel = (...args) => call(slotSource, 'getSlotLabel', 'upload', ...args);
+        const buildMediaNodeStatePatch = (...args) => call(nodeSource, 'buildMediaNodeStatePatch', {}, ...args) || {};
+        const buildAgentReferencePlaceholderPatch = (...args) => call(nodeSource, 'buildAgentReferencePlaceholderPatch', {}, ...args) || {};
 
         function canvasAgentUploadSlotsForNode(node) {
             const slots = node?.type === 'classic'

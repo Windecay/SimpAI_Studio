@@ -2,28 +2,39 @@
     'use strict';
 
     function createCanvasAgentPromptResolverController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const getCanvasAgentSettings = (...args) => call('getCanvasAgentSettings', {}, ...args) || {};
-        const canvasAgentPromptTargetFromPurpose = (...args) => call('canvasAgentPromptTargetFromPurpose', {}, ...args) || {};
-        const canvasAgentPromptDefaultsForPurpose = (...args) => call('canvasAgentPromptDefaultsForPurpose', {}, ...args) || {};
-        const askCanvasAgentDecision = (...args) => call('askCanvasAgentDecision', 'cancel', ...args);
-        const canvasAgentPromptPreflight = (...args) => call('canvasAgentPromptPreflight', {
+        const scope = context?.promptResolverSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const settingsSource = scope.settingsSource || {};
+        const targetSource = scope.targetSource || {};
+        const promptSource = scope.promptSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const modelSource = scope.modelSource || {};
+        const stateSource = scope.stateSource || {};
+        const rewriteSource = scope.rewriteSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const getCanvasAgentSettings = (...args) => call(settingsSource, 'getCanvasAgentSettings', {}, ...args) || {};
+        const canvasAgentPromptTargetFromPurpose = (...args) => call(targetSource, 'canvasAgentPromptTargetFromPurpose', {}, ...args) || {};
+        const canvasAgentPromptDefaultsForPurpose = (...args) => call(promptSource, 'canvasAgentPromptDefaultsForPurpose', {}, ...args) || {};
+        const askCanvasAgentDecision = (...args) => call(decisionSource, 'askCanvasAgentDecision', 'cancel', ...args);
+        const canvasAgentPromptPreflight = (...args) => call(promptSource, 'canvasAgentPromptPreflight', {
             ok: true,
             state: 'pass',
             summary: 'Prompt preflight passed.',
             checks: []
         }, ...args);
-        const canvasAgentPromptPreflightFacts = (...args) => call('canvasAgentPromptPreflightFacts', [], ...args) || [];
-        const canvasAgentPromptTargetFact = (...args) => call('canvasAgentPromptTargetFact', null, ...args);
-        const canvasAgentPromptValidationFact = (...args) => call('canvasAgentPromptValidationFact', null, ...args);
-        const getCanvasAgentRewriteModel = (...args) => call('getCanvasAgentRewriteModel', '', ...args);
-        const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const rewriteCanvasAgentPromptWithLlm = (...args) => call('rewriteCanvasAgentPromptWithLlm', null, ...args);
-        const resetCanvasAgentRunInfo = (...args) => call('resetCanvasAgentRunInfo', null, ...args);
+        const canvasAgentPromptPreflightFacts = (...args) => call(promptSource, 'canvasAgentPromptPreflightFacts', [], ...args) || [];
+        const canvasAgentPromptTargetFact = (...args) => call(targetSource, 'canvasAgentPromptTargetFact', null, ...args);
+        const canvasAgentPromptValidationFact = (...args) => call(promptSource, 'canvasAgentPromptValidationFact', null, ...args);
+        const getCanvasAgentRewriteModel = (...args) => call(modelSource, 'getCanvasAgentRewriteModel', '', ...args);
+        const setCanvasAgentRunInfo = (...args) => call(stateSource, 'setCanvasAgentRunInfo', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(stateSource, 'setCanvasAgentMessage', null, ...args);
+        const rewriteCanvasAgentPromptWithLlm = (...args) => call(rewriteSource, 'rewriteCanvasAgentPromptWithLlm', null, ...args);
+        const resetCanvasAgentRunInfo = (...args) => call(stateSource, 'resetCanvasAgentRunInfo', null, ...args);
 
         async function resolveCanvasAgentPrompt(rawPrompt, purpose, options) {
             const opts = options || {};

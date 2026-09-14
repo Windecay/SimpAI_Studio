@@ -2,51 +2,69 @@
     'use strict';
 
     function createCanvasAgentGenerationController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const clamp = (value, min, max) => typeof scope.clamp === 'function'
-            ? scope.clamp(value, min, max)
+        const scope = context?.generationSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const resolutionSource = scope.resolutionSource || {};
+        const presetSource = scope.presetSource || {};
+        const patchSource = scope.patchSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const configSource = scope.configSource || {};
+        const uiSource = scope.uiSource || {};
+        const historySource = scope.historySource || {};
+        const stateSource = scope.stateSource || {};
+        const identitySource = scope.identitySource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const clamp = (value, min, max) => typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp(value, min, max)
             : Math.min(max, Math.max(min, value));
-        const aspectOptions = () => Array.isArray(scope.canvasAgentAspectOptions) ? scope.canvasAgentAspectOptions : [];
-        const getCanvasAgentResolutionState = (...args) => call('getCanvasAgentResolutionState', {}, ...args) || {};
-        const getVisiblePresetParams = (...args) => call('getVisiblePresetParams', [], ...args) || [];
-        const buildNodeParamsPatch = (...args) => call('buildNodeParamsPatch', {}, ...args) || {};
-        const canvasAgentPresetPromptDefaults = (...args) => call('canvasAgentPresetPromptDefaults', {
+        const aspectOptions = () => Array.isArray(resolutionSource.canvasAgentAspectOptions)
+            ? resolutionSource.canvasAgentAspectOptions
+            : [];
+        const getCanvasAgentResolutionState = (...args) => call(resolutionSource, 'getCanvasAgentResolutionState', {}, ...args) || {};
+        const canvasAgentResolutionLabel = (...args) => call(resolutionSource, 'canvasAgentResolutionLabel', '', ...args);
+        const canvasAgentResolutionCompactLabel = (...args) => call(resolutionSource, 'canvasAgentResolutionCompactLabel', '', ...args);
+        const normalizeResolutionProfile = (...args) => call(resolutionSource, 'normalizeResolutionProfile', {}, ...args) || {};
+        const resolveResolutionBaseDims = (...args) => call(resolutionSource, 'resolveResolutionBaseDims', {
+            width: Number(args[0]?.width || 0),
+            height: Number(args[0]?.height || 0)
+        }, ...args) || {};
+        const getVisiblePresetParams = (...args) => call(presetSource, 'getVisiblePresetParams', [], ...args) || [];
+        const canvasAgentPresetPromptDefaults = (...args) => call(presetSource, 'canvasAgentPresetPromptDefaults', {
             styles: [],
             prompt: '',
             negative_prompt: ''
         }, ...args) || { styles: [], prompt: '', negative_prompt: '' };
-        const buildPresetSnapshotPatch = (...args) => call('buildPresetSnapshotPatch', {}, ...args) || {};
-        const cloneRunValue = (...args) => call('cloneRunValue', {}, ...args) || {};
-        const createCanvasAgentPresetProbeNode = (...args) => call('createCanvasAgentPresetProbeNode', null, ...args);
-        const buildClassicNodeStatePatch = (...args) => call('buildClassicNodeStatePatch', {}, ...args) || {};
-        const getVisibleClassicUploadSlots = (...args) => call('getVisibleClassicUploadSlots', [], ...args) || [];
-        const getVisibleUploadSlots = (...args) => call('getVisibleUploadSlots', [], ...args) || [];
-        const canNodeConnectToUploadSlot = (...args) => !!call('canNodeConnectToUploadSlot', false, ...args);
-        const isCanvasAgentMaskSlot = (...args) => !!call('isCanvasAgentMaskSlot', false, ...args);
-        const generationConfigValueForPresetSchema = (...args) => call('generationConfigValueForPresetSchema', args[2], ...args);
-        const buildPresetGenerationConfigPatch = (...args) => call('buildPresetGenerationConfigPatch', {}, ...args) || {};
-        const getNode = (...args) => call('getNode', null, ...args);
-        const buildConfigStatePatch = (...args) => call('buildConfigStatePatch', {}, ...args) || {};
-        const applyConfigNodeToPreset = (...args) => call('applyConfigNodeToPreset', null, ...args);
-        const isNodeLocked = (...args) => !!call('isNodeLocked', false, ...args);
-        const showToast = (...args) => call('showToast', null, ...args);
-        const pushHistoryBatch = (...args) => call('pushHistoryBatch', null, ...args);
-        const buildCanvasNodeStatusPatch = (...args) => call('buildCanvasNodeStatusPatch', {}, ...args) || {};
-        const mutate = (...args) => call('mutate', null, ...args);
-        const getPresetConfigSource = (...args) => call('getPresetConfigSource', {
+        const buildNodeParamsPatch = (...args) => call(patchSource, 'buildNodeParamsPatch', {}, ...args) || {};
+        const buildPresetSnapshotPatch = (...args) => call(patchSource, 'buildPresetSnapshotPatch', {}, ...args) || {};
+        const buildClassicNodeStatePatch = (...args) => call(patchSource, 'buildClassicNodeStatePatch', {}, ...args) || {};
+        const buildPresetGenerationConfigPatch = (...args) => call(patchSource, 'buildPresetGenerationConfigPatch', {}, ...args) || {};
+        const buildConfigStatePatch = (...args) => call(patchSource, 'buildConfigStatePatch', {}, ...args) || {};
+        const buildCanvasNodeStatusPatch = (...args) => call(patchSource, 'buildCanvasNodeStatusPatch', {}, ...args) || {};
+        const buildPresetConfigPatch = (...args) => call(patchSource, 'buildPresetConfigPatch', {}, ...args) || {};
+        const createCanvasAgentPresetProbeNode = (...args) => call(nodeSource, 'createCanvasAgentPresetProbeNode', null, ...args);
+        const getNode = (...args) => call(nodeSource, 'getNode', null, ...args);
+        const applyConfigNodeToPreset = (...args) => call(nodeSource, 'applyConfigNodeToPreset', null, ...args);
+        const isNodeLocked = (...args) => !!call(nodeSource, 'isNodeLocked', false, ...args);
+        const getVisibleClassicUploadSlots = (...args) => call(mediaSource, 'getVisibleClassicUploadSlots', [], ...args) || [];
+        const getVisibleUploadSlots = (...args) => call(mediaSource, 'getVisibleUploadSlots', [], ...args) || [];
+        const canNodeConnectToUploadSlot = (...args) => !!call(mediaSource, 'canNodeConnectToUploadSlot', false, ...args);
+        const isCanvasAgentMaskSlot = (...args) => !!call(mediaSource, 'isCanvasAgentMaskSlot', false, ...args);
+        const generationConfigValueForPresetSchema = (...args) => call(configSource, 'generationConfigValueForPresetSchema', args[2], ...args);
+        const getPresetConfigSource = (...args) => call(configSource, 'getPresetConfigSource', {
             defaults: {},
             overrides: {}
         }, ...args) || { defaults: {}, overrides: {} };
-        const buildInitialConfigValues = (...args) => call('buildInitialConfigValues', {}, ...args) || {};
-        const normalizeResolutionProfile = (...args) => call('normalizeResolutionProfile', {}, ...args) || {};
-        const resolveResolutionBaseDims = (...args) => call('resolveResolutionBaseDims', {
-            width: Number(args[0]?.width || 0),
-            height: Number(args[0]?.height || 0)
-        }, ...args) || {};
-        const buildPresetConfigPatch = (...args) => call('buildPresetConfigPatch', {}, ...args) || {};
-        const nowIso = (...args) => call('nowIso', new Date().toISOString(), ...args);
+        const buildInitialConfigValues = (...args) => call(configSource, 'buildInitialConfigValues', {}, ...args) || {};
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
+        const pushHistoryBatch = (...args) => call(historySource, 'pushHistoryBatch', null, ...args);
+        const mutate = (...args) => call(stateSource, 'mutate', null, ...args);
+        const cloneRunValue = (...args) => call(utilitySource, 'cloneRunValue', {}, ...args) || {};
+        const nowIso = (...args) => call(identitySource, 'nowIso', new Date().toISOString(), ...args);
 
         function normalizeCanvasAgentAspect(value, fallbackText) {
             const text = [value, fallbackText].map(item => String(item || '').trim()).filter(Boolean).join(' ').toLowerCase();
@@ -198,9 +216,6 @@
                 negativePrompt: canvasAgentUserExplicitNegativePrompt(text) ? rawNegativePrompt : ''
             };
         }
-
-        const canvasAgentResolutionLabel = (...args) => call('canvasAgentResolutionLabel', '', ...args);
-        const canvasAgentResolutionCompactLabel = (...args) => call('canvasAgentResolutionCompactLabel', '', ...args);
 
         function canvasAgentModelStatusLabel(status) {
             if (status?.ready) return t('Ready', '就绪');

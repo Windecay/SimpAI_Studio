@@ -23,20 +23,23 @@
             scope.panelViewsSource || {}
         );
         const panelViewMethod = (name, ...args) => method(panelViews, name)?.(...args);
+        const panelControllerSource = scope.panelControllerSource || {};
         const panelController = createController(
             modules.panelController,
             'createCanvasAgentPanelController',
-            Object.assign({}, scope.panelControllerSource || {}, {
-                renderCanvasAgentDecision: (...args) => panelViewMethod('renderCanvasAgentDecision', ...args),
-                renderCanvasAgentRunInfo: (...args) => panelViewMethod('renderCanvasAgentRunInfo', ...args),
-                renderCanvasAgentInlineReferences: (...args) => panelViewMethod('renderCanvasAgentInlineReferences', ...args),
-                renderCanvasAgentReferences: (...args) => panelViewMethod('renderCanvasAgentReferences', ...args),
-                renderCanvasAgentToolShelf: (...args) => panelViewMethod('renderCanvasAgentToolShelf', ...args),
-                renderCanvasAgentCompactToolbar: (...args) => panelViewMethod('renderCanvasAgentCompactToolbar', ...args),
-                renderCanvasAgentResolutionControls: (...args) => panelViewMethod('renderCanvasAgentResolutionControls', ...args),
-                renderCanvasAgentResolutionButton: (...args) => panelViewMethod('renderCanvasAgentResolutionButton', ...args),
-                renderCanvasAgentModelChip: (...args) => panelViewMethod('renderCanvasAgentModelChip', ...args),
-                renderCanvasAgentModelPicker: (...args) => panelViewMethod('renderCanvasAgentModelPicker', ...args)
+            Object.assign({}, panelControllerSource, {
+                renderSource: Object.assign({}, panelControllerSource.renderSource || {}, {
+                    renderCanvasAgentDecision: (...args) => panelViewMethod('renderCanvasAgentDecision', ...args),
+                    renderCanvasAgentRunInfo: (...args) => panelViewMethod('renderCanvasAgentRunInfo', ...args),
+                    renderCanvasAgentInlineReferences: (...args) => panelViewMethod('renderCanvasAgentInlineReferences', ...args),
+                    renderCanvasAgentReferences: (...args) => panelViewMethod('renderCanvasAgentReferences', ...args),
+                    renderCanvasAgentToolShelf: (...args) => panelViewMethod('renderCanvasAgentToolShelf', ...args),
+                    renderCanvasAgentCompactToolbar: (...args) => panelViewMethod('renderCanvasAgentCompactToolbar', ...args),
+                    renderCanvasAgentResolutionControls: (...args) => panelViewMethod('renderCanvasAgentResolutionControls', ...args),
+                    renderCanvasAgentResolutionButton: (...args) => panelViewMethod('renderCanvasAgentResolutionButton', ...args),
+                    renderCanvasAgentModelChip: (...args) => panelViewMethod('renderCanvasAgentModelChip', ...args),
+                    renderCanvasAgentModelPicker: (...args) => panelViewMethod('renderCanvasAgentModelPicker', ...args)
+                })
             })
         );
 

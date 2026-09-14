@@ -2,11 +2,14 @@
     'use strict';
 
     function createCanvasInputNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (prefix) => `${prefix}-node`;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const scope = context?.inputNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const languageSource = scope.languageSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : (type) => type === 'image' ? { w: 264, h: 300 } : { w: 220, h: 250 };
 
         function buildEmptyImageNodeForInput(targetNode, slotLabel, base, size) {

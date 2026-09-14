@@ -2,35 +2,46 @@
     'use strict';
 
     function createCanvasAgentTargetController(source) {
-        const scope = source || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
+        const scope = source?.targetSource || source || {};
+        const languageSource = scope.languageSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const filterSource = scope.filterSource || {};
+        const assetSource = scope.assetSource || {};
+        const imageSource = scope.imageSource || {};
+        const mediaViewerSource = scope.mediaViewerSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const nodeCall = (name, fallback, ...args) => call(nodeSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => call(selectionSource, name, fallback, ...args);
+        const filterCall = (name, fallback, ...args) => call(filterSource, name, fallback, ...args);
+        const assetCall = (name, fallback, ...args) => call(assetSource, name, fallback, ...args);
+        const imageCall = (name, fallback, ...args) => call(imageSource, name, fallback, ...args);
+        const mediaViewerCall = (name, fallback, ...args) => call(mediaViewerSource, name, fallback, ...args);
+        const t = languageSource.t || ((en, cn) => cn || en);
 
         function getNode(id) {
-            return call('getNode', null, id);
+            return nodeCall('getNode', null, id);
         }
 
         function nodeHasViewableImage(node) {
-            const viewer = call('getMediaViewerContext', null) || {
-                getSelectedResultAsset: typeof scope.getSelectedResultAsset === 'function'
-                    ? scope.getSelectedResultAsset
-                    : () => null,
-                safeAssetDisplaySrc: typeof scope.safeAssetDisplaySrc === 'function'
-                    ? scope.safeAssetDisplaySrc
-                    : () => ''
+            const viewer = mediaViewerCall('getMediaViewerContext', null) || {
+                getSelectedResultAsset: (...args) => assetCall('getSelectedResultAsset', null, ...args),
+                safeAssetDisplaySrc: (...args) => assetCall('safeAssetDisplaySrc', '', ...args)
             };
-            return !!call('mediaViewerNodeHasViewableImage', false, node, viewer);
+            return !!mediaViewerCall('mediaViewerNodeHasViewableImage', false, node, viewer);
         }
 
         function isCanvasAgentImageTarget(node) {
             if (!node) return false;
             if (node.type === 'image') return nodeHasViewableImage(node);
-            if (node.type === 'pose_studio') return !!call('isPoseStudioImageSource', false, node);
-            if (node.type === 'gaussian_studio') return !!call('isGaussianStudioImageSource', false, node);
-            if (node.type === 'liveportrait_expression') return !!call('isLivePortraitExpressionImageSource', false, node);
+            if (node.type === 'pose_studio') return !!imageCall('isPoseStudioImageSource', false, node);
+            if (node.type === 'gaussian_studio') return !!imageCall('isGaussianStudioImageSource', false, node);
+            if (node.type === 'liveportrait_expression') return !!imageCall('isLivePortraitExpressionImageSource', false, node);
             if (node.type === 'result') {
-                const asset = call('getSelectedResultAsset', null, node);
-                return !!asset && call('assetMediaKind', '', asset) === 'image' && nodeHasViewableImage({ type: 'image', asset });
+                const asset = assetCall('getSelectedResultAsset', null, node);
+                return !!asset && assetCall('assetMediaKind', '', asset) === 'image' && nodeHasViewableImage({ type: 'image', asset });
             }
             return false;
         }
@@ -39,8 +50,8 @@
             if (!node) return false;
             if (node.type === 'video') return !!node.asset;
             if (node.type === 'result') {
-                const asset = call('getSelectedResultAsset', null, node);
-                return !!asset && call('assetMediaKind', '', asset) === 'video';
+                const asset = assetCall('getSelectedResultAsset', null, node);
+                return !!asset && assetCall('assetMediaKind', '', asset) === 'video';
             }
             return false;
         }
@@ -49,8 +60,8 @@
             if (!node) return false;
             if (node.type === 'audio') return !!node.asset;
             if (node.type === 'result') {
-                const asset = call('getSelectedResultAsset', null, node);
-                return !!asset && call('assetMediaKind', '', asset) === 'audio';
+                const asset = assetCall('getSelectedResultAsset', null, node);
+                return !!asset && assetCall('assetMediaKind', '', asset) === 'audio';
             }
             return false;
         }
@@ -66,7 +77,7 @@
         function getCanvasAgentReferenceAsset(node) {
             if (!node || node.type === 'text') return null;
             return node.type === 'result'
-                ? call('getSelectedResultAsset', null, node)
+                ? assetCall('getSelectedResultAsset', null, node)
                 : node.asset;
         }
 
@@ -74,15 +85,15 @@
             if (!node) return '';
             if (node.type === 'text') return 'text';
             const asset = getCanvasAgentReferenceAsset(node);
-            return asset ? call('assetMediaKind', '', asset) : '';
+            return asset ? assetCall('assetMediaKind', '', asset) : '';
         }
 
         function isCanvasAgentMediaReferenceTarget(node) {
-            if (!node || call('isNodeIgnored', false, node)) return false;
+            if (!node || filterCall('isNodeIgnored', false, node)) return false;
             if (node.type === 'text') return true;
             if (node.type === 'image') return nodeHasViewableImage(node);
             if (['video', 'audio'].includes(node.type)) return !!node.asset;
-            if (node.type === 'result') return !!call('getSelectedResultAsset', null, node);
+            if (node.type === 'result') return !!assetCall('getSelectedResultAsset', null, node);
             return false;
         }
 
@@ -105,14 +116,14 @@
         }
 
         function getCanvasAgentTargetNode() {
-            const ids = call('getSelectedNodeIdList', []).filter(id => !!getNode(id));
+            const ids = selectionCall('getSelectedNodeIdList', []).filter(id => !!getNode(id));
             if (ids.length === 1) {
                 const node = getNode(ids[0]);
                 return isCanvasAgentSupportedTarget(node) ? node : null;
             }
             if (ids.length > 1) return null;
-            const selectedNodeId = call('getSelectedNodeId', '');
-            if (selectedNodeId && call('hasSelectedNode', false, selectedNodeId) && getNode(selectedNodeId)) {
+            const selectedNodeId = selectionCall('getSelectedNodeId', '');
+            if (selectedNodeId && selectionCall('hasSelectedNode', false, selectedNodeId) && getNode(selectedNodeId)) {
                 const node = getNode(selectedNodeId);
                 return isCanvasAgentSupportedTarget(node) ? node : null;
             }

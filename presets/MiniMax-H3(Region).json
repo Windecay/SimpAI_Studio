@@ -9,10 +9,18 @@
     "available_aspect_ratios_selection": "Custom",
     "scene_frontend": {
       "version": "v1.1",
-      "theme": ["Basic"],
+      "theme": ["Region Reconstruction", "Face Refinement", "Tiled Refinement"],
       "theme_title": "MiniMax H3 Region Reconstruction",
-      "theme_labels": {"Basic": {"en": "Basic", "zh": "\u57fa\u7840"}},
-      "task_method": {"Basic": "minimax_h3_region_cn"},
+      "theme_labels": {
+        "Region Reconstruction": {"en": "Motion Reconstruction", "zh": "\u52a8\u6001\u91cd\u5efa"},
+        "Face Refinement": {"en": "Face Refinement", "zh": "\u9762\u90e8\u4f18\u5316"},
+        "Tiled Refinement": {"en": "Tiled Refinement", "zh": "\u5206\u533a\u4f18\u5316"}
+      },
+      "task_method": {
+        "Region Reconstruction": "minimax_h3_region_cn",
+        "Face Refinement": "minimax_h3_face_refine_cn",
+        "Tiled Refinement": "minimax_h3_tile_refine_cn"
+      },
       "disable_canvas_mask": true,
       "video_source_slots": ["scene_video"],
       "temporal_region_control": {
@@ -21,7 +29,13 @@
         "end_control": "scene_var_number6",
         "factor_control": "scene_var_number7",
         "reference_controls": ["scene_input_image1", "scene_input_image2", "scene_input_image3"],
-        "context_slow_seconds": 0.75
+        "context_slow_seconds": 0.75,
+        "face_target": {"theme": "Face Refinement", "id_control": "scene_var_number2"},
+        "tile_preview": {
+          "theme": "Tiled Refinement",
+          "automatic_control": "scene_switch_option1",
+          "budget_control": "scene_var_number9"
+        }
       },
       "director_capability": {
         "director_supported": false,
@@ -37,35 +51,58 @@
         "scene_input_image8", "scene_reference_video", "scene_reference_video2",
         "scene_audio", "scene_audio2", "scene_audio3", "sam3_video_mask_accordion",
         "sam3_input_video", "sam3_mask_video", "scene_additional_prompt", "scene_additional_prompt_2",
-        "scene_var_number", "scene_var_number2", "scene_var_number9",
-        "scene_var_number10", "scene_switch_option1", "scene_switch_option2",
+        "scene_var_number", "scene_var_number2", "scene_switch_option2",
         "scene_switch_option3", "scene_switch_option4", "scene_refiner_model",
         "scene_video_duration", "scene_batch", "minimax_h3_storyboard_control"
       ],
-      "prompt": {
-        "Basic": "integrated_multimodal_description: [Shot 1] Reconstruct the supplied video interval while retaining the same subjects, identities, clothing, objects, environment and visual style. Follow the source action order, trajectories, body orientation, momentum, contact and occlusion. Rebuild coherent faces, hands, limbs and object contours without changing the action. Continue the incoming movement through the interval into the outgoing state. Preserve camera direction and movement, intentional motion blur, lighting and existing visible text. Do not introduce a new action, frozen pose, subject, shot or camera reset.\n\noverall_soundscape: Retain the source soundscape and its timing.\n\nnon_diegetic_music: Retain existing source music."
+      "theme_disvisible": {
+        "Region Reconstruction": ["scene_var_number9", "scene_var_number10", "scene_switch_option1"],
+        "Face Refinement": ["scene_aspect_ratio", "scene_switch_option1"],
+        "Tiled Refinement": ["scene_var_number10", "scene_aspect_ratio"]
       },
-      "overwrite_step": {"Basic": 8},
+      "prompt": {
+        "Region Reconstruction": "integrated_multimodal_description: [Shot 1] Reconstruct the supplied video interval while retaining the same subjects, identities, clothing, objects, environment and visual style. Follow the source action order, trajectories, body orientation, momentum, contact and occlusion. Rebuild coherent faces, hands, limbs and object contours without changing the action. Continue the incoming movement through the interval into the outgoing state. Preserve camera direction and movement, intentional motion blur, lighting and existing visible text. Do not introduce a new action, frozen pose, subject, shot or camera reset.\n\noverall_soundscape: Retain the source soundscape and its timing.\n\nnon_diegetic_music: Retain existing source music.",
+        "Face Refinement": "integrated_multimodal_description: [Shot 1] Refine the original person's face in the supplied video crop. Restore coherent eyes, eyebrows, nose, lips, facial proportions and natural skin detail. Preserve the same identity, age, expression timing, gaze, head rotation, occlusion, intentional motion blur, lighting and visual style. Optional reference pictures show this same person. Do not replace identity, beautify, change expression, invent facial accessories, reframe the crop or change the source action.\n\noverall_soundscape: Preserve the complete original soundtrack and synchronization.\n\nnon_diegetic_music: Preserve existing music.",
+        "Tiled Refinement": "integrated_multimodal_description: [Shot 1] Refine the existing details visible in the supplied video crop. Improve coherent local contours, natural texture and small features while preserving the original subjects, identities, materials, colors, lighting, visual style and visible text. Follow the exact source motion, object scale, trajectories, occlusion and intentional motion blur. Preserve the crop framing. Do not invent objects, fit the whole scene into the crop, add a subject, change the action or reset the camera.\n\noverall_soundscape: Preserve the complete original soundtrack and synchronization.\n\nnon_diegetic_music: Preserve existing music."
+      },
+      "overwrite_step": {"Region Reconstruction": 8, "Face Refinement": 8, "Tiled Refinement": 8},
       "overwrite_step_min": 1, "overwrite_step_max": 50,
-      "video_duration": {"Basic": 1},
+      "video_duration": {"Region Reconstruction": 1, "Face Refinement": 1, "Tiled Refinement": 1},
+      "var_number2_title": "Target Face ID", "var_number2_min": 0, "var_number2_max": 99,
+      "var_number2_step": 1, "var_number2": {"Region Reconstruction": 0, "Face Refinement": 0, "Tiled Refinement": 0},
       "var_number3_title": "Video Shift", "var_number3_min": 0.01, "var_number3_max": 100,
-      "var_number3_step": 0.01, "var_number3": {"Basic": 6},
+      "var_number3_step": 0.01, "var_number3": {"Region Reconstruction": 6, "Face Refinement": 6, "Tiled Refinement": 6},
       "var_number4_title": "ControlNet Strength", "var_number4_min": 0, "var_number4_max": 2,
-      "var_number4_step": 0.05, "var_number4": {"Basic": 0.8},
+      "var_number4_step": 0.05, "var_number4": {"Region Reconstruction": 0.8, "Face Refinement": 0.6, "Tiled Refinement": 0.6},
       "var_number5_title": "Region Start (s)", "var_number5_min": 0, "var_number5_max": 10000,
-      "var_number5_step": 0.01, "var_number5": {"Basic": 0},
+      "var_number5_step": 0.01, "var_number5": {"Region Reconstruction": 0, "Face Refinement": 0, "Tiled Refinement": 0},
       "var_number6_title": "Region End (s)", "var_number6_min": 0, "var_number6_max": 10000,
-      "var_number6_step": 0.01, "var_number6": {"Basic": 1},
+      "var_number6_step": 0.01, "var_number6": {"Region Reconstruction": 1, "Face Refinement": 1, "Tiled Refinement": 1},
       "var_number7_title": "Reconstruction Slowdown", "var_number7_min": 1, "var_number7_max": 4,
-      "var_number7_step": 1, "var_number7": {"Basic": 2},
+      "var_number7_step": 1, "var_number7": {"Region Reconstruction": 2, "Face Refinement": 1, "Tiled Refinement": 1},
       "var_number8_title": "Denoising Strength (%)", "var_number8_min": 1, "var_number8_max": 100,
-      "var_number8_step": 1, "var_number8": {"Basic": 80},
+      "var_number8_step": 1, "var_number8": {"Region Reconstruction": 80, "Face Refinement": 60, "Tiled Refinement": 35},
+      "switch_option1_title": "Automatic Tile Grid",
+      "switch_option1": false,
+      "var_number9_title": {"Region Reconstruction": "Detail Working Resolution", "Face Refinement": "Detail Working Resolution", "Tiled Refinement": "Tile Working Budget (square side)"},
+      "var_number9_min": 512, "var_number9_max": 1536,
+      "var_number9_step": 32, "var_number9": {"Region Reconstruction": 768, "Face Refinement": 768, "Tiled Refinement": 768},
+      "var_number10_title": "Face Feathering (px)", "var_number10_min": 0, "var_number10_max": 64,
+      "var_number10_step": 1, "var_number10": {"Region Reconstruction": 8, "Face Refinement": 8, "Tiled Refinement": 8},
       "aspect_ratio": ["origin|Original", "640|1:1", "832|1:1", "1024|1:1", "1280|1:1"],
       "resolution_control": {
         "mode": "video_keep_input_area", "source": "scene_video",
         "base_width": 640, "base_height": 640, "quantize": 32, "interactive": true,
         "frontend_preprocess": false, "preprocess_fit": "proportional",
-        "preprocess_duration_limit": false, "preserve_audio": true
+        "preprocess_duration_limit": false, "preserve_audio": true,
+        "Face Refinement": {
+          "mode": "input_passthrough", "source": "scene_video", "interactive": false,
+          "frontend_preprocess": false, "preprocess_duration_limit": false, "preserve_audio": true
+        },
+        "Tiled Refinement": {
+          "mode": "input_passthrough", "source": "scene_video", "interactive": false,
+          "frontend_preprocess": false, "preprocess_duration_limit": false, "preserve_audio": true
+        }
       },
       "image_preprocessor_method": [["-normalization"]]
     }
@@ -86,6 +123,8 @@
   "default_prompt_negative": "",
   "checkpoint_downloads": {}, "embeddings_downloads": {}, "lora_downloads": {}, "vae_downloads": {},
   "model_list": [
+    "insightface,models/buffalo_l/det_10g.onnx,16923827,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/insightface/models/buffalo_l/det_10g.onnx,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/insightface/models/buffalo_l/det_10g.onnx",
+    "insightface,models/buffalo_l/w600k_r50.onnx,174383860,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/insightface/models/buffalo_l/w600k_r50.onnx,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/insightface/models/buffalo_l/w600k_r50.onnx",
     "model_patches,minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors,2296635360,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/model_patches/minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
     "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
     "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",

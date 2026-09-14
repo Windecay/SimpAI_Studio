@@ -2,9 +2,12 @@
     'use strict';
 
     function createCanvasSpecialNodePatchFactoryController(context) {
-        const scope = context || {};
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.specialNodePatchFactorySource || context || {};
+        const timeSource = scope.timeSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const assetSource = scope.assetSource || {};
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -12,11 +15,11 @@
                     return fallback;
                 }
             });
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const buildAssetReference = typeof scope.buildAssetReference === 'function'
-            ? scope.buildAssetReference
+        const buildAssetReference = typeof assetSource.buildAssetReference === 'function'
+            ? assetSource.buildAssetReference
             : (asset) => asset === null || asset === undefined ? null : cloneRunValue(asset, asset);
 
         function cloneValue(value, fallback) {

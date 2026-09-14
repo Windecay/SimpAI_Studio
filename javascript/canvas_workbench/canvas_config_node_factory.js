@@ -2,11 +2,14 @@
     'use strict';
 
     function createCanvasConfigNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (prefix) => `${prefix}-node`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.configNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

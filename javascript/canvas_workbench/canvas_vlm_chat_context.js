@@ -22,7 +22,9 @@
             scope.vlmAgentContextSource || {}
         );
         const agentMethod = name => method(agentContext, name);
-        const controllerSource = Object.assign({}, scope.controllerSource || scope, {
+        const controllerSource = Object.assign({}, scope.controllerSource || scope);
+        delete controllerSource.buildVlmAgentContext;
+        controllerSource.agentContextSource = Object.assign({}, controllerSource.agentContextSource || {}, {
             buildVlmAgentContext: (...args) => agentMethod('buildVlmAgentContext')?.(...args)
         });
         const chatController = createController(

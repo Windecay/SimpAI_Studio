@@ -2,58 +2,70 @@
     'use strict';
 
     function createCanvasLifecycleController(context) {
-        const scope = context || {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const schedule = typeof scope.setTimeout === 'function' ? scope.setTimeout : setTimeout;
+        const scope = context?.lifecycleSource || context || {};
+        const domSource = scope.domSource || {};
+        const projectSource = scope.projectSource || {};
+        const renderSource = scope.renderSource || {};
+        const presetSource = scope.presetSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const panelSource = scope.panelSource || {};
+        const timerSource = scope.timerSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getRoot = () => call(domSource, 'getRoot') || null;
+        const getViewport = () => call(domSource, 'getViewport');
+        const getProject = () => call(projectSource, 'getProject') || {};
+        const schedule = typeof timerSource.setTimeout === 'function'
+            ? (...args) => timerSource.setTimeout(...args)
+            : setTimeout;
 
         function refreshPresetCatalogAfterOpen() {
-            const result = call('refreshPresetCatalog', { force: true });
+            const result = call(presetSource, 'refreshPresetCatalog', { force: true });
             if (result && typeof result.catch === 'function') result.catch(() => {});
         }
 
         function openWorkbench() {
-            call('ensureWorkbench');
-            call('syncStorageScope', { silent: true });
-            call('ensureInitialDemoProject');
+            call(projectSource, 'ensureWorkbench');
+            call(projectSource, 'syncStorageScope', { silent: true });
+            call(projectSource, 'ensureInitialDemoProject');
             const root = getRoot();
             root.hidden = false;
             root.classList.toggle('show-grid', !!getProject().settings.grid);
-            call('applyThemeClass');
-            call('resetGalleryFrostReveals');
-            call('renderAll');
-            const refresh = call('refreshCanvasProjectFromBackendOnOpen');
+            call(renderSource, 'applyThemeClass');
+            call(renderSource, 'resetGalleryFrostReveals');
+            call(renderSource, 'renderAll');
+            const refresh = call(projectSource, 'refreshCanvasProjectFromBackendOnOpen');
             if (refresh && typeof refresh.catch === 'function') {
                 refresh.catch(() => {}).finally(refreshPresetCatalogAfterOpen);
             } else {
                 refreshPresetCatalogAfterOpen();
             }
-            call('startPerformanceHud');
-            call('startStandaloneStatusMonitor');
-            call('scheduleAutoPresetModelChecks');
+            call(runtimeSource, 'startPerformanceHud');
+            call(runtimeSource, 'startStandaloneStatusMonitor');
+            call(presetSource, 'scheduleAutoPresetModelChecks');
             schedule(() => {
-                try { call('getViewport')?.focus?.(); } catch (err) {}
+                try { getViewport()?.focus?.(); } catch (err) {}
             }, 0);
         }
 
         function closeWorkbench() {
             const root = getRoot();
             if (!root) return;
-            call('closePresetPalette');
-            call('closeContextMenu');
-            call('closeCanvasSettingsPanel');
-            call('closeRunQueuePanel');
-            call('closeRunHistoryPanel');
-            call('resetGalleryFrostReveals');
-            call('cancelPanEdgeSettleRender');
-            call('cancelDragEdgeSettleRender');
-            call('endDragEdgeLodVisual');
-            call('cancelEdgeIncidentIndexWarmup');
-            call('stopTimelinePlayback');
+            call(panelSource, 'closePresetPalette');
+            call(panelSource, 'closeContextMenu');
+            call(panelSource, 'closeCanvasSettingsPanel');
+            call(panelSource, 'closeRunQueuePanel');
+            call(panelSource, 'closeRunHistoryPanel');
+            call(renderSource, 'resetGalleryFrostReveals');
+            call(runtimeSource, 'cancelPanEdgeSettleRender');
+            call(runtimeSource, 'cancelDragEdgeSettleRender');
+            call(runtimeSource, 'endDragEdgeLodVisual');
+            call(runtimeSource, 'cancelEdgeIncidentIndexWarmup');
+            call(runtimeSource, 'stopTimelinePlayback');
             root.hidden = true;
-            call('stopStandaloneStatusMonitor');
-            call('stopPerformanceHud');
+            call(runtimeSource, 'stopStandaloneStatusMonitor');
+            call(runtimeSource, 'stopPerformanceHud');
         }
 
         return { openWorkbench, closeWorkbench };

@@ -48,6 +48,7 @@
       },
       "disable_canvas_mask": true,
       "disvisible": [
+        "minimax_h3_storyboard_control",
         "scene_canvas_image",
         "scene_input_image1",
         "scene_input_image2",

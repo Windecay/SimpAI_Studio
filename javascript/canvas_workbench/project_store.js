@@ -1,71 +1,207 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const nowIso = UTILS.nowIso || (() => new Date().toISOString());
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const sanitizeStoragePart = UTILS.sanitizeStoragePart || ((value) => String(value || 'guest').replace(/[^a-zA-Z0-9_.:-]/g, '_') || 'guest');
-    const shortIdentity = UTILS.shortIdentity || ((value) => String(value || 'guest'));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const getUiLang = UTILS.getUiLang || (() => 'en');
-    const PROJECT_PATCH_FACTORY = window.SimpAICanvasWorkbenchProjectPatchFactory || {};
-    const PROJECT_PATCH_FACTORY_CONTROLLER = typeof PROJECT_PATCH_FACTORY.createCanvasProjectPatchFactoryController === 'function'
-        ? PROJECT_PATCH_FACTORY.createCanvasProjectPatchFactoryController({})
-        : {};
-    const RUN_RECORD_FACTORY = window.SimpAICanvasWorkbenchRunRecordFactory || {};
-    const RUN_RECORD_FACTORY_CONTROLLER = typeof RUN_RECORD_FACTORY.createCanvasRunRecordFactoryController === 'function'
-        ? RUN_RECORD_FACTORY.createCanvasRunRecordFactoryController({})
-        : {};
-    const NODE_FACTORY = window.SimpAICanvasWorkbenchNodeFactory || {};
-    const NODE_FACTORY_CONTROLLER = typeof NODE_FACTORY.createCanvasNodeFactoryController === 'function'
-        ? NODE_FACTORY.createCanvasNodeFactoryController({})
-        : {};
-    const GROUP_FACTORY = window.SimpAICanvasWorkbenchGroupFactory || {};
-    const GROUP_FACTORY_CONTROLLER = typeof GROUP_FACTORY.createCanvasGroupFactoryController === 'function'
-        ? GROUP_FACTORY.createCanvasGroupFactoryController({})
-        : {};
-    const BATCH_ANY_FACTORY = window.SimpAICanvasWorkbenchBatchAnyNodeFactory || {};
-    const BATCH_ANY_FACTORY_CONTROLLER = typeof BATCH_ANY_FACTORY.createCanvasBatchAnyNodeFactoryController === 'function'
-        ? BATCH_ANY_FACTORY.createCanvasBatchAnyNodeFactoryController({})
-        : {};
-    const TEXT_NODE_FACTORY = window.SimpAICanvasWorkbenchTextNodeFactory || {};
-    const TEXT_NODE_FACTORY_CONTROLLER = typeof TEXT_NODE_FACTORY.createCanvasTextNodeFactoryController === 'function'
-        ? TEXT_NODE_FACTORY.createCanvasTextNodeFactoryController({})
-        : {};
-    const AUX_NODE_FACTORY = window.SimpAICanvasWorkbenchAuxNodeFactory || {};
-    const AUX_NODE_FACTORY_CONTROLLER = typeof AUX_NODE_FACTORY.createCanvasAuxNodeFactoryController === 'function'
-        ? AUX_NODE_FACTORY.createCanvasAuxNodeFactoryController({})
-        : {};
-    const BATCH_JOB_FACTORY = window.SimpAICanvasWorkbenchBatchJobFactory || {};
-    const BATCH_JOB_FACTORY_CONTROLLER = typeof BATCH_JOB_FACTORY.createCanvasBatchJobFactoryController === 'function'
-        ? BATCH_JOB_FACTORY.createCanvasBatchJobFactoryController({})
-        : {};
-    const VLM_CHAT_STATE_FACTORY = window.SimpAICanvasWorkbenchVlmChatStateFactory || {};
-    const VLM_CHAT_STATE_FACTORY_CONTROLLER = typeof VLM_CHAT_STATE_FACTORY.createCanvasVlmChatStateFactoryController === 'function'
-        ? VLM_CHAT_STATE_FACTORY.createCanvasVlmChatStateFactoryController({})
-        : {};
+    function createLoadedController(globalName, factoryName) {
+        const module = window[globalName] || {};
+        const create = module[factoryName];
+        return typeof create === 'function' ? (create({}) || {}) : {};
+    }
 
-    const LEGACY_STORAGE_KEY = 'simpai.infiniteCanvasWorkbench.v1';
-    const STORAGE_KEY_PREFIX = 'simpai.infiniteCanvasWorkbench.v1';
-    const PROJECT_ID = 'default';
-    const DEFAULT_SETTINGS = {
-        __lang: getUiLang(),
-        grid: true,
-        snap: false,
-        minimap: true,
-        edgeLabels: true,
-        reducedMotion: false,
-        inspectorCollapsed: false
-    };
+    function createDefaultProjectStoreSource() {
+        const utils = window.SimpAICanvasWorkbenchUtils || {};
+        return {
+            languageSource: {
+                t: utils.t,
+                getUiLang: utils.getUiLang
+            },
+            utilitySource: {
+                nowIso: utils.nowIso,
+                clamp: utils.clamp,
+                sanitizeStoragePart: utils.sanitizeStoragePart,
+                shortIdentity: utils.shortIdentity
+            },
+            systemSource: {
+                getSystemParams: () => window.simpleaiTopbarSystemParams
+            },
+            storageSource: {
+                getStorage: () => typeof localStorage !== 'undefined' ? localStorage : null
+            },
+            registrySource: {
+                defaultNodeSize: (...args) => {
+                    const registry = window.SimpAICanvasWorkbenchRegistry || {};
+                    return typeof registry.defaultNodeSize === 'function'
+                        ? registry.defaultNodeSize(...args)
+                        : undefined;
+                }
+            },
+            projectPatchSource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchProjectPatchFactory',
+                    'createCanvasProjectPatchFactoryController'
+                )
+            },
+            runRecordSource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchRunRecordFactory',
+                    'createCanvasRunRecordFactoryController'
+                )
+            },
+            nodeFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchNodeFactory',
+                    'createCanvasNodeFactoryController'
+                )
+            },
+            groupFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchGroupFactory',
+                    'createCanvasGroupFactoryController'
+                )
+            },
+            batchAnyFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchBatchAnyNodeFactory',
+                    'createCanvasBatchAnyNodeFactoryController'
+                )
+            },
+            textNodeFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchTextNodeFactory',
+                    'createCanvasTextNodeFactoryController'
+                )
+            },
+            auxNodeFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchAuxNodeFactory',
+                    'createCanvasAuxNodeFactoryController'
+                )
+            },
+            batchJobFactorySource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchBatchJobFactory',
+                    'createCanvasBatchJobFactoryController'
+                )
+            },
+            vlmChatStateSource: {
+                controller: createLoadedController(
+                    'SimpAICanvasWorkbenchVlmChatStateFactory',
+                    'createCanvasVlmChatStateFactoryController'
+                )
+            },
+            compareSource: {
+                buildCompareStatePatch: (...args) => {
+                    const compare = window.SimpAICanvasWorkbenchCompareNode || {};
+                    return typeof compare.buildCompareStatePatch === 'function'
+                        ? compare.buildCompareStatePatch(...args)
+                        : undefined;
+                }
+            },
+            diagnosticsSource: {
+                warn: (...args) => console.warn(...args)
+            }
+        };
+    }
+
+    function createCanvasProjectStoreController(context) {
+        const scope = context?.projectStoreSource || context || {};
+        const configSource = scope.configSource || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const systemSource = scope.systemSource || {};
+        const storageSource = scope.storageSource || {};
+        const registrySource = scope.registrySource || {};
+        const builderSource = scope.builderSource || {};
+        const projectPatchSource = scope.projectPatchSource || {};
+        const runRecordSource = scope.runRecordSource || {};
+        const nodeFactorySource = scope.nodeFactorySource || {};
+        const groupFactorySource = scope.groupFactorySource || {};
+        const batchAnyFactorySource = scope.batchAnyFactorySource || {};
+        const textNodeFactorySource = scope.textNodeFactorySource || {};
+        const auxNodeFactorySource = scope.auxNodeFactorySource || {};
+        const batchJobFactorySource = scope.batchJobFactorySource || {};
+        const vlmChatStateSource = scope.vlmChatStateSource || {};
+        const compareSource = scope.compareSource || {};
+        const diagnosticsSource = scope.diagnosticsSource || {};
+        const nowIso = typeof utilitySource.nowIso === 'function'
+            ? utilitySource.nowIso
+            : (() => new Date().toISOString());
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
+            : ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const sanitizeStoragePart = typeof utilitySource.sanitizeStoragePart === 'function'
+            ? utilitySource.sanitizeStoragePart
+            : ((value) => String(value || 'guest').replace(/[^a-zA-Z0-9_.:-]/g, '_') || 'guest');
+        const shortIdentity = typeof utilitySource.shortIdentity === 'function'
+            ? utilitySource.shortIdentity
+            : ((value) => String(value || 'guest'));
+        const t = typeof languageSource.t === 'function'
+            ? languageSource.t
+            : ((en, cn) => cn || en);
+        const getUiLang = typeof languageSource.getUiLang === 'function'
+            ? languageSource.getUiLang
+            : (() => 'en');
+        const getSystemParams = typeof systemSource.getSystemParams === 'function'
+            ? systemSource.getSystemParams
+            : () => window.simpleaiTopbarSystemParams;
+        const getStorage = typeof storageSource.getStorage === 'function'
+            ? storageSource.getStorage
+            : () => typeof localStorage !== 'undefined' ? localStorage : null;
+        const defaultNodeSizeFromRegistry = typeof registrySource.defaultNodeSize === 'function'
+            ? registrySource.defaultNodeSize
+            : null;
+        const warn = typeof diagnosticsSource.warn === 'function'
+            ? diagnosticsSource.warn
+            : (...args) => console.warn(...args);
+        const projectPatchController = projectPatchSource.controller || {};
+        const runRecordController = runRecordSource.controller || {};
+        const nodeFactoryController = nodeFactorySource.controller || {};
+        const groupFactoryController = groupFactorySource.controller || {};
+        const batchAnyFactoryController = batchAnyFactorySource.controller || {};
+        const textNodeFactoryController = textNodeFactorySource.controller || {};
+        const auxNodeFactoryController = auxNodeFactorySource.controller || {};
+        const batchJobFactoryController = batchJobFactorySource.controller || {};
+        const vlmChatStateController = vlmChatStateSource.controller || {};
+        const compareController = compareSource.controller || {};
+        const configuredProjectId = typeof configSource.getDefaultProjectId === 'function'
+            ? configSource.getDefaultProjectId()
+            : configSource.defaultProjectId;
+        const PROJECT_ID = String(configuredProjectId || 'default');
+        const configuredSettings = configSource.defaultSettings || scope.defaultSettings;
+        const DEFAULT_SETTINGS = Object.assign({
+            __lang: getUiLang(),
+            grid: true,
+            snap: false,
+            minimap: true,
+            edgeLabels: true,
+            reducedMotion: false,
+            inspectorCollapsed: false
+        }, isPatchObject(configuredSettings) ? configuredSettings : {});
+        const LEGACY_STORAGE_KEY = 'simpai.infiniteCanvasWorkbench.v1';
+        const STORAGE_KEY_PREFIX = 'simpai.infiniteCanvasWorkbench.v1';
+
+        function injectedBuilder(name) {
+            const source = typeof builderSource.getProjectStoreOptions === 'function'
+                ? builderSource.getProjectStoreOptions()
+                : builderSource;
+            return source && typeof source[name] === 'function' ? source[name] : null;
+        }
+
+        function resolveBuilder(options, name, source, controller, fallback) {
+            if (typeof options?.[name] === 'function') return options[name];
+            const injected = injectedBuilder(name);
+            if (injected) return injected;
+            if (typeof source?.[name] === 'function') return source[name];
+            if (typeof controller?.[name] === 'function') return controller[name];
+            return fallback;
+        }
 
     function getCanvasTitle() {
         return t('SimpAI Infinite Canvas', 'SimpAI 无限画布');
     }
 
     function getStorageScope() {
-        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
-            ? window.simpleaiTopbarSystemParams
-            : {};
+        const paramsValue = getSystemParams();
+        const params = paramsValue && typeof paramsValue === 'object' ? paramsValue : {};
         const accessMode = String(params.access_mode || '').toLowerCase();
         const role = String(params.user_role || '').toLowerCase();
         const userDid = String(params.user_did || '').trim();
@@ -103,11 +239,13 @@
 
     function createDefaultProject(options) {
         const opts = options || {};
-        const buildProjectDefaultPatch = typeof opts.buildProjectDefaultPatch === 'function'
-            ? opts.buildProjectDefaultPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectDefaultPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectDefaultPatch
-                : null);
+        const buildProjectDefaultPatch = resolveBuilder(
+            opts,
+            'buildProjectDefaultPatch',
+            projectPatchSource,
+            projectPatchController,
+            null
+        );
         if (buildProjectDefaultPatch) {
             const projectDefaultPatch = buildProjectDefaultPatch({
                 projectId: opts.projectId || PROJECT_ID,
@@ -155,21 +293,27 @@
         const opts = options || {};
         const settings = opts.defaultSettings || DEFAULT_SETTINGS;
         const nodeSize = typeof opts.defaultNodeSize === 'function' ? opts.defaultNodeSize : defaultNodeSize;
-        const buildNodeLayoutPatch = typeof opts.buildNodeLayoutPatch === 'function'
-            ? opts.buildNodeLayoutPatch
-            : (typeof NODE_FACTORY_CONTROLLER.buildNodeLayoutPatch === 'function'
-                ? NODE_FACTORY_CONTROLLER.buildNodeLayoutPatch
-                : (_node, patch) => Object.assign({}, patch || {}));
-        const buildGroupFieldPatch = typeof opts.buildGroupFieldPatch === 'function'
-            ? opts.buildGroupFieldPatch
-            : (typeof GROUP_FACTORY_CONTROLLER.buildGroupFieldPatch === 'function'
-                ? GROUP_FACTORY_CONTROLLER.buildGroupFieldPatch
-                : (_group, key, value) => ({ [key]: value }));
-        const buildGroupIdPatch = typeof opts.buildGroupIdPatch === 'function'
-            ? opts.buildGroupIdPatch
-            : (typeof GROUP_FACTORY_CONTROLLER.buildGroupIdPatch === 'function'
-                ? GROUP_FACTORY_CONTROLLER.buildGroupIdPatch
-                : (group, options) => ({ id: group?.id || options?.fallbackId || '' }));
+        const buildNodeLayoutPatch = resolveBuilder(
+            opts,
+            'buildNodeLayoutPatch',
+            nodeFactorySource,
+            nodeFactoryController,
+            (_node, patch) => Object.assign({}, patch || {})
+        );
+        const buildGroupFieldPatch = resolveBuilder(
+            opts,
+            'buildGroupFieldPatch',
+            groupFactorySource,
+            groupFactoryController,
+            (_group, key, value) => ({ [key]: value })
+        );
+        const buildGroupIdPatch = resolveBuilder(
+            opts,
+            'buildGroupIdPatch',
+            groupFactorySource,
+            groupFactoryController,
+            (group, options) => ({ id: group?.id || options?.fallbackId || '' })
+        );
         const buildDefaultProjectCollectionsPatch = (project) => ({
             groups: Array.isArray(project?.groups) ? project.groups : [],
             nodes: Array.isArray(project?.nodes) ? project.nodes : [],
@@ -177,94 +321,114 @@
             runs: Array.isArray(project?.runs) ? project.runs : [],
             batch_jobs: Array.isArray(project?.batch_jobs) ? project.batch_jobs : []
         });
-        const buildProjectCollectionsPatch = typeof opts.buildProjectCollectionsPatch === 'function'
-            ? opts.buildProjectCollectionsPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectCollectionsPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectCollectionsPatch
-                : buildDefaultProjectCollectionsPatch);
-        const buildProjectMetadataPatch = typeof opts.buildProjectMetadataPatch === 'function'
-            ? opts.buildProjectMetadataPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectMetadataPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectMetadataPatch
-                : (project, options) => {
-                    const config = options || {};
-                    const stamp = typeof config.nowIso === 'function' ? config.nowIso : nowIso;
-                    return {
-                        schema: project?.schema || config.schema || 'simpai.canvas.workbench.v1',
-                        title: project?.title || config.defaultTitle || 'Untitled Canvas',
-                        created_at: project?.created_at || stamp(),
-                        updated_at: project?.updated_at || stamp()
-                    };
-                });
-        const buildProjectViewportPatch = typeof opts.buildProjectViewportPatch === 'function'
-            ? opts.buildProjectViewportPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectViewportPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectViewportPatch
-                : (project, options) => {
-                    const config = options || {};
-                    const viewport = Object.assign({ x: 80, y: 80, zoom: 1 }, project?.viewport || {});
-                    viewport.zoom = clamp(Number(viewport.zoom) || 1, Number(config.minZoom ?? 0.15), Number(config.maxZoom ?? 3));
-                    return { viewport };
-                });
-        const buildProjectSettingsPatch = typeof opts.buildProjectSettingsPatch === 'function'
-            ? opts.buildProjectSettingsPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectSettingsPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectSettingsPatch
-                : (project, options) => {
-                    const config = options || {};
-                    const settings = Object.assign({}, config.defaultSettings || {}, project?.settings || {});
-                    if (!settings.__minimap_initialized) {
-                        settings.minimap = true;
-                        settings.__minimap_initialized = true;
-                    }
-                    return { settings };
-                });
+        const buildProjectCollectionsPatch = resolveBuilder(
+            opts,
+            'buildProjectCollectionsPatch',
+            projectPatchSource,
+            projectPatchController,
+            buildDefaultProjectCollectionsPatch
+        );
+        const buildProjectMetadataPatch = resolveBuilder(
+            opts,
+            'buildProjectMetadataPatch',
+            projectPatchSource,
+            projectPatchController,
+            (project, options) => {
+                const config = options || {};
+                const stamp = typeof config.nowIso === 'function' ? config.nowIso : nowIso;
+                return {
+                    schema: project?.schema || config.schema || 'simpai.canvas.workbench.v1',
+                    title: project?.title || config.defaultTitle || 'Untitled Canvas',
+                    created_at: project?.created_at || stamp(),
+                    updated_at: project?.updated_at || stamp()
+                };
+            }
+        );
+        const buildProjectViewportPatch = resolveBuilder(
+            opts,
+            'buildProjectViewportPatch',
+            projectPatchSource,
+            projectPatchController,
+            (project, options) => {
+                const config = options || {};
+                const viewport = Object.assign({ x: 80, y: 80, zoom: 1 }, project?.viewport || {});
+                viewport.zoom = clamp(Number(viewport.zoom) || 1, Number(config.minZoom ?? 0.15), Number(config.maxZoom ?? 3));
+                return { viewport };
+            }
+        );
+        const buildProjectSettingsPatch = resolveBuilder(
+            opts,
+            'buildProjectSettingsPatch',
+            projectPatchSource,
+            projectPatchController,
+            (project, options) => {
+                const config = options || {};
+                const settings = Object.assign({}, config.defaultSettings || {}, project?.settings || {});
+                if (!settings.__minimap_initialized) {
+                    settings.minimap = true;
+                    settings.__minimap_initialized = true;
+                }
+                return { settings };
+            }
+        );
         const buildStatePatchFallback = (_node, options) => {
             const statePatch = options?.statePatch;
             return isPatchObject(statePatch)
                 ? Object.assign({}, statePatch)
                 : {};
         };
-        const buildCompareStatePatch = typeof opts.buildCompareStatePatch === 'function'
-            ? opts.buildCompareStatePatch
-            : (typeof window.SimpAICanvasWorkbenchCompareNode?.buildCompareStatePatch === 'function'
-                ? window.SimpAICanvasWorkbenchCompareNode.buildCompareStatePatch
-                : buildStatePatchFallback);
-        const buildBatchAnyStatePatch = typeof opts.buildBatchAnyStatePatch === 'function'
-            ? opts.buildBatchAnyStatePatch
-            : (typeof BATCH_ANY_FACTORY_CONTROLLER.buildBatchAnyStatePatch === 'function'
-                ? BATCH_ANY_FACTORY_CONTROLLER.buildBatchAnyStatePatch
-                : buildStatePatchFallback);
-        const buildBatchAnyLegacyTypePatch = typeof opts.buildBatchAnyLegacyTypePatch === 'function'
-            ? opts.buildBatchAnyLegacyTypePatch
-            : (typeof BATCH_ANY_FACTORY_CONTROLLER.buildBatchAnyLegacyTypePatch === 'function'
-                ? BATCH_ANY_FACTORY_CONTROLLER.buildBatchAnyLegacyTypePatch
-                : (_node) => ({ type: 'batch_any' }));
-        const buildTextMergeStatePatch = typeof opts.buildTextMergeStatePatch === 'function'
-            ? opts.buildTextMergeStatePatch
-            : (typeof TEXT_NODE_FACTORY_CONTROLLER.buildTextMergeStatePatch === 'function'
-                ? TEXT_NODE_FACTORY_CONTROLLER.buildTextMergeStatePatch
-                : buildStatePatchFallback);
-        const buildNoteStatePatch = typeof opts.buildNoteStatePatch === 'function'
-            ? opts.buildNoteStatePatch
-            : (typeof AUX_NODE_FACTORY_CONTROLLER.buildNoteStatePatch === 'function'
-                ? AUX_NODE_FACTORY_CONTROLLER.buildNoteStatePatch
-                : buildStatePatchFallback);
-        const buildBatchJobStatePatch = typeof opts.buildBatchJobStatePatch === 'function'
-            ? opts.buildBatchJobStatePatch
-            : (typeof BATCH_JOB_FACTORY_CONTROLLER.buildBatchJobStatePatch === 'function'
-                ? BATCH_JOB_FACTORY_CONTROLLER.buildBatchJobStatePatch
-                : (job, options) => {
-                    const config = options || {};
-                    return {
-                        id: job?.id || config.fallbackId || '',
-                        script: job?.script || config.defaultScript || 'X/Y/Z plot',
-                        axes: Array.isArray(job?.axes) ? job.axes : [],
-                        variants: Array.isArray(job?.variants) ? job.variants : [],
-                        run_ids: Array.isArray(job?.run_ids) ? job.run_ids : [],
-                        status: job?.status || config.defaultStatus || 'planned'
-                    };
-                });
+        const buildCompareStatePatch = resolveBuilder(
+            opts,
+            'buildCompareStatePatch',
+            compareSource,
+            compareController,
+            buildStatePatchFallback
+        );
+        const buildBatchAnyStatePatch = resolveBuilder(
+            opts,
+            'buildBatchAnyStatePatch',
+            batchAnyFactorySource,
+            batchAnyFactoryController,
+            buildStatePatchFallback
+        );
+        const buildBatchAnyLegacyTypePatch = resolveBuilder(
+            opts,
+            'buildBatchAnyLegacyTypePatch',
+            batchAnyFactorySource,
+            batchAnyFactoryController,
+            (_node) => ({ type: 'batch_any' })
+        );
+        const buildTextMergeStatePatch = resolveBuilder(
+            opts,
+            'buildTextMergeStatePatch',
+            textNodeFactorySource,
+            textNodeFactoryController,
+            buildStatePatchFallback
+        );
+        const buildNoteStatePatch = resolveBuilder(
+            opts,
+            'buildNoteStatePatch',
+            auxNodeFactorySource,
+            auxNodeFactoryController,
+            buildStatePatchFallback
+        );
+        const buildBatchJobStatePatch = resolveBuilder(
+            opts,
+            'buildBatchJobStatePatch',
+            batchJobFactorySource,
+            batchJobFactoryController,
+            (job, options) => {
+                const config = options || {};
+                return {
+                    id: job?.id || config.fallbackId || '',
+                    script: job?.script || config.defaultScript || 'X/Y/Z plot',
+                    axes: Array.isArray(job?.axes) ? job.axes : [],
+                    variants: Array.isArray(job?.variants) ? job.variants : [],
+                    run_ids: Array.isArray(job?.run_ids) ? job.run_ids : [],
+                    status: job?.status || config.defaultStatus || 'planned'
+                };
+            }
+        );
         const applyNodeLayoutPatch = (node, patch) => {
             const nextPatch = buildNodeLayoutPatch(node, patch || {});
             if (isPatchObject(nextPatch)) Object.assign(node, nextPatch);
@@ -445,11 +609,13 @@
     function buildProjectStorageInfo(key, scope, migrated, options) {
         const currentScope = scope || getStorageScope();
         const config = options || {};
-        const patchBuilder = typeof config.buildProjectStorageInfoPatch === 'function'
-            ? config.buildProjectStorageInfoPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectStorageInfoPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectStorageInfoPatch
-                : buildDefaultProjectStorageInfoPatch);
+        const patchBuilder = resolveBuilder(
+            config,
+            'buildProjectStorageInfoPatch',
+            projectPatchSource,
+            projectPatchController,
+            buildDefaultProjectStorageInfoPatch
+        );
         const patch = patchBuilder(key, currentScope, { t, migrated: !!migrated });
         return isPatchObject(patch)
             ? patch
@@ -471,11 +637,13 @@
     function loadProject(key, scope, options) {
         const config = options || {};
         const storageInfo = (migrated) => buildProjectStorageInfo(key, scope, migrated, options);
-        const buildProjectStoragePatch = typeof config.buildProjectStoragePatch === 'function'
-            ? config.buildProjectStoragePatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectStoragePatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectStoragePatch
-                : buildDefaultProjectStoragePatch);
+        const buildProjectStoragePatch = resolveBuilder(
+            config,
+            'buildProjectStoragePatch',
+            projectPatchSource,
+            projectPatchController,
+            buildDefaultProjectStoragePatch
+        );
         const applyStoragePatch = (loaded, storage, storedStorage) => {
             const patch = buildProjectStoragePatch(loaded, storage, {
                 preserveAssetRoot: true,
@@ -501,19 +669,20 @@
             return applyStoragePatch(next, storageInfo(migrated), {});
         };
         try {
-            const text = localStorage.getItem(key);
+            const storage = getStorage();
+            const text = storage.getItem(key);
             if (text) {
                 return applyLoadedStorage(sanitizeProject(JSON.parse(text), options), false);
             }
             if (scope && scope.allowLegacyFallback) {
-                const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+                const legacy = storage.getItem(LEGACY_STORAGE_KEY);
                 if (legacy) {
                     return applyLoadedStorage(sanitizeProject(JSON.parse(legacy), options), true);
                 }
             }
             return createFallbackProject(false);
         } catch (err) {
-            console.warn('[SimpAI Canvas] failed to load project:', err);
+            warn('[SimpAI Canvas] failed to load project:', err);
         }
         return createFallbackProject(false);
     }
@@ -530,11 +699,13 @@
         const opts = options || {};
         const maxInline = Number(opts.maxInlineDataUrlChars ?? 1800000);
         const cloneValue = typeof opts.cloneValue === 'function' ? opts.cloneValue : cloneJson;
-        const buildVlmChatStoragePatch = typeof opts.buildVlmChatStoragePatch === 'function'
-            ? opts.buildVlmChatStoragePatch
-            : (typeof VLM_CHAT_STATE_FACTORY_CONTROLLER.buildVlmChatStoragePatch === 'function'
-                ? VLM_CHAT_STATE_FACTORY_CONTROLLER.buildVlmChatStoragePatch
-                : null);
+        const buildVlmChatStoragePatch = resolveBuilder(
+            opts,
+            'buildVlmChatStoragePatch',
+            vlmChatStateSource,
+            vlmChatStateController,
+            null
+        );
         const next = cloneValue(source || createDefaultProject(opts), createDefaultProject(opts));
         const compactAsset = (asset) => {
             if (!asset || typeof asset !== 'object') return;
@@ -614,26 +785,34 @@
             }
             return { run: compactRun };
         };
-        const buildProjectNodeStoragePatch = typeof opts.buildProjectNodeStoragePatch === 'function'
-            ? opts.buildProjectNodeStoragePatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectNodeStoragePatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectNodeStoragePatch
-                : buildDefaultProjectNodeStoragePatch);
-        const buildRunStoragePatch = typeof opts.buildRunStoragePatch === 'function'
-            ? opts.buildRunStoragePatch
-            : (typeof RUN_RECORD_FACTORY_CONTROLLER.buildRunStoragePatch === 'function'
-                ? RUN_RECORD_FACTORY_CONTROLLER.buildRunStoragePatch
-                : buildDefaultRunStoragePatch);
-        const buildProjectNodesPatch = typeof opts.buildProjectNodesPatch === 'function'
-            ? opts.buildProjectNodesPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectNodesPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectNodesPatch
-                : (_project, nodes) => ({ nodes: Array.isArray(nodes) ? nodes : [] }));
-        const buildProjectRunsPatch = typeof opts.buildProjectRunsPatch === 'function'
-            ? opts.buildProjectRunsPatch
-            : (typeof PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectRunsPatch === 'function'
-                ? PROJECT_PATCH_FACTORY_CONTROLLER.buildProjectRunsPatch
-                : (_project, runs) => ({ runs: Array.isArray(runs) ? runs : [] }));
+        const buildProjectNodeStoragePatch = resolveBuilder(
+            opts,
+            'buildProjectNodeStoragePatch',
+            projectPatchSource,
+            projectPatchController,
+            buildDefaultProjectNodeStoragePatch
+        );
+        const buildRunStoragePatch = resolveBuilder(
+            opts,
+            'buildRunStoragePatch',
+            runRecordSource,
+            runRecordController,
+            buildDefaultRunStoragePatch
+        );
+        const buildProjectNodesPatch = resolveBuilder(
+            opts,
+            'buildProjectNodesPatch',
+            projectPatchSource,
+            projectPatchController,
+            (_project, nodes) => ({ nodes: Array.isArray(nodes) ? nodes : [] })
+        );
+        const buildProjectRunsPatch = resolveBuilder(
+            opts,
+            'buildProjectRunsPatch',
+            projectPatchSource,
+            projectPatchController,
+            (_project, runs) => ({ runs: Array.isArray(runs) ? runs : [] })
+        );
         if (next.storage && opts.stripStorage !== false) delete next.storage;
         const compactedNodes = (Array.isArray(next.nodes) ? next.nodes : []).map((node) => {
             const patch = buildProjectNodeStoragePatch(node, {
@@ -669,18 +848,27 @@
         return next;
     }
 
-    window.SimpAICanvasWorkbenchProject = {
-        LEGACY_STORAGE_KEY,
-        STORAGE_KEY_PREFIX,
-        PROJECT_ID,
-        DEFAULT_SETTINGS,
-        getCanvasTitle,
-        getStorageScope,
-        getStorageKey,
-        createDefaultProject,
-        sanitizeProject,
-        loadProject,
-        compactProjectForStorage,
-        buildProjectStorageInfo
-    };
+        return {
+            LEGACY_STORAGE_KEY,
+            STORAGE_KEY_PREFIX,
+            PROJECT_ID,
+            DEFAULT_SETTINGS,
+            getCanvasTitle,
+            getStorageScope,
+            getStorageKey,
+            createDefaultProject,
+            sanitizeProject,
+            loadProject,
+            compactProjectForStorage,
+            buildProjectStorageInfo
+        };
+    }
+
+    const defaultController = createCanvasProjectStoreController(createDefaultProjectStoreSource());
+    window.SimpAICanvasWorkbenchProject = Object.assign(
+        {},
+        window.SimpAICanvasWorkbenchProject || {},
+        defaultController,
+        { createCanvasProjectStoreController }
+    );
 })();

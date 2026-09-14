@@ -773,5 +773,20 @@
     "MiniMax-H3(Pose)\u2B07": "H3 Pose\u2B07",
     "MiniMax H3 Pose Editor": "MiniMax H3 Pose Editor",
     "H3 Pose": "H3 Pose",
-    "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2).": "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2)."
+    "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2).": "H3 Pose requires a character image (Picture 1) and a Pose Editor image (Picture 2).",
+    "MiniMax-H3(Region)": "MiniMax-H3 Region Reconstruction",
+    "MiniMax-H3(Region)\u2B07": "MiniMax-H3 Region Reconstruction\u2B07",
+    "MiniMax H3 Region Reconstruction": "MiniMax H3 Region Reconstruction",
+    "Region Reconstruction": "Motion Reconstruction",
+    "Motion Reconstruction": "Motion Reconstruction",
+    "Face Refinement": "Face Refinement",
+    "Tiled Refinement": "Tiled Refinement",
+    "Detail Working Resolution": "Detail Working Resolution",
+    "Face Feathering (px)": "Face Feathering (px)",
+    "Automatic Tile Grid": "Automatic Tile Grid",
+    "Tile Working Budget (square side)": "Tile Working Budget (square side)",
+    "Tile Working Sizes": "Tile Working Sizes",
+    "Tile Budget Exceeded": "Tile Budget Exceeded",
+    "Invalid Tile Source Size": "Invalid Tile Source Size",
+    "tiles": "tiles"
 }

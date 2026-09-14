@@ -2,44 +2,58 @@
     'use strict';
 
     function createCanvasAgentAudioWorkflowController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const normalizePresetName = scope.normalizePresetName || (value => String(value || '').trim());
-        const chooseCanvasAgentPresetEntry = (...args) => call('chooseCanvasAgentPresetEntry', { entry: null, checked: [] }, ...args);
-        const resolveCanvasAgentPrompt = (...args) => call('resolveCanvasAgentPrompt', null, ...args);
-        const resetCanvasAgentRunInfo = (...args) => call('resetCanvasAgentRunInfo', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const showToast = (...args) => call('showToast', null, ...args);
-        const getCanvasAgentPrimaryMediaNode = (...args) => call('getCanvasAgentPrimaryMediaNode', null, ...args);
-        const isCanvasAgentAudioTarget = (...args) => call('isCanvasAgentAudioTarget', false, ...args);
-        const askCanvasAgentDecision = (...args) => call('askCanvasAgentDecision', 'cancel', ...args);
-        const canvasAgentPromptSourceLabel = (...args) => call('canvasAgentPromptSourceLabel', '', ...args);
-        const canvasAgentReferenceFacts = (...args) => call('canvasAgentReferenceFacts', [], ...args);
-        const canvasAgentModelStatusLabel = (...args) => call('canvasAgentModelStatusLabel', '', ...args);
-        const canvasAgentPresetDecisionOptions = (...args) => call('canvasAgentPresetDecisionOptions', [], ...args);
-        const canvasAgentPromptDecisionField = (...args) => call('canvasAgentPromptDecisionField', {}, ...args);
-        const canvasAgentPromptFromDecision = (...args) => call('canvasAgentPromptFromDecision', fallback => fallback, ...args);
-        const findCanvasAgentPresetEntryByAlias = (...args) => call('findCanvasAgentPresetEntryByAlias', null, ...args);
-        const addPresetNode = (...args) => call('addPresetNode', null, ...args);
-        const addQwenTtsNode = (...args) => call('addQwenTtsNode', null, ...args);
-        const qwenTtsModeLabel = (...args) => call('qwenTtsModeLabel', '', ...args);
-        const markCanvasAgentCreatedNode = (...args) => call('markCanvasAgentCreatedNode', node => node, ...args);
-        const canvasAgentWorkflowPresetPosition = (...args) => call('canvasAgentWorkflowPresetPosition', {}, ...args);
-        const prepareCanvasAgentGenerator = (...args) => call('prepareCanvasAgentGenerator', false, ...args);
-        const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
-        const getCanvasAgentRewriteModel = (...args) => call('getCanvasAgentRewriteModel', '', ...args);
-        const runQwenTtsNode = (...args) => call('runQwenTtsNode', null, ...args);
-        const runPresetNode = (...args) => call('runPresetNode', null, ...args);
-        const clearCanvasAgentRunInfo = (...args) => call('clearCanvasAgentRunInfo', null, ...args);
-        const canvasAgentShortNodeLabel = (...args) => call('canvasAgentShortNodeLabel', '', ...args);
-        const previewCanvasAgentMediaInputSlot = (...args) => call('previewCanvasAgentMediaInputSlot', null, ...args);
-        const applyCanvasAgentPromptToGenerator = (...args) => call('applyCanvasAgentPromptToGenerator', null, ...args);
-        const findCanvasAgentUploadSlotForTarget = (...args) => call('findCanvasAgentUploadSlotForTarget', '', ...args);
-        const createUploadEdge = (...args) => call('createUploadEdge', null, ...args);
-        const applyCanvasAgentResolutionToGenerator = (...args) => call('applyCanvasAgentResolutionToGenerator', null, ...args);
-        const canvasAgentRunNodeSelection = (...args) => call('canvasAgentRunNodeSelection', null, ...args);
+        const scope = context?.audioWorkflowSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const presetSource = scope.presetSource || {};
+        const promptSource = scope.promptSource || {};
+        const targetSource = scope.targetSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const generatorSource = scope.generatorSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const stateSource = scope.stateSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const normalizePresetName = typeof presetSource.normalizePresetName === 'function'
+            ? presetSource.normalizePresetName
+            : (value => String(value || '').trim());
+        const chooseCanvasAgentPresetEntry = (...args) => call(presetSource, 'chooseCanvasAgentPresetEntry', { entry: null, checked: [] }, ...args);
+        const resolveCanvasAgentPrompt = (...args) => call(promptSource, 'resolveCanvasAgentPrompt', null, ...args);
+        const resetCanvasAgentRunInfo = (...args) => call(stateSource, 'resetCanvasAgentRunInfo', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(stateSource, 'setCanvasAgentMessage', null, ...args);
+        const showToast = (...args) => call(stateSource, 'showToast', null, ...args);
+        const getCanvasAgentPrimaryMediaNode = (...args) => call(targetSource, 'getCanvasAgentPrimaryMediaNode', null, ...args);
+        const isCanvasAgentAudioTarget = (...args) => call(targetSource, 'isCanvasAgentAudioTarget', false, ...args);
+        const askCanvasAgentDecision = (...args) => call(decisionSource, 'askCanvasAgentDecision', 'cancel', ...args);
+        const canvasAgentPromptSourceLabel = (...args) => call(promptSource, 'canvasAgentPromptSourceLabel', '', ...args);
+        const canvasAgentReferenceFacts = (...args) => call(promptSource, 'canvasAgentReferenceFacts', [], ...args);
+        const canvasAgentModelStatusLabel = (...args) => call(promptSource, 'canvasAgentModelStatusLabel', '', ...args);
+        const canvasAgentPresetDecisionOptions = (...args) => call(promptSource, 'canvasAgentPresetDecisionOptions', [], ...args);
+        const canvasAgentPromptDecisionField = (...args) => call(promptSource, 'canvasAgentPromptDecisionField', {}, ...args);
+        const canvasAgentPromptFromDecision = (...args) => call(promptSource, 'canvasAgentPromptFromDecision', fallback => fallback, ...args);
+        const findCanvasAgentPresetEntryByAlias = (...args) => call(presetSource, 'findCanvasAgentPresetEntryByAlias', null, ...args);
+        const addPresetNode = (...args) => call(presetSource, 'addPresetNode', null, ...args);
+        const addQwenTtsNode = (...args) => call(presetSource, 'addQwenTtsNode', null, ...args);
+        const qwenTtsModeLabel = (...args) => call(presetSource, 'qwenTtsModeLabel', '', ...args);
+        const markCanvasAgentCreatedNode = (...args) => call(presetSource, 'markCanvasAgentCreatedNode', node => node, ...args);
+        const canvasAgentWorkflowPresetPosition = (...args) => call(presetSource, 'canvasAgentWorkflowPresetPosition', {}, ...args);
+        const prepareCanvasAgentGenerator = (...args) => call(generatorSource, 'prepareCanvasAgentGenerator', false, ...args);
+        const setCanvasAgentRunInfo = (...args) => call(stateSource, 'setCanvasAgentRunInfo', null, ...args);
+        const getCanvasAgentRewriteModel = (...args) => call(promptSource, 'getCanvasAgentRewriteModel', '', ...args);
+        const runQwenTtsNode = (...args) => call(runtimeSource, 'runQwenTtsNode', null, ...args);
+        const runPresetNode = (...args) => call(runtimeSource, 'runPresetNode', null, ...args);
+        const clearCanvasAgentRunInfo = (...args) => call(stateSource, 'clearCanvasAgentRunInfo', null, ...args);
+        const canvasAgentShortNodeLabel = (...args) => call(targetSource, 'canvasAgentShortNodeLabel', '', ...args);
+        const previewCanvasAgentMediaInputSlot = (...args) => call(mediaSource, 'previewCanvasAgentMediaInputSlot', null, ...args);
+        const applyCanvasAgentPromptToGenerator = (...args) => call(generatorSource, 'applyCanvasAgentPromptToGenerator', null, ...args);
+        const findCanvasAgentUploadSlotForTarget = (...args) => call(mediaSource, 'findCanvasAgentUploadSlotForTarget', '', ...args);
+        const createUploadEdge = (...args) => call(mediaSource, 'createUploadEdge', null, ...args);
+        const applyCanvasAgentResolutionToGenerator = (...args) => call(generatorSource, 'applyCanvasAgentResolutionToGenerator', null, ...args);
+        const canvasAgentRunNodeSelection = (...args) => call(stateSource, 'canvasAgentRunNodeSelection', null, ...args);
 
         function setCanvasAgentAudioPresetUnavailableMessage(choice) {
             resetCanvasAgentRunInfo();

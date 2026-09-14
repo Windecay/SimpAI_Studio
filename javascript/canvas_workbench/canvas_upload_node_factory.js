@@ -2,11 +2,14 @@
     'use strict';
 
     function createCanvasUploadNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (prefix) => `${prefix}-node`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const scope = context?.uploadNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : (type) => type === 'video' ? { w: 360, h: 300 } : { w: 320, h: 260 };
 
         function buildOutputGalleryMediaNode(item, world, generationMetadata) {

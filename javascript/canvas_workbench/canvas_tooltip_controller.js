@@ -2,13 +2,16 @@
     'use strict';
 
     function createCanvasTooltipController(context) {
-        const scope = context || {};
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => scope.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
+        const scope = context?.tooltipSource || context || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const gestureSource = scope.gestureSource || {};
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const isCanvasPointerGestureActive = () => (
-            typeof scope.isCanvasPointerGestureActive === 'function'
-            && scope.isCanvasPointerGestureActive()
+            typeof gestureSource.isCanvasPointerGestureActive === 'function'
+            && gestureSource.isCanvasPointerGestureActive()
         );
         let tooltipEl = null;
         let tooltipTarget = null;

@@ -3,12 +3,36 @@
 
     function createCanvasBridgeTransportController(context) {
         const scope = context || {};
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const domSource = sourceObject('domSource');
+        const transportSource = sourceObject('transportSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const utilitySource = sourceObject('utilitySource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
         const bridgeRequests = new Map();
-        const getDocument = () => scope.document || (typeof document !== 'undefined' ? document : null);
-        const setValue = (...args) => typeof scope.setGradioTextboxValue === 'function' ? scope.setGradioTextboxValue(...args) : false;
-        const clickButton = (...args) => typeof scope.clickGradioButton === 'function' ? scope.clickGradioButton(...args) : false;
-        const setTimer = (...args) => typeof scope.setTimeout === 'function' ? scope.setTimeout(...args) : setTimeout(...args);
-        const clearTimer = (...args) => typeof scope.clearTimeout === 'function' ? scope.clearTimeout(...args) : clearTimeout(...args);
+        const getDocument = () => sourceCall(
+            domSource,
+            'getDocument',
+            typeof document !== 'undefined' ? document : null
+        );
+        const setValue = (...args) => sourceCall(transportSource, 'setGradioTextboxValue', false, ...args);
+        const clickButton = (...args) => sourceCall(transportSource, 'clickGradioButton', false, ...args);
+        const setTimer = (...args) => {
+            if (typeof runtimeSource.setTimeout === 'function') return runtimeSource.setTimeout(...args);
+            return setTimeout(...args);
+        };
+        const clearTimer = (...args) => {
+            if (typeof runtimeSource.clearTimeout === 'function') return runtimeSource.clearTimeout(...args);
+            return clearTimeout(...args);
+        };
+        const getNow = () => Number(sourceCall(runtimeSource, 'now', Date.now()));
+        const hasTransport = () => typeof transportSource.setGradioTextboxValue === 'function'
+            && typeof transportSource.clickGradioButton === 'function';
 
         function isCanvasBridgeReady() {
             const doc = getDocument();
@@ -17,8 +41,7 @@
                 && doc.getElementById?.('canvas_workbench_request')
                 && doc.getElementById?.('canvas_workbench_response')
                 && doc.getElementById?.('canvas_workbench_bridge_btn')
-                && typeof scope.setGradioTextboxValue === 'function'
-                && typeof scope.clickGradioButton === 'function'
+                && hasTransport()
             );
         }
 
@@ -51,14 +74,14 @@
             if (!isCanvasBridgeReady()) {
                 return Promise.resolve({ ok: false, error: 'canvas bridge not ready' });
             }
-            const requestId = typeof scope.uid === 'function'
-                ? scope.uid('canvas_req')
-                : `canvas_req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            const requestId = typeof utilitySource.uid === 'function'
+                ? utilitySource.uid('canvas_req')
+                : `canvas_req_${getNow()}_${Math.random().toString(36).slice(2)}`;
             const body = JSON.stringify({
                 request_id: requestId,
                 action,
                 payload: payload || {},
-                t: Date.now()
+                t: getNow()
             });
             return new Promise((resolve) => {
                 const timer = setTimer(() => {

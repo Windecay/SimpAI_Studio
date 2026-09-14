@@ -2,19 +2,25 @@
     'use strict';
 
     function createCanvasXyzMatrixNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const defaultNodeSize = typeof scope.defaultNodeSize === 'function'
-            ? scope.defaultNodeSize
+        const scope = context?.xyzMatrixNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const languageSource = scope.languageSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const scriptSource = scope.scriptSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
+            ? layoutSource.defaultNodeSize
             : () => ({ w: 700, h: 520 });
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => value ?? fallback);
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const defaultScript = scope.script || '';
+        const defaultScript = scriptSource.script || '';
 
         function objectOrEmpty(value) {
             return value && typeof value === 'object' && !Array.isArray(value) ? value : {};

@@ -20,73 +20,72 @@
 
     function createCanvasWorkbenchInputPreviewContext(source) {
         const scope = source || {};
+        const tooltipSource = scope.tooltipSource || {};
+        const hoverPreviewSource = scope.hoverPreviewSource || {};
+        const previewSelectSource = scope.previewSelectSource || {};
+        const danbooruAutocompleteSource = scope.danbooruAutocompleteSource || {};
+        const scrollSource = scope.scrollSource || {};
+        const scrollPreviewSource = scrollSource.previewSource || {};
+        const scrollDanbooruSource = scrollSource.danbooruSource || {};
         const controllers = {};
 
-        controllers.tooltip = createController(modules.tooltip, 'createCanvasTooltipController', {
-            document: scope.getDocument?.(),
-            window: scope.getWindow?.(),
-            getRoot: scope.getRoot,
-            isCanvasPointerGestureActive: scope.isCanvasPointerGestureActive
-        });
+        controllers.tooltip = createController(
+            modules.tooltip,
+            'createCanvasTooltipController',
+            tooltipSource
+        );
         const tooltipMethod = name => method(controllers.tooltip, name);
 
-        controllers.hoverPreview = createController(modules.hoverPreview, 'createCanvasHoverPreviewController', {
-            document: scope.getDocument?.(),
-            window: scope.getWindow?.(),
-            getRoot: scope.getRoot,
-            getNodesLayer: scope.getNodesLayer,
-            getNode: scope.getNode,
-            getSystemParams: scope.getSystemParams,
-            isCanvasPointerGestureActive: scope.isCanvasPointerGestureActive,
-            escapeHtml: scope.escapeHtml,
-            t: scope.t,
-            workbenchStaticFilePath: scope.workbenchStaticFilePath,
-            fetch: scope.fetch,
-            Image: scope.Image,
-            hideCanvasTooltip: (...args) => tooltipMethod('hideCanvasTooltip')?.(...args)
-        });
+        controllers.hoverPreview = createController(
+            modules.hoverPreview,
+            'createCanvasHoverPreviewController',
+            Object.assign({}, hoverPreviewSource, {
+                tooltipSource: Object.assign({}, hoverPreviewSource.tooltipSource || {}, {
+                    hideCanvasTooltip: (...args) => tooltipMethod('hideCanvasTooltip')?.(...args)
+                })
+            })
+        );
         const hoverPreviewMethod = name => method(controllers.hoverPreview, name);
 
-        controllers.previewSelect = createController(modules.previewSelect, 'createCanvasPreviewSelectController', {
-            document: scope.getDocument?.(),
-            window: scope.getWindow?.(),
-            getRoot: scope.getRoot,
-            escapeHtml: scope.escapeHtml,
-            breakablePreviewText: (...args) => hoverPreviewMethod('breakablePreviewText')?.(...args)
-                ?? (typeof scope.escapeHtml === 'function' ? scope.escapeHtml(...args) : String(args[0] ?? '')),
-            hideHoverPreview: (...args) => hoverPreviewMethod('hideHoverPreview')?.(...args)
-        });
+        controllers.previewSelect = createController(
+            modules.previewSelect,
+            'createCanvasPreviewSelectController',
+            Object.assign({}, previewSelectSource, {
+                utilitySource: Object.assign({}, previewSelectSource.utilitySource || {}, {
+                    breakablePreviewText: (...args) => hoverPreviewMethod('breakablePreviewText')?.(...args)
+                        ?? (typeof previewSelectSource.utilitySource?.escapeHtml === 'function'
+                            ? previewSelectSource.utilitySource.escapeHtml(...args)
+                            : String(args[0] ?? ''))
+                }),
+                hoverPreviewSource: Object.assign({}, previewSelectSource.hoverPreviewSource || {}, {
+                    hideHoverPreview: (...args) => hoverPreviewMethod('hideHoverPreview')?.(...args)
+                })
+            })
+        );
         const previewSelectMethod = name => method(controllers.previewSelect, name);
 
         controllers.danbooruAutocomplete = createController(
             modules.danbooruAutocomplete,
             'createCanvasDanbooruAutocompleteController',
-            {
-                danbooruAutocomplete: scope.danbooruAutocomplete,
-                document: scope.getDocument?.(),
-                window: scope.getWindow?.(),
-                getRoot: scope.getRoot,
-                escapeHtml: scope.escapeHtml,
-                t: scope.t,
-                maybeShowRuntimeNotice: scope.maybeShowRuntimeNotice,
-                dispatchTextControlInput: scope.dispatchTextControlInput
-            }
+            danbooruAutocompleteSource
         );
         const danbooruMethod = name => method(controllers.danbooruAutocomplete, name);
 
-        controllers.scroll = createController(modules.scroll, 'createCanvasScrollController', {
-            isPreviewSelectMenuOpen: (...args) => previewSelectMethod('isPreviewSelectMenuOpen')?.(...args),
-            previewSelectMenuContains: (...args) => previewSelectMethod('previewSelectMenuContains')?.(...args),
-            closePreviewSelectMenu: (...args) => previewSelectMethod('closePreviewSelectMenu')?.(...args),
-            updateVlmChatJumpButton: scope.updateVlmChatJumpButton,
-            mediaBrowserShouldAutoLoadMore: scope.mediaBrowserShouldAutoLoadMore,
-            getNode: scope.getNode,
-            mediaBrowserRuntimeFor: scope.mediaBrowserRuntimeFor,
-            loadMoreMediaBrowserNode: scope.loadMoreMediaBrowserNode,
-            hasDanbooruAutocompleteField: (...args) => danbooruMethod('hasActiveField')?.(...args),
-            positionDanbooruAutocompleteDropdown: (...args) => danbooruMethod('positionDanbooruAutocompleteDropdown')?.(...args),
-            warn: scope.warn
-        });
+        controllers.scroll = createController(
+            modules.scroll,
+            'createCanvasScrollController',
+            Object.assign({}, scrollSource, {
+                previewSource: Object.assign({}, scrollPreviewSource, {
+                    isPreviewSelectMenuOpen: (...args) => previewSelectMethod('isPreviewSelectMenuOpen')?.(...args),
+                    previewSelectMenuContains: (...args) => previewSelectMethod('previewSelectMenuContains')?.(...args),
+                    closePreviewSelectMenu: (...args) => previewSelectMethod('closePreviewSelectMenu')?.(...args)
+                }),
+                danbooruSource: Object.assign({}, scrollDanbooruSource, {
+                    hasDanbooruAutocompleteField: (...args) => danbooruMethod('hasActiveField')?.(...args),
+                    positionDanbooruAutocompleteDropdown: (...args) => danbooruMethod('positionDanbooruAutocompleteDropdown')?.(...args)
+                })
+            })
+        );
         const scrollMethod = name => method(controllers.scroll, name);
 
         return {

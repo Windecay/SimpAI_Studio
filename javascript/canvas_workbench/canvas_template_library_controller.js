@@ -2,12 +2,87 @@
     'use strict';
 
     function createCanvasTemplateLibraryController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getTemplateMediaCategories = () => typeof scope.getTemplateMediaCategories === 'function'
-            ? scope.getTemplateMediaCategories()
-            : [];
+        const scope = context?.templateLibrarySource || context || {};
+        const languageSource = scope.languageSource || {};
+        const domSource = scope.domSource || {};
+        const viewSource = scope.viewSource || {};
+        const dataSource = scope.dataSource || {};
+        const apiSource = scope.apiSource || {};
+        const projectSource = scope.projectSource || {};
+        const storageSource = scope.storageSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const uiSource = scope.uiSource || {};
+        const dialogSource = scope.dialogSource || {};
+        const actionSource = scope.actionSource || {};
+        const assetSource = scope.assetSource || {};
+        const stateSource = scope.stateSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const diagnosticsSource = scope.diagnosticsSource || {};
+        const callbackSources = {
+            normalizeTemplateLibraryCategory: viewSource,
+            templateLibraryFilterState: viewSource,
+            templateCategoryLabel: viewSource,
+            renderTemplateCardHtml: viewSource,
+            renderTemplateLibraryHtml: viewSource,
+            renderSaveTemplateDialogHtml: viewSource,
+            renderTemplateWorkbenchIdDialogHtml: viewSource,
+            escapeHtml: viewSource,
+            getWorkbenchTemplateLibraryItems: dataSource,
+            loadWorkbenchTemplateData: dataSource,
+            invalidateTemplateLibraryItems: dataSource,
+            inferProjectTemplateModelDependency: dataSource,
+            getTemplateMediaCategories: dataSource,
+            normalizeTemplateMediaCategory: dataSource,
+            sendCanvasTemplateSaveRequest: apiSource,
+            sendCanvasTemplateDeleteRequest: apiSource,
+            getCurrentProject: projectSource,
+            getDefaultProjectId: projectSource,
+            sanitizeProject: projectSource,
+            createDefaultProject: projectSource,
+            setProject: projectSource,
+            getStorageScope: storageSource,
+            getStorageKey: storageSource,
+            setActiveBrowserCacheProject: storageSource,
+            saveProject: persistenceSource,
+            compactProjectForStorage: persistenceSource,
+            getDefaultSettings: persistenceSource,
+            buildProjectStorageInfo: persistenceSource,
+            closeContextMenu: uiSource,
+            closeCanvasSettingsPanel: uiSource,
+            detectWorkbenchTheme: uiSource,
+            showToast: uiSource,
+            isTemplateLibraryModalConnected: uiSource,
+            requestCanvasConfirmDialog: dialogSource,
+            saveCurrentCanvasAsTemplate: actionSource,
+            deleteUserWorkbenchTemplate: actionSource,
+            createWorkbenchFromTemplate: actionSource,
+            syncCanvasProjectAssetRoot: assetSource,
+            resetRenderedProjectDomCache: assetSource,
+            refreshCanvasProjectAssetRoot: assetSource,
+            setBackendLoadedStorageKey: stateSource,
+            resetSelectionState: stateSource,
+            resetHistory: stateSource,
+            mutate: stateSource,
+            resetGalleryFrostReveals: stateSource,
+            sanitizeStoragePart: utilitySource,
+            cloneRunValue: utilitySource,
+            nowIso: utilitySource,
+            warn: diagnosticsSource
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
+        const getTemplateMediaCategories = () => call('getTemplateMediaCategories', [], []);
+        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
+        const warn = (...args) => {
+            if (typeof diagnosticsSource.warn === 'function') {
+                diagnosticsSource.warn(...args);
+                return;
+            }
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn(...args);
+        };
         const findItem = (modal, key) => (modal?.__saiTemplateItems || []).find((candidate) => (candidate.key || candidate.id) === key || candidate.id === key);
         let templateWorkbenchCreationSequence = 0;
         let templateLibraryRefreshSequence = 0;
@@ -41,7 +116,7 @@
         function closeTemplateLibrary() {
             cancelTemplateWorkbenchCreation();
             cancelTemplateLibraryRefresh();
-            const doc = scope.document || (typeof document !== 'undefined' ? document : null);
+            const doc = getDocument();
             const existing = doc?.querySelector?.('.sai-template-library-modal');
             if (existing) existing.remove?.();
         }
@@ -51,7 +126,7 @@
             call('closeContextMenu', null);
             call('closeCanvasSettingsPanel', null);
             const items = await call('getWorkbenchTemplateLibraryItems', [], {});
-            const doc = scope.document || (typeof document !== 'undefined' ? document : null);
+            const doc = getDocument();
             if (!doc?.createElement) return null;
             const modal = doc.createElement('div');
             const theme = call('detectWorkbenchTheme', '');
@@ -309,7 +384,7 @@
 
         function requestSaveTemplateDetails(options) {
             const config = options || {};
-            const doc = scope.document || (typeof document !== 'undefined' ? document : null);
+            const doc = getDocument();
             if (!doc?.createElement) return Promise.resolve(null);
             return new Promise((resolve) => {
                 const modal = doc.createElement('div');
@@ -345,7 +420,7 @@
 
         function requestTemplateWorkbenchId(options) {
             const config = options || {};
-            const doc = scope.document || (typeof document !== 'undefined' ? document : null);
+            const doc = getDocument();
             if (!doc?.createElement) return Promise.resolve(null);
             return new Promise((resolve) => {
                 const modal = doc.createElement('div');
@@ -414,8 +489,7 @@
             call('syncCanvasProjectAssetRoot', null, projectValue);
             call('resetRenderedProjectDomCache', null);
             Promise.resolve(call('refreshCanvasProjectAssetRoot', null, { render: false })).catch((err) => {
-                if (typeof scope.warn === 'function') scope.warn('[SimpAI Canvas] template asset root refresh skipped:', err);
-                else if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn('[SimpAI Canvas] template asset root refresh skipped:', err);
+                warn('[SimpAI Canvas] template asset root refresh skipped:', err);
             });
             call('setBackendLoadedStorageKey', null, '');
             call('resetSelectionState', null);

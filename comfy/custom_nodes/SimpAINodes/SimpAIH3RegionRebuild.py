@@ -89,7 +89,7 @@ class SimpAIH3RegionSource:
             "factor": ("INT", {"default": 2, "min": 1, "max": 4}),
             "width": ("INT", {"default": 864, "min": 32, "max": 8192}),
             "height": ("INT", {"default": 480, "min": 32, "max": 8192}),
-        }}
+        }, "optional": {"keep_source_size": ("BOOLEAN", {"default": False})}}
 
     RETURN_TYPES = ("H3_REGION", "IMAGE", "FLOAT", "FLOAT")
     RETURN_NAMES = ("region", "source_window", "source_fps", "interpolation_fps")
@@ -100,7 +100,7 @@ class SimpAIH3RegionSource:
     def IS_CHANGED(cls, video, **kwargs):
         return _file_hash(_resolve_video_path(video)), kwargs
 
-    def prepare(self, video, start, end, factor, width, height):
+    def prepare(self, video, start, end, factor, width, height, keep_source_size=False):
         path = _resolve_video_path(video)
         _, total, _, fps = _load_video_frames(
             path, metadata_only=True, load_audio=False, return_fps=True)
@@ -123,6 +123,9 @@ class SimpAIH3RegionSource:
             raise ValueError("Source frame count changed or the selected interval could not be decoded.")
         if count < data["input_frames"]:
             frames = torch.cat((frames, frames[-1:].repeat(data["input_frames"] - count, 1, 1, 1)))
+        if keep_source_size:
+            data.update(path=path, digest=_file_hash(path), width=frames.shape[2], height=frames.shape[1])
+            return data, frames, fps, float(data["rate"])
         scale = math.sqrt(width * height / (frames.shape[1] * frames.shape[2]))
         w, h = (max(32, round(n * scale / 32) * 32) for n in (frames.shape[2], frames.shape[1]))
         data.update(path=path, digest=_file_hash(path), width=w, height=h)
@@ -201,23 +204,31 @@ class SimpAIH3RegionCondition:
 class SimpAIH3RegionOutput:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"region": ("H3_REGION",), "images": ("IMAGE",)}}
+        return {"required": {"region": ("H3_REGION",), "images": ("IMAGE",)},
+                "optional": {"source_aligned": ("BOOLEAN", {"default": False})}}
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT")
     RETURN_NAMES = ("full_video", "original_audio", "source_fps")
     FUNCTION = "compose"
     CATEGORY = "SimpAI/MiniMax H3"
 
-    def compose(self, region, images):
+    def compose(self, region, images, source_aligned=False):
         data = region
-        if len(images) < data["length"]:
+        if source_aligned and len(images) != data["stop"] - data["begin"]:
+            raise ValueError("Refined frames must exactly match the selected source interval.")
+        if not source_aligned and len(images) < data["length"]:
             raise ValueError("The generated video is shorter than the requested H3 interval.")
         if _file_hash(data["path"]) != data["digest"]:
             raise ValueError("The source video changed during reconstruction.")
         source, count, audio, fps = _load_video_frames(data["path"], return_fps=True)
         if count != data["total"] or abs(fps - data["fps"]) > 1e-6:
             raise ValueError("The source timeline changed during reconstruction.")
-        core = _resize_images(images[restore_indices(data)], source.shape[2], source.shape[1])
+        if source_aligned:
+            if images.shape[1:] != source.shape[1:] or not torch.isfinite(images).all():
+                raise ValueError("Refined frames must have the original dimensions and finite pixels.")
+            core = images
+        else:
+            core = _resize_images(images[restore_indices(data)], source.shape[2], source.shape[1])
         source[data["begin"]:data["stop"]] = core.to(source)
         return source, audio, fps
 

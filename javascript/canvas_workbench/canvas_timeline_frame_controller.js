@@ -2,26 +2,45 @@
     'use strict';
 
     function createCanvasTimelineFrameController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.timelineFrameSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const renderSource = scope.renderSource || {};
+        const maskSource = scope.maskSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => call('getNode', null, id);
-        const getNodesLayer = () => call('getNodesLayer', null);
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const getNode = (id) => call(nodeSource, 'getNode', null, id);
+        const getNodesLayer = () => call(domSource, 'getNodesLayer', null);
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getTimelineSourceAsset = (source) => call('getTimelineSourceAsset', null, source) || {};
-        const assetMediaKind = (asset) => call('assetMediaKind', 'image', asset);
-        const assetDisplaySrc = (asset) => call('assetDisplaySrc', '', asset) || '';
-        const getMediaEditRange = (asset) => call('getMediaEditRange', { start: 0 }, asset) || { start: 0 };
+        const getTimelineSourceAsset = (source) => call(mediaSource, 'getTimelineSourceAsset', null, source) || {};
+        const assetMediaKind = (asset) => call(mediaSource, 'assetMediaKind', 'image', asset);
+        const assetDisplaySrc = (asset) => call(mediaSource, 'assetDisplaySrc', '', asset) || '';
+        const getMediaEditRange = (asset) => call(mediaSource, 'getMediaEditRange', { start: 0 }, asset) || { start: 0 };
+        const effectiveClipIn = (clip, asset) => {
+            const value = call(mediaSource, 'effectiveClipIn', undefined, clip, asset);
+            return value === undefined
+                ? Math.max(0, Number(clip?.in || 0), Number(getMediaEditRange(asset).start || 0))
+                : value;
+        };
         const loadImageElementForCanvas = (src) => {
-            if (typeof scope.loadImageElementForCanvas === 'function') return scope.loadImageElementForCanvas(src);
+            if (typeof mediaSource.loadImageElementForCanvas === 'function') return mediaSource.loadImageElementForCanvas(src);
             return Promise.reject(new Error('canvas image loader unavailable'));
         };
-        const cssEscape = (value) => call('cssEscape', String(value || ''), value);
+        const cssEscape = (value) => call(domSource, 'cssEscape', String(value || ''), value);
+        const clipMaskDataUrl = (clip) => {
+            const value = call(maskSource, 'clipMaskDataUrl', undefined, clip);
+            return value === undefined ? (clip?.mask?.data_url || clip?.mask_data_url || '') : value;
+        };
         const timelineClipLayerGeometry = (width, height, assetWidth, assetHeight, clip) => call(
+            renderSource,
             'timelineClipLayerGeometry',
             null,
             width,
@@ -76,9 +95,7 @@
             }
             const source = getNode(clip.source_node_id);
             const asset = getTimelineSourceAsset(source);
-            const effectiveIn = typeof scope.effectiveClipIn === 'function'
-                ? scope.effectiveClipIn(clip, asset)
-                : Math.max(0, Number(clip.in || 0), Number(getMediaEditRange(asset).start || 0));
+            const effectiveIn = effectiveClipIn(clip, asset);
             const rawTarget = effectiveIn + Number(node.params?.playhead || 0) - Number(clip.start || 0);
             const duration = Number.isFinite(video.duration) && video.duration > 0
                 ? video.duration
@@ -116,9 +133,7 @@
                     clip_id: clip.id,
                     ready_state: video?.readyState,
                     target_time: (() => {
-                        const effectiveIn = typeof scope.effectiveClipIn === 'function'
-                            ? scope.effectiveClipIn(clip, asset)
-                            : Math.max(0, Number(clip.in || 0), Number(getMediaEditRange(asset).start || 0));
+                        const effectiveIn = effectiveClipIn(clip, asset);
                         return effectiveIn + Number(node.params?.playhead || 0) - Number(clip.start || 0);
                     })()
                 });
@@ -145,7 +160,7 @@
         }
 
         function timelinePayloadLayerMap(node, payload) {
-            const sourcePayload = payload || call('serializeTimelineRenderPayload', null, node);
+            const sourcePayload = payload || call(renderSource, 'serializeTimelineRenderPayload', null, node);
             const layers = Array.isArray(sourcePayload?.layers) ? sourcePayload.layers : [];
             return new Map(layers.map(layer => [layer?.clip_id, layer]).filter(item => item[0]));
         }
@@ -170,7 +185,7 @@
 
         async function renderTimelinePreviewFrameDataUrl(node, options) {
             if (!node || node.type !== 'timeline') return '';
-            call('normalizeTimelineNode', undefined, node);
+            call(renderSource, 'normalizeTimelineNode', undefined, node);
             const doc = getDocument();
             if (!doc?.createElement) return '';
             const opts = options || {};
@@ -191,9 +206,7 @@
                 try {
                     const drawable = await getTimelineClipDrawable(node, clip);
                     if (!drawable?.media) continue;
-                    const maskSrc = typeof scope.clipMaskDataUrl === 'function'
-                        ? scope.clipMaskDataUrl(clip)
-                        : (clip.mask?.data_url || clip.mask_data_url || '');
+                    const maskSrc = clipMaskDataUrl(clip);
                     const layerCanvas = maskSrc ? doc.createElement('canvas') : null;
                     const layerCtx = layerCanvas ? layerCanvas.getContext('2d') : null;
                     if (layerCanvas) {

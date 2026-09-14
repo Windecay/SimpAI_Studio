@@ -15,6 +15,7 @@ velocity back, so _forward only ever sees the stream's own latent.
 """
 
 import math
+import logging
 
 import torch
 import torch.nn as nn
@@ -201,13 +202,34 @@ class Attention(nn.Module):
 
 
 class MLP(nn.Module):
+    chunk_tokens = 4096
+    _chunk_logged = False
+
     def __init__(self, hidden, ffn, dtype=None, device=None, operations=None):
         super().__init__()
         self.fc1 = operations.Linear(hidden, ffn * 2, bias=False, dtype=dtype, device=device)
         self.fc2 = operations.Linear(ffn, hidden, bias=False, dtype=dtype, device=device)
 
     def forward(self, x):
-        return comfy.ops.linear_input_act(self.fc2, self.fc1(x), "swiglu")
+        if x.ndim != 2 or x.shape[0] <= self.chunk_tokens or torch.is_grad_enabled():
+            return comfy.ops.linear_input_act(self.fc2, self.fc1(x), "swiglu")
+
+        if not MLP._chunk_logged:
+            logging.info(
+                "H3 MLP token chunking enabled: tokens=%d chunk_tokens=%d",
+                x.shape[0], self.chunk_tokens,
+            )
+            MLP._chunk_logged = True
+        # Only the output stays full-sized; expanded SwiGLU activations are per chunk.
+        output = None
+        for start in range(0, x.shape[0], self.chunk_tokens):
+            end = min(start + self.chunk_tokens, x.shape[0])
+            chunk = comfy.ops.linear_input_act(self.fc2, self.fc1(x[start:end]), "swiglu")
+            if output is None:
+                output = chunk.new_empty((x.shape[0], chunk.shape[-1]))
+            output[start:end].copy_(chunk)
+            del chunk
+        return output
 
 
 class AdalnProj(nn.Module):

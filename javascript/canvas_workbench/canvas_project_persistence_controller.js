@@ -2,9 +2,77 @@
     'use strict';
 
     function createCanvasProjectPersistenceController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.projectPersistenceSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const projectSource = scope.projectSource || {};
+        const storageSource = scope.storageSource || {};
+        const patchSource = scope.patchSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const backendSource = scope.backendSource || {};
+        const assetSource = scope.assetSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const historySource = scope.historySource || {};
+        const renderSource = scope.renderSource || {};
+        const domSource = scope.domSource || {};
+        const modelSource = scope.modelSource || {};
+        const uiSource = scope.uiSource || {};
+        const timeSource = scope.timeSource || {};
+        const callbackSources = {
+            getProject: projectSource,
+            setProject: projectSource,
+            getDefaultProjectId: projectSource,
+            getBackendLoadedStorageKey: projectSource,
+            setBackendLoadedStorageKey: projectSource,
+            isProjectEmpty: projectSource,
+            sanitizeProject: projectSource,
+            createDefaultProject: projectSource,
+            loadProject: projectSource,
+            getStorage: storageSource,
+            getStorageScope: storageSource,
+            getCurrentStorageScope: storageSource,
+            getStorageKey: storageSource,
+            getStorageBaseKey: storageSource,
+            setStorageScope: storageSource,
+            setStorageBaseKey: storageSource,
+            setStorageKey: storageSource,
+            initialBrowserStorageKey: storageSource,
+            browserCacheProjectScope: storageSource,
+            setActiveBrowserCacheProject: storageSource,
+            buildProjectStorageInfoPatch: patchSource,
+            buildProjectUpdatedAtPatch: patchSource,
+            buildProjectStoragePatch: patchSource,
+            projectStoreBuildProjectStorageInfo: patchSource,
+            compactProjectForStorage: serializationSource,
+            sendCanvasProjectSaveRequest: backendSource,
+            sendCanvasProjectLoadRequest: backendSource,
+            isCanvasBridgeReady: backendSource,
+            bindCanvasBridgeResponseListener: backendSource,
+            sendCanvasBridgeRequest: backendSource,
+            materializeInlineProjectAssets: assetSource,
+            syncCanvasProjectAssetRoot: assetSource,
+            setCanvasProjectAssetRoot: assetSource,
+            resetSelectionState: selectionSource,
+            resetHistory: historySource,
+            resetRenderedProjectDomCache: renderSource,
+            renderAll: renderSource,
+            resetGalleryFrostReveals: renderSource,
+            getRoot: domSource,
+            scheduleAutoPresetModelChecks: modelSource,
+            renderStatus: uiSource,
+            showToast: uiSource,
+            warn: uiSource,
+            nowIso: timeSource
+        };
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
+        const warn = typeof uiSource.warn === 'function'
+            ? uiSource.warn
+            : (...args) => {
+                if (typeof console !== 'undefined' && console.warn) console.warn(...args);
+            };
 
         function getProject() {
             return call('getProject', {}, []) || {};
@@ -75,7 +143,7 @@
                 reason: ''
             };
             if (opts.force) return Object.assign(base, { reason: 'force_load' });
-            const emptyCheck = typeof scope.isProjectEmpty === 'function' ? scope.isProjectEmpty : projectIsEmpty;
+            const emptyCheck = typeof projectSource.isProjectEmpty === 'function' ? projectSource.isProjectEmpty : projectIsEmpty;
             if (emptyCheck(local)) return Object.assign(base, { reason: 'local_empty' });
             const localWeight = projectContentWeight(local);
             const incomingWeight = projectContentWeight(incoming);
@@ -111,9 +179,8 @@
                 migrated: !!migrated
             });
             if (factoryPatch && typeof factoryPatch === 'object') return factoryPatch;
-            if (typeof scope.projectStoreBuildProjectStorageInfo === 'function') {
-                return scope.projectStoreBuildProjectStorageInfo(key, nextScope, migrated);
-            }
+            const projectStorePatch = call('projectStoreBuildProjectStorageInfo', null, key, nextScope, migrated);
+            if (projectStorePatch && typeof projectStorePatch === 'object') return projectStorePatch;
             return {
                 kind: 'browser_local_storage_cache',
                 key,
@@ -160,8 +227,7 @@
             } catch (err) {
                 lastError = err;
             }
-            if (typeof scope.warn === 'function') scope.warn('[SimpAI Canvas] browser cache save failed after compaction:', lastError);
-            else if (typeof console !== 'undefined' && console.warn) console.warn('[SimpAI Canvas] browser cache save failed after compaction:', lastError);
+            warn('[SimpAI Canvas] browser cache save failed after compaction:', lastError);
             return false;
         }
 
@@ -249,8 +315,7 @@
                 call('renderStatus', null, []);
                 return true;
             } catch (err) {
-                if (typeof scope.warn === 'function') scope.warn('[SimpAI Canvas] save failed:', err);
-                else if (typeof console !== 'undefined' && console.warn) console.warn('[SimpAI Canvas] save failed:', err);
+                warn('[SimpAI Canvas] save failed:', err);
                 if (!silent) call('showToast', null, t('Save failed: neither directory nor browser cache was confirmed.', '保存失败：目录和浏览器缓存都未确认成功'));
                 return false;
             }
@@ -272,7 +337,7 @@
                     applyProjectStorage(currentProject, buildProjectStorageInfo(currentStorageKey, currentStorageScope));
                     saveProjectToBrowserCache({ reason: 'storage_scope_switch_save_current' });
                 } catch (err) {
-                    if (typeof scope.warn === 'function') scope.warn('[SimpAI Canvas] failed to save before scope switch:', err);
+                    warn('[SimpAI Canvas] failed to save before scope switch:', err);
                 }
             }
 

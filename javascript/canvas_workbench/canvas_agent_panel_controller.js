@@ -2,37 +2,60 @@
     'use strict';
 
     function createCanvasAgentPanelController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const escapeHtml = scope.escapeHtml || (value => String(value ?? ''));
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getMaxImageReferences = () => Number(call('getMaxImageReferences', 0) || 0);
-        const getMaxVideoReferences = () => Number(call('getMaxVideoReferences', 0) || 0);
-        const getMaxAudioReferences = () => Number(call('getMaxAudioReferences', 0) || 0);
-        const getAgentState = () => call('getAgentState', {}) || {};
-        const getCanvasAgentPanel = () => call('getCanvasAgentPanel', null);
-        const getViewport = () => call('getViewport', null);
-        const getWorkbenchRoot = () => call('getWorkbenchRoot', null);
-        const getCanvasAgentSettings = () => call('getCanvasAgentSettings', {}) || {};
-        const getCanvasAgentTargetNode = () => call('getCanvasAgentTargetNode', null);
-        const getProject = () => call('getProject', {}) || {};
-        const getNodeRect = (...args) => call('getNodeRect', null, ...args);
-        const getOutpaintOverlayState = () => call('getOutpaintOverlayState', {}) || {};
-        const getCanvasAgentReferenceCounts = () => call('canvasAgentReferenceCounts', {}) || {};
-        const normalizeCanvasAgentReferences = () => call('normalizeCanvasAgentReferences', []) || [];
-        const getCanvasAgentPrimaryActionMeta = (...args) => call('canvasAgentPrimaryActionMeta', {}, ...args) || {};
-        const canvasAgentTargetLabel = (...args) => call('canvasAgentTargetLabel', '', ...args);
-        const renderOutpaintControlPanel = () => call('renderOutpaintControlPanel', '') || '';
-        const ensureOutpaintOverlayMatchesAgentTarget = (...args) => call('ensureOutpaintOverlayMatchesAgentTarget', null, ...args);
-        const ensureWorkbenchFormFieldNames = (...args) => call('ensureWorkbenchFormFieldNames', null, ...args);
-        const renderView = (name, ...args) => call(name, '', ...args) || '';
-        const setCanvasAgentLayoutPatch = (...args) => call('setCanvasAgentLayoutPatch', null, ...args);
-        const setCanvasAgentResolutionOpen = (...args) => call('setCanvasAgentResolutionOpen', null, ...args);
-        const setCanvasAgentSuppressClickUntil = (...args) => call('setCanvasAgentSuppressClickUntil', null, ...args);
-        const clamp = scope.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-        const requestRenderCanvasAgentPanel = () => call('renderCanvasAgentPanel', null);
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const schedule = typeof scope.setTimeout === 'function' ? scope.setTimeout : globalThis.setTimeout;
+        const scope = context?.panelControllerSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const utilitySource = scope.utilitySource || {};
+        const capacitySource = scope.capacitySource || {};
+        const stateSource = scope.stateSource || {};
+        const domSource = scope.domSource || {};
+        const settingsSource = scope.settingsSource || {};
+        const targetSource = scope.targetSource || {};
+        const projectSource = scope.projectSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const outpaintSource = scope.outpaintSource || {};
+        const formSource = scope.formSource || {};
+        const renderSource = scope.renderSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const uiSource = scope.uiSource || {};
+        const instructionSource = scope.instructionSource || {};
+        const customApiSource = scope.customApiSource || {};
+        const toolSource = scope.toolSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
+        const clamp = utilitySource.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const getMaxImageReferences = () => Number(call(capacitySource, 'getMaxImageReferences', 0) || 0);
+        const getMaxVideoReferences = () => Number(call(capacitySource, 'getMaxVideoReferences', 0) || 0);
+        const getMaxAudioReferences = () => Number(call(capacitySource, 'getMaxAudioReferences', 0) || 0);
+        const getAgentState = () => call(stateSource, 'getAgentState', {}) || {};
+        const getCanvasAgentPanel = () => call(domSource, 'getCanvasAgentPanel', null);
+        const getViewport = () => call(domSource, 'getViewport', null);
+        const getWorkbenchRoot = () => call(domSource, 'getWorkbenchRoot', null);
+        const getCanvasAgentSettings = () => call(settingsSource, 'getCanvasAgentSettings', {}) || {};
+        const getCanvasAgentTargetNode = () => call(targetSource, 'getCanvasAgentTargetNode', null);
+        const getProject = () => call(projectSource, 'getProject', {}) || {};
+        const getNodeRect = (...args) => call(layoutSource, 'getNodeRect', null, ...args);
+        const getOutpaintOverlayState = () => call(settingsSource, 'getOutpaintOverlayState', {}) || {};
+        const getCanvasAgentReferenceCounts = () => call(referenceSource, 'canvasAgentReferenceCounts', {}) || {};
+        const normalizeCanvasAgentReferences = (...args) => call(referenceSource, 'normalizeCanvasAgentReferences', [], ...args) || [];
+        const getCanvasAgentPrimaryActionMeta = (...args) => call(targetSource, 'canvasAgentPrimaryActionMeta', {}, ...args) || {};
+        const canvasAgentTargetLabel = (...args) => call(targetSource, 'canvasAgentTargetLabel', '', ...args);
+        const renderOutpaintControlPanel = () => call(outpaintSource, 'renderOutpaintControlPanel', '') || '';
+        const ensureOutpaintOverlayMatchesAgentTarget = (...args) => call(outpaintSource, 'ensureOutpaintOverlayMatchesAgentTarget', null, ...args);
+        const syncOutpaintOverlayPosition = (...args) => call(outpaintSource, 'syncOutpaintOverlayPosition', null, ...args);
+        const ensureWorkbenchFormFieldNames = (...args) => call(formSource, 'ensureWorkbenchFormFieldNames', null, ...args);
+        const renderView = (name, ...args) => call(renderSource, name, '', ...args) || '';
+        const setCanvasAgentLayoutPatch = (...args) => call(settingsSource, 'setCanvasAgentLayoutPatch', null, ...args);
+        const setCanvasAgentResolutionOpen = (...args) => call(settingsSource, 'setCanvasAgentResolutionOpen', null, ...args);
+        const setCanvasAgentResolutionPatch = (...args) => call(settingsSource, 'setCanvasAgentResolutionPatch', null, ...args);
+        const setCanvasAgentSuppressClickUntil = (...args) => call(domSource, 'setCanvasAgentSuppressClickUntil', null, ...args);
+        const requestRenderCanvasAgentPanel = () => call(renderSource, 'renderCanvasAgentPanel', null);
+        const nowIso = identitySource.nowIso || (() => new Date().toISOString());
+        const schedule = identitySource.setTimeout || globalThis.setTimeout;
         let dragState = null;
         const escapeSelector = (value) => {
             const text = String(value ?? '');
@@ -41,7 +64,7 @@
         };
 
         function applyCanvasAgentDecisionFormPatch(decision, formPatch) {
-            const patch = call('buildAgentDecisionFormPatch', null, decision, { formPatch });
+            const patch = call(decisionSource, 'buildAgentDecisionFormPatch', null, decision, { formPatch });
             if (patch && typeof patch === 'object' && patch.form
                 && typeof patch.form === 'object' && !Array.isArray(patch.form)) {
                 Object.assign(decision, patch);
@@ -117,10 +140,10 @@
             if (state.pendingDecision && typeof state.pendingDecision.resolve === 'function') {
                 state.pendingDecision.resolve('cancel');
             }
-            call('revealCanvasAgentPanelForToolCard', null);
+            call(uiSource, 'revealCanvasAgentPanelForToolCard', null);
             return new Promise((resolve) => {
                 state.pendingDecision = {
-                    id: call('uid', `agent_decision_${Date.now()}`),
+                    id: call(identitySource, 'uid', `agent_decision_${Date.now()}`),
                     title: options.title || t('Agent confirmation', 'Agent 确认'),
                     message: options.message || '',
                     details: options.details || '',
@@ -144,10 +167,10 @@
             if (!decision || !decision.form || typeof decision.form !== 'object') return;
             const promptKey = decision.promptField || 'prompt';
             if (!promptKey || !decision.promptPresetField) return;
-            const route = call('decodeCanvasAgentVideoToolChoice', { preset: presetName }, presetName);
-            const entry = call('findCanvasAgentPresetEntryByAlias', null, route.preset || presetName);
+            const route = call(decisionSource, 'decodeCanvasAgentVideoToolChoice', { preset: presetName }, presetName);
+            const entry = call(decisionSource, 'findCanvasAgentPresetEntryByAlias', null, route.preset || presetName);
             if (!entry) return;
-            const nextPrompt = call('canvasAgentPresetDefaultPromptForTheme', '', entry, route.theme || '', decision.promptFallback || '');
+            const nextPrompt = call(decisionSource, 'canvasAgentPresetDefaultPromptForTheme', '', entry, route.theme || '', decision.promptFallback || '');
             if (!nextPrompt) return;
             const currentPrompt = String(decision.form[promptKey] || '').trim();
             const autoPrompt = String(decision.promptAutoValue || '').trim();
@@ -219,7 +242,7 @@
 </button>`;
                 ensureWorkbenchFormFieldNames(panel, 'canvas_agent');
                 positionCanvasAgentPanel();
-                call('syncOutpaintOverlayPosition', null);
+                syncOutpaintOverlayPosition();
                 return;
             }
             const composerBody = `
@@ -271,19 +294,19 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
             const state = getAgentState();
             if (action === 'open-settings') {
                 state.modelPickerOpen = false;
-                call('openCanvasSettingsPanel', null, 'agent');
+                call(uiSource, 'openCanvasSettingsPanel', null, 'agent');
                 return true;
             }
             if (action === 'cancel-vlm-plan') {
-                const result = await call('cancelCanvasAgentVlmInstruction', { ok: false, cancelled: false });
+                const result = await call(instructionSource, 'cancelCanvasAgentVlmInstruction', { ok: false, cancelled: false });
                 if (result?.cancel_error) {
-                    call('showToast', null, t('The VLM request was stopped, but the backend may still be finishing cleanup.', 'VLM 请求已停止，但后端可能仍在完成清理。'));
+                    call(uiSource, 'showToast', null, t('The VLM request was stopped, but the backend may still be finishing cleanup.', 'VLM 请求已停止，但后端可能仍在完成清理。'));
                 }
                 return true;
             }
             const settings = getCanvasAgentSettings();
             if (!settings.enabled) {
-                call('showToast', null, t('Canvas Agent is disabled in Settings.', '画布 Agent 已在设置中关闭'));
+                call(uiSource, 'showToast', null, t('Canvas Agent is disabled in Settings.', '画布 Agent 已在设置中关闭'));
                 return true;
             }
             if (String(action || '').startsWith('decision:')) {
@@ -315,7 +338,7 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
             }
             if (action === 'fetch-agent-custom-models-inline') {
                 state.modelPickerOpen = true;
-                await call('fetchCanvasAgentCustomModels', null);
+                await call(customApiSource, 'fetchCanvasAgentCustomModels', null);
                 return true;
             }
             if (action === 'toggle-resolution-picker') {
@@ -334,7 +357,7 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
                 return true;
             }
             if (action === 'use-selected') {
-                call('addSelectedCanvasAgentReferences', null);
+                call(referenceSource, 'addSelectedCanvasAgentReferences', null);
                 return true;
             }
             if (action === 'pick-reference') {
@@ -351,25 +374,25 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
                 return true;
             }
             if (String(action || '').startsWith('remove-reference:')) {
-                call('removeCanvasAgentReference', null, String(action).slice('remove-reference:'.length));
+                call(referenceSource, 'removeCanvasAgentReference', null, String(action).slice('remove-reference:'.length));
                 return true;
             }
             if (String(action || '').startsWith('promote-reference:')) {
-                call('promoteCanvasAgentReference', null, String(action).slice('promote-reference:'.length));
+                call(referenceSource, 'promoteCanvasAgentReference', null, String(action).slice('promote-reference:'.length));
                 return true;
             }
             if (action === 'confirm-outpaint') {
-                await call('confirmOutpaintFromOverlay', null);
+                await call(outpaintSource, 'confirmOutpaintFromOverlay', null);
                 return true;
             }
             if (action === 'cancel-outpaint') {
-                call('hideOutpaintOverlay', null);
+                call(outpaintSource, 'hideOutpaintOverlay', null);
                 requestRenderCanvasAgentPanel();
                 return true;
             }
             if (String(action || '').startsWith('aspect:')) {
                 state.resolutionOpen = false;
-                call('setCanvasAgentResolutionPatch', null, { aspect: String(action).slice('aspect:'.length) || 'auto' });
+                call(settingsSource, 'setCanvasAgentResolutionPatch', null, { aspect: String(action).slice('aspect:'.length) || 'auto' });
                 return true;
             }
             if (action === 'clear-references') {
@@ -379,11 +402,11 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
                 return true;
             }
             if (String(action || '').startsWith('tool:')) {
-                await call('runCanvasAgentTool', null, String(action).slice('tool:'.length));
+                await call(toolSource, 'runCanvasAgentTool', null, String(action).slice('tool:'.length));
                 return true;
             }
             if (state.busy || state.currentRun) {
-                call('showToast', null, t('Agent is still working. Please wait for the current step to finish.', 'Agent 当前步骤还在运行，请等待完成。'));
+                call(uiSource, 'showToast', null, t('Agent is still working. Please wait for the current step to finish.', 'Agent 当前步骤还在运行，请等待完成。'));
                 return true;
             }
             if (action === 'clear-input') {

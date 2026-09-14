@@ -2,10 +2,40 @@
     'use strict';
 
     function createCanvasKeyboardController(context) {
-        const scope = context || {};
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getProject = () => typeof scope.getProject === 'function' ? (scope.getProject() || {}) : {};
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const scope = context?.keyboardSource || context || {};
+        const domSource = scope.domSource || {};
+        const inputSource = scope.inputSource || {};
+        const shortcutSource = scope.shortcutSource || {};
+        const agentSource = scope.agentSource || {};
+        const projectSource = scope.projectSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const connectionSource = scope.connectionSource || {};
+        const paletteSource = scope.paletteSource || {};
+        const clipboardSource = scope.clipboardSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const runSource = scope.runSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const transferSource = scope.transferSource || {};
+        const uiSource = scope.uiSource || {};
+        const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const domCall = (name, fallback, ...args) => sourceCall(domSource, name, fallback, ...args);
+        const inputCall = (name, fallback, ...args) => sourceCall(inputSource, name, fallback, ...args);
+        const shortcutCall = (name, fallback, ...args) => sourceCall(shortcutSource, name, fallback, ...args);
+        const agentCall = (name, fallback, ...args) => sourceCall(agentSource, name, fallback, ...args);
+        const projectCall = (name, fallback, ...args) => sourceCall(projectSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);
+        const connectionCall = (name, fallback, ...args) => sourceCall(connectionSource, name, fallback, ...args);
+        const paletteCall = (name, fallback, ...args) => sourceCall(paletteSource, name, fallback, ...args);
+        const clipboardCall = (name, fallback, ...args) => sourceCall(clipboardSource, name, fallback, ...args);
+        const viewportCall = (name, fallback, ...args) => sourceCall(viewportSource, name, fallback, ...args);
+        const runCall = (name, fallback, ...args) => sourceCall(runSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const transferCall = (name, fallback, ...args) => sourceCall(transferSource, name, fallback, ...args);
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const getRoot = () => domCall('getRoot', null);
+        const getProject = () => projectCall('getProject', {}) || {};
 
         function isWorkbenchGenerateShortcut(evt) {
             return !!evt && (evt.key === 'Enter' || evt.keyCode === 13) && (evt.ctrlKey || evt.metaKey || evt.altKey);
@@ -16,7 +46,7 @@
         }
 
         function saveFromShortcut() {
-            const result = call('saveProject', false);
+            const result = projectCall('saveProject', false);
             if (result && typeof result.catch === 'function') {
                 result.catch((err) => console.warn('[SimpAI Canvas] shortcut save failed:', err));
             }
@@ -25,50 +55,50 @@
         function onDocumentKeyDown(evt) {
             const root = getRoot();
             if (!evt || !root || root.hidden) return;
-            const textareaEditorState = call('getTextareaEditorState');
+            const textareaEditorState = inputCall('getTextareaEditorState', undefined);
             if (textareaEditorState?.modal?.contains?.(evt.target)) return;
             if (isWorkbenchGenerateShortcut(evt)) {
                 const agentInput = evt.target?.closest?.('[data-canvas-agent-input]');
-                const editable = call('isEditableElement', evt.target);
+                const editable = inputCall('isEditableElement', false, evt.target);
                 const canRunCanvasAction = isCanvasRunShortcut(evt);
-                call('consumeWorkbenchShortcut', evt);
+                shortcutCall('consumeWorkbenchShortcut', undefined, evt);
                 if (agentInput && canRunCanvasAction) {
-                    call('handleCanvasAgentAction', call('canvasAgentPrimaryAction'));
+                    agentCall('handleCanvasAgentAction', undefined, agentCall('canvasAgentPrimaryAction', undefined));
                     return;
                 }
                 if (canRunCanvasAction && !editable) {
-                    const node = call('getNode', call('getSelectedNodeId'));
-                    if (evt.shiftKey) call('runSelectedChain');
-                    else if (node && (node.type === 'preset' || node.type === 'classic')) call('runPresetNodeFromUi', node);
+                    const node = nodeCall('getNode', null, nodeCall('getSelectedNodeId', null));
+                    if (evt.shiftKey) runCall('runSelectedChain', undefined);
+                    else if (node && (node.type === 'preset' || node.type === 'classic')) runCall('runPresetNodeFromUi', undefined, node);
                     return;
                 }
                 return;
             }
-            if (call('isEditableElement', evt.target)) return;
+            if (inputCall('isEditableElement', false, evt.target)) return;
             const key = String(evt.key || '').toLowerCase();
             if (evt.key === 'Escape') {
-                if (call('isOutpaintOverlayActive')) {
-                    call('hideOutpaintOverlay');
-                    call('renderCanvasAgentPanel');
-                } else if (call('isConnecting')) {
-                    call('cancelConnection');
-                } else if (call('isPresetPaletteOpen')) {
-                    call('closePresetPalette');
+                if (agentCall('isOutpaintOverlayActive', false)) {
+                    agentCall('hideOutpaintOverlay', undefined);
+                    agentCall('renderCanvasAgentPanel', undefined);
+                } else if (connectionCall('isConnecting', false)) {
+                    connectionCall('cancelConnection', undefined);
+                } else if (paletteCall('isPresetPaletteOpen', false)) {
+                    paletteCall('closePresetPalette', undefined);
                 } else {
-                    call('closeContextMenu');
+                    uiCall('closeContextMenu', undefined);
                 }
                 return;
             }
-            if (evt.key === 'Enter' && call('isOutpaintOverlayActive')) {
+            if (evt.key === 'Enter' && agentCall('isOutpaintOverlayActive', false)) {
                 evt.preventDefault();
-                call('confirmOutpaintFromOverlay');
+                agentCall('confirmOutpaintFromOverlay', undefined);
                 return;
             }
             if (evt.altKey && !evt.ctrlKey && !evt.metaKey) {
-                const group = (call('ensureProjectGroups') || []).find(item => String(item.shortcut || '').trim().toLowerCase() === key);
+                const group = (projectCall('ensureProjectGroups', []) || []).find(item => String(item.shortcut || '').trim().toLowerCase() === key);
                 if (group) {
                     evt.preventDefault();
-                    call('focusGroup', group);
+                    projectCall('focusGroup', undefined, group);
                     return;
                 }
             }
@@ -79,81 +109,81 @@
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'z') {
                 evt.preventDefault();
-                if (evt.shiftKey) call('redoCanvasEdit');
-                else call('undoCanvasEdit');
+                if (evt.shiftKey) projectCall('redoCanvasEdit', undefined);
+                else projectCall('undoCanvasEdit', undefined);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'y') {
                 evt.preventDefault();
-                call('redoCanvasEdit');
+                projectCall('redoCanvasEdit', undefined);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'k') {
                 evt.preventDefault();
-                call('openPresetPalette', call('viewportCenterWorld'));
+                paletteCall('openPresetPalette', undefined, viewportCall('viewportCenterWorld', { x: 0, y: 0 }));
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'c') {
                 evt.preventDefault();
-                call('copyCanvasSelection');
+                clipboardCall('copyCanvasSelection', undefined);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'v') {
                 evt.preventDefault();
-                call('pasteCanvasClipboard', call('viewportCenterWorld'), { withInputConnections: !!evt.shiftKey });
+                clipboardCall('pasteCanvasClipboard', undefined, viewportCall('viewportCenterWorld', { x: 0, y: 0 }), { withInputConnections: !!evt.shiftKey });
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && key === 'd') {
                 evt.preventDefault();
-                call('duplicateSelection');
+                clipboardCall('duplicateSelection', undefined);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && evt.key === '0') {
                 evt.preventDefault();
-                call('resetViewportZoom');
+                viewportCall('resetViewportZoom', undefined);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && (evt.key === '+' || evt.key === '=')) {
                 evt.preventDefault();
-                call('zoomAtViewportCenter', 1.15);
+                viewportCall('zoomAtViewportCenter', undefined, 1.15);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && evt.key === '-') {
                 evt.preventDefault();
-                call('zoomAtViewportCenter', 1 / 1.15);
+                viewportCall('zoomAtViewportCenter', undefined, 1 / 1.15);
                 return;
             }
             if ((evt.ctrlKey || evt.metaKey) && evt.key === 'Enter') {
-                const node = call('getNode', call('getSelectedNodeId'));
-                if (evt.shiftKey) call('runSelectedChain');
-                else if (node && (node.type === 'preset' || node.type === 'classic')) call('runPresetNodeFromUi', node);
+                const node = nodeCall('getNode', null, nodeCall('getSelectedNodeId', null));
+                if (evt.shiftKey) runCall('runSelectedChain', undefined);
+                else if (node && (node.type === 'preset' || node.type === 'classic')) runCall('runPresetNodeFromUi', undefined, node);
                 return;
             }
             if (!evt.ctrlKey && !evt.metaKey && !evt.altKey && evt.code === 'Space') {
-                const node = call('getNode', call('getSelectedNodeId'));
+                const node = nodeCall('getNode', null, nodeCall('getSelectedNodeId', null));
                 if (node?.type === 'timeline') {
                     evt.preventDefault();
-                    call('toggleTimelinePreviewPlayback', node);
+                    runCall('toggleTimelinePreviewPlayback', undefined, node);
                     return;
                 }
                 if (node && ['video', 'audio'].includes(node.type)) {
                     evt.preventDefault();
-                    call('playMediaSelection', node);
+                    runCall('playMediaSelection', undefined, node);
                     return;
                 }
-                if (node?.type === 'result' && call('toggleSelectedResultMediaPlayback', node)) {
+                if (node?.type === 'result' && runCall('toggleSelectedResultMediaPlayback', false, node)) {
                     evt.preventDefault();
                     return;
                 }
             }
             if (evt.shiftKey && (evt.key === '!' || evt.code === 'Digit1')) {
                 evt.preventDefault();
-                call('fitAll');
+                viewportCall('fitAll', undefined);
                 return;
             }
             if (evt.shiftKey && (evt.key === '@' || evt.code === 'Digit2')) {
                 evt.preventDefault();
-                call('fitSelection');
+                viewportCall('fitSelection', undefined);
                 return;
             }
             if (evt.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(evt.key)) {
@@ -164,22 +194,22 @@
                     ArrowUp: 'top',
                     ArrowDown: 'bottom'
                 };
-                call('alignSelectedNodes', alignMap[evt.key]);
+                viewportCall('alignSelectedNodes', undefined, alignMap[evt.key]);
                 return;
             }
             if (evt.key === 'Delete' || evt.key === 'Backspace') {
-                call('deleteSelection');
+                selectionCall('deleteSelection', undefined);
                 return;
             }
-            if (key === 'h') call('setMode', 'hand');
-            if (key === 'v') call('setMode', 'select');
-            if (key === 'c') call('setMode', 'connect');
+            if (key === 'h') viewportCall('setMode', undefined, 'hand');
+            if (key === 'v') viewportCall('setMode', undefined, 'select');
+            if (key === 'c') viewportCall('setMode', undefined, 'connect');
             if (key === 'p') {
                 evt.preventDefault();
-                call('toggleSelectedNodesFlag', 'locked');
+                selectionCall('toggleSelectedNodesFlag', undefined, 'locked');
                 return;
             }
-            if (key === 'i') call('importSelectedTransferAt', call('viewportCenterWorld'));
+            if (key === 'i') transferCall('importSelectedTransferAt', undefined, viewportCall('viewportCenterWorld', { x: 0, y: 0 }));
         }
 
         return {

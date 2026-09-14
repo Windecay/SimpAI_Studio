@@ -79,8 +79,10 @@
             window.SimpAICanvasWorkbenchHistory || {},
             'createCanvasHistoryController',
             Object.assign({}, historySource, {
-                resetRenderedProjectDomCache: (...args) => nodeRenderMethod('resetRenderedProjectDomCache')?.(...args),
-                renderAll
+                renderSource: Object.assign({}, historySource.renderSource || {}, {
+                    resetRenderedProjectDomCache: (...args) => nodeRenderMethod('resetRenderedProjectDomCache')?.(...args),
+                    renderAll,
+                }),
             })
         );
 

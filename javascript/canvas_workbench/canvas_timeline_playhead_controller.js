@@ -2,21 +2,30 @@
     'use strict';
 
     function createCanvasTimelinePlayheadController(context) {
-        const scope = context || {};
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.timelinePlayheadSource || context || {};
+        const domSource = scope.domSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const historySource = scope.historySource || {};
+        const playheadOperationSource = scope.playheadOperationSource || {};
+        const renderSource = scope.renderSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : undefined;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getNode = (id) => typeof scope.getNode === 'function' ? scope.getNode(id) : null;
-        const isNodeLocked = (node) => typeof scope.isNodeLocked === 'function' ? !!scope.isNodeLocked(node) : false;
-        const clamp = typeof scope.clamp === 'function'
-            ? scope.clamp
+        const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
+        const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
+        const clamp = typeof interactionSource.clamp === 'function'
+            ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const getPerformanceNow = () => typeof interactionSource.performanceNow === 'function'
+            ? interactionSource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
-        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
-            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof playheadOperationSource.buildTimelineParamsPatch === 'function'
+            ? playheadOperationSource.buildTimelineParamsPatch(node, paramsPatch)
             : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         let dragState = null;
 
@@ -26,8 +35,8 @@
             if (!node || node.type !== 'timeline' || !lane || !nodeEl || isNodeLocked(node)) return;
             evt.preventDefault();
             evt.stopPropagation();
-            call('setSuppressWheelUntil', getPerformanceNow() + 420);
-            call('pushHistoryBatch', `timeline-playhead:${node.id}`, 'Move timeline playhead');
+            call(interactionSource, 'setSuppressWheelUntil', getPerformanceNow() + 420);
+            call(historySource, 'pushHistoryBatch', `timeline-playhead:${node.id}`, 'Move timeline playhead');
             dragState = { pointerId: evt.pointerId, nodeId: node.id, nodeEl, lane };
             updateTimelinePlayheadFromPointer(evt);
             try { evt.target.setPointerCapture?.(evt.pointerId); } catch (err) {}
@@ -46,8 +55,8 @@
             const duration = Math.max(1, Number(node.params?.duration || 1));
             const pct = clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
             Object.assign(node, buildTimelineParamsPatch(node, { playhead: pct * duration }));
-            call('refreshTimelinePlayheadDom', dragState.nodeEl, node);
-            call('refreshTimelinePreviewDom', dragState.nodeEl, node);
+            call(domSource, 'refreshTimelinePlayheadDom', dragState.nodeEl, node);
+            call(renderSource, 'refreshTimelinePreviewDom', dragState.nodeEl, node);
         }
 
         function stopTimelinePlayheadDrag(evt) {
@@ -58,7 +67,7 @@
             doc?.removeEventListener('pointermove', updateTimelinePlayheadFromPointer, true);
             doc?.removeEventListener('pointerup', stopTimelinePlayheadDrag, true);
             doc?.removeEventListener('pointercancel', stopTimelinePlayheadDrag, true);
-            call('scheduleSave');
+            call(persistenceSource, 'scheduleSave');
         }
 
         return {

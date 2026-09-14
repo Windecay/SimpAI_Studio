@@ -2,11 +2,16 @@
     'use strict';
 
     function createCanvasResultNodeFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (type) => `${type}-node`;
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.resultNodeFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const languageSource = scope.languageSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const timeSource = scope.timeSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));
@@ -14,11 +19,11 @@
                     return fallback;
                 }
             });
-        const nowIso = typeof scope.nowIso === 'function'
-            ? scope.nowIso
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
             : (() => new Date().toISOString());
-        const defaultResultNodeSize = typeof scope.defaultResultNodeSize === 'function'
-            ? scope.defaultResultNodeSize
+        const defaultResultNodeSize = typeof layoutSource.defaultResultNodeSize === 'function'
+            ? layoutSource.defaultResultNodeSize
             : () => ({ w: 360, h: 460 });
 
         function mergeResultObject(previous, next) {

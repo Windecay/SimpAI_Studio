@@ -46,6 +46,8 @@ def _register_runtime_preview_nodes():
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update(AIO_UOV_PREVIEW_NODE_CLASS_TYPES)
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3UpscaleLoop")
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3UpscaleLoop")
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3DetailRefine")
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIH3DetailRefine")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)

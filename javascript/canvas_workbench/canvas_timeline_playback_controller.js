@@ -2,23 +2,32 @@
     'use strict';
 
     function createCanvasTimelinePlaybackController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getNode = (id) => call('getNode', null, id);
-        const getNodeElement = (id) => call('getNodeElement', null, id);
+        const scope = context?.timelinePlaybackSource || context || {};
+        const nodeSource = scope.nodeSource || {};
+        const timingSource = scope.timingSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const domSource = scope.domSource || {};
+        const renderSource = scope.renderSource || {};
+        const playbackOperationSource = scope.playbackOperationSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getNode = (id) => call(nodeSource, 'getNode', null, id);
+        const getNodeElement = (id) => call(nodeSource, 'getNodeElement', null, id);
         const performanceNow = () => {
-            if (typeof scope.performanceNow === 'function') return Number(scope.performanceNow()) || 0;
+            if (typeof timingSource.performanceNow === 'function') return Number(timingSource.performanceNow()) || 0;
             if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now();
             return Date.now();
         };
         const requestFrame = (callback) => {
-            if (typeof scope.requestAnimationFrame === 'function') return scope.requestAnimationFrame(callback);
+            if (typeof timingSource.requestAnimationFrame === 'function') return timingSource.requestAnimationFrame(callback);
             if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(callback);
             return setTimeout(callback, 16);
         };
         const cancelFrame = (handle) => {
-            if (typeof scope.cancelAnimationFrame === 'function') {
-                scope.cancelAnimationFrame(handle);
+            if (typeof timingSource.cancelAnimationFrame === 'function') {
+                timingSource.cancelAnimationFrame(handle);
                 return;
             }
             if (typeof cancelAnimationFrame === 'function') {
@@ -27,8 +36,8 @@
             }
             clearTimeout(handle);
         };
-        const buildTimelineParamsPatch = (node, paramsPatch) => typeof scope.buildTimelineParamsPatch === 'function'
-            ? scope.buildTimelineParamsPatch(node, paramsPatch)
+        const buildTimelineParamsPatch = (node, paramsPatch) => typeof playbackOperationSource.buildTimelineParamsPatch === 'function'
+            ? playbackOperationSource.buildTimelineParamsPatch(node, paramsPatch)
             : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };
         let playbackState = null;
 
@@ -47,7 +56,7 @@
 
         function syncTimelinePlaybackDom(nodeEl, node) {
             if (!nodeEl || !node) return;
-            call('syncTimelinePreviewVideos', undefined, nodeEl, node);
+            call(mediaSource, 'syncTimelinePreviewVideos', undefined, nodeEl, node);
             refreshTimelinePlaybackButtonDom(nodeEl, node);
         }
 
@@ -57,7 +66,7 @@
             if (node.params.preview_playing) startTimelinePlayback(node.id);
             else stopTimelinePlayback(node.id);
             syncTimelinePlaybackDom(getNodeElement(node.id), node);
-            call('scheduleSave', undefined);
+            call(persistenceSource, 'scheduleSave', undefined);
             return true;
         }
 
@@ -66,12 +75,12 @@
             Object.assign(node, buildTimelineParamsPatch(node, { playhead: 0, preview_playing: true }));
             const nodeEl = getNodeElement(node.id);
             if (nodeEl) {
-                call('refreshTimelinePlayheadDom', undefined, nodeEl, node);
-                call('refreshTimelinePreviewDom', undefined, nodeEl, node);
+                call(domSource, 'refreshTimelinePlayheadDom', undefined, nodeEl, node);
+                call(renderSource, 'refreshTimelinePreviewDom', undefined, nodeEl, node);
                 refreshTimelinePlaybackButtonDom(nodeEl, node);
             }
             startTimelinePlayback(node.id, { loop: false });
-            call('scheduleSave', undefined);
+            call(persistenceSource, 'scheduleSave', undefined);
             return true;
         }
 
@@ -103,17 +112,17 @@
                         playhead: duration,
                         preview_playing: false
                     }));
-                    call('refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
-                    call('refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
+                    call(domSource, 'refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
+                    call(renderSource, 'refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
                     refreshTimelinePlaybackButtonDom(nodeEl, liveNode);
                     stopTimelinePlayback(nodeId);
-                    call('scheduleSave', undefined);
+                    call(persistenceSource, 'scheduleSave', undefined);
                     return;
                 }
                 const next = playbackState.loop ? rawNext % duration : rawNext;
                 Object.assign(liveNode, buildTimelineParamsPatch(liveNode, { playhead: next }));
-                call('refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
-                call('refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
+                call(domSource, 'refreshTimelinePlayheadDom', undefined, nodeEl, liveNode);
+                call(renderSource, 'refreshTimelinePreviewDom', undefined, nodeEl, liveNode);
                 playbackState.raf = requestFrame(tick);
             };
             playbackState.raf = requestFrame(tick);

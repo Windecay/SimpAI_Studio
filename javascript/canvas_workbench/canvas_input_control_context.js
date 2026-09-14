@@ -19,55 +19,40 @@
 
     function createCanvasWorkbenchInputControlContext(source) {
         const scope = source || {};
+        const textControlSource = scope.textControlSource || {};
+        const compareDragSource = scope.compareDragSource || {};
+        const textControlPointerSource = scope.textControlPointerSource || {};
+        const agentInputSource = scope.agentInputSource || {};
         const controllers = {};
 
-        controllers.textControlContext = createController(modules.textControlContext, 'createCanvasTextControlContextController', {
-            getDocument: scope.getDocument,
-            getWindow: scope.getWindow,
-            t: scope.t,
-            openContextMenu: scope.openContextMenu,
-            showToast: scope.showToast
-        });
+        controllers.textControlContext = createController(
+            modules.textControlContext,
+            'createCanvasTextControlContextController',
+            textControlSource
+        );
         const textControlMethod = name => method(controllers.textControlContext, name);
 
-        controllers.compareDrag = createController(modules.compareDrag, 'createCanvasCompareDragController', {
-            getDocument: scope.getDocument,
-            getNode: scope.getNode,
-            isNodeLocked: scope.isNodeLocked,
-            clamp: scope.clamp,
-            performanceNow: scope.performanceNow,
-            setSuppressWheelUntil: scope.setSuppressWheelUntil,
-            isCompareNodeSelected: scope.isCompareNodeSelected,
-            selectNodeLight: scope.selectNodeLight,
-            updateCompareParam: scope.updateCompareParam,
-            refreshCompareDom: scope.refreshCompareDom,
-            scheduleSave: scope.scheduleSave,
-            getSelectedNodeId: scope.getSelectedNodeId,
-            renderInspector: scope.renderInspector
-        });
+        controllers.compareDrag = createController(
+            modules.compareDrag,
+            'createCanvasCompareDragController',
+            compareDragSource
+        );
 
-        controllers.textControlPointer = createController(modules.textControlPointer, 'createCanvasTextControlPointerController', {
-            getRoot: scope.getRoot,
-            getDocument: scope.getDocument,
-            getWindow: scope.getWindow,
-            getEditableTextControl: (...args) => textControlMethod('editableTextControlFromTarget')?.(...args),
-            isEditableElement: scope.isEditableElement
-        });
+        controllers.textControlPointer = createController(
+            modules.textControlPointer,
+            'createCanvasTextControlPointerController',
+            Object.assign({}, textControlPointerSource, {
+                textControlSource: Object.assign({}, textControlPointerSource.textControlSource || {}, {
+                    getEditableTextControl: (...args) => textControlMethod('editableTextControlFromTarget')?.(...args)
+                })
+            })
+        );
 
-        controllers.agentInput = createController(modules.agentInput, 'createCanvasAgentInputController', {
-            getAgentState: scope.getAgentState,
-            setAgentInput: scope.setAgentInput,
-            buildAgentDecisionFormPatch: scope.buildAgentDecisionFormPatch,
-            setCanvasAgentResolutionPatch: scope.setCanvasAgentResolutionPatch,
-            setCanvasAgentResolutionOpen: scope.setCanvasAgentResolutionOpen,
-            handleCanvasAgentDecisionFieldInput: scope.handleCanvasAgentDecisionFieldInput,
-            onOutpaintSliderInput: scope.onOutpaintSliderInput,
-            handleCanvasAgentSettingInput: scope.handleCanvasAgentSettingInput,
-            handleCanvasAgentModelModeInput: scope.handleCanvasAgentModelModeInput,
-            consumeWorkbenchShortcut: scope.consumeWorkbenchShortcut,
-            handleCanvasAgentAction: scope.handleCanvasAgentAction,
-            canvasAgentPrimaryAction: scope.canvasAgentPrimaryAction
-        });
+        controllers.agentInput = createController(
+            modules.agentInput,
+            'createCanvasAgentInputController',
+            agentInputSource
+        );
 
         const compareDragMethod = name => method(controllers.compareDrag, name);
         const textControlPointerMethod = name => method(controllers.textControlPointer, name);

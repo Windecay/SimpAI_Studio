@@ -2,22 +2,25 @@
     'use strict';
 
     function createCanvasMediaBrowserDragController(context) {
-        const scope = context || {};
+        const scope = context?.mediaBrowserDragSource || context || {};
+        const configSource = scope.configSource || {};
+        const mediaSource = scope.mediaSource || {};
+        const viewportSource = scope.viewportSource || {};
         const getDragMime = () => {
-            const value = typeof scope.getDragMime === 'function' ? scope.getDragMime() : '';
+            const value = typeof configSource.getDragMime === 'function' ? configSource.getDragMime() : '';
             return String(value || 'application/x-simpleai-media-browser-item').trim()
                 || 'application/x-simpleai-media-browser-item';
         };
-        const getNodeState = (node) => typeof scope.getMediaBrowserNodeState === 'function'
-            ? (scope.getMediaBrowserNodeState(node) || {})
+        const getNodeState = (node) => typeof mediaSource.getMediaBrowserNodeState === 'function'
+            ? (mediaSource.getMediaBrowserNodeState(node) || {})
             : {};
-        const getNodeItems = (node) => typeof scope.getMediaBrowserItems === 'function'
-            ? (scope.getMediaBrowserItems(node) || [])
+        const getNodeItems = (node) => typeof mediaSource.getMediaBrowserItems === 'function'
+            ? (mediaSource.getMediaBrowserItems(node) || [])
             : [];
-        const serializeState = (state) => typeof scope.serializableMediaBrowserState === 'function'
-            ? scope.serializableMediaBrowserState(state)
+        const serializeState = (state) => typeof mediaSource.serializableMediaBrowserState === 'function'
+            ? mediaSource.serializableMediaBrowserState(state)
             : state;
-        const getViewport = () => typeof scope.getViewport === 'function' ? scope.getViewport() : null;
+        const getViewport = () => typeof viewportSource.getViewport === 'function' ? viewportSource.getViewport() : null;
         let dragPayload = null;
 
         function mediaBrowserNodeDragPayload(node, itemId) {

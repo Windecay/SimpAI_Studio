@@ -2,31 +2,58 @@
     'use strict';
 
     function createCanvasAgentSettingsController(context) {
-        const scope = context || {};
-        const getDefaultSettings = () => typeof scope.getDefaultSettings === 'function' ? (scope.getDefaultSettings() || {}) : {};
-        const getDefaultProjectSettings = () => typeof scope.getDefaultProjectSettings === 'function' ? (scope.getDefaultProjectSettings() || {}) : {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const clamp = scope.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-        const normalizePresetName = scope.normalizePresetName || ((value) => String(value || '').trim());
-        const getVlmCustomProvider = (...args) => call('getVlmCustomProvider', {}, ...args);
-        const getVlmCustomApiProfile = (...args) => call('getVlmCustomApiProfile', null, ...args);
-        const getVlmCustomProfileKey = (...args) => call('getVlmCustomProfileKey', 'openai', ...args);
-        const readVlmCustomApiProfiles = (...args) => call('readVlmCustomApiProfiles', {}, ...args) || {};
-        const writeVlmCustomApiProfiles = (...args) => call('writeVlmCustomApiProfiles', undefined, ...args);
-        const readCanvasAgentCustomKeyValue = (...args) => call('getCanvasAgentCustomKeyValue', '', ...args);
-        const sendCanvasVlmRunRequest = (...args) => call('sendCanvasVlmRunRequest', { ok: false, error: 'VLM run API is unavailable' }, ...args);
-        const sendCanvasAgentCustomModelsRequest = (...args) => call('sendCanvasAgentCustomModelsRequest', { ok: false, error: 'Custom model API is unavailable' }, ...args);
-        const buildVlmParamsPatch = (...args) => call('buildVlmParamsPatch', {}, ...args);
-        const buildVlmModelStatusPatch = (...args) => call('buildVlmModelStatusPatch', {}, ...args);
-        const decodeCanvasAgentVideoToolChoice = (...args) => call('decodeCanvasAgentVideoToolChoice', {}, ...args) || {};
-        const vlmModelDisplayLabel = (...args) => call('vlmModelDisplayLabel', String(args[0] || ''), ...args);
-
-        function call(name, fallback, ...args) {
-            return typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        }
+        const scope = context?.agentSettingsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const configSource = scope.configSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const modelSource = scope.modelSource || {};
+        const customApiSource = scope.customApiSource || {};
+        const projectSource = scope.projectSource || {};
+        const stateSource = scope.stateSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const patchSource = scope.patchSource || {};
+        const historySource = scope.historySource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const requestSource = scope.requestSource || {};
+        const uiSource = scope.uiSource || {};
+        const documentSource = scope.documentSource || {};
+        const toolSource = scope.toolSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const languageCall = (name, fallback, ...args) => call(languageSource, name, fallback, ...args);
+        const configCall = (name, fallback, ...args) => call(configSource, name, fallback, ...args);
+        const customApiCall = (name, fallback, ...args) => call(customApiSource, name, fallback, ...args);
+        const projectCall = (name, fallback, ...args) => call(projectSource, name, fallback, ...args);
+        const stateCall = (name, fallback, ...args) => call(stateSource, name, fallback, ...args);
+        const nodeCall = (name, fallback, ...args) => call(nodeSource, name, fallback, ...args);
+        const patchCall = (name, fallback, ...args) => call(patchSource, name, fallback, ...args);
+        const historyCall = (name, fallback, ...args) => call(historySource, name, fallback, ...args);
+        const persistenceCall = (name, fallback, ...args) => call(persistenceSource, name, fallback, ...args);
+        const requestCall = (name, fallback, ...args) => call(requestSource, name, fallback, ...args);
+        const uiCall = (name, fallback, ...args) => call(uiSource, name, fallback, ...args);
+        const documentCall = (name, fallback, ...args) => call(documentSource, name, fallback, ...args);
+        const toolCall = (name, fallback, ...args) => call(toolSource, name, fallback, ...args);
+        const getDefaultSettings = () => configCall('getCanvasAgentDefaultSettings', {}) || {};
+        const getDefaultProjectSettings = () => configCall('getDefaultSettings', {}) || {};
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const clamp = utilitySource.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
+        const getVlmCustomProvider = (...args) => customApiCall('getVlmCustomProvider', {}, ...args);
+        const getVlmCustomApiProfile = (...args) => customApiCall('getVlmCustomApiProfile', null, ...args);
+        const getVlmCustomProfileKey = (...args) => customApiCall('getVlmCustomProfileKey', 'openai', ...args);
+        const readVlmCustomApiProfiles = (...args) => customApiCall('readVlmCustomApiProfiles', {}, ...args) || {};
+        const writeVlmCustomApiProfiles = (...args) => customApiCall('writeVlmCustomApiProfiles', undefined, ...args);
+        const readCanvasAgentCustomKeyValue = (...args) => customApiCall('getCanvasAgentCustomKeyValue', '', ...args);
+        const sendCanvasVlmRunRequest = (...args) => requestCall('sendCanvasVlmRunRequest', { ok: false, error: 'VLM run API is unavailable' }, ...args);
+        const sendCanvasAgentCustomModelsRequest = (...args) => requestCall('sendCanvasAgentCustomModelsRequest', { ok: false, error: 'Custom model API is unavailable' }, ...args);
+        const buildVlmParamsPatch = (...args) => patchCall('buildVlmParamsPatch', {}, ...args);
+        const buildVlmModelStatusPatch = (...args) => patchCall('buildVlmModelStatusPatch', {}, ...args);
+        const decodeCanvasAgentVideoToolChoice = (...args) => toolCall('decodeCanvasAgentVideoToolChoice', {}, ...args) || {};
+        const vlmModelDisplayLabel = (...args) => call(modelSource, 'vlmModelDisplayLabel', String(args[0] || ''), ...args);
 
         const getVersionChoices = () => {
-            const value = call('getVersionChoices', []);
+            const value = configCall('getVersionChoices', []);
             return Array.isArray(value) ? value : [];
         };
 
@@ -72,14 +99,14 @@
         }
 
         function getProject() {
-            return call('getProject', null) || {};
+            return projectCall('getProject', null) || {};
         }
 
         function getAgentState() {
-            return call('getAgentState', null) || {};
+            return stateCall('getAgentState', null) || {};
         }
 
-        const aspectOptions = () => Array.isArray(scope.canvasAgentAspectOptions) ? scope.canvasAgentAspectOptions : [];
+        const aspectOptions = () => Array.isArray(configSource.canvasAgentAspectOptions) ? configSource.canvasAgentAspectOptions : [];
         let canvasAgentCustomModelChoices = [];
 
         function getCanvasAgentResolutionState() {
@@ -113,7 +140,7 @@
         }
 
         function syncCanvasAgentResolutionDom() {
-            const panel = call('getCanvasAgentPanel', null);
+            const panel = uiCall('getCanvasAgentPanel', null);
             if (!panel || !panel.isConnected) return;
             const state = getCanvasAgentResolutionState();
             const scale = Number(state.multiplier || 1).toFixed(1);
@@ -126,7 +153,7 @@
             panel.querySelectorAll('[data-canvas-agent-resolution-label]').forEach(label => {
                 label.textContent = canvasAgentResolutionCompactLabel(state);
             });
-            const documentObject = call('getDocument', null) || globalThis.document;
+            const documentObject = documentCall('getDocument', null) || globalThis.document;
             panel.querySelectorAll('[data-canvas-agent-scale]').forEach(input => {
                 if (input === documentObject?.activeElement) return;
                 input.value = scale;
@@ -141,7 +168,7 @@
             next.multiplier = clamp(Number(next.multiplier || 1) || 1, 1, 2);
             state.resolution = next;
             if (options?.render === false) syncCanvasAgentResolutionDom();
-            else call('renderCanvasAgentPanel', null);
+            else uiCall('renderCanvasAgentPanel', null);
         }
 
         function applyProjectSettingsMergePatch(project, updates) {
@@ -153,7 +180,7 @@
                 : (defaultSettings && typeof defaultSettings === 'object' && !Array.isArray(defaultSettings)
                     ? defaultSettings
                     : {});
-            const patch = call('buildProjectSettingsMergePatch', null, { settings: currentSettings }, updates);
+            const patch = projectCall('buildProjectSettingsMergePatch', null, { settings: currentSettings }, updates);
             if (patch && typeof patch === 'object'
                 && patch.settings
                 && typeof patch.settings === 'object'
@@ -238,7 +265,7 @@
         function setCanvasAgentSettingsPatch(patch, options) {
             if (!patch || typeof patch !== 'object') return;
             const project = getProject();
-            if (!options?.silentHistory) call('pushHistoryBatch', null, 'canvas-agent-settings', 'Canvas Agent settings');
+            if (!options?.silentHistory) historyCall('pushHistoryBatch', null, 'canvas-agent-settings', 'Canvas Agent settings');
             const agentState = getAgentState();
             if (patch.enabled === false && agentState.pendingDecision?.resolve) {
                 agentState.pendingDecision.resolve('cancel');
@@ -249,10 +276,10 @@
             applyProjectSettingsMergePatch(project, {
                 canvasAgent: Object.assign({}, getCanvasAgentSettings(), patch)
             });
-            call('scheduleSave', null);
-            call('renderCanvasAgentPanel', null);
-            call('renderCanvasSettingsPanel', null);
-            call('renderStatus', null);
+            persistenceCall('scheduleSave', null);
+            uiCall('renderCanvasAgentPanel', null);
+            uiCall('renderCanvasSettingsPanel', null);
+            uiCall('renderStatus', null);
         }
 
         function setCanvasAgentLayoutPatch(patch, options) {
@@ -261,8 +288,8 @@
             applyProjectSettingsMergePatch(project, {
                 canvasAgent: Object.assign({}, getCanvasAgentSettings(), patch)
             });
-            call('scheduleSave', null);
-            if (options?.render !== false) call('renderCanvasAgentPanel', null);
+            persistenceCall('scheduleSave', null);
+            if (options?.render !== false) uiCall('renderCanvasAgentPanel', null);
         }
 
         function revealCanvasAgentPanelForToolCard() {
@@ -285,7 +312,7 @@
             const patch = { panelPosition: null };
             if (opts.pauseAttach !== false) patch.attachPaused = true;
             setCanvasAgentLayoutPatch(patch, { render: false });
-            if (opts.render !== false) call('renderCanvasAgentPanel', null);
+            if (opts.render !== false) uiCall('renderCanvasAgentPanel', null);
         }
 
         function getCanvasAgentRewriteModel() {
@@ -318,7 +345,7 @@
         }
 
         function getCanvasAgentCustomKeyInput() {
-            const panel = call('getCanvasSettingsPanel', null);
+            const panel = uiCall('getCanvasSettingsPanel', null);
             return panel?.querySelector?.('[data-canvas-agent-custom-key]') || null;
         }
 
@@ -335,7 +362,7 @@
             const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
             const apiKey = getCanvasAgentCustomKeyValue().trim();
             if (!apiKey) {
-                call('showToast', null, t('Paste an API key first.', '请先粘贴 API Key'));
+                uiCall('showToast', null, t('Paste an API key first.', '请先粘贴 API Key'));
                 return;
             }
             const profiles = readVlmCustomApiProfiles();
@@ -345,17 +372,17 @@
                 api_name: params.custom_api_name || key,
                 provider: params.custom_provider || 'openai',
                 base_url: params.custom_base_url || '',
-                updated_at: call('nowIso', new Date().toISOString())
+                updated_at: persistenceCall('nowIso', new Date().toISOString())
             });
             writeVlmCustomApiProfiles(profiles);
-            call('showToast', null, t('API key saved for Agent and VLM nodes.', 'API Key 已保存，可供 Agent 和 VLM 节点共用'));
+            uiCall('showToast', null, t('API key saved for Agent and VLM nodes.', 'API Key 已保存，可供 Agent 和 VLM 节点共用'));
         }
 
         function syncCanvasAgentCustomFromSelectedVlm() {
-            const selectedNodeId = call('getSelectedNodeId', null);
-            const node = call('getNode', null, selectedNodeId);
+            const selectedNodeId = nodeCall('getSelectedNodeId', null);
+            const node = nodeCall('getNode', null, selectedNodeId);
             if (!node || node.type !== 'vlm') {
-                call('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
+                uiCall('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
                 return;
             }
             const params = node.params || {};
@@ -369,18 +396,18 @@
                 customSupportsImages: params.custom_supports_images !== false,
                 customApiCollapsed: false
             }, { silentHistory: true });
-            call('showToast', null, t('Agent Custom API settings synced from selected VLM node.', '已从选中的 VLM 节点同步 Agent Custom API 设置'));
+            uiCall('showToast', null, t('Agent Custom API settings synced from selected VLM node.', '已从选中的 VLM 节点同步 Agent Custom API 设置'));
         }
 
         function syncSelectedVlmCustomFromCanvasAgent() {
-            const selectedNodeId = call('getSelectedNodeId', null);
-            const node = call('getNode', null, selectedNodeId);
+            const selectedNodeId = nodeCall('getSelectedNodeId', null);
+            const node = nodeCall('getNode', null, selectedNodeId);
             if (!node || node.type !== 'vlm') {
-                call('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
+                uiCall('showToast', null, t('Select a VLM node first.', '请先选中一个 VLM 节点'));
                 return;
             }
             const params = canvasAgentCustomParamsFromSettings(getCanvasAgentSettings(), false);
-            call('pushHistory', null, 'Sync Custom API settings');
+            historyCall('pushHistory', null, 'Sync Custom API settings');
             Object.assign(node, buildVlmParamsPatch(node, {
                 paramsPatch: {
                     version: 'Custom',
@@ -393,7 +420,7 @@
                 }
             }));
             Object.assign(node, buildVlmModelStatusPatch(node, {
-                status: call('buildVlmModelUnknownStatus', null, 'Custom', 'Custom API settings changed. Test or check before running.')
+                status: patchCall('buildVlmModelUnknownStatus', null, 'Custom', 'Custom API settings changed. Test or check before running.')
                     || {
                         state: 'unknown',
                         ready: false,
@@ -401,8 +428,8 @@
                         message: 'Custom API settings changed. Test or check before running.'
                     }
             }));
-            call('mutate', null, { inspector: true });
-            call('showToast', null, t('Selected VLM node now uses Agent Custom API settings.', '选中的 VLM 节点已同步 Agent Custom API 设置'));
+            stateCall('mutate', null, { inspector: true });
+            uiCall('showToast', null, t('Selected VLM node now uses Agent Custom API settings.', '选中的 VLM 节点已同步 Agent Custom API 设置'));
         }
 
         async function testCustomApiParams(params, sourceLabel) {
@@ -419,22 +446,22 @@
                 free_after: false
             });
             if (!runtime.custom_base_url || !runtime.custom_model) {
-                call('showToast', null, t('Custom API settings incomplete: Base URL and Model are required. API Key can stay empty for Ollama/LM Studio.', 'Custom API 设置不完整：需要 Base URL 和 Model；Ollama/LM Studio 可不填 API Key'));
+                uiCall('showToast', null, t('Custom API settings incomplete: Base URL and Model are required. API Key can stay empty for Ollama/LM Studio.', 'Custom API 设置不完整：需要 Base URL 和 Model；Ollama/LM Studio 可不填 API Key'));
                 return { ok: false, error: 'Custom API settings incomplete' };
             }
-            call('showToast', null, t('Testing Custom API...', '正在测试 Custom API...'));
+            uiCall('showToast', null, t('Testing Custom API...', '正在测试 Custom API...'));
             const project = getProject();
             const response = await sendCanvasVlmRunRequest({
-                project_id: project.id || call('getCurrentProjectId', 'default'),
+                project_id: project.id || projectCall('getCurrentProjectId', 'default'),
                 node_id: `custom_api_test:${sourceLabel || 'agent'}`,
                 asset_sources: [],
                 conversation_id: '',
                 params: runtime
             });
             if (response?.ok) {
-                call('showToast', null, t('Custom API test succeeded: {text}', 'Custom API 测试成功：{text}').replace('{text}', String(response.text || 'OK').slice(0, 80)));
+                uiCall('showToast', null, t('Custom API test succeeded: {text}', 'Custom API 测试成功：{text}').replace('{text}', String(response.text || 'OK').slice(0, 80)));
             } else {
-                call('showToast', null, t('Custom API test failed: {error}', 'Custom API 测试失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
+                uiCall('showToast', null, t('Custom API test failed: {error}', 'Custom API 测试失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
             }
             return response;
         }
@@ -449,7 +476,7 @@
             const params = getCanvasAgentCustomRuntimeParams();
             const project = getProject();
             const response = await sendCanvasAgentCustomModelsRequest({
-                project_id: project.id || call('getCurrentProjectId', 'default'),
+                project_id: project.id || projectCall('getCurrentProjectId', 'default'),
                 node_id: 'canvas_agent_custom_api',
                 params,
                 api_key: params.custom_api_key || ''
@@ -459,9 +486,9 @@
                 const patch = { customApiCollapsed: false };
                 if (!getCanvasAgentSettings().customModel && canvasAgentCustomModelChoices.length) patch.customModel = canvasAgentCustomModelChoices[0];
                 setCanvasAgentSettingsPatch(patch, { silentHistory: true });
-                call('showToast', null, t('Fetched {count} custom model(s).', '已拉取 {count} 个 Custom 模型').replace('{count}', canvasAgentCustomModelChoices.length));
+                uiCall('showToast', null, t('Fetched {count} custom model(s).', '已拉取 {count} 个 Custom 模型').replace('{count}', canvasAgentCustomModelChoices.length));
             } else {
-                call('showToast', null, t('Fetch models failed: {error}', '拉取模型失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
+                uiCall('showToast', null, t('Fetch models failed: {error}', '拉取模型失败：{error}').replace('{error}', response?.details || response?.error || 'unknown error'));
             }
             return response;
         }

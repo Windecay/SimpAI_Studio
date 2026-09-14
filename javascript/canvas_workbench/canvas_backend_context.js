@@ -17,35 +17,20 @@
 
     function createCanvasWorkbenchBackendContext(source) {
         const scope = source?.backendSource || source || {};
+        const backendRequestSource = scope.backendRequestSource || {};
+        const qwenTtsPresetsSource = scope.qwenTtsPresetsSource || {};
         const backendController = createController(
             modules.backendRequests,
             'createCanvasBackendRequestController',
-            {
-                getApiMethod: scope.getApiMethod,
-                getProjectId: scope.getProjectId,
-                getStorageScope: scope.getStorageScope,
-                getSystemParams: scope.getSystemParams,
-                runtimeUiLang: scope.runtimeUiLang,
-                serializeClassicNodeForRun: scope.serializeClassicNodeForRun,
-                serializePresetForRun: scope.serializePresetForRun,
-                getVlmCustomApiKey: scope.getVlmCustomApiKey,
-                getVlmCustomRuntimeParams: scope.getVlmCustomRuntimeParams,
-                cloneRunValue: scope.cloneRunValue,
-                isBridgeReady: scope.isBridgeReady,
-                sendBridgeRequest: scope.sendBridgeRequest,
-                sendVlmRunRequest: scope.sendVlmRunRequest,
-                sendVlmCancelRequest: scope.sendVlmCancelRequest
-            }
+            backendRequestSource
         );
         const backendMethod = name => method(backendController, name);
         const qwenTtsPresetsController = createController(
             modules.qwenTtsPresets,
             'createCanvasQwenTtsPresetsController',
             {
+                ...qwenTtsPresetsSource,
                 sendCanvasQwenTtsPresetsRequest: backendMethod('sendCanvasQwenTtsPresetsRequest'),
-                nowIso: scope.nowIso,
-                mutate: scope.mutate,
-                warn: scope.warn
             }
         );
         const qwenTtsPresetsMethod = name => method(qwenTtsPresetsController, name);

@@ -2,21 +2,26 @@
     'use strict';
 
     function createCanvasAgentToolDispatchController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getCanvasAgentTargetNode = (...args) => call('getCanvasAgentTargetNode', null, ...args);
-        const getCanvasAgentPrimaryImageReference = (...args) => call('getCanvasAgentPrimaryImageReference', null, ...args);
-        const getCanvasAgentPrimaryReferenceByKind = (...args) => call('getCanvasAgentPrimaryReferenceByKind', null, ...args);
-        const canvasAgentReferenceNode = (...args) => call('canvasAgentReferenceNode', null, ...args);
-        const isCanvasAgentImageTarget = (...args) => call('isCanvasAgentImageTarget', false, ...args);
-        const isCanvasAgentVideoTarget = (...args) => call('isCanvasAgentVideoTarget', false, ...args);
-        const isCanvasAgentAudioTarget = (...args) => call('isCanvasAgentAudioTarget', false, ...args);
-        const canvasAgentQuickTools = (...args) => call('canvasAgentQuickTools', [], ...args);
-        const canvasAgentVideoQuickTools = (...args) => call('canvasAgentVideoQuickTools', [], ...args);
-        const canvasAgentAudioQuickTools = (...args) => call('canvasAgentAudioQuickTools', [], ...args);
-        const runCanvasAgentQuickTool = (...args) => call('runCanvasAgentQuickTool', null, ...args);
-        const runCanvasAgentVideoQuickTool = (...args) => call('runCanvasAgentVideoQuickTool', null, ...args);
-        const runCanvasAgentAudioQuickTool = (...args) => call('runCanvasAgentAudioQuickTool', null, ...args);
+        const scope = context?.toolDispatchSource || context || {};
+        const targetSource = scope.targetSource || {};
+        const referenceSource = scope.referenceSource || {};
+        const toolSource = scope.toolSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getCanvasAgentTargetNode = (...args) => call(targetSource, 'getCanvasAgentTargetNode', null, ...args);
+        const isCanvasAgentImageTarget = (...args) => !!call(targetSource, 'isCanvasAgentImageTarget', false, ...args);
+        const isCanvasAgentVideoTarget = (...args) => !!call(targetSource, 'isCanvasAgentVideoTarget', false, ...args);
+        const isCanvasAgentAudioTarget = (...args) => !!call(targetSource, 'isCanvasAgentAudioTarget', false, ...args);
+        const getCanvasAgentPrimaryImageReference = (...args) => call(referenceSource, 'getCanvasAgentPrimaryImageReference', null, ...args);
+        const getCanvasAgentPrimaryReferenceByKind = (...args) => call(referenceSource, 'getCanvasAgentPrimaryReferenceByKind', null, ...args);
+        const canvasAgentReferenceNode = (...args) => call(referenceSource, 'canvasAgentReferenceNode', null, ...args);
+        const canvasAgentQuickTools = (...args) => call(toolSource, 'canvasAgentQuickTools', [], ...args);
+        const canvasAgentVideoQuickTools = (...args) => call(toolSource, 'canvasAgentVideoQuickTools', [], ...args);
+        const canvasAgentAudioQuickTools = (...args) => call(toolSource, 'canvasAgentAudioQuickTools', [], ...args);
+        const runCanvasAgentQuickTool = (...args) => call(toolSource, 'runCanvasAgentQuickTool', null, ...args);
+        const runCanvasAgentVideoQuickTool = (...args) => call(toolSource, 'runCanvasAgentVideoQuickTool', null, ...args);
+        const runCanvasAgentAudioQuickTool = (...args) => call(toolSource, 'runCanvasAgentAudioQuickTool', null, ...args);
 
         function canvasAgentCurrentMediaKind() {
             const target = getCanvasAgentTargetNode();

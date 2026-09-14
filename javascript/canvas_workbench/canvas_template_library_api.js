@@ -2,14 +2,14 @@
     'use strict';
 
     function createCanvasTemplateLibraryApi(context) {
-        const scope = context || {};
-        const saveTemplate = typeof scope.saveTemplate === 'function' ? scope.saveTemplate : null;
-        const listTemplates = typeof scope.listTemplates === 'function' ? scope.listTemplates : null;
-        const loadTemplate = typeof scope.loadTemplate === 'function' ? scope.loadTemplate : null;
-        const deleteTemplate = typeof scope.deleteTemplate === 'function' ? scope.deleteTemplate : null;
-        const isBridgeReady = typeof scope.isBridgeReady === 'function' ? scope.isBridgeReady : () => false;
-        const sendBridgeRequest = scope.sendBridgeRequest;
-        const getUserContext = typeof scope.getUserContext === 'function' ? scope.getUserContext : () => ({});
+        const scope = context?.templateLibraryApiSource || context || {};
+        const apiSource = scope.apiSource || {};
+        const bridgeSource = scope.bridgeSource || {};
+        const userSource = scope.userSource || {};
+        const getApiMethod = name => typeof apiSource.getApiMethod === 'function' ? apiSource.getApiMethod(name) : null;
+        const isBridgeReady = typeof bridgeSource.isBridgeReady === 'function' ? bridgeSource.isBridgeReady : () => false;
+        const sendBridgeRequest = bridgeSource.sendBridgeRequest;
+        const getUserContext = typeof userSource.getUserContext === 'function' ? userSource.getUserContext : () => ({});
 
         function withUserContext(payload) {
             return Object.assign({}, payload || {}, { user_context: getUserContext() });
@@ -21,7 +21,8 @@
 
         async function sendTemplateSaveRequest(payload) {
             const body = withUserContext(payload);
-            if (typeof saveTemplate === 'function') return saveTemplate(body);
+            const method = getApiMethod('saveTemplate');
+            if (typeof method === 'function') return method(body);
             if (isBridgeReady() && typeof sendBridgeRequest === 'function') {
                 return sendBridgeRequest('save_template', body, 45000);
             }
@@ -30,7 +31,8 @@
 
         async function sendTemplateListRequest(payload) {
             const body = withUserContext(payload);
-            if (typeof listTemplates === 'function') return listTemplates(body);
+            const method = getApiMethod('listTemplates');
+            if (typeof method === 'function') return method(body);
             if (isBridgeReady() && typeof sendBridgeRequest === 'function') {
                 return sendBridgeRequest('list_templates', body, 45000);
             }
@@ -39,7 +41,8 @@
 
         async function sendTemplateLoadRequest(templateId) {
             const body = withUserContext({ template_id: templateId });
-            if (typeof loadTemplate === 'function') return loadTemplate(body);
+            const method = getApiMethod('loadTemplate');
+            if (typeof method === 'function') return method(body);
             if (isBridgeReady() && typeof sendBridgeRequest === 'function') {
                 return sendBridgeRequest('load_template', body, 45000);
             }
@@ -48,7 +51,8 @@
 
         async function sendTemplateDeleteRequest(templateId) {
             const body = withUserContext({ template_id: templateId });
-            if (typeof deleteTemplate === 'function') return deleteTemplate(body);
+            const method = getApiMethod('deleteTemplate');
+            if (typeof method === 'function') return method(body);
             if (isBridgeReady() && typeof sendBridgeRequest === 'function') {
                 return sendBridgeRequest('delete_template', body, 45000);
             }

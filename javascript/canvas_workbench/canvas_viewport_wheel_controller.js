@@ -2,21 +2,30 @@
     'use strict';
 
     function createCanvasViewportWheelController(context) {
-        const scope = context || {};
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.viewportWheelSource || context || {};
+        const domSource = scope.domSource || {};
+        const environmentSource = scope.environmentSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const sourceCall = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const getRoot = () => sourceCall(domSource, 'getRoot', null);
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => typeof scope.getWindow === 'function'
-            ? scope.getWindow()
+        const getWindow = () => typeof environmentSource.getWindow === 'function'
+            ? environmentSource.getWindow()
             : (typeof window !== 'undefined' ? window : null);
-        const getPerformanceNow = () => typeof scope.performanceNow === 'function'
-            ? scope.performanceNow()
+        const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
+            ? runtimeSource.performanceNow()
             : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
-        const getSuppressWheelUntil = () => typeof scope.getSuppressWheelUntil === 'function'
-            ? Number(scope.getSuppressWheelUntil() || 0)
+        const getSuppressWheelUntil = () => typeof viewportSource.getSuppressWheelUntil === 'function'
+            ? Number(viewportSource.getSuppressWheelUntil() || 0)
             : 0;
-        const call = (name, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : undefined;
+        const interactionCall = (name, fallback, ...args) => sourceCall(interactionSource, name, fallback, ...args);
+        const zoomAtClient = (...args) => sourceCall(viewportSource, 'zoomAtClient', undefined, ...args);
 
         function canElementScrollInWheelDirection(el, deltaX, deltaY) {
             const root = getRoot();
@@ -52,12 +61,16 @@
             const root = getRoot();
             if (!evt || !root || root.hidden) return;
             if (findWheelScrollableAncestor(evt.target, evt)) return;
-            if (call('isInteractiveTarget', evt.target)) return;
+            if (interactionCall('isInteractiveTarget', false, evt.target)) return;
             evt.preventDefault();
-            if (call('isNodeDragging') || call('isPanning') || call('isMarqueeSelecting') || call('isConnecting') || getPerformanceNow() < getSuppressWheelUntil()) return;
+            if (interactionCall('isNodeDragging', false)
+                || interactionCall('isPanning', false)
+                || interactionCall('isMarqueeSelecting', false)
+                || interactionCall('isConnecting', false)
+                || getPerformanceNow() < getSuppressWheelUntil()) return;
             const delta = Math.abs(evt.deltaY) >= Math.abs(evt.deltaX) ? evt.deltaY : evt.deltaX;
             const factor = Math.exp(-delta * 0.0012);
-            call('zoomAtClient', evt.clientX, evt.clientY, factor);
+            zoomAtClient(evt.clientX, evt.clientY, factor);
         }
 
         function onWorkbenchWheelBoundary(evt) {

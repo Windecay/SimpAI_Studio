@@ -23,13 +23,17 @@
             scope.plannerSource || {}
         );
         const plannerMethod = (name, ...args) => method(planner, name)?.(...args);
+        const vlmInstructionSource = Object.assign({}, scope.vlmInstructionSource || {});
+        const plannerSource = Object.assign({}, vlmInstructionSource.plannerSource || {}, {
+            canvasAgentInstructionPlanPrompt: (...args) => plannerMethod('canvasAgentInstructionPlanPrompt', ...args),
+            extractCanvasAgentJsonObject: (...args) => plannerMethod('extractCanvasAgentJsonObject', ...args),
+            normalizeCanvasAgentInstructionPlan: (...args) => plannerMethod('normalizeCanvasAgentInstructionPlan', ...args)
+        });
         const vlmInstruction = createController(
             modules.vlmInstruction,
             'createCanvasAgentVlmInstructionController',
-            Object.assign({}, scope.vlmInstructionSource || {}, {
-                canvasAgentInstructionPlanPrompt: (...args) => plannerMethod('canvasAgentInstructionPlanPrompt', ...args),
-                extractCanvasAgentJsonObject: (...args) => plannerMethod('extractCanvasAgentJsonObject', ...args),
-                normalizeCanvasAgentInstructionPlan: (...args) => plannerMethod('normalizeCanvasAgentInstructionPlan', ...args)
+            Object.assign({}, vlmInstructionSource, {
+                plannerSource
             })
         );
 

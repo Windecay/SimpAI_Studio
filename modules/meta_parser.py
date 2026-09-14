@@ -106,7 +106,7 @@ def _resolve_previous_default_refiner_model(source_dict, refiner_model):
     return _resolve_previous_default_model(source_dict, refiner_model, "previous_default_refiners")
 
 
-def scene_disvisible_with_optional_inputs(scenes):
+def scene_disvisible_with_optional_inputs(scenes, theme=None):
     if not isinstance(scenes, dict):
         return []
     raw_hidden = scenes.get("disvisible", [])
@@ -116,6 +116,12 @@ def scene_disvisible_with_optional_inputs(scenes):
         hidden = [item.strip() for item in raw_hidden.split(",") if item.strip()]
     else:
         hidden = []
+    theme_hidden = scenes.get("theme_disvisible", {})
+    if isinstance(theme_hidden, dict):
+        extra_hidden = theme_hidden.get(theme, [])
+        for item in extra_hidden if isinstance(extra_hidden, list) else []:
+            if str(item) not in hidden:
+                hidden.append(str(item))
     enabled = scenes.get("divisible", [])
     enabled = set(str(item) for item in enabled) if isinstance(enabled, list) else set()
     for slot in (*SCENE_OPTIONAL_INPUT_IMAGE_SLOTS, *SCENE_OPTIONAL_VIDEO_SLOTS, *SCENE_OPTIONAL_AUDIO_SLOTS):
@@ -126,10 +132,14 @@ def scene_disvisible_with_optional_inputs(scenes):
     return hidden
 
 
-def scene_localized_text(state, scenes, key, default=""):
+def scene_localized_text(state, scenes, key, default="", theme=None):
     state = state if isinstance(state, dict) else {}
     scenes = scenes if isinstance(scenes, dict) else {}
     value = scenes.get(key, default)
+    if isinstance(value, dict):
+        theme = _resolve_scene_theme_name(scenes, theme or state.get("scene_theme") or state.get("__scene_theme"))
+        if theme in value:
+            value = value[theme]
     return localized_ui_text(state, default if value is None else value)
 
 
@@ -195,10 +205,12 @@ def _coerce_scene_slider_value(value, minimum=None, maximum=None, step=None):
         return value
 
 
-def get_scene_safe_update(control_name, value, visible, inter, **kwargs):
+def get_scene_safe_update(control_name, value, visible, inter, sync_visibility=False, **kwargs):
     is_interactive = control_name not in inter
     payload = dict(kwargs)
     payload["interactive"] = is_interactive
+    if sync_visibility:
+        payload["visible"] = control_name not in visible
     if "minimum" in payload or "maximum" in payload:
         payload["value"] = _coerce_scene_slider_value(value, payload.get("minimum"), payload.get("maximum"), payload.get("step"))
     else:
@@ -559,7 +571,7 @@ def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_ima
     # the fallback for upload/clear callbacks that do not carry a valid theme.
     active_theme = _resolve_active_scene_theme(state)
     theme = requested_theme or active_theme
-    visible = scene_disvisible_with_optional_inputs(scenes)
+    visible = scene_disvisible_with_optional_inputs(scenes, theme)
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number
     refer_image_number = sum(1 for slot in SCENE_INPUT_IMAGE_SLOTS if slot not in visible)
@@ -618,7 +630,7 @@ def switch_scene_theme_ready_to_gen(state, image_number, canvas_image, input_ima
 def switch_scene_theme(state, image_number, canvas_image, input_image1, additional_prompt, additional_prompt_2, video_duration, var_number, var_number2, var_number3, var_number4, var_number5, var_number6, var_number7, var_number8, var_number9, var_number10, scene_steps, switch_option1, switch_option2, switch_option3, switch_option4, theme=None):
     scenes = state.get("scene_frontend",{})
     theme = _resolve_scene_theme_name(scenes, theme)
-    visible = scene_disvisible_with_optional_inputs(scenes)
+    visible = scene_disvisible_with_optional_inputs(scenes, theme)
     inter = scenes.get('disinteractive', [])
     input_image_number = 1 if 'scene_canvas_image' not in visible or 'scene_input_image1' not in visible else 0
     input_image_number = 2 if 'scene_canvas_image' not in visible and 'scene_input_image1' not in visible else input_image_number
@@ -736,17 +748,17 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
     var_number8_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number8', 0)
     results.append(get_scene_safe_update('scene_var_number8', var_number8_default if switch_flag else var_number8, visible, inter, label=var_number8_title, minimum=var_number8_min, maximum=var_number8_max))
 
-    var_number9_title = scene_localized_text(state, scenes, 'var_number9_title', 'Int Value 5')
+    var_number9_title = scene_localized_text(state, scenes, 'var_number9_title', 'Int Value 5', theme=theme)
     var_number9_min = scenes.get('var_number9_min', 0)
     var_number9_max = scenes.get('var_number9_max', 10)
     var_number9_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number9', 0)
-    results.append(get_scene_safe_update('scene_var_number9', var_number9_default if switch_flag else var_number9, visible, inter, label=var_number9_title, minimum=var_number9_min, maximum=var_number9_max))
+    results.append(get_scene_safe_update('scene_var_number9', var_number9_default if switch_flag else var_number9, visible, inter, sync_visibility=True, label=var_number9_title, minimum=var_number9_min, maximum=var_number9_max, step=modules.flags.get_value_by_scene_theme(state, theme, 'var_number9_step', 1)))
 
     var_number10_title = scene_localized_text(state, scenes, 'var_number10_title', 'Int Value 6')
     var_number10_min = scenes.get('var_number10_min', 0)
     var_number10_max = scenes.get('var_number10_max', 10)
     var_number10_default = modules.flags.get_value_by_scene_theme(state, theme, 'var_number10', 0)
-    results.append(get_scene_safe_update('scene_var_number10', var_number10_default if switch_flag else var_number10, visible, inter, label=var_number10_title, minimum=var_number10_min, maximum=var_number10_max))
+    results.append(get_scene_safe_update('scene_var_number10', var_number10_default if switch_flag else var_number10, visible, inter, sync_visibility=True, label=var_number10_title, minimum=var_number10_min, maximum=var_number10_max))
 
     scene_steps_title = scene_localized_text(state, scenes, 'scene_steps_title', 'Scene Steps')
     scene_steps_min = _scene_generation_step_bound(state, theme, "min", scenes.get('scene_steps_min', 1))
@@ -1051,7 +1063,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     results.append(get_layout_update_and_visible_inter(enhance_checkbox_value, 'enhance_checkbox', visible, inter))
     if is_scene_frontend:
         scenes = enginedata_dict.get("scene_frontend", {})
-        scenes_visible = scene_disvisible_with_optional_inputs(scenes)
+        scenes_visible = scene_disvisible_with_optional_inputs(scenes, scene_theme_default)
         visible.extend(scenes_visible)
         scenes_inter = scenes.get('disinteractive', [])
         scenes_inter = list(scenes_inter) if isinstance(scenes_inter, list) else []
@@ -1315,7 +1327,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             maximum=var_number8_max,
         ))
 
-        var_number9_title = scene_localized_text(state_params, scenes, 'var_number9_title', 'Int Value 5')
+        var_number9_title = scene_localized_text(state_params, scenes, 'var_number9_title', 'Int Value 5', theme=theme_default)
         var_number9_min = scenes.get('var_number9_min', 0)
         var_number9_max = scenes.get('var_number9_max', 10)
         results.append(get_scene_safe_update(
@@ -1324,8 +1336,10 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             visible,
             inter,
             label=var_number9_title,
+            sync_visibility=True,
             minimum=var_number9_min,
             maximum=var_number9_max,
+            step=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'var_number9_step', 1),
         ))
 
         var_number10_title = scene_localized_text(state_params, scenes, 'var_number10_title', 'Int Value 6')
@@ -1337,6 +1351,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
             visible,
             inter,
             label=var_number10_title,
+            sync_visibility=True,
             minimum=var_number10_min,
             maximum=var_number10_max,
         ))

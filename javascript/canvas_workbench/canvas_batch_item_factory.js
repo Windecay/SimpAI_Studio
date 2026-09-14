@@ -2,12 +2,16 @@
     'use strict';
 
     function createCanvasBatchItemFactoryController(context) {
-        const scope = context || {};
-        const uid = typeof scope.uid === 'function' ? scope.uid : (prefix) => `${prefix}-item`;
-        const nowIso = typeof scope.nowIso === 'function' ? scope.nowIso : () => new Date().toISOString();
-        const t = typeof scope.t === 'function' ? scope.t : ((en, cn) => cn || en);
-        const cloneRunValue = typeof scope.cloneRunValue === 'function'
-            ? scope.cloneRunValue
+        const scope = context?.batchItemFactorySource || context || {};
+        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const languageSource = scope.languageSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-item`;
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
+            ? serializationSource.cloneRunValue
             : ((value, fallback) => {
                 try {
                     return JSON.parse(JSON.stringify(value ?? fallback));

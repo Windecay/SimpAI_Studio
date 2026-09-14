@@ -3,24 +3,50 @@
 
     function createCanvasHistoryController(context) {
         const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const setTimer = typeof scope.setTimeout === 'function'
-            ? scope.setTimeout
+        const sourceObject = (name) => {
+            const value = scope[name];
+            return value && typeof value === 'object' ? value : {};
+        };
+        const languageSource = sourceObject('languageSource');
+        const configSource = sourceObject('configSource');
+        const projectSource = sourceObject('projectSource');
+        const storageSource = sourceObject('storageSource');
+        const selectionSource = sourceObject('selectionSource');
+        const domSource = sourceObject('domSource');
+        const runtimeSource = sourceObject('runtimeSource');
+        const renderSource = sourceObject('renderSource');
+        const interactionSource = sourceObject('interactionSource');
+        const persistenceSource = sourceObject('persistenceSource');
+        const uiSource = sourceObject('uiSource');
+        const sourceCall = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+        const configCall = (name, fallback, ...args) => sourceCall(configSource, name, fallback, ...args);
+        const projectCall = (name, fallback, ...args) => sourceCall(projectSource, name, fallback, ...args);
+        const storageCall = (name, fallback, ...args) => sourceCall(storageSource, name, fallback, ...args);
+        const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
+        const domCall = (name, fallback, ...args) => sourceCall(domSource, name, fallback, ...args);
+        const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
+        const interactionCall = (name, fallback, ...args) => sourceCall(interactionSource, name, fallback, ...args);
+        const persistenceCall = (name, fallback, ...args) => sourceCall(persistenceSource, name, fallback, ...args);
+        const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const setTimer = typeof runtimeSource.setTimeout === 'function'
+            ? runtimeSource.setTimeout
             : (typeof setTimeout === 'function' ? setTimeout : (() => 0));
-        const clearTimer = typeof scope.clearTimeout === 'function'
-            ? scope.clearTimeout
+        const clearTimer = typeof runtimeSource.clearTimeout === 'function'
+            ? runtimeSource.clearTimeout
             : (typeof clearTimeout === 'function' ? clearTimeout : (() => {}));
-        const historyLimit = Math.max(1, Number(call('getHistoryLimit', 32)) || 32);
-        const historyMemoryBudgetBytes = Math.max(1, Number(call('getHistoryMemoryBudgetBytes', 48 * 1024 * 1024)) || 48 * 1024 * 1024);
+        const historyLimit = Math.max(1, Number(configCall('getHistoryLimit', 32)) || 32);
+        const historyMemoryBudgetBytes = Math.max(1, Number(configCall('getHistoryMemoryBudgetBytes', 48 * 1024 * 1024)) || 48 * 1024 * 1024);
         let undoStack = [];
         let redoStack = [];
         let historyBatchKey = '';
         let historyBatchTimer = 0;
 
         function cloneProjectForHistory() {
-            const project = call('getProject', {}, []) || {};
-            return call('compactProjectForStorage', project, project, {
+            const project = projectCall('getProject', {}) || {};
+            return projectCall('compactProjectForStorage', project, project, {
                 stripAllMaterializedDataUrls: true,
                 maxInlineDataUrlChars: Number.MAX_SAFE_INTEGER,
                 stripStorage: false,
@@ -29,7 +55,7 @@
         }
 
         function selectionSnapshot() {
-            const selection = call('getSelectionState', {}, []) || {};
+            const selection = selectionCall('getSelectionState', {}) || {};
             const ids = selection.selectedNodeIds instanceof Set
                 ? Array.from(selection.selectedNodeIds)
                 : (Array.isArray(selection.selectedNodeIds) ? selection.selectedNodeIds.slice() : []);
@@ -96,7 +122,7 @@
         }
 
         function renderHistoryButtons() {
-            const root = call('getRoot', null);
+            const root = domCall('getRoot', null);
             if (!root) return;
             const undoButton = root.querySelector?.('[data-canvas-action="undo"]');
             const redoButton = root.querySelector?.('[data-canvas-action="redo"]');
@@ -128,21 +154,21 @@
 
         function restoreHistoryEntry(entry) {
             if (!entry?.projectText) return false;
-            const currentProject = call('getProject', {}, []) || {};
-            const storageScope = call('getStorageScope', {}, []);
-            const storageKey = call('getStorageKey', '', []);
-            const storage = currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope);
+            const currentProject = projectCall('getProject', {}) || {};
+            const storageScope = storageCall('getStorageScope', {});
+            const storageKey = storageCall('getStorageKey', '');
+            const storage = currentProject.storage || storageCall('buildProjectStorageInfo', {}, storageKey, storageScope);
             let restoredProject;
             try {
                 restoredProject = JSON.parse(entry.projectText);
             } catch (err) {
                 return false;
             }
-            restoredProject = call('sanitizeProject', restoredProject, restoredProject) || restoredProject;
+            restoredProject = projectCall('sanitizeProject', restoredProject, restoredProject) || restoredProject;
             restoredProject.storage = restoredProject.storage || storage;
-            call('setProject', null, restoredProject);
-            call('resetRenderedProjectDomCache', null);
-            call('setSelectionState', null, {
+            projectCall('setProject', null, restoredProject);
+            renderCall('resetRenderedProjectDomCache', null);
+            selectionCall('setSelectionState', null, {
                 selectedNodeId: entry.selectedNodeId || null,
                 selectedEdgeId: entry.selectedEdgeId || null,
                 selectedGroupId: entry.selectedGroupId || null,
@@ -150,36 +176,36 @@
                     ? entry.selectedNodeIds
                     : (entry.selectedNodeId ? [entry.selectedNodeId] : [])
             });
-            call('closeContextMenu', null);
-            call('scheduleSave', null);
-            call('renderAll', null);
+            interactionCall('closeContextMenu', null);
+            persistenceCall('scheduleSave', null);
+            renderCall('renderAll', null);
             return true;
         }
 
         function undoCanvasEdit() {
             if (!undoStack.length) {
-                call('showToast', null, t('No canvas edits to undo', '没有可撤销的画布编辑'));
+                uiCall('showToast', null, t('No canvas edits to undo', '没有可撤销的画布编辑'));
                 return false;
             }
             const entry = undoStack.pop();
             appendHistoryEntry(redoStack, createHistoryEntry('Redo snapshot'));
             const restored = restoreHistoryEntry(entry);
             if (!restored) return false;
-            call('showToast', null, t('Undo: {label}', '撤销：{label}').replace('{label}', entry.label || t('Edit canvas', '编辑画布')));
+            uiCall('showToast', null, t('Undo: {label}', '撤销：{label}').replace('{label}', entry.label || t('Edit canvas', '编辑画布')));
             renderHistoryButtons();
             return true;
         }
 
         function redoCanvasEdit() {
             if (!redoStack.length) {
-                call('showToast', null, t('No canvas edits to redo', '没有可重做的画布编辑'));
+                uiCall('showToast', null, t('No canvas edits to redo', '没有可重做的画布编辑'));
                 return false;
             }
             const entry = redoStack.pop();
             appendHistoryEntry(undoStack, createHistoryEntry('Undo snapshot'));
             const restored = restoreHistoryEntry(entry);
             if (!restored) return false;
-            call('showToast', null, t('Canvas edit redone', '已重做画布编辑'));
+            uiCall('showToast', null, t('Canvas edit redone', '已重做画布编辑'));
             renderHistoryButtons();
             return true;
         }

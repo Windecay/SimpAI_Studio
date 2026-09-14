@@ -455,11 +455,12 @@
         if (parsed) raw = parsed.mode || parsed.route || parsed.id || parsed.compiler || parsed.name || '';
         const text = String(raw || '').trim();
         const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v')) return MODE_REF2VA;
+        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v') || compact.includes('r2c') || compact.includes('minimaxh3avatar')) return MODE_REF2VA;
         if (compact.includes('fl2va') || compact.includes('firstlast')) return MODE_FL2VA;
         if (compact.includes('l2va') || compact.includes('lastframe')) return MODE_L2VA;
-        if (compact.includes('i2va') || compact.includes('i2v')) return MODE_I2VA;
         if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? MODE_FL2VA : MODE_I2VA;
+        if (compact.includes('i2va')) return MODE_I2VA;
+        if (compact.includes('i2v')) return inventory.image_count >= 2 ? MODE_FL2VA : MODE_I2VA;
         if (compact.includes('t2va') || compact.includes('t2v') || compact.includes('text')) return MODE_T2VA;
         return MODE_T2VA;
     }
@@ -2202,16 +2203,16 @@
     function sceneModeFromSource(source, inventory, extraHint) {
         const state = languageState(source);
         const scene = state.scene_frontend && typeof state.scene_frontend === 'object' ? state.scene_frontend : {};
+        const compiler = themeValue(state, 'prompt_compiler', '');
+        if (compiler) return normalizeMode(compiler, { inventory });
         const hints = [
-            themeValue(state, 'prompt_compiler', ''),
+            state.__scene_task_method,
             themeValue(state, 'task_method', ''),
             state.__preset,
             state.preset,
-            state.task_method,
-            scene.theme_title,
-            extraHint
+            state.task_method
         ].filter(Boolean).join(' ');
-        return normalizeMode(hints, { inventory });
+        return normalizeMode(hints || scene.theme_title || extraHint, { inventory });
     }
 
     function validMediaSource(value) {
@@ -2294,9 +2295,15 @@
         return hidden;
     }
 
+    function sceneSourceVideoSlots(source) {
+        const state = languageState(source);
+        const slots = state.__scene_video_source_slots ?? state.scene_frontend?.video_source_slots;
+        return Array.isArray(slots) ? slots : [];
+    }
+
     function currentSceneInventory(source) {
         const hidden = sceneHiddenSlots(source);
-        const sourceSlots = new Set(languageState(source).scene_frontend?.video_source_slots || []);
+        const sourceSlots = new Set(sceneSourceVideoSlots(source));
         const imageSlots = [
             { id: 'scene_canvas', slot: 'scene_canvas_image', label_en: 'Upload and canvas (1)', label_cn: '\u4e0a\u4f20\u548c\u753b\u5e03 (1)', info: sceneCanvasMediaInfo },
             { id: 'scene_input_image1', slot: 'scene_input_image1', label_en: 'Prompt image (2)', label_cn: '\u63d0\u793a\u56fe (2)' },
@@ -2346,7 +2353,7 @@
             mode: sceneModeFromSource(source, inventory, sceneThemeText),
             duration: Math.max(0.3, fieldNumber('scene_video_duration', 5)),
             inventory,
-            is_video_transition: (languageState(source).scene_frontend?.video_source_slots || []).length === 2,
+            is_video_transition: sceneSourceVideoSlots(source).length === 2,
             langState: languageState(source)
         };
     }
@@ -3433,6 +3440,7 @@
 
     function openScenePreset() {
         const source = languageState();
+        if (sceneHiddenSlots(source).has('minimax_h3_storyboard_control')) return null;
         const options = currentSceneOptions(source);
         const promptField = currentPromptField();
         const currentPrompt = cleanText(promptField?.value || '');

@@ -3,35 +3,41 @@
 
     function createCanvasAgentWorkflowLayoutController(context) {
         const scope = context?.workflowLayoutSource || context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function'
-            ? scope[name](...args)
+        const projectSource = scope.projectSource || {};
+        const geometrySource = scope.geometrySource || {};
+        const viewportSource = scope.viewportSource || {};
+        const layoutSource = scope.layoutSource || {};
+        const groupSource = scope.groupSource || {};
+        const metadataSource = scope.metadataSource || {};
+        const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
+            ? source[name](...args)
             : fallback;
-        const getProject = () => call('getProject', {}) || {};
-        const getNodeRect = (...args) => call('getNodeRect', null, ...args);
-        const getVisibleWorldRect = (...args) => call('getVisibleWorldRect', null, ...args);
-        const defaultNodeSize = (...args) => call('defaultNodeSize', { w: 160, h: 120 }, ...args) || { w: 160, h: 120 };
-        const defaultResultNodeSize = (...args) => call('defaultResultNodeSize', { w: 240, h: 260 }, ...args) || { w: 240, h: 260 };
-        const viewportCenterWorld = (...args) => call('viewportCenterWorld', { x: 0, y: 0 }, ...args) || { x: 0, y: 0 };
-        const ensureProjectGroups = (...args) => call('ensureProjectGroups', [], ...args) || [];
-        const getGroup = (...args) => call('getGroup', null, ...args);
-        const updateGroupPositionDom = (...args) => call('updateGroupPositionDom', null, ...args);
-        const centerViewportOnWorld = (...args) => call('centerViewportOnWorld', null, ...args);
-        const buildNodeLayoutPatch = (...args) => call('buildNodeLayoutPatch', {}, ...args) || {};
-        const buildResultLayoutPatch = (...args) => call('buildResultLayoutPatch', {}, ...args) || {};
-        const buildGroupFieldPatch = (...args) => call('buildGroupFieldPatch', {}, ...args) || {};
-        const buildAgentWorkflowGroup = (...args) => call('buildAgentWorkflowGroup', null, ...args);
-        const buildProjectGroupAppendPatch = (...args) => call('buildProjectGroupAppendPatch', {}, ...args) || {};
-        const buildAgentCreatedNodePatch = (...args) => call('buildAgentCreatedNodePatch', {}, ...args) || {};
-        const buildAgentWorkflowPresetPatch = (...args) => call('buildAgentWorkflowPresetPatch', {}, ...args) || {};
-        const normalizePresetName = typeof scope.normalizePresetName === 'function'
-            ? scope.normalizePresetName
+        const getProject = () => call(projectSource, 'getProject', {}) || {};
+        const getNodeRect = (...args) => call(geometrySource, 'getNodeRect', null, ...args);
+        const getVisibleWorldRect = (...args) => call(viewportSource, 'getVisibleWorldRect', null, ...args);
+        const defaultNodeSize = (...args) => call(geometrySource, 'defaultNodeSize', { w: 160, h: 120 }, ...args) || { w: 160, h: 120 };
+        const defaultResultNodeSize = (...args) => call(geometrySource, 'defaultResultNodeSize', { w: 240, h: 260 }, ...args) || { w: 240, h: 260 };
+        const viewportCenterWorld = (...args) => call(viewportSource, 'viewportCenterWorld', { x: 0, y: 0 }, ...args) || { x: 0, y: 0 };
+        const ensureProjectGroups = (...args) => call(projectSource, 'ensureProjectGroups', [], ...args) || [];
+        const getGroup = (...args) => call(projectSource, 'getGroup', null, ...args);
+        const updateGroupPositionDom = (...args) => call(groupSource, 'updateGroupPositionDom', null, ...args);
+        const centerViewportOnWorld = (...args) => call(viewportSource, 'centerViewportOnWorld', null, ...args);
+        const buildNodeLayoutPatch = (...args) => call(layoutSource, 'buildNodeLayoutPatch', {}, ...args) || {};
+        const buildResultLayoutPatch = (...args) => call(layoutSource, 'buildResultLayoutPatch', {}, ...args) || {};
+        const buildGroupFieldPatch = (...args) => call(groupSource, 'buildGroupFieldPatch', {}, ...args) || {};
+        const buildAgentWorkflowGroup = (...args) => call(groupSource, 'buildAgentWorkflowGroup', null, ...args);
+        const buildProjectGroupAppendPatch = (...args) => call(groupSource, 'buildProjectGroupAppendPatch', {}, ...args) || {};
+        const buildAgentCreatedNodePatch = (...args) => call(metadataSource, 'buildAgentCreatedNodePatch', {}, ...args) || {};
+        const buildAgentWorkflowPresetPatch = (...args) => call(metadataSource, 'buildAgentWorkflowPresetPatch', {}, ...args) || {};
+        const normalizePresetName = typeof metadataSource.normalizePresetName === 'function'
+            ? metadataSource.normalizePresetName
             : (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
         const getCollapsedPromptNodeDefaultHeight = () => Number(
-            call('getCollapsedPromptNodeDefaultHeight', 280) || 280
+            call(geometrySource, 'getCollapsedPromptNodeDefaultHeight', 280) || 280
         );
-        const setSelectedGroupId = (...args) => call('setSelectedGroupId', null, ...args);
+        const setSelectedGroupId = (...args) => call(projectSource, 'setSelectedGroupId', null, ...args);
         const rectsOverlap = (...args) => {
-            if (typeof scope.rectsOverlap === 'function') return scope.rectsOverlap(...args);
+            if (typeof geometrySource.rectsOverlap === 'function') return geometrySource.rectsOverlap(...args);
             const [a, b, padding] = args;
             const pad = Number(padding || 0);
             return !!a && !!b

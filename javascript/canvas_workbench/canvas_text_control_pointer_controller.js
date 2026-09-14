@@ -2,19 +2,22 @@
     'use strict';
 
     function createCanvasTextControlPointerController(context) {
-        const scope = context || {};
-        const getRoot = () => typeof scope.getRoot === 'function' ? scope.getRoot() : null;
-        const getDocument = () => typeof scope.getDocument === 'function'
-            ? scope.getDocument()
+        const scope = context?.textControlPointerSource || context || {};
+        const domSource = scope.domSource || {};
+        const environmentSource = scope.environmentSource || {};
+        const textControlSource = scope.textControlSource || {};
+        const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
             : (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => typeof scope.getWindow === 'function'
-            ? scope.getWindow()
+        const getWindow = () => typeof environmentSource.getWindow === 'function'
+            ? environmentSource.getWindow()
             : (typeof window !== 'undefined' ? window : null);
-        const getEditableTextControl = (target) => typeof scope.getEditableTextControl === 'function'
-            ? scope.getEditableTextControl(target)
+        const getEditableTextControl = (target) => typeof textControlSource.getEditableTextControl === 'function'
+            ? textControlSource.getEditableTextControl(target)
             : null;
-        const isEditableElement = (target) => typeof scope.isEditableElement === 'function'
-            ? !!scope.isEditableElement(target)
+        const isEditableElement = (target) => typeof textControlSource.isEditableElement === 'function'
+            ? !!textControlSource.isEditableElement(target)
             : false;
         let pointerState = null;
 

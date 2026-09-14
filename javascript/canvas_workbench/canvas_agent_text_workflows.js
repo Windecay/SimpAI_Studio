@@ -2,25 +2,37 @@
     'use strict';
 
     function createCanvasAgentTextWorkflowController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const uid = scope.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
-        const getCanvasAgentTargetNode = () => call('getCanvasAgentTargetNode', null);
-        const isCanvasAgentTextTarget = (...args) => !!call('isCanvasAgentTextTarget', false, ...args);
-        const getTextNodeInputSource = (...args) => call('getTextNodeInputSource', null, ...args);
-        const getNodeTextOutput = (...args) => call('getNodeTextOutput', '', ...args);
-        const getCanvasAgentRewriteModel = () => call('getCanvasAgentRewriteModel', '');
-        const setCanvasAgentRunInfo = (...args) => call('setCanvasAgentRunInfo', null, ...args);
-        const resetCanvasAgentRunInfo = (...args) => call('resetCanvasAgentRunInfo', null, ...args);
-        const setCanvasAgentMessage = (...args) => call('setCanvasAgentMessage', null, ...args);
-        const showToast = (...args) => call('showToast', null, ...args);
-        const waitNextFrame = (...args) => call('waitNextFrame', Promise.resolve(), ...args);
-        const rewriteCanvasAgentPromptWithLlm = (...args) => call('rewriteCanvasAgentPromptWithLlm', null, ...args);
-        const askCanvasAgentDecision = (...args) => call('askCanvasAgentDecision', 'cancel', ...args);
-        const updateTextNodeValue = (...args) => call('updateTextNodeValue', null, ...args);
-        const setCanvasAgentInput = (...args) => call('setCanvasAgentInput', null, ...args);
-        const mutate = (...args) => call('mutate', null, ...args);
+        const scope = context?.textWorkflowsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
+        const targetSource = scope.targetSource || {};
+        const nodeSource = scope.nodeSource || {};
+        const modelSource = scope.modelSource || {};
+        const stateSource = scope.stateSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const rewriteSource = scope.rewriteSource || {};
+        const decisionSource = scope.decisionSource || {};
+        const uiSource = scope.uiSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const getCanvasAgentTargetNode = () => call(targetSource, 'getCanvasAgentTargetNode', null);
+        const isCanvasAgentTextTarget = (...args) => !!call(targetSource, 'isCanvasAgentTextTarget', false, ...args);
+        const getTextNodeInputSource = (...args) => call(nodeSource, 'getTextNodeInputSource', null, ...args);
+        const getNodeTextOutput = (...args) => call(nodeSource, 'getNodeTextOutput', '', ...args);
+        const updateTextNodeValue = (...args) => call(nodeSource, 'updateTextNodeValue', null, ...args);
+        const getCanvasAgentRewriteModel = () => call(modelSource, 'getCanvasAgentRewriteModel', '');
+        const setCanvasAgentRunInfo = (...args) => call(stateSource, 'setCanvasAgentRunInfo', null, ...args);
+        const resetCanvasAgentRunInfo = (...args) => call(stateSource, 'resetCanvasAgentRunInfo', null, ...args);
+        const setCanvasAgentMessage = (...args) => call(stateSource, 'setCanvasAgentMessage', null, ...args);
+        const setCanvasAgentInput = (...args) => call(stateSource, 'setCanvasAgentInput', null, ...args);
+        const mutate = (...args) => call(stateSource, 'mutate', null, ...args);
+        const waitNextFrame = (...args) => call(runtimeSource, 'waitNextFrame', Promise.resolve(), ...args);
+        const rewriteCanvasAgentPromptWithLlm = (...args) => call(rewriteSource, 'rewriteCanvasAgentPromptWithLlm', null, ...args);
+        const askCanvasAgentDecision = (...args) => call(decisionSource, 'askCanvasAgentDecision', 'cancel', ...args);
+        const showToast = (...args) => call(uiSource, 'showToast', null, ...args);
 
         async function runCanvasAgentTextRefine(prompt, options) {
             const target = getCanvasAgentTargetNode();

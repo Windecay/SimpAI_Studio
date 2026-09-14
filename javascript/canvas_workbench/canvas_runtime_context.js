@@ -38,13 +38,6 @@
         const resultPreviewSource = scope.resultPreviewSource || {};
         const nodeRendererSource = scope.nodeRendererSource || {};
         const nodeRenderSource = scope.nodeRenderSource || {};
-        const assetMethod = name => method(controllers.assetNodeRenderer, name);
-        const resultPreviewMethod = name => method(controllers.resultPreview, name);
-        const nodeMethod = name => method(controllers.nodeRenderer, name);
-        const layoutMethod = name => method(controllers.nodeLayout, name);
-        const viewportMethod = name => method(controllers.viewportRender, name);
-        const spatialMethod = name => method(controllers.nodeSpatialIndex, name);
-        const presetMethod = name => method(controllers.presetNodeRenderer, name);
 
         controllers.assetNodeRenderer = createController(
             window.SimpAICanvasWorkbenchAssetNodeRenderer || {},
@@ -111,31 +104,7 @@
                 CANVAS_ASSET_NODE_RENDERER: controllers.assetNodeRenderer,
                 CANVAS_RESULT_PREVIEW_CONTROLLER: controllers.resultPreview,
                 CANVAS_NODE_RENDERER: controllers.nodeRenderer,
-                CANVAS_NODE_RENDER_CONTROLLER: controllers.nodeRender,
-                TIMELINE_NODE_CONTEXT_SOURCE: {
-                    getNode: scope.getNode,
-                    uid: scope.uid,
-                    defaultNodeSize: scope.defaultNodeSize,
-                    cloneRunValue: scope.cloneRunValue,
-                    renderNodeStateBadges: nodeApi.renderNodeStateBadges,
-                    getTimelineSourceAsset: scope.getTimelineSourceAsset,
-                    assetDisplaySrc: scope.assetDisplaySrc,
-                    readAssetSize: scope.readAssetSize,
-                    assetMediaKind: scope.assetMediaKind
-                },
-                COMPARE_NODE_CONTEXT_SOURCE: {
-                    assetDisplaySrc: scope.assetDisplaySrc,
-                    defaultNodeSize: scope.defaultNodeSize,
-                    uid: scope.uid,
-                    escapeHtml: scope.escapeHtml,
-                    getCompareSourceAsset: scope.getCompareSourceAsset,
-                    getCompareSourceNode: scope.getCompareSourceNode,
-                    readAssetSize: scope.readAssetSize,
-                    renderIconHtml: scope.renderIconHtml,
-                    renderNodeStateBadges: nodeApi.renderNodeStateBadges
-                },
-                STYLE_SELECTOR_NODE_CONTEXT_SOURCE: scope.styleSelectorNodeContextSource,
-                QWEN_TTS_NODE_CONTEXT_SOURCE: scope.qwenTtsNodeContextSource
+                CANVAS_NODE_RENDER_CONTROLLER: controllers.nodeRender
             },
             assetApi,
             resultPreviewApi,
@@ -158,23 +127,6 @@
         const marqueeSource = scope.marqueeSource || {};
         const viewportPointerSource = scope.viewportPointerSource || {};
         const connectionSource = scope.connectionSource || {};
-        const invoke = (name, ...args) => {
-            const callback = scope[name];
-            return typeof callback === 'function' ? callback(...args) : undefined;
-        };
-        const layoutMethod = name => method(controllers.nodeLayout, name);
-        const nodeFactoryMethod = name => method(controllers.nodeFactory, name);
-        const nodeRenderMethod = name => method(controllers.nodeRender, name);
-        const renderMethod = name => method(controllers.render, name);
-        const resultPreviewMethod = name => method(controllers.resultPreview, name);
-        const minimapMethod = name => method(controllers.minimap, name);
-        const runStatusMethod = name => method(controllers.runStatus, name);
-        const historyMethod = name => method(controllers.history, name);
-        const factoryContext = typeof scope.getFactoryContext === 'function'
-            ? (scope.getFactoryContext() || {})
-            : {};
-        const factoryMethod = name => method(factoryContext, name);
-        const factoryCallback = name => (...args) => factoryMethod(name)?.(...args);
 
         controllers.selection = createController(
             modules.selection,
@@ -207,20 +159,6 @@
             groupInteractionSource
         );
         const groupInteractionMethod = name => method(controllers.groupInteraction, name);
-
-        const selectAndFitNode = (node) => {
-            if (!node) return;
-            if (typeof scope.setSelectionState === 'function') {
-                scope.setSelectionState({
-                    selectedNodeId: node.id,
-                    selectedNodeIds: new Set([node.id]),
-                    selectedEdgeId: null,
-                    selectedGroupId: null
-                });
-            }
-            if (typeof scope.fitSelection === 'function') scope.fitSelection();
-            renderMethod('renderAll')?.();
-        };
 
         controllers.runPanels = createController(
             modules.runPanels,

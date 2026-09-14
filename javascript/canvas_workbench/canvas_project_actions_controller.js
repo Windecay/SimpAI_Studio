@@ -2,9 +2,81 @@
     'use strict';
 
     function createCanvasProjectActionsController(context) {
-        const scope = context || {};
-        const t = scope.t || ((en, cn) => cn || en);
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.projectActionsSource || context || {};
+        const languageSource = scope.languageSource || {};
+        const documentSource = scope.documentSource || {};
+        const storageSource = scope.storageSource || {};
+        const projectSource = scope.projectSource || {};
+        const patchSource = scope.patchSource || {};
+        const persistenceSource = scope.persistenceSource || {};
+        const assetSource = scope.assetSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const historySource = scope.historySource || {};
+        const renderSource = scope.renderSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const dialogSource = scope.dialogSource || {};
+        const requestSource = scope.requestSource || {};
+        const uiSource = scope.uiSource || {};
+        const timeSource = scope.timeSource || {};
+        const callbackSources = {
+            getDocument: documentSource,
+            getStorage: storageSource,
+            getStorageScope: storageSource,
+            getStorageKey: storageSource,
+            getStorageBaseKey: storageSource,
+            getLegacyStorageKey: storageSource,
+            browserCacheProjectIndex: storageSource,
+            browserCacheActiveProjectIdKey: storageSource,
+            browserCacheProjectIndexKey: storageSource,
+            browserCacheProjectScope: storageSource,
+            setActiveBrowserCacheProject: storageSource,
+            getCurrentProject: projectSource,
+            getCurrentProjectId: projectSource,
+            getDefaultProjectId: projectSource,
+            isProjectEmpty: projectSource,
+            ensureProjectGroups: projectSource,
+            createDemoWorkbenchProject: projectSource,
+            sanitizeStoragePart: projectSource,
+            sanitizeProject: projectSource,
+            createDefaultProject: projectSource,
+            setProject: projectSource,
+            getBackendLoadedStorageKey: projectSource,
+            setBackendLoadedStorageKey: projectSource,
+            loadProject: projectSource,
+            buildProjectCanvasClearPatch: patchSource,
+            buildProjectIdentityPatch: patchSource,
+            buildProjectSettingsMergePatch: patchSource,
+            buildProjectStoragePatch: patchSource,
+            buildProjectStorageInfo: persistenceSource,
+            saveProjectToBrowserCache: persistenceSource,
+            saveProject: persistenceSource,
+            loadProjectFromBackend: persistenceSource,
+            syncCanvasProjectAssetRoot: assetSource,
+            resetSelectionState: selectionSource,
+            getSelectionState: selectionSource,
+            setSelectionState: selectionSource,
+            resetHistory: historySource,
+            pushHistory: historySource,
+            resetRenderedProjectDomCache: renderSource,
+            renderAll: renderSource,
+            resetGalleryFrostReveals: renderSource,
+            renderStatus: renderSource,
+            mutate: runtimeSource,
+            interruptDeletedResultRuns: runtimeSource,
+            stopTimelinePlayback: runtimeSource,
+            confirm: dialogSource,
+            prompt: dialogSource,
+            sendCanvasProjectClearRequest: requestSource,
+            readFileAsText: requestSource,
+            showToast: uiSource,
+            warn: uiSource,
+            nowIso: timeSource
+        };
+        const t = languageSource.t || ((en, cn) => cn || en);
+        const call = (name, fallback, ...args) => {
+            const sourceObject = callbackSources[name] || {};
+            return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
+        };
         let importProjectInput = null;
 
         function applyProjectSettingsMergePatch(project, updates) {
