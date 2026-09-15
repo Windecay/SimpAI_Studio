@@ -90,6 +90,12 @@
             result[name] = method(controllers[controllerKey], name);
             return result;
         }, {});
+        const minimapAliases = expose('minimap', [
+            'invalidateMinimapStaticCache', 'syncMinimapViewRect', 'updateMinimapForViewportInteraction',
+            'renderMinimap', 'onMinimapPointerDown', 'scheduleMinimapRender', 'cancelMinimapRender',
+            'flushMinimapRender', 'resetMinimapCache', 'isDragging'
+        ]);
+        minimapAliases.isMinimapDragging = minimapAliases.isDragging;
 
         return Object.assign(
             {
@@ -108,11 +114,7 @@
                 'renderSystemInfo', 'setCanvasBackendAlert', 'buildCanvasRunStatus',
                 'mergeCanvasRunStatus', 'buildCanvasNodeStatusPatch'
             ]),
-            expose('minimap', [
-                'invalidateMinimapStaticCache', 'syncMinimapViewRect', 'updateMinimapForViewportInteraction',
-                'renderMinimap', 'onMinimapPointerDown', 'scheduleMinimapRender', 'cancelMinimapRender',
-                'flushMinimapRender', 'resetMinimapCache', 'isDragging'
-            ]),
+            minimapAliases,
             expose('bridge', ['isCanvasBridgeReady', 'bindCanvasBridgeResponseListener', 'sendCanvasBridgeRequest']),
             expose('history', [
                 'pushHistory', 'pushHistoryBatch', 'undoCanvasEdit', 'redoCanvasEdit',

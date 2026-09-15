@@ -2803,6 +2803,11 @@ function bootTagAssistantLogic() {
     try {
         initializeTagAssistantLogic(); // 立即执行，创建UI骨架和监听器
 
+        if (window.SimpAIInfiniteCanvasStandalone) {
+            document.body.appendChild(appRootInstance);
+            return;
+        }
+
         let attempts = 0;
         const maxAttempts = 50;
         const intervalId = setInterval(() => {

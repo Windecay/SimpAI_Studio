@@ -2542,8 +2542,8 @@
                     snapCanvasCoord: (value) => snapCanvasCoord(value),
                 },
                 patchSource: {
-                    buildNodeLayoutPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildNodeLayoutPatch?.(...args),
-                    buildNodeFlagPatch: (...args) => CANVAS_FACTORY_CONTEXT.buildNodeFlagPatch?.(...args),
+                    buildNodeLayoutPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeLayoutPatch?.(...args),
+                    buildNodeFlagPatch: (...args) => CANVAS_NODE_FACTORY_CONTROLLER?.buildNodeFlagPatch?.(...args),
                 },
                 renderSource: {
                     renderNodes: (...args) => CANVAS_NODE_RENDER_CONTROLLER?.renderNodes?.(...args),

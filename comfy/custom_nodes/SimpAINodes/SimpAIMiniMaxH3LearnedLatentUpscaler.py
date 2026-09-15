@@ -623,6 +623,8 @@ def _build_tile_plan(
         precision,
         variant,
     )
+    spatial_tile_count = len(h_ranges) * len(w_ranges)
+    spatial_split_axes = int(len(h_ranges) > 1) + int(len(w_ranges) > 1)
     return {
         "core_t": core_t,
         "core_h": core_h,
@@ -631,10 +633,23 @@ def _build_tile_plan(
         "overlap_h": overlap_h,
         "overlap_w": overlap_w,
         "estimated_peak": estimate,
+        "temporal_tile_count": len(t_ranges),
+        "spatial_tile_count": spatial_tile_count,
+        "spatial_split_axes": spatial_split_axes,
         "tile_count": len(t_ranges) * len(h_ranges) * len(w_ranges),
         "max_input_shape": (batch, channels, max_ext_t, max_ext_h, max_ext_w),
         "max_target_hw": (max_target_h, max_target_w),
     }
+
+
+def _spatial_plan_sort_key(plan):
+    """Prefer fewer spatial tiles before choosing larger individual tiles."""
+    return (
+        int(plan["spatial_tile_count"]),
+        int(plan["spatial_split_axes"]),
+        -int(plan["core_h"]) * int(plan["core_w"]),
+        -int(plan["core_h"]) - int(plan["core_w"]),
+    )
 
 
 def _plan_upscaler_tiles(
@@ -672,14 +687,12 @@ def _plan_upscaler_tiles(
         and not (requested_spatial or requested_temporal)
     ):
         # Long 3D convolutions can exceed the activation-only memory estimate.
-        tile_width = max(2, source_w // 2)
-        tile_height = max(2, source_h // 2)
         tile_frames = max(1, frames // 2)
-        requested_spatial = requested_temporal = True
+        requested_temporal = True
         LOG.info(
-            "H3 learned latent upscaler: proactive long-video tiling "
-            "for limited GPU memory, requested core=%dx%dx%d",
-            tile_width, tile_height, tile_frames,
+            "H3 learned latent upscaler: proactive temporal tiling "
+            "for limited GPU memory, requested core_t=%d",
+            tile_frames,
         )
     force_tiling = requested_spatial or requested_temporal
     full_plan = _build_tile_plan(
@@ -721,13 +734,7 @@ def _plan_upscaler_tiles(
                     variant,
                 )
             )
-    spatial_plans.sort(
-        key=lambda plan: (
-            plan["core_h"] * plan["core_w"],
-            plan["core_h"] + plan["core_w"],
-        ),
-        reverse=True,
-    )
+    spatial_plans.sort(key=_spatial_plan_sort_key)
 
     if available_memory is None:
         selected = spatial_plans[0]
@@ -934,7 +941,34 @@ def _iter_tile_specs(video_shape, target_hw, plan):
                         target_core_w_start - target_ext_w_start,
                         target_core_w_end - target_ext_w_start,
                     ),
+                    "target_extent": (
+                        ext_t_start,
+                        ext_t_end,
+                        target_ext_h_start,
+                        target_ext_h_end,
+                        target_ext_w_start,
+                        target_ext_w_end,
+                    ),
                 }
+
+
+def _tile_blend_profile(length, left_overlap, right_overlap, device):
+    """Fade tile edges only where a neighboring tile provides context."""
+    length = int(length)
+    weights = torch.ones(length, device=device, dtype=torch.float32)
+    left_overlap = min(length, max(0, int(left_overlap)))
+    right_overlap = min(length, max(0, int(right_overlap)))
+    if left_overlap:
+        left = torch.arange(
+            1, left_overlap + 1, device=device, dtype=torch.float32
+        ) / float(left_overlap + 1)
+        weights[:left_overlap] = torch.minimum(weights[:left_overlap], left)
+    if right_overlap:
+        right = torch.arange(
+            right_overlap, 0, -1, device=device, dtype=torch.float32
+        ) / float(right_overlap + 1)
+        weights[-right_overlap:] = torch.minimum(weights[-right_overlap:], right)
+    return weights
 
 
 def _run_upscaler_tiled(
@@ -948,7 +982,7 @@ def _run_upscaler_tiled(
     plan,
 ):
     source_cpu = video_latent.detach().to(device="cpu")
-    output_cpu = torch.empty(
+    output_cpu = torch.zeros(
         (
             int(video_latent.shape[0]),
             int(video_latent.shape[1]),
@@ -957,7 +991,12 @@ def _run_upscaler_tiled(
             int(target_hw[1]),
         ),
         device="cpu",
-        dtype=video_latent.dtype,
+        dtype=torch.float32,
+    )
+    coverage = torch.zeros(
+        (1, 1, int(video_latent.shape[2]), int(target_hw[0]), int(target_hw[1])),
+        device="cpu",
+        dtype=torch.bool,
     )
     for tile_index, spec in enumerate(
         _iter_tile_specs(video_latent.shape, target_hw, plan),
@@ -995,7 +1034,7 @@ def _run_upscaler_tiled(
                 "H3 learned latent upscaler returned an unexpected tile shape: "
                 f"expected {expected_shape}, got {tuple(tile_output.shape)}"
             )
-        tile_output = tile_output.to(device="cpu", dtype=output_cpu.dtype)
+        tile_output = tile_output.to(device="cpu", dtype=torch.float32)
         (
             crop_t_start,
             crop_t_end,
@@ -1004,6 +1043,21 @@ def _run_upscaler_tiled(
             crop_w_start,
             crop_w_end,
         ) = spec["crop"]
+        target_t_start, target_t_end, target_h_start, target_h_end, target_w_start, target_w_end = spec[
+            "target_extent"
+        ]
+        tile_t, tile_h, tile_w = map(int, tile_output.shape[2:])
+        expected_extent = (
+            target_t_end - target_t_start,
+            target_h_end - target_h_start,
+            target_w_end - target_w_start,
+        )
+        if expected_extent != (tile_t, tile_h, tile_w):
+            raise RuntimeError(
+                "H3 learned latent tile extent does not match its output: "
+                f"expected {expected_extent}, got {(tile_t, tile_h, tile_w)}"
+            )
+
         (
             output_t_start,
             output_t_end,
@@ -1012,11 +1066,50 @@ def _run_upscaler_tiled(
             output_w_start,
             output_w_end,
         ) = spec["output"]
+
+        if crop_t_start > 0:
+            incoming_t = crop_t_start
+            blend_t = _tile_blend_profile(
+                incoming_t, incoming_t, 0, output_cpu.device
+            ).view(1, 1, incoming_t, 1, 1)
+            output_region = output_cpu[
+                :, :, target_t_start:target_t_start + incoming_t,
+                output_h_start:output_h_end,
+                output_w_start:output_w_end,
+            ]
+            coverage_region = coverage[
+                :, :, target_t_start:target_t_start + incoming_t,
+                output_h_start:output_h_end,
+                output_w_start:output_w_end,
+            ]
+            current_region = tile_output[
+                :, :, :incoming_t,
+                crop_h_start:crop_h_end,
+                crop_w_start:crop_w_end,
+            ]
+            blended = output_region * (1.0 - blend_t)
+            blended += current_region * blend_t
+            output_region[:] = torch.where(
+                coverage_region,
+                blended,
+                current_region,
+            )
+            coverage_region[:] = True
+
         output_cpu[
-            :, :, output_t_start:output_t_end, output_h_start:output_h_end, output_w_start:output_w_end
+            :, :, output_t_start:output_t_end,
+            output_h_start:output_h_end,
+            output_w_start:output_w_end,
         ] = tile_output[
-            :, :, crop_t_start:crop_t_end, crop_h_start:crop_h_end, crop_w_start:crop_w_end
+            :, :, crop_t_start:crop_t_end,
+            crop_h_start:crop_h_end,
+            crop_w_start:crop_w_end,
         ]
+        coverage[
+            :, :, output_t_start:output_t_end,
+            output_h_start:output_h_end,
+            output_w_start:output_w_end,
+        ] = True
         del tile_input, tile_output
         if compute_device.type == "cuda":
             _empty_upscaler_cache(compute_device)
@@ -1025,7 +1118,9 @@ def _run_upscaler_tiled(
             tile_index,
             int(plan["tile_count"]),
         )
-    return output_cpu
+    if torch.any(~coverage):
+        raise RuntimeError("H3 learned latent tiled fusion left uncovered output regions")
+    return output_cpu.to(dtype=video_latent.dtype)
 
 
 def _device_for_request(device):
