@@ -8,8 +8,8 @@
         const configSource = scope.configSource || {};
         const utilitySource = scope.utilitySource || {};
         const tooltipSource = scope.tooltipSource || {};
-        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getDocument = () => domSource.document || null;
+        const getWindow = () => viewportSource.window || { innerWidth: 0, innerHeight: 0 };
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         let previewEl = null;
         let previewTarget = null;

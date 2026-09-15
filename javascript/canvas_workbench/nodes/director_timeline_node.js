@@ -1,11 +1,11 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
+    const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
+    const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const translateFallback = (en, cn) => cn || en;
+    const translateDefault = DEFAULT_UTILS.t || translateFallback;
 
     const SCHEMA = 'simpai.director_timeline.v1';
     const MAX_IMAGE_REFS = 9;
@@ -16,41 +16,41 @@
     const IMAGE_REF_PARAM_KEYS = Array.from({ length: MAX_IMAGE_REFS }, (_, index) => `image_ref_${index + 1}`);
     const VIDEO_REF_PARAM_KEYS = ['video_ref'];
     const MEDIA_SLOT_SPECS = [
-        { key: 'image_1', kind: 'image', label: t('Image 1', '图片 1'), icon: 'fa-image' },
-        { key: 'image_2', kind: 'image', label: t('Image 2', '图片 2'), icon: 'fa-image' },
-        { key: 'image_3', kind: 'image', label: t('Image 3', '图片 3'), icon: 'fa-image' },
-        { key: 'image_4', kind: 'image', label: t('Image 4', '图片 4'), icon: 'fa-image' },
-        { key: 'image_5', kind: 'image', label: t('Image 5', '图片 5'), icon: 'fa-image' },
-        { key: 'image_6', kind: 'image', label: t('Image 6', '图片 6'), icon: 'fa-image' },
-        { key: 'image_7', kind: 'image', label: t('Image 7', '图片 7'), icon: 'fa-image' },
-        { key: 'image_8', kind: 'image', label: t('Image 8', '图片 8'), icon: 'fa-image' },
-        { key: 'image_9', kind: 'image', label: t('Image 9', '图片 9'), icon: 'fa-image' },
-        { key: 'audio_1', kind: 'audio', label: t('Audio 1', '音频 1'), icon: 'fa-wave-square' },
-        { key: 'audio_2', kind: 'audio', label: t('Audio 2', '音频 2'), icon: 'fa-wave-square' },
-        { key: 'audio_3', kind: 'audio', label: t('Audio 3', '音频 3'), icon: 'fa-wave-square' },
-        { key: 'audio_4', kind: 'audio', label: t('Audio 4', '音频 4'), icon: 'fa-wave-square' },
-        { key: 'audio_5', kind: 'audio', label: t('Audio 5', '音频 5'), icon: 'fa-wave-square' },
-        { key: 'video_1', kind: 'video', label: t('Video 1', '视频 1'), icon: 'fa-film' },
-        { key: 'video_2', kind: 'video', label: t('Video 2', '视频 2'), icon: 'fa-film' },
-        { key: 'video_3', kind: 'video', label: t('Video 3', '视频 3'), icon: 'fa-film' },
-        { key: 'video_4', kind: 'video', label: t('Video 4', '视频 4'), icon: 'fa-film' },
-        { key: 'video_5', kind: 'video', label: t('Video 5', '视频 5'), icon: 'fa-film' }
+        { key: 'image_1', kind: 'image', label: translateDefault('Image 1', '图片 1'), icon: 'fa-image' },
+        { key: 'image_2', kind: 'image', label: translateDefault('Image 2', '图片 2'), icon: 'fa-image' },
+        { key: 'image_3', kind: 'image', label: translateDefault('Image 3', '图片 3'), icon: 'fa-image' },
+        { key: 'image_4', kind: 'image', label: translateDefault('Image 4', '图片 4'), icon: 'fa-image' },
+        { key: 'image_5', kind: 'image', label: translateDefault('Image 5', '图片 5'), icon: 'fa-image' },
+        { key: 'image_6', kind: 'image', label: translateDefault('Image 6', '图片 6'), icon: 'fa-image' },
+        { key: 'image_7', kind: 'image', label: translateDefault('Image 7', '图片 7'), icon: 'fa-image' },
+        { key: 'image_8', kind: 'image', label: translateDefault('Image 8', '图片 8'), icon: 'fa-image' },
+        { key: 'image_9', kind: 'image', label: translateDefault('Image 9', '图片 9'), icon: 'fa-image' },
+        { key: 'audio_1', kind: 'audio', label: translateDefault('Audio 1', '音频 1'), icon: 'fa-wave-square' },
+        { key: 'audio_2', kind: 'audio', label: translateDefault('Audio 2', '音频 2'), icon: 'fa-wave-square' },
+        { key: 'audio_3', kind: 'audio', label: translateDefault('Audio 3', '音频 3'), icon: 'fa-wave-square' },
+        { key: 'audio_4', kind: 'audio', label: translateDefault('Audio 4', '音频 4'), icon: 'fa-wave-square' },
+        { key: 'audio_5', kind: 'audio', label: translateDefault('Audio 5', '音频 5'), icon: 'fa-wave-square' },
+        { key: 'video_1', kind: 'video', label: translateDefault('Video 1', '视频 1'), icon: 'fa-film' },
+        { key: 'video_2', kind: 'video', label: translateDefault('Video 2', '视频 2'), icon: 'fa-film' },
+        { key: 'video_3', kind: 'video', label: translateDefault('Video 3', '视频 3'), icon: 'fa-film' },
+        { key: 'video_4', kind: 'video', label: translateDefault('Video 4', '视频 4'), icon: 'fa-film' },
+        { key: 'video_5', kind: 'video', label: translateDefault('Video 5', '视频 5'), icon: 'fa-film' }
     ];
     const MEDIA_KIND_GROUPS = [
-        { kind: 'image', label: t('Images', '图片'), portLabel: t('Image pool', '图片素材池'), icon: 'fa-image' },
-        { kind: 'audio', label: t('Audio', '音频'), portLabel: t('Audio pool', '音频素材池'), icon: 'fa-wave-square' },
-        { kind: 'video', label: t('Video', '视频'), portLabel: t('Video pool', '视频素材池'), icon: 'fa-film' }
+        { kind: 'image', label: translateDefault('Images', '图片'), portLabel: translateDefault('Image pool', '图片素材池'), icon: 'fa-image' },
+        { kind: 'audio', label: translateDefault('Audio', '音频'), portLabel: translateDefault('Audio pool', '音频素材池'), icon: 'fa-wave-square' },
+        { kind: 'video', label: translateDefault('Video', '视频'), portLabel: translateDefault('Video pool', '视频素材池'), icon: 'fa-film' }
     ];
-    const IMAGE_REFS = [['', t('None', '无')]].concat(MEDIA_SLOT_SPECS.filter(item => item.kind === 'image').map(item => [item.key, item.label]));
-    const AUDIO_REFS = [['', t('None', '无')]].concat(MEDIA_SLOT_SPECS.filter(item => item.kind === 'audio').map(item => [item.key, item.label]));
-    const VIDEO_REFS = [['', t('None', '无')]]
+    const IMAGE_REFS = [['', translateDefault('None', '无')]].concat(MEDIA_SLOT_SPECS.filter(item => item.kind === 'image').map(item => [item.key, item.label]));
+    const AUDIO_REFS = [['', translateDefault('None', '无')]].concat(MEDIA_SLOT_SPECS.filter(item => item.kind === 'audio').map(item => [item.key, item.label]));
+    const VIDEO_REFS = [['', translateDefault('None', '无')]]
         .concat(MEDIA_SLOT_SPECS.filter(item => item.kind === 'video').map(item => [item.key, item.label]))
-        .concat([[PREVIOUS_SEGMENT_VIDEO_REF, t('Previous shot result', '上一段结果')]]);
+        .concat([[PREVIOUS_SEGMENT_VIDEO_REF, translateDefault('Previous shot result', '上一段结果')]]);
     const SEGMENT_TYPES = [
-        ['t2v', t('Text-to-Video', '文生视频')],
-        ['flf', t('Image-to-Video', '图生视频')],
-        ['fmlf', t('First/last frame', '首尾帧')],
-        ['ref', t('Reference image', '参考图')]
+        ['t2v', translateDefault('Text-to-Video', '文生视频')],
+        ['flf', translateDefault('Image-to-Video', '图生视频')],
+        ['fmlf', translateDefault('First/last frame', '首尾帧')],
+        ['ref', translateDefault('Reference image', '参考图')]
     ];
     const SEGMENT_IMAGE_LIMITS = {
         t2v: 0,
@@ -59,6 +59,10 @@
         ref: 9
     };
     const FORMATS = ['Wan', 'LTXV', 'LTXV TA2V', 'Custom'];
+
+    function call(context, name, fallback, ...args) {
+        return typeof context?.[name] === 'function' ? context[name](...args) : fallback;
+    }
 
     function delegate(context, name) {
         if (typeof context?.[name] !== 'function') return undefined;
@@ -79,23 +83,53 @@
     }
 
     function createDirectorTimelineNodeContext(source) {
-        const context = source || {};
+        const scope = source || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetSource = scope.assetSource || {};
+        const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            getProject: delegate(context, 'getProject'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            getNode: delegate(context, 'getNode'),
-            isNodeIgnored: delegate(context, 'isNodeIgnored'),
-            mutate: delegate(context, 'mutate'),
-            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
-            pushHistory: delegate(context, 'pushHistory'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
-            buildDirectorTimelineStatePatch: delegate(context, 'buildDirectorTimelineStatePatch'),
-            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
-            setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast')
+            escapeHtml: pick(utilitySource, 'escapeHtml'),
+            t: pick(utilitySource, 't'),
+            assetThumbSrc: pick(assetSource, 'assetThumbSrc'),
+            assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            getProject: pick(scope, 'getProject'),
+            uid: pick(scope, 'uid'),
+            defaultNodeSize: pick(scope, 'defaultNodeSize'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            getNode: pick(scope, 'getNode'),
+            isNodeIgnored: pick(scope, 'isNodeIgnored'),
+            mutate: pick(scope, 'mutate'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            pushHistory: pick(scope, 'pushHistory'),
+            renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
+            serializeAssetSourceForRun: pick(scope, 'serializeAssetSourceForRun'),
+            buildDirectorTimelineStatePatch: pick(scope, 'buildDirectorTimelineStatePatch'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
+            showToast: pick(scope, 'showToast')
         };
+    }
+
+    const DEFAULT_DIRECTOR_TIMELINE_NODE_CONTEXT = createDirectorTimelineNodeContext({
+        utilitySource: {
+            escapeHtml: DEFAULT_UTILS.escapeHtml || escapeHtmlFallback,
+            t: DEFAULT_UTILS.t || translateFallback
+        },
+        assetSource: DEFAULT_ASSETS
+    });
+
+    function contextOf(context) {
+        return context || DEFAULT_DIRECTOR_TIMELINE_NODE_CONTEXT;
+    }
+
+    function escapeHtmlValue(context, value) {
+        const ctx = contextOf(context);
+        return typeof ctx.escapeHtml === 'function' ? ctx.escapeHtml(value) : escapeHtmlFallback(value);
+    }
+
+    function translateValue(context, en, cn) {
+        const ctx = contextOf(context);
+        return typeof ctx.t === 'function' ? ctx.t(en, cn) : translateFallback(en, cn);
     }
 
     function getProject(context) {
@@ -175,9 +209,9 @@
         return refsFromList(segment?.images).filter(ref => ref !== PREVIOUS_SEGMENT_IMAGE_REF);
     }
 
-    function imageRefLabel(ref) {
+    function imageRefLabel(ref, context) {
         return ref === PREVIOUS_SEGMENT_IMAGE_REF
-            ? t('Previous shot last frame', '上一段尾帧')
+            ? translateValue(context, 'Previous shot last frame', '上一段尾帧')
             : String(ref || '');
     }
 
@@ -267,11 +301,11 @@
         return base;
     }
 
-    function optionHtml(options, value) {
+    function optionHtml(options, value, context) {
         return options.map(item => {
             const val = Array.isArray(item) ? item[0] : item;
             const label = Array.isArray(item) ? item[1] : item;
-            return `<option value="${escapeHtml(val)}" ${String(val) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+            return `<option value="${escapeHtmlValue(context, val)}" ${String(val) === String(value) ? 'selected' : ''}>${escapeHtmlValue(context, label)}</option>`;
         }).join('');
     }
 
@@ -304,9 +338,10 @@
     }
 
     function sourceLabel(context, node, slot) {
+        const ctx = contextOf(context);
         const sourceId = node?.media_inputs?.[slot.key];
-        const source = sourceId && typeof context?.getNode === 'function' ? context.getNode(sourceId) : null;
-        if (!source) return t('Not connected', '未连接');
+        const source = sourceId && typeof ctx?.getNode === 'function' ? ctx.getNode(sourceId) : null;
+        if (!source) return translateValue(ctx, 'Not connected', '未连接');
         const title = source.title || source.id || '';
         if (source.type === 'result') return `${title} / Result`;
         return `${title} / ${source.type || slot.kind}`;
@@ -326,10 +361,11 @@
     }
 
     function mediaPreviewSrc(context, source) {
+        const ctx = contextOf(context);
         const asset = sourceAssetForPreview(context, source);
         if (!asset) return '';
-        if (typeof ASSETS.assetThumbSrc === 'function') return ASSETS.assetThumbSrc(asset);
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset);
+        if (typeof ctx.assetThumbSrc === 'function') return ctx.assetThumbSrc(asset);
+        if (typeof ctx.assetDisplaySrc === 'function') return ctx.assetDisplaySrc(asset);
         return asset.thumb || asset.preview_url || asset.data_url || '';
     }
 
@@ -342,9 +378,11 @@
     }
 
     function mediaSlotCardHtml(context, node, slot) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
         const source = sourceForRef(context, node, slot.key);
         const src = mediaPreviewSrc(context, source);
-        const label = source ? (source.title || source.id || slot.key) : t('Not connected', '未连接');
+        const label = source ? (source.title || source.id || slot.key) : translateValue(ctx, 'Not connected', '未连接');
         const statusClass = source ? 'has-source' : 'is-empty';
         const previewBody = src && slot.kind !== 'audio'
             ? `<img src="${escapeHtml(src)}" alt="">`
@@ -361,6 +399,8 @@
     }
 
     function renderMediaPoolGroup(group, node, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
         const slots = mediaSlotsForKind(group.kind);
         const connected = slots.filter(slot => mediaSlotConnected(context, node, slot)).length;
         return `
@@ -378,6 +418,9 @@
     }
 
     function imageRefPreviewHtml(context, node, ref, disabled) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         if (disabled) {
             return `<div class="sai-director-image-preview is-disabled"><i class="fa-solid fa-ban"></i><span>${escapeHtml(t('No image input', '不使用图片'))}</span></div>`;
         }
@@ -418,6 +461,8 @@
     }
 
     function timelineSourcePreview(context, node, ref, kind) {
+        const ctx = contextOf(context);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         if (ref === PREVIOUS_SEGMENT_IMAGE_REF) {
             return {
                 src: '',
@@ -454,12 +499,15 @@
     }
 
     function timelinePreviewRefChips(context, node, refs) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const items = (Array.isArray(refs) ? refs : []).map(ref => String(ref || '').trim()).filter(Boolean);
         if (!items.length) {
             return `<em class="sai-director-timeline-ref is-empty" title="${escapeHtml(t('Text-to-Video', '文生视频'))}"><i class="fa-solid fa-font"></i></em>`;
         }
         return items.map((ref) => {
-            const preview = timelineSourcePreview(context, node, ref, timelineRefKind(ref));
+            const preview = timelineSourcePreview(ctx, node, ref, timelineRefKind(ref));
             const body = preview.src
                 ? `<img src="${escapeHtml(preview.src)}" alt="">`
                 : `<span><i class="fa-solid ${escapeHtml(preview.icon)}"></i>${escapeHtml(preview.short)}</span>`;
@@ -467,18 +515,21 @@
         }).join('');
     }
 
-    function timelineSegmentTypeLabel(segment) {
+    function timelineSegmentTypeLabel(segment, context) {
         const found = SEGMENT_TYPES.find(item => item[0] === segment?.type);
-        return found ? found[1] : t('Shot', '分镜');
+        return found ? found[1] : translateValue(context, 'Shot', '分镜');
     }
 
     function renderTimelinePreviewClip(context, node, timeline, segment, index, totalSeconds) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const range = timelineSegmentRange(timeline, segment);
         const imageRefs = refsFromList(segment.images);
         const videoRef = firstRef(segment.video);
         const audioRef = firstRef(segment.audio);
         const refs = imageRefs.concat(videoRef ? [videoRef] : []);
-        const prompt = segment.prompt || timelineSegmentTypeLabel(segment);
+        const prompt = segment.prompt || timelineSegmentTypeLabel(segment, ctx);
         const badges = [
             ...imageRefs.map(ref => `@${ref}`),
             audioRef ? `@${audioRef}` : '',
@@ -490,7 +541,7 @@
 <article class="sai-director-timeline-clip ${imageRefs.length ? 'has-image' : ''} ${videoRef ? 'has-video' : ''}" data-director-timeline-clip="${index}" data-director-timeline-drag="move" style="${timelineTrackStyle(range, totalSeconds)}" title="${escapeHtml(prompt)}">
   <button type="button" class="sai-director-timeline-handle is-start" data-director-timeline-drag="start" data-director-timeline-clip="${index}" title="${escapeHtml(t('Adjust start', '调整开始'))}"></button>
   <button type="button" class="sai-director-timeline-handle is-end" data-director-timeline-drag="end" data-director-timeline-clip="${index}" title="${escapeHtml(t('Adjust end', '调整结束'))}"></button>
-  <div class="sai-director-timeline-clip-media">${timelinePreviewRefChips(context, node, refs)}</div>
+  <div class="sai-director-timeline-clip-media">${timelinePreviewRefChips(ctx, node, refs)}</div>
   <div class="sai-director-timeline-clip-body">
     <b>${escapeHtml(title)}</b>
     <span>${escapeHtml(prompt)}</span>
@@ -499,7 +550,9 @@
 </article>`;
     }
 
-    function renderTimelinePreviewRuler(timeline, totalSeconds) {
+    function renderTimelinePreviewRuler(timeline, totalSeconds, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
         return Array.from({ length: 5 }, (_item, index) => {
             const seconds = totalSeconds * index / 4;
             return `<span style="left:${index * 25}%"><b>${escapeHtml(formatTimelineSeconds(seconds))}</b></span>`;
@@ -507,6 +560,9 @@
     }
 
     function renderTimelinePreview(timeline, node, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const segments = Array.isArray(timeline?.segments) ? timeline.segments : [];
         const totalSeconds = timelineTotalSeconds(timeline);
         const meta = `${Math.round(timeline.width)}x${Math.round(timeline.height)} · ${timeline.fps}fps · ${formatTimelineSeconds(totalSeconds)}`;
@@ -516,18 +572,20 @@
     <span>${escapeHtml(t('Timeline preview', '时间线预览'))}</span>
     <small>${escapeHtml(meta)}</small>
   </div>
-  <div class="sai-director-timeline-ruler">${renderTimelinePreviewRuler(timeline, totalSeconds)}</div>
+  <div class="sai-director-timeline-ruler">${renderTimelinePreviewRuler(timeline, totalSeconds, ctx)}</div>
   <div class="sai-director-timeline-video-track">
     <strong>${escapeHtml(t('Video track', '视频轨'))}</strong>
-    ${segments.length ? segments.map((segment, index) => renderTimelinePreviewClip(context, node, timeline, segment, index, totalSeconds)).join('') : `<span class="sai-director-timeline-empty">${escapeHtml(t('No shots', '无分镜'))}</span>`}
+    ${segments.length ? segments.map((segment, index) => renderTimelinePreviewClip(ctx, node, timeline, segment, index, totalSeconds)).join('') : `<span class="sai-director-timeline-empty">${escapeHtml(t('No shots', '无分镜'))}</span>`}
   </div>
 </div>`;
     }
 
-    function segmentRuleText(segment) {
+    function segmentRuleText(segment, context) {
+        const ctx = contextOf(context);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const type = typeof segment === 'string' ? segment : segment?.type;
         const refs = typeof segment === 'string' ? [] : refsFromList(segment?.images).slice(0, imageLimitForType(type));
-        const labels = refs.map(imageRefLabel);
+        const labels = refs.map(ref => imageRefLabel(ref, ctx));
         if (type === 'fmlf' && refs.length >= 2) {
             return t('2 images: {first} first frame / {last} last frame', '2 张图：{first} 首帧 / {last} 尾帧')
                 .replace('{first}', labels[0])
@@ -548,6 +606,9 @@
     }
 
     function renderImageRefField(segment, index, attr, indexAttr, node, context, slotIndex) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const refs = explicitImageRefs(segment);
         const inheritedCount = inheritsPreviousSegmentLastFrame(segment) ? 1 : 0;
         const limit = Math.max(0, imageLimitForType(segment.type) - inheritedCount);
@@ -558,8 +619,8 @@
         const label = t(`Image ${imageIndex}`, `图片 ${imageIndex}`);
         return `
     <div class="sai-director-image-ref-field ${disabled ? 'is-disabled' : ''}">
-      <label class="sai-node-field"><span>${escapeHtml(label)}</span><select ${attr}="${key}" ${indexAttr} ${disabled ? 'disabled' : ''}>${optionHtml(IMAGE_REFS, value)}</select></label>
-      ${imageRefPreviewHtml(context, node, value, disabled)}
+      <label class="sai-node-field"><span>${escapeHtml(label)}</span><select ${attr}="${key}" ${indexAttr} ${disabled ? 'disabled' : ''}>${optionHtml(IMAGE_REFS, value, ctx)}</select></label>
+      ${imageRefPreviewHtml(ctx, node, value, disabled)}
     </div>`;
     }
 
@@ -569,7 +630,10 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
 </div>`;
     }
 
-    function renderGlobalFields(timeline, attrName) {
+    function renderGlobalFields(timeline, attrName, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const attr = attrName || 'data-director-param';
         return `
 <div class="sai-node-field-row">
@@ -583,6 +647,9 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
     }
 
     function renderSegmentRow(segment, index, attrName, node, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const attr = attrName || 'data-director-segment-param';
         const indexAttr = `data-director-segment-index="${index}"`;
         const imageFieldCount = Math.max(2, Math.min(MAX_IMAGE_REFS, imageLimitForType(segment.type)));
@@ -592,7 +659,7 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
 <div class="sai-director-segment" ${indexAttr}>
   <div class="sai-director-segment-head">
     <b>${escapeHtml(t('Shot', '分镜'))} ${index + 1}</b>
-    <span>${escapeHtml(segmentRuleText(segment))}</span>
+    <span>${escapeHtml(segmentRuleText(segment, ctx))}</span>
     <div>
       <button type="button" data-node-action="director-move-segment-up:${index}" title="${escapeHtml(t('Move up', '上移'))}" ${index === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i></button>
       <button type="button" data-node-action="director-move-segment-down:${index}" title="${escapeHtml(t('Move down', '下移'))}"><i class="fa-solid fa-arrow-down"></i></button>
@@ -604,15 +671,15 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
     <label class="sai-node-field"><span>${escapeHtml(t('End', '结束'))}</span><input ${attr}="end" ${indexAttr} type="number" step="0.1" value="${escapeHtml(segment.end)}"></label>
   </div>
   <div class="sai-node-field-row sai-director-segment-mode">
-    <label class="sai-node-field"><span>${escapeHtml(t('Type', '类型'))}</span><select ${attr}="type" ${indexAttr}>${optionHtml(SEGMENT_TYPES, segment.type)}</select></label>
+    <label class="sai-node-field"><span>${escapeHtml(t('Type', '类型'))}</span><select ${attr}="type" ${indexAttr}>${optionHtml(SEGMENT_TYPES, segment.type, ctx)}</select></label>
     <label class="sai-node-field sai-director-inherit-tail"><span>${escapeHtml(t('Inherit previous shot last frame', '继承上段尾帧'))}</span><input ${attr}="inherit_previous_tail" ${indexAttr} type="checkbox" ${inheritPreviousTail ? 'checked' : ''} ${inheritDisabled ? 'disabled' : ''}></label>
   </div>
   <div class="sai-director-image-ref-row">
     ${Array.from({ length: imageFieldCount }, (_, slotIndex) => renderImageRefField(segment, index, attr, indexAttr, node, context, slotIndex)).join('')}
   </div>
   <div class="sai-node-field-row sai-director-segment-refs">
-    <label class="sai-node-field"><span>${escapeHtml(t('Audio ref', '音频引用'))}</span><select ${attr}="audio_ref" ${indexAttr}>${optionHtml(AUDIO_REFS, firstRef(segment.audio))}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('Video ref', '视频引用'))}</span><select ${attr}="video_ref" ${indexAttr}>${optionHtml(VIDEO_REFS, firstRef(segment.video))}</select></label>
+    <label class="sai-node-field"><span>${escapeHtml(t('Audio ref', '音频引用'))}</span><select ${attr}="audio_ref" ${indexAttr}>${optionHtml(AUDIO_REFS, firstRef(segment.audio), ctx)}</select></label>
+    <label class="sai-node-field"><span>${escapeHtml(t('Video ref', '视频引用'))}</span><select ${attr}="video_ref" ${indexAttr}>${optionHtml(VIDEO_REFS, firstRef(segment.video), ctx)}</select></label>
   </div>
   <label class="sai-node-field sai-text-node-field sai-director-segment-prompt"><span>${escapeHtml(t('Prompt', '提示词'))}</span><textarea ${attr}="prompt" ${indexAttr} rows="2">${escapeHtml(segment.prompt)}</textarea></label>
 </div>`;
@@ -623,13 +690,16 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
     }
 
     function renderNodeHtml(node, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const timeline = normalizeTimeline(node.director);
         const output = promptOverrideForTimeline(timeline);
         return `
 <div class="sai-node-head">
   <span class="sai-node-kind">${escapeHtml(t('Director', '导演'))}</span>
   <span class="sai-node-title">${escapeHtml(node.title || t('Director Timeline', '导演时间轴'))}</span>
-  ${typeof context?.renderNodeStateBadges === 'function' ? context.renderNodeStateBadges(node) : ''}
+  ${typeof ctx.renderNodeStateBadges === 'function' ? ctx.renderNodeStateBadges(node) : ''}
   <button type="button" data-node-action="director-add-segment" title="${escapeHtml(t('Add shot', '新增分镜'))}"><i class="fa-solid fa-plus"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
 </div>
@@ -637,17 +707,17 @@ ${MEDIA_KIND_GROUPS.map(group => renderMediaPoolGroup(group, node, context)).joi
 <div class="sai-director-top-grid">
   <div class="sai-director-media-panel">
     <div class="sai-director-section-title"><span>${escapeHtml(t('Media pool', '素材池'))}</span><small>${escapeHtml(t('Connect to a group port for auto slot assignment', '连接到分组入口会自动分配空槽'))}</small></div>
-    ${renderMediaRows(node, context)}
+    ${renderMediaRows(node, ctx)}
   </div>
   <div class="sai-director-settings-panel">
     <div class="sai-director-section-title"><span>${escapeHtml(t('Timeline settings', '时间线参数'))}</span></div>
     <div class="sai-director-settings">
-      ${renderGlobalFields(timeline)}
+      ${renderGlobalFields(timeline, undefined, ctx)}
     </div>
   </div>
 </div>
-${renderSegments(timeline, undefined, node, context)}
-${renderTimelinePreview(timeline, node, context)}
+${renderSegments(timeline, undefined, node, ctx)}
+${renderTimelinePreview(timeline, node, ctx)}
 <div class="sai-director-output">
   <span>${escapeHtml('prompt_override')}</span>
   <textarea readonly rows="3">${escapeHtml(output)}</textarea>
@@ -658,6 +728,9 @@ ${renderTimelinePreview(timeline, node, context)}
     }
 
     function renderInspector(node, context) {
+        const ctx = contextOf(context);
+        const escapeHtml = value => escapeHtmlValue(ctx, value);
+        const t = (en, cn) => translateValue(ctx, en, cn);
         const timeline = normalizeTimeline(node.director);
         const output = promptOverrideForTimeline(timeline);
         return `
@@ -669,19 +742,19 @@ ${renderTimelinePreview(timeline, node, context)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Global', '全局'))}</h3>
-  ${renderGlobalFields(timeline, 'data-inspector-director-param')}
+  ${renderGlobalFields(timeline, 'data-inspector-director-param', ctx)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Media References', '媒体引用'))}</h3>
-  ${renderMediaRows(node, context)}
+  ${renderMediaRows(node, ctx)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Shots', '分镜'))}</h3>
-  ${renderSegments(timeline, 'data-inspector-director-segment-param', node, context)}
+  ${renderSegments(timeline, 'data-inspector-director-segment-param', node, ctx)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml(t('Timeline preview', '时间线预览'))}</h3>
-  ${renderTimelinePreview(timeline, node, context)}
+  ${renderTimelinePreview(timeline, node, ctx)}
 </div>
 <div class="sai-inspector-section">
   <h3>${escapeHtml('prompt_override')}</h3>
@@ -696,21 +769,22 @@ ${renderTimelinePreview(timeline, node, context)}
     }
 
     function createNode(world, options, context) {
+        const ctx = contextOf(context);
         const opts = options || {};
-        if (opts.history !== false && typeof context?.pushHistory === 'function') context.pushHistory('Add Director Timeline node');
-        const size = typeof context?.defaultNodeSize === 'function' ? context.defaultNodeSize('director_timeline') : { w: 880, h: 620 };
+        if (opts.history !== false && typeof ctx.pushHistory === 'function') ctx.pushHistory('Add Director Timeline node');
         const defaultStatus = {
             state: 'idle',
-            message: t('Build prompt_override and media references for video workflows.', '为视频工作流生成 prompt_override 和媒体引用。')
+            message: translateValue(ctx, 'Build prompt_override and media references for video workflows.', '为视频工作流生成 prompt_override 和媒体引用。')
         };
+        const size = typeof ctx.defaultNodeSize === 'function' ? ctx.defaultNodeSize('director_timeline') : { w: 880, h: 620 };
         const defaultState = {
             director: normalizeTimeline(opts.director || defaultTimeline()),
             media_inputs: Object.assign({}, opts.media_inputs || {}),
             source: { kind: 'director_timeline', schema: SCHEMA },
             status: defaultStatus
         };
-        const state = typeof context?.buildDirectorTimelineStatePatch === 'function'
-            ? context.buildDirectorTimelineStatePatch({}, {
+        const state = typeof ctx.buildDirectorTimelineStatePatch === 'function'
+            ? ctx.buildDirectorTimelineStatePatch({}, {
                 defaults: {
                     director: defaultTimeline(),
                     media_inputs: {},
@@ -724,21 +798,21 @@ ${renderTimelinePreview(timeline, node, context)}
             })
             : defaultState;
         const node = {
-            id: uid('director'),
+            id: call(ctx, 'uid', 'director-node', 'director'),
             type: 'director_timeline',
             x: world.x,
             y: world.y,
             w: size.w,
             h: size.h,
-            title: opts.title || t('Director Timeline', '导演时间轴'),
+            title: opts.title || translateValue(ctx, 'Director Timeline', '导演时间轴'),
             ...state
         };
-        if (typeof context?.placeNodeAvoidingOverlap === 'function') context.placeNodeAvoidingOverlap(node, world);
-        const project = getProject(context);
-        appendProjectNode(project, node, context);
-        if (typeof context?.setSelectedNode === 'function') context.setSelectedNode(node.id);
-        if (opts.render !== false && typeof context?.mutate === 'function') context.mutate();
-        if (opts.toast !== false && typeof context?.showToast === 'function') context.showToast(t('Director Timeline node added', '已添加导演时间轴节点'));
+        if (typeof ctx.placeNodeAvoidingOverlap === 'function') ctx.placeNodeAvoidingOverlap(node, world);
+        const project = getProject(ctx);
+        appendProjectNode(project, node, ctx);
+        if (typeof ctx.setSelectedNode === 'function') ctx.setSelectedNode(node.id);
+        if (opts.render !== false && typeof ctx.mutate === 'function') ctx.mutate();
+        if (opts.toast !== false && typeof ctx.showToast === 'function') ctx.showToast(translateValue(ctx, 'Director Timeline node added', '已添加导演时间轴节点'));
         return node;
     }
 

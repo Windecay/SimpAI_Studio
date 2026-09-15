@@ -135,12 +135,41 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
     }
 
     function createContextMenuController(options) {
-        const config = options || {};
-        const getContextMenu = config.getContextMenu || (() => null);
-        const clamp = config.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-        const tools = createContextMenuTools(config);
-        const escapeHtml = config.escapeHtml || ((value) => String(value ?? ''));
-        const t = config.t || ((en, cn) => cn || en);
+        const scope = options?.contextMenuSource || options || {};
+        const languageSource = scope.languageSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const domSource = scope.domSource || {};
+        const viewportSource = scope.viewportSource || {};
+        const timeSource = scope.timeSource || {};
+        const runtimeSource = scope.runtimeSource || {};
+        const viewSource = scope.viewSource || {};
+        const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : (value => String(value ?? ''));
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
+            : ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const renderIconHtml = typeof viewSource.renderIconHtml === 'function'
+            ? viewSource.renderIconHtml
+            : (() => '');
+        const getContextMenu = () => typeof domSource.getContextMenu === 'function'
+            ? domSource.getContextMenu()
+            : null;
+        const getDocument = () => typeof domSource.getDocument === 'function'
+            ? domSource.getDocument()
+            : null;
+        const getWindow = () => typeof viewportSource.getWindow === 'function'
+            ? viewportSource.getWindow()
+            : null;
+        const now = () => {
+            const value = typeof timeSource.now === 'function' ? timeSource.now() : 0;
+            return Number.isFinite(Number(value)) ? Number(value) : 0;
+        };
+        const schedule = (...args) => typeof runtimeSource.setTimeout === 'function'
+            ? runtimeSource.setTimeout(...args)
+            : undefined;
+        const tools = createContextMenuTools({ escapeHtml, renderIconHtml, t });
 
         function bindContextMenuActionButtons(items) {
             const contextMenu = getContextMenu();
@@ -178,7 +207,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const contextMenu = getContextMenu();
             const openedAt = Number(contextMenu?.dataset?.openedAt || 0);
             const delay = Number(contextMenu?.dataset?.closeDelayMs || 180);
-            if (openedAt && Date.now() - openedAt < delay) return;
+            if (openedAt && now() - openedAt < delay) return;
             if (contextMenu && contextMenu.contains(evt.target)) return;
             closeContextMenu();
         }
@@ -189,15 +218,18 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const options = closeDelayMs && typeof closeDelayMs === 'object'
                 ? closeDelayMs
                 : { closeDelayMs };
-            contextMenu.dataset.openedAt = String(Date.now());
+            contextMenu.dataset.openedAt = String(now());
             contextMenu.dataset.closeDelayMs = String(options.closeDelayMs || 180);
             contextMenu.classList.toggle('is-searchable', !!options.searchable);
-            contextMenu.classList.toggle('is-flipped', Number(x) > window.innerWidth - 460);
+            const viewport = getWindow();
+            const viewportWidth = Number(viewport?.innerWidth) || 0;
+            const viewportHeight = Number(viewport?.innerHeight) || 0;
+            contextMenu.classList.toggle('is-flipped', Number(x) > viewportWidth - 460);
             contextMenu.hidden = false;
             contextMenu.style.left = '0px';
             contextMenu.style.top = '0px';
             const margin = 12;
-            const maxHeight = Math.max(140, window.innerHeight - margin * 2);
+            const maxHeight = Math.max(140, viewportHeight - margin * 2);
             if (options.searchable) {
                 contextMenu.innerHTML = `
 <div class="sai-context-search-shell">
@@ -222,7 +254,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     evt.preventDefault();
                     firstAction.click();
                 });
-                window.setTimeout(() => {
+                schedule(() => {
                     if (!contextMenu.hidden && input?.isConnected) input.focus({ preventScroll: true });
                 }, 0);
             } else {
@@ -230,14 +262,14 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             }
             contextMenu.scrollTop = 0;
             const rect = contextMenu.getBoundingClientRect();
-            const leftMax = Math.max(margin, window.innerWidth - (rect.width || 220) - margin);
-            const topMax = Math.max(margin, window.innerHeight - Math.min(rect.height || maxHeight, maxHeight) - margin);
+            const leftMax = Math.max(margin, viewportWidth - (rect.width || 220) - margin);
+            const topMax = Math.max(margin, viewportHeight - Math.min(rect.height || maxHeight, maxHeight) - margin);
             const targetX = Number.isFinite(Number(x)) ? Number(x) : margin;
             const targetY = Number.isFinite(Number(y)) ? Number(y) : margin;
             contextMenu.style.left = `${clamp(targetX, margin, leftMax)}px`;
             contextMenu.style.top = `${clamp(targetY, margin, topMax)}px`;
-            window.setTimeout(() => {
-                document.addEventListener('pointerdown', closeContextMenuOnce, true);
+            schedule(() => {
+                getDocument()?.addEventListener('pointerdown', closeContextMenuOnce, true);
             }, 0);
         }
 
@@ -245,7 +277,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             const contextMenu = getContextMenu();
             if (!contextMenu) return;
             contextMenu.hidden = true;
-            document.removeEventListener('pointerdown', closeContextMenuOnce, true);
+            getDocument()?.removeEventListener('pointerdown', closeContextMenuOnce, true);
         }
 
         return {

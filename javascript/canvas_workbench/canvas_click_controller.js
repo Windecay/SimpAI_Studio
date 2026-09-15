@@ -16,7 +16,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const call = (sourceObject, name, ...args) => sourceCall(sourceObject, name, undefined, ...args);
-        const now = () => Number(sourceCall(timingSource, 'now', Date.now())) || 0;
+        const now = () => Number(sourceCall(timingSource, 'now', 0)) || 0;
         const closest = (evt, selector) => evt?.target?.closest?.(selector) || null;
 
         function onClick(evt) {

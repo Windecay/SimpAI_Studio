@@ -18,7 +18,7 @@
             });
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const clamp = typeof utilitySource.clamp === 'function'
             ? utilitySource.clamp
             : ((value, min, max) => Math.max(min, Math.min(max, value)));

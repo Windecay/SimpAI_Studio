@@ -26,7 +26,7 @@
         const getDocument = () => sourceCall(
             domSource,
             'getDocument',
-            typeof document !== 'undefined' ? document : null
+            null
         );
         const getVisibleWorldRect = () => sourceCall(viewportSource, 'getVisibleWorldRect', null);
         const getNodeRect = (node) => sourceCall(
@@ -49,17 +49,12 @@
         const getPerformanceNow = () => sourceCall(
             runtimeSource,
             'performanceNow',
-            typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+            0
         );
         const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
         const escapeHtml = typeof utilitySource.escapeHtml === 'function'
             ? utilitySource.escapeHtml
             : (value) => String(value ?? '');
-        const getWindow = () => sourceCall(
-            runtimeSource,
-            'getWindow',
-            typeof window !== 'undefined' ? window : {}
-        ) || {};
         const getMinimapBoundsFromViewport = (items, visible) => {
             const bounds = sourceCall(
                 viewportSource,
@@ -87,14 +82,8 @@
         );
         const getNodeColor = (node) => sourceCall(utilitySource, 'nodeCustomColor', '', node);
         const expandHex = (value, fallback) => sourceCall(utilitySource, 'expandCanvasHexColor', value || fallback, value, fallback);
-        const setTimeoutFn = (...args) => {
-            if (typeof runtimeSource.setTimeout === 'function') return runtimeSource.setTimeout(...args);
-            return getWindow().setTimeout?.(...args);
-        };
-        const clearTimeoutFn = (...args) => {
-            if (typeof runtimeSource.clearTimeout === 'function') return runtimeSource.clearTimeout(...args);
-            return getWindow().clearTimeout?.(...args);
-        };
+        const setTimeoutFn = (...args) => sourceCall(runtimeSource, 'setTimeout', undefined, ...args);
+        const clearTimeoutFn = (...args) => sourceCall(runtimeSource, 'clearTimeout', undefined, ...args);
         const interactionCall = (name, ...args) => sourceCall(interactionSource, name, undefined, ...args);
         const persistenceCall = (name, ...args) => sourceCall(persistenceSource, name, undefined, ...args);
         let renderTimer = 0;

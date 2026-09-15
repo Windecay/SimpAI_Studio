@@ -9,6 +9,7 @@
         const layoutSource = scope.layoutSource || {};
         const groupSource = scope.groupSource || {};
         const metadataSource = scope.metadataSource || {};
+        const domSource = scope.domSource || {};
         const call = (source, name, fallback, ...args) => typeof source[name] === 'function'
             ? source[name](...args)
             : fallback;
@@ -36,6 +37,7 @@
             call(geometrySource, 'getCollapsedPromptNodeDefaultHeight', 280) || 280
         );
         const setSelectedGroupId = (...args) => call(projectSource, 'setSelectedGroupId', null, ...args);
+        const getDocument = (...args) => call(domSource, 'getDocument', null, ...args);
         const rectsOverlap = (...args) => {
             if (typeof geometrySource.rectsOverlap === 'function') return geometrySource.rectsOverlap(...args);
             const [a, b, padding] = args;
@@ -331,9 +333,7 @@
         function centerCanvasAgentWorkflow(nodes) {
             const rect = canvasAgentWorkflowBounds(nodes, 0);
             if (!rect) return;
-            const panelEl = typeof document !== 'undefined'
-                ? document.querySelector('.sai-canvas-agent-panel')
-                : null;
+            const panelEl = getDocument()?.querySelector?.('.sai-canvas-agent-panel') || null;
             const panelWidth = panelEl ? panelEl.offsetWidth : 360;
             const project = getProject();
             const agentOffset = (panelWidth / 2 + 20) / (project.viewport?.zoom || 1);

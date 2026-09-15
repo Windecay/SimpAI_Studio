@@ -19,7 +19,7 @@
             : ((value, fallback) => value ?? fallback);
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const defaultScript = scriptSource.script || '';
 
         function objectOrEmpty(value) {

@@ -61,7 +61,8 @@
             renderStatus: uiSource,
             showToast: uiSource,
             warn: uiSource,
-            nowIso: timeSource
+            nowIso: timeSource,
+            parseDate: timeSource
         };
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const call = (name, fallback, ...args) => {
@@ -79,7 +80,7 @@
         }
 
         function touchProject(project) {
-            const timestamp = call('nowIso', new Date().toISOString(), []);
+            const timestamp = call('nowIso', '', []);
             const patch = call('buildProjectUpdatedAtPatch', { updated_at: timestamp }, project, {
                 nowIso: () => timestamp
             });
@@ -120,7 +121,7 @@
             const project = candidate || {};
             const values = [project.updated_at, project.modified_at, project.created_at];
             for (const value of values) {
-                const time = Date.parse(value || '');
+                const time = call('parseDate', NaN, value || '');
                 if (Number.isFinite(time) && time > 0) return time;
             }
             return 0;

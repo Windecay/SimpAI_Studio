@@ -21,7 +21,7 @@
             : fallback;
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getResolutionRenderValues = (node) => configCall('getResolutionRenderValues', {}, node) || {};
         const getResolutionPreview = (values) => configCall('getResolutionPreview', {}, values, []) || {};
         const clamp = typeof utilitySource.clamp === 'function'
@@ -33,7 +33,7 @@
             }
             return Math.round(Number(value || 0) / Math.max(1, Number(step || 1))) * Math.max(1, Number(step || 1));
         };
-        const nowIso = () => utilityCall('nowIso', new Date().toISOString());
+        const nowIso = () => utilityCall('nowIso', '');
         const applyConfigStatePatchSource = (...args) => configCall('buildConfigStatePatch', undefined, ...args);
         const applyConfigNodeToPreset = (...args) => configCall('applyConfigNodeToPreset', undefined, ...args);
         const scheduleSave = (...args) => persistenceCall('scheduleSave', undefined, ...args);

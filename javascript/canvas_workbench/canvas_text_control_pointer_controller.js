@@ -9,10 +9,10 @@
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getWindow = () => typeof environmentSource.getWindow === 'function'
             ? environmentSource.getWindow()
-            : (typeof window !== 'undefined' ? window : null);
+            : null;
         const getEditableTextControl = (target) => typeof textControlSource.getEditableTextControl === 'function'
             ? textControlSource.getEditableTextControl(target)
             : null;

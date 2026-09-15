@@ -13,7 +13,7 @@
         const languageSource = scope.languageSource || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getViewport = () => typeof viewportSource.getViewport === 'function'
             ? viewportSource.getViewport()
             : null;

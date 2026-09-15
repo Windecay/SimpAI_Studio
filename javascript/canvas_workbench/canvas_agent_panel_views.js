@@ -5,6 +5,7 @@
         const scope = context?.panelViewsSource || context || {};
         const languageSource = scope.languageSource || {};
         const utilitySource = scope.utilitySource || {};
+        const helpSource = scope.helpSource || {};
         const stateSource = scope.stateSource || {};
         const referenceSource = scope.referenceSource || {};
         const autocompleteSource = scope.autocompleteSource || {};
@@ -19,6 +20,7 @@
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
         const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
+        const helpCall = (name, fallback, ...args) => call(helpSource, name, fallback, ...args);
         const getAgentState = (...args) => call(stateSource, 'getAgentState', {}, ...args) || {};
         const normalizeCanvasAgentReferences = (...args) => call(referenceSource, 'normalizeCanvasAgentReferences', [], ...args) || [];
         const canvasAgentReferenceNode = (...args) => call(referenceSource, 'canvasAgentReferenceNode', null, ...args);
@@ -275,7 +277,7 @@
             return `<section class="sai-settings-section sai-agent-custom-api ${collapsed ? 'is-collapsed' : ''}">
       <div class="sai-settings-section-head">
         <h3>${escapeHtml(t('Custom API', 'Custom API'))}</h3>
-        ${window.SimpAIStudioHelp?.button('api', 'canvas') || ''}
+        ${helpCall('button', '', 'api', 'canvas') || ''}
         <button type="button" data-canvas-settings-action="toggle-agent-custom-api"><i class="fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i><span>${escapeHtml(collapsed ? t('Expand', '展开') : t('Collapse', '折叠'))}</span></button>
       </div>
       <div class="sai-settings-status">${escapeHtml(`${src.customApiName || provider.label || 'Custom'}${src.customModel ? ` · ${src.customModel}` : ''}`)}</div>

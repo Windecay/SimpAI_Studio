@@ -78,7 +78,7 @@
         const getGroupsLayer = () => domCall('getGroupsLayer', null);
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getGroup = (id) => groupCall('getGroup', null, id);
         const getNode = (id) => nodeCall('getNode', null, id);
         const getNodesInsideGroup = (group) => groupCall('getNodesInsideGroup', [], group) || [];

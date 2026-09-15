@@ -13,11 +13,12 @@
         const agentSource = scope.agentSource || {};
         const runtimeSource = scope.runtimeSource || {};
         const schedulerSource = scope.schedulerSource || {};
+        const sketchSource = scope.sketchSource || {};
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const getProject = () => call(projectSource, 'getProject', {}) || {};
         const getNode = (...args) => call(projectSource, 'getNode', null, ...args);
         const getAgentState = () => call(agentSource, 'getAgentState', {}) || {};
@@ -56,7 +57,8 @@
         const clearCanvasAgentRunInfo = (...args) => call(agentSource, 'clearCanvasAgentRunInfo', null, ...args);
         const runPresetNode = (...args) => call(runtimeSource, 'runPresetNode', null, ...args);
         const setCanvasAgentSelection = (...args) => call(agentSource, 'setCanvasAgentSelection', null, ...args);
-        const schedule = typeof schedulerSource.setTimeout === 'function' ? schedulerSource.setTimeout : globalThis.setTimeout;
+        const schedule = (...args) => call(schedulerSource, 'setTimeout', null, ...args);
+        const getSketchAdapter = (...args) => call(sketchSource, 'getSketchAdapter', null, ...args);
 
         function canvasAgentManualMaskWorkflowNodes(presetNode, resultNode, maskNode) {
             const seen = new Set();
@@ -165,12 +167,12 @@
             if (!sourceNode || !presetNode) return;
             const ready = await ensureWorkbenchLazyRuntime(
                 'customSketch',
-                () => typeof window.SimpAIWorkbenchSketchAdapter?.open === 'function',
+                () => typeof getSketchAdapter()?.open === 'function',
                 t('Loading Sketch...', '正在加载 Sketch...'),
                 t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。')
             );
             if (!ready) return;
-            const adapter = window.SimpAIWorkbenchSketchAdapter;
+            const adapter = getSketchAdapter();
             if (!adapter || typeof adapter.open !== 'function') {
                 showToast(t('Sketch adapter is not ready.', 'Sketch 控件尚未就绪。'));
                 return;

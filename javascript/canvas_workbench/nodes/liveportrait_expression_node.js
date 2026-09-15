@@ -1,15 +1,14 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
+    const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
+    const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
+    const translateFallback = (en, cn) => cn || en;
 
-    function editor() {
-        return window.SimpAILivePortraitExpressionEditor || {};
+    function editor(context) {
+        return call(context, 'getEditor', {});
     }
 
     function call(context, name, fallback, ...args) {
@@ -22,37 +21,71 @@
     }
 
     function createLivePortraitExpressionNodeContext(source) {
-        const context = source || {};
+        const scope = source || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetSource = scope.assetSource || {};
+        const editorSource = scope.editorSource || {};
+        const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            getProject: delegate(context, 'getProject'),
-            getProjectId: delegate(context, 'getProjectId'),
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNode: delegate(context, 'getNode'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            isLivePortraitExpressionImageSource: delegate(context, 'isLivePortraitExpressionImageSource'),
-            isNodeIgnored: delegate(context, 'isNodeIgnored'),
-            isNodeLocked: delegate(context, 'isNodeLocked'),
-            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
-            mutate: delegate(context, 'mutate'),
-            notConnectedText: delegate(context, 'notConnectedText'),
-            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
-            portHintText: delegate(context, 'portHintText'),
-            pushHistory: delegate(context, 'pushHistory'),
-            readAssetInfo: delegate(context, 'readAssetInfo'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            scheduleSave: delegate(context, 'scheduleSave'),
-            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
-            setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast'),
-            buildAssetReference: delegate(context, 'buildAssetReference'),
-            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
-            buildLivePortraitNodeStatePatch: delegate(context, 'buildLivePortraitNodeStatePatch'),
-            buildLivePortraitStatePatch: delegate(context, 'buildLivePortraitStatePatch'),
-            buildLivePortraitConfirmPatch: delegate(context, 'buildLivePortraitConfirmPatch')
+            escapeHtml: pick(utilitySource, 'escapeHtml'),
+            clamp: pick(utilitySource, 'clamp'),
+            t: pick(utilitySource, 't'),
+            getProject: pick(scope, 'getProject'),
+            getProjectId: pick(scope, 'getProjectId'),
+            uid: pick(scope, 'uid'),
+            getEditor: pick(editorSource, 'getEditor'),
+            assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            defaultNodeSize: pick(scope, 'defaultNodeSize'),
+            detectWorkbenchTheme: pick(scope, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: pick(scope, 'ensureWorkbenchFormFieldNames'),
+            getNode: pick(scope, 'getNode'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            isLivePortraitExpressionImageSource: pick(scope, 'isLivePortraitExpressionImageSource'),
+            isNodeIgnored: pick(scope, 'isNodeIgnored'),
+            isNodeLocked: pick(scope, 'isNodeLocked'),
+            mediaAspectStyle: pick(assetSource, 'mediaAspectStyle'),
+            mutate: pick(scope, 'mutate'),
+            notConnectedText: pick(scope, 'notConnectedText'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            portHintText: pick(scope, 'portHintText'),
+            pushHistory: pick(scope, 'pushHistory'),
+            readAssetInfo: pick(assetSource, 'readAssetInfo'),
+            renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
+            scheduleSave: pick(scope, 'scheduleSave'),
+            serializeAssetSourceForRun: pick(assetSource, 'serializeAssetSourceForRun'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
+            showToast: pick(scope, 'showToast'),
+            buildAssetReference: pick(scope, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            buildLivePortraitNodeStatePatch: pick(scope, 'buildLivePortraitNodeStatePatch'),
+            buildLivePortraitStatePatch: pick(scope, 'buildLivePortraitStatePatch'),
+            buildLivePortraitConfirmPatch: pick(scope, 'buildLivePortraitConfirmPatch')
         };
+    }
+
+    const DEFAULT_LIVEPORTRAIT_EXPRESSION_CONTEXT = createLivePortraitExpressionNodeContext({
+        utilitySource: {
+            escapeHtml: DEFAULT_UTILS.escapeHtml || escapeHtmlFallback,
+            clamp: DEFAULT_UTILS.clamp || clampFallback,
+            t: DEFAULT_UTILS.t || translateFallback
+        },
+        assetSource: DEFAULT_ASSETS
+    });
+
+    function contextOf(context) {
+        return context || DEFAULT_LIVEPORTRAIT_EXPRESSION_CONTEXT;
+    }
+
+    function escapeHtml(value, context) {
+        return call(contextOf(context), 'escapeHtml', escapeHtmlFallback(value), value);
+    }
+
+    function clamp(value, min, max, context) {
+        return call(contextOf(context), 'clamp', clampFallback(value, min, max), value, min, max);
+    }
+
+    function t(en, cn, context) {
+        return call(contextOf(context), 't', translateFallback(en, cn), en, cn);
     }
 
     function getProject(context) {
@@ -136,14 +169,14 @@
     }
 
     function assetDisplaySrc(asset, context) {
-        if (typeof context?.assetDisplaySrc === 'function') return context.assetDisplaySrc(asset || {});
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.assetDisplaySrc === 'function') return ctx.assetDisplaySrc(asset || {});
         return asset?.preview_url || asset?.data_url || asset?.thumb || '';
     }
 
     function readAssetInfo(asset, context) {
-        if (typeof context?.readAssetInfo === 'function') return context.readAssetInfo(asset || {});
-        if (typeof ASSETS.readAssetInfo === 'function') return ASSETS.readAssetInfo(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.readAssetInfo === 'function') return ctx.readAssetInfo(asset || {});
         const bits = [];
         if (asset?.width && asset?.height) bits.push(`${asset.width} x ${asset.height}`);
         if (asset?.mime) bits.push(asset.mime);
@@ -152,31 +185,27 @@
 
     function serializeAssetSourceForRun(node, context) {
         if (!node) return null;
-        if (typeof context?.serializeAssetSourceForRun === 'function') return context.serializeAssetSourceForRun(node);
-        if (typeof ASSETS.serializeAssetSourceForRun === 'function') {
-            return ASSETS.serializeAssetSourceForRun(node, {
-                getSelectedResultAsset: item => selectedResultAsset(item, context)
-            });
-        }
+        const ctx = contextOf(context);
+        if (typeof ctx.serializeAssetSourceForRun === 'function') return ctx.serializeAssetSourceForRun(node);
         return null;
     }
 
     function mediaAspectStyle(asset, context) {
-        if (typeof context?.mediaAspectStyle === 'function') return context.mediaAspectStyle(asset || {});
-        if (typeof ASSETS.mediaAspectStyle === 'function') return ASSETS.mediaAspectStyle(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.mediaAspectStyle === 'function') return ctx.mediaAspectStyle(asset || {});
         const width = Number(asset?.width || 0);
         const height = Number(asset?.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = clamp(width / height, 0.25, 4, context);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
     function notConnectedText(context) {
-        return call(context, 'notConnectedText', t('Not connected', '未连接'));
+        return call(context, 'notConnectedText', t('Not connected', '未连接', context));
     }
 
     function portHintText(context) {
-        return call(context, 'portHintText', t('Double-click', '双击'));
+        return call(context, 'portHintText', t('Double-click', '双击', context));
     }
 
     function livePortraitState(node, context) {
@@ -203,20 +232,20 @@
     function sourceLabel(source, storedAsset, context) {
         if (source) return source.title || source.id;
         const hasStored = !!(storedAsset?.path || storedAsset?.preview_url || storedAsset?.data_url || storedAsset?.thumb);
-        return hasStored ? t('Loaded image', '已载入图像') : notConnectedText(context);
+        return hasStored ? t('Loaded image', '已载入图像', context) : notConnectedText(context);
     }
 
     function renderInputRow(node, slot, source, storedAsset, context) {
         const isReference = slot === 'reference';
         const attr = isReference ? 'data-liveportrait-expression-reference-in' : 'data-liveportrait-expression-source-in';
         const icon = isReference ? 'fa-face-smile' : 'fa-image';
-        const label = isReference ? t('Reference', '参考表情') : t('Source', '源图');
+        const label = isReference ? t('Reference', '参考表情', context) : t('Source', '源图', context);
         const title = isReference
-            ? t('Optional reference expression image', '可选参考表情图')
-            : t('Required source face image', '必需源人脸图');
-        return `<div class="sai-text-input-row sai-liveportrait-expression-input-row" title="${escapeHtml(title)}">
-  <button type="button" class="sai-node-handle sai-node-handle-in" ${attr} title="${escapeHtml(title)}"></button>
-  <i class="fa-solid ${icon}"></i><span>${escapeHtml(label)}</span><b>${escapeHtml(sourceLabel(source, storedAsset, context))}</b><small>${escapeHtml(portHintText(context))}</small>
+            ? t('Optional reference expression image', '可选参考表情图', context)
+            : t('Required source face image', '必需源人脸图', context);
+        return `<div class="sai-text-input-row sai-liveportrait-expression-input-row" title="${escapeHtml(title, context)}">
+  <button type="button" class="sai-node-handle sai-node-handle-in" ${attr} title="${escapeHtml(title, context)}"></button>
+  <i class="fa-solid ${icon}"></i><span>${escapeHtml(label, context)}</span><b>${escapeHtml(sourceLabel(source, storedAsset, context), context)}</b><small>${escapeHtml(portHintText(context), context)}</small>
 </div>`;
     }
 
@@ -230,19 +259,19 @@
         const status = node.status?.message || '';
         return `
 <div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Live Exp', '表情'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || 'LivePortrait Exp')}</span>
+  <span class="sai-node-kind">${escapeHtml(t('Live Exp', '表情', context), context)}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || 'LivePortrait Exp', context)}</span>
   ${renderNodeStateBadges(node, context)}
-  <button type="button" data-node-action="edit-liveportrait-expression" title="${escapeHtml(t('Open LivePortrait Exp', '打开 LivePortrait Exp'))}"><i class="fa-solid fa-face-smile"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  <button type="button" data-node-action="edit-liveportrait-expression" title="${escapeHtml(t('Open LivePortrait Exp', '打开 LivePortrait Exp', context), context)}"><i class="fa-solid fa-face-smile"></i></button>
+  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除', context), context)}"><i class="fa-solid fa-xmark"></i></button>
 </div>
 ${renderInputRow(node, 'source', source, state.source_asset, context)}
 ${renderInputRow(node, 'reference', reference, state.reference_asset, context)}
-<div class="sai-node-media sai-liveportrait-expression-media"${mediaAspectStyle(asset, context)}>${src ? `<img src="${escapeHtml(src)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No expression image', '无表情输出'))}</div>`}</div>
-${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>` : ''}
-${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
-<button type="button" class="sai-node-primary" data-node-action="edit-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Edit Expression', '编辑表情'))}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Expression image output', '表情图输出'))}"></button>`;
+<div class="sai-node-media sai-liveportrait-expression-media"${mediaAspectStyle(asset, context)}>${src ? `<img src="${escapeHtml(src, context)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No expression image', '无表情输出', context), context)}</div>`}</div>
+${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit, context)}</span>`).join('')}</div>` : ''}
+${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : ''}
+<button type="button" class="sai-node-primary" data-node-action="edit-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Edit Expression', '编辑表情', context), context)}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Expression image output', '表情图输出', context), context)}"></button>`;
     }
 
     function renderInspector(node, context) {
@@ -252,17 +281,17 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const info = readAssetInfo(node.asset || state.output_asset || {}, context);
         return `
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(node.title || 'LivePortrait Exp')}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '源图'))}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考表情'))}</span><b>${escapeHtml(reference?.title || reference?.id || t('Optional', '可选'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出'))}</span><b>${escapeHtml(info.join(' / ') || t('No expression image', '无表情输出'))}</b></div>
+  <h3>${escapeHtml(node.title || 'LivePortrait Exp', context)}</h3>
+  <label>${escapeHtml(t('Title', '标题', context), context)}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '', context)}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '源图', context), context)}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考表情', context), context)}</span><b>${escapeHtml(reference?.title || reference?.id || t('Optional', '可选', context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出', context), context)}</span><b>${escapeHtml(info.join(' / ') || t('No expression image', '无表情输出', context), context)}</b></div>
 </div>
 <div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="edit-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+  <button type="button" data-inspector-action="edit-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Edit', '编辑', context), context)}</span></button>
+  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看', context), context)}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制', context), context)}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除', context), context)}</span></button>
 </div>`;
     }
 
@@ -272,7 +301,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const size = call(context, 'defaultNodeSize', { w: 420, h: 600 }, 'liveportrait_expression') || { w: 420, h: 600 };
         if (opts.history !== false) call(context, 'pushHistory', null, 'Add LivePortrait Exp node');
         const node = {
-            id: opts.id || uid('liveportrait'),
+            id: opts.id || call(context, 'uid', 'liveportrait-node', 'liveportrait'),
             type: 'liveportrait_expression',
             x: world?.x || 0,
             y: world?.y || 0,
@@ -286,7 +315,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             source: { kind: 'liveportrait_expression', module: 'ui.services.liveportrait_expression' },
             status: {
                 state: opts.asset ? 'finished' : 'idle',
-                message: opts.asset ? t('Expression image ready.', '表情图已就绪。') : t('Connect a source image, then edit expression.', '连接源图后编辑表情。')
+                message: opts.asset ? t('Expression image ready.', '表情图已就绪。', context) : t('Connect a source image, then edit expression.', '连接源图后编辑表情。', context)
             }
         };
         Object.assign(node, call(context, 'buildLivePortraitNodeStatePatch', {
@@ -315,15 +344,15 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
-        if (opts.toast !== false) call(context, 'showToast', null, t('LivePortrait Exp node added', '已添加 LivePortrait Exp 节点'));
+        if (opts.toast !== false) call(context, 'showToast', null, t('LivePortrait Exp node added', '已添加 LivePortrait Exp 节点', context));
         return node;
     }
 
     function openEditor(node, context) {
         if (!node || node.type !== 'liveportrait_expression') return null;
-        const runtimeEditor = editor();
+        const runtimeEditor = editor(context);
         if (typeof runtimeEditor.open !== 'function') {
-            call(context, 'showToast', null, t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。'));
+            call(context, 'showToast', null, t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。', context));
             return null;
         }
         const state = livePortraitState(node, context);
@@ -334,7 +363,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const sourceSrc = assetDisplaySrc(sourceAsset || {}, context);
         const referenceSrc = assetDisplaySrc(referenceAsset || {}, context);
         if (!sourceAsset && !sourceSrc) {
-            call(context, 'showToast', null, t('Connect a source image first.', '请先连接源图。'));
+            call(context, 'showToast', null, t('Connect a source image first.', '请先连接源图。', context));
         }
         return runtimeEditor.open({
             title: node.title || 'LivePortrait Exp',
@@ -379,7 +408,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                     },
                     status: {
                         state: 'finished',
-                        message: t('Expression image exported.', '表情图已导出。')
+                        message: t('Expression image exported.', '表情图已导出。', context)
                     }
                 }));
                 call(context, 'setSelectedNode', null, current.id);

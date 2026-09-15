@@ -39,7 +39,7 @@
         const getProject = () => typeof projectSource.getProject === 'function' ? (projectSource.getProject() || {}) : {};
         const getWindow = () => typeof windowSource.getWindow === 'function'
             ? (windowSource.getWindow() || {})
-            : (typeof window !== 'undefined' ? window : {});
+            : {};
         const isStandalone = () => typeof runtimeSource.isStandaloneCanvasWorkbench === 'function'
             ? !!runtimeSource.isStandaloneCanvasWorkbench()
             : false;
@@ -48,10 +48,9 @@
             : TERMINAL_STATES.has(String(state || '').toLowerCase());
         const getElement = (name) => typeof domSource[name] === 'function' ? domSource[name]() : null;
         const getNode = (id) => typeof projectSource.getNode === 'function' ? projectSource.getNode(id) : null;
-        const now = () => typeof runtimeSource.now === 'function' ? Number(runtimeSource.now()) : Date.now();
+        const now = () => typeof runtimeSource.now === 'function' ? Number(runtimeSource.now()) : 0;
         const fetchStatus = (...args) => {
             if (typeof runtimeSource.fetchStatus === 'function') return runtimeSource.fetchStatus(...args);
-            if (typeof fetch === 'function') return fetch(...args);
             throw new Error('status fetch is unavailable');
         };
         const setIntervalFn = (...args) => {
@@ -306,7 +305,7 @@
             const win = getWindow();
             win.SimpAIStatusMonitorData = Object.assign({}, win.SimpAIStatusMonitorData || {}, next);
             if (typeof win.dispatchEvent === 'function') {
-                const EventCtor = win.CustomEvent || (typeof CustomEvent === 'function' ? CustomEvent : null);
+                const EventCtor = win.CustomEvent || null;
                 if (EventCtor) win.dispatchEvent(new EventCtor('simpai:status-monitor-updated', { detail: win.SimpAIStatusMonitorData }));
             }
         }

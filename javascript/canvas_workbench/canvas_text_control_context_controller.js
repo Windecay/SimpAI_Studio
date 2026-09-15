@@ -13,13 +13,13 @@
             : undefined;
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getWindow = () => typeof environmentSource.getWindow === 'function'
             ? environmentSource.getWindow()
-            : (typeof window !== 'undefined' ? window : null);
+            : null;
         const getNavigator = () => {
             const win = getWindow();
-            return win?.navigator || (typeof navigator !== 'undefined' ? navigator : null);
+            return win?.navigator || null;
         };
         const translate = typeof languageSource.t === 'function' ? languageSource.t : (en, cn) => cn || en;
 
@@ -88,8 +88,8 @@
         function dispatchTextControlInput(el, inputType, data) {
             if (!el) return;
             const win = getWindow();
-            const InputEventCtor = win?.InputEvent || (typeof InputEvent !== 'undefined' ? InputEvent : null);
-            const EventCtor = win?.Event || (typeof Event !== 'undefined' ? Event : null);
+            const InputEventCtor = win?.InputEvent || null;
+            const EventCtor = win?.Event || null;
             let event = null;
             try {
                 event = InputEventCtor ? new InputEventCtor('input', {

@@ -33,13 +33,13 @@
         const getProject = () => sourceCall(projectSource, 'getProject', {}) || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getNode = (id) => sourceCall(nodeSource, 'getNode', null, id);
         const getSelectedNodeIds = () => sourceCall(nodeSource, 'getSelectedNodeIds', new Set()) || new Set();
         const isNodeLocked = (node) => !!sourceCall(nodeSource, 'isNodeLocked', false, node);
         const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
-            ? runtimeSource.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+            ? Number(runtimeSource.performanceNow()) || 0
+            : 0;
         const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
         const renderCall = (name, fallback, ...args) => sourceCall(renderSource, name, fallback, ...args);
         const minimapCall = (name, fallback, ...args) => sourceCall(minimapSource, name, fallback, ...args);

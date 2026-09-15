@@ -21,7 +21,7 @@
             });
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const defaultResultNodeSize = typeof layoutSource.defaultResultNodeSize === 'function'
             ? layoutSource.defaultResultNodeSize
             : () => ({ w: 360, h: 460 });

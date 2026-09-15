@@ -13,7 +13,7 @@
         const cloneRunValue = typeof runtimeSource.cloneRunValue === 'function'
             ? runtimeSource.cloneRunValue
             : (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
-        const nowIso = typeof runtimeSource.nowIso === 'function' ? runtimeSource.nowIso : () => new Date().toISOString();
+        const nowIso = typeof runtimeSource.nowIso === 'function' ? runtimeSource.nowIso : () => '';
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const uid = typeof runtimeSource.uid === 'function' ? runtimeSource.uid : (type) => `${type}-node`;
         const normalizePresetName = typeof presetSource.normalizePresetName === 'function'

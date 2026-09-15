@@ -22,7 +22,7 @@
         const getRoot = () => sourceCall(domSource, 'getRoot', null);
         const getRunHistoryPanel = () => sourceCall(domSource, 'getRunHistoryPanel', null);
         const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', null);
-        const performanceNow = () => Number(sourceCall(runtimeSource, 'performanceNow', performance.now())) || 0;
+        const performanceNow = () => Number(sourceCall(runtimeSource, 'performanceNow', 0)) || 0;
 
         function renderAll(options) {
             if (!getRoot()) return;

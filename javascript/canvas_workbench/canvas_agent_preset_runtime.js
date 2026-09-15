@@ -6,6 +6,7 @@
         const languageSource = scope.languageSource || {};
         const utilitySource = scope.utilitySource || {};
         const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
         const catalogSource = scope.catalogSource || {};
         const settingsSource = scope.settingsSource || {};
         const storageSource = scope.storageSource || {};
@@ -25,6 +26,7 @@
         const uiCall = (name, fallback, ...args) => call(uiSource, name, fallback, ...args);
         const promptCall = (name, fallback, ...args) => call(promptSource, name, fallback, ...args);
         const identityCall = (name, fallback, ...args) => call(identitySource, name, fallback, ...args);
+        const timeCall = (name, fallback, ...args) => call(timeSource, name, fallback, ...args);
         const utilityCall = (name, fallback, ...args) => call(utilitySource, name, fallback, ...args);
         const t = languageSource.t || ((en, cn) => cn || en);
         const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
@@ -73,18 +75,22 @@
 
         function getStorage() {
             if (typeof storageSource.getStorage === 'function') return storageSource.getStorage();
-            if (typeof globalThis !== 'undefined' && globalThis.localStorage) return globalThis.localStorage;
             return null;
         }
 
         function nowIso() {
-            const value = identityCall('nowIso', '', ...[]);
-            return String(value || new Date().toISOString());
+            const value = timeCall('nowIso', '', ...[]);
+            return String(value || '');
         }
 
         function nextUid(prefix) {
             const value = identityCall('uid', '', prefix);
-            return String(value || `${prefix || 'id'}_${Date.now()}`);
+            return String(value || '');
+        }
+
+        function now() {
+            const value = Number(timeCall('now', 0, ...[]));
+            return Number.isFinite(value) ? value : 0;
         }
 
         function escapeHtml(value) {
@@ -366,9 +372,9 @@
         async function getCanvasAgentPresetStatus(entry, options) {
             const opts = options || {};
             const key = canvasAgentPresetStatusCacheKey(entry);
-            const now = Date.now();
+            const nowValue = now();
             const cached = key ? statusCache.get(key) : null;
-            if (!opts.force && cached && (now - cached.at) < statusCacheTtlMs) return cached.status;
+            if (!opts.force && cached && (nowValue - cached.at) < statusCacheTtlMs) return cached.status;
             const probe = createCanvasAgentPresetProbeNode(entry);
             let status = null;
             try {
@@ -376,7 +382,7 @@
             } catch (err) {
                 status = { ok: false, error: err?.message || String(err) };
             }
-            if (key) statusCache.set(key, { at: now, status });
+            if (key) statusCache.set(key, { at: nowValue, status });
             return status;
         }
 
@@ -443,9 +449,9 @@
             let nextIndex = 0;
             let lastRenderAt = 0;
             const maybeRenderProgress = () => {
-                const now = Date.now();
-                if (scanState.checked === scanState.total || now - lastRenderAt > 180) {
-                    lastRenderAt = now;
+                const nowValue = now();
+                if (scanState.checked === scanState.total || nowValue - lastRenderAt > 180) {
+                    lastRenderAt = nowValue;
                     uiCall('renderCanvasSettingsPanel', null);
                 }
             };

@@ -10,7 +10,7 @@
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
-        const getDocument = () => call(documentSource, 'getDocument', typeof document !== 'undefined' ? document : null);
+        const getDocument = () => call(documentSource, 'getDocument', null);
         const cssEscape = (value) => call(documentSource, 'cssEscape', String(value || ''), value);
         const clamp = typeof interactionSource.clamp === 'function'
             ? interactionSource.clamp

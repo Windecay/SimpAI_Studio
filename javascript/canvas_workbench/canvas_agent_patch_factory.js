@@ -7,7 +7,7 @@
         const serializationSource = scope.serializationSource || {};
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue
             : ((value, fallback) => {

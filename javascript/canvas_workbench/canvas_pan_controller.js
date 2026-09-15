@@ -24,10 +24,10 @@
         const getViewport = () => sourceCall(viewportSource, 'getViewport', null);
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
             ? runtimeSource.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+            : 0;
         const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
         const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
         const edgeCall = (name, fallback, ...args) => sourceCall(edgeSource, name, fallback, ...args);

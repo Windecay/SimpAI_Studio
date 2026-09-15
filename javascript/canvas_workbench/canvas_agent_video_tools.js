@@ -24,7 +24,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const normalizePresetName = utilitySource.normalizePresetName || (value => String(value || '').trim());
         const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
         const getDefaultVideoOutpaintPreset = () => String(call(catalogSource, 'getDefaultVideoOutpaintPreset', '') || '');
@@ -65,6 +65,7 @@
         const canNodeConnectToUploadSlot = (...args) => call(mediaSource, 'canNodeConnectToUploadSlot', false, ...args);
         const createUploadEdge = (...args) => call(mediaSource, 'createUploadEdge', null, ...args);
         const applyCanvasAgentResolutionToGenerator = (...args) => call(generatorSource, 'applyCanvasAgentResolutionToGenerator', null, ...args);
+        const schedule = (...args) => call(runtimeSource, 'setTimeout', null, ...args);
         const createCanvasAgentReferencePlaceholderForGenerator = (...args) => call(mediaSource, 'createCanvasAgentReferencePlaceholderForGenerator', null, ...args);
         const canvasAgentReferenceUploadSlotForGenerator = (...args) => call(mediaSource, 'canvasAgentReferenceUploadSlotForGenerator', '', ...args);
         const getUploadSlotMediaKind = (...args) => call(mediaSource, 'getUploadSlotMediaKind', '', ...args);
@@ -322,7 +323,7 @@
             mutate({ inspector: true });
             setCanvasAgentMessage(t('LivePortrait Exp is ready. The source image is connected and the editor is opening.', 'LivePortrait Exp 已就绪，源图已连接，正在打开编辑面板。'));
             showToast(t('LivePortrait Exp source connected.', 'LivePortrait Exp 源图已连接。'));
-            window.setTimeout(() => openLivePortraitExpressionEditor(node), 80);
+            schedule(() => openLivePortraitExpressionEditor(node), 80);
             return node;
         }
 

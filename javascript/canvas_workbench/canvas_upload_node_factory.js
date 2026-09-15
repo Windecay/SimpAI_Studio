@@ -7,7 +7,7 @@
         const timeSource = scope.timeSource || {};
         const layoutSource = scope.layoutSource || {};
         const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
-        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => '';
         const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
             ? layoutSource.defaultNodeSize
             : (type) => type === 'video' ? { w: 360, h: 300 } : { w: 320, h: 260 };

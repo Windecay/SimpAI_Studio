@@ -16,7 +16,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : () => '';
         const maxImageReferences = () => Number(call(capacitySource, 'getMaxImageReferences', 9) || 9);
         const maxExtraImageReferences = () => Number(call(
             capacitySource,

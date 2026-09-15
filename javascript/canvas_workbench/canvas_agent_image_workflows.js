@@ -18,7 +18,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const normalizePresetName = typeof catalogSource.normalizePresetName === 'function'
             ? catalogSource.normalizePresetName
             : (value => String(value || '').trim());

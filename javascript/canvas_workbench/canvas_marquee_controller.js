@@ -24,17 +24,17 @@
         const getRoot = () => sourceCall(domSource, 'getRoot', null);
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getWindow = () => typeof windowSource.getWindow === 'function'
             ? (windowSource.getWindow() || {})
-            : (typeof window !== 'undefined' ? window : {});
+            : {};
         const getSelectedNodeIds = () => sourceCall(selectionSource, 'getSelectedNodeIds', new Set()) || new Set();
         const getPerfStats = () => sourceCall(runtimeSource, 'getPerfStats', {}) || {};
         const getMarqueeNodeRecords = (selectionRect) => sourceCall(spatialSource, 'getMarqueeNodeRecords', [], selectionRect) || [];
         const getClientWorld = (clientX, clientY) => sourceCall(utilitySource, 'clientToWorld', { x: 0, y: 0 }, clientX, clientY) || { x: 0, y: 0 };
         const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
             ? runtimeSource.performanceNow()
-            : (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+            : 0;
         const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
         const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
         const minimapCall = (name, fallback, ...args) => sourceCall(minimapSource, name, fallback, ...args);

@@ -1,10 +1,6 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-
     function createCanvasResultPreviewController(context) {
         const scope = context || {};
         const sourceObject = (name) => {
@@ -17,6 +13,12 @@
         const resultSource = sourceObject('resultSource');
         const utilitySource = sourceObject('utilitySource');
         const runtimeSource = sourceObject('runtimeSource');
+        const escapeHtml = typeof utilitySource.escapeHtml === 'function'
+            ? utilitySource.escapeHtml
+            : (value) => String(value ?? '');
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
+            : (value, min, max) => Math.max(min, Math.min(max, value));
         const frameSrc = (frame, fallback) => typeof previewSource.resultPreviewFrameSrc === 'function'
             ? previewSource.resultPreviewFrameSrc(frame, fallback)
             : '';
@@ -61,10 +63,10 @@
         const players = new Map();
         const setIntervalImpl = typeof runtimeSource.setInterval === 'function'
             ? runtimeSource.setInterval
-            : (typeof window.setInterval === 'function' ? window.setInterval.bind(window) : null);
+            : null;
         const clearIntervalImpl = typeof runtimeSource.clearInterval === 'function'
             ? runtimeSource.clearInterval
-            : (typeof window.clearInterval === 'function' ? window.clearInterval.bind(window) : null);
+            : null;
 
         function resultPreviewHasRenderableSource(node) {
             const source = aspectSource(node);

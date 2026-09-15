@@ -15,26 +15,11 @@
             : fallback;
         const getNode = (id) => call(nodeSource, 'getNode', null, id);
         const getNodeElement = (id) => call(nodeSource, 'getNodeElement', null, id);
-        const performanceNow = () => {
-            if (typeof timingSource.performanceNow === 'function') return Number(timingSource.performanceNow()) || 0;
-            if (typeof performance !== 'undefined' && typeof performance.now === 'function') return performance.now();
-            return Date.now();
-        };
-        const requestFrame = (callback) => {
-            if (typeof timingSource.requestAnimationFrame === 'function') return timingSource.requestAnimationFrame(callback);
-            if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(callback);
-            return setTimeout(callback, 16);
-        };
+        const performanceNow = () => Number(call(timingSource, 'performanceNow', 0)) || 0;
+        const requestFrame = (callback) => call(timingSource, 'requestAnimationFrame', null, callback);
         const cancelFrame = (handle) => {
-            if (typeof timingSource.cancelAnimationFrame === 'function') {
-                timingSource.cancelAnimationFrame(handle);
-                return;
-            }
-            if (typeof cancelAnimationFrame === 'function') {
-                cancelAnimationFrame(handle);
-                return;
-            }
-            clearTimeout(handle);
+            if (handle == null) return;
+            call(timingSource, 'cancelAnimationFrame', undefined, handle);
         };
         const buildTimelineParamsPatch = (node, paramsPatch) => typeof playbackOperationSource.buildTimelineParamsPatch === 'function'
             ? playbackOperationSource.buildTimelineParamsPatch(node, paramsPatch)

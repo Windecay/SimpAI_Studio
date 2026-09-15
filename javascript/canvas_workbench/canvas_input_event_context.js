@@ -13,7 +13,7 @@
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
 
         function onCanvasInput(evt) {
             if (typeof inputSource.handleDanbooruAutocompleteInput === 'function'

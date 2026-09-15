@@ -16,7 +16,7 @@
             .replace(/'/g, '&#39;'));
 
         function getDocument() {
-            return domSource.document || (typeof document !== 'undefined' ? document : null);
+            return domSource.document || null;
         }
 
         function requestCanvasConfirmDialog(options) {

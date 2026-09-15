@@ -11,8 +11,8 @@
         const configSource = scope.configSource || {};
         const networkSource = scope.networkSource || {};
         const tooltipSource = scope.tooltipSource || {};
-        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getDocument = () => domSource.document || null;
+        const getWindow = () => viewportSource.window || { innerWidth: 0, innerHeight: 0 };
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const getNodesLayer = () => typeof domSource.getNodesLayer === 'function' ? domSource.getNodesLayer() : null;
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
@@ -24,17 +24,16 @@
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const getSystemParams = () => typeof configSource.getSystemParams === 'function'
             ? (configSource.getSystemParams() || {})
-            : (getWindow().simpleaiTopbarSystemParams || {});
+            : {};
         const workbenchStaticFilePath = value => typeof configSource.workbenchStaticFilePath === 'function'
             ? configSource.workbenchStaticFilePath(value)
             : String(value || '');
         const cssEscape = value => {
             if (typeof utilitySource.cssEscape === 'function') return utilitySource.cssEscape(value);
-            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
             return String(value || '').replace(/["\\]/g, '\\$&');
         };
-        const fetchImpl = networkSource.fetch || (typeof fetch !== 'undefined' ? fetch : null);
-        const ImageCtor = networkSource.Image || (typeof Image !== 'undefined' ? Image : null);
+        const fetchImpl = networkSource.fetch || null;
+        const ImageCtor = networkSource.Image || null;
         let hoverPreviewEl = null;
         let hoverPreviewTarget = null;
         let hoverPreviewImageRequestId = 0;

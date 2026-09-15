@@ -17,7 +17,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const getCanvasAgentTargetNode = () => call(targetSource, 'getCanvasAgentTargetNode', null);
         const isCanvasAgentTextTarget = (...args) => !!call(targetSource, 'isCanvasAgentTextTarget', false, ...args);
         const getTextNodeInputSource = (...args) => call(nodeSource, 'getTextNodeInputSource', null, ...args);

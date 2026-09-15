@@ -15,6 +15,12 @@
         const utilityCall = (name, fallback, ...args) => typeof utilitySource[name] === 'function'
             ? utilitySource[name](...args)
             : fallback;
+        const timeSource = scope.timeSource && typeof scope.timeSource === 'object'
+            ? scope.timeSource
+            : {};
+        const timeCall = (name, fallback, ...args) => typeof timeSource[name] === 'function'
+            ? timeSource[name](...args)
+            : fallback;
         const stateSource = scope.stateSource && typeof scope.stateSource === 'object'
             ? scope.stateSource
             : {};
@@ -90,7 +96,7 @@
         };
         const escapeHtml = (...args) => utilityCall('escapeHtml', String(args[0] ?? ''), ...args);
         const uid = (...args) => utilityCall('uid', `${args[0] || 'node'}-node`, ...args);
-        const nowIso = (...args) => utilityCall('nowIso', new Date().toISOString(), ...args);
+        const nowIso = (...args) => timeCall('nowIso', '', ...args);
         const cloneRunValueFallback = (value, fallback) => value === undefined ? fallback : JSON.parse(JSON.stringify(value));
         const cloneRunValue = (...args) => stateCall('cloneRunValue', cloneRunValueFallback, ...args);
         const getNumberConfig = (name, fallback) => Number(configCall(name, fallback)) || fallback;

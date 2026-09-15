@@ -9,7 +9,7 @@
         const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-asset`;
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue
             : ((value, fallback) => {

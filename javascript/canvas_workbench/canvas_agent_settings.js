@@ -153,7 +153,7 @@
             panel.querySelectorAll('[data-canvas-agent-resolution-label]').forEach(label => {
                 label.textContent = canvasAgentResolutionCompactLabel(state);
             });
-            const documentObject = documentCall('getDocument', null) || globalThis.document;
+            const documentObject = documentCall('getDocument', null);
             panel.querySelectorAll('[data-canvas-agent-scale]').forEach(input => {
                 if (input === documentObject?.activeElement) return;
                 input.value = scale;
@@ -372,7 +372,7 @@
                 api_name: params.custom_api_name || key,
                 provider: params.custom_provider || 'openai',
                 base_url: params.custom_base_url || '',
-                updated_at: persistenceCall('nowIso', new Date().toISOString())
+                updated_at: persistenceCall('nowIso', '')
             });
             writeVlmCustomApiProfiles(profiles);
             uiCall('showToast', null, t('API key saved for Agent and VLM nodes.', 'API Key 已保存，可供 Agent 和 VLM 节点共用'));

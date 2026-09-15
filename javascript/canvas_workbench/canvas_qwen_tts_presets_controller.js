@@ -2,8 +2,23 @@
     'use strict';
 
     function createCanvasQwenTtsPresetsController(context) {
-        const scope = context || {};
-        const call = (name, fallback, ...args) => typeof scope[name] === 'function' ? scope[name](...args) : fallback;
+        const scope = context?.qwenTtsPresetsSource || context || {};
+        const requestSource = scope.requestSource || {};
+        const stateSource = scope.stateSource || {};
+        const timeSource = scope.timeSource || {};
+        const diagnosticsSource = scope.diagnosticsSource || {};
+        const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
+            ? sourceObject[name](...args)
+            : fallback;
+        const sendCanvasQwenTtsPresetsRequest = (...args) => call(
+            requestSource,
+            'sendCanvasQwenTtsPresetsRequest',
+            null,
+            ...args
+        );
+        const mutate = (...args) => call(stateSource, 'mutate', null, ...args);
+        const nowIso = (...args) => call(timeSource, 'nowIso', '', ...args);
+        const warn = (...args) => call(diagnosticsSource, 'warn', null, ...args);
         let state = {
             state: 'idle',
             entries: [],
@@ -47,20 +62,20 @@
                 error: ''
             });
             try {
-                const response = await call('sendCanvasQwenTtsPresetsRequest', { presets: [] });
+                const response = await sendCanvasQwenTtsPresetsRequest({ presets: [] });
                 const entries = normalizeQwenTtsPresetEntries(response?.presets || []);
                 if (entries.length) {
                     state = {
                         state: 'ready',
                         entries,
-                        checkedAt: response?.checked_at || call('nowIso', new Date().toISOString()),
+                        checkedAt: response?.checked_at || nowIso(),
                         error: ''
                     };
                 } else {
                     state = {
                         state: 'empty',
                         entries: [],
-                        checkedAt: call('nowIso', new Date().toISOString()),
+                        checkedAt: nowIso(),
                         error: ''
                     };
                 }
@@ -68,12 +83,12 @@
                 state = {
                     state: 'error',
                     entries: state.entries || [],
-                    checkedAt: call('nowIso', new Date().toISOString()),
+                    checkedAt: nowIso(),
                     error: String(err?.message || err || 'Qwen TTS preset load failed')
                 };
-                if (!opts.silent) call('warn', null, '[SimpAI Canvas] qwen tts preset refresh failed:', err);
+                if (!opts.silent) warn('[SimpAI Canvas] qwen tts preset refresh failed:', err);
             }
-            if (!opts.silent) call('mutate', null, { inspector: true });
+            if (!opts.silent) mutate({ inspector: true });
             return state.entries;
         }
 

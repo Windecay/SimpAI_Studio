@@ -11,7 +11,7 @@
         const mediaBrowserSource = scope.mediaBrowserSource || {};
         const viewportSource = scope.viewportSource || {};
         const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (type) => `${type}-node`;
-        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => '';
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const defaultNodeSize = typeof layoutSource.defaultNodeSize === 'function'
             ? layoutSource.defaultNodeSize

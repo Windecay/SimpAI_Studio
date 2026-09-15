@@ -13,7 +13,7 @@
     }
 
     function schedulerTimestamp(options) {
-        return typeof options?.nowIso === 'function' ? options.nowIso() : new Date().toISOString();
+        return typeof options?.nowIso === 'function' ? options.nowIso() : '';
     }
 
     function buildSchedulerBlockedState(options) {

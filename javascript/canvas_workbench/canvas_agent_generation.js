@@ -14,7 +14,7 @@
         const uiSource = scope.uiSource || {};
         const historySource = scope.historySource || {};
         const stateSource = scope.stateSource || {};
-        const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
@@ -64,7 +64,7 @@
         const pushHistoryBatch = (...args) => call(historySource, 'pushHistoryBatch', null, ...args);
         const mutate = (...args) => call(stateSource, 'mutate', null, ...args);
         const cloneRunValue = (...args) => call(utilitySource, 'cloneRunValue', {}, ...args) || {};
-        const nowIso = (...args) => call(identitySource, 'nowIso', new Date().toISOString(), ...args);
+        const nowIso = (...args) => call(timeSource, 'nowIso', '', ...args);
 
         function normalizeCanvasAgentAspect(value, fallbackText) {
             const text = [value, fallbackText].map(item => String(item || '').trim()).filter(Boolean).join(' ').toLowerCase();

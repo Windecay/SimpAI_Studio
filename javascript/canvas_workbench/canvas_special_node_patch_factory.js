@@ -17,7 +17,7 @@
             });
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const buildAssetReference = typeof assetSource.buildAssetReference === 'function'
             ? assetSource.buildAssetReference
             : (asset) => asset === null || asset === undefined ? null : cloneRunValue(asset, asset);

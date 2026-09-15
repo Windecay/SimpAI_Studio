@@ -22,7 +22,11 @@
     }
 
     function nowIso(context) {
-        return call(context, 'nowIso', new Date().toISOString());
+        return call(context, 'nowIso', '');
+    }
+
+    function formatLocalTime(context, value) {
+        return call(context, 'formatLocalTime', '', value);
     }
 
     function getProject(context) {
@@ -69,7 +73,8 @@
             prompt: (...args) => typeof browserSource.prompt === 'function'
                 ? browserSource.prompt(...args)
                 : (typeof window !== 'undefined' && typeof window.prompt === 'function' ? window.prompt(...args) : null),
-            nowIso: typeof timeSource.nowIso === 'function' ? timeSource.nowIso : (() => new Date().toISOString()),
+            nowIso: typeof timeSource.nowIso === 'function' ? timeSource.nowIso : (() => ''),
+            formatLocalTime: typeof timeSource.formatLocalTime === 'function' ? timeSource.formatLocalTime : (value => String(value || '')),
             getProject: delegate(projectSource, 'getProject'),
             getProjectId: delegate(projectSource, 'getProjectId'),
             closeContextMenu: delegate(viewSource, 'closeContextMenu'),
@@ -138,7 +143,7 @@ ${response && !response.ok ? `<div class="sai-inspector-note">${escapeHtml(conte
     function renderProjectListRow(item, activeId, context) {
         const itemProjectId = item.project_id || item.name || '';
         const isActive = itemProjectId === activeId;
-        const updated = item.updated_at ? new Date(Number(item.updated_at) * 1000).toLocaleString() : '';
+        const updated = item.updated_at ? formatLocalTime(context, Number(item.updated_at) * 1000) : '';
         return `
 <div class="sai-project-row ${isActive ? 'is-active' : ''}" data-project-id="${escapeHtml(context, itemProjectId)}">
   <div class="sai-project-icon"><i class="fa-solid ${isActive ? 'fa-folder-open' : 'fa-folder'}"></i></div>

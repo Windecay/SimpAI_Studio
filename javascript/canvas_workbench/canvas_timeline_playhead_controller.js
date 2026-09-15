@@ -13,17 +13,13 @@
         const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : undefined;
-        const getDocument = () => typeof domSource.getDocument === 'function'
-            ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+        const getDocument = () => call(domSource, 'getDocument') || null;
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
         const clamp = typeof interactionSource.clamp === 'function'
             ? interactionSource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
-        const getPerformanceNow = () => typeof interactionSource.performanceNow === 'function'
-            ? interactionSource.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+        const getPerformanceNow = () => Number(call(interactionSource, 'performanceNow')) || 0;
         const buildTimelineParamsPatch = (node, paramsPatch) => typeof playheadOperationSource.buildTimelineParamsPatch === 'function'
             ? playheadOperationSource.buildTimelineParamsPatch(node, paramsPatch)
             : { params: Object.assign({}, node?.params || {}, paramsPatch || {}) };

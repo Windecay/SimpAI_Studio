@@ -11,7 +11,7 @@
             : ((value, fallback) => value ?? fallback);
         const nowIso = typeof timeSource.nowIso === 'function'
             ? timeSource.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const defaultXyzScript = scriptSource.xyzScript || '';
 
         function buildXyzBatchJob(options) {

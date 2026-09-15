@@ -1,17 +1,16 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
+    const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
+    const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
+    const translateFallback = (en, cn) => cn || en;
     const DEFAULT_GAUSSIAN_PRECISION = 'auto';
     const VALID_GAUSSIAN_PRECISIONS = new Set(['auto', 'bf16', 'fp16', 'fp32']);
 
-    function editor() {
-        return window.SimpAIGaussianStudioEditor || {};
+    function editor(context) {
+        return call(context, 'getEditor', {});
     }
 
     function call(context, name, fallback, ...args) {
@@ -24,36 +23,70 @@
     }
 
     function createGaussianStudioNodeContext(source) {
-        const context = source || {};
+        const scope = source || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetSource = scope.assetSource || {};
+        const editorSource = scope.editorSource || {};
+        const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            getProject: delegate(context, 'getProject'),
-            getProjectId: delegate(context, 'getProjectId'),
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNode: delegate(context, 'getNode'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            isNodeIgnored: delegate(context, 'isNodeIgnored'),
-            isNodeLocked: delegate(context, 'isNodeLocked'),
-            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
-            mutate: delegate(context, 'mutate'),
-            notConnectedText: delegate(context, 'notConnectedText'),
-            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
-            portHintText: delegate(context, 'portHintText'),
-            pushHistory: delegate(context, 'pushHistory'),
-            readAssetInfo: delegate(context, 'readAssetInfo'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            scheduleSave: delegate(context, 'scheduleSave'),
-            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
-            setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast'),
-            buildAssetReference: delegate(context, 'buildAssetReference'),
-            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
-            buildGaussianStudioStatePatch: delegate(context, 'buildGaussianStudioStatePatch'),
-            buildGaussianCachePatch: delegate(context, 'buildGaussianCachePatch'),
-            buildGaussianConfirmPatch: delegate(context, 'buildGaussianConfirmPatch')
+            escapeHtml: pick(utilitySource, 'escapeHtml'),
+            clamp: pick(utilitySource, 'clamp'),
+            t: pick(utilitySource, 't'),
+            getProject: pick(scope, 'getProject'),
+            getProjectId: pick(scope, 'getProjectId'),
+            uid: pick(scope, 'uid'),
+            getEditor: pick(editorSource, 'getEditor'),
+            assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            defaultNodeSize: pick(scope, 'defaultNodeSize'),
+            detectWorkbenchTheme: pick(scope, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: pick(scope, 'ensureWorkbenchFormFieldNames'),
+            getNode: pick(scope, 'getNode'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            isNodeIgnored: pick(scope, 'isNodeIgnored'),
+            isNodeLocked: pick(scope, 'isNodeLocked'),
+            mediaAspectStyle: pick(assetSource, 'mediaAspectStyle'),
+            mutate: pick(scope, 'mutate'),
+            notConnectedText: pick(scope, 'notConnectedText'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            portHintText: pick(scope, 'portHintText'),
+            pushHistory: pick(scope, 'pushHistory'),
+            readAssetInfo: pick(assetSource, 'readAssetInfo'),
+            renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
+            scheduleSave: pick(scope, 'scheduleSave'),
+            serializeAssetSourceForRun: pick(assetSource, 'serializeAssetSourceForRun'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
+            showToast: pick(scope, 'showToast'),
+            buildAssetReference: pick(scope, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            buildGaussianStudioStatePatch: pick(scope, 'buildGaussianStudioStatePatch'),
+            buildGaussianCachePatch: pick(scope, 'buildGaussianCachePatch'),
+            buildGaussianConfirmPatch: pick(scope, 'buildGaussianConfirmPatch')
         };
+    }
+
+    const DEFAULT_GAUSSIAN_STUDIO_CONTEXT = createGaussianStudioNodeContext({
+        utilitySource: {
+            escapeHtml: DEFAULT_UTILS.escapeHtml || escapeHtmlFallback,
+            clamp: DEFAULT_UTILS.clamp || clampFallback,
+            t: DEFAULT_UTILS.t || translateFallback
+        },
+        assetSource: DEFAULT_ASSETS
+    });
+
+    function contextOf(context) {
+        return context || DEFAULT_GAUSSIAN_STUDIO_CONTEXT;
+    }
+
+    function escapeHtml(value, context) {
+        return call(contextOf(context), 'escapeHtml', escapeHtmlFallback(value), value);
+    }
+
+    function clamp(value, min, max, context) {
+        return call(contextOf(context), 'clamp', clampFallback(value, min, max), value, min, max);
+    }
+
+    function t(en, cn, context) {
+        return call(contextOf(context), 't', translateFallback(en, cn), en, cn);
     }
 
     function getProject(context) {
@@ -125,14 +158,14 @@
     }
 
     function assetDisplaySrc(asset, context) {
-        if (typeof context?.assetDisplaySrc === 'function') return context.assetDisplaySrc(asset || {});
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.assetDisplaySrc === 'function') return ctx.assetDisplaySrc(asset || {});
         return asset?.preview_url || asset?.data_url || asset?.thumb || '';
     }
 
     function readAssetInfo(asset, context) {
-        if (typeof context?.readAssetInfo === 'function') return context.readAssetInfo(asset || {});
-        if (typeof ASSETS.readAssetInfo === 'function') return ASSETS.readAssetInfo(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.readAssetInfo === 'function') return ctx.readAssetInfo(asset || {});
         const bits = [];
         if (asset?.width && asset?.height) bits.push(`${asset.width} x ${asset.height}`);
         if (asset?.mime) bits.push(asset.mime);
@@ -141,31 +174,27 @@
 
     function serializeAssetSourceForRun(node, context) {
         if (!node) return null;
-        if (typeof context?.serializeAssetSourceForRun === 'function') return context.serializeAssetSourceForRun(node);
-        if (typeof ASSETS.serializeAssetSourceForRun === 'function') {
-            return ASSETS.serializeAssetSourceForRun(node, {
-                getSelectedResultAsset: item => selectedResultAsset(item, context)
-            });
-        }
+        const ctx = contextOf(context);
+        if (typeof ctx.serializeAssetSourceForRun === 'function') return ctx.serializeAssetSourceForRun(node);
         return null;
     }
 
     function mediaAspectStyle(asset, context) {
-        if (typeof context?.mediaAspectStyle === 'function') return context.mediaAspectStyle(asset || {});
-        if (typeof ASSETS.mediaAspectStyle === 'function') return ASSETS.mediaAspectStyle(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.mediaAspectStyle === 'function') return ctx.mediaAspectStyle(asset || {});
         const width = Number(asset?.width || 0);
         const height = Number(asset?.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = clamp(width / height, 0.25, 4, context);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
     function notConnectedText(context) {
-        return call(context, 'notConnectedText', t('Not connected', '未连接'));
+        return call(context, 'notConnectedText', t('Not connected', '未连接', context));
     }
 
     function portHintText(context) {
-        return call(context, 'portHintText', t('Double-click', '双击'));
+        return call(context, 'portHintText', t('Double-click', '双击', context));
     }
 
     function gaussianState(node, context) {
@@ -211,24 +240,24 @@
         const hasPly = !!(state.ply_asset?.path || state.ply_asset?.preview_url || state.ply_path);
         const referenceLabel = source
             ? (source.title || source.id)
-            : (hasStoredReference ? t('Loaded reference', '已载入参考图') : notConnectedText(context));
+            : (hasStoredReference ? t('Loaded reference', '已载入参考图', context) : notConnectedText(context));
         return `
 <div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml('3DGS')}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || 'Gaussian Studio')}</span>
+  <span class="sai-node-kind">${escapeHtml('3DGS', context)}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || 'Gaussian Studio', context)}</span>
   ${renderNodeStateBadges(node, context)}
-  <button type="button" data-node-action="edit-gaussian-studio" title="${escapeHtml(t('Open Gaussian Studio', '打开 Gaussian Studio'))}"><i class="fa-solid fa-cube"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  <button type="button" data-node-action="edit-gaussian-studio" title="${escapeHtml(t('Open Gaussian Studio', '打开 Gaussian Studio', context), context)}"><i class="fa-solid fa-cube"></i></button>
+  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除', context), context)}"><i class="fa-solid fa-xmark"></i></button>
 </div>
-<div class="sai-text-input-row sai-gaussian-studio-reference-row" title="${escapeHtml(t('Connect an image/result as reference', '连接图像 / 结果作为参考'))}">
-  <button type="button" class="sai-node-handle sai-node-handle-in" data-gaussian-studio-reference-in title="${escapeHtml(t('Reference image input', '参考图输入'))}"></button>
-  <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Reference', '参考图'))}</span><b>${escapeHtml(referenceLabel)}</b><small>${escapeHtml(portHintText(context))}</small>
+<div class="sai-text-input-row sai-gaussian-studio-reference-row" title="${escapeHtml(t('Connect an image/result as reference', '连接图像 / 结果作为参考', context), context)}">
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-gaussian-studio-reference-in title="${escapeHtml(t('Reference image input', '参考图输入', context), context)}"></button>
+  <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Reference', '参考图', context), context)}</span><b>${escapeHtml(referenceLabel, context)}</b><small>${escapeHtml(portHintText(context), context)}</small>
 </div>
-<div class="sai-node-media sai-gaussian-studio-media"${mediaAspectStyle(asset, context)}>${src ? `<img src="${escapeHtml(src)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No render', '无渲染图'))}</div>`}</div>
-<div class="sai-node-info"><span>${escapeHtml(hasPly ? t('PLY ready', 'PLY 已生成') : t('PLY pending', '等待 PLY'))}</span>${info.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>
-${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
-<button type="button" class="sai-node-primary" data-node-action="edit-gaussian-studio"><i class="fa-solid fa-cube"></i><span>${escapeHtml(t('Open 3D View', '打开 3D 视角'))}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Rendered image output', '渲染图输出'))}"></button>`;
+<div class="sai-node-media sai-gaussian-studio-media"${mediaAspectStyle(asset, context)}>${src ? `<img src="${escapeHtml(src, context)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No render', '无渲染图', context), context)}</div>`}</div>
+<div class="sai-node-info"><span>${escapeHtml(hasPly ? t('PLY ready', 'PLY 已生成', context) : t('PLY pending', '等待 PLY', context), context)}</span>${info.map(bit => `<span>${escapeHtml(bit, context)}</span>`).join('')}</div>
+${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : ''}
+<button type="button" class="sai-node-primary" data-node-action="edit-gaussian-studio"><i class="fa-solid fa-cube"></i><span>${escapeHtml(t('Open 3D View', '打开 3D 视角', context), context)}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Rendered image output', '渲染图输出', context), context)}"></button>`;
     }
 
     function renderInspector(node, context) {
@@ -237,17 +266,17 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const info = readAssetInfo(node.asset || state.render_asset || state.output_asset || {}, context);
         return `
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(node.title || 'Gaussian Studio')}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考图'))}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml('PLY')}</span><b>${escapeHtml(state.ply_asset?.name || state.ply_path || t('Not generated', '未生成'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出'))}</span><b>${escapeHtml(info.join(' / ') || t('No render', '无渲染图'))}</b></div>
+  <h3>${escapeHtml(node.title || 'Gaussian Studio', context)}</h3>
+  <label>${escapeHtml(t('Title', '标题', context), context)}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '', context)}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考图', context), context)}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml('PLY', context)}</span><b>${escapeHtml(state.ply_asset?.name || state.ply_path || t('Not generated', '未生成', context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出', context), context)}</span><b>${escapeHtml(info.join(' / ') || t('No render', '无渲染图', context), context)}</b></div>
 </div>
 <div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="edit-gaussian-studio"><i class="fa-solid fa-cube"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+  <button type="button" data-inspector-action="edit-gaussian-studio"><i class="fa-solid fa-cube"></i><span>${escapeHtml(t('Edit', '编辑', context), context)}</span></button>
+  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看', context), context)}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制', context), context)}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除', context), context)}</span></button>
 </div>`;
     }
 
@@ -257,7 +286,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const size = call(context, 'defaultNodeSize', { w: 400, h: 560 }, 'gaussian_studio') || { w: 400, h: 560 };
         if (opts.history !== false) call(context, 'pushHistory', null, 'Add Gaussian Studio node');
         const node = {
-            id: opts.id || uid('gaussian'),
+            id: opts.id || call(context, 'uid', 'gaussian-node', 'gaussian'),
             type: 'gaussian_studio',
             x: world?.x || 0,
             y: world?.y || 0,
@@ -270,7 +299,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             source: { kind: 'gaussian_studio', module: 'ui.services.gaussian_studio' },
             status: {
                 state: opts.asset ? 'finished' : 'idle',
-                message: opts.asset ? t('Gaussian render ready.', '高斯渲染图已就绪。') : t('Open Gaussian Studio to build a view.', '打开 Gaussian Studio 生成视角。')
+                message: opts.asset ? t('Gaussian render ready.', '高斯渲染图已就绪。', context) : t('Open Gaussian Studio to build a view.', '打开 Gaussian Studio 生成视角。', context)
             }
         };
         Object.assign(node, call(context, 'buildGaussianStudioStatePatch', {
@@ -300,13 +329,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
-        if (opts.toast !== false) call(context, 'showToast', null, t('Gaussian Studio node added', '已添加 Gaussian Studio 节点'));
+        if (opts.toast !== false) call(context, 'showToast', null, t('Gaussian Studio node added', '已添加 Gaussian Studio 节点', context));
         return node;
     }
 
     function openEditor(node, context) {
         if (!node || node.type !== 'gaussian_studio') return null;
-        const runtimeEditor = editor();
+        const runtimeEditor = editor(context);
         if (typeof runtimeEditor.open !== 'function') {
             call(context, 'showToast', null, 'Gaussian Studio editor is not loaded.');
             return null;
@@ -358,11 +387,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                     referenceAsset,
                     referenceChangedStatus: {
                         state: 'idle',
-                        message: t('Reference changed. Rebuild the 3D Gaussian.', '参考图已更新，需重新生成 3D 高斯。')
+                        message: t('Reference changed. Rebuild the 3D Gaussian.', '参考图已更新，需重新生成 3D 高斯。', context)
                     },
                     plyReadyStatus: {
                         state: reason === 'build' ? 'ready' : 'idle',
-                        message: t('PLY ready. Rotate and export a view.', 'PLY 已生成，可旋转并导出视角。')
+                        message: t('PLY ready. Rotate and export a view.', 'PLY 已生成，可旋转并导出视角。', context)
                     }
                 }));
                 call(context, 'setSelectedNode', null, current.id);
@@ -384,7 +413,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                     },
                     status: {
                         state: 'finished',
-                        message: t('Gaussian render exported.', '高斯渲染图已导出。')
+                        message: t('Gaussian render exported.', '高斯渲染图已导出。', context)
                     }
                 }));
                 call(context, 'setSelectedNode', null, current.id);

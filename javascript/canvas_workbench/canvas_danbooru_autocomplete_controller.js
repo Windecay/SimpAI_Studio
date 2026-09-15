@@ -13,8 +13,8 @@
         const danbooruAutocomplete = typeof apiSource.danbooruAutocomplete === 'function'
             ? apiSource.danbooruAutocomplete
             : null;
-        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : {});
+        const getDocument = () => domSource.document || null;
+        const getWindow = () => viewportSource.window || { innerWidth: 0, innerHeight: 0 };
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const escapeHtml = typeof utilitySource.escapeHtml === 'function'
             ? utilitySource.escapeHtml

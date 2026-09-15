@@ -119,7 +119,7 @@
         const config = options || {};
         const stamp = typeof config.nowIso === 'function'
             ? config.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         return {
             schema: project?.schema || config.schema || 'simpai.canvas.workbench.v1',
             title: project?.title || config.defaultTitle || 'Untitled Canvas',
@@ -142,7 +142,7 @@
         const config = options || {};
         const stamp = typeof config.nowIso === 'function'
             ? config.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         const settings = config.defaultSettings
             && typeof config.defaultSettings === 'object'
             && !Array.isArray(config.defaultSettings)
@@ -171,7 +171,7 @@
             : ((en, cn) => cn || en);
         const now = typeof config.nowIso === 'function'
             ? config.nowIso()
-            : new Date().toISOString();
+            : '';
         const defaultSettings = config.defaultSettings
             && typeof config.defaultSettings === 'object'
             && !Array.isArray(config.defaultSettings)
@@ -229,7 +229,7 @@
         const config = options || {};
         const stamp = typeof config.nowIso === 'function'
             ? config.nowIso
-            : (() => new Date().toISOString());
+            : () => '';
         return {
             updated_at: Object.prototype.hasOwnProperty.call(config, 'updatedAt')
                 ? config.updatedAt

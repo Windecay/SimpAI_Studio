@@ -104,6 +104,7 @@
         ) || {
             timeline_debug: Object.assign({}, timeline?.timeline_debug || {}, debugPatch || {})
         };
+        const nowIso = (...args) => call('nowIso', '', ...args);
 
         function findOrCreateTimelineCompareResultNode(timelineNode) {
             if (!timelineNode || timelineNode.type !== 'timeline') return null;
@@ -375,7 +376,7 @@
                 publishTimelineFrameCompareResult(node, compareItems);
                 const frameCompareDebug = {
                     frame_compare: {
-                        checked_at: call('nowIso', new Date().toISOString()),
+                        checked_at: nowIso(),
                         playhead,
                         diff: Object.assign({}, diff, { diff_data_url: '' }),
                         backend_asset: backendResult.asset_ref || null,

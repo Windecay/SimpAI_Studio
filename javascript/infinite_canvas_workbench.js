@@ -9,6 +9,21 @@
     const WORKBENCH_SCHEDULER = window.SimpAICanvasWorkbenchScheduler || {};
     const WORKBENCH_MEDIA_HELPERS = window.SimpAICanvasWorkbenchMediaHelpers || {};
     const WORKBENCH_ASSET_NODES = window.SimpAICanvasWorkbenchAssetNodes || {};
+    const WORKBENCH_PENDING_CONNECTION = window.SimpAICanvasWorkbenchPendingConnection || {};
+    const WORKBENCH_DANBOORU_GALLERY = window.SimpAICanvasWorkbenchDanbooruGallery || {};
+    const WORKBENCH_PRESET_RUN_LOCK = window.SimpAICanvasWorkbenchPresetRunLock || {};
+    const WORKBENCH_MEDIA_BROWSER_PAINT = window.SimpAICanvasWorkbenchMediaBrowserPaint || {};
+    const WORKBENCH_ASSET_NODE_API = typeof WORKBENCH_ASSET_NODES.createAssetNodeApi === 'function'
+        ? WORKBENCH_ASSET_NODES.createAssetNodeApi({
+            utilitySource: {
+                clamp: WORKBENCH_UTILS.clamp,
+                formatBytes: WORKBENCH_UTILS.formatBytes
+            },
+            assetRootSource: {
+                getAssetRoot: () => window.SimpAICanvasWorkbenchAssetRoot || ''
+            }
+        })
+        : WORKBENCH_ASSET_NODES;
     const WORKBENCH_ASSET_MANAGER = window.SimpAICanvasWorkbenchAssetManager || {};
     const WORKBENCH_NODE_BROWSER = window.SimpAICanvasWorkbenchNodeBrowser || {};
     const WORKBENCH_PROJECT_MANAGER = window.SimpAICanvasWorkbenchProjectManager || {};
@@ -27,6 +42,14 @@
     const WORKBENCH_RUN_HISTORY = window.SimpAICanvasWorkbenchRunHistoryPanel || {};
     const WORKBENCH_RUN_QUEUE = window.SimpAICanvasWorkbenchRunQueuePanel || {};
     const WORKBENCH_CANVAS_RUN_STATUS = window.SimpAICanvasWorkbenchRunStatus || {};
+    const WORKBENCH_CANVAS_RUN_POLLING = window.SimpAICanvasWorkbenchRunPolling || {};
+    const WORKBENCH_CANVAS_GALLERY_REFRESH = window.SimpAICanvasWorkbenchGalleryRefresh || {};
+    const WORKBENCH_CANVAS_TEXTAREA_EDITOR = window.SimpAICanvasWorkbenchTextareaEditor || {};
+    const WORKBENCH_CANVAS_MEDIA_SEEK = window.SimpAICanvasWorkbenchMediaSeek || {};
+    const WORKBENCH_CANVAS_PRESET_SPECIAL_VIEWER = window.SimpAICanvasWorkbenchPresetSpecialViewer || {};
+    const WORKBENCH_CANVAS_PRESET_MODEL_STATUS = window.SimpAICanvasWorkbenchPresetModelStatus || {};
+    const WORKBENCH_CANVAS_TOAST = window.SimpAICanvasWorkbenchToast || {};
+    const WORKBENCH_CANVAS_WILDCARDS_V2 = window.SimpAICanvasWorkbenchWildcardsV2 || {};
     const WORKBENCH_CANVAS_MINIMAP = window.SimpAICanvasWorkbenchMinimap || {};
     const WORKBENCH_CANVAS_GROUP_INTERACTION = window.SimpAICanvasWorkbenchGroupInteraction || {};
     const WORKBENCH_CANVAS_RUN_PANELS = window.SimpAICanvasWorkbenchRunPanels || {};
@@ -43,6 +66,7 @@
     const WORKBENCH_CANVAS_TIMELINE_PARAM = window.SimpAICanvasWorkbenchTimelineParam || {};
     const WORKBENCH_CANVAS_TIMELINE_COMMAND = window.SimpAICanvasWorkbenchTimelineCommand || {};
     const WORKBENCH_CANVAS_RESOLUTION_DRAG = window.SimpAICanvasWorkbenchResolutionDrag || {};
+    const WORKBENCH_CANVAS_MEDIA_NODE_CONTEXT = window.SimpAICanvasWorkbenchMediaNodeContext || {};
     const WORKBENCH_IMAGE_NODE = window.SimpAICanvasWorkbenchImageNode || {};
     const WORKBENCH_VIDEO_NODE = window.SimpAICanvasWorkbenchVideoNode || {};
     const WORKBENCH_AUDIO_NODE = window.SimpAICanvasWorkbenchAudioNode || {};
@@ -328,6 +352,18 @@
     let CANVAS_TIMELINE_RENDER_CONTROLLER = null;
     let CANVAS_TIMELINE_FRAME_CONTROLLER = null;
     let CANVAS_TIMELINE_COMPARE_CONTROLLER = null;
+    let CANVAS_PRESET_MODEL_STATUS_CONTROLLER = {};
+    let CANVAS_TOAST_CONTROLLER = {};
+    let CANVAS_WILDCARDS_V2_CONTROLLER = {};
+    const scheduleAutoPresetModelChecks = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.scheduleAutoPresetModelChecks?.(...args);
+    const schedulePresetModelListRefreshes = (...args) => CANVAS_PRESET_MODEL_STATUS_CONTROLLER?.schedulePresetModelListRefreshes?.(...args);
+    const showToast = (...args) => CANVAS_TOAST_CONTROLLER?.showToast?.(...args);
+    const getWildcardsV2State = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.getWildcardsV2State?.(...args) || null;
+    const closeWildcardsV2Panel = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.closeWildcardsV2Panel?.(...args);
+    const openWildcardsV2Panel = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsV2Panel?.(...args);
+    const openWildcardsInsertMenu = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsInsertMenu?.(...args);
+    const promptAndAppendWildcardTag = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.promptAndAppendWildcardTag?.(...args);
+    const openWildcardsManager = (...args) => CANVAS_WILDCARDS_V2_CONTROLLER?.openWildcardsManager?.(...args);
     const canvasAgentUploadSlotsForNode = (...args) => {
         const slots = CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentUploadSlotsForNode?.(...args);
         return Array.isArray(slots) ? slots : [];
@@ -406,27 +442,221 @@
         || Promise.reject(new Error('timeline frame controller is unavailable'));
     const compareTimelineFrameWithBackend = (...args) => CANVAS_TIMELINE_COMPARE_CONTROLLER?.compareTimelineFrameWithBackend?.(...args)
         || Promise.resolve(undefined);
-    const isImageFile = WORKBENCH_MEDIA_HELPERS.isImageFile;
-    const isVideoFile = WORKBENCH_MEDIA_HELPERS.isVideoFile;
-    const isAudioFile = WORKBENCH_MEDIA_HELPERS.isAudioFile;
-    const isMediaFile = WORKBENCH_MEDIA_HELPERS.isMediaFile;
-    const readFileAsDataUrl = WORKBENCH_MEDIA_HELPERS.readFileAsDataUrl;
-    const readFileAsText = WORKBENCH_MEDIA_HELPERS.readFileAsText;
-    const getImageDimensions = WORKBENCH_MEDIA_HELPERS.getImageDimensions;
-    const getMediaMetadata = WORKBENCH_MEDIA_HELPERS.getMediaMetadata;
-    const createThumbnailDataUrl = WORKBENCH_MEDIA_HELPERS.createThumbnailDataUrl;
-    const createVideoStoryboardDataUrls = WORKBENCH_MEDIA_HELPERS.createVideoStoryboardDataUrls;
-    const createAudioWaveformPeaks = WORKBENCH_MEDIA_HELPERS.createAudioWaveformPeaks;
+    const MEDIA_HELPERS_CONTEXT_SOURCE = {
+        documentSource: {
+            getDocument: () => typeof document !== 'undefined' ? document : null
+        },
+        browserSource: {
+            createFileReader: () => typeof window.FileReader === 'function' ? new window.FileReader() : null,
+            createImage: () => typeof window.Image === 'function' ? new window.Image() : null,
+            getAudioContext: () => window.AudioContext || window.webkitAudioContext || null
+        },
+        timingSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        }
+    };
+    const MEDIA_HELPERS_CONTEXT = typeof WORKBENCH_MEDIA_HELPERS.createMediaHelpersContext === 'function'
+        ? WORKBENCH_MEDIA_HELPERS.createMediaHelpersContext({
+            mediaHelpersSource: MEDIA_HELPERS_CONTEXT_SOURCE
+        })
+        : WORKBENCH_MEDIA_HELPERS;
+    const isImageFile = MEDIA_HELPERS_CONTEXT.isImageFile;
+    const isVideoFile = MEDIA_HELPERS_CONTEXT.isVideoFile;
+    const isAudioFile = MEDIA_HELPERS_CONTEXT.isAudioFile;
+    const isMediaFile = MEDIA_HELPERS_CONTEXT.isMediaFile;
+    const readFileAsDataUrl = MEDIA_HELPERS_CONTEXT.readFileAsDataUrl;
+    const readFileAsText = MEDIA_HELPERS_CONTEXT.readFileAsText;
+    const loadImageElementForCanvas = MEDIA_HELPERS_CONTEXT.loadImageElementForCanvas;
+    const getImageDimensions = MEDIA_HELPERS_CONTEXT.getImageDimensions;
+    const getMediaMetadata = MEDIA_HELPERS_CONTEXT.getMediaMetadata;
+    const createThumbnailDataUrl = MEDIA_HELPERS_CONTEXT.createThumbnailDataUrl;
+    const createVideoStoryboardDataUrls = MEDIA_HELPERS_CONTEXT.createVideoStoryboardDataUrls;
+    const extractVideoFirstFrameDataUrl = MEDIA_HELPERS_CONTEXT.extractVideoFirstFrameDataUrl;
+    const createAudioWaveformPeaks = MEDIA_HELPERS_CONTEXT.createAudioWaveformPeaks;
+    const MEDIA_BROWSER_PAINT_CONTEXT_SOURCE = {
+        timingSource: {
+            performanceNow: () => typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : 0,
+            requestAnimationFrame: (callback) => typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(callback) : null,
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        },
+        renderSource: {
+            renderMediaBrowserPanel: (...args) => renderMediaBrowserPanel(...args),
+            findMediaBrowserNodeElement: (nodeId) => {
+                if (!nodeId || !nodesLayer) return null;
+                return nodesLayer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`);
+            }
+        }
+    };
+    const MEDIA_BROWSER_PAINT_CONTROLLER = typeof WORKBENCH_MEDIA_BROWSER_PAINT.createCanvasMediaBrowserPaintController === 'function'
+        ? WORKBENCH_MEDIA_BROWSER_PAINT.createCanvasMediaBrowserPaintController({
+            mediaBrowserPaintSource: MEDIA_BROWSER_PAINT_CONTEXT_SOURCE
+        })
+        : {};
+    const getMediaBrowserScrollMemory = () => MEDIA_BROWSER_PAINT_CONTROLLER.getMediaBrowserScrollMemory?.() || new Map();
+    const captureMediaBrowserScroll = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.captureMediaBrowserScroll?.(...args) || null;
+    const restoreMediaBrowserScroll = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.restoreMediaBrowserScroll?.(...args);
+    const primeMediaBrowserThumbImages = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.primeMediaBrowserThumbImages?.(...args);
+    const nudgeMediaBrowserPaint = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.nudgeMediaBrowserPaint?.(...args);
+    const scheduleMediaBrowserPaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserPaintRefresh?.(...args);
+    const scheduleMediaBrowserNodePaintRefresh = (...args) => MEDIA_BROWSER_PAINT_CONTROLLER.scheduleMediaBrowserNodePaintRefresh?.(...args);
+    const TEXTAREA_EDITOR_CONTEXT_SOURCE = {
+        domSource: {
+            getDocument: () => typeof document !== 'undefined' ? document : null,
+            getRoot: () => root,
+            getNodesLayer: () => nodesLayer,
+            getInspector: () => inspector
+        },
+        overlaySource: {
+            getOverlayHost: () => canvasOverlayHost()
+        },
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml: (...args) => escapeHtml(...args),
+            cssEscape: (...args) => cssEscape(...args),
+            detectTheme: (...args) => detectWorkbenchTheme(...args)
+        },
+        timingSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        },
+        eventSource: {
+            createEvent: (type, init) => {
+                const EventCtor = typeof window.Event === 'function' ? window.Event : null;
+                return EventCtor ? new EventCtor(type, init) : null;
+            }
+        },
+        selectionSource: {
+            getSelectedNodeId: () => selectedNodeId,
+            getNode: (id) => getNode(id)
+        },
+        toolSource: {
+            openWildcardsInsertMenu: (...args) => openWildcardsInsertMenu(...args),
+            openTagCartForField: (...args) => openTagCartForField(...args)
+        },
+        formSource: {
+            ensureFormNames: (...args) => ensureWorkbenchFormFieldNames(...args)
+        }
+    };
+    const TEXTAREA_EDITOR_CONTROLLER = typeof WORKBENCH_CANVAS_TEXTAREA_EDITOR.createCanvasTextareaEditorController === 'function'
+        ? WORKBENCH_CANVAS_TEXTAREA_EDITOR.createCanvasTextareaEditorController({
+            textareaEditorSource: TEXTAREA_EDITOR_CONTEXT_SOURCE
+        })
+        : {};
+    const getTextareaEditorState = () => TEXTAREA_EDITOR_CONTROLLER.getTextareaEditorState?.() || null;
+    const textareaEditorFieldFromTitleClick = (...args) => TEXTAREA_EDITOR_CONTROLLER.textareaEditorFieldFromTitleClick?.(...args) || null;
+    const openTextareaEditor = (...args) => TEXTAREA_EDITOR_CONTROLLER.openTextareaEditor?.(...args);
+    const PRESET_MODEL_STATUS_CONTEXT_SOURCE = {
+        projectSource: {
+            getProject: () => project
+        },
+        nodeSource: {
+            getNode: (...args) => getNode(...args)
+        },
+        modelSource: {
+            shouldAutoCheckPresetModels: (...args) => shouldAutoCheckPresetModels(...args),
+            checkPresetModelStatus: (...args) => checkPresetModelStatus(...args)
+        },
+        uiSource: {
+            openMainMissingModelListForPreset: (...args) => openMainMissingModelListForPreset(...args)
+        },
+        timingSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        },
+        diagnosticsSource: {
+            warn: (...args) => console.warn(...args)
+        }
+    };
+    CANVAS_PRESET_MODEL_STATUS_CONTROLLER = typeof WORKBENCH_CANVAS_PRESET_MODEL_STATUS.createCanvasPresetModelStatusController === 'function'
+        ? WORKBENCH_CANVAS_PRESET_MODEL_STATUS.createCanvasPresetModelStatusController({
+            presetModelStatusSource: PRESET_MODEL_STATUS_CONTEXT_SOURCE
+        })
+        : {};
+    const TOAST_CONTEXT_SOURCE = {
+        domSource: {
+            getToastElement: () => toastEl
+        },
+        timingSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined,
+            clearTimeout: (...args) => typeof window.clearTimeout === 'function' ? window.clearTimeout(...args) : undefined
+        }
+    };
+    CANVAS_TOAST_CONTROLLER = typeof WORKBENCH_CANVAS_TOAST.createCanvasToastController === 'function'
+        ? WORKBENCH_CANVAS_TOAST.createCanvasToastController({
+            toastSource: TOAST_CONTEXT_SOURCE
+        })
+        : {};
+    const WILDCARDS_V2_CONTEXT_SOURCE = {
+        domSource: {
+            getDocument: () => document,
+            getRoot: () => root,
+            getOverlayHost: () => root || document.body
+        },
+        languageSource: {
+            t
+        },
+        utilitySource: {
+            escapeHtml: (...args) => escapeHtml(...args),
+            detectTheme: (...args) => detectWorkbenchTheme(...args)
+        },
+        configSource: {
+            getTargets: () => WILDCARDS_HELPER_TARGETS,
+            getMethods: () => WILDCARDS_HELPER_METHODS,
+            getSeedModes: () => WILDCARDS_HELPER_SEED_MODES
+        },
+        nodeSource: {
+            getNode: (...args) => getNode(...args),
+            isNodeLocked: (...args) => isNodeLocked(...args),
+            buildWildcardsHelperStatePatch: (...args) => buildWildcardsHelperStatePatch(...args),
+            wildcardHelperBuildTag: (...args) => wildcardHelperBuildTag(...args)
+        },
+        catalogSource: {
+            refreshWildcardsCatalog: (...args) => refreshWildcardsCatalog(...args)
+        },
+        apiSource: {
+            isPersonalWildcardsAvailable: () => typeof apiPersonalWildcards === 'function',
+            personalWildcards: (...args) => typeof apiPersonalWildcards === 'function'
+                ? apiPersonalWildcards(...args)
+                : null
+        },
+        mutationSource: {
+            updateWildcardsHelperParam: (...args) => updateWildcardsHelperParam(...args),
+            appendWildcardTagToNodeParam: (...args) => appendWildcardTagToNodeParam(...args),
+            addWildcardsHelperNode: (...args) => addWildcardsHelperNode(...args)
+        },
+        viewportSource: {
+            viewportCenterWorld: (...args) => viewportCenterWorld(...args)
+        },
+        uiSource: {
+            closeContextMenu: (...args) => closeContextMenu(...args)
+        },
+        userSource: {
+            getWorkbenchUserContext: (...args) => getWorkbenchUserContext(...args)
+        },
+        formSource: {
+            ensureFormNames: (...args) => ensureWorkbenchFormFieldNames(...args)
+        },
+        timingSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+        }
+    };
+    CANVAS_WILDCARDS_V2_CONTROLLER = typeof WORKBENCH_CANVAS_WILDCARDS_V2.createCanvasWildcardsV2Controller === 'function'
+        ? WORKBENCH_CANVAS_WILDCARDS_V2.createCanvasWildcardsV2Controller({
+            wildcardsV2Source: WILDCARDS_V2_CONTEXT_SOURCE
+        })
+        : {};
     const PROJECT_STORE_SOURCE = {
         languageSource: {
             t,
             getUiLang
         },
         utilitySource: {
-            nowIso: WORKBENCH_UTILS.nowIso,
             clamp: WORKBENCH_UTILS.clamp,
             sanitizeStoragePart: WORKBENCH_UTILS.sanitizeStoragePart,
             shortIdentity: WORKBENCH_UTILS.shortIdentity
+        },
+        timeSource: {
+            nowIso: WORKBENCH_UTILS.nowIso
         },
         systemSource: {
             getSystemParams: () => window.simpleaiTopbarSystemParams
@@ -454,16 +684,17 @@
     const projectStoreSanitizeProject = WORKBENCH_PROJECT_STORE.sanitizeProject;
     const projectStoreLoadProject = WORKBENCH_PROJECT_STORE.loadProject;
     const projectStoreCompactProjectForStorage = WORKBENCH_PROJECT_STORE.compactProjectForStorage;
-    const readImageInfo = WORKBENCH_ASSET_NODES.readImageInfo;
-    const assetDisplaySrc = WORKBENCH_ASSET_NODES.assetDisplaySrc;
-    const readAssetInfo = WORKBENCH_ASSET_NODES.readAssetInfo;
-    const mediaAspectStyle = WORKBENCH_ASSET_NODES.mediaAspectStyle;
-    const assetNodeMediaEditRange = WORKBENCH_ASSET_NODES.mediaEditRange;
-    const serializeAssetForRun = WORKBENCH_ASSET_NODES.serializeAssetForRun;
-    const assetNodeThumbSrc = WORKBENCH_ASSET_NODES.assetThumbSrc;
-    const assetNodeSerializeAssetSourceForRun = WORKBENCH_ASSET_NODES.serializeAssetSourceForRun;
-    const assetNodeFormatDuration = WORKBENCH_ASSET_NODES.formatDuration;
-    const readAssetSize = WORKBENCH_ASSET_NODES.readAssetSize;
+    const readImageInfo = WORKBENCH_ASSET_NODE_API.readImageInfo;
+    const assetDisplaySrc = WORKBENCH_ASSET_NODE_API.assetDisplaySrc;
+    const readAssetInfo = WORKBENCH_ASSET_NODE_API.readAssetInfo;
+    const mediaAspectStyle = WORKBENCH_ASSET_NODE_API.mediaAspectStyle;
+    const assetNodeMediaEditRange = WORKBENCH_ASSET_NODE_API.mediaEditRange;
+    const serializeAssetForRun = WORKBENCH_ASSET_NODE_API.serializeAssetForRun;
+    const serializeMaskForRun = WORKBENCH_ASSET_NODE_API.serializeMaskForRun;
+    const assetNodeThumbSrc = WORKBENCH_ASSET_NODE_API.assetThumbSrc;
+    const assetNodeSerializeAssetSourceForRun = WORKBENCH_ASSET_NODE_API.serializeAssetSourceForRun;
+    const assetNodeFormatDuration = WORKBENCH_ASSET_NODE_API.formatDuration;
+    const readAssetSize = WORKBENCH_ASSET_NODE_API.readAssetSize;
     const getMediaViewerNodeImageSrc = WORKBENCH_MEDIA_VIEWERS.getNodeImageSrc;
     const mediaViewerNodeHasViewableImage = WORKBENCH_MEDIA_VIEWERS.nodeHasViewableImage;
     const getNodeImageSrc = getMediaViewerNodeImageSrc;
@@ -636,6 +867,10 @@
     const apiDeleteAssets = WORKBENCH_API.deleteAssets;
     const apiMaterializeAsset = WORKBENCH_API.materializeAsset;
     const apiGenerateMask = WORKBENCH_API.generateMask;
+    const apiGenerateCameraMotionReference = WORKBENCH_API.generateCameraMotionReference;
+    const apiGenerateSam3VideoMask = WORKBENCH_API.generateSam3VideoMask;
+    const apiCancelSam3VideoMask = WORKBENCH_API.cancelSam3VideoMask;
+    const apiNormalizeSam3MaskVideo = WORKBENCH_API.normalizeSam3MaskVideo;
     const apiRenderTimeline = WORKBENCH_API.renderTimeline;
     const apiRenderTimelineFrame = WORKBENCH_API.renderTimelineFrame;
     const apiWd14Tag = WORKBENCH_API.wd14Tag;
@@ -1038,6 +1273,9 @@
     let ASSET_MANAGER_CONTEXT = null;
     let MASK_EDITOR_CONTEXT = null;
     let TIMELINE_NODE_CONTEXT = null;
+    let IMAGE_NODE_CONTEXT = null;
+    let VIDEO_NODE_CONTEXT = null;
+    let AUDIO_NODE_CONTEXT = null;
     let COMPARE_NODE_CONTEXT = null;
     let SAM3_VIDEO_MASK_NODE_CONTEXT = null;
     let CAMERA_MOTION_NODE_CONTEXT = null;
@@ -1717,7 +1955,7 @@
                         isStandaloneCanvasWorkbench,
                         isCanvasRunActiveState,
                         isTerminalRunState,
-                        fetchStatus,
+                        fetchStatus: (...args) => window.fetch(...args),
                         now: () => Date.now(),
                         setInterval: (...args) => window.setInterval(...args),
                         clearInterval: (...args) => window.clearInterval(...args),
@@ -1794,8 +2032,12 @@
                         getDocument: () => document,
                     },
                     transportSource: {
-                        setGradioTextboxValue,
-                        clickGradioButton,
+                        setGradioTextboxValue: typeof window.setGradioTextboxValue === 'function'
+                            ? (...args) => window.setGradioTextboxValue(...args)
+                            : null,
+                        clickGradioButton: typeof window.clickGradioButton === 'function'
+                            ? (...args) => window.clickGradioButton(...args)
+                            : null,
                     },
                     runtimeSource: {
                         now: () => Date.now(),
@@ -1811,8 +2053,8 @@
                         t: (en, cn, state) => t(en, cn, state || { __lang: runtimeUiLang() }),
                     },
                     configSource: {
-                        getHistoryLimit,
-                        getHistoryMemoryBudgetBytes,
+                        getHistoryLimit: () => 32,
+                        getHistoryMemoryBudgetBytes: () => 48 * 1024 * 1024,
                     },
                     projectSource: {
                         getProject: () => project,
@@ -1821,7 +2063,7 @@
                         sanitizeProject,
                     },
                     storageSource: {
-                        buildProjectStorageInfo,
+                        buildProjectStorageInfo: (...args) => buildProjectStorageInfo(...args),
                         getStorageKey: () => storageKey,
                         getStorageScope: () => storageScope,
                     },
@@ -1854,7 +2096,7 @@
                         renderAll: (...args) => CANVAS_RENDER_CONTROLLER?.renderAll?.(...args),
                     },
                     interactionSource: {
-                        closeContextMenu,
+                        closeContextMenu: (...args) => closeContextMenu(...args),
                     },
                     persistenceSource: {
                         scheduleSave: (...args) => scheduleSave(...args),
@@ -1912,7 +2154,7 @@
                      isGalleryFrostEnabled,
                      selectedMediaBrowserItemFrom,
                      mediaBrowserItemMeta,
-                     danbooruPostMediaType,
+                     danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
                  },
              },
               resultPreviewSource: {
@@ -1935,6 +2177,8 @@
                      getSelectedResultAsset: (...args) => getSelectedResultAsset(...args),
                  },
                  utilitySource: {
+                     escapeHtml,
+                     clamp,
                      cloneRunValue,
                  },
                  runtimeSource: {
@@ -2172,7 +2416,7 @@
                     getPerfStats: () => perfStats,
                     performanceNow: () => performance.now(),
                     getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime,
-                    getMediaBrowserScrollMemory: () => mediaBrowserScrollMemory,
+                    getMediaBrowserScrollMemory: () => getMediaBrowserScrollMemory(),
                     getVlmChatScrollMemory: () => vlmChatScrollMemory,
                     getVlmRenderDebugEnabled: () => vlmRenderDebugEnabled,
                     requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
@@ -2248,7 +2492,7 @@
                 },
                 presetSource: {
                     getPresetSpecialControllerKind: (...args) => CANVAS_PRESET_NODE_RENDERER?.getPresetSpecialControllerKind?.(...args),
-                    bindPresetSpecialViewerEvents,
+                    bindPresetSpecialViewerEvents: (...args) => bindPresetSpecialViewerEvents(...args),
                     refreshPresetSpecialNodeDom,
                 },
                 spatialSource: {
@@ -3197,7 +3441,7 @@
             localizedDefaultTitle,
             selectedMediaBrowserItemFrom,
             mediaBrowserItemMeta,
-            danbooruPostMediaType,
+            danbooruPostMediaType: (...args) => danbooruPostMediaType(...args),
             getNodeElement: (id) => nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(id)}"]`),
             nodeStatusState,
             nodeEffectiveRenderMode,
@@ -3255,7 +3499,7 @@
             getDocument: () => document,
             performanceNow: () => performance.now(),
             getMediaBrowserNodeRuntime: () => mediaBrowserNodeRuntime,
-            getMediaBrowserScrollMemory: () => mediaBrowserScrollMemory,
+            getMediaBrowserScrollMemory: () => getMediaBrowserScrollMemory(),
             getVlmChatScrollMemory: () => vlmChatScrollMemory,
             getVlmRenderDebugEnabled: () => vlmRenderDebugEnabled,
             setEdgeRenderCacheKey: (value) => { edgeRenderCacheKey = value; },
@@ -3294,7 +3538,7 @@
             scheduleMinimapRender: (...args) => CANVAS_MINIMAP_CONTROLLER?.scheduleMinimapRender?.(...args),
             renderMinimap: (...args) => CANVAS_MINIMAP_CONTROLLER?.renderMinimap?.(...args),
             positionCanvasAgentPanel,
-            bindPresetSpecialViewerEvents,
+            bindPresetSpecialViewerEvents: (...args) => bindPresetSpecialViewerEvents(...args),
             refreshPresetSpecialNodeDom,
             nodeOverviewRenderSignature,
             nodeRenderSignature,
@@ -3616,16 +3860,87 @@
         })
         : {};
     TIMELINE_NODE_CONTEXT = CANVAS_TIMELINE_NODE_CONTEXT.TIMELINE_NODE_CONTEXT || {};
+    const MEDIA_NODE_CONTEXT_SOURCE = {
+        imageNodeSource: {
+            utilitySource: {
+                escapeHtml,
+                t
+            },
+            assetSource: {
+                assetDisplaySrc: (asset) => safeAssetDisplaySrc(asset, asset?.thumb || asset?.preview_url || asset?.data_url || ''),
+                readImageInfo,
+                mediaAspectStyle,
+                readAssetSize
+            },
+            nodeSource: {
+                getNodeImageSrc
+            },
+            renderSource: {
+                renderNodeStateBadges
+            }
+        },
+        videoNodeSource: {
+            utilitySource: {
+                escapeHtml,
+                t
+            },
+            assetSource: {
+                formatDuration: assetNodeFormatDuration,
+                mediaEditRange: assetNodeMediaEditRange,
+                assetDisplaySrc,
+                readAssetInfo,
+                readAssetSize,
+                mediaAspectStyle
+            },
+            renderSource: {
+                renderNodeStateBadges
+            }
+        },
+        audioNodeSource: {
+            utilitySource: {
+                escapeHtml,
+                t
+            },
+            assetSource: {
+                formatDuration: assetNodeFormatDuration,
+                mediaEditRange: assetNodeMediaEditRange,
+                assetDisplaySrc,
+                readAssetInfo,
+                readAssetSize
+            },
+            renderSource: {
+                renderNodeStateBadges
+            }
+        }
+    };
+    const CANVAS_MEDIA_NODE_CONTEXT = typeof WORKBENCH_CANVAS_MEDIA_NODE_CONTEXT.createCanvasWorkbenchMediaNodeContext === 'function'
+        ? WORKBENCH_CANVAS_MEDIA_NODE_CONTEXT.createCanvasWorkbenchMediaNodeContext({
+            mediaNodeSource: MEDIA_NODE_CONTEXT_SOURCE
+        })
+        : {};
+    IMAGE_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.IMAGE_NODE_CONTEXT || null;
+    VIDEO_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.VIDEO_NODE_CONTEXT || null;
+    AUDIO_NODE_CONTEXT = CANVAS_MEDIA_NODE_CONTEXT.AUDIO_NODE_CONTEXT || null;
     const COMPARE_NODE_CONTEXT_SOURCE = {
-        assetDisplaySrc,
-        defaultNodeSize,
-        uid,
-        escapeHtml,
-        getCompareSourceAsset,
-        getCompareSourceNode,
-        readAssetSize,
-        renderIconHtml,
-        renderNodeStateBadges
+        utilitySource: {
+            escapeHtml,
+            t,
+            clamp
+        },
+        assetSource: {
+            assetDisplaySrc,
+            readAssetSize
+        },
+        nodeSource: {
+            defaultNodeSize,
+            uid,
+            getCompareSourceAsset,
+            getCompareSourceNode
+        },
+        renderSource: {
+            renderIconHtml,
+            renderNodeStateBadges
+        }
     };
     const CANVAS_COMPARE_NODE_CONTEXT = typeof WORKBENCH_CANVAS_COMPARE_NODE_CONTEXT.createCanvasWorkbenchCompareNodeContext === 'function'
         ? WORKBENCH_CANVAS_COMPARE_NODE_CONTEXT.createCanvasWorkbenchCompareNodeContext({
@@ -3634,6 +3949,13 @@
         : {};
     COMPARE_NODE_CONTEXT = CANVAS_COMPARE_NODE_CONTEXT.COMPARE_NODE_CONTEXT || {};
     const STYLE_SELECTOR_NODE_CONTEXT_SOURCE = {
+        utilitySource: {
+            escapeHtml,
+            t
+        },
+        catalogSource: {
+            getItems: () => window.SimpAIStyleTransferCatalog?.items
+        },
         applyStyleSelectorToPreset,
         buildStyleSelectorStatePatch,
         defaultNodeSize,
@@ -3653,7 +3975,12 @@
         uid
     };
     const QWEN_TTS_NODE_CONTEXT_SOURCE = {
+        utilitySource: {
+            escapeHtml,
+            t
+        },
         getProject: () => project,
+        uid,
         defaultNodeSize,
         buildQwenTtsStatePatch,
         buildProjectNodeAppendPatch,
@@ -3882,7 +4209,7 @@
                     getRoot: () => root,
                 },
                 inputSource: {
-                    getTextareaEditorState: () => textareaEditorState,
+                    getTextareaEditorState,
                     isEditableElement: (target) => isEditableElement(target),
                 },
                 shortcutSource: {
@@ -4599,6 +4926,10 @@
             interactionSource: {
                 clamp
             },
+            timingSource: {
+                setTimeout: (...args) => window.setTimeout(...args),
+                clearTimeout: (...args) => window.clearTimeout(...args)
+            },
             mediaSource: {
                 getTimelineSourceAsset: (source) => getTimelineSourceAsset(source),
                 assetMediaKind: (asset) => assetMediaKind(asset),
@@ -4911,9 +5242,15 @@
                 }
             },
             qwenTtsPresetsSource: {
-                nowIso,
-                mutate,
-                warn: (...args) => console.warn(...args),
+                timeSource: {
+                    nowIso
+                },
+                stateSource: {
+                    mutate
+                },
+                diagnosticsSource: {
+                    warn: (...args) => console.warn(...args)
+                }
             },
     };
     const CANVAS_BACKEND_CONTEXT = typeof WORKBENCH_CANVAS_BACKEND_CONTEXT.createCanvasWorkbenchBackendContext === 'function'
@@ -5162,8 +5499,10 @@
                     },
                     utilitySource: {
                         sanitizeStoragePart,
-                        nowIso,
                         cloneRunValue
+                    },
+                    timeSource: {
+                        nowIso
                     },
                     diagnosticsSource: {
                         warn: (...args) => console.warn(...args)
@@ -5424,7 +5763,10 @@
                     cloneRunValue
                 },
                 identitySource: {
-                    uid,
+                    uid
+                },
+                timeSource: {
+                    now: () => Date.now(),
                     nowIso
                 },
                 catalogSource: {
@@ -5468,11 +5810,29 @@
     const CONTEXT_MENU_CONTEXT = typeof WORKBENCH_CANVAS_CONTEXT_MENU_CONTEXT.createCanvasWorkbenchContextMenuContext === 'function'
         ? WORKBENCH_CANVAS_CONTEXT_MENU_CONTEXT.createCanvasWorkbenchContextMenuContext({
             contextMenuSource: {
-                t,
-                escapeHtml,
-                renderIconHtml,
-                clamp,
-                getContextMenu: () => contextMenu
+                languageSource: {
+                    t
+                },
+                utilitySource: {
+                    escapeHtml,
+                    clamp
+                },
+                domSource: {
+                    getContextMenu: () => contextMenu,
+                    getDocument: () => document
+                },
+                viewportSource: {
+                    getWindow: () => window
+                },
+                timeSource: {
+                    now: () => Date.now()
+                },
+                runtimeSource: {
+                    setTimeout: (...args) => window.setTimeout(...args)
+                },
+                viewSource: {
+                    renderIconHtml
+                }
             }
         })
         : {};
@@ -5757,7 +6117,8 @@
                 warn: (...args) => console.warn(...args)
             },
             timeSource: {
-                nowIso
+                nowIso,
+                parseDate: (value) => Date.parse(value || '')
             }
         },
         assetsSource: {
@@ -5882,6 +6243,7 @@
                 showToast
             },
             timeSource: {
+                now: () => Date.now(),
                 nowIso
             }
         }
@@ -5924,6 +6286,83 @@
         handleProjectDeleted,
         importWorkbenchProjectFromFile
     } = CANVAS_PROJECT_CONTEXT;
+    const PRESET_SPECIAL_VIEWER_CONTEXT_SOURCE = {
+        domSource: {
+            getDocument: () => typeof document !== 'undefined' ? document : null,
+            getRoot: () => root,
+            getNodesLayer: () => nodesLayer
+        },
+        nodeSource: {
+            getNode: (...args) => getNode(...args),
+            isNodeLocked: (...args) => isNodeLocked(...args)
+        },
+        stateSource: {
+            getPresetSpecialControllerKind: (...args) => getPresetSpecialControllerKind(...args),
+            normalizePresetSpecialState: (...args) => normalizePresetSpecialState(...args),
+            presetSpecialControllerState: (...args) => presetSpecialControllerState(...args),
+            presetSpecialPromptFromState: (...args) => presetSpecialPromptFromState(...args),
+            presetSpecialInputAssetUrl: (...args) => presetSpecialInputAssetUrl(...args)
+        },
+        patchSource: {
+            buildPresetSpecialControllerStatePatch: (...args) => buildPresetSpecialControllerStatePatch(...args),
+            buildNodeParamsPatch: (...args) => buildNodeParamsPatch(...args)
+        },
+        renderSource: {
+            refreshPresetSpecialControllerDom: (...args) => refreshPresetSpecialControllerDom(...args),
+            refreshPresetSpecialNodeDom: (...args) => refreshPresetSpecialNodeDom(...args)
+        },
+        persistenceSource: {
+            nowIso: (...args) => nowIso(...args),
+            scheduleSave: (...args) => scheduleSave(...args)
+        },
+        timingSource: {
+            setTimeout: (...args) => window.setTimeout(...args)
+        },
+        utilitySource: {
+            cssEscape: (...args) => cssEscape(...args)
+        }
+    };
+    const PRESET_SPECIAL_VIEWER_CONTROLLER = typeof WORKBENCH_CANVAS_PRESET_SPECIAL_VIEWER.createCanvasPresetSpecialViewerController === 'function'
+        ? WORKBENCH_CANVAS_PRESET_SPECIAL_VIEWER.createCanvasPresetSpecialViewerController({
+            presetSpecialViewerSource: PRESET_SPECIAL_VIEWER_CONTEXT_SOURCE
+        })
+        : {};
+    const bindPresetSpecialViewerEvents = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.bindPresetSpecialViewerEvents?.(...args);
+    const findPresetSpecialIframeByWindow = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.findPresetSpecialIframeByWindow?.(...args) || null;
+    const syncPresetSpecialViewerIframe = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.syncPresetSpecialViewerIframe?.(...args);
+    const handlePresetSpecialViewerMessage = (...args) => PRESET_SPECIAL_VIEWER_CONTROLLER.handlePresetSpecialViewerMessage?.(...args);
+    const MEDIA_SEEK_CONTEXT_SOURCE = {
+        domSource: {
+            getDocument: () => typeof document !== 'undefined' ? document : null,
+            getNodesLayer: () => nodesLayer
+        },
+        nodeSource: {
+            getNode: (id) => getNode(id)
+        },
+        assetSource: {
+            safeAssetDisplaySrc: (...args) => safeAssetDisplaySrc(...args),
+            inferChatImageRelativePath: (...args) => inferChatImageRelativePath(...args)
+        },
+        mediaSource: {
+            getMediaEditRange: (...args) => getMediaEditRange(...args)
+        },
+        timingSource: {
+            setTimeout: (...args) => window.setTimeout(...args),
+            clearTimeout: (...args) => window.clearTimeout(...args)
+        },
+        utilitySource: {
+            cssEscape: (...args) => cssEscape(...args)
+        }
+    };
+    const MEDIA_SEEK_CONTROLLER = typeof WORKBENCH_CANVAS_MEDIA_SEEK.createCanvasMediaSeekController === 'function'
+        ? WORKBENCH_CANVAS_MEDIA_SEEK.createCanvasMediaSeekController({
+            mediaSeekSource: MEDIA_SEEK_CONTEXT_SOURCE
+        })
+        : {};
+    const showVideoScrubPreview = (...args) => MEDIA_SEEK_CONTROLLER.showVideoScrubPreview?.(...args);
+    const hideVideoScrubPreview = (...args) => MEDIA_SEEK_CONTROLLER.hideVideoScrubPreview?.(...args);
+    const seekNodeMediaPlayer = (...args) => MEDIA_SEEK_CONTROLLER.seekNodeMediaPlayer?.(...args);
+    const normalizeVideoSeekTarget = (...args) => MEDIA_SEEK_CONTROLLER.normalizeVideoSeekTarget?.(...args) ?? args[1];
     const AGENT_TARGET_CONTEXT_SOURCE = {
             targetSource: {
                 languageSource: {
@@ -6028,7 +6467,7 @@
                 stateSource: {
                     mutate
                 },
-                identitySource: {
+                timeSource: {
                     nowIso
                 }
             },
@@ -6416,8 +6855,10 @@
             },
             utilitySource: {
                 uid,
-                nowIso,
                 escapeHtml,
+            },
+            timeSource: {
+                nowIso,
             },
             stateSource: {
                 cloneRunValue,
@@ -6706,6 +7147,8 @@
             utilitySource: {
                 nowIso,
                 uid,
+                now: () => Date.now(),
+                parseDate: (value) => Date.parse(value || ''),
                 escapeHtml,
             },
             configSource: {
@@ -7034,6 +7477,9 @@
             buildAgentWorkflowPresetPatch,
             normalizePresetName
         },
+        domSource: {
+            getDocument: () => document
+        },
     };
     CANVAS_AGENT_WORKFLOW_LAYOUT_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT.createCanvasAgentWorkflowLayoutController === 'function'
         ? WORKBENCH_CANVAS_AGENT_WORKFLOW_LAYOUT.createCanvasAgentWorkflowLayoutController({
@@ -7126,6 +7572,9 @@
         schedulerSource: {
             setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
         },
+        sketchSource: {
+            getSketchAdapter: () => window.SimpAIWorkbenchSketchAdapter
+        },
     };
     CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController === 'function'
         ? WORKBENCH_CANVAS_AGENT_MASK_WORKFLOW.createCanvasAgentMaskWorkflowController({
@@ -7137,14 +7586,77 @@
     const findCanvasAgentReservedResultNodeForPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.findCanvasAgentReservedResultNodeForPreset;
     const runCanvasAgentManualMaskPreset = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.runCanvasAgentManualMaskPreset;
     const prepareCanvasAgentManualMaskWorkflow = CANVAS_AGENT_MASK_WORKFLOW_CONTROLLER.prepareCanvasAgentManualMaskWorkflow;
+    const PRESET_RUN_LOCK_CONTEXT_SOURCE = {
+        timeSource: {
+            now: () => Date.now()
+        },
+        staleAfterMs: 15000
+    };
+    const PRESET_RUN_LOCK_CONTROLLER = typeof WORKBENCH_PRESET_RUN_LOCK.createCanvasPresetRunLockController === 'function'
+        ? WORKBENCH_PRESET_RUN_LOCK.createCanvasPresetRunLockController({
+            presetRunLockSource: PRESET_RUN_LOCK_CONTEXT_SOURCE
+        })
+        : {};
+    const getPendingPresetRunSet = () => PRESET_RUN_LOCK_CONTROLLER.getPendingPresetRuns?.() || new Set();
+    const isPendingPresetRun = runKey => !!PRESET_RUN_LOCK_CONTROLLER.isPending?.(runKey);
+    const markPendingPresetRun = runKey => PRESET_RUN_LOCK_CONTROLLER.markPending?.(runKey);
+    const clearPendingPresetRun = runKey => PRESET_RUN_LOCK_CONTROLLER.clearPending?.(runKey);
+    const recoverStalePendingPresetRun = (runKey, options) => !!PRESET_RUN_LOCK_CONTROLLER.recoverStale?.(runKey, options);
+    const CANVAS_RUN_POLLING_CONTEXT_SOURCE = {
+        timingSource: {
+            setTimeout: (...args) => window.setTimeout(...args)
+        },
+        runtimeSource: {
+            isTerminalRunState
+        }
+    };
+    const CANVAS_RUN_POLLING_CONTROLLER = typeof WORKBENCH_CANVAS_RUN_POLLING.createCanvasRunPollingController === 'function'
+        ? WORKBENCH_CANVAS_RUN_POLLING.createCanvasRunPollingController({
+            runPollingSource: CANVAS_RUN_POLLING_CONTEXT_SOURCE
+        })
+        : {};
+    const pollRunWithController = (runId, options) => typeof CANVAS_RUN_POLLING_CONTROLLER.pollRun === 'function'
+        ? CANVAS_RUN_POLLING_CONTROLLER.pollRun(runId, options)
+        : Promise.resolve({ ok: false, error: 'run polling controller unavailable' });
+    const CANVAS_GALLERY_REFRESH_CONTEXT_SOURCE = {
+        windowSource: {
+            getWindow: () => window
+        },
+        timingSource: {
+            setTimeout: (...args) => window.setTimeout(...args)
+        },
+        domSource: {
+            getDocument: () => document
+        },
+        uiSource: {
+            clickGradioButton: typeof clickGradioButton === 'function' ? clickGradioButton : null,
+            getGradioApp: typeof gradioApp === 'function' ? gradioApp : null
+        },
+        diagnosticsSource: {
+            warn: (...args) => console.warn(...args),
+            info: (...args) => console.info(...args)
+        }
+    };
+    const CANVAS_GALLERY_REFRESH_CONTROLLER = typeof WORKBENCH_CANVAS_GALLERY_REFRESH.createCanvasGalleryRefreshController === 'function'
+        ? WORKBENCH_CANVAS_GALLERY_REFRESH.createCanvasGalleryRefreshController({
+            galleryRefreshSource: CANVAS_GALLERY_REFRESH_CONTEXT_SOURCE
+        })
+        : {};
+    const refreshMainGalleryAfterCanvasRun = (...args) => CANVAS_GALLERY_REFRESH_CONTROLLER.refreshMainGalleryAfterCanvasRun?.(...args);
     let CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = {};
     const AGENT_SAM3_WORKFLOW_SOURCE = {
         languageSource: {
             t
         },
         identitySource: {
-            uid,
+            uid
+        },
+        timeSource: {
+            now: () => Date.now(),
             nowIso
+        },
+        runtimeSource: {
+            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
         },
         projectSource: {
             getProject: () => project,
@@ -7155,7 +7667,7 @@
             getAgentState: () => canvasAgentState,
             isCanvasRunActiveState,
             nodeStatusState,
-            getPendingPresetRuns: () => pendingPresetRuns,
+            getPendingPresetRuns: () => getPendingPresetRunSet(),
             mergeCanvasRunStatus
         },
         mediaSource: {
@@ -7214,8 +7726,7 @@
             openSam3PointEditor
         },
         persistenceSource: {
-            scheduleSave,
-            setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
+            scheduleSave
         },
     };
     CANVAS_AGENT_SAM3_WORKFLOW_CONTROLLER = typeof WORKBENCH_CANVAS_AGENT_SAM3_WORKFLOW.createCanvasAgentSam3WorkflowController === 'function'
@@ -7268,8 +7779,7 @@
                     t
                 },
                 identitySource: {
-                    uid,
-                    nowIso
+                    uid
                 },
                 catalogSource: {
                     normalizePresetName,
@@ -7361,8 +7871,7 @@
                     t
                 },
                 identitySource: {
-                    uid,
-                    nowIso
+                    uid
                 },
                 catalogSource: {
                     normalizePresetName,
@@ -7390,10 +7899,10 @@
                     canvasAgentReferenceKey,
                     getCanvasAgentExtraImageReferences,
                     canvasAgentReferenceNode,
-                    previewCanvasAgentMediaInputSlot,
+                    previewCanvasAgentMediaInputSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.previewCanvasAgentMediaInputSlot?.(...args) || null,
                     connectCanvasAgentMediaToGenerator: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.connectCanvasAgentMediaToGenerator?.(...args) || { ok: false },
                     canvasAgentMediaConnectionError: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentMediaConnectionError?.(...args) || '',
-                    findCanvasAgentUploadSlotForTarget,
+                    findCanvasAgentUploadSlotForTarget: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.findCanvasAgentUploadSlotForTarget?.(...args) || '',
                     createUploadEdge
                 },
                 promptSource: {
@@ -7445,8 +7954,7 @@
                     t
                 },
                 identitySource: {
-                    uid,
-                    nowIso
+                    uid
                 },
                 utilitySource: {
                     normalizePresetName,
@@ -7522,11 +8030,11 @@
                 },
                 mediaSource: {
                     canvasAgentUploadSlotsForNode,
-                    canvasAgentVideoSourceUploadSlot,
+                    canvasAgentVideoSourceUploadSlot: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentVideoSourceUploadSlot?.(...args) || '',
                     canNodeConnectToUploadSlot,
                     createUploadEdge,
-                    createCanvasAgentReferencePlaceholderForGenerator,
-                    canvasAgentReferenceUploadSlotForGenerator,
+                    createCanvasAgentReferencePlaceholderForGenerator: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.createCanvasAgentReferencePlaceholderForGenerator?.(...args) || null,
+                    canvasAgentReferenceUploadSlotForGenerator: (...args) => CANVAS_AGENT_MEDIA_CONNECTIONS_CONTROLLER?.canvasAgentReferenceUploadSlotForGenerator?.(...args) || '',
                     getUploadSlotMediaKind,
                     isCanvasAgentMaskSlot
                 },
@@ -7542,7 +8050,8 @@
                     findOpenNodePosition
                 },
                 runtimeSource: {
-                    runPresetNode
+                    runPresetNode,
+                    setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
                 }
             },
             imageToolsSource: {
@@ -7550,8 +8059,7 @@
                     t
                 },
                 identitySource: {
-                    uid,
-                    nowIso
+                    uid
                 },
                 utilitySource: {
                     normalizePresetName
@@ -7624,7 +8132,7 @@
                     canvasAgentPresetDefaultPrompt
                 },
                 workflowSource: {
-                    runCanvasAgentLivePortraitExpressionQuickTool,
+                    runCanvasAgentLivePortraitExpressionQuickTool: (...args) => runCanvasAgentLivePortraitExpressionQuickTool(...args),
                     positionCanvasAgentReferenceWorkflow,
                     createCanvasAgentWorkflowGroup,
                     centerCanvasAgentWorkflow,
@@ -7645,8 +8153,8 @@
                     isCanvasAgentMaskSlot,
                     canNodeConnectToUploadSlot,
                     createUploadEdge,
-                    connectCanvasAgentImagesToGenerator,
-                    createCanvasAgentReferencePlaceholderForGenerator
+                    connectCanvasAgentImagesToGenerator: (...args) => connectCanvasAgentImagesToGenerator(...args),
+                    createCanvasAgentReferencePlaceholderForGenerator: (...args) => createCanvasAgentReferencePlaceholderForGenerator(...args)
                 },
                 layoutSource: {
                     buildNodeLayoutPatch,
@@ -7846,6 +8354,10 @@
                 utilitySource: {
                     escapeHtml
                 },
+                helpSource: {
+                    button: (...args) => window.SimpAIStudioHelp?.button?.(...args) || '',
+                    modelNotice: (...args) => window.SimpAIStudioHelp?.modelNotice?.(...args) || ''
+                },
                 stateSource: {
                     getAgentState: () => canvasAgentState
                 },
@@ -7900,12 +8412,23 @@
                     t
                 },
                 identitySource: {
-                    uid,
+                    uid
+                },
+                timeSource: {
+                    now: () => Date.now(),
                     nowIso
+                },
+                runtimeSource: {
+                    setTimeout: (...args) => typeof window.setTimeout === 'function' ? window.setTimeout(...args) : undefined
                 },
                 utilitySource: {
                     escapeHtml,
-                    clamp
+                    clamp,
+                    cssEscape: (value) => cssEscape(value)
+                },
+                helpSource: {
+                    button: (...args) => window.SimpAIStudioHelp?.button?.(...args) || '',
+                    modelNotice: (...args) => window.SimpAIStudioHelp?.modelNotice?.(...args) || ''
                 },
                 capacitySource: {
                     getMaxImageReferences: () => CANVAS_AGENT_MAX_IMAGE_REFERENCES,
@@ -7919,6 +8442,7 @@
                     getCanvasAgentPanel: () => canvasAgentPanel,
                     getViewport: () => viewport,
                     getWorkbenchRoot: () => root,
+                    getDocument: () => document,
                     setCanvasAgentSuppressClickUntil: (value) => {
                         canvasAgentSuppressClickUntil = Number(value || 0);
                     }
@@ -8047,16 +8571,20 @@
                     canvasAgentResolutionLabel,
                 },
                 projectSource: {
-                    getProject,
+                    getProject: () => project,
                 },
             },
             vlmInstructionSource: {
                 languageSource: {
                     t,
                 },
-                runtimeSource: {
+                identitySource: {
                     uid,
+                },
+                runtimeSource: {
                     getPlannerTimeoutMs: () => CANVAS_AGENT_VLM_PLAN_TIMEOUT_MS,
+                    setTimeout: (...args) => window.setTimeout(...args),
+                    clearTimeout: (...args) => window.clearTimeout(...args),
                 },
                 projectSource: {
                     getDefaultProjectId: () => PROJECT_ID,
@@ -8360,7 +8888,6 @@
     let backendAlertEl = null;
     let perfHudEl = null;
     const mediaBrowserNodeRuntime = new Map();
-    const mediaBrowserScrollMemory = new Map();
     let perfFrameHandle = 0;
     let perfFrameLastAt = 0;
     let perfHudLastRenderAt = 0;
@@ -8463,21 +8990,12 @@
     let selectedGroupId = null;
     let mode = 'select';
     let canvasAgentSuppressClickUntil = 0;
-    let textareaEditorState = null;
-    let wildcardsV2State = null;
     const vlmAgentActionRunLocks = new Set();
     let suppressWheelUntil = 0;
-    let pendingConnection = null;
-    let pendingInputTarget = null;
     let saveTimer = 0;
     let viewportSaveTimer = 0;
     let backendLoadedStorageKey = '';
-    const activeCanvasPolls = new Set();
-    const pendingPresetRuns = new Set();
-    const pendingPresetRunStartedAt = new Map();
     const pendingQwenTtsRuns = new Set();
-    const pendingMediaSeeks = new Map();
-    const mediaPreviewTimers = new Map();
     const vlmChatStickToBottomNodeIds = new Set();
     const vlmChatScrollMemory = new Map();
     // TODO(vlm-chat-debug): remove these diagnostics after the pan/scroll regression is stable.
@@ -8495,7 +9013,6 @@
     let edgeIncidentIndex = null;
     let edgeIncidentIndexWarmupTimer = 0;
     let presetSpecialMessageBound = false;
-    const autoModelCheckQueued = new Set();
 
     function projectStoreOptions() {
         return {
@@ -8816,7 +9333,16 @@
     }
 
     const DIRECTOR_TIMELINE_NODE_CONTEXT_SOURCE = {
+        utilitySource: {
+            escapeHtml,
+            t
+        },
+        assetSource: {
+            assetThumbSrc: assetNodeThumbSrc,
+            assetDisplaySrc
+        },
         getProject: () => project,
+        uid,
         defaultNodeSize,
         getSelectedResultAsset,
         getNode,
@@ -11822,245 +12348,8 @@ ${[0, 1, 2].map((index) => {
         return entry.after === String(value || '') ? 'translated' : 'original';
     }
 
-    function textareaEditorFieldFromTitleClick(target) {
-        if (!target?.closest || !root) return null;
-        if (target.closest('button,input,select,textarea,a,[contenteditable="true"],.sai-translate-wrap')) return null;
-        const label = target.closest('label');
-        if (!label || !root.contains(label)) return null;
-        const title = target.closest('span');
-        if (!title || title.parentElement !== label) return null;
-        const field = label.querySelector('textarea');
-        if (!field || field.disabled) return null;
-        return field;
-    }
-
-    function textareaEditorLabel(field) {
-        const label = field?.closest?.('label');
-        if (!label) return t('Text', '文本');
-        const directSpan = Array.from(label.children || []).find(child => String(child.tagName || '').toLowerCase() === 'span');
-        const raw = directSpan ? directSpan.innerText : Array.from(label.childNodes || [])
-            .filter(node => node.nodeType === Node.TEXT_NODE)
-            .map(node => node.textContent || '')
-            .join(' ');
-        const cleaned = String(raw || '').replace(/\s+/g, ' ').trim();
-        return cleaned || t('Text', '文本');
-    }
-
-    function textareaEditorDescriptor(field) {
-        if (!field) return null;
-        const attrs = [
-            'data-node-param',
-            'data-inspector-param',
-            'data-text-value',
-            'data-inspector-text-value',
-            'data-vlm-param',
-            'data-note-text',
-            'data-translation-input',
-            'data-translation-param',
-            'data-tagcart-param',
-            'data-wd14-param',
-            'data-classic-param'
-        ];
-        const attr = attrs.find(name => field.hasAttribute?.(name)) || '';
-        const nodeEl = field.closest?.('[data-node-id]');
-        return {
-            attr,
-            key: attr ? (field.getAttribute(attr) || '') : '',
-            nodeId: nodeEl?.getAttribute('data-node-id') || selectedNodeId || '',
-            inspector: !!field.closest?.('.sai-canvas-inspector')
-        };
-    }
-
-    function textareaEditorSelector(desc) {
-        if (!desc?.attr) return '';
-        return desc.key
-            ? `textarea[${desc.attr}="${cssEscape(desc.key)}"]`
-            : `textarea[${desc.attr}]`;
-    }
-
-    function findTextareaEditorSource(desc, fallback) {
-        if (fallback?.isConnected) return fallback;
-        const selector = textareaEditorSelector(desc);
-        if (!selector) return fallback?.isConnected ? fallback : null;
-        if (desc?.nodeId && nodesLayer) {
-            const nodeEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(desc.nodeId)}"]`);
-            const field = nodeEl?.querySelector?.(selector);
-            if (field) return field;
-        }
-        if (desc?.inspector && inspector) {
-            const field = inspector.querySelector(selector);
-            if (field) return field;
-        }
-        return root?.querySelector?.(selector) || null;
-    }
-
-    function resolveTextareaEditorSource() {
-        if (!textareaEditorState) return null;
-        const source = findTextareaEditorSource(textareaEditorState.descriptor, textareaEditorState.source);
-        if (source) textareaEditorState.source = source;
-        return source;
-    }
-
-    function textareaEditorSourceButton(source, kind) {
-        const wrap = source?.closest?.('.sai-translate-wrap');
-        if (!wrap) return null;
-        if (kind === 'wildcard') return wrap.querySelector('.sai-wildcard-btn');
-        if (kind === 'tagcart') return wrap.querySelector('.sai-tagcart-btn');
-        if (kind === 'translate') return wrap.querySelector('.sai-translate-btn');
-        return null;
-    }
-
-    function textareaEditorToolsHtml(field) {
-        const tools = [
-            ['wildcard', textareaEditorSourceButton(field, 'wildcard')],
-            ['tagcart', textareaEditorSourceButton(field, 'tagcart')],
-            ['translate', textareaEditorSourceButton(field, 'translate')]
-        ].filter(([, button]) => !!button);
-        if (!tools.length) return '';
-        return `<div class="sai-textarea-editor-tools">${tools.map(([kind, button]) => {
-            const disabled = button.disabled ? 'disabled' : '';
-            const copiedAttrs = ['data-translate-target', 'data-translate-key', 'data-translate-state', 'data-node-action']
-                .map(name => button.hasAttribute(name) ? `${name}="${escapeHtml(button.getAttribute(name) || '')}"` : '')
-                .filter(Boolean)
-                .join(' ');
-            return `<button type="button" class="${escapeHtml(button.className || 'sai-prompt-tool-btn')}" data-textarea-editor-tool="${kind}" ${copiedAttrs} ${disabled} title="${escapeHtml(button.getAttribute('title') || '')}">${button.innerHTML}</button>`;
-        }).join('')}</div>`;
-    }
-
-    function syncTextareaEditorToSource(commit) {
-        if (!textareaEditorState) return false;
-        const source = resolveTextareaEditorSource();
-        const input = textareaEditorState.input;
-        if (!source || !input || source.disabled || source.readOnly) return false;
-        source.value = input.value;
-        source.dispatchEvent(new Event('input', { bubbles: true }));
-        if (commit) source.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-    }
-
-    function syncTextareaEditorFromSource() {
-        if (!textareaEditorState) return;
-        const source = resolveTextareaEditorSource();
-        const input = textareaEditorState.input;
-        if (source && input && source.value !== input.value) input.value = source.value;
-    }
-
-    function closeTextareaEditor(apply) {
-        if (!textareaEditorState) return;
-        const state = textareaEditorState;
-        if (apply && !state.readonly) {
-            syncTextareaEditorToSource(true);
-        } else if (!apply && !state.readonly) {
-            const source = resolveTextareaEditorSource();
-            if (source && !source.disabled && !source.readOnly && source.value !== state.initialValue) {
-                source.value = state.initialValue;
-                source.dispatchEvent(new Event('input', { bubbles: true }));
-                source.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        }
-        state.modal?.remove();
-        textareaEditorState = null;
-    }
-
     function canvasOverlayHost() {
         return root || document.getElementById('simpai-infinite-canvas-workbench') || document.body;
-    }
-
-    function handleTextareaEditorTool(kind, toolButton) {
-        if (!textareaEditorState) return;
-        const source = resolveTextareaEditorSource();
-        if (!source) return;
-        if (!source.readOnly && !source.disabled) syncTextareaEditorToSource(false);
-        const button = textareaEditorSourceButton(source, kind);
-        if (!button || button.disabled) return;
-        const node = getNode(textareaEditorState.descriptor?.nodeId || selectedNodeId);
-        if (kind === 'wildcard' && node && ['preset', 'classic'].includes(node.type)) {
-            const action = button.getAttribute('data-node-action') || '';
-            const slot = action.startsWith('open-wildcards-insert:')
-                ? action.split(':')[1] || 'prompt'
-                : (source.getAttribute('data-node-param') || 'prompt');
-            openWildcardsInsertMenu(node, slot, toolButton || button);
-            [500, 1200, 2400, 5000, 10000].forEach(delay => window.setTimeout(syncTextareaEditorFromSource, delay));
-            return;
-        }
-        if (kind === 'tagcart' && node) {
-            openTagCartForField(node, toolButton || button, { field: source });
-            [500, 1200, 2400, 5000, 10000].forEach(delay => window.setTimeout(syncTextareaEditorFromSource, delay));
-            return;
-        }
-        button.click();
-        [80, 500, 1200, 2400, 5000, 10000].forEach(delay => window.setTimeout(syncTextareaEditorFromSource, delay));
-    }
-
-    function openTextareaEditor(field) {
-        if (!field || field.disabled) return;
-        closeTextareaEditor(true);
-        const modal = document.createElement('div');
-        const readonly = !!(field.readOnly || field.disabled);
-        modal.className = `sai-canvas-modal sai-textarea-editor-modal ${detectWorkbenchTheme() === 'dark' ? 'theme-dark' : ''}`;
-        modal.innerHTML = `
-<div class="sai-canvas-modal-panel sai-textarea-editor-panel">
-  <div class="sai-canvas-modal-head sai-textarea-editor-head">
-    <div class="sai-textarea-editor-title"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(textareaEditorLabel(field))}</span></div>
-    <button type="button" data-textarea-editor-action="cancel" title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-  </div>
-  <div class="sai-textarea-editor-body">
-    <div class="sai-textarea-editor-shell">
-      <textarea class="sai-textarea-editor-input" data-textarea-editor-input ${readonly ? 'readonly' : ''}>${escapeHtml(field.value || '')}</textarea>
-      ${textareaEditorToolsHtml(field)}
-    </div>
-  </div>
-  <div class="sai-textarea-editor-foot">
-    <span>${escapeHtml(readonly ? t('Read only', '只读') : t('Ctrl+Enter applies changes', 'Ctrl+Enter 应用修改'))}</span>
-    <div>
-      <button type="button" data-textarea-editor-action="cancel">${escapeHtml(t('Cancel', '取消'))}</button>
-      <button type="button" class="is-primary" data-textarea-editor-action="apply" ${readonly ? 'disabled' : ''}>${escapeHtml(t('Apply', '应用'))}</button>
-    </div>
-  </div>
-</div>`;
-        canvasOverlayHost().appendChild(modal);
-        const input = modal.querySelector('[data-textarea-editor-input]');
-        textareaEditorState = {
-            modal,
-            input,
-            source: field,
-            descriptor: textareaEditorDescriptor(field),
-            initialValue: field.value || '',
-            readonly
-        };
-        ensureWorkbenchFormFieldNames(modal, 'textarea_editor');
-        modal.addEventListener('click', (evt) => {
-            if (evt.target === modal) {
-                evt.preventDefault();
-                closeTextareaEditor(false);
-                return;
-            }
-            const toolButton = evt.target.closest('[data-textarea-editor-tool]');
-            if (toolButton) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                handleTextareaEditorTool(toolButton.getAttribute('data-textarea-editor-tool') || '', toolButton);
-                return;
-            }
-            const action = evt.target.closest('[data-textarea-editor-action]')?.getAttribute('data-textarea-editor-action') || '';
-            if (!action) return;
-            evt.preventDefault();
-            closeTextareaEditor(action === 'apply');
-        });
-        modal.addEventListener('keydown', (evt) => {
-            evt.stopPropagation();
-            if (evt.key === 'Escape') {
-                evt.preventDefault();
-                closeTextareaEditor(false);
-            } else if (evt.key === 'Enter' && (evt.ctrlKey || evt.metaKey)) {
-                evt.preventDefault();
-                closeTextareaEditor(true);
-            }
-        }, true);
-        window.setTimeout(() => {
-            input?.focus();
-            input?.setSelectionRange?.(input.value.length, input.value.length);
-        }, 0);
     }
 
     function assetMediaKind(asset) {
@@ -12258,22 +12547,15 @@ ${[0, 1, 2].map((index) => {
     }
 
     function renderImageNodeHtml(node) {
-        return imageNodeRenderNodeHtml(node, {
-            renderNodeStateBadges,
-            getNodeImageSrc,
-            assetDisplaySrc: (asset) => safeAssetDisplaySrc(asset, asset?.thumb || asset?.preview_url || asset?.data_url || ''),
-            readImageInfo,
-            mediaAspectStyle,
-            readAssetSize
-        });
+        return imageNodeRenderNodeHtml(node, IMAGE_NODE_CONTEXT);
     }
 
     function renderVideoNodeHtml(node) {
-        return videoNodeRenderNodeHtml(node, { renderNodeStateBadges });
+        return videoNodeRenderNodeHtml(node, VIDEO_NODE_CONTEXT);
     }
 
     function renderAudioNodeHtml(node) {
-        return audioNodeRenderNodeHtml(node, { renderNodeStateBadges });
+        return audioNodeRenderNodeHtml(node, AUDIO_NODE_CONTEXT);
     }
 
     function batchAnyMediaKindFromAsset(asset) {
@@ -12816,7 +13098,38 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     const SAM3_VIDEO_MASK_NODE_CONTEXT_SOURCE = {
         getProject: () => project,
         getProjectId: () => project.id || PROJECT_ID,
-        assetDisplaySrc,
+        uid,
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            t,
+            structuredClone: (value) => typeof structuredClone === 'function' ? structuredClone(value) : undefined
+        },
+        assetSource: {
+            assetDisplaySrc,
+            mediaAspectStyle,
+            readAssetInfo,
+            mediaEditRange: assetNodeMediaEditRange,
+            serializeAssetForRun,
+            serializeMaskForRun,
+            serializeAssetSourceForRun
+        },
+        apiSource: {
+            generateSam3VideoMask: apiGenerateSam3VideoMask,
+            cancelSam3VideoMask: apiCancelSam3VideoMask,
+            normalizeSam3MaskVideo: apiNormalizeSam3MaskVideo
+        },
+        documentSource: {
+            getDocument: () => typeof document !== 'undefined' ? document : null
+        },
+        browserSource: {
+            createFileReader: () => typeof FileReader === 'function' ? new FileReader() : null,
+            createImage: () => typeof Image === 'function' ? new Image() : null,
+            createAbortController: () => typeof AbortController === 'function' ? new AbortController() : null
+        },
+        utilitySource: {
+            structuredClone: (value) => typeof structuredClone === 'function' ? structuredClone(value) : undefined
+        },
         buildCanvasRunStatus,
         buildMediaEditAsset,
         buildSam3SourcePatch,
@@ -12831,7 +13144,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         getSelectedResultAsset,
         isNodeIgnored,
         isNodeLocked,
-        mediaAspectStyle,
         mutate,
         notConnectedText,
         onEditorClosed: handleCanvasAgentSam3VideoMaskEditorClosed,
@@ -12841,10 +13153,8 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         portHintText,
         pushHistory,
         pushHistoryBatch,
-        readAssetInfo,
         renderNodeStateBadges,
         scheduleSave,
-        serializeAssetSourceForRun,
         setSelectedNode: (id) => {
             selectedNodeId = id || null;
             selectedNodeIds = new Set(id ? [id] : []);
@@ -12861,7 +13171,24 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     const CAMERA_MOTION_NODE_CONTEXT_SOURCE = {
         getProject: () => project,
         getProjectId: () => project.id || PROJECT_ID,
-        assetDisplaySrc,
+        uid,
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            t
+        },
+        assetSource: {
+            assetDisplaySrc,
+            mediaAspectStyle,
+            readAssetInfo
+        },
+        apiSource: {
+            generateCameraMotionReference: apiGenerateCameraMotionReference
+        },
+        runtimeSource: {
+            setTimeout: (...args) => window.setTimeout(...args),
+            clearTimeout: (...args) => window.clearTimeout(...args)
+        },
         buildCanvasRunStatus,
         buildCameraMotionParamsPatch,
         buildCameraMotionSourcePatch,
@@ -12872,12 +13199,10 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         getNode,
         isNodeIgnored,
         isNodeLocked,
-        mediaAspectStyle,
         mutate,
         placeNodeAvoidingOverlap,
         pushHistory,
         pushHistoryBatch,
-        readAssetInfo,
         renderNodeStateBadges,
         scheduleSave,
         setSelectedNode: (id) => {
@@ -12896,7 +13221,21 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     const POSE_STUDIO_NODE_CONTEXT_SOURCE = {
         getProject: () => project,
         getProjectId: () => project.id || PROJECT_ID,
-        assetDisplaySrc,
+        uid,
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            t
+        },
+        assetSource: {
+            assetDisplaySrc,
+            mediaAspectStyle,
+            readAssetInfo,
+            serializeAssetSourceForRun
+        },
+        editorSource: {
+            getEditor: () => window.SimpAIPoseStudioEditor || {}
+        },
         buildAssetReference,
         buildPoseStudioStatePatch,
         buildPoseStudioConfirmPatch,
@@ -12908,16 +13247,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         isPoseStudioImageSource,
         isNodeIgnored,
         isNodeLocked,
-        mediaAspectStyle,
         mutate,
         notConnectedText,
         placeNodeAvoidingOverlap,
         portHintText,
         pushHistory,
-        readAssetInfo,
         renderNodeStateBadges,
         scheduleSave,
-        serializeAssetSourceForRun,
         buildProjectNodeAppendPatch,
         setSelectedNode: (id) => {
             selectedNodeId = id || null;
@@ -12935,7 +13271,21 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     const GAUSSIAN_STUDIO_NODE_CONTEXT_SOURCE = {
         getProject: () => project,
         getProjectId: () => project.id || PROJECT_ID,
-        assetDisplaySrc,
+        uid,
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            t
+        },
+        assetSource: {
+            assetDisplaySrc,
+            mediaAspectStyle,
+            readAssetInfo,
+            serializeAssetSourceForRun
+        },
+        editorSource: {
+            getEditor: () => window.SimpAIGaussianStudioEditor || {}
+        },
         buildAssetReference,
         buildGaussianStudioStatePatch,
         buildGaussianCachePatch,
@@ -12947,16 +13297,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         getSelectedResultAsset,
         isNodeIgnored,
         isNodeLocked,
-        mediaAspectStyle,
         mutate,
         notConnectedText,
         placeNodeAvoidingOverlap,
         portHintText,
         pushHistory,
-        readAssetInfo,
         renderNodeStateBadges,
         scheduleSave,
-        serializeAssetSourceForRun,
         buildProjectNodeAppendPatch,
         setSelectedNode: (id) => {
             selectedNodeId = id || null;
@@ -12974,7 +13321,21 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     const LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT_SOURCE = {
         getProject: () => project,
         getProjectId: () => project.id || PROJECT_ID,
-        assetDisplaySrc,
+        uid,
+        utilitySource: {
+            escapeHtml,
+            clamp,
+            t
+        },
+        assetSource: {
+            assetDisplaySrc,
+            mediaAspectStyle,
+            readAssetInfo,
+            serializeAssetSourceForRun
+        },
+        editorSource: {
+            getEditor: () => window.SimpAILivePortraitExpressionEditor || {}
+        },
         buildAssetReference,
         buildLivePortraitNodeStatePatch,
         buildLivePortraitConfirmPatch,
@@ -12987,16 +13348,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         isLivePortraitExpressionImageSource,
         isNodeIgnored,
         isNodeLocked,
-        mediaAspectStyle,
         mutate,
         notConnectedText,
         placeNodeAvoidingOverlap,
         portHintText,
         pushHistory,
-        readAssetInfo,
         renderNodeStateBadges,
         scheduleSave,
-        serializeAssetSourceForRun,
         buildProjectNodeAppendPatch,
         setSelectedNode: (id) => {
             selectedNodeId = id || null;
@@ -13453,97 +13811,6 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   <span><b>${escapeHtml(t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'))}</b><span>${escapeHtml(summary)}</span></span>
   <button type="button" data-node-action="edit-h3-storyboard"><i class="fa-solid fa-pen-to-square"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
 </div>`;
-    }
-
-    function bindPresetSpecialViewerEvents(nodeEl, node) {
-        if (!node || node.type !== 'preset') return;
-        nodeEl.querySelectorAll('[data-preset-special-viewer]').forEach((iframe) => {
-            if (iframe.__simpaiPresetSpecialBound) return;
-            iframe.__simpaiPresetSpecialBound = true;
-            const sync = () => window.setTimeout(() => syncPresetSpecialViewerIframe(iframe), 30);
-            iframe.addEventListener('load', sync);
-            sync();
-        });
-    }
-
-    function findPresetSpecialIframeByWindow(sourceWindow) {
-        if (!sourceWindow) return null;
-        const scope = root || document;
-        const iframes = Array.from(scope.querySelectorAll('[data-preset-special-viewer]'));
-        return iframes.find(iframe => iframe.contentWindow === sourceWindow) || null;
-    }
-
-    function syncPresetSpecialViewerIframe(iframe) {
-        if (!iframe || !iframe.contentWindow) return;
-        const nodeId = iframe.closest('[data-node-id]')?.getAttribute('data-node-id') || '';
-        const node = getNode(nodeId);
-        const kind = iframe.getAttribute('data-preset-special-viewer') || getPresetSpecialControllerKind(node);
-        if (!node || !kind) return;
-        const state = presetSpecialControllerState(node, kind);
-        iframe.contentWindow.postMessage({
-            type: 'SYNC_ANGLES',
-            horizontal: state.horizontal,
-            vertical: state.vertical,
-            zoom: state.zoom,
-            lightColor: state.lightColor,
-            useDefaultPrompts: false,
-            cameraView: !!state.cameraView
-        }, '*');
-        const imageUrl = presetSpecialInputAssetUrl(node);
-        iframe.contentWindow.postMessage({ type: 'UPDATE_IMAGE', imageUrl }, '*');
-        refreshPresetSpecialControllerDom(node.id);
-    }
-
-    function handlePresetSpecialViewerMessage(evt) {
-        const iframe = findPresetSpecialIframeByWindow(evt.source);
-        if (!iframe) return;
-        const data = evt.data || {};
-        const type = String(data.type || '');
-        if (!['VIEWER_READY', 'ANGLE_UPDATE', 'SET_CAMERA_VIEW'].includes(type)) return;
-        const nodeId = iframe.closest('[data-node-id]')?.getAttribute('data-node-id') || '';
-        const node = getNode(nodeId);
-        const kind = iframe.getAttribute('data-preset-special-viewer') || getPresetSpecialControllerKind(node);
-        if (!node || !kind) return;
-        if (type === 'VIEWER_READY') {
-            syncPresetSpecialViewerIframe(iframe);
-            return;
-        }
-        if (isNodeLocked(node)) {
-            syncPresetSpecialViewerIframe(iframe);
-            return;
-        }
-        if (type === 'SET_CAMERA_VIEW') {
-            const statePatch = Object.assign({}, presetSpecialControllerState(node, kind), {
-                kind,
-                cameraView: !!data.cameraView
-            });
-            const patch = buildPresetSpecialControllerStatePatch(node, {
-                statePatch,
-                updatedAt: nowIso()
-            });
-            if (patch && typeof patch === 'object') Object.assign(node, patch);
-            refreshPresetSpecialNodeDom(node, { syncViewer: false });
-            scheduleSave();
-            return;
-        }
-        const state = normalizePresetSpecialState(kind, Object.assign({}, presetSpecialControllerState(node, kind), {
-            horizontal: data.horizontal,
-            vertical: data.vertical,
-            zoom: data.zoom,
-            lightColor: data.lightColor
-        }));
-        const patch = buildPresetSpecialControllerStatePatch(node, {
-            statePatch: state,
-            updatedAt: nowIso()
-        });
-        if (patch && typeof patch === 'object') Object.assign(node, patch);
-        Object.assign(node, buildNodeParamsPatch(node, {
-            paramsPatch: {
-                scene_additional_prompt_2: presetSpecialPromptFromState(kind, state)
-            }
-        }));
-        refreshPresetSpecialNodeDom(node, { syncViewer: false });
-        scheduleSave();
     }
 
     function refreshPresetSpecialControllerDom(nodeId) {
@@ -14603,7 +14870,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderCompareControls(node) {
-        return compareNodeRenderControls(node);
+        return compareNodeRenderControls(node, COMPARE_NODE_CONTEXT);
     }
 
     function renderCompareNodeHtml(node) {
@@ -17341,7 +17608,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderImageInspector(node) {
-        return `${imageNodeRenderInspector(node)}${renderGenerationMetadataInspectorSection(node)}`;
+        return `${imageNodeRenderInspector(node, IMAGE_NODE_CONTEXT)}${renderGenerationMetadataInspectorSection(node)}`;
     }
 
     function renderGenerationMetadataInspectorSection(node) {
@@ -17473,11 +17740,11 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
     }
 
     function renderVideoInspector(node) {
-        return `${videoNodeRenderInspector(node)}${renderGenerationMetadataInspectorSection(node)}`;
+        return `${videoNodeRenderInspector(node, VIDEO_NODE_CONTEXT)}${renderGenerationMetadataInspectorSection(node)}`;
     }
 
     function renderAudioInspector(node) {
-        return audioNodeRenderInspector(node);
+        return audioNodeRenderInspector(node, AUDIO_NODE_CONTEXT);
     }
 
     function renderCompareInspector(node) {
@@ -18358,49 +18625,33 @@ ${renderGenerationMetadataInspectorSection(node)}
         return clientToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
-    function setPendingConnection(fromId, world) {
-        const from = getNode(fromId);
-        if (!from) {
-            pendingConnection = null;
-            return;
+    const PENDING_CONNECTION_CONTEXT_SOURCE = {
+        nodeSource: {
+            getNode
+        },
+        timeSource: {
+            now: () => Date.now()
+        },
+        serializationSource: {
+            cloneValue: cloneRunValue
         }
-        pendingConnection = {
-            fromId,
-            world: cloneRunValue(world || {}, {}),
-            expires_at: Date.now() + 15000
-        };
-    }
-
-    function getPendingConnectionSource() {
-        if (!pendingConnection) return null;
-        if (Date.now() > Number(pendingConnection.expires_at || 0)) {
-            pendingConnection = null;
-            return null;
-        }
-        return getNode(pendingConnection.fromId);
-    }
-
-    function setPendingInputTarget(target, world) {
-        pendingInputTarget = target?.toId ? {
-            target: Object.assign({}, target, { handle: null }),
-            world: cloneRunValue(world || {}, {}),
-            expires_at: Date.now() + 30000
-        } : null;
-    }
-
-    function getPendingInputTarget() {
-        if (!pendingInputTarget) return null;
-        if (Date.now() > Number(pendingInputTarget.expires_at || 0) || !getNode(pendingInputTarget.target?.toId)) {
-            pendingInputTarget = null;
-            return null;
-        }
-        return pendingInputTarget.target;
-    }
+    };
+    const PENDING_CONNECTION_CONTROLLER = typeof WORKBENCH_PENDING_CONNECTION.createCanvasWorkbenchPendingConnectionController === 'function'
+        ? WORKBENCH_PENDING_CONNECTION.createCanvasWorkbenchPendingConnectionController({
+            pendingConnectionSource: PENDING_CONNECTION_CONTEXT_SOURCE
+        })
+        : {};
+    const setPendingConnection = (...args) => PENDING_CONNECTION_CONTROLLER.setPendingConnection?.(...args);
+    const getPendingConnectionSource = (...args) => PENDING_CONNECTION_CONTROLLER.getPendingConnectionSource?.(...args) || null;
+    const setPendingInputTarget = (...args) => PENDING_CONNECTION_CONTROLLER.setPendingInputTarget?.(...args);
+    const getPendingInputTarget = (...args) => PENDING_CONNECTION_CONTROLLER.getPendingInputTarget?.(...args) || null;
+    const clearPendingConnection = (...args) => PENDING_CONNECTION_CONTROLLER.clearPendingConnection?.(...args);
+    const clearPendingInputTarget = (...args) => PENDING_CONNECTION_CONTROLLER.clearPendingInputTarget?.(...args);
 
     function completePendingConnectionToNode(node) {
         const inputTarget = getPendingInputTarget();
         if (inputTarget && node && node.id !== inputTarget.toId) {
-            pendingInputTarget = null;
+            clearPendingInputTarget();
             if (connectSourceToTarget(node.id, inputTarget, { silent: true, render: false, history: false, select: false, toast: false })) {
                 return t('and connected to the selected input automatically', '并已自动连接到所选输入端点');
             }
@@ -18472,7 +18723,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         } else if (isVlmMediaSource(from) && node.type === 'vlm') {
             const chatMode = (node.params?.mode || 'single') === 'chat';
             if (chatMode && !['image', 'result'].includes(from.type)) {
-                pendingConnection = null;
+                clearPendingConnection();
                 return '';
             }
             const slot = chatMode ? VLM_IMAGE_SLOTS[0] : (VLM_IMAGE_SLOTS.find(item => !node.image_inputs?.[item.key]) || VLM_IMAGE_SLOTS[0]);
@@ -18612,7 +18863,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                 message = t('connected to Text input', '已连接到文本输入');
             }
         }
-        pendingConnection = null;
+        clearPendingConnection();
         return message;
     }
 
@@ -18777,535 +19028,12 @@ ${renderGenerationMetadataInspectorSection(node)}
         ]);
     }
 
-    function closeWildcardsV2Panel() {
-        wildcardsV2State?.modal?.remove();
-        wildcardsV2State = null;
-    }
-
-    function wildcardsV2NamesFromCatalog(catalog) {
-        return Array.from(new Set((Array.isArray(catalog?.flat_names) ? catalog.flat_names : []).map(item => String(item || '').trim()).filter(Boolean)));
-    }
-
-    function wildcardsV2FilteredNames(state) {
-        const query = String(state?.query || '').trim().toLowerCase();
-        const names = Array.isArray(state?.names) ? state.names : [];
-        if (!query) return names;
-        const tokens = query.split(/\s+/).filter(Boolean);
-        return names.filter(name => {
-            const lower = String(name || '').toLowerCase();
-            return tokens.every(token => lower.includes(token));
-        });
-    }
-
-    function wildcardsV2HelperParams(state) {
-        const helper = state?.helper || {};
-        return {
-            target: helper.target || 'Single in prompt',
-            method: helper.method || 'Random Select',
-            seed_mode: helper.seed_mode || 'Fixed seed',
-            name: String(helper.name || '').trim(),
-            count: Math.max(1, Math.floor(Number(helper.count || 1))),
-            start: Math.max(1, Math.floor(Number(helper.start || 1))),
-            group_size: Math.max(1, Math.floor(Number(helper.group_size || 1)))
-        };
-    }
-
-    function wildcardsV2BuiltTag(state) {
-        const params = wildcardsV2HelperParams(state);
-        return params.name ? wildcardHelperBuildTag(params) : '';
-    }
-
-    function wildcardsV2CanInsert(state) {
-        const node = getNode(state?.nodeId || '');
-        return !!(node && ['preset', 'classic'].includes(node.type) && !isNodeLocked(node));
-    }
-
-    function wildcardsV2CanApplyHelper(state) {
-        const node = getNode(state?.nodeId || '');
-        return !!(node && node.type === 'wildcards_helper' && !isNodeLocked(node));
-    }
-
-    function wildcardsV2SetStatus(modal, message, tone) {
-        const state = modal?.__wildcardsV2State || wildcardsV2State;
-        if (state) {
-            state.status = String(message || '');
-            state.statusTone = tone || '';
-        }
-        const el = modal?.querySelector?.('[data-wildcards-v2-status]');
-        if (el) {
-            el.textContent = String(message || '');
-            el.dataset.tone = tone || '';
-        }
-    }
-
-    function renderWildcardsV2List(modal) {
-        const state = modal?.__wildcardsV2State;
-        const host = modal?.querySelector?.('[data-wildcards-v2-list]');
-        const meta = modal?.querySelector?.('[data-wildcards-v2-meta]');
-        if (!state || !host) return;
-        const filtered = wildcardsV2FilteredNames(state);
-        const visible = filtered.slice(0, 320);
-        const canInsert = wildcardsV2CanInsert(state);
-        const canApplyHelper = wildcardsV2CanApplyHelper(state);
-        const rowActionTitle = canApplyHelper ? t('Use in helper node', '用于当前 Helper 节点') : t('Insert wildcard', '插入通配符');
-        const rowActionIcon = canApplyHelper ? 'fa-check' : 'fa-arrow-right-to-bracket';
-        if (meta) {
-            meta.textContent = t('{shown} shown / {total} total', '显示 {shown} / 总计 {total}')
-                .replace('{shown}', String(visible.length))
-                .replace('{total}', String(state.names.length));
-        }
-        host.innerHTML = visible.length ? visible.map(name => {
-            const active = name === state.helper.name ? ' is-active' : '';
-            return `<div class="sai-wildcards-v2-row${active}" data-wildcards-v2-name="${escapeHtml(name)}">
-  <button type="button" class="sai-wildcards-v2-name" data-wildcards-v2-action="select-name" title="${escapeHtml(name)}"><i class="fa-solid fa-dice"></i><span>${escapeHtml(name)}</span></button>
-  <button type="button" data-wildcards-v2-action="insert-name" ${canInsert || canApplyHelper ? '' : 'disabled'} title="${escapeHtml(rowActionTitle)}"><i class="fa-solid ${rowActionIcon}"></i></button>
-</div>`;
-        }).join('') : `<div class="sai-wildcards-v2-empty">${escapeHtml(t('No wildcard matched. Try a shorter search.', '没有匹配的通配符，试试缩短搜索。'))}</div>`;
-    }
-
-    function renderWildcardsV2Expression(modal) {
-        const state = modal?.__wildcardsV2State;
-        const host = modal?.querySelector?.('[data-wildcards-v2-expression]');
-        if (!state || !host) return;
-        const helper = wildcardsV2HelperParams(state);
-        const builtTag = wildcardsV2BuiltTag(state);
-        const canInsert = wildcardsV2CanInsert(state);
-        const optionHtml = (items, value) => items.map(item => `<option value="${escapeHtml(item)}" ${item === value ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('');
-        host.innerHTML = `
-<div class="sai-wildcards-v2-card">
-  <h4><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Expression Builder', '表达式构建器'))}</span></h4>
-  <label><span>${escapeHtml(t('Wildcard name', '通配符名称'))}</span><input data-wildcards-v2-helper="name" value="${escapeHtml(helper.name)}" placeholder="color / style / character"></label>
-  <div class="sai-wildcards-v2-grid">
-    <label><span>${escapeHtml(t('Target', '目标'))}</span><select data-wildcards-v2-helper="target">${optionHtml(WILDCARDS_HELPER_TARGETS, helper.target)}</select></label>
-    <label><span>${escapeHtml(t('Method', '方法'))}</span><select data-wildcards-v2-helper="method">${optionHtml(WILDCARDS_HELPER_METHODS, helper.method)}</select></label>
-    <label><span>${escapeHtml(t('Seed', '种子'))}</span><select data-wildcards-v2-helper="seed_mode">${optionHtml(WILDCARDS_HELPER_SEED_MODES, helper.seed_mode)}</select></label>
-  </div>
-  <div class="sai-wildcards-v2-grid">
-    <label><span>${escapeHtml(t('Count', '数量'))}</span><input data-wildcards-v2-helper="count" type="number" min="1" step="1" value="${escapeHtml(helper.count)}"></label>
-    <label><span>${escapeHtml(t('Start', '起始'))}</span><input data-wildcards-v2-helper="start" type="number" min="1" step="1" value="${escapeHtml(helper.start)}"></label>
-    <label><span>${escapeHtml(t('Group', '组'))}</span><input data-wildcards-v2-helper="group_size" type="number" min="1" step="1" value="${escapeHtml(helper.group_size)}"></label>
-  </div>
-  <label><span>${escapeHtml(t('Built expression', '生成表达式'))}</span><input data-wildcards-v2-built readonly value="${escapeHtml(builtTag)}" placeholder="__name__"></label>
-  <div class="sai-wildcards-v2-actions">
-    <button type="button" data-wildcards-v2-action="insert-selected" ${canInsert && helper.name ? '' : 'disabled'}><i class="fa-solid fa-dice"></i><span>${escapeHtml(t('Insert __name__', '插入 __name__'))}</span></button>
-    <button type="button" data-wildcards-v2-action="insert-built" ${canInsert && builtTag ? '' : 'disabled'}><i class="fa-solid fa-arrow-right-to-bracket"></i><span>${escapeHtml(t('Insert expression', '插入表达式'))}</span></button>
-    <button type="button" data-wildcards-v2-action="create-helper" ${helper.name ? '' : 'disabled'}><i class="fa-solid fa-plus"></i><span>${escapeHtml(t('Create Helper Node', '创建 Helper 节点'))}</span></button>
-  </div>
-</div>
-<div class="sai-wildcards-v2-card">
-  <h4><i class="fa-solid fa-keyboard"></i><span>${escapeHtml(t('Raw Expression', '手写表达式'))}</span></h4>
-  <textarea data-wildcards-v2-raw rows="3" placeholder="__color__:L3:4 or [__color__:3]">${escapeHtml(state.rawExpression || '')}</textarea>
-  <div class="sai-wildcards-v2-actions">
-    <button type="button" data-wildcards-v2-action="insert-raw" ${canInsert && String(state.rawExpression || '').trim() ? '' : 'disabled'}><i class="fa-solid fa-arrow-right-to-bracket"></i><span>${escapeHtml(t('Insert Raw', '插入手写'))}</span></button>
-  </div>
-</div>`;
-    }
-
-    function renderWildcardsV2Personal(modal) {
-        const state = modal?.__wildcardsV2State;
-        const host = modal?.querySelector?.('[data-wildcards-v2-personal]');
-        if (!state || !host) return;
-        const personal = state.personal || {};
-        if (!personal.available) {
-            host.innerHTML = `<div class="sai-wildcards-v2-card"><p class="sai-wildcards-v2-empty">${escapeHtml(t('Personal wildcards API unavailable.', '个人通配符 API 不可用。'))}</p></div>`;
-            return;
-        }
-        if (!personal.canManage) {
-            host.innerHTML = `<div class="sai-wildcards-v2-card"><p class="sai-wildcards-v2-empty">${escapeHtml(personal.error || t('Personal wildcards are read-only for this user.', '当前用户只能读取公共通配符。'))}</p></div>`;
-            return;
-        }
-        const keys = Array.isArray(personal.keys) ? personal.keys : [];
-        const options = [''].concat(keys).map(key => `<option value="${escapeHtml(key)}" ${key === personal.name ? 'selected' : ''}>${escapeHtml(key || t('New wildcard...', '新建通配符...'))}</option>`).join('');
-        host.innerHTML = `<div class="sai-wildcards-v2-card">
-  <h4><i class="fa-solid fa-folder-tree"></i><span>${escapeHtml(t('Personal Wildcards', '个人通配符'))}</span></h4>
-  <div class="sai-wildcards-v2-grid is-two">
-    <label><span>${escapeHtml(t('Existing', '已有'))}</span><select data-wildcards-v2-personal-select>${options}</select></label>
-    <label><span>${escapeHtml(t('Name', '名称'))}</span><input data-wildcards-v2-personal-name value="${escapeHtml(personal.name || '')}" placeholder="my_styles"></label>
-  </div>
-  <label><span>${escapeHtml(t('Entries', '条目'))}</span><textarea data-wildcards-v2-personal-content rows="11" placeholder="${escapeHtml(t('One entry per line', '每行一个条目'))}">${escapeHtml(personal.content || '')}</textarea></label>
-  <div class="sai-wildcards-v2-actions">
-    <button type="button" data-wildcards-v2-action="personal-load" ${personal.name ? '' : 'disabled'}><i class="fa-solid fa-folder-open"></i><span>${escapeHtml(t('Load', '载入'))}</span></button>
-    <button type="button" data-wildcards-v2-action="personal-save" ${personal.name ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(t('Save', '保存'))}</span></button>
-    <button type="button" class="is-danger" data-wildcards-v2-action="personal-delete" ${personal.name ? '' : 'disabled'}><i class="fa-solid fa-trash"></i><span>${escapeHtml(personal.deleteArmed ? t('Click Again', '再点删除') : t('Delete', '删除'))}</span></button>
-    <button type="button" data-wildcards-v2-action="personal-refresh"><i class="fa-solid fa-arrows-rotate"></i><span>${escapeHtml(t('Refresh', '刷新'))}</span></button>
-  </div>
-</div>`;
-    }
-
-    function refreshWildcardsV2ExpressionControls(modal) {
-        const state = modal?.__wildcardsV2State;
-        if (!state) return;
-        const helper = wildcardsV2HelperParams(state);
-        const builtTag = wildcardsV2BuiltTag(state);
-        const canInsert = wildcardsV2CanInsert(state);
-        const built = modal.querySelector('[data-wildcards-v2-built]');
-        if (built) built.value = builtTag;
-        const selectedButton = modal.querySelector('[data-wildcards-v2-action="insert-selected"]');
-        const builtButton = modal.querySelector('[data-wildcards-v2-action="insert-built"]');
-        const rawButton = modal.querySelector('[data-wildcards-v2-action="insert-raw"]');
-        const helperButton = modal.querySelector('[data-wildcards-v2-action="create-helper"]');
-        if (selectedButton) selectedButton.disabled = !(canInsert && helper.name);
-        if (builtButton) builtButton.disabled = !(canInsert && builtTag);
-        if (rawButton) rawButton.disabled = !(canInsert && String(state.rawExpression || '').trim());
-        if (helperButton) helperButton.disabled = !helper.name;
-    }
-
-    function refreshWildcardsV2PersonalControls(modal) {
-        const personal = modal?.__wildcardsV2State?.personal || {};
-        const hasName = !!String(personal.name || '').trim();
-        modal?.querySelectorAll?.('[data-wildcards-v2-action="personal-load"],[data-wildcards-v2-action="personal-save"],[data-wildcards-v2-action="personal-delete"]').forEach(button => {
-            button.disabled = !hasName;
-        });
-    }
-
-    function renderWildcardsV2Detail(modal) {
-        const state = modal?.__wildcardsV2State;
-        if (!state) return;
-        modal.querySelectorAll('[data-wildcards-v2-tab]').forEach(button => {
-            button.classList.toggle('is-active', button.getAttribute('data-wildcards-v2-tab') === state.tab);
-        });
-        const expression = modal.querySelector('[data-wildcards-v2-expression]');
-        const personal = modal.querySelector('[data-wildcards-v2-personal]');
-        if (expression) expression.hidden = state.tab !== 'insert';
-        if (personal) personal.hidden = state.tab !== 'manager';
-        renderWildcardsV2Expression(modal);
-        renderWildcardsV2Personal(modal);
-    }
-
-    function renderWildcardsV2Panel(modal) {
-        const state = modal.__wildcardsV2State;
-        const canInsert = wildcardsV2CanInsert(state);
-        modal.innerHTML = `
-<div class="sai-canvas-modal-panel sai-wildcards-v2-panel">
-  <div class="sai-canvas-modal-head sai-wildcards-v2-head">
-    <div><i class="fa-solid fa-dice"></i><span>Wildcard v2</span><small>${escapeHtml(canInsert ? t('Insert into prompt', '插入到提示词') : t('Browse and manage', '浏览与管理'))}</small></div>
-    <button type="button" data-wildcards-v2-action="close" title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
-  </div>
-  <div class="sai-wildcards-v2-body">
-    <section class="sai-wildcards-v2-list-pane">
-      <div class="sai-wildcards-v2-search">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input data-wildcards-v2-query value="${escapeHtml(state.query || '')}" placeholder="${escapeHtml(t('Search wildcard names...', '搜索通配符名称...'))}">
-        <button type="button" data-wildcards-v2-action="refresh-catalog" title="${escapeHtml(t('Refresh catalog', '刷新目录'))}"><i class="fa-solid fa-arrows-rotate"></i></button>
-      </div>
-      <div class="sai-wildcards-v2-meta" data-wildcards-v2-meta></div>
-      <div class="sai-wildcards-v2-list" data-wildcards-v2-list></div>
-    </section>
-    <section class="sai-wildcards-v2-detail-pane">
-      <div class="sai-wildcards-v2-tabs">
-        <button type="button" data-wildcards-v2-tab="insert"><i class="fa-solid fa-arrow-right-to-bracket"></i><span>${escapeHtml(t('Insert', '插入'))}</span></button>
-        <button type="button" data-wildcards-v2-tab="manager"><i class="fa-solid fa-folder-tree"></i><span>${escapeHtml(t('Manager', '管理'))}</span></button>
-      </div>
-      <div data-wildcards-v2-expression></div>
-      <div data-wildcards-v2-personal></div>
-    </section>
-  </div>
-  <div class="sai-wildcards-v2-foot"><span data-wildcards-v2-status data-tone="${escapeHtml(state.statusTone || '')}">${escapeHtml(state.status || '')}</span></div>
-</div>`;
-        renderWildcardsV2List(modal);
-        renderWildcardsV2Detail(modal);
-        ensureWorkbenchFormFieldNames(modal, 'wildcards_v2');
-    }
-
-    async function refreshWildcardsV2Catalog(modal) {
-        const state = modal?.__wildcardsV2State;
-        if (!state) return null;
-        wildcardsV2SetStatus(modal, t('Refreshing wildcard catalog...', '正在刷新通配符目录...'), '');
-        const node = getNode(state.nodeId || '');
-        const probe = {
-            id: `${state.nodeId || 'wildcards_v2'}:wildcards_v2_catalog`,
-            type: 'wildcards_helper',
-            params: {},
-            wildcards_catalog: state.catalog || node?.wildcards_catalog || null
-        };
-        const catalog = await refreshWildcardsCatalog(probe, { force: true, render: false });
-        if (!catalog) {
-            wildcardsV2SetStatus(modal, t('Catalog refresh failed.', '目录刷新失败。'), 'error');
-            return null;
-        }
-        state.catalog = catalog;
-        state.names = wildcardsV2NamesFromCatalog(catalog);
-        if (node) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
-        if (!state.helper.name && state.names.length) state.helper.name = state.names[0];
-        renderWildcardsV2List(modal);
-        renderWildcardsV2Detail(modal);
-        wildcardsV2SetStatus(modal, t('Catalog refreshed.', '目录已刷新。'), 'ok');
-        return catalog;
-    }
-
-    async function refreshWildcardsV2PersonalList(modal) {
-        const state = modal?.__wildcardsV2State;
-        if (!state || typeof apiPersonalWildcards !== 'function') return;
-        const result = await apiPersonalWildcards({ action: 'list', user_context: getWorkbenchUserContext() });
-        state.personal = Object.assign({}, state.personal || {}, {
-            available: true,
-            canManage: !!result?.can_manage,
-            keys: Array.isArray(result?.keys) ? result.keys : [],
-            error: result?.error || ''
-        });
-        if (!state.personal.name) state.personal.name = result?.selected || state.personal.keys[0] || '';
-    }
-
-    async function loadWildcardsV2Personal(modal, name) {
-        const state = modal?.__wildcardsV2State;
-        const personal = state?.personal || {};
-        const safeName = String(name || personal.name || '').trim();
-        if (!state || !safeName || typeof apiPersonalWildcards !== 'function') return;
-        wildcardsV2SetStatus(modal, t('Loading personal wildcard...', '正在载入个人通配符...'), '');
-        const loaded = await apiPersonalWildcards({ action: 'load', name: safeName, user_context: getWorkbenchUserContext() });
-        if (!loaded?.ok) {
-            wildcardsV2SetStatus(modal, loaded?.error || t('Load failed.', '载入失败。'), 'error');
-            return;
-        }
-        state.personal.name = safeName;
-        state.personal.content = loaded.content || '';
-        state.personal.deleteArmed = false;
-        renderWildcardsV2Detail(modal);
-        wildcardsV2SetStatus(modal, t('Loaded.', '已载入。'), 'ok');
-    }
-
-    async function saveWildcardsV2Personal(modal) {
-        const state = modal?.__wildcardsV2State;
-        const personal = state?.personal || {};
-        const name = String(personal.name || '').trim();
-        if (!state || !name || typeof apiPersonalWildcards !== 'function') return;
-        wildcardsV2SetStatus(modal, t('Saving personal wildcard...', '正在保存个人通配符...'), '');
-        const saved = await apiPersonalWildcards({ action: 'save', name, content: personal.content || '', user_context: getWorkbenchUserContext() });
-        if (!saved?.ok) {
-            wildcardsV2SetStatus(modal, saved?.error || t('Save failed.', '保存失败。'), 'error');
-            return;
-        }
-        await refreshWildcardsV2PersonalList(modal);
-        await refreshWildcardsV2Catalog(modal);
-        renderWildcardsV2Detail(modal);
-        wildcardsV2SetStatus(modal, saved.message || t('Saved.', '已保存。'), 'ok');
-    }
-
-    async function deleteWildcardsV2Personal(modal) {
-        const state = modal?.__wildcardsV2State;
-        const personal = state?.personal || {};
-        const name = String(personal.name || '').trim();
-        if (!state || !name || typeof apiPersonalWildcards !== 'function') return;
-        if (!personal.deleteArmed) {
-            personal.deleteArmed = true;
-            renderWildcardsV2Detail(modal);
-            wildcardsV2SetStatus(modal, t('Click Delete again to confirm.', '再次点击删除确认。'), 'warn');
-            return;
-        }
-        wildcardsV2SetStatus(modal, t('Deleting personal wildcard...', '正在删除个人通配符...'), '');
-        const deleted = await apiPersonalWildcards({ action: 'delete', name, user_context: getWorkbenchUserContext() });
-        if (!deleted?.ok) {
-            wildcardsV2SetStatus(modal, deleted?.error || t('Delete failed.', '删除失败。'), 'error');
-            return;
-        }
-        personal.name = '';
-        personal.content = '';
-        personal.deleteArmed = false;
-        await refreshWildcardsV2PersonalList(modal);
-        await refreshWildcardsV2Catalog(modal);
-        renderWildcardsV2Detail(modal);
-        wildcardsV2SetStatus(modal, deleted.message || t('Deleted.', '已删除。'), 'ok');
-    }
-
-    function insertWildcardsV2Text(modal, text) {
-        const state = modal?.__wildcardsV2State;
-        const node = getNode(state?.nodeId || '');
-        const value = String(text || '').trim();
-        if (!state || !node || !['preset', 'classic'].includes(node.type)) {
-            wildcardsV2SetStatus(modal, t('No prompt target is available.', '没有可插入的提示词目标。'), 'warn');
-            return false;
-        }
-        if (!value) {
-            wildcardsV2SetStatus(modal, t('Nothing to insert.', '没有可插入内容。'), 'warn');
-            return false;
-        }
-        appendWildcardTagToNodeParam(node, state.slot || 'prompt', value);
-        wildcardsV2SetStatus(modal, t('Inserted: {text}', '已插入：{text}').replace('{text}', value), 'ok');
-        return true;
-    }
-
-    function applyWildcardsV2NameToHelper(modal, name) {
-        const state = modal?.__wildcardsV2State;
-        const node = getNode(state?.nodeId || '');
-        const value = String(name || '').trim();
-        if (!state || !node || node.type !== 'wildcards_helper' || !value || isNodeLocked(node)) return false;
-        updateWildcardsHelperParam(node.id, 'name', value, 'text');
-        state.helper.name = value;
-        renderWildcardsV2List(modal);
-        renderWildcardsV2Detail(modal);
-        wildcardsV2SetStatus(modal, t('Applied to helper: {name}', '已用于 Helper：{name}').replace('{name}', value), 'ok');
-        return true;
-    }
-
-    function bindWildcardsV2Panel(modal) {
-        modal.addEventListener('click', async (evt) => {
-            if (evt.target === modal) {
-                evt.preventDefault();
-                closeWildcardsV2Panel();
-                return;
-            }
-            const row = evt.target.closest('[data-wildcards-v2-name]');
-            const action = evt.target.closest('[data-wildcards-v2-action]')?.getAttribute('data-wildcards-v2-action') || '';
-            const tab = evt.target.closest('[data-wildcards-v2-tab]')?.getAttribute('data-wildcards-v2-tab') || '';
-            const state = modal.__wildcardsV2State;
-            if (tab) {
-                evt.preventDefault();
-                state.tab = tab;
-                renderWildcardsV2Detail(modal);
-                return;
-            }
-            if (!action) return;
-            evt.preventDefault();
-            if (action === 'close') closeWildcardsV2Panel();
-            else if (action === 'refresh-catalog') await refreshWildcardsV2Catalog(modal);
-            else if (action === 'select-name' && row) {
-                state.helper.name = row.getAttribute('data-wildcards-v2-name') || '';
-                renderWildcardsV2List(modal);
-                renderWildcardsV2Detail(modal);
-            } else if (action === 'insert-name' && row) {
-                const name = row.getAttribute('data-wildcards-v2-name') || '';
-                if (!applyWildcardsV2NameToHelper(modal, name)) insertWildcardsV2Text(modal, name ? `__${name}__` : '');
-            } else if (action === 'insert-selected') {
-                const name = wildcardsV2HelperParams(state).name;
-                insertWildcardsV2Text(modal, name ? `__${name}__` : '');
-            } else if (action === 'insert-built') {
-                insertWildcardsV2Text(modal, wildcardsV2BuiltTag(state));
-            } else if (action === 'insert-raw') {
-                insertWildcardsV2Text(modal, state.rawExpression || '');
-            } else if (action === 'create-helper') {
-                const source = getNode(state.nodeId || '');
-                const world = source ? { x: (source.x || 0) - 380, y: source.y || 0 } : viewportCenterWorld();
-                addWildcardsHelperNode(world, { params: wildcardsV2HelperParams(state) });
-                wildcardsV2SetStatus(modal, t('Helper node created.', '已创建 Helper 节点。'), 'ok');
-            } else if (action === 'personal-load') {
-                await loadWildcardsV2Personal(modal, state.personal.name);
-            } else if (action === 'personal-save') {
-                await saveWildcardsV2Personal(modal);
-            } else if (action === 'personal-delete') {
-                await deleteWildcardsV2Personal(modal);
-            } else if (action === 'personal-refresh') {
-                await refreshWildcardsV2PersonalList(modal);
-                renderWildcardsV2Detail(modal);
-                wildcardsV2SetStatus(modal, t('Personal wildcard list refreshed.', '个人通配符列表已刷新。'), 'ok');
-            }
-        });
-        modal.addEventListener('input', (evt) => {
-            const state = modal.__wildcardsV2State;
-            const query = evt.target.closest('[data-wildcards-v2-query]');
-            const helper = evt.target.closest('[data-wildcards-v2-helper]');
-            const raw = evt.target.closest('[data-wildcards-v2-raw]');
-            const personalName = evt.target.closest('[data-wildcards-v2-personal-name]');
-            const personalContent = evt.target.closest('[data-wildcards-v2-personal-content]');
-            if (query) {
-                state.query = query.value || '';
-                renderWildcardsV2List(modal);
-            } else if (helper) {
-                state.helper[helper.getAttribute('data-wildcards-v2-helper')] = helper.value;
-                renderWildcardsV2List(modal);
-                refreshWildcardsV2ExpressionControls(modal);
-            } else if (raw) {
-                state.rawExpression = raw.value || '';
-                refreshWildcardsV2ExpressionControls(modal);
-            } else if (personalName) {
-                state.personal.name = personalName.value || '';
-                state.personal.deleteArmed = false;
-                refreshWildcardsV2PersonalControls(modal);
-            } else if (personalContent) {
-                state.personal.content = personalContent.value || '';
-                state.personal.deleteArmed = false;
-            }
-        });
-        modal.addEventListener('change', async (evt) => {
-            const state = modal.__wildcardsV2State;
-            const helper = evt.target.closest('[data-wildcards-v2-helper]');
-            const personalSelect = evt.target.closest('[data-wildcards-v2-personal-select]');
-            if (helper) {
-                state.helper[helper.getAttribute('data-wildcards-v2-helper')] = helper.value;
-                renderWildcardsV2Expression(modal);
-            } else if (personalSelect) {
-                state.personal.name = personalSelect.value || '';
-                state.personal.deleteArmed = false;
-                if (state.personal.name) await loadWildcardsV2Personal(modal, state.personal.name);
-                else {
-                    state.personal.content = '';
-                    renderWildcardsV2Personal(modal);
-                }
-            }
-        });
-        modal.addEventListener('keydown', (evt) => {
-            evt.stopPropagation();
-            if (evt.key === 'Escape') {
-                evt.preventDefault();
-                closeWildcardsV2Panel();
-            }
-        }, true);
-    }
-
-    async function openWildcardsV2Panel(node, slot, options) {
-        const opts = options || {};
-        closeContextMenu();
-        closeWildcardsV2Panel();
-        const modal = document.createElement('div');
-        modal.className = `sai-canvas-modal sai-wildcards-v2-modal ${detectWorkbenchTheme() === 'dark' ? 'theme-dark' : ''}`;
-        const probe = { id: `${node?.id || 'wildcards_v2'}:wildcards_v2_open`, type: 'wildcards_helper', params: {}, wildcards_catalog: node?.wildcards_catalog || null };
-        const catalog = await refreshWildcardsCatalog(probe, { force: !probe.wildcards_catalog, render: false });
-        if (node && catalog) Object.assign(node, buildWildcardsHelperStatePatch(node, { wildcardsCatalog: catalog }));
-        const names = wildcardsV2NamesFromCatalog(catalog);
-        const personal = { available: typeof apiPersonalWildcards === 'function', canManage: false, keys: [], name: '', content: '', deleteArmed: false };
-        modal.__wildcardsV2State = {
-            modal,
-            nodeId: node?.id || '',
-            slot: slot || 'prompt',
-            catalog,
-            names,
-            query: '',
-            tab: opts.tab || 'insert',
-            rawExpression: '',
-            helper: {
-                target: 'Single in prompt',
-                method: 'Random Select',
-                seed_mode: 'Fixed seed',
-                name: opts.name || names[0] || '',
-                count: 1,
-                start: 1,
-                group_size: 1
-            },
-            personal,
-            status: names.length ? t('Ready.', '就绪。') : t('No wildcard catalog loaded.', '未载入通配符目录。'),
-            statusTone: names.length ? 'ok' : 'warn'
-        };
-        wildcardsV2State = modal.__wildcardsV2State;
-        (root || document.body).appendChild(modal);
-        if (personal.available) {
-            await refreshWildcardsV2PersonalList(modal);
-            if (opts.tab === 'manager' && modal.__wildcardsV2State.personal.name) {
-                await loadWildcardsV2Personal(modal, modal.__wildcardsV2State.personal.name);
-            }
-        }
-        renderWildcardsV2Panel(modal);
-        bindWildcardsV2Panel(modal);
-        window.setTimeout(() => modal.querySelector('[data-wildcards-v2-query]')?.focus(), 0);
-    }
-
-    async function openWildcardsInsertMenu(node, slot, anchor) {
-        if (!node || !['preset', 'classic'].includes(node.type)) return;
-        await openWildcardsV2Panel(node, slot || 'prompt', { tab: 'insert', anchor });
-    }
-
     function appendWildcardTagToNodeParam(node, slot, tag) {
         if (!node || !tag || isNodeLocked(node)) return;
         const key = slot === 'negative_prompt' ? 'negative_prompt' : 'prompt';
         const value = String(node.params?.[key] || '').trim();
         updateNodeParam(node.id, key, value ? `${value} ${tag}` : tag, 'textarea');
         mutate({ inspector: true });
-    }
-
-    function promptAndAppendWildcardTag(node, slot) {
-        openWildcardsV2Panel(node, slot || 'prompt', { tab: 'insert' });
-    }
-
-    async function openWildcardsManager(node) {
-        await openWildcardsV2Panel(node, 'prompt', { tab: 'manager' });
     }
 
     function openNodeContextMenu(node, x, y) {
@@ -19631,7 +19359,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (key === 'classic') return addClassicNode({ name: 'default', display_name: t('Classic', '经典'), backend_engine: 'Fooocus', engine_type: 'image' }, nodeWorld);
         if (key === 'timeline') return addTimelineNode(nodeWorld);
         if (key === 'qwen_tts') return addQwenTtsNode('voice_design', nodeWorld);
-        pendingInputTarget = null;
+        clearPendingInputTarget();
         return null;
     }
 
@@ -20260,45 +19988,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return items.find(item => String(item.id || '') === selectedId) || null;
     }
 
-    function captureMediaBrowserScroll(scope, memoryKey) {
-        const grid = scope?.querySelector?.('.sai-media-browser-grid') || null;
-        if (!grid) return memoryKey ? (mediaBrowserScrollMemory.get(memoryKey) || null) : null;
-        const state = {
-            top: grid.scrollTop || 0,
-            left: grid.scrollLeft || 0,
-            height: grid.scrollHeight || 0,
-            clientHeight: grid.clientHeight || 0,
-            capturedAt: performance.now()
-        };
-        if (memoryKey) mediaBrowserScrollMemory.set(memoryKey, state);
-        return state;
-    }
-
-    function restoreMediaBrowserScroll(scope, state, memoryKey) {
-        const target = state || (memoryKey ? mediaBrowserScrollMemory.get(memoryKey) : null);
-        if (!target) return;
-        const applyRestore = () => {
-            const grid = scope?.querySelector?.('.sai-media-browser-grid') || null;
-            if (!grid) return false;
-            const maxTop = Math.max(0, (grid.scrollHeight || 0) - (grid.clientHeight || 0));
-            grid.scrollTop = Math.min(Math.max(0, Number(target.top || 0)), maxTop);
-            grid.scrollLeft = Math.max(0, Number(target.left || 0));
-            if (memoryKey) {
-                mediaBrowserScrollMemory.set(memoryKey, Object.assign({}, target, {
-                    top: grid.scrollTop || 0,
-                    left: grid.scrollLeft || 0,
-                    height: grid.scrollHeight || 0,
-                    clientHeight: grid.clientHeight || 0,
-                    capturedAt: performance.now()
-                }));
-            }
-            return true;
-        };
-        if (!applyRestore()) return;
-        requestAnimationFrame(applyRestore);
-        window.setTimeout(applyRestore, 180);
-    }
-
     function openMediaBrowserPanel(world, initialState) {
         const existing = document.querySelector('.sai-media-browser-modal');
         if (existing) existing.remove();
@@ -20470,49 +20159,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         const data = modal?.__mediaBrowserData || {};
         if (!data.has_more || modal.__mediaBrowserLoadingMore) return;
         loadMoreMediaBrowserPanel(modal).catch((err) => console.warn('[SimpAI Canvas] media browser modal stream load failed', err));
-    }
-
-    function primeMediaBrowserThumbImages(modal) {
-        const images = Array.from(modal?.querySelectorAll?.('.sai-media-browser-thumb img') || []).slice(0, 48);
-        images.forEach((img, index) => {
-            try {
-                img.loading = 'eager';
-                img.fetchPriority = index < 16 ? 'high' : 'auto';
-                if (typeof img.decode === 'function' && !img.complete) img.decode().catch(() => {});
-            } catch (err) {}
-        });
-    }
-
-    function nudgeMediaBrowserPaint(modal) {
-        const grid = modal?.querySelector?.('.sai-media-browser-grid');
-        if (!grid) return;
-        try {
-            grid.style.transform = 'translateZ(0)';
-            grid.getBoundingClientRect();
-            requestAnimationFrame(() => {
-                if (grid.isConnected) grid.style.transform = '';
-            });
-        } catch (err) {}
-    }
-
-    function scheduleMediaBrowserPaintRefresh(modal) {
-        if (!modal || !modal.isConnected) return;
-        const seq = (Number(modal.__mediaBrowserPaintSeq || 0) + 1);
-        modal.__mediaBrowserPaintSeq = seq;
-        requestAnimationFrame(() => {
-            if (!modal.isConnected || modal.__mediaBrowserPaintSeq !== seq) return;
-            primeMediaBrowserThumbImages(modal);
-            nudgeMediaBrowserPaint(modal);
-            window.setTimeout(() => {
-                if (!modal.isConnected || modal.__mediaBrowserPaintSeq !== seq) return;
-                renderMediaBrowserPanel(modal, false);
-                requestAnimationFrame(() => {
-                    if (!modal.isConnected || modal.__mediaBrowserPaintSeq !== seq) return;
-                    primeMediaBrowserThumbImages(modal);
-                    nudgeMediaBrowserPaint(modal);
-                });
-            }, 140);
-        });
     }
 
     function renderMediaBrowserPanel(modal, loading) {
@@ -20850,16 +20496,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return state;
     }
 
-    function scheduleMediaBrowserNodePaintRefresh(nodeId) {
-        if (!nodeId || !nodesLayer) return;
-        window.requestAnimationFrame(() => {
-            const nodeEl = nodesLayer?.querySelector?.(`[data-node-id="${CSS.escape(nodeId)}"]`);
-            if (!nodeEl) return;
-            primeMediaBrowserThumbImages(nodeEl);
-            nudgeMediaBrowserPaint(nodeEl);
-        });
-    }
-
     async function refreshMediaBrowserNode(node, options) {
         if (!node || node.type !== 'media_browser') return null;
         const runtime = mediaBrowserRuntimeFor(node.id);
@@ -21056,140 +20692,61 @@ ${renderGenerationMetadataInspectorSection(node)}
         return true;
     }
 
-    async function fetchDanbooruGalleryPosts(state) {
-        const params = new URLSearchParams();
-        params.set('search[tags]', state.danbooruQuery || '');
-        params.set('limit', '40');
-        params.set('page', String(Math.max(1, Number(state.page || 1))));
-        if (state.rating && state.rating !== 'all') params.set('search[rating]', state.rating);
-        const response = await fetch(`${DANBOORU_GALLERY_ENDPOINT}/posts?${params.toString()}`);
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch (err) {
-            payload = null;
+    const DANBOORU_GALLERY_CONTEXT_SOURCE = {
+        configSource: {
+            endpoint: DANBOORU_GALLERY_ENDPOINT
+        },
+        languageSource: {
+            t
+        },
+        networkSource: {
+            fetch: typeof window.fetch === 'function' ? window.fetch.bind(window) : null
+        },
+        browserSource: {
+            File: typeof File === 'function' ? File : null,
+            URLSearchParams: typeof URLSearchParams === 'function' ? URLSearchParams : null
+        },
+        timeSource: {
+            now: () => Date.now(),
+            nowIso
+        },
+        nodeSource: {
+            addMediaNodeFromFile
+        },
+        viewportSource: {
+            viewportCenterWorld
+        },
+        metadataSource: {
+            mediaBrowserItemMetadata
+        },
+        patchSource: {
+            buildMediaNodeStatePatch,
+            buildMediaNodeSourcePatch,
+            buildAssetMetadataPatch
+        },
+        runtimeSource: {
+            mutate
+        },
+        uiSource: {
+            showToast
         }
-        if (!response.ok || payload?.ok === false) {
-            const detail = String(payload?.details || '').replace(/\s+/g, ' ').slice(0, 240);
-            const message = payload?.error
-                ? (detail ? `${payload.error}: ${detail}` : payload.error)
-                : (detail || `Danbooru Gallery HTTP ${response.status}`);
-            throw new Error(message);
-        }
-        const posts = Array.isArray(payload) ? payload : (Array.isArray(payload?.posts) ? payload.posts : (Array.isArray(payload?.items) ? payload.items : []));
-        const items = (Array.isArray(posts) ? posts : []).map(normalizeDanbooruBrowserPost).filter(Boolean);
-        const page = Math.max(1, Number(state.page || 1) || 1);
-        const hasMore = payload && typeof payload.has_more === 'boolean' ? payload.has_more : items.length >= 40;
-        const nextPage = payload?.next_page || (hasMore ? page + 1 : null);
-        return { ok: true, items, page, has_more: hasMore, next_page: nextPage };
-    }
-
-    function danbooruGalleryImageProxyUrl(url) {
-        return `${DANBOORU_GALLERY_ENDPOINT}/image-proxy?url=${encodeURIComponent(url || '')}`;
-    }
-
-    function normalizeDanbooruBrowserPost(post) {
-        if (!post || !post.id) return null;
-        const previewUrl = post.preview_file_url
-            ? danbooruGalleryImageProxyUrl(post.preview_file_url + (post.md5 ? `?v=${post.md5}` : ''))
-            : '';
-        const fullUrl = post.file_url || post.large_file_url || post.preview_file_url || '';
-        const title = `danbooru_${post.id}.${post.file_ext || danbooruPostExtension(post)}`;
-        const prompt = danbooruPostPrompt(post);
-        return {
-            id: `danbooru:${post.id}`,
-            name: title,
-            title,
-            media_type: danbooruPostMediaType(post),
-            preview_url: previewUrl,
-            file_url: fullUrl,
-            post_url: `https://danbooru.donmai.us/posts/${post.id}`,
-            rating: post.rating || '',
-            width: post.image_width || null,
-            height: post.image_height || null,
-            size: post.file_size || 0,
-            prompt,
-            generation_metadata: {
-                ok: true,
-                source: 'danbooru',
-                prompt,
-                parameters: {
-                    post_id: post.id,
-                    rating: post.rating || '',
-                    score: post.score || '',
-                    source: post.source || ''
-                },
-                raw_keys: ['tag_string_character', 'tag_string_copyright', 'tag_string_general', 'tag_string_meta']
-            },
-            raw: post
-        };
-    }
-
-    function danbooruPostExtension(post) {
-        const ext = String(post?.file_ext || '').trim().toLowerCase();
-        if (ext) return ext;
-        const url = String(post?.file_url || post?.large_file_url || post?.preview_file_url || '').split(/[?#]/, 1)[0];
-        return (url.match(/\.([a-z0-9]+)$/i)?.[1] || 'jpg').toLowerCase();
-    }
-
-    function danbooruPostMediaType(post) {
-        const ext = danbooruPostExtension(post);
-        return ['webm', 'mp4', 'mov'].includes(ext) ? 'video' : 'image';
-    }
-
-    function danbooruPostPrompt(post) {
-        if (!post) return '';
-        const groups = [
-            post.tag_string_character,
-            post.tag_string_copyright,
-            post.tag_string_general,
-            post.tag_string_meta,
-        ].filter(Boolean).join(' ');
-        const source = groups || post.tag_string || '';
-        return source.split(/\s+/).map(tag => tag.trim()).filter(Boolean).join(', ');
-    }
-
-    async function importDanbooruGalleryPost(item, world) {
-        const url = item.file_url || item.preview_url || '';
-        if (!url) {
-            showToast(t('Danbooru post has no importable file URL.', '该 Danbooru 条目没有可导入文件地址。'));
-            return null;
-        }
-        showToast(t('Importing Danbooru media...', '正在导入 Danbooru 媒体...'));
-        const proxyUrl = danbooruGalleryImageProxyUrl(url);
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(`Danbooru media HTTP ${response.status}`);
-        const blob = await response.blob();
-        const ext = danbooruPostExtension(item.raw || item);
-        const mime = blob.type || (item.media_type === 'video' ? 'video/mp4' : 'image/jpeg');
-        const file = new File([blob], item.name || `danbooru_${Date.now()}.${ext}`, { type: mime });
-        const node = await addMediaNodeFromFile(file, world || viewportCenterWorld());
-        if (node) {
-            const generationMetadata = mediaBrowserItemMetadata(item);
-            Object.assign(node, buildMediaNodeStatePatch(node, { title: item.name || node.title }));
-            Object.assign(node, buildMediaNodeSourcePatch(node, {
-                kind: 'danbooru_gallery',
-                post_id: String(item.raw?.id || '').trim(),
-                post_url: item.post_url || '',
-                original_url: url,
-                prompt: item.prompt || '',
-                generation_metadata: generationMetadata,
-                imported_at: nowIso()
-            }));
-            if (node.asset) {
-                Object.assign(node, buildMediaNodeStatePatch(node, {
-                    asset: buildAssetMetadataPatch(node.asset, {
-                        original_url: url,
-                        danbooru_post_id: item.raw?.id || '',
-                        generation_metadata: generationMetadata
-                    })
-                }));
-            }
-            mutate({ inspector: true });
-        }
-        showToast(t('Danbooru media added to canvas.', 'Danbooru 媒体已加入画布。'));
-        return node;
-    }
+    };
+    const DANBOORU_GALLERY_CONTROLLER = typeof WORKBENCH_DANBOORU_GALLERY.createCanvasDanbooruGalleryController === 'function'
+        ? WORKBENCH_DANBOORU_GALLERY.createCanvasDanbooruGalleryController({
+            danbooruGallerySource: DANBOORU_GALLERY_CONTEXT_SOURCE
+        })
+        : {};
+    const fetchDanbooruGalleryPosts = (...args) => typeof DANBOORU_GALLERY_CONTROLLER.fetchDanbooruGalleryPosts === 'function'
+        ? DANBOORU_GALLERY_CONTROLLER.fetchDanbooruGalleryPosts(...args)
+        : Promise.reject(new Error('Danbooru gallery controller is unavailable'));
+    const danbooruGalleryImageProxyUrl = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruGalleryImageProxyUrl?.(...args) || '';
+    const normalizeDanbooruBrowserPost = (...args) => DANBOORU_GALLERY_CONTROLLER.normalizeDanbooruBrowserPost?.(...args) || null;
+    const danbooruPostExtension = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostExtension?.(...args) || 'jpg';
+    const danbooruPostMediaType = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostMediaType?.(...args) || 'image';
+    const danbooruPostPrompt = (...args) => DANBOORU_GALLERY_CONTROLLER.danbooruPostPrompt?.(...args) || '';
+    const importDanbooruGalleryPost = (...args) => typeof DANBOORU_GALLERY_CONTROLLER.importDanbooruGalleryPost === 'function'
+        ? DANBOORU_GALLERY_CONTROLLER.importDanbooruGalleryPost(...args)
+        : Promise.resolve(null);
 
     async function copySelectedMediaBrowserPrompt(modal) {
         const item = selectedMediaBrowserItem(modal);
@@ -22334,7 +21891,8 @@ ${renderGenerationMetadataInspectorSection(node)}
             showToast
         },
         timeSource: {
-            nowIso
+            nowIso,
+            formatLocalTime
         }
     };
 
@@ -22480,7 +22038,7 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function closePresetPalette() {
         if (palette) palette.hidden = true;
-        pendingInputTarget = null;
+        clearPendingInputTarget();
     }
 
     function renderPresetPalette() {
@@ -23167,7 +22725,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             showToast(t('Locked node cannot be edited.', '已锁定节点无法编辑。'));
             return;
         }
-        const foundStyle = styleSelectorStyleByName?.(styleName);
+        const foundStyle = styleSelectorStyleByName?.(styleName, STYLE_SELECTOR_NODE_CONTEXT);
         if (!foundStyle) {
             showToast(t('Style not found.', '未找到该风格。'));
             return;
@@ -25542,28 +25100,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return hasList || !!requirements.has_model_probe;
     }
 
-    function scheduleAutoPresetModelChecks() {
-        const nodes = project.nodes.filter(shouldAutoCheckPresetModels);
-        nodes.forEach((node, index) => {
-            if (autoModelCheckQueued.has(node.id)) return;
-            autoModelCheckQueued.add(node.id);
-            window.setTimeout(async () => {
-                const current = getNode(node.id);
-                if (!shouldAutoCheckPresetModels(current)) {
-                    autoModelCheckQueued.delete(node.id);
-                    return;
-                }
-                try {
-                    await checkPresetModelStatus(current);
-                } catch (err) {
-                    console.warn('[SimpAI Canvas] auto model check failed:', err);
-                } finally {
-                    autoModelCheckQueued.delete(node.id);
-                }
-            }, 500 + index * 350);
-        });
-    }
-
     async function queuePresetModelDownloads(node, options) {
         if (!node || !['preset', 'classic'].includes(node.type)) return { ok: false, error: 'preset node is unavailable' };
         Object.assign(node, buildPresetModelStatusPatch(node, {
@@ -25588,9 +25124,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             const latest = getNode(node.id) || node;
             showToast(response.message || t('Model downloads queued.', '模型下载任务已加入。'));
             openMainMissingModelListForPreset(latest);
-            [1200, 3200, 6500].forEach((delay) => {
-                window.setTimeout(() => openMainMissingModelListForPreset(getNode(node.id) || latest), delay);
-            });
+            schedulePresetModelListRefreshes(node.id, latest);
         } else {
             showToast(t('Model download queue failed: {error}', '模型下载任务加入失败：{error}').replace('{error}', response?.error || response?.details || 'unknown error'));
         }
@@ -25829,71 +25363,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         );
         if (!ready) return null;
         return livePortraitOpenEditor(node, LIVEPORTRAIT_EXPRESSION_NODE_CONTEXT);
-    }
-
-    function waitForCanvasVideoEvent(target, eventName, timeoutMs) {
-        return new Promise((resolve) => {
-            if (!target?.addEventListener) {
-                resolve(false);
-                return;
-            }
-            let done = false;
-            let timer = null;
-            const finish = (value) => {
-                if (done) return;
-                done = true;
-                if (timer) window.clearTimeout(timer);
-                target.removeEventListener(eventName, onEvent);
-                target.removeEventListener('error', onError);
-                resolve(value);
-            };
-            const onEvent = () => finish(true);
-            const onError = () => finish(false);
-            target.addEventListener(eventName, onEvent, { once: true });
-            target.addEventListener('error', onError, { once: true });
-            timer = window.setTimeout(() => finish(false), timeoutMs || 2200);
-        });
-    }
-
-    async function extractVideoFirstFrameDataUrl(src) {
-        const sourceUrl = String(src || '').trim();
-        if (!sourceUrl) return null;
-        const video = document.createElement('video');
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = 'auto';
-        video.crossOrigin = 'anonymous';
-        video.src = sourceUrl;
-        try {
-            try { video.load?.(); } catch (err) {}
-            const loaded = (video.readyState >= 2 && video.videoWidth && video.videoHeight)
-                || await waitForCanvasVideoEvent(video, 'loadeddata', 2600);
-            if (!loaded || !video.videoWidth || !video.videoHeight) return null;
-            const duration = Number(video.duration || 0);
-            if (Number.isFinite(duration) && duration > 0.001 && Math.abs(Number(video.currentTime || 0)) > 0.04) {
-                const seeked = waitForCanvasVideoEvent(video, 'seeked', 1800);
-                try { video.currentTime = 0; } catch (err) {}
-                await seeked;
-            }
-            const width = Number(video.videoWidth || 0);
-            const height = Number(video.videoHeight || 0);
-            if (!width || !height) return null;
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            canvas.getContext('2d').drawImage(video, 0, 0, width, height);
-            return {
-                dataUrl: canvas.toDataURL('image/png'),
-                width,
-                height
-            };
-        } catch (err) {
-            return null;
-        } finally {
-            try { video.pause?.(); } catch (err) {}
-            video.removeAttribute('src');
-            try { video.load?.(); } catch (err) {}
-        }
     }
 
     async function openLivePortraitVideoExpressionPresetEditor(node) {
@@ -26454,34 +25923,27 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     function pollQwenTtsRun(runId, resultNodeId, qwenNodeId, options) {
-        if (!runId || activeCanvasPolls.has(runId)) return Promise.resolve({ ok: false, error: 'run is already polling' });
-        activeCanvasPolls.add(runId);
         const opts = options || {};
-        return new Promise((resolve) => {
-            const tick = async () => {
-                const result = await sendCanvasQwenTtsPollRequest(runId);
-                applyQwenTtsRunStatus(runId, resultNodeId, qwenNodeId, result);
-                const state = result?.state || 'failed';
-                if (result && result.ok && !['finished', 'failed', 'canceled', 'skipped'].includes(state)) {
-                    window.setTimeout(tick, 1200);
-                } else if (state === 'finished') {
-                    activeCanvasPolls.delete(runId);
-                    showToast('Qwen TTS finished.');
-                    resolve({ ok: true, state, result, result_node_id: resultNodeId, qwen_tts_node_id: qwenNodeId });
-                } else if (state === 'canceled' || state === 'skipped') {
-                    activeCanvasPolls.delete(runId);
-                    showToast(`Qwen TTS ${state}.`);
-                    resolve({ ok: false, state, error: `Qwen TTS ${state}.`, result });
-                } else if (state === 'failed') {
-                    activeCanvasPolls.delete(runId);
-                    showToast(`Qwen TTS failed: ${result?.message || result?.error || 'unknown error'}`);
-                    resolve({ ok: false, state, error: result?.message || result?.error || 'unknown error', result });
-                } else {
-                    activeCanvasPolls.delete(runId);
-                    resolve({ ok: false, state, error: 'Qwen TTS stopped polling.', result });
-                }
-            };
-            window.setTimeout(tick, opts.initialDelayMs ?? 900);
+        return pollRunWithController(runId, {
+            initialDelayMs: opts.initialDelayMs ?? 900,
+            intervalMs: opts.intervalMs ?? 1200,
+            poll: () => sendCanvasQwenTtsPollRequest(runId),
+            onResult: (result) => applyQwenTtsRunStatus(runId, resultNodeId, qwenNodeId, result),
+            getState: (result) => result?.state || 'failed',
+            onFinished: (result, state) => {
+                showToast('Qwen TTS finished.');
+                return { ok: true, state, result, result_node_id: resultNodeId, qwen_tts_node_id: qwenNodeId };
+            },
+            onCanceled: (result, state) => {
+                showToast(`Qwen TTS ${state}.`);
+                return { ok: false, state, error: `Qwen TTS ${state}.`, result };
+            },
+            onFailed: (result, state) => {
+                const error = result?.message || result?.error || 'unknown error';
+                showToast(`Qwen TTS failed: ${error}`);
+                return { ok: false, state, error, result };
+            },
+            onStopped: (result, state) => ({ ok: false, state, error: 'Qwen TTS stopped polling.', result })
         });
     }
 
@@ -27519,15 +26981,15 @@ ${renderGenerationMetadataInspectorSection(node)}
         }
         const opts = options || {};
         const runKey = node?.id || '';
-        if (runKey && pendingPresetRuns.has(runKey)) {
+        if (runKey && isPendingPresetRun(runKey)) {
             if (reconcilePresetRunCompletion(node)) {
                 mutate({ inspector: true });
             }
             const activeResultForPending = findActiveResultNodeForPreset(node);
-            const pendingAgeMs = Date.now() - Number(pendingPresetRunStartedAt.get(runKey) || Date.now());
-            if (!activeResultForPending && !isCanvasRunActiveState(nodeStatusState(node)) && pendingAgeMs > 15000) {
-                pendingPresetRuns.delete(runKey);
-                pendingPresetRunStartedAt.delete(runKey);
+            if (recoverStalePendingPresetRun(runKey, {
+                hasActiveResult: !!activeResultForPending,
+                hasActiveState: isCanvasRunActiveState(nodeStatusState(node))
+            })) {
                 showToast(t('Recovered a stale preparing lock; retrying run.', '已恢复一个过期的准备锁，正在重新运行。'), 2200);
             } else {
             selectedNodeId = node.id;
@@ -27557,15 +27019,13 @@ ${renderGenerationMetadataInspectorSection(node)}
             const directorPlan = directorContext && directorContext.segments.length >= 2 ? directorContext : null;
             if (directorPlan) {
                 if (runKey) {
-                    pendingPresetRuns.add(runKey);
-                    pendingPresetRunStartedAt.set(runKey, Date.now());
+                    markPendingPresetRun(runKey);
                 }
                 try {
                     return await runDirectorSegmentedPresetNode(node, directorPlan, opts);
                 } finally {
                     if (runKey) {
-                        pendingPresetRuns.delete(runKey);
-                        pendingPresetRunStartedAt.delete(runKey);
+                        clearPendingPresetRun(runKey);
                     }
                 }
             }
@@ -27584,8 +27044,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             return { ok: false, error: 'run already active' };
         }
         if (runKey) {
-            pendingPresetRuns.add(runKey);
-            pendingPresetRunStartedAt.set(runKey, Date.now());
+            markPendingPresetRun(runKey);
         }
         try {
         const preflight = await preflightDirectPresetRun(node, opts);
@@ -27709,8 +27168,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         return applyRunNodeResult(runId, resultNode.id, node.id, runResult, opts);
         } finally {
             if (runKey) {
-                pendingPresetRuns.delete(runKey);
-                pendingPresetRunStartedAt.delete(runKey);
+                clearPendingPresetRun(runKey);
             }
         }
     }
@@ -28675,81 +28133,31 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     function pollCanvasRun(runId, resultNodeId, presetNodeId, options) {
-        if (!runId || activeCanvasPolls.has(runId)) return Promise.resolve({ ok: false, error: 'run is already polling' });
-        activeCanvasPolls.add(runId);
         const opts = options || {};
-        return new Promise((resolve) => {
-        const tick = async () => {
-            const result = await sendCanvasPollRunRequest(runId, {
+        return pollRunWithController(runId, {
+            initialDelayMs: opts.initialDelayMs ?? 900,
+            intervalMs: opts.intervalMs ?? 1200,
+            poll: () => sendCanvasPollRunRequest(runId, {
                 after_preview_serial: resultPreviewLastSerial(resultNodeId)
-            });
-            applyCanvasRunStatus(runId, resultNodeId, presetNodeId, result);
-            const state = result?.state || 'failed';
-            if (result && result.ok && !['finished', 'failed', 'canceled', 'skipped'].includes(state)) {
-                window.setTimeout(tick, 1200);
-            } else if (state === 'finished') {
-                activeCanvasPolls.delete(runId);
+            }),
+            onResult: (result) => applyCanvasRunStatus(runId, resultNodeId, presetNodeId, result),
+            getState: (result) => result?.state || 'failed',
+            onFinished: (result, state) => {
                 refreshMainGalleryAfterCanvasRun(result);
                 showToast('Canvas task finished.');
-                resolve({ ok: true, state, result, result_node_id: resultNodeId, preset_node_id: presetNodeId });
-            } else if (state === 'canceled' || state === 'skipped') {
-                activeCanvasPolls.delete(runId);
+                return { ok: true, state, result, result_node_id: resultNodeId, preset_node_id: presetNodeId };
+            },
+            onCanceled: (result, state) => {
                 showToast(`Canvas task ${state}.`);
-                resolve({ ok: false, state, error: `Canvas task ${state}.`, result });
-            } else if (state === 'failed') {
-                activeCanvasPolls.delete(runId);
-                showToast(`Canvas task failed: ${result?.message || result?.error || 'unknown error'}`);
-                resolve({ ok: false, state, error: result?.message || result?.error || 'unknown error', result });
-            } else {
-                activeCanvasPolls.delete(runId);
-                resolve({ ok: false, state, error: 'Canvas task stopped polling.', result });
-            }
-        };
-        window.setTimeout(tick, opts.initialDelayMs ?? 900);
+                return { ok: false, state, error: `Canvas task ${state}.`, result };
+            },
+            onFailed: (result, state) => {
+                const error = result?.message || result?.error || 'unknown error';
+                showToast(`Canvas task failed: ${error}`);
+                return { ok: false, state, error, result };
+            },
+            onStopped: (result, state) => ({ ok: false, state, error: 'Canvas task stopped polling.', result })
         });
-    }
-
-    function refreshMainGalleryAfterCanvasRun(result) {
-        const galleryEngineType = result?.gallery?.engine_type || 'image';
-        try {
-            if (typeof window.syncGalleryMediaSwitch === 'function') {
-                window.syncGalleryMediaSwitch(galleryEngineType, 2600);
-            }
-        } catch (err) {
-            console.warn('[SimpAI Canvas] gallery media switch sync skipped', err);
-        }
-        if (result?.gallery?.stat && typeof window.refresh_finished_images_catalog_label === 'function') {
-            try {
-                window.refresh_finished_images_catalog_label(result.gallery.stat, galleryEngineType);
-            } catch (err) {
-                console.warn('[SimpAI Canvas] catalog label refresh skipped', err);
-            }
-        }
-        try {
-            const trigger = (delay, fallback) => window.setTimeout(() => {
-                let clicked = false;
-                if (typeof clickGradioButton === 'function') clicked = clickGradioButton('canvas_gallery_refresh_btn');
-                const fallbackButtonId = galleryEngineType === 'video' ? 'gallery_videos_btn' : 'gallery_images_btn';
-                if (!clicked && fallback && typeof clickGradioButton === 'function') clicked = clickGradioButton(fallbackButtonId);
-                if (!clicked) {
-                    const app = typeof gradioApp === 'function' ? gradioApp() : document;
-                    const refreshButton = (app.getElementById ? app.getElementById('canvas_gallery_refresh_btn') : null)
-                        || document.getElementById('canvas_gallery_refresh_btn')
-                        || (fallback ? ((app.getElementById ? app.getElementById(fallbackButtonId) : null) || document.getElementById(fallbackButtonId)) : null);
-                    const button = refreshButton && refreshButton.matches && refreshButton.matches('button') ? refreshButton : refreshButton?.querySelector?.('button');
-                    if (button && typeof button.click === 'function') {
-                        button.click();
-                        clicked = true;
-                    }
-                }
-                console.info('[SimpAI Canvas] requested main gallery refresh', { clicked, delay, fallback, gallery: result?.gallery || null });
-            }, delay);
-            trigger(250, false);
-            trigger(1100, false);
-            trigger(2300, true);
-        } catch (err) {
-            console.warn('[SimpAI Canvas] gallery refresh failed', err);
-        }
     }
 
     function getSelectedResultAsset(node) {
@@ -28803,20 +28211,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (!text) return '';
         if (text.startsWith('data:')) return text;
         return `data:image/png;base64,${text}`;
-    }
-
-    function loadImageElementForCanvas(src) {
-        return new Promise((resolve, reject) => {
-            if (!src) {
-                reject(new Error('missing image source'));
-                return;
-            }
-            const image = new Image();
-            image.crossOrigin = 'anonymous';
-            image.onload = () => resolve(image);
-            image.onerror = reject;
-            image.src = src;
-        });
     }
 
     async function createAlphaMaskDataUrl(src, alphaThreshold, dilateRadius) {
@@ -29773,88 +29167,6 @@ ${renderGenerationMetadataInspectorSection(node)}
         return bits.length ? bits.join('') : '<span>Media</span><b>Metadata pending</b>';
     }
 
-    function findNearestVideoFrame(asset, time) {
-        const frames = Array.isArray(asset?.preview_frames) ? asset.preview_frames.filter(item => item && (item.thumb || item.data_url || inferChatImageRelativePath(item))) : [];
-        if (!frames.length) return null;
-        const target = Number(time || 0) || 0;
-        let best = frames[0];
-        let bestDist = Math.abs(Number(best.time || 0) - target);
-        frames.forEach((frame) => {
-            const dist = Math.abs(Number(frame.time || 0) - target);
-            if (dist < bestDist) {
-                best = frame;
-                bestDist = dist;
-            }
-        });
-        return best;
-    }
-
-    function showVideoScrubPreview(node, time) {
-        if (!node || node.type !== 'video') return;
-        const frame = findNearestVideoFrame(node.asset || {}, time);
-        if (!frame) return;
-        const src = safeAssetDisplaySrc(frame, frame.thumb || frame.data_url || '');
-        if (!src) return;
-        document.querySelectorAll(`[data-node-id="${CSS.escape(node.id)}"] [data-video-drag-preview]`).forEach((img) => {
-            img.src = src;
-            img.hidden = false;
-        });
-        if (mediaPreviewTimers.has(node.id)) clearTimeout(mediaPreviewTimers.get(node.id));
-        mediaPreviewTimers.set(node.id, setTimeout(() => hideVideoScrubPreview(node.id), 420));
-    }
-
-    function hideVideoScrubPreview(nodeId) {
-        if (!nodeId) return;
-        if (mediaPreviewTimers.has(nodeId)) {
-            clearTimeout(mediaPreviewTimers.get(nodeId));
-            mediaPreviewTimers.delete(nodeId);
-        }
-        document.querySelectorAll(`[data-node-id="${CSS.escape(nodeId)}"] [data-video-drag-preview]`).forEach((img) => {
-            img.hidden = true;
-        });
-    }
-
-    function seekNodeMediaPlayer(nodeId, time, options) {
-        const opts = options || {};
-        const el = nodesLayer?.querySelector(`[data-node-id="${CSS.escape(nodeId)}"] [data-media-player]`);
-        if (!el) return;
-        const node = getNode(nodeId);
-        let targetTime = Math.max(0, Number(time || 0) || 0);
-        if (node?.type === 'video') {
-            targetTime = normalizeVideoSeekTarget(node, targetTime);
-        }
-        if (node?.type === 'video' && !opts.immediate) {
-            showVideoScrubPreview(node, targetTime);
-            if (pendingMediaSeeks.has(nodeId)) clearTimeout(pendingMediaSeeks.get(nodeId));
-            pendingMediaSeeks.set(nodeId, setTimeout(() => {
-                pendingMediaSeeks.delete(nodeId);
-                seekNodeMediaPlayer(nodeId, targetTime, { immediate: true });
-            }, 140));
-            return;
-        }
-        try {
-            el.currentTime = targetTime;
-            if (node?.type === 'video') {
-                const onSeeked = () => hideVideoScrubPreview(nodeId);
-                el.addEventListener('seeked', onSeeked, { once: true });
-                setTimeout(() => hideVideoScrubPreview(nodeId), 700);
-            }
-        } catch (err) {
-            // Media may not be seekable until metadata is loaded.
-        }
-    }
-
-    function normalizeVideoSeekTarget(node, time) {
-        const range = getMediaEditRange(node?.asset || {});
-        if (!range.duration || !range.clipped) return time;
-        const fps = Math.max(1, Number(node?.asset?.fps || 0) || 30);
-        const endGuard = Math.min(0.08, Math.max(0.001, 0.5 / fps));
-        if (time >= range.end && range.end > range.start + endGuard) {
-            return Math.max(range.start, range.end - endGuard);
-        }
-        return time;
-    }
-
     async function reloadMediaNode(node) {
         if (!node || !['video', 'audio'].includes(node.type)) return;
         const type = node.type;
@@ -29896,16 +29208,6 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function isTerminalRunState(state) {
         return ['finished', 'failed', 'canceled', 'skipped'].includes(String(state || '').toLowerCase());
-    }
-
-    function showToast(message, durationMs) {
-        if (!toastEl) return;
-        toastEl.textContent = message;
-        toastEl.hidden = false;
-        clearTimeout(showToast._timer);
-        showToast._timer = setTimeout(() => {
-            if (toastEl) toastEl.hidden = true;
-        }, Math.max(1200, Number(durationMs || 1800)));
     }
 
     function connectUploadEdgeApi(fromId, toId, slot, options) {

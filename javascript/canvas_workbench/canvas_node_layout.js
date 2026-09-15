@@ -1,9 +1,6 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-
     function createCanvasNodeLayoutController(context) {
         const scope = context || {};
         const sourceObject = (name) => {
@@ -53,7 +50,9 @@
         const buildNodeLayoutPatch = typeof patchSource.buildNodeLayoutPatch === 'function'
             ? patchSource.buildNodeLayoutPatch
             : (_node, patch) => Object.assign({}, patch || {});
-        const clamp = typeof utilitySource.clamp === 'function' ? utilitySource.clamp : UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const clamp = typeof utilitySource.clamp === 'function'
+            ? utilitySource.clamp
+            : (value, min, max) => Math.max(min, Math.min(max, value));
         const collapsedPromptMinHeight = Math.max(1, Number(nodeSource.collapsedPromptMinHeight || 220));
 
         function applyNodeLayoutPatch(node, options) {

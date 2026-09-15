@@ -14,12 +14,11 @@
     }
 
     function getDocument(context) {
-        return call(context, 'getDocument', typeof document !== 'undefined' ? document : null);
+        return call(context, 'getDocument', null);
     }
 
     function schedule(context, ...args) {
         if (typeof context?.setTimeout === 'function') return context.setTimeout(...args);
-        if (typeof globalThis?.setTimeout === 'function') return globalThis.setTimeout(...args);
         return undefined;
     }
 
@@ -48,8 +47,8 @@
             escapeHtml: typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : (value => String(value ?? '')),
             getDocument: () => typeof domSource.getDocument === 'function'
                 ? domSource.getDocument()
-                : domSource.document || (typeof document !== 'undefined' ? document : null),
-            setTimeout: browserSource.setTimeout || (typeof globalThis?.setTimeout === 'function' ? globalThis.setTimeout : undefined),
+                : domSource.document || null,
+            setTimeout: typeof browserSource.setTimeout === 'function' ? browserSource.setTimeout : undefined,
             getProject: delegate(projectSource, 'getProject'),
             getNode: delegate(projectSource, 'getNode'),
             defaultNodeSize: delegate(viewportSource, 'defaultNodeSize'),

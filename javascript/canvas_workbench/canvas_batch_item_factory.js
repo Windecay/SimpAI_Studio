@@ -8,7 +8,7 @@
         const languageSource = scope.languageSource || {};
         const serializationSource = scope.serializationSource || {};
         const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-item`;
-        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => '';
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue

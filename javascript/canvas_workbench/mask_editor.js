@@ -18,27 +18,23 @@
     }
 
     function uid(context, prefix) {
-        const fallback = `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-        return call(context, 'uid', fallback, prefix);
+        return call(context, 'uid', '', prefix);
     }
 
     function nowIso(context) {
-        return call(context, 'nowIso', new Date().toISOString());
+        return call(context, 'nowIso', '');
     }
 
     function getDocument(context) {
-        return call(context, 'getDocument', typeof document !== 'undefined' ? document : null);
+        return call(context, 'getDocument', null);
     }
 
     function getImageConstructor(context) {
-        return typeof context?.Image === 'function'
-            ? context.Image
-            : (typeof Image !== 'undefined' ? Image : null);
+        return typeof context?.Image === 'function' ? context.Image : null;
     }
 
     function schedule(context, ...args) {
         if (typeof context?.setTimeout === 'function') return context.setTimeout(...args);
-        if (typeof globalThis?.setTimeout === 'function') return globalThis.setTimeout(...args);
         return undefined;
     }
 
@@ -65,9 +61,9 @@
             nowIso: typeof utilitySource.nowIso === 'function' ? utilitySource.nowIso : undefined,
             getDocument: () => typeof domSource.getDocument === 'function'
                 ? domSource.getDocument()
-                : domSource.document || (typeof document !== 'undefined' ? document : null),
-            Image: mediaSource.Image || (typeof Image !== 'undefined' ? Image : null),
-            setTimeout: mediaSource.setTimeout || (typeof globalThis?.setTimeout === 'function' ? globalThis.setTimeout : undefined),
+                : domSource.document || null,
+            Image: typeof mediaSource.Image === 'function' ? mediaSource.Image : null,
+            setTimeout: typeof mediaSource.setTimeout === 'function' ? mediaSource.setTimeout : undefined,
             applyImageFileToNode: delegate(nodeSource, 'applyImageFileToNode'),
             getNodeImageSrc: delegate(nodeSource, 'getNodeImageSrc'),
             buildMediaNodeStatePatch: delegate(nodeSource, 'buildMediaNodeStatePatch'),

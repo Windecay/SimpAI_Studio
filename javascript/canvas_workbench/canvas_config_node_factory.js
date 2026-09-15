@@ -7,7 +7,7 @@
         const timeSource = scope.timeSource || {};
         const serializationSource = scope.serializationSource || {};
         const uid = typeof identitySource.uid === 'function' ? identitySource.uid : (prefix) => `${prefix}-node`;
-        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => new Date().toISOString();
+        const nowIso = typeof timeSource.nowIso === 'function' ? timeSource.nowIso : () => '';
         const cloneRunValue = typeof serializationSource.cloneRunValue === 'function'
             ? serializationSource.cloneRunValue
             : ((value, fallback) => {

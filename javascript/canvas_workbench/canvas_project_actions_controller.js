@@ -70,6 +70,7 @@
             readFileAsText: requestSource,
             showToast: uiSource,
             warn: uiSource,
+            now: timeSource,
             nowIso: timeSource
         };
         const t = languageSource.t || ((en, cn) => cn || en);
@@ -323,7 +324,7 @@
             const storageKey = call('getStorageKey', '', []);
             const storage = Object.assign({}, currentProject.storage || call('buildProjectStorageInfo', {}, storageKey, storageScope), {
                 deleted_from_disk: true,
-                deleted_from_disk_at: call('nowIso', new Date().toISOString()),
+                deleted_from_disk_at: call('nowIso', ''),
                 location: t('{location} (browser cache kept)', '{location}（浏览器缓存保留）').replace('{location}', storageScope.location)
             });
             applyProjectStoragePatch(currentProject, storage);
@@ -357,10 +358,12 @@
             const currentId = String(call('sanitizeStoragePart', call('getCurrentProjectId', 'default', []), call('getCurrentProjectId', 'default', [])) || 'default').replace(/[:]/g, '_');
             const incomingId = String(call('sanitizeStoragePart', incoming?.id || '', incoming?.id || '') || '').replace(/[:]/g, '_');
             const fileId = projectIdFromWorkbenchFile(file);
-            let nextId = incomingId || fileId || `imported_${Date.now()}`;
+            const fallbackNow = () => call('now', 0, []);
+            let nextId = incomingId || fileId || `imported_${fallbackNow()}`;
             if (nextId === currentId) {
                 const base = fileId && fileId !== currentId ? fileId : `${currentId}_import`;
-                nextId = `${base}_${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+                const timestamp = String(call('nowIso', '', [])).replace(/[-:.TZ]/g, '').slice(0, 14);
+                nextId = `${base}_${timestamp || fallbackNow()}`;
             }
             return nextId;
         }

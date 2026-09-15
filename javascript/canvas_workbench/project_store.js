@@ -15,10 +15,12 @@
                 getUiLang: utils.getUiLang
             },
             utilitySource: {
-                nowIso: utils.nowIso,
                 clamp: utils.clamp,
                 sanitizeStoragePart: utils.sanitizeStoragePart,
                 shortIdentity: utils.shortIdentity
+            },
+            timeSource: {
+                nowIso: utils.nowIso
             },
             systemSource: {
                 getSystemParams: () => window.simpleaiTopbarSystemParams
@@ -107,6 +109,7 @@
         const configSource = scope.configSource || {};
         const languageSource = scope.languageSource || {};
         const utilitySource = scope.utilitySource || {};
+        const timeSource = scope.timeSource || {};
         const systemSource = scope.systemSource || {};
         const storageSource = scope.storageSource || {};
         const registrySource = scope.registrySource || {};
@@ -122,9 +125,9 @@
         const vlmChatStateSource = scope.vlmChatStateSource || {};
         const compareSource = scope.compareSource || {};
         const diagnosticsSource = scope.diagnosticsSource || {};
-        const nowIso = typeof utilitySource.nowIso === 'function'
-            ? utilitySource.nowIso
-            : (() => new Date().toISOString());
+        const nowIso = typeof timeSource.nowIso === 'function'
+            ? timeSource.nowIso
+            : () => '';
         const clamp = typeof utilitySource.clamp === 'function'
             ? utilitySource.clamp
             : ((value, min, max) => Math.max(min, Math.min(max, value)));

@@ -195,7 +195,7 @@
             const project = projectCall('getProject', {}) || {};
             const runs = (Array.isArray(project.runs) ? project.runs : [])
                 .slice()
-                .sort((a, b) => (Date.parse(b.updated_at || b.created_at || '') || 0) - (Date.parse(a.updated_at || a.created_at || '') || 0))
+                .sort((a, b) => (parseDate(b.updated_at || b.created_at || '') || 0) - (parseDate(a.updated_at || a.created_at || '') || 0))
                 .slice(0, 20)
                 .map(summarizeVlmAgentRun)
                 .filter(Boolean);
@@ -230,7 +230,7 @@
             const runId = target?.producer?.run_id || targetId || '';
             return runs.find(item => item.id === runId || item.run_id === runId)
                 || runs.find(item => item.placeholder_node_id === targetId || item.preset_node_id === targetId || item.qwen_tts_node_id === targetId || item.producer_node_id === targetId)
-                || runs.slice().sort((a, b) => (Date.parse(b.updated_at || b.created_at || '') || 0) - (Date.parse(a.updated_at || a.created_at || '') || 0))[0]
+                || runs.slice().sort((a, b) => (parseDate(b.updated_at || b.created_at || '') || 0) - (parseDate(a.updated_at || a.created_at || '') || 0))[0]
                 || null;
         }
 
@@ -623,7 +623,9 @@
         const buildVlmRunStatusPatch = (...args) => stateCall('buildVlmRunStatusPatch', {}, ...args);
         const buildVlmModelStatusPatch = (...args) => modelStatusCall('buildVlmModelStatusPatch', {}, ...args);
         const buildVlmModelCheckingStatus = (...args) => modelStatusCall('buildVlmModelCheckingStatus', null, ...args);
-        const nowIso = (...args) => utilityCall('nowIso', new Date().toISOString(), ...args);
+        const nowIso = (...args) => utilityCall('nowIso', '', ...args);
+        const now = (...args) => Number(utilityCall('now', 0, ...args)) || 0;
+        const parseDate = (...args) => Number(utilityCall('parseDate', 0, ...args)) || 0;
         const generatedResultNodesForPreset = (...args) => resultCall('generatedResultNodesForPreset', [], ...args);
         const resultNodeHasOutput = (...args) => resultCall('resultNodeHasOutput', false, ...args);
         const t = (...args) => {
@@ -2548,9 +2550,9 @@
             if (!status.ready) return false;
             const currentVersion = String(node?.params?.version || '').trim();
             if (currentVersion && String(status.version || '').trim() && String(status.version || '').trim() !== currentVersion) return false;
-            const checkedAt = Date.parse(status.checked_at || '');
+            const checkedAt = parseDate(status.checked_at || '');
             if (!Number.isFinite(checkedAt)) return false;
-            return Date.now() - checkedAt < getVlmModelStatusCacheTtlMs();
+            return now() - checkedAt < getVlmModelStatusCacheTtlMs();
         }
 
         async function runVlmNode(node) {
@@ -3328,7 +3330,7 @@
             const ownerId = node?.id || '';
             const workflowPresets = (Array.isArray(project.nodes) ? project.nodes : [])
                 .filter(item => item && ['preset', 'classic'].includes(item.type) && item.source?.agent_workflow_owner_node_id === ownerId)
-                .sort((a, b) => (Date.parse(b.source?.updated_at || b.source?.created_at || '') || 0) - (Date.parse(a.source?.updated_at || a.source?.created_at || '') || 0));
+                .sort((a, b) => (parseDate(b.source?.updated_at || b.source?.created_at || '') || 0) - (parseDate(a.source?.updated_at || a.source?.created_at || '') || 0));
             for (const preset of workflowPresets) {
                 const result = generatedResultNodesForPreset(preset).find(resultNode => resultNodeHasOutput(resultNode));
                 if (result) return result;
@@ -3416,7 +3418,7 @@
                 ? cleanMessages
                 : cleanMessages.concat(pendingVlmChatMessages(node)).slice(-40);
             const conversationId = uid('vlm_chat');
-            pushHistoryBatch(`vlm-chat-context-edit:${node.id}:${Date.now()}`, historyLabel || 'Edit VLM chat context');
+            pushHistoryBatch(`vlm-chat-context-edit:${node.id}:${now()}`, historyLabel || 'Edit VLM chat context');
             applyVlmChatState(node, {
                 messages: nextMessages,
                 conversationId,

@@ -4917,7 +4917,7 @@ with shared.gradio_root:
                                 elem_id="relight_light_scene_control_html",
                             )
 
-                        scene_video = gr.Video(label="Video (Upload)", visible=True, sources=["upload"], height=400, elem_id="scene_video", elem_classes=['simpai-mounted-hidden'])
+                        scene_video = gr.Video(label="Video (Upload)", visible=True, sources=["upload"], height=240, elem_id="scene_video", elem_classes=['simpai-mounted-hidden'])
                         scene_video_trim_payload = gr.Textbox(value="", visible="hidden", elem_id="scene_video_trim_payload", elem_classes=["sai-gradio-hidden-bridge"])
                         scene_video_first_frame_path = gr.Textbox(value="", visible="hidden", elem_id="scene_video_first_frame_path", elem_classes=["sai-gradio-hidden-bridge"])
                         scene_video_placeholder = gr.HTML('<div style="height: 400px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888; font-size: 16px;"><span>Hide When Generating...</span></div>', visible=False, elem_id="scene_video_placeholder")

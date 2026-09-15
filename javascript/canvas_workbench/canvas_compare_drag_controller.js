@@ -13,7 +13,7 @@
         const uiSource = scope.uiSource || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function'
             ? !!nodeSource.isNodeLocked(node)
@@ -22,8 +22,8 @@
             ? utilitySource.clamp
             : (value, min, max) => Math.max(min, Math.min(max, value));
         const getPerformanceNow = () => typeof utilitySource.performanceNow === 'function'
-            ? utilitySource.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+            ? Number(utilitySource.performanceNow()) || 0
+            : 0;
         const setSuppressWheelUntil = (...args) => typeof viewportSource.setSuppressWheelUntil === 'function'
             ? viewportSource.setSuppressWheelUntil(...args)
             : undefined;

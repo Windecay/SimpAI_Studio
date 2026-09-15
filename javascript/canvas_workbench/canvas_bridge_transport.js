@@ -15,22 +15,22 @@
             ? source[name](...args)
             : fallback;
         const bridgeRequests = new Map();
+        let requestSequence = 0;
         const getDocument = () => sourceCall(
             domSource,
             'getDocument',
-            typeof document !== 'undefined' ? document : null
+            null
         );
         const setValue = (...args) => sourceCall(transportSource, 'setGradioTextboxValue', false, ...args);
         const clickButton = (...args) => sourceCall(transportSource, 'clickGradioButton', false, ...args);
         const setTimer = (...args) => {
             if (typeof runtimeSource.setTimeout === 'function') return runtimeSource.setTimeout(...args);
-            return setTimeout(...args);
+            return 0;
         };
         const clearTimer = (...args) => {
             if (typeof runtimeSource.clearTimeout === 'function') return runtimeSource.clearTimeout(...args);
-            return clearTimeout(...args);
         };
-        const getNow = () => Number(sourceCall(runtimeSource, 'now', Date.now()));
+        const getNow = () => Number(sourceCall(runtimeSource, 'now', 0)) || 0;
         const hasTransport = () => typeof transportSource.setGradioTextboxValue === 'function'
             && typeof transportSource.clickGradioButton === 'function';
 
@@ -76,7 +76,7 @@
             }
             const requestId = typeof utilitySource.uid === 'function'
                 ? utilitySource.uid('canvas_req')
-                : `canvas_req_${getNow()}_${Math.random().toString(36).slice(2)}`;
+                : `canvas_req_${getNow()}_${++requestSequence}`;
             const body = JSON.stringify({
                 request_id: requestId,
                 action,

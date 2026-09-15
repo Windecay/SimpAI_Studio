@@ -16,9 +16,7 @@
         const call = (sourceObject, name, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : undefined;
-        const getDocument = () => typeof domSource.getDocument === 'function'
-            ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+        const getDocument = () => call(domSource, 'getDocument') || null;
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const isNodeLocked = (node) => typeof nodeSource.isNodeLocked === 'function' ? !!nodeSource.isNodeLocked(node) : false;
         const getClipAtTime = (clip, playhead) => typeof clipSource.getClipAtTime === 'function'

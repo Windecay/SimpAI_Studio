@@ -16,7 +16,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : () => '';
         const getCanvasAgentSettings = (...args) => call(settingsSource, 'getCanvasAgentSettings', {}, ...args) || {};
         const canvasAgentPromptTargetFromPurpose = (...args) => call(targetSource, 'canvasAgentPromptTargetFromPurpose', {}, ...args) || {};
         const canvasAgentPromptDefaultsForPurpose = (...args) => call(promptSource, 'canvasAgentPromptDefaultsForPurpose', {}, ...args) || {};

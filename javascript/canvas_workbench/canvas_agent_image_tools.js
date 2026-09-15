@@ -26,7 +26,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
         const normalizePresetName = utilitySource.normalizePresetName || (value => String(value || '').trim());
         const maxExtraImageReferences = () => Math.max(0, Number(call(configSource, 'getMaxExtraImageReferences', 0) || 0));
         const getDefaultT2iPresetQueue = () => {

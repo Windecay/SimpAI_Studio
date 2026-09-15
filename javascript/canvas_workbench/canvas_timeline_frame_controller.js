@@ -6,15 +6,15 @@
         const domSource = scope.domSource || {};
         const nodeSource = scope.nodeSource || {};
         const interactionSource = scope.interactionSource || {};
+        const timingSource = scope.timingSource || {};
         const mediaSource = scope.mediaSource || {};
         const renderSource = scope.renderSource || {};
         const maskSource = scope.maskSource || {};
         const call = (sourceObject, name, fallback, ...args) => typeof sourceObject[name] === 'function'
             ? sourceObject[name](...args)
             : fallback;
-        const getDocument = () => typeof domSource.getDocument === 'function'
-            ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+        const getDocument = () => call(domSource, 'getDocument', null);
+        const clearTimer = (timer) => call(timingSource, 'clearTimeout', undefined, timer);
         const getNode = (id) => call(nodeSource, 'getNode', null, id);
         const getNodesLayer = () => call(domSource, 'getNodesLayer', null);
         const clamp = typeof interactionSource.clamp === 'function'
@@ -79,11 +79,15 @@
                     if (done) return;
                     done = true;
                     media.removeEventListener(eventName, onEvent);
-                    clearTimeout(timer);
+                    clearTimer(timer);
                     resolve(ok);
                 };
                 const onEvent = () => finish(true);
-                const timer = setTimeout(() => finish(false), timeoutMs || 900);
+                const timer = call(timingSource, 'setTimeout', undefined, () => finish(false), timeoutMs || 900);
+                if (timer === undefined) {
+                    resolve(false);
+                    return;
+                }
                 media.addEventListener(eventName, onEvent, { once: true });
             });
         }

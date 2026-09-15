@@ -18,18 +18,17 @@
     }
 
     function getDocument(context) {
-        return call(context, 'getDocument', typeof document !== 'undefined' ? document : null);
+        return call(context, 'getDocument', null);
     }
 
     function getWindow(context) {
-        return call(context, 'getWindow', typeof window !== 'undefined' ? window : null);
+        return call(context, 'getWindow', null);
     }
 
     function scheduleFrame(context, callback) {
         if (typeof context?.requestAnimationFrame === 'function') return context.requestAnimationFrame(callback);
         const win = getWindow(context);
         if (typeof win?.requestAnimationFrame === 'function') return win.requestAnimationFrame(callback);
-        if (typeof globalThis?.requestAnimationFrame === 'function') return globalThis.requestAnimationFrame(callback);
         return undefined;
     }
 
@@ -44,6 +43,12 @@
         const injected = call(context, 'assetDisplaySrc', '', asset);
         if (injected) return injected;
         const assetNodes = getWindow(context)?.SimpAICanvasWorkbenchAssetNodes;
+        return typeof assetNodes?.assetDisplaySrc === 'function' ? assetNodes.assetDisplaySrc(asset) : '';
+    }
+
+    function legacyAssetDisplaySrc(asset) {
+        const host = typeof window !== 'undefined' ? window : null;
+        const assetNodes = host?.SimpAICanvasWorkbenchAssetNodes;
         return typeof assetNodes?.assetDisplaySrc === 'function' ? assetNodes.assetDisplaySrc(asset) : '';
     }
 
@@ -69,10 +74,10 @@
             clamp: typeof utilitySource.clamp === 'function' ? utilitySource.clamp : ((value, min, max) => Math.max(min, Math.min(max, value))),
             getDocument: () => typeof domSource.getDocument === 'function'
                 ? domSource.getDocument()
-                : domSource.document || (typeof document !== 'undefined' ? document : null),
+                : domSource.document || null,
             getWindow: () => typeof browserSource.getWindow === 'function'
                 ? browserSource.getWindow()
-                : browserSource.window || (typeof window !== 'undefined' ? window : null),
+                : browserSource.window || null,
             requestAnimationFrame: delegate(browserSource, 'requestAnimationFrame'),
             getInnerWidth: delegate(browserSource, 'getInnerWidth'),
             getInnerHeight: delegate(browserSource, 'getInnerHeight'),
@@ -123,7 +128,7 @@
 
     function getNodeImageSrc(node, context) {
         const asset = node?.asset || {};
-        const displayedAsset = assetDisplaySrc(context, asset);
+        const displayedAsset = assetDisplaySrc(context, asset) || (!context ? legacyAssetDisplaySrc(asset) : '');
         if (displayedAsset) return displayedAsset;
         if (hasProjectAssetReference(asset)) {
             if (asset.data_url) return asset.data_url;
@@ -133,7 +138,7 @@
         }
         const fallback = specialNodeImageAsset(node);
         if (!fallback) return asset.data_url || asset.preview_url || asset.thumb || '';
-        const displayedFallback = assetDisplaySrc(context, fallback);
+        const displayedFallback = assetDisplaySrc(context, fallback) || (!context ? legacyAssetDisplaySrc(fallback) : '');
         if (displayedFallback) return displayedFallback;
         return fallback.data_url || fallback.preview_url || fallback.thumb || '';
     }

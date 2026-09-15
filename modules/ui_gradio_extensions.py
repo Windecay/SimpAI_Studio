@@ -266,6 +266,12 @@ def javascript_html():
     canvas_workbench_canvas_input_event_context_path = webpath('javascript/canvas_workbench/canvas_input_event_context.js')
     canvas_workbench_canvas_runtime_context_path = webpath('javascript/canvas_workbench/canvas_runtime_context.js')
     canvas_workbench_canvas_input_context_path = webpath('javascript/canvas_workbench/canvas_input_context.js')
+    canvas_workbench_canvas_textarea_editor_path = webpath('javascript/canvas_workbench/canvas_textarea_editor_controller.js')
+    canvas_workbench_canvas_media_seek_path = webpath('javascript/canvas_workbench/canvas_media_seek_controller.js')
+    canvas_workbench_canvas_preset_special_viewer_path = webpath('javascript/canvas_workbench/canvas_preset_special_viewer_controller.js')
+    canvas_workbench_canvas_preset_model_status_path = webpath('javascript/canvas_workbench/canvas_preset_model_status_controller.js')
+    canvas_workbench_canvas_toast_path = webpath('javascript/canvas_workbench/canvas_toast_controller.js')
+    canvas_workbench_canvas_wildcards_v2_path = webpath('javascript/canvas_workbench/canvas_wildcards_v2_controller.js')
     canvas_workbench_canvas_vlm_node_path = webpath('javascript/canvas_workbench/canvas_vlm_node.js')
     canvas_workbench_canvas_vlm_node_view_path = webpath('javascript/canvas_workbench/canvas_vlm_node_view.js')
     canvas_workbench_canvas_node_view_context_path = webpath('javascript/canvas_workbench/canvas_node_view_context.js')
@@ -339,6 +345,7 @@ def javascript_html():
     canvas_workbench_canvas_outpaint_path = webpath('javascript/canvas_workbench/canvas_outpaint_controller.js')
     canvas_workbench_canvas_resolution_drag_path = webpath('javascript/canvas_workbench/canvas_resolution_drag_controller.js')
     canvas_workbench_canvas_media_browser_drag_path = webpath('javascript/canvas_workbench/canvas_media_browser_drag_controller.js')
+    canvas_workbench_canvas_media_browser_paint_path = webpath('javascript/canvas_workbench/canvas_media_browser_paint_controller.js')
     canvas_workbench_canvas_qwen_tts_presets_path = webpath('javascript/canvas_workbench/canvas_qwen_tts_presets_controller.js')
     canvas_workbench_canvas_tooltip_path = webpath('javascript/canvas_workbench/canvas_tooltip_controller.js')
     canvas_workbench_canvas_hover_preview_path = webpath('javascript/canvas_workbench/canvas_hover_preview_controller.js')
@@ -378,11 +385,14 @@ def javascript_html():
     canvas_workbench_media_viewers_path = webpath('javascript/canvas_workbench/media_viewers.js')
     canvas_workbench_canvas_media_viewer_context_path = webpath('javascript/canvas_workbench/canvas_media_viewer_context.js')
     canvas_workbench_run_status_controller_path = webpath('javascript/canvas_workbench/canvas_run_status_controller.js')
+    canvas_workbench_run_polling_path = webpath('javascript/canvas_workbench/canvas_run_polling_controller.js')
+    canvas_workbench_gallery_refresh_path = webpath('javascript/canvas_workbench/canvas_gallery_refresh_controller.js')
     canvas_workbench_run_history_path = webpath('javascript/canvas_workbench/run_history_panel.js')
     canvas_workbench_run_queue_path = webpath('javascript/canvas_workbench/run_queue_panel.js')
     canvas_workbench_image_node_path = webpath('javascript/canvas_workbench/nodes/image_node.js')
     canvas_workbench_video_node_path = webpath('javascript/canvas_workbench/nodes/video_node.js')
     canvas_workbench_audio_node_path = webpath('javascript/canvas_workbench/nodes/audio_node.js')
+    canvas_workbench_canvas_media_node_context_path = webpath('javascript/canvas_workbench/canvas_media_node_context.js')
     canvas_workbench_compare_node_path = webpath('javascript/canvas_workbench/nodes/compare_node.js')
     canvas_workbench_canvas_compare_node_context_path = webpath('javascript/canvas_workbench/canvas_compare_node_context.js')
     canvas_workbench_sam3_video_mask_node_path = webpath('javascript/canvas_workbench/nodes/sam3_video_mask_node.js')
@@ -406,6 +416,9 @@ def javascript_html():
     canvas_workbench_canvas_context_menu_context_path = webpath('javascript/canvas_workbench/canvas_context_menu_context.js')
     canvas_workbench_node_menus_path = webpath('javascript/canvas_workbench/node_menus.js')
     canvas_workbench_canvas_node_menu_context_path = webpath('javascript/canvas_workbench/canvas_node_menu_context.js')
+    canvas_workbench_canvas_pending_connection_path = webpath('javascript/canvas_workbench/canvas_pending_connection_controller.js')
+    canvas_workbench_canvas_danbooru_gallery_path = webpath('javascript/canvas_workbench/canvas_danbooru_gallery_controller.js')
+    canvas_workbench_canvas_preset_run_lock_path = webpath('javascript/canvas_workbench/canvas_preset_run_lock_controller.js')
     infinite_canvas_workbench_path = webpath('javascript/infinite_canvas_workbench.js')
     tag_cart_path = webpath('javascript/tag_cart.js') 
     tailwindcss_path = webpath('javascript/tailwindcss_3.4.16.js') 
@@ -570,6 +583,7 @@ def javascript_html():
             canvas_workbench_canvas_timeline_context_path,
             canvas_workbench_canvas_resolution_drag_path,
             canvas_workbench_canvas_media_browser_drag_path,
+            canvas_workbench_canvas_media_browser_paint_path,
              canvas_workbench_canvas_tooltip_path,
              canvas_workbench_canvas_hover_preview_path,
              canvas_workbench_canvas_preview_select_path,
@@ -600,6 +614,12 @@ def javascript_html():
              canvas_workbench_canvas_runtime_service_context_path,
              canvas_workbench_canvas_runtime_context_path,
             canvas_workbench_canvas_input_context_path,
+            canvas_workbench_canvas_textarea_editor_path,
+            canvas_workbench_canvas_media_seek_path,
+            canvas_workbench_canvas_preset_special_viewer_path,
+            canvas_workbench_canvas_preset_model_status_path,
+            canvas_workbench_canvas_toast_path,
+            canvas_workbench_canvas_wildcards_v2_path,
             canvas_workbench_project_store_path,
             canvas_workbench_viewport_path,
             canvas_workbench_scheduler_path,
@@ -618,6 +638,8 @@ def javascript_html():
             canvas_workbench_media_viewers_path,
             canvas_workbench_canvas_media_viewer_context_path,
             canvas_workbench_run_status_controller_path,
+            canvas_workbench_run_polling_path,
+            canvas_workbench_gallery_refresh_path,
             canvas_workbench_run_history_path,
             canvas_workbench_run_queue_path,
             canvas_workbench_timeline_path,
@@ -625,6 +647,7 @@ def javascript_html():
             canvas_workbench_image_node_path,
             canvas_workbench_video_node_path,
             canvas_workbench_audio_node_path,
+            canvas_workbench_canvas_media_node_context_path,
             canvas_workbench_compare_node_path,
             canvas_workbench_canvas_compare_node_context_path,
             canvas_workbench_sam3_video_mask_node_path,
@@ -643,6 +666,9 @@ def javascript_html():
             canvas_workbench_canvas_context_menu_context_path,
             canvas_workbench_node_menus_path,
             canvas_workbench_canvas_node_menu_context_path,
+            canvas_workbench_canvas_pending_connection_path,
+            canvas_workbench_canvas_danbooru_gallery_path,
+            canvas_workbench_canvas_preset_run_lock_path,
             infinite_canvas_workbench_path,
         ],
     }

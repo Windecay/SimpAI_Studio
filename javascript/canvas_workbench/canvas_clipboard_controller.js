@@ -83,10 +83,8 @@
                 return Object.assign({}, value || {});
             }
         };
-        const uid = typeof utilitySource.uid === 'function'
-            ? utilitySource.uid
-            : (prefix) => `${prefix || 'id'}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-        const nowIso = () => utilityCall('nowIso', new Date().toISOString());
+        const uid = (...args) => utilityCall('uid', '', ...args);
+        const nowIso = () => utilityCall('nowIso', '');
         let canvasClipboard = null;
 
         function translate(en, cn) {

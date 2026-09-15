@@ -1,13 +1,12 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const API = window.SimpAICanvasWorkbenchApi || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
+    const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
+    const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const DEFAULT_API = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchApi || {} : {};
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
+    const translateFallback = (en, cn) => cn || en;
     const runningControllers = new Map();
 
     function call(context, name, fallback, ...args) {
@@ -30,42 +29,90 @@
     }
 
     function createSam3VideoMaskNodeContext(source) {
-        const context = source || {};
+        const scope = source || {};
+        const documentSource = scope.documentSource || {};
+        const browserSource = scope.browserSource || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetSource = scope.assetSource || {};
+        const apiSource = scope.apiSource || {};
+        const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            getProject: delegate(context, 'getProject'),
-            getProjectId: delegate(context, 'getProjectId'),
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            canvasOverlayHost: delegate(context, 'canvasOverlayHost'),
-            buildCanvasRunStatus: delegate(context, 'buildCanvasRunStatus'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNode: delegate(context, 'getNode'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            isNodeIgnored: delegate(context, 'isNodeIgnored'),
-            isNodeLocked: delegate(context, 'isNodeLocked'),
-            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
-            mutate: delegate(context, 'mutate'),
-            notConnectedText: delegate(context, 'notConnectedText'),
-            onEditorClosed: delegate(context, 'onEditorClosed'),
-            onMaskReady: delegate(context, 'onMaskReady'),
-            onMaskState: delegate(context, 'onMaskState'),
-            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
-            portHintText: delegate(context, 'portHintText'),
-            pushHistory: delegate(context, 'pushHistory'),
-            pushHistoryBatch: delegate(context, 'pushHistoryBatch'),
-            readAssetInfo: delegate(context, 'readAssetInfo'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            scheduleSave: delegate(context, 'scheduleSave'),
-            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
-            setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast'),
-            buildMediaEditAsset: delegate(context, 'buildMediaEditAsset'),
-            buildSam3SourcePatch: delegate(context, 'buildSam3SourcePatch'),
-            buildSam3StatePatch: delegate(context, 'buildSam3StatePatch'),
-            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
-            buildVideoResponseAsset: delegate(context, 'buildVideoResponseAsset')
+            escapeHtml: pick(utilitySource, 'escapeHtml'),
+            clamp: pick(utilitySource, 'clamp'),
+            t: pick(utilitySource, 't'),
+            getProject: pick(scope, 'getProject'),
+            getProjectId: pick(scope, 'getProjectId'),
+            uid: pick(scope, 'uid'),
+            getDocument: delegate(documentSource, 'getDocument'),
+            structuredClone: delegate(utilitySource, 'structuredClone'),
+            createFileReader: delegate(browserSource, 'createFileReader'),
+            createImage: delegate(browserSource, 'createImage'),
+            createAbortController: delegate(browserSource, 'createAbortController'),
+            assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            canvasOverlayHost: pick(scope, 'canvasOverlayHost'),
+            buildCanvasRunStatus: pick(scope, 'buildCanvasRunStatus'),
+            defaultNodeSize: pick(scope, 'defaultNodeSize'),
+            detectWorkbenchTheme: pick(scope, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: pick(scope, 'ensureWorkbenchFormFieldNames'),
+            getNode: pick(scope, 'getNode'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            isNodeIgnored: pick(scope, 'isNodeIgnored'),
+            isNodeLocked: pick(scope, 'isNodeLocked'),
+            mediaAspectStyle: pick(assetSource, 'mediaAspectStyle'),
+            mutate: pick(scope, 'mutate'),
+            notConnectedText: pick(scope, 'notConnectedText'),
+            onEditorClosed: pick(scope, 'onEditorClosed'),
+            onMaskReady: pick(scope, 'onMaskReady'),
+            onMaskState: pick(scope, 'onMaskState'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            portHintText: pick(scope, 'portHintText'),
+            pushHistory: pick(scope, 'pushHistory'),
+            pushHistoryBatch: pick(scope, 'pushHistoryBatch'),
+            readAssetInfo: pick(assetSource, 'readAssetInfo'),
+            renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
+            scheduleSave: pick(scope, 'scheduleSave'),
+            serializeAssetSourceForRun: pick(assetSource, 'serializeAssetSourceForRun'),
+            serializeAssetForRun: pick(assetSource, 'serializeAssetForRun'),
+            serializeMaskForRun: pick(assetSource, 'serializeMaskForRun'),
+            mediaEditRange: pick(assetSource, 'mediaEditRange'),
+            generateSam3VideoMask: pick(apiSource, 'generateSam3VideoMask'),
+            cancelSam3VideoMask: pick(apiSource, 'cancelSam3VideoMask'),
+            normalizeSam3MaskVideo: pick(apiSource, 'normalizeSam3MaskVideo'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
+            showToast: pick(scope, 'showToast'),
+            buildMediaEditAsset: pick(scope, 'buildMediaEditAsset'),
+            buildSam3SourcePatch: pick(scope, 'buildSam3SourcePatch'),
+            buildSam3StatePatch: pick(scope, 'buildSam3StatePatch'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            buildVideoResponseAsset: pick(scope, 'buildVideoResponseAsset')
         };
+    }
+
+    const DEFAULT_SAM3_VIDEO_MASK_CONTEXT = createSam3VideoMaskNodeContext({
+        utilitySource: {
+            escapeHtml: DEFAULT_UTILS.escapeHtml || escapeHtmlFallback,
+            clamp: DEFAULT_UTILS.clamp || clampFallback,
+            t: DEFAULT_UTILS.t || translateFallback,
+            structuredClone: typeof structuredClone === 'function' ? structuredClone : null
+        },
+        assetSource: DEFAULT_ASSETS,
+        apiSource: DEFAULT_API
+    });
+
+    function contextOf(context) {
+        return context || DEFAULT_SAM3_VIDEO_MASK_CONTEXT;
+    }
+
+    function escapeHtml(value, context) {
+        return call(contextOf(context), 'escapeHtml', escapeHtmlFallback(value), value);
+    }
+
+    function clamp(value, min, max, context) {
+        return call(contextOf(context), 'clamp', clampFallback(value, min, max), value, min, max);
+    }
+
+    function t(en, cn, context) {
+        return call(contextOf(context), 't', translateFallback(en, cn), en, cn);
     }
 
     function getProject(context) {
@@ -115,14 +162,14 @@
     }
 
     function assetDisplaySrc(asset, context) {
-        if (typeof context?.assetDisplaySrc === 'function') return context.assetDisplaySrc(asset || {});
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.assetDisplaySrc === 'function') return ctx.assetDisplaySrc(asset || {});
         return asset?.preview_url || asset?.data_url || asset?.thumb || '';
     }
 
     function readAssetInfo(asset, context) {
-        if (typeof context?.readAssetInfo === 'function') return context.readAssetInfo(asset || {});
-        if (typeof ASSETS.readAssetInfo === 'function') return ASSETS.readAssetInfo(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.readAssetInfo === 'function') return ctx.readAssetInfo(asset || {});
         const bits = [];
         if (asset?.width && asset?.height) bits.push(`${asset.width} x ${asset.height}`);
         if (asset?.duration) bits.push(`${asset.duration}s`);
@@ -133,12 +180,12 @@
     }
 
     function mediaAspectStyle(asset, context) {
-        if (typeof context?.mediaAspectStyle === 'function') return context.mediaAspectStyle(asset || {});
-        if (typeof ASSETS.mediaAspectStyle === 'function') return ASSETS.mediaAspectStyle(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.mediaAspectStyle === 'function') return ctx.mediaAspectStyle(asset || {});
         const width = Number(asset?.width || 0);
         const height = Number(asset?.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = clamp(width / height, 0.25, 4, context);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
@@ -147,11 +194,11 @@
     }
 
     function notConnectedText(context) {
-        return call(context, 'notConnectedText', t('Not connected', '未连接'));
+        return call(context, 'notConnectedText', t('Not connected', '未连接', context));
     }
 
     function portHintText(context) {
-        return call(context, 'portHintText', t('Double-click', '双击'));
+        return call(context, 'portHintText', t('Double-click', '双击', context));
     }
 
     function defaultParams() {
@@ -170,18 +217,17 @@
         return String(node?.status?.state || '').toLowerCase() === 'running' || runningControllers.has(node?.id || '');
     }
 
-    function displayTitle(node) {
+    function displayTitle(node, context) {
         const title = String(node?.title || '').trim();
         if (!title || title === 'SAM3 Video Mask' || title === 'SAM3 视频蒙版') {
-            return t('SAM3 Video Mask', 'SAM3 视频蒙版');
+            return t('SAM3 Video Mask', 'SAM3 视频蒙版', context);
         }
         return title;
     }
 
-    function cloneValue(value, fallback) {
-        if (typeof window.structuredClone === 'function') {
-            try { return window.structuredClone(value ?? fallback); } catch (err) {}
-        }
+    function cloneValue(value, fallback, context) {
+        const cloned = call(context, 'structuredClone', undefined, value ?? fallback);
+        if (cloned !== undefined) return cloned;
         try {
             return JSON.parse(JSON.stringify(value ?? fallback));
         } catch (err) {
@@ -190,28 +236,24 @@
     }
 
     function serializeAssetSourceForRun(node, context) {
-        if (typeof context?.serializeAssetSourceForRun === 'function') return context.serializeAssetSourceForRun(node);
-        if (typeof ASSETS.serializeAssetSourceForRun === 'function') {
-            return ASSETS.serializeAssetSourceForRun(node, {
-                getSelectedResultAsset: item => selectedResultAsset(item, context),
-                cloneValue
-            });
-        }
+        const ctx = contextOf(context);
+        if (typeof ctx.serializeAssetSourceForRun === 'function') return ctx.serializeAssetSourceForRun(node);
         if (!node) return null;
         const asset = selectedResultAsset(node, context) || {};
         return {
             node_id: node.id,
             type: node.type,
             title: node.title || '',
-            asset: typeof ASSETS.serializeAssetForRun === 'function' ? ASSETS.serializeAssetForRun(asset) : cloneValue(asset, {}),
-            mask: typeof ASSETS.serializeMaskForRun === 'function' ? ASSETS.serializeMaskForRun(node.mask, `${node.title || node.id || 'image'}.mask.png`) : null,
-            source: cloneValue(node.source || {}, {})
+            asset: typeof ctx.serializeAssetForRun === 'function' ? ctx.serializeAssetForRun(asset) : cloneValue(asset, {}, context),
+            mask: typeof ctx.serializeMaskForRun === 'function' ? ctx.serializeMaskForRun(node.mask, `${node.title || node.id || 'image'}.mask.png`) : null,
+            source: cloneValue(node.source || {}, {}, context)
         };
     }
 
-    function sourceMediaEditForRun(asset) {
-        if (typeof ASSETS.mediaEditRange !== 'function') return null;
-        const range = ASSETS.mediaEditRange(asset || {});
+    function sourceMediaEditForRun(asset, context) {
+        const ctx = contextOf(context);
+        if (typeof ctx.mediaEditRange !== 'function') return null;
+        const range = ctx.mediaEditRange(asset || {});
         if (!range?.clipped) return null;
         const start = Number(range.start || 0);
         const end = Number(range.end || 0);
@@ -226,7 +268,7 @@
 
     function serializeSourceWithMediaEdit(source, context) {
         const payload = serializeAssetSourceForRun(source, context);
-        const edit = sourceMediaEditForRun(selectedResultAsset(source, context));
+        const edit = sourceMediaEditForRun(selectedResultAsset(source, context), context);
         if (payload?.asset && edit) {
             const editedAsset = call(context, 'buildMediaEditAsset', null, payload.asset, edit);
             if (editedAsset) payload.asset = editedAsset;
@@ -285,44 +327,44 @@
         const uploadedMask = !!(node.source?.mask_origin === 'upload' && asset && (asset.path || asset.preview_url || asset.data_url || asset.asset_relative_path || asset.relative_path));
         const maskAction = uploadedMask ? 'unload-sam3-mask' : 'upload-sam3-mask';
         const maskIcon = uploadedMask ? 'fa-eject' : 'fa-upload';
-        const maskLabel = uploadedMask ? t('Unload Mask', '卸载蒙版') : t('Upload Mask', '上传蒙版');
-        const maskTitle = uploadedMask ? t('Unload uploaded mask and return to generated output mode', '卸载上传蒙版，恢复为生成输出模式') : t('Upload prepared mask video/image', '上传已做好的蒙版视频 / 图片');
+        const maskLabel = uploadedMask ? t('Unload Mask', '卸载蒙版', context) : t('Upload Mask', '上传蒙版', context);
+        const maskTitle = uploadedMask ? t('Unload uploaded mask and return to generated output mode', '卸载上传蒙版，恢复为生成输出模式', context) : t('Upload prepared mask video/image', '上传已做好的蒙版视频 / 图片', context);
         return `
 <div class="sai-node-head">
   <span class="sai-node-kind">SAM3</span>
-  <span class="sai-node-title">${escapeHtml(displayTitle(node))}</span>
+  <span class="sai-node-title">${escapeHtml(displayTitle(node, context), context)}</span>
   ${renderNodeStateBadges(node, context)}
-  ${running ? `<button type="button" data-node-action="stop-sam3-video-mask" title="${escapeHtml(t('Stop mask generation', '停止生成遮罩'))}"><i class="fa-solid fa-stop"></i></button>` : `<button type="button" data-node-action="run-sam3-video-mask" title="${escapeHtml(t('Generate mask video', '生成视频遮罩'))}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>`}
-  <button type="button" data-node-action="edit-sam3-points" title="${escapeHtml(t('Open point / box editor', '打开点选 / 框选编辑器'))}"><i class="fa-solid fa-crosshairs"></i></button>
-  <button type="button" data-node-action="${maskAction}" title="${escapeHtml(maskTitle)}"><i class="fa-solid ${maskIcon}"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  ${running ? `<button type="button" data-node-action="stop-sam3-video-mask" title="${escapeHtml(t('Stop mask generation', '停止生成遮罩', context), context)}"><i class="fa-solid fa-stop"></i></button>` : `<button type="button" data-node-action="run-sam3-video-mask" title="${escapeHtml(t('Generate mask video', '生成视频遮罩', context), context)}"><i class="fa-solid fa-wand-magic-sparkles"></i></button>`}
+  <button type="button" data-node-action="edit-sam3-points" title="${escapeHtml(t('Open point / box editor', '打开点选 / 框选编辑器', context), context)}"><i class="fa-solid fa-crosshairs"></i></button>
+  <button type="button" data-node-action="${maskAction}" title="${escapeHtml(maskTitle, context)}"><i class="fa-solid ${maskIcon}"></i></button>
+  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除', context), context)}"><i class="fa-solid fa-xmark"></i></button>
 </div>
-<div class="sai-text-input-row" data-sam3-video-row title="${escapeHtml(t('Double-click to upload a source video, or drag a video/result output here', '双击上传源视频，或拖入视频 / 结果输出'))}">
-  <button type="button" class="sai-node-handle sai-node-handle-in" data-sam3-video-in title="${escapeHtml(t('Source video input', '源视频输入'))}"></button>
-  <i class="fa-solid fa-film"></i><span>${escapeHtml(t('Source Video', '源视频'))}</span><b>${source ? escapeHtml(source.title || source.id) : escapeHtml(notConnectedText(context))}</b><small>${escapeHtml(portHintText(context))}</small>
+<div class="sai-text-input-row" data-sam3-video-row title="${escapeHtml(t('Double-click to upload a source video, or drag a video/result output here', '双击上传源视频，或拖入视频 / 结果输出', context), context)}">
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-sam3-video-in title="${escapeHtml(t('Source video input', '源视频输入', context), context)}"></button>
+  <i class="fa-solid fa-film"></i><span>${escapeHtml(t('Source Video', '源视频', context), context)}</span><b>${source ? escapeHtml(source.title || source.id, context) : escapeHtml(notConnectedText(context), context)}</b><small>${escapeHtml(portHintText(context), context)}</small>
 </div>
-<label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Segmentation Prompt', '分割提示词'))}</span><input data-sam3-video-param="prompt" type="text" value="${escapeHtml(params.prompt || '')}" placeholder="${escapeHtml(t('person, dress, object...', '人物、裙子、物体...'))}"></label>
+<label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Segmentation Prompt', '分割提示词', context), context)}</span><input data-sam3-video-param="prompt" type="text" value="${escapeHtml(params.prompt || '', context)}" placeholder="${escapeHtml(t('person, dress, object...', '人物、裙子、物体...', context), context)}"></label>
 <div class="sai-node-field-row">
-  <label><span>${escapeHtml(t('Detect Score', '检测分数'))}</span><input data-sam3-video-param="score_threshold_detection" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.score_threshold_detection ?? 0.5)}"></label>
-  <label><span>${escapeHtml(t('New Det', '新检测'))}</span><input data-sam3-video-param="new_det_thresh" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.new_det_thresh ?? 0.7)}"></label>
-</div>
-<div class="sai-node-field-row">
-  <label><span>${escapeHtml(t('Fill Hole', '填洞'))}</span><input data-sam3-video-param="fill_hole_area" type="number" min="0" max="512" step="1" value="${escapeHtml(params.fill_hole_area ?? 16)}"></label>
-  <label><span>${escapeHtml(t('Recondition', '重检测间隔'))}</span><input data-sam3-video-param="recondition_every_nth_frame" type="number" min="1" max="128" step="1" value="${escapeHtml(params.recondition_every_nth_frame ?? 16)}"></label>
+  <label><span>${escapeHtml(t('Detect Score', '检测分数', context), context)}</span><input data-sam3-video-param="score_threshold_detection" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.score_threshold_detection ?? 0.5, context)}"></label>
+  <label><span>${escapeHtml(t('New Det', '新检测', context), context)}</span><input data-sam3-video-param="new_det_thresh" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.new_det_thresh ?? 0.7, context)}"></label>
 </div>
 <div class="sai-node-field-row">
-  <label><span>${escapeHtml(t('Smooth', '平滑'))}</span><input data-sam3-video-param="postprocess_strength" type="number" min="0" max="5" step="1" value="${escapeHtml(params.postprocess_strength ?? 0)}"></label>
-  <label class="sai-node-check"><input data-sam3-video-param="invert_mask" type="checkbox" ${params.invert_mask ? 'checked' : ''}><span>${escapeHtml(t('Invert', '反相'))}</span></label>
+  <label><span>${escapeHtml(t('Fill Hole', '填洞', context), context)}</span><input data-sam3-video-param="fill_hole_area" type="number" min="0" max="512" step="1" value="${escapeHtml(params.fill_hole_area ?? 16, context)}"></label>
+  <label><span>${escapeHtml(t('Recondition', '重检测间隔', context), context)}</span><input data-sam3-video-param="recondition_every_nth_frame" type="number" min="1" max="128" step="1" value="${escapeHtml(params.recondition_every_nth_frame ?? 16, context)}"></label>
 </div>
-<div class="sai-node-media sai-node-video-media"${mediaAspectStyle(asset, context)}>${src ? `<video src="${escapeHtml(src)}" muted preload="metadata" controls></video>` : `<div class="sai-node-empty">${escapeHtml(t('No mask video', '无视频遮罩'))}</div>`}</div>
-${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>` : ''}
-${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
+<div class="sai-node-field-row">
+  <label><span>${escapeHtml(t('Smooth', '平滑', context), context)}</span><input data-sam3-video-param="postprocess_strength" type="number" min="0" max="5" step="1" value="${escapeHtml(params.postprocess_strength ?? 0, context)}"></label>
+  <label class="sai-node-check"><input data-sam3-video-param="invert_mask" type="checkbox" ${params.invert_mask ? 'checked' : ''}><span>${escapeHtml(t('Invert', '反相', context), context)}</span></label>
+</div>
+<div class="sai-node-media sai-node-video-media"${mediaAspectStyle(asset, context)}>${src ? `<video src="${escapeHtml(src, context)}" muted preload="metadata" controls></video>` : `<div class="sai-node-empty">${escapeHtml(t('No mask video', '无视频遮罩', context), context)}</div>`}</div>
+${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit, context)}</span>`).join('')}</div>` : ''}
+${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : ''}
 ${running
-    ? `<button type="button" class="sai-node-primary is-danger" data-node-action="stop-sam3-video-mask"><i class="fa-solid fa-stop"></i><span>${escapeHtml(t('Stop', '停止'))}</span></button>`
-    : `<button type="button" class="sai-node-primary" data-node-action="run-sam3-video-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate Mask Video', '生成视频遮罩'))}</span></button>`}
-<button type="button" class="sai-node-secondary" data-node-action="edit-sam3-points"><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(t('Point Editor', '点选编辑器'))}</span></button>
-<button type="button" class="sai-node-secondary ${uploadedMask ? 'is-danger' : ''}" data-node-action="${maskAction}"><i class="fa-solid ${maskIcon}"></i><span>${escapeHtml(maskLabel)}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="video" title="${escapeHtml(t('Mask video output', '遮罩视频输出'))}"></button>`;
+    ? `<button type="button" class="sai-node-primary is-danger" data-node-action="stop-sam3-video-mask"><i class="fa-solid fa-stop"></i><span>${escapeHtml(t('Stop', '停止', context), context)}</span></button>`
+    : `<button type="button" class="sai-node-primary" data-node-action="run-sam3-video-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate Mask Video', '生成视频遮罩', context), context)}</span></button>`}
+<button type="button" class="sai-node-secondary" data-node-action="edit-sam3-points"><i class="fa-solid fa-crosshairs"></i><span>${escapeHtml(t('Point Editor', '点选编辑器', context), context)}</span></button>
+<button type="button" class="sai-node-secondary ${uploadedMask ? 'is-danger' : ''}" data-node-action="${maskAction}"><i class="fa-solid ${maskIcon}"></i><span>${escapeHtml(maskLabel, context)}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="video" title="${escapeHtml(t('Mask video output', '遮罩视频输出', context), context)}"></button>`;
     }
 
     function renderInspector(node, context) {
@@ -330,18 +372,18 @@ ${running
         const info = readAssetInfo(node.asset || {}, context);
         return `
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(t('SAM3 Video Mask', 'SAM3 视频蒙版'))}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '来源'))}</span><b>${escapeHtml(source?.title || source?.id || t('Not connected', '未连接'))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出'))}</span><b>${escapeHtml(info.join(' / ') || t('No mask video generated', '尚未生成蒙版视频'))}</b></div>
-  <p>${escapeHtml(t('Generate a black-white mask video, then connect this node to a scene preset SAM3 Mask Video slot.', '生成黑白视频遮罩，然后把该节点连接到 scene preset 的 SAM3 Mask Video 槽。'))}</p>
+  <h3>${escapeHtml(t('SAM3 Video Mask', 'SAM3 视频蒙版', context), context)}</h3>
+  <label>${escapeHtml(t('Title', '标题', context), context)}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '', context)}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Source', '来源', context), context)}</span><b>${escapeHtml(source?.title || source?.id || t('Not connected', '未连接', context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出', context), context)}</span><b>${escapeHtml(info.join(' / ') || t('No mask video generated', '尚未生成蒙版视频', context), context)}</b></div>
+  <p>${escapeHtml(t('Generate a black-white mask video, then connect this node to a scene preset SAM3 Mask Video slot.', '生成黑白视频遮罩，然后把该节点连接到 scene preset 的 SAM3 Mask Video 槽。', context), context)}</p>
 </div>
 <div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="run-sam3-video-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate', '生成'))}</span></button>
-  ${isRunning(node) ? `<button type="button" data-inspector-action="stop-sam3-video-mask" class="danger"><i class="fa-solid fa-stop"></i><span>${escapeHtml(t('Stop', '停止'))}</span></button>` : ''}
-  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+  <button type="button" data-inspector-action="run-sam3-video-mask"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate', '生成', context), context)}</span></button>
+  ${isRunning(node) ? `<button type="button" data-inspector-action="stop-sam3-video-mask" class="danger"><i class="fa-solid fa-stop"></i><span>${escapeHtml(t('Stop', '停止', context), context)}</span></button>` : ''}
+  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看', context), context)}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制', context), context)}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除', context), context)}</span></button>
 </div>`;
     }
 
@@ -377,13 +419,13 @@ ${running
             status: defaultStatus
         };
         const node = {
-            id: uid('sam3v'),
+            id: call(context, 'uid', 'sam3v-node', 'sam3v'),
             type: 'sam3_video_mask',
             x: world.x,
             y: world.y,
             w: size.w,
             h: size.h,
-            title: opts.title || t('SAM3 Video Mask', 'SAM3 视频蒙版'),
+            title: opts.title || t('SAM3 Video Mask', 'SAM3 视频蒙版', context),
             input_node_id: opts.input_node_id || null,
             ...initialState
         };
@@ -401,39 +443,52 @@ ${running
         appendProjectNode(project, node, context);
         setSelectedNode(node.id, context);
         if (opts.render !== false) call(context, 'mutate', null);
-        if (opts.toast !== false) call(context, 'showToast', null, t('SAM3 Video Mask node added', '已添加 SAM3 视频蒙版节点'));
+        if (opts.toast !== false) call(context, 'showToast', null, t('SAM3 Video Mask node added', '已添加 SAM3 视频蒙版节点', context));
         return node;
     }
 
-    function readFileAsDataUrl(file) {
+    function readFileAsDataUrl(file, context) {
         return new Promise((resolve, reject) => {
-            const reader = new FileReader();
+            const reader = call(context, 'createFileReader', null);
+            if (!reader) {
+                reject(new Error('file_reader_unavailable'));
+                return;
+            }
             reader.onerror = () => reject(new Error('read_failed'));
             reader.onload = () => resolve(String(reader.result || ''));
             reader.readAsDataURL(file);
         });
     }
 
-    function getImageDimensions(src) {
+    function getImageDimensions(src, context) {
         return new Promise((resolve) => {
             if (!src) {
                 resolve({ width: null, height: null });
                 return;
             }
-            const image = new Image();
+            const image = call(context, 'createImage', null);
+            if (!image) {
+                resolve({ width: null, height: null });
+                return;
+            }
             image.onload = () => resolve({ width: image.naturalWidth || image.width || null, height: image.naturalHeight || image.height || null });
             image.onerror = () => resolve({ width: null, height: null });
             image.src = src;
         });
     }
 
-    function getMediaMetadata(src, type) {
+    function getMediaMetadata(src, type, context) {
         return new Promise((resolve) => {
             if (!src) {
                 resolve({ width: null, height: null, duration: null, fps: null, frame_count: null });
                 return;
             }
-            const media = document.createElement(type === 'video' ? 'video' : 'audio');
+            const doc = call(context, 'getDocument', null);
+            if (!doc?.createElement) {
+                resolve({ width: null, height: null, duration: null, fps: null, frame_count: null });
+                return;
+            }
+            const media = doc.createElement(type === 'video' ? 'video' : 'audio');
             media.preload = 'metadata';
             media.onloadedmetadata = () => {
                 resolve({
@@ -450,24 +505,27 @@ ${running
     }
 
     async function generateSam3VideoMask(payload, options) {
-        if (typeof API.generateSam3VideoMask !== 'function') {
-            return { ok: false, error: t('SAM3 video mask API is unavailable', 'SAM3 视频蒙版 API 不可用') };
+        const ctx = contextOf(options?.context);
+        if (typeof ctx.generateSam3VideoMask !== 'function') {
+            return { ok: false, error: t('SAM3 video mask API is unavailable', 'SAM3 视频蒙版 API 不可用', options?.context) };
         }
-        return API.generateSam3VideoMask(Object.assign({}, payload || {}, { signal: options?.signal }));
+        return ctx.generateSam3VideoMask(Object.assign({}, payload || {}, { signal: options?.signal }));
     }
 
-    async function cancelSam3VideoMask(payload) {
-        if (typeof API.cancelSam3VideoMask !== 'function') {
-            return { ok: false, error: t('SAM3 cancel API is unavailable', 'SAM3 取消 API 不可用') };
+    async function cancelSam3VideoMask(payload, context) {
+        const ctx = contextOf(context);
+        if (typeof ctx.cancelSam3VideoMask !== 'function') {
+            return { ok: false, error: t('SAM3 cancel API is unavailable', 'SAM3 取消 API 不可用', context) };
         }
-        return API.cancelSam3VideoMask(payload);
+        return ctx.cancelSam3VideoMask(payload);
     }
 
-    async function normalizeSam3MaskVideo(payload) {
-        if (typeof API.normalizeSam3MaskVideo !== 'function') {
-            return { ok: false, error: t('SAM3 mask upload API is unavailable', 'SAM3 蒙版上传 API 不可用') };
+    async function normalizeSam3MaskVideo(payload, context) {
+        const ctx = contextOf(context);
+        if (typeof ctx.normalizeSam3MaskVideo !== 'function') {
+            return { ok: false, error: t('SAM3 mask upload API is unavailable', 'SAM3 蒙版上传 API 不可用', context) };
         }
-        return API.normalizeSam3MaskVideo(payload);
+        return ctx.normalizeSam3MaskVideo(payload);
     }
 
     function openPointEditor(node, context) {
@@ -484,33 +542,38 @@ ${running
             return;
         }
 
-        const modal = document.createElement('div');
+        const doc = call(context, 'getDocument', null);
+        if (!doc?.createElement || !doc.body) {
+            call(context, 'showToast', null, t('SAM3 editor is unavailable.', 'SAM3 编辑器不可用。', context));
+            return;
+        }
+        const modal = doc.createElement('div');
         modal.className = 'sai-canvas-modal';
         const theme = call(context, 'detectWorkbenchTheme', '', null);
         modal.classList.toggle('theme-dark', theme === 'dark');
         modal.innerHTML = `
 <div class="sai-canvas-modal-panel sai-sam3-editor">
   <div class="sai-canvas-modal-head">
-    <span>${escapeHtml(t('SAM3 Point Editor', 'SAM3 点选编辑器'))}</span>
-    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+    <span>${escapeHtml(t('SAM3 Point Editor', 'SAM3 点选编辑器', context), context)}</span>
+    <button type="button" data-modal-close title="${escapeHtml(t('Close', '关闭', context), context)}"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="sai-sam3-toolbar">
-    <button type="button" data-sam3-mode="point" class="is-active"><i class="fa-solid fa-location-dot"></i><span>${escapeHtml(t('Point', '点选'))}</span></button>
-    <button type="button" data-sam3-mode="box"><i class="fa-regular fa-square"></i><span>${escapeHtml(t('Box', '框选'))}</span></button>
-    <button type="button" data-sam3-clear><i class="fa-solid fa-eraser"></i><span>${escapeHtml(t('Clear', '清空'))}</span></button>
+    <button type="button" data-sam3-mode="point" class="is-active"><i class="fa-solid fa-location-dot"></i><span>${escapeHtml(t('Point', '点选', context), context)}</span></button>
+    <button type="button" data-sam3-mode="box"><i class="fa-regular fa-square"></i><span>${escapeHtml(t('Box', '框选', context), context)}</span></button>
+    <button type="button" data-sam3-clear><i class="fa-solid fa-eraser"></i><span>${escapeHtml(t('Clear', '清空', context), context)}</span></button>
   </div>
   <div class="sai-sam3-stage">
-    <video data-sam3-editor-video src="${escapeHtml(src)}" muted playsinline preload="metadata"></video>
+    <video data-sam3-editor-video src="${escapeHtml(src, context)}" muted playsinline preload="metadata"></video>
     <canvas data-sam3-editor-canvas></canvas>
   </div>
   <div class="sai-sam3-footer">
     <input data-sam3-time type="range" min="0" max="1000" value="0">
     <span data-sam3-time-label>0.00s</span>
-    <button type="button" class="sai-node-primary" data-sam3-generate><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate', '生成'))}</span></button>
+    <button type="button" class="sai-node-primary" data-sam3-generate><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(t('Generate', '生成', context), context)}</span></button>
   </div>
 </div>`;
         call(context, 'ensureWorkbenchFormFieldNames', null, modal, `sam3_point_${node.id || 'node'}`);
-        document.body.appendChild(modal);
+        doc.body.appendChild(modal);
 
         const video = modal.querySelector('[data-sam3-editor-video]');
         const canvas = modal.querySelector('[data-sam3-editor-canvas]');
@@ -538,8 +601,8 @@ ${running
         const canvasPoint = (evt) => {
             const rect = canvas.getBoundingClientRect();
             return {
-                x: clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1),
-                y: clamp((evt.clientY - rect.top) / Math.max(1, rect.height), 0, 1)
+                x: clamp((evt.clientX - rect.left) / Math.max(1, rect.width), 0, 1, context),
+                y: clamp((evt.clientY - rect.top) / Math.max(1, rect.height), 0, 1, context)
             };
         };
         const drawPoint = (point, color) => {
@@ -585,7 +648,7 @@ ${running
         };
         const seekTo = (time, skipSlider) => {
             const duration = Math.max(0, Number(state.duration || 0));
-            const next = clamp(Number(time || 0), 0, duration || 0);
+            const next = clamp(Number(time || 0), 0, duration || 0, context);
             if (timeLabel) timeLabel.textContent = `${next.toFixed(2)}s`;
             if (timeSlider && !skipSlider) timeSlider.value = duration > 0 ? String(Math.round((next / duration) * 1000)) : '0';
             try {
@@ -687,42 +750,49 @@ ${running
     }
 
     async function runNode(node, options, context) {
-        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用') };
+        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         const opts = options || {};
         if (isRunning(node)) {
-            call(context, 'showToast', null, t('SAM3 mask generation is already running.', 'SAM3 蒙版正在生成。'));
-            return { ok: false, error: t('SAM3 mask generation is already running.', 'SAM3 蒙版正在生成。') };
+            call(context, 'showToast', null, t('SAM3 mask generation is already running.', 'SAM3 蒙版正在生成。', context));
+            return { ok: false, error: t('SAM3 mask generation is already running.', 'SAM3 蒙版正在生成。', context) };
         }
         if (call(context, 'isNodeIgnored', false, node)) {
-            call(context, 'showToast', null, t('This SAM3 Video Mask node is marked as skipped.', '该 SAM3 视频蒙版节点已标记为跳过。'));
-            return { ok: false, error: t('SAM3 Video Mask node is skipped', 'SAM3 视频蒙版节点已跳过') };
+            call(context, 'showToast', null, t('This SAM3 Video Mask node is marked as skipped.', '该 SAM3 视频蒙版节点已标记为跳过。', context));
+            return { ok: false, error: t('SAM3 Video Mask node is skipped', 'SAM3 视频蒙版节点已跳过', context) };
         }
         const source = inputSourceForNode(node, context);
         if (!source || !isSource(source, context)) {
-            call(context, 'showToast', null, t('Connect a source video/result node first.', '请先连接源视频或 Result 节点。'));
-            return { ok: false, error: t('Connect a source video/result node first.', '请先连接源视频或 Result 节点。') };
+            call(context, 'showToast', null, t('Connect a source video/result node first.', '请先连接源视频或 Result 节点。', context));
+            return { ok: false, error: t('Connect a source video/result node first.', '请先连接源视频或 Result 节点。', context) };
         }
         const asset = selectedResultAsset(source, context);
         if (!asset) {
-            call(context, 'showToast', null, t('The connected source has no video asset.', '已连接的来源没有视频素材。'));
-            return { ok: false, error: t('The connected source has no video asset.', '已连接的来源没有视频素材。') };
+            call(context, 'showToast', null, t('The connected source has no video asset.', '已连接的来源没有视频素材。', context));
+            return { ok: false, error: t('The connected source has no video asset.', '已连接的来源没有视频素材。', context) };
         }
         const editorPayload = String(opts.editorPayload || node.params?.editor_payload || '').trim();
         if (!String(node.params?.prompt || '').trim() && !editorPayload) {
-            call(context, 'showToast', null, t('Enter a SAM3 prompt, or open Point Editor and mark a target.', '请输入 SAM3 提示词，或打开点选编辑器标记目标。'));
-            return { ok: false, error: t('SAM3 prompt/editor payload is empty.', 'SAM3 提示词和编辑器数据为空。') };
+            call(context, 'showToast', null, t('Enter a SAM3 prompt, or open Point Editor and mark a target.', '请输入 SAM3 提示词，或打开点选编辑器标记目标。', context));
+            return { ok: false, error: t('SAM3 prompt/editor payload is empty.', 'SAM3 提示词和编辑器数据为空。', context) };
         }
-        call(context, 'pushHistory', null, t('Generate SAM3 video mask', '生成 SAM3 视频蒙版'));
+        call(context, 'pushHistory', null, t('Generate SAM3 video mask', '生成 SAM3 视频蒙版', context));
         Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
             inputNodeId: source.id
         }));
         applyStatePatch(node, {
-            status: buildStatus('running', t('Generating SAM3 mask video...', '正在生成 SAM3 蒙版视频...'), context)
+            status: buildStatus('running', t('Generating SAM3 mask video...', '正在生成 SAM3 蒙版视频...', context), context)
         }, context);
         call(context, 'mutate', null);
-        const controller = new AbortController();
+        const controller = call(context, 'createAbortController', null);
+        if (!controller) {
+            const message = t('SAM3 browser runtime is unavailable.', 'SAM3 浏览器运行时不可用。', context);
+            applyStatePatch(node, { status: buildStatus('failed', message, context) }, context);
+            call(context, 'mutate', null);
+            call(context, 'showToast', null, message);
+            return { ok: false, error: message };
+        }
         runningControllers.set(node.id, controller);
-        const params = cloneValue(node.params || {}, {});
+        const params = cloneValue(node.params || {}, {}, context);
         const sourcePayload = serializeSourceWithMediaEdit(source, context);
         if (editorPayload) {
             params.editor_payload = editorPayload;
@@ -737,12 +807,12 @@ ${running
         };
         let response = null;
         try {
-            response = await generateSam3VideoMask(requestPayload, { signal: controller.signal });
+            response = await generateSam3VideoMask(requestPayload, { signal: controller.signal, context });
         } finally {
             runningControllers.delete(node.id);
         }
         const current = getNode(node.id, context);
-        if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除') };
+        if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -752,7 +822,7 @@ ${running
                     mime: 'video/mp4',
                     includeStorageFields: true
                 }),
-                status: buildStatus('finished', t('SAM3 mask video generated.', 'SAM3 蒙版视频已生成。'), context)
+                status: buildStatus('finished', t('SAM3 mask video generated.', 'SAM3 蒙版视频已生成。', context), context)
             }, context);
             Object.assign(current, call(context, 'buildSam3SourcePatch', {}, current, {
                 sourcePatch: {
@@ -763,79 +833,85 @@ ${running
             }));
             setSelectedNode(current.id, context);
             call(context, 'mutate', null);
-            call(context, 'showToast', null, t('SAM3 mask video generated', 'SAM3 蒙版视频已生成'));
+            call(context, 'showToast', null, t('SAM3 mask video generated', 'SAM3 蒙版视频已生成', context));
             notifyMaskReady(current, response, context, { origin: editorPayload ? 'generated_points' : 'generated_prompt' });
         } else if (response?.cancelled || controller.signal.aborted) {
             applyStatePatch(current, {
-                status: buildStatus('cancelled', response?.error || t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。'), context)
+                status: buildStatus('cancelled', response?.error || t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。', context), context)
             }, context);
             call(context, 'mutate', null);
-            call(context, 'showToast', null, t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。'));
+            call(context, 'showToast', null, t('SAM3 mask generation stopped.', 'SAM3 蒙版生成已停止。', context));
             notifyMaskState(current, 'cancelled', response, context, { origin: 'generate' });
         } else {
             applyStatePatch(current, {
-                status: buildStatus('failed', response?.details || response?.error || t('SAM3 video mask generation failed.', 'SAM3 视频蒙版生成失败。'), context)
+                status: buildStatus('failed', response?.details || response?.error || t('SAM3 video mask generation failed.', 'SAM3 视频蒙版生成失败。', context), context)
             }, context);
             call(context, 'mutate', null);
-            call(context, 'showToast', null, t(`SAM3 mask failed: ${current.status.message}`, `SAM3 蒙版失败：${current.status.message}`));
+            call(context, 'showToast', null, t(`SAM3 mask failed: ${current.status.message}`, `SAM3 蒙版失败：${current.status.message}`, context));
             notifyMaskState(current, 'failed', response, context, { origin: 'generate' });
         }
         return response;
     }
 
     async function stopNode(node, context) {
-        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用') };
+        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
         const controller = runningControllers.get(node.id);
         if (controller && !controller.signal.aborted) controller.abort();
         const response = await cancelSam3VideoMask({
             project_id: projectId(context),
             node_id: node.id
-        });
+        }, context);
         const current = getNode(node.id, context);
         if (current) {
             applyStatePatch(current, {
-                status: buildStatus('cancelled', t('SAM3 stop requested.', '已请求停止 SAM3。'), context)
+                status: buildStatus('cancelled', t('SAM3 stop requested.', '已请求停止 SAM3。', context), context)
             }, context);
             call(context, 'mutate', null);
             notifyMaskState(current, 'cancelled', response, context, { origin: 'stop' });
         }
-        call(context, 'showToast', null, t('SAM3 stop requested.', '已请求停止 SAM3。'));
+        call(context, 'showToast', null, t('SAM3 stop requested.', '已请求停止 SAM3。', context));
         return response;
     }
 
     async function uploadMaskForNode(node, context) {
-        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用') };
-        if (call(context, 'isNodeLocked', false, node)) return { ok: false, error: t('node is locked', '节点已锁定') };
-        const input = document.createElement('input');
+        if (!node || node.type !== 'sam3_video_mask') return { ok: false, error: t('SAM3 Video Mask node is unavailable', 'SAM3 视频蒙版节点不可用', context) };
+        if (call(context, 'isNodeLocked', false, node)) return { ok: false, error: t('node is locked', '节点已锁定', context) };
+        const doc = call(context, 'getDocument', null);
+        if (!doc?.createElement || !doc.body) {
+            const message = t('SAM3 upload is unavailable.', 'SAM3 上传不可用。', context);
+            call(context, 'showToast', null, message);
+            return { ok: false, error: message };
+        }
+        const input = doc.createElement('input');
         input.type = 'file';
         input.accept = 'video/*,image/*';
         input.style.display = 'none';
-        document.body.appendChild(input);
+        doc.body.appendChild(input);
         const file = await new Promise((resolve) => {
             input.addEventListener('change', () => resolve(input.files && input.files[0] ? input.files[0] : null), { once: true });
             input.click();
         });
         input.remove();
-        if (!file) return { ok: false, error: t('no file selected', '未选择文件') };
+        if (!file) return { ok: false, error: t('no file selected', '未选择文件', context) };
 
-        const dataUrl = await readFileAsDataUrl(file);
+        const dataUrl = await readFileAsDataUrl(file, context);
         const mime = file.type || (/\.(png|jpg|jpeg|webp|bmp)$/i.test(file.name || '') ? 'image/png' : 'video/mp4');
         const isImage = String(mime).toLowerCase().startsWith('image/');
-        const meta = isImage ? await getImageDimensions(dataUrl) : await getMediaMetadata(dataUrl, 'video');
+        const meta = isImage ? await getImageDimensions(dataUrl, context) : await getMediaMetadata(dataUrl, 'video', context);
         const source = inputSourceForNode(node, context);
         if (isImage && (!source || !isSource(source, context))) {
-            call(context, 'showToast', null, t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。'));
-            return { ok: false, error: t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。') };
+            call(context, 'showToast', null, t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。', context));
+            return { ok: false, error: t('Connect a source video before uploading an image mask.', '上传图片蒙版前请先连接源视频。', context) };
         }
 
-        call(context, 'pushHistory', null, t('Upload SAM3 mask video', '上传 SAM3 蒙版视频'));
+        call(context, 'pushHistory', null, t('Upload SAM3 mask video', '上传 SAM3 蒙版视频', context));
         if (source && isSource(source, context)) {
             Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
                 inputNodeId: source.id
             }));
         }
         applyStatePatch(node, {
-            status: buildStatus('running', t('Normalizing uploaded mask...', '正在处理上传的蒙版...'), context)
+            status: buildStatus('running', t('Normalizing uploaded mask...', '正在处理上传的蒙版...', context), context)
         }, context);
         call(context, 'mutate', null);
         const sourcePayload = source && isSource(source, context) ? serializeSourceWithMediaEdit(source, context) : { payload: null, edit: null };
@@ -859,9 +935,9 @@ ${running
                     data_url: dataUrl
                 }
             }
-        });
+        }, context);
         const current = getNode(node.id, context);
-        if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除') };
+        if (!current) return response || { ok: false, error: t('SAM3 Video Mask node was removed', 'SAM3 视频蒙版节点已被删除', context) };
         if (response?.ok) {
             const ref = response.mask_video || response.asset_ref || {};
             applyStatePatch(current, {
@@ -874,8 +950,8 @@ ${running
                 status: buildStatus(
                     'finished',
                     response.matched_to_source
-                        ? t('Uploaded mask matched to source frames.', '上传的蒙版已匹配源视频帧。')
-                        : t('Uploaded mask video attached.', '已挂载上传的蒙版视频。'),
+                        ? t('Uploaded mask matched to source frames.', '上传的蒙版已匹配源视频帧。', context)
+                        : t('Uploaded mask video attached.', '已挂载上传的蒙版视频。', context),
                     context
                 )
             }, context);
@@ -892,10 +968,10 @@ ${running
             notifyMaskReady(current, response, context, { origin: 'upload' });
         } else {
             applyStatePatch(current, {
-                status: buildStatus('failed', response?.details || response?.error || t('Uploaded mask normalization failed.', '上传的蒙版处理失败。'), context)
+                status: buildStatus('failed', response?.details || response?.error || t('Uploaded mask normalization failed.', '上传的蒙版处理失败。', context), context)
             }, context);
             call(context, 'mutate', null);
-            call(context, 'showToast', null, t(`SAM3 mask upload failed: ${current.status.message}`, `SAM3 蒙版上传失败：${current.status.message}`));
+            call(context, 'showToast', null, t(`SAM3 mask upload failed: ${current.status.message}`, `SAM3 蒙版上传失败：${current.status.message}`, context));
             notifyMaskState(current, 'failed', response, context, { origin: 'upload' });
         }
         return response;
@@ -904,14 +980,14 @@ ${running
     function unloadMaskForNode(node, context) {
         if (!node || node.type !== 'sam3_video_mask') return false;
         if (call(context, 'isNodeLocked', false, node)) {
-            call(context, 'showToast', null, t('Locked node cannot be edited', '锁定的节点无法编辑'));
+            call(context, 'showToast', null, t('Locked node cannot be edited', '锁定的节点无法编辑', context));
             return false;
         }
         if (!node.asset && node.source?.mask_origin !== 'upload') {
-            call(context, 'showToast', null, t('No uploaded SAM3 mask to unload.', '没有可卸载的 SAM3 上传蒙版。'));
+            call(context, 'showToast', null, t('No uploaded SAM3 mask to unload.', '没有可卸载的 SAM3 上传蒙版。', context));
             return false;
         }
-        call(context, 'pushHistory', null, t('Unload SAM3 uploaded mask', '卸载 SAM3 上传蒙版'));
+        call(context, 'pushHistory', null, t('Unload SAM3 uploaded mask', '卸载 SAM3 上传蒙版', context));
         applyStatePatch(node, { asset: null }, context);
         Object.assign(node, call(context, 'buildSam3SourcePatch', {}, node, {
             sourcePatch: {
@@ -920,10 +996,10 @@ ${running
             }
         }));
         applyStatePatch(node, {
-            status: buildStatus('idle', t('Uploaded mask unloaded. Generate a mask or upload another one.', '上传的蒙版已卸载，请生成或上传新的蒙版。'), context)
+            status: buildStatus('idle', t('Uploaded mask unloaded. Generate a mask or upload another one.', '上传的蒙版已卸载，请生成或上传新的蒙版。', context), context)
         }, context);
         call(context, 'mutate', null);
-        call(context, 'showToast', null, t('Uploaded SAM3 mask unloaded.', '已卸载上传的 SAM3 蒙版。'));
+        call(context, 'showToast', null, t('Uploaded SAM3 mask unloaded.', '已卸载上传的 SAM3 蒙版。', context));
         return true;
     }
 

@@ -33,10 +33,10 @@
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const setTimer = typeof runtimeSource.setTimeout === 'function'
             ? runtimeSource.setTimeout
-            : (typeof setTimeout === 'function' ? setTimeout : (() => 0));
+            : (() => 0);
         const clearTimer = typeof runtimeSource.clearTimeout === 'function'
             ? runtimeSource.clearTimeout
-            : (typeof clearTimeout === 'function' ? clearTimeout : (() => {}));
+            : (() => {});
         const historyLimit = Math.max(1, Number(configCall('getHistoryLimit', 32)) || 32);
         const historyMemoryBudgetBytes = Math.max(1, Number(configCall('getHistoryMemoryBudgetBytes', 48 * 1024 * 1024)) || 48 * 1024 * 1024);
         let undoStack = [];

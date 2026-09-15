@@ -22,7 +22,7 @@
             : fallback;
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const clientToWorld = (clientX, clientY) => sourceCall(
             viewportSource,
             'clientToWorld',
@@ -32,7 +32,7 @@
         ) || { x: clientX, y: clientY };
         const getPerformanceNow = () => typeof runtimeSource.performanceNow === 'function'
             ? runtimeSource.performanceNow()
-            : (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+            : 0;
         const uiCall = (name, fallback, ...args) => sourceCall(uiSource, name, fallback, ...args);
         const selectionCall = (name, fallback, ...args) => sourceCall(selectionSource, name, fallback, ...args);
         const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);

@@ -20,7 +20,7 @@
         const getProject = () => projectCall('getProject', {}) || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const nodeCall = (name, fallback, ...args) => sourceCall(nodeSource, name, fallback, ...args);
         const geometryCall = (name, fallback, ...args) => sourceCall(geometrySource, name, fallback, ...args);
         const languageCall = (name, fallback, ...args) => sourceCall(languageSource, name, fallback, ...args);

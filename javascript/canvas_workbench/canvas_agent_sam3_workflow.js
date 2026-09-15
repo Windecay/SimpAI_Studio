@@ -5,6 +5,8 @@
         const scope = source?.sam3WorkflowSource || source || {};
         const languageSource = scope.languageSource || {};
         const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const runtimeSource = scope.runtimeSource || {};
         const projectSource = scope.projectSource || {};
         const stateSource = scope.stateSource || {};
         const mediaSource = scope.mediaSource || {};
@@ -19,8 +21,9 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const nowIso = identitySource.nowIso || (() => new Date().toISOString());
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
+        const now = (...args) => call(timeSource, 'now', 0, ...args);
+        const nowIso = (...args) => call(timeSource, 'nowIso', '', ...args);
         const getProject = () => call(projectSource, 'getProject', {}) || {};
         const getNode = (...args) => call(projectSource, 'getNode', null, ...args);
         const getGroup = (...args) => call(projectSource, 'getGroup', null, ...args);
@@ -57,7 +60,7 @@
         const runPresetNode = (...args) => call(agentSource, 'runPresetNode', null, ...args);
         const showToast = (...args) => call(agentSource, 'showToast', null, ...args);
         const setCanvasAgentSelection = (...args) => call(agentSource, 'setCanvasAgentSelection', null, ...args);
-        const schedule = typeof persistenceSource.setTimeout === 'function' ? persistenceSource.setTimeout : globalThis.setTimeout;
+        const schedule = (...args) => call(runtimeSource, 'setTimeout', null, ...args);
         const buildSam3SourcePatch = (...args) => call(patchSource, 'buildSam3SourcePatch', {}, ...args) || {};
         const buildSam3StatePatch = (...args) => call(patchSource, 'buildSam3StatePatch', {}, ...args) || {};
         const buildGroupFieldPatch = (...args) => call(patchSource, 'buildGroupFieldPatch', {}, ...args) || {};
@@ -104,7 +107,7 @@
                 asset.path || asset.output_path || asset.preview_url || '',
                 response?.mask_video?.path || response?.asset_ref?.path || '',
                 response?.mask_video?.asset_id || response?.asset_ref?.asset_id || ''
-            ].filter(Boolean).join('|') || `${sam3Node?.id || 'sam3'}:${Date.now()}`;
+            ].filter(Boolean).join('|') || `${sam3Node?.id || 'sam3'}:${now()}`;
         }
 
         function findCanvasAgentSam3WorkflowForPreset(presetNode) {

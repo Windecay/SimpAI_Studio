@@ -1,7 +1,19 @@
 (function () {
     'use strict';
 
-    const PRESET_RUN_ASPECT_OPTIONS = [
+    function createCanvasApiController(context) {
+        const scope = context?.apiSource || context || {};
+        const configSource = scope.configSource || {};
+        const networkSource = scope.networkSource || {};
+        const eventSource = scope.eventSource || {};
+        const timeSource = scope.timeSource || {};
+        const identitySource = scope.identitySource || {};
+        let fallbackIdentitySequence = 0;
+        const call = (source, name, fallback, ...args) => typeof source?.[name] === 'function'
+            ? source[name](...args)
+            : fallback;
+
+        const PRESET_RUN_ASPECT_OPTIONS = [
         { key: 'auto', value: '' },
         { key: '1:1', value: '1024*1024' },
         { key: '16:9', value: '1344*768' },
@@ -12,7 +24,15 @@
         { key: '3:2', value: '1216*832' },
         { key: '7:4', value: '1344*768' },
         { key: '4:7', value: '768*1344' }
-    ];
+        ];
+
+        const nowIso = (...args) => call(timeSource, 'nowIso', '', ...args) || '';
+        const uid = (...args) => {
+            const value = call(identitySource, 'uid', '', ...args);
+            if (value) return String(value);
+            fallbackIdentitySequence += 1;
+            return `${String(args[0] || 'id')}_${fallbackIdentitySequence}`;
+        };
 
     function clonePresetRunValue(value, fallback) {
         try {
@@ -23,7 +43,7 @@
     }
 
     function presetRunAspectOptions() {
-        const configured = window.SimpAICanvasWorkbenchCanvasAgent?.CANVAS_AGENT_ASPECT_OPTIONS;
+        const configured = call(configSource, 'getPresetRunAspectOptions', null);
         const source = Array.isArray(configured) && configured.length ? configured : PRESET_RUN_ASPECT_OPTIONS;
         return clonePresetRunValue(source, PRESET_RUN_ASPECT_OPTIONS.slice());
     }
@@ -208,7 +228,7 @@
             || entry.task_method
             || backendParams.task_method
             || '';
-        const nodeId = String(opts.id || `preset_run_${Date.now().toString(36)}`);
+        const nodeId = String(opts.id || uid('preset_run'));
         const node = {
             id: nodeId,
             type: isScene ? 'preset' : 'classic',
@@ -284,7 +304,9 @@
         try {
             const bodyPayload = Object.assign({}, payload || {});
             delete bodyPayload.signal;
-            const response = await fetch(endpoint, {
+            const fetchImpl = networkSource.fetch;
+            if (typeof fetchImpl !== 'function') return { ok: false, error: requestError };
+            const response = await fetchImpl(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(bodyPayload),
@@ -311,9 +333,12 @@
             }
             const message = err?.message || String(err || requestError);
             try {
-                window.dispatchEvent(new CustomEvent('simpai:backend-request-failed', {
-                    detail: { endpoint, error: message, at: new Date().toISOString() }
-                }));
+                const EventCtor = eventSource.CustomEvent;
+                if (typeof eventSource.dispatchEvent === 'function' && typeof EventCtor === 'function') {
+                    eventSource.dispatchEvent(new EventCtor('simpai:backend-request-failed', {
+                        detail: { endpoint, error: message, at: nowIso() }
+                    }));
+                }
             } catch (eventErr) {}
             return { ok: false, error: message };
         }
@@ -895,7 +920,7 @@
         });
     }
 
-    window.SimpAICanvasWorkbenchApi = {
+        return {
         postJson,
         buildPresetRunNode,
         presetRunAspectOptions,
@@ -976,5 +1001,29 @@
         vlmUnload,
         translateRun,
         translatePoll
-    };
+        };
+    }
+
+    const utils = window.SimpAICanvasWorkbenchUtils || {};
+    const defaultApi = createCanvasApiController({
+        configSource: {
+            getPresetRunAspectOptions: () => window.SimpAICanvasWorkbenchCanvasAgent?.CANVAS_AGENT_ASPECT_OPTIONS
+        },
+        networkSource: {
+            fetch: typeof window.fetch === 'function' ? window.fetch.bind(window) : null
+        },
+        eventSource: {
+            dispatchEvent: (...args) => typeof window.dispatchEvent === 'function' ? window.dispatchEvent(...args) : false,
+            CustomEvent: window.CustomEvent || null
+        },
+        timeSource: {
+            nowIso: utils.nowIso
+        },
+        identitySource: {
+            uid: utils.uid
+        }
+    });
+    window.SimpAICanvasWorkbenchApi = Object.assign({}, window.SimpAICanvasWorkbenchApi || {}, defaultApi, {
+        createCanvasApiController
+    });
 })();

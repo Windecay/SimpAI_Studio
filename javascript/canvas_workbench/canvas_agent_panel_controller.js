@@ -5,7 +5,10 @@
         const scope = context?.panelControllerSource || context || {};
         const languageSource = scope.languageSource || {};
         const identitySource = scope.identitySource || {};
+        const timeSource = scope.timeSource || {};
+        const runtimeSource = scope.runtimeSource || {};
         const utilitySource = scope.utilitySource || {};
+        const helpSource = scope.helpSource || {};
         const capacitySource = scope.capacitySource || {};
         const stateSource = scope.stateSource || {};
         const domSource = scope.domSource || {};
@@ -28,6 +31,7 @@
         const t = languageSource.t || ((en, cn) => cn || en);
         const escapeHtml = utilitySource.escapeHtml || (value => String(value ?? ''));
         const clamp = utilitySource.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
+        const helpCall = (name, fallback, ...args) => call(helpSource, name, fallback, ...args);
         const getMaxImageReferences = () => Number(call(capacitySource, 'getMaxImageReferences', 0) || 0);
         const getMaxVideoReferences = () => Number(call(capacitySource, 'getMaxVideoReferences', 0) || 0);
         const getMaxAudioReferences = () => Number(call(capacitySource, 'getMaxAudioReferences', 0) || 0);
@@ -54,13 +58,15 @@
         const setCanvasAgentResolutionPatch = (...args) => call(settingsSource, 'setCanvasAgentResolutionPatch', null, ...args);
         const setCanvasAgentSuppressClickUntil = (...args) => call(domSource, 'setCanvasAgentSuppressClickUntil', null, ...args);
         const requestRenderCanvasAgentPanel = () => call(renderSource, 'renderCanvasAgentPanel', null);
-        const nowIso = identitySource.nowIso || (() => new Date().toISOString());
-        const schedule = identitySource.setTimeout || globalThis.setTimeout;
+        const now = (...args) => call(timeSource, 'now', 0, ...args);
+        const nowIso = (...args) => call(timeSource, 'nowIso', '', ...args);
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
+        const schedule = (...args) => call(runtimeSource, 'setTimeout', null, ...args);
+        const getDocument = () => call(domSource, 'getDocument', null);
         let dragState = null;
         const escapeSelector = (value) => {
             const text = String(value ?? '');
-            if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') return globalThis.CSS.escape(text);
-            return text.replace(/["\\]/g, '\\$&');
+            return call(utilitySource, 'cssEscape', text, text);
         };
 
         function applyCanvasAgentDecisionFormPatch(decision, formPatch) {
@@ -143,7 +149,7 @@
             call(uiSource, 'revealCanvasAgentPanelForToolCard', null);
             return new Promise((resolve) => {
                 state.pendingDecision = {
-                    id: call(identitySource, 'uid', `agent_decision_${Date.now()}`),
+                    id: uid('agent_decision'),
                     title: options.title || t('Agent confirmation', 'Agent 确认'),
                     message: options.message || '',
                     details: options.details || '',
@@ -275,14 +281,14 @@ ${state.resolutionOpen ? renderView('renderCanvasAgentResolutionControls', decis
 <div class="sai-canvas-agent-head" data-canvas-agent-drag-handle>
   <div class="sai-canvas-agent-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(canvasAgentTargetLabel(target))}</span></div>
   ${renderView('renderCanvasAgentModelChip', settings, decisionActive || runActive)}
-  ${window.SimpAIStudioHelp?.button('agent', 'canvas') || ''}
+  ${helpCall('button', '', 'agent', 'canvas') || ''}
   <button type="button" class="sai-canvas-agent-head-btn ${attachPaused ? 'is-active' : ''}" data-canvas-agent-action="toggle-attach" title="${escapeHtml(attachPaused ? t('Enable attach to selection', '启用吸附到选中节点') : t('Pause attach to selection', '暂停吸附到选中节点'))}"><i class="fa-solid ${attachPaused ? 'fa-link' : 'fa-link-slash'}"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="toggle-expanded" title="${escapeHtml(expanded ? t('Collapse composer', '收起输入器') : t('Expand composer', '展开输入器'))}"><i class="fa-solid ${expanded ? 'fa-down-left-and-up-right-to-center' : 'fa-up-right-and-down-left-from-center'}"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="toggle-minimized" title="${escapeHtml(t('Minimize Agent', '最小化 Agent'))}"><i class="fa-solid fa-minus"></i></button>
   <button type="button" class="sai-canvas-agent-head-btn" data-canvas-agent-action="open-settings" title="${escapeHtml(t('Agent settings', 'Agent 设置'))}"><i class="fa-solid fa-gear"></i></button>
 </div>
 ${state.modelPickerOpen ? renderView('renderCanvasAgentModelPicker', settings, decisionActive || runActive) : ''}
-${window.SimpAIStudioHelp?.modelNotice(settings.rewriteModel, !settings.customModel) || ''}
+${helpCall('modelNotice', '', settings.rewriteModel, !settings.customModel) || ''}
 ${renderView('renderCanvasAgentRunInfo', state.currentRun)}
 ${overlay.active ? renderOutpaintControlPanel() : (decisionActive ? renderView('renderCanvasAgentDecision', decision) : composerBody)}
 ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.lastMessage)}</div>` : ''}`;
@@ -524,9 +530,10 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
                 moved: false
             };
             try { handle.setPointerCapture?.(evt.pointerId); } catch (err) {}
-            document.addEventListener('pointermove', onCanvasAgentPointerMove, true);
-            document.addEventListener('pointerup', onCanvasAgentPointerUp, true);
-            document.addEventListener('pointercancel', onCanvasAgentPointerUp, true);
+            const doc = getDocument();
+            doc?.addEventListener('pointermove', onCanvasAgentPointerMove, true);
+            doc?.addEventListener('pointerup', onCanvasAgentPointerUp, true);
+            doc?.addEventListener('pointercancel', onCanvasAgentPointerUp, true);
         }
 
         function onCanvasAgentPointerMove(evt) {
@@ -560,11 +567,12 @@ ${state.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtml(state.las
         function onCanvasAgentPointerUp(evt) {
             const state = dragState;
             if (!state || evt.pointerId !== state.pointerId) return;
-            if (state.moved) setCanvasAgentSuppressClickUntil(Date.now() + 220);
+            if (state.moved) setCanvasAgentSuppressClickUntil(now() + 220);
             dragState = null;
-            document.removeEventListener('pointermove', onCanvasAgentPointerMove, true);
-            document.removeEventListener('pointerup', onCanvasAgentPointerUp, true);
-            document.removeEventListener('pointercancel', onCanvasAgentPointerUp, true);
+            const doc = getDocument();
+            doc?.removeEventListener('pointermove', onCanvasAgentPointerMove, true);
+            doc?.removeEventListener('pointerup', onCanvasAgentPointerUp, true);
+            doc?.removeEventListener('pointercancel', onCanvasAgentPointerUp, true);
             if (state.kind === 'panel' && state.moved) requestRenderCanvasAgentPanel();
         }
 

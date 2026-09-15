@@ -1,11 +1,15 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
+    const UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
     const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
     const formatBytes = UTILS.formatBytes || ((bytes) => String(bytes || ''));
 
-    function assetDisplaySrc(asset) {
+    function sourceCall(source, name, fallback, ...args) {
+        return typeof source?.[name] === 'function' ? source[name](...args) : fallback;
+    }
+
+    function assetDisplaySrc(asset, runtime) {
         if (!asset) return '';
         if (asset.kind === 'browser_upload') {
             const mime = String(asset.mime || '').toLowerCase();
@@ -14,16 +18,16 @@
             if (asset.data_url) return asset.data_url;
         }
         const hasProjectRelativePath = !!assetRelativePath(asset);
-        const relativeUrl = projectRelativeFileUrl(asset);
+        const relativeUrl = projectRelativeFileUrl(asset, runtime);
         if (hasProjectRelativePath && !relativeUrl) return asset.preview_url || pathToFileUrl(asset.path || asset.output_path || asset.original_output_path) || asset.data_url || asset.thumb || '';
         return relativeUrl || asset.preview_url || pathToFileUrl(asset.path || asset.output_path || asset.original_output_path) || asset.data_url || asset.thumb || '';
     }
 
     /** Compact thumbnail source for stack/minimap — prefers smaller thumb over full data_url */
-    function assetThumbSrc(asset) {
+    function assetThumbSrc(asset, runtime) {
         if (!asset) return '';
         const hasProjectRelativePath = !!assetRelativePath(asset);
-        const relativeUrl = projectRelativeFileUrl(asset);
+        const relativeUrl = projectRelativeFileUrl(asset, runtime);
         if (relativeUrl) return relativeUrl;
         if (hasProjectRelativePath) return asset.preview_url || pathToFileUrl(asset.path || asset.output_path || asset.original_output_path) || asset.data_url || asset.thumb || '';
         if (asset.thumb) return asset.thumb;
@@ -39,11 +43,11 @@
         return `/file=${encodeURI(text.replace(/\\/g, '/'))}`;
     }
 
-    function projectRelativeFileUrl(asset) {
+    function projectRelativeFileUrl(asset, runtime) {
         if (!asset || typeof asset !== 'object') return '';
         const rel = assetRelativePath(asset);
         if (!rel || rel.includes('..')) return '';
-        const root = String(asset.asset_root || window.SimpAICanvasWorkbenchAssetRoot || '').trim();
+        const root = String(asset.asset_root || sourceCall(runtime?.assetRootSource, 'getAssetRoot', '') || '').trim();
         if (!root) return '';
         return pathToFileUrl(`${root.replace(/[\\/]+$/g, '')}/${rel}`);
     }
@@ -79,19 +83,19 @@
         return text.replace(/\\/g, '/').replace(/\/+/g, '/');
     }
 
-    function readAssetInfo(asset, hasMask) {
+    function readAssetInfo(asset, hasMask, runtime) {
         const bits = [];
         if (asset?.width && asset?.height) bits.push(`${asset.width} x ${asset.height}`);
         if (asset?.duration) bits.push(`${formatDuration(asset.duration)}`);
         if (asset?.fps) bits.push(`${formatFps(asset.fps)} fps`);
         if (asset?.frame_count) bits.push(`${Math.round(Number(asset.frame_count) || 0)} frames`);
-        const range = mediaEditRange(asset);
+        const range = mediaEditRange(asset, runtime);
         if (range.clipped) {
             const clipBits = [`clip ${formatDuration(range.end - range.start)}`];
             if (range.trim_frames) clipBits.push(`${range.trim_frames} frames`);
             bits.push(clipBits.join(' / '));
         }
-        if (asset?.size) bits.push(formatBytes(asset.size));
+        if (asset?.size) bits.push(runtime?.formatBytes ? runtime.formatBytes(asset.size) : formatBytes(asset.size));
         if (asset?.mime) bits.push(asset.mime);
         if (hasMask) bits.push('Mask');
         return bits;
@@ -111,14 +115,15 @@
         return fps >= 10 ? String(Math.round(fps * 100) / 100) : String(Math.round(fps * 1000) / 1000);
     }
 
-    function mediaEditRange(asset) {
+    function mediaEditRange(asset, runtime) {
+        const clampValue = runtime?.clamp || clamp;
         const duration = Math.max(0, Number(asset?.duration || 0) || 0);
         const edit = asset?.edit && typeof asset.edit === 'object' ? asset.edit : {};
         let start = Math.max(0, Number(edit.trim_start || 0) || 0);
         let end = Number(edit.trim_end || duration || 0) || duration || 0;
         if (duration > 0) {
-            start = clamp(start, 0, duration);
-            end = clamp(end, start, duration);
+            start = clampValue(start, 0, duration);
+            end = clampValue(end, start, duration);
         } else {
             end = Math.max(start, end);
         }
@@ -131,22 +136,22 @@
         };
     }
 
-    function readImageInfo(node) {
-        return readAssetInfo(node?.asset || {}, !!node?.mask?.data_url);
+    function readImageInfo(node, runtime) {
+        return readAssetInfo(node?.asset || {}, !!node?.mask?.data_url, runtime);
     }
 
-    function mediaAspectStyle(asset) {
+    function mediaAspectStyle(asset, runtime) {
         const width = Number(asset?.width || 0);
         const height = Number(asset?.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = (runtime?.clamp || clamp)(width / height, 0.25, 4);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
-    function readAssetSize(asset) {
+    function readAssetSize(asset, runtime) {
         if (!asset) return '';
         if (asset.width && asset.height) return `${asset.width} x ${asset.height}`;
-        if (asset.size) return formatBytes(asset.size);
+        if (asset.size) return runtime?.formatBytes ? runtime.formatBytes(asset.size) : formatBytes(asset.size);
         return asset.mime || '';
     }
 
@@ -194,6 +199,7 @@
     function serializeAssetSourceForRun(node, options) {
         if (!node) return null;
         const opts = options || {};
+        const runtime = opts.runtime || null;
         const asset = node.type === 'result' && typeof opts.getSelectedResultAsset === 'function'
             ? opts.getSelectedResultAsset(node)
             : (node.asset
@@ -211,17 +217,40 @@
         };
     }
 
-    window.SimpAICanvasWorkbenchAssetNodes = {
-        assetDisplaySrc,
-        assetThumbSrc,
-        readAssetInfo,
-        readImageInfo,
-        mediaAspectStyle,
-        readAssetSize,
-        formatDuration,
-        mediaEditRange,
-        serializeAssetForRun,
-        serializeMaskForRun,
-        serializeAssetSourceForRun
-    };
+    function createAssetNodeApi(source) {
+        const scope = source || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetRootSource = scope.assetRootSource || {};
+        const runtime = {
+            clamp: typeof utilitySource.clamp === 'function' ? (...args) => utilitySource.clamp(...args) : clamp,
+            formatBytes: typeof utilitySource.formatBytes === 'function' ? (...args) => utilitySource.formatBytes(...args) : formatBytes,
+            assetRootSource
+        };
+        return {
+            assetDisplaySrc: asset => assetDisplaySrc(asset, runtime),
+            assetThumbSrc: asset => assetThumbSrc(asset, runtime),
+            readAssetInfo: (asset, hasMask) => readAssetInfo(asset, hasMask, runtime),
+            readImageInfo: node => readImageInfo(node, runtime),
+            mediaAspectStyle: asset => mediaAspectStyle(asset, runtime),
+            readAssetSize: asset => readAssetSize(asset, runtime),
+            formatDuration,
+            mediaEditRange: asset => mediaEditRange(asset, runtime),
+            serializeAssetForRun,
+            serializeMaskForRun,
+            serializeAssetSourceForRun: (node, options) => serializeAssetSourceForRun(node, Object.assign({}, options || {}, { runtime }))
+        };
+    }
+
+    const defaultAssetNodeApi = createAssetNodeApi({
+        utilitySource: { clamp, formatBytes },
+        assetRootSource: {
+            getAssetRoot: () => typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetRoot || '' : ''
+        }
+    });
+    window.SimpAICanvasWorkbenchAssetNodes = Object.assign(
+        {},
+        window.SimpAICanvasWorkbenchAssetNodes || {},
+        defaultAssetNodeApi,
+        { createAssetNodeApi }
+    );
 })();

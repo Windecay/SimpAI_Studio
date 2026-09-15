@@ -8,15 +8,15 @@
         const utilitySource = scope.utilitySource || {};
         const hoverPreviewSource = scope.hoverPreviewSource || {};
         const eventSource = scope.eventSource || {};
-        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getDocument = () => domSource.document || null;
+        const getWindow = () => viewportSource.window || { innerWidth: 0, innerHeight: 0 };
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const escapeHtml = typeof utilitySource.escapeHtml === 'function' ? utilitySource.escapeHtml : value => String(value ?? '');
         const breakablePreviewText = typeof utilitySource.breakablePreviewText === 'function'
             ? utilitySource.breakablePreviewText
             : value => escapeHtml(value);
         const hideHoverPreview = typeof hoverPreviewSource.hideHoverPreview === 'function' ? hoverPreviewSource.hideHoverPreview : () => {};
-        const EventCtor = eventSource.Event || (typeof Event !== 'undefined' ? Event : null);
+        const EventCtor = eventSource.Event || null;
         let previewSelectMenuEl = null;
         let previewSelectAnchor = null;
 

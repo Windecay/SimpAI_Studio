@@ -1,15 +1,14 @@
 (function () {
     'use strict';
 
-    const UTILS = window.SimpAICanvasWorkbenchUtils || {};
-    const ASSETS = window.SimpAICanvasWorkbenchAssetNodes || {};
-    const escapeHtml = UTILS.escapeHtml || ((value) => String(value ?? ''));
-    const clamp = UTILS.clamp || ((value, min, max) => Math.max(min, Math.min(max, value)));
-    const t = UTILS.t || ((en, cn) => cn || en);
-    const uid = UTILS.uid || ((prefix) => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`);
+    const DEFAULT_UTILS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchUtils || {} : {};
+    const DEFAULT_ASSETS = typeof window !== 'undefined' ? window.SimpAICanvasWorkbenchAssetNodes || {} : {};
+    const escapeHtmlFallback = (value) => String(value ?? '');
+    const clampFallback = (value, min, max) => Math.max(min, Math.min(max, value));
+    const translateFallback = (en, cn) => cn || en;
 
-    function editor() {
-        return window.SimpAIPoseStudioEditor || {};
+    function editor(context) {
+        return call(context, 'getEditor', {});
     }
 
     function call(context, name, fallback, ...args) {
@@ -22,36 +21,70 @@
     }
 
     function createPoseStudioNodeContext(source) {
-        const context = source || {};
+        const scope = source || {};
+        const utilitySource = scope.utilitySource || {};
+        const assetSource = scope.assetSource || {};
+        const editorSource = scope.editorSource || {};
+        const pick = (group, name) => delegate(group, name) || delegate(scope, name);
         return {
-            getProject: delegate(context, 'getProject'),
-            getProjectId: delegate(context, 'getProjectId'),
-            assetDisplaySrc: delegate(context, 'assetDisplaySrc'),
-            defaultNodeSize: delegate(context, 'defaultNodeSize'),
-            detectWorkbenchTheme: delegate(context, 'detectWorkbenchTheme'),
-            ensureWorkbenchFormFieldNames: delegate(context, 'ensureWorkbenchFormFieldNames'),
-            getNode: delegate(context, 'getNode'),
-            getSelectedResultAsset: delegate(context, 'getSelectedResultAsset'),
-            isPoseStudioImageSource: delegate(context, 'isPoseStudioImageSource'),
-            isNodeIgnored: delegate(context, 'isNodeIgnored'),
-            isNodeLocked: delegate(context, 'isNodeLocked'),
-            mediaAspectStyle: delegate(context, 'mediaAspectStyle'),
-            mutate: delegate(context, 'mutate'),
-            notConnectedText: delegate(context, 'notConnectedText'),
-            placeNodeAvoidingOverlap: delegate(context, 'placeNodeAvoidingOverlap'),
-            portHintText: delegate(context, 'portHintText'),
-            pushHistory: delegate(context, 'pushHistory'),
-            readAssetInfo: delegate(context, 'readAssetInfo'),
-            renderNodeStateBadges: delegate(context, 'renderNodeStateBadges'),
-            scheduleSave: delegate(context, 'scheduleSave'),
-            serializeAssetSourceForRun: delegate(context, 'serializeAssetSourceForRun'),
-            setSelectedNode: delegate(context, 'setSelectedNode'),
-            showToast: delegate(context, 'showToast'),
-            buildAssetReference: delegate(context, 'buildAssetReference'),
-            buildProjectNodeAppendPatch: delegate(context, 'buildProjectNodeAppendPatch'),
-            buildPoseStudioStatePatch: delegate(context, 'buildPoseStudioStatePatch'),
-            buildPoseStudioConfirmPatch: delegate(context, 'buildPoseStudioConfirmPatch')
+            escapeHtml: pick(utilitySource, 'escapeHtml'),
+            clamp: pick(utilitySource, 'clamp'),
+            t: pick(utilitySource, 't'),
+            getProject: pick(scope, 'getProject'),
+            getProjectId: pick(scope, 'getProjectId'),
+            uid: pick(scope, 'uid'),
+            getEditor: pick(editorSource, 'getEditor'),
+            assetDisplaySrc: pick(assetSource, 'assetDisplaySrc'),
+            defaultNodeSize: pick(scope, 'defaultNodeSize'),
+            detectWorkbenchTheme: pick(scope, 'detectWorkbenchTheme'),
+            ensureWorkbenchFormFieldNames: pick(scope, 'ensureWorkbenchFormFieldNames'),
+            getNode: pick(scope, 'getNode'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            isPoseStudioImageSource: pick(scope, 'isPoseStudioImageSource'),
+            isNodeIgnored: pick(scope, 'isNodeIgnored'),
+            isNodeLocked: pick(scope, 'isNodeLocked'),
+            mediaAspectStyle: pick(assetSource, 'mediaAspectStyle'),
+            mutate: pick(scope, 'mutate'),
+            notConnectedText: pick(scope, 'notConnectedText'),
+            placeNodeAvoidingOverlap: pick(scope, 'placeNodeAvoidingOverlap'),
+            portHintText: pick(scope, 'portHintText'),
+            pushHistory: pick(scope, 'pushHistory'),
+            readAssetInfo: pick(assetSource, 'readAssetInfo'),
+            renderNodeStateBadges: pick(scope, 'renderNodeStateBadges'),
+            scheduleSave: pick(scope, 'scheduleSave'),
+            serializeAssetSourceForRun: pick(assetSource, 'serializeAssetSourceForRun'),
+            setSelectedNode: pick(scope, 'setSelectedNode'),
+            showToast: pick(scope, 'showToast'),
+            buildAssetReference: pick(scope, 'buildAssetReference'),
+            buildProjectNodeAppendPatch: pick(scope, 'buildProjectNodeAppendPatch'),
+            buildPoseStudioStatePatch: pick(scope, 'buildPoseStudioStatePatch'),
+            buildPoseStudioConfirmPatch: pick(scope, 'buildPoseStudioConfirmPatch')
         };
+    }
+
+    const DEFAULT_POSE_STUDIO_CONTEXT = createPoseStudioNodeContext({
+        utilitySource: {
+            escapeHtml: DEFAULT_UTILS.escapeHtml || escapeHtmlFallback,
+            clamp: DEFAULT_UTILS.clamp || clampFallback,
+            t: DEFAULT_UTILS.t || translateFallback
+        },
+        assetSource: DEFAULT_ASSETS
+    });
+
+    function contextOf(context) {
+        return context || DEFAULT_POSE_STUDIO_CONTEXT;
+    }
+
+    function escapeHtml(value, context) {
+        return call(contextOf(context), 'escapeHtml', escapeHtmlFallback(value), value);
+    }
+
+    function clamp(value, min, max, context) {
+        return call(contextOf(context), 'clamp', clampFallback(value, min, max), value, min, max);
+    }
+
+    function t(en, cn, context) {
+        return call(contextOf(context), 't', translateFallback(en, cn), en, cn);
     }
 
     function getProject(context) {
@@ -109,14 +142,14 @@
     }
 
     function assetDisplaySrc(asset, context) {
-        if (typeof context?.assetDisplaySrc === 'function') return context.assetDisplaySrc(asset || {});
-        if (typeof ASSETS.assetDisplaySrc === 'function') return ASSETS.assetDisplaySrc(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.assetDisplaySrc === 'function') return ctx.assetDisplaySrc(asset || {});
         return asset?.preview_url || asset?.data_url || asset?.thumb || '';
     }
 
     function readAssetInfo(asset, context) {
-        if (typeof context?.readAssetInfo === 'function') return context.readAssetInfo(asset || {});
-        if (typeof ASSETS.readAssetInfo === 'function') return ASSETS.readAssetInfo(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.readAssetInfo === 'function') return ctx.readAssetInfo(asset || {});
         const bits = [];
         if (asset?.width && asset?.height) bits.push(`${asset.width} x ${asset.height}`);
         if (asset?.mime) bits.push(asset.mime);
@@ -125,22 +158,18 @@
 
     function serializeAssetSourceForRun(node, context) {
         if (!node) return null;
-        if (typeof context?.serializeAssetSourceForRun === 'function') return context.serializeAssetSourceForRun(node);
-        if (typeof ASSETS.serializeAssetSourceForRun === 'function') {
-            return ASSETS.serializeAssetSourceForRun(node, {
-                getSelectedResultAsset: item => selectedResultAsset(item, context)
-            });
-        }
+        const ctx = contextOf(context);
+        if (typeof ctx.serializeAssetSourceForRun === 'function') return ctx.serializeAssetSourceForRun(node);
         return null;
     }
 
     function mediaAspectStyle(asset, context) {
-        if (typeof context?.mediaAspectStyle === 'function') return context.mediaAspectStyle(asset || {});
-        if (typeof ASSETS.mediaAspectStyle === 'function') return ASSETS.mediaAspectStyle(asset || {});
+        const ctx = contextOf(context);
+        if (typeof ctx.mediaAspectStyle === 'function') return ctx.mediaAspectStyle(asset || {});
         const width = Number(asset?.width || 0);
         const height = Number(asset?.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = clamp(width / height, 0.25, 4, context);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
@@ -152,16 +181,16 @@
         const width = Number(exportParams.view_width || referenceSize.width || 0);
         const height = Number(exportParams.view_height || referenceSize.height || 0);
         if (!width || !height) return '';
-        const aspect = clamp(width / height, 0.25, 4);
+        const aspect = clamp(width / height, 0.25, 4, context);
         return ` style="--sai-media-aspect:${aspect.toFixed(5)}" data-aspect="true"`;
     }
 
     function notConnectedText(context) {
-        return call(context, 'notConnectedText', t('Not connected', '未连接'));
+        return call(context, 'notConnectedText', t('Not connected', '未连接', context));
     }
 
     function portHintText(context) {
-        return call(context, 'portHintText', t('Double-click', '双击'));
+        return call(context, 'portHintText', t('Double-click', '双击', context));
     }
 
     function poseState(node, context) {
@@ -212,24 +241,24 @@
         const hasStoredReference = !!(state.reference_asset?.path || state.reference_asset?.preview_url || state.reference_asset?.data_url || state.reference_asset?.thumb);
         const referenceLabel = source
             ? (source.title || source.id)
-            : (hasStoredReference ? t('Loaded reference', '已载入参考图') : notConnectedText(context));
+            : (hasStoredReference ? t('Loaded reference', '已载入参考图', context) : notConnectedText(context));
         return `
 <div class="sai-node-head">
-  <span class="sai-node-kind">${escapeHtml(t('Pose', '姿势'))}</span>
-  <span class="sai-node-title">${escapeHtml(node.title || 'Pose Studio')}</span>
+  <span class="sai-node-kind">${escapeHtml(t('Pose', '姿势', context), context)}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || 'Pose Studio', context)}</span>
   ${renderNodeStateBadges(node, context)}
-  <button type="button" data-node-action="edit-pose-studio" title="${escapeHtml(t('Open Pose Studio', '打开 Pose Studio'))}"><i class="fa-solid fa-person-walking"></i></button>
-  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+  <button type="button" data-node-action="edit-pose-studio" title="${escapeHtml(t('Open Pose Studio', '打开 Pose Studio', context), context)}"><i class="fa-solid fa-person-walking"></i></button>
+  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除', context), context)}"><i class="fa-solid fa-xmark"></i></button>
 </div>
-<div class="sai-text-input-row sai-pose-studio-reference-row" title="${escapeHtml(t('Connect an image/result as reference', '连接图像 / 结果作为参考'))}">
-  <button type="button" class="sai-node-handle sai-node-handle-in" data-pose-studio-reference-in title="${escapeHtml(t('Reference image input', '参考图输入'))}"></button>
-  <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Reference', '参考图'))}</span><b>${escapeHtml(referenceLabel)}</b><small>${escapeHtml(portHintText(context))}</small>
+<div class="sai-text-input-row sai-pose-studio-reference-row" title="${escapeHtml(t('Connect an image/result as reference', '连接图像 / 结果作为参考', context), context)}">
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-pose-studio-reference-in title="${escapeHtml(t('Reference image input', '参考图输入', context), context)}"></button>
+  <i class="fa-solid fa-image"></i><span>${escapeHtml(t('Reference', '参考图', context), context)}</span><b>${escapeHtml(referenceLabel, context)}</b><small>${escapeHtml(portHintText(context), context)}</small>
 </div>
-<div class="sai-node-media sai-pose-studio-media"${poseMediaAspectStyle(asset, state, context)}>${src ? `<img src="${escapeHtml(src)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No pose image', '无姿势图'))}</div>`}</div>
-${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit)}</span>`).join('')}</div>` : ''}
-${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
-<button type="button" class="sai-node-primary" data-node-action="edit-pose-studio"><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Edit Pose', '编辑姿势'))}</span></button>
-<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Pose image output', '姿势图输出'))}"></button>`;
+<div class="sai-node-media sai-pose-studio-media"${poseMediaAspectStyle(asset, state, context)}>${src ? `<img src="${escapeHtml(src, context)}" alt="" draggable="false">` : `<div class="sai-node-empty">${escapeHtml(t('No pose image', '无姿势图', context), context)}</div>`}</div>
+${info.length ? `<div class="sai-node-info">${info.map(bit => `<span>${escapeHtml(bit, context)}</span>`).join('')}</div>` : ''}
+${status ? `<div class="sai-node-foot">${escapeHtml(status, context)}</div>` : ''}
+<button type="button" class="sai-node-primary" data-node-action="edit-pose-studio"><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Edit Pose', '编辑姿势', context), context)}</span></button>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="image" title="${escapeHtml(t('Pose image output', '姿势图输出', context), context)}"></button>`;
     }
 
     function renderInspector(node, context) {
@@ -237,16 +266,16 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const info = readAssetInfo(node.asset || poseState(node, context).output_asset || {}, context);
         return `
 <div class="sai-inspector-section">
-  <h3>${escapeHtml(node.title || 'Pose Studio')}</h3>
-  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考图'))}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context))}</b></div>
-  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出'))}</span><b>${escapeHtml(info.join(' / ') || t('No pose image', '无姿势图'))}</b></div>
+  <h3>${escapeHtml(node.title || 'Pose Studio', context)}</h3>
+  <label>${escapeHtml(t('Title', '标题', context), context)}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '', context)}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Reference', '参考图', context), context)}</span><b>${escapeHtml(source?.title || source?.id || notConnectedText(context), context)}</b></div>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Output', '输出', context), context)}</span><b>${escapeHtml(info.join(' / ') || t('No pose image', '无姿势图', context), context)}</b></div>
 </div>
 <div class="sai-inspector-actions">
-  <button type="button" data-inspector-action="edit-pose-studio"><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
-  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看'))}</span></button>
-  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
-  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+  <button type="button" data-inspector-action="edit-pose-studio"><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Edit', '编辑', context), context)}</span></button>
+  <button type="button" data-inspector-action="view-media" ${node.asset ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass-plus"></i><span>${escapeHtml(t('View', '查看', context), context)}</span></button>
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制', context), context)}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除', context), context)}</span></button>
 </div>`;
     }
 
@@ -256,7 +285,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         const size = call(context, 'defaultNodeSize', { w: 380, h: 520 }, 'pose_studio') || { w: 380, h: 520 };
         if (opts.history !== false) call(context, 'pushHistory', null, 'Add Pose Studio node');
         const node = {
-            id: opts.id || uid('pose'),
+            id: opts.id || call(context, 'uid', 'pose-node', 'pose'),
             type: 'pose_studio',
             x: world?.x || 0,
             y: world?.y || 0,
@@ -269,7 +298,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             source: { kind: 'pose_studio', module: 'ui.services.pose_studio' },
             status: {
                 state: opts.asset ? 'finished' : 'idle',
-                message: opts.asset ? t('Pose image ready.', '姿势图已就绪。') : t('Open Pose Studio to export a pose image.', '打开 Pose Studio 导出姿势图。')
+                message: opts.asset ? t('Pose image ready.', '姿势图已就绪。', context) : t('Open Pose Studio to export a pose image.', '打开 Pose Studio 导出姿势图。', context)
             }
         };
         Object.assign(node, call(context, 'buildPoseStudioStatePatch', {
@@ -290,13 +319,13 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         appendProjectNode(project, node, context);
         call(context, 'setSelectedNode', null, node.id);
         if (opts.render !== false) call(context, 'mutate', null);
-        if (opts.toast !== false) call(context, 'showToast', null, t('Pose Studio node added', '已添加 Pose Studio 节点'));
+        if (opts.toast !== false) call(context, 'showToast', null, t('Pose Studio node added', '已添加 Pose Studio 节点', context));
         return node;
     }
 
     function openEditor(node, context) {
         if (!node || node.type !== 'pose_studio') return null;
-        const runtimeEditor = editor();
+        const runtimeEditor = editor(context);
         if (typeof runtimeEditor.open !== 'function') {
             call(context, 'showToast', null, 'Pose Studio editor is not loaded.');
             return null;
@@ -342,7 +371,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                     },
                     status: {
                         state: 'finished',
-                        message: t('Pose image exported.', '姿势图已导出。')
+                        message: t('Pose image exported.', '姿势图已导出。', context)
                     }
                 }));
                 call(context, 'setSelectedNode', null, current.id);

@@ -30,7 +30,9 @@
             'createCanvasQwenTtsPresetsController',
             {
                 ...qwenTtsPresetsSource,
-                sendCanvasQwenTtsPresetsRequest: backendMethod('sendCanvasQwenTtsPresetsRequest'),
+                requestSource: Object.assign({}, qwenTtsPresetsSource.requestSource || {}, {
+                    sendCanvasQwenTtsPresetsRequest: backendMethod('sendCanvasQwenTtsPresetsRequest'),
+                }),
             }
         );
         const qwenTtsPresetsMethod = name => method(qwenTtsPresetsController, name);

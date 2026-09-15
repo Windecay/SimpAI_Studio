@@ -12288,8 +12288,10 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     --simpai-upload-media-height: 300px;
 }
 
-#scene_video {
-    --simpai-upload-media-height: 400px;
+#scene_video,
+#scene_reference_video,
+#scene_reference_video2 {
+    --simpai-upload-media-height: 240px;
 }
 
 #sam3_input_video,
@@ -12360,6 +12362,8 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     #image_encrypt_input_image,
     #ip_image_grid [id^="ip_image_"],
     #scene_video,
+    #scene_reference_video,
+    #scene_reference_video2,
     #sam3_input_video,
     #sam3_output_mask_video
 ):not(.fullscreen) {
@@ -12386,6 +12390,8 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     #image_encrypt_input_image,
     #ip_image_grid [id^="ip_image_"],
     #scene_video,
+    #scene_reference_video,
+    #scene_reference_video2,
     #sam3_input_video,
     #sam3_output_mask_video
 ):not(.fullscreen) :where(
@@ -12420,6 +12426,8 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     #image_encrypt_input_image,
     #ip_image_grid [id^="ip_image_"],
     #scene_video,
+    #scene_reference_video,
+    #scene_reference_video2,
     #sam3_input_video,
     #sam3_output_mask_video
 ):not(.fullscreen) :where(img, video, canvas) {

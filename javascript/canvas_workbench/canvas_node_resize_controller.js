@@ -25,7 +25,7 @@
         const getProject = () => sourceCall(projectSource, 'getProject', {}) || {};
         const getDocument = () => typeof domSource.getDocument === 'function'
             ? domSource.getDocument()
-            : (typeof document !== 'undefined' ? document : null);
+            : null;
         const getNode = (id) => sourceCall(nodeSource, 'getNode', null, id);
         const getNodeRect = (node) => sourceCall(
             layoutSource,

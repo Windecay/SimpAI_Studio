@@ -5,6 +5,7 @@
     function createCanvasAgentVlmInstructionController(context) {
         const scope = context?.vlmInstructionSource || context || {};
         const languageSource = scope.languageSource || {};
+        const identitySource = scope.identitySource || {};
         const runtimeSource = scope.runtimeSource || {};
         const projectSource = scope.projectSource || {};
         const referenceSource = scope.referenceSource || {};
@@ -22,9 +23,9 @@
         const plannerCall = (name, fallback, ...args) => call(plannerSource, name, fallback, ...args);
         const transportCall = (name, fallback, ...args) => call(transportSource, name, fallback, ...args);
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = runtimeSource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
-        const schedule = typeof runtimeSource.setTimeout === 'function' ? runtimeSource.setTimeout : globalThis.setTimeout;
-        const unschedule = typeof runtimeSource.clearTimeout === 'function' ? runtimeSource.clearTimeout : globalThis.clearTimeout;
+        const uid = (...args) => call(identitySource, 'uid', '', ...args);
+        const schedule = (...args) => call(runtimeSource, 'setTimeout', null, ...args);
+        const unschedule = (...args) => call(runtimeSource, 'clearTimeout', null, ...args);
         const getPlannerTimeoutMs = () => Math.max(5000, Number(runtimeCall('getPlannerTimeoutMs', 90000) || 90000));
         let activeRequest = null;
 

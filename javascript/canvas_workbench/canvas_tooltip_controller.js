@@ -6,8 +6,8 @@
         const domSource = scope.domSource || {};
         const viewportSource = scope.viewportSource || {};
         const gestureSource = scope.gestureSource || {};
-        const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
-        const getWindow = () => viewportSource.window || (typeof window !== 'undefined' ? window : { innerWidth: 0, innerHeight: 0 });
+        const getDocument = () => domSource.document || null;
+        const getWindow = () => viewportSource.window || { innerWidth: 0, innerHeight: 0 };
         const getRoot = () => typeof domSource.getRoot === 'function' ? domSource.getRoot() : null;
         const isCanvasPointerGestureActive = () => (
             typeof gestureSource.isCanvasPointerGestureActive === 'function'

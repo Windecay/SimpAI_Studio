@@ -43,7 +43,7 @@
             const prompt = String(rawPrompt || '').trim();
             const model = plannerCall('getCanvasAgentRewriteModel', '');
             uiCall('setCanvasAgentRunInfo', null, {
-                token: runtimeCall('uid', `agent_run_${Date.now()}`, 'agent_run'),
+                token: runtimeCall('uid', '', 'agent_run'),
                 stage: t('Thinking', 'Thinking 思考中'),
                 model,
                 cancelAction: 'cancel-vlm-plan'

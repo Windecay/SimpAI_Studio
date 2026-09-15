@@ -17,6 +17,7 @@
         const assetSource = scope.assetSource || {};
         const stateSource = scope.stateSource || {};
         const utilitySource = scope.utilitySource || {};
+        const timeSource = scope.timeSource || {};
         const diagnosticsSource = scope.diagnosticsSource || {};
         const callbackSources = {
             normalizeTemplateLibraryCategory: viewSource,
@@ -66,7 +67,7 @@
             resetGalleryFrostReveals: stateSource,
             sanitizeStoragePart: utilitySource,
             cloneRunValue: utilitySource,
-            nowIso: utilitySource,
+            nowIso: timeSource,
             warn: diagnosticsSource
         };
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
@@ -75,6 +76,7 @@
             return typeof sourceObject[name] === 'function' ? sourceObject[name](...args) : fallback;
         };
         const getTemplateMediaCategories = () => call('getTemplateMediaCategories', [], []);
+        const nowIso = (...args) => call('nowIso', '', ...args);
         const getDocument = () => domSource.document || (typeof document !== 'undefined' ? document : null);
         const warn = (...args) => {
             if (typeof diagnosticsSource.warn === 'function') {
@@ -174,9 +176,9 @@
             const currentProject = call('getCurrentProject', {}, []) || {};
             const defaultProjectId = String(call('getDefaultProjectId', 'canvas', []) || 'canvas');
             const previousProjectId = currentProject.id || defaultProjectId;
-            const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+            const timestamp = String(nowIso() || 'new').replace(/[-:.TZ]/g, '').slice(0, 14) || 'new';
             const rawDefaultId = `${item?.id || 'template'}_${timestamp}`;
-            const defaultId = String(call('sanitizeStoragePart', rawDefaultId, rawDefaultId) || `template_${Date.now()}`);
+            const defaultId = String(call('sanitizeStoragePart', rawDefaultId, rawDefaultId) || rawDefaultId);
             const nextId = await requestTemplateWorkbenchId({
                 title: item?.title || t('Template', '模板'),
                 defaultId
@@ -215,9 +217,9 @@
 
         async function saveCurrentCanvasAsTemplate(parentModal) {
             const currentProject = call('getCurrentProject', {}, []) || {};
-            const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+            const timestamp = String(nowIso() || 'new').replace(/[-:.TZ]/g, '').slice(0, 14) || 'new';
             const rawDefaultId = `${currentProject.id || 'canvas'}_template_${timestamp}`;
-            const defaultId = String(call('sanitizeStoragePart', rawDefaultId, rawDefaultId) || `template_${Date.now()}`);
+            const defaultId = String(call('sanitizeStoragePart', rawDefaultId, rawDefaultId) || rawDefaultId);
             const templateMeta = currentProject && typeof currentProject.template === 'object' ? currentProject.template : {};
             const templateMediaCategories = getTemplateMediaCategories();
             const categories = Array.isArray(templateMediaCategories) && templateMediaCategories.length
@@ -478,7 +480,7 @@
             const projectValue = call('sanitizeProject', templateProject || call('createDefaultProject', {}));
             const safeId = String(config.safeId || '');
             const item = config.item || {};
-            const now = call('nowIso', new Date().toISOString());
+            const now = nowIso();
             projectValue.id = safeId;
             projectValue.title = item.title || projectValue.title || safeId;
             projectValue.created_at = projectValue.created_at || now;

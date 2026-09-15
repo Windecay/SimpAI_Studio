@@ -19,7 +19,7 @@
             ? sourceObject[name](...args)
             : fallback;
         const t = languageSource.t || ((en, cn) => cn || en);
-        const uid = identitySource.uid || ((prefix) => `${prefix || 'id'}_${Date.now()}`);
+        const uid = typeof identitySource.uid === 'function' ? identitySource.uid : () => '';
         const normalizePresetName = utilitySource.normalizePresetName || ((value) => String(value || '').trim());
         const runtimeUiLang = (...args) => call(languageSource, 'runtimeUiLang', 'cn', ...args);
         const getPromptRewriteTimeoutMs = () => Math.max(5000, Number(call(runtimeSource, 'getPromptRewriteTimeoutMs', 25000) || 25000));
