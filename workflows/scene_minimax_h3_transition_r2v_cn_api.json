@@ -22,11 +22,11 @@
   "9": {"class_type": "BasicScheduler", "_meta": {"title": "H3 Scheduler"}, "inputs": {"scheduler": ["1", 31], "steps": ["1", 9], "denoise": 1, "model": ["69", 0]}},
   "10": {"class_type": "RandomNoise", "_meta": {"title": "H3 Noise"}, "inputs": {"noise_seed": ["2", 0]}},
   "11": {
-    "class_type": "SimpAIMiniMaxH3AdaptiveReference", "_meta": {"title": "MiniMax H3 Reference to Video"},
+    "class_type": "SimpAIH3TransitionConditioning", "_meta": {"title": "H3 Transition First and Last Frames"},
     "inputs": {
       "clip": ["48", 0], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": ["1", 0],
-      "width": ["70", 2], "height": ["70", 3], "length": ["70", 1],
-      "ref_image_size": "auto", "reference_token_budget": 0, "max_image_long_edge": 2048,
+      "transition": ["70", 0],
+      "reference_token_budget": 0, "max_image_long_edge": 2048,
       "ref_images.ref_image_0": ["21", 0], "ref_images.ref_image_1": ["25", 0],
       "ref_images.ref_image_2": ["29", 0], "ref_images.ref_image_3": ["33", 0],
       "ref_images.ref_image_4": ["37", 0], "ref_images.ref_image_5": ["103", 0],
@@ -36,7 +36,7 @@
       "ref_audios.ref_audio_2": ["120", 0]
     }
   },
-  "12": {"class_type": "BasicGuider", "_meta": {"title": "H3 Guider"}, "inputs": {"model": ["69", 0], "conditioning": ["73", 0]}},
+  "12": {"class_type": "BasicGuider", "_meta": {"title": "H3 Guider"}, "inputs": {"model": ["69", 0], "conditioning": ["11", 0]}},
   "13": {
     "class_type": "SamplerCustomAdvanced", "_meta": {"title": "H3 Sampler Advanced"},
     "inputs": {"noise": ["10", 0], "guider": ["12", 0], "sampler": ["8", 0], "sigmas": ["9", 0], "latent_image": ["71", 0]}
@@ -123,9 +123,5 @@
   "72": {
     "class_type": "SimpAIH3TransitionOutput", "_meta": {"title": "H3 Transition Output"},
     "inputs": {"transition": ["70", 0], "images": ["14", 0], "audio": ["15", 0], "append_original": ["1", 20]}
-  },
-  "73": {
-    "class_type": "MiniMaxH3AddGuide", "_meta": {"title": "H3 Following Source Start"},
-    "inputs": {"positive": ["11", 0], "latent": ["71", 0], "vae": ["5", 0], "image": ["71", 1], "frame_idx": ["71", 2]}
   }
 }

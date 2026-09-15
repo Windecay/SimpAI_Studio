@@ -1035,10 +1035,7 @@ def extra_reserved_memory():
     return EXTRA_RESERVED_VRAM
 
 def minimum_inference_memory():
-    base_inference_memory = (1024 * 1024 * 1024) * 0.8
-    if total_vram > (20 * 1024): # If VRAM > 20GB
-        base_inference_memory = (1024 * 1024 * 1024) * 4 # Reserve 4GB for large models inference buffer
-    return base_inference_memory + extra_reserved_memory()
+    return (1024 * 1024 * 1024) * 0.8 + extra_reserved_memory()
 
 def free_memory(memory_required, device, keep_loaded=[], for_dynamic=False, pins_required=0, ram_required=0):
     cleanup_models_gc()

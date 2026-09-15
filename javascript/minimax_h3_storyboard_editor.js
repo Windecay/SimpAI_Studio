@@ -1873,6 +1873,7 @@
         const mode = normalizeMode(state.mode || opts.mode, opts);
         const duration = Math.max(0.3, finiteNumber(opts.duration, 5));
         const timeline = timelineText(state, Object.assign({}, opts, { duration }));
+        const timelinePreamble = opts.includeTimelinePreamble === false ? '' : cleanText(state.timeline_preamble);
         const soundscape = normalizeOverallSoundscape(state.overall_soundscape, opts.langState);
         const music = cleanText(state.non_diegetic_music) || 'N/A';
         if (mode === MODE_REF2VA) {
@@ -1885,7 +1886,7 @@
                 `subject_definitions: ${subjects}`,
                 `summary: ${summary}`,
                 `retention_analysis: ${retention}`,
-                `detailed_description: ${[state.timeline_preamble, timeline].filter(Boolean).join('\n')}`,
+                `detailed_description: ${[timelinePreamble, timeline].filter(Boolean).join('\n')}`,
                 `overall_soundscape: ${soundscape}`,
                 `non_diegetic_music: ${music}`
             ].join('\n\n');
@@ -2100,7 +2101,7 @@
                 options
             ),
             prompt_snapshot: cleanText(optimized.prompt_snapshot),
-            timeline_preamble: cleanText(optimized.timeline_preamble || previous.timeline_preamble)
+            timeline_preamble: cleanText(optimized.timeline_preamble)
         }), options);
     }
 
@@ -2361,11 +2362,13 @@
     function sceneStateFromPrompt(source) {
         const options = currentSceneOptions(source);
         const prompt = cleanText(currentPromptField()?.value || '');
-        const stored = normalize(readBridgeValue('minimax_h3_storyboard_scene_state'), options);
-        if (prompt && stored.prompt_snapshot !== prompt) {
+        const storedText = cleanText(readBridgeValue('minimax_h3_storyboard_scene_state'));
+        const stored = normalize(storedText, options);
+        if (prompt) {
+            if (stored.prompt_snapshot === prompt) return stored;
             return parsePrompt(prompt, Object.assign({}, options, { optimize: stored.optimize }));
         }
-        return prompt || readBridgeValue('minimax_h3_storyboard_scene_state') ? stored : defaultState(options);
+        return defaultState(options);
     }
 
     function syncSceneControl(source) {
@@ -2540,13 +2543,16 @@
             duration: Math.max(0.3, finiteNumber(opts.duration, 5)),
             inventory: inventoryFromOptions(opts),
             langState: lang,
-            context: opts.context || ''
+            context: opts.context || '',
+            includeTimelinePreamble: false
         };
         let state = normalize(opts.storyboardState ?? opts.state ?? opts.value ?? opts.prompt ?? '', editorOptions);
         if (opts.prompt && state.prompt_snapshot !== cleanText(opts.prompt) && !parseJsonObject(opts.storyboardState)) {
             state = parsePrompt(opts.prompt, Object.assign({}, editorOptions, { optimize: state.optimize }));
         }
         state.mode = editorOptions.mode;
+        // The table has no editable preamble column; imported prose must not be written back.
+        state.timeline_preamble = '';
         const backdrop = document.createElement('div');
         backdrop.className = 'sai-h3sb-backdrop';
         const initialSnapToFrames = boolValue(opts.snapToFrames, false);
@@ -3383,6 +3389,7 @@
             });
             const checked = validate(state, editorOptions);
             state = checked.state || normalize(state, editorOptions);
+            state.timeline_preamble = '';
             const prompt = formatPrompt(state, editorOptions);
             state.prompt_snapshot = prompt;
             const response = {

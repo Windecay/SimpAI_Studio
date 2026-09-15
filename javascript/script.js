@@ -7246,8 +7246,14 @@ function initResolutionControlWidget(widget, options = {}) {
         };
         return widget.__rc_manual_draft;
     };
+    const clearManualInputState = () => {
+        widget.__rc_manual_draft = null;
+        widget.__rc_manual_editing = false;
+        widget.__rc_manual_input_axis = null;
+        widget.__rc_manual_ratio = null;
+    };
     const applyManual = (width, height, commit = true, quantize = true, prefer = null) => {
-        if (!controlsAreInteractive()) return;
+        if (!controlsAreInteractive()) return false;
         const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional');
         const ratioLocked = mode !== 'proportional' && !!getRatioLock();
         if (ratioLocked) {
@@ -7262,9 +7268,8 @@ function initResolutionControlWidget(widget, options = {}) {
         const pair = clampDims(width, height, mode === 'proportional' || ratioLocked, quantize);
         const w = pair.width;
         const h = pair.height;
-        if (!(w > 0 && h > 0)) return;
-        widget.__rc_manual_draft = null;
-        widget.__rc_manual_editing = false;
+        if (!(w > 0 && h > 0)) return false;
+        clearManualInputState();
         setHiddenOverride(true, commit);
         if (overrideToggle) overrideToggle.checked = true;
         _ro_setSliderValue(targetWidthId, w, { commit });
@@ -7274,6 +7279,7 @@ function initResolutionControlWidget(widget, options = {}) {
         if (!useSceneSelection()) writeSelection(`${_rc_addRatio(w, h)},${getActiveNonSceneTemplate(Object.keys(getRatios()))}`, commit);
         populateRatios();
         render();
+        return true;
     };
     const previewManualDraft = (prefer = null) => {
         if (!controlsAreInteractive()) return;
@@ -7283,9 +7289,9 @@ function initResolutionControlWidget(widget, options = {}) {
     const commitManualDraft = () => {
         if (!widget.__rc_manual_editing && !widget.__rc_manual_draft) return;
         const axis = widget.__rc_manual_input_axis || (document.activeElement === hInput ? 'height' : 'width');
-        applyManual(wInput.value, hInput.value, true, true, axis);
-        widget.__rc_manual_input_axis = null;
-        widget.__rc_manual_ratio = null;
+        const committed = applyManual(wInput.value, hInput.value, true, true, axis);
+        if (!committed) return false;
+        return true;
     };
     const stepDimensionInput = (input, direction) => {
         if (!controlsAreInteractive()) return;
@@ -7397,16 +7403,25 @@ function initResolutionControlWidget(widget, options = {}) {
     function render() {
         const dims = getCurrentDims();
         const waitingOriginal = !!(dims && dims.waitingOriginal);
+        const preserveManualInputs = !!(
+            widget.__rc_manual_editing
+            || document.activeElement === wInput
+            || document.activeElement === hInput
+        );
         syncRatioLockControls();
         const multiplier = parseFloat(multiplierInput.value || "1") || 1;
         const step = readStep();
         syncDimensionInputStep();
         const effectiveW = waitingOriginal ? 0 : _rc_quantize(dims.width * multiplier, step);
         const effectiveH = waitingOriginal ? 0 : _rc_quantize(dims.height * multiplier, step);
-        const widthValue = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1");
-        const heightValue = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.height) : "-1");
-        if (document.activeElement !== wInput && wInput.value !== widthValue) wInput.value = widthValue;
-        if (document.activeElement !== hInput && hInput.value !== heightValue) hInput.value = heightValue;
+        const widthValue = preserveManualInputs
+            ? wInput.value
+            : (waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1"));
+        const heightValue = preserveManualInputs
+            ? hInput.value
+            : (waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.height) : "-1"));
+        if (!preserveManualInputs && document.activeElement !== wInput && wInput.value !== widthValue) wInput.value = widthValue;
+        if (!preserveManualInputs && document.activeElement !== hInput && hInput.value !== heightValue) hInput.value = heightValue;
         const rectText = waitingOriginal ? ((ratioSelect && ratioSelect.selectedOptions && ratioSelect.selectedOptions[0] && (ratioSelect.selectedOptions[0].textContent || '').trim()) || 'Original') : `${effectiveW}\u00d7${effectiveH}`;
         setResolutionText(rectLabel, rectText);
         syncAccordionTitle(effectiveW, effectiveH, { waitingOriginal });
@@ -7543,7 +7558,10 @@ function initResolutionControlWidget(widget, options = {}) {
         input.addEventListener('blur', () => {
             window.setTimeout(() => {
                 if (document.activeElement === wInput || document.activeElement === hInput) return;
-                commitManualDraft();
+                if (commitManualDraft() === false) {
+                    clearManualInputState();
+                    render();
+                }
             }, 0);
         });
     }

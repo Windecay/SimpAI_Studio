@@ -42,7 +42,6 @@ def temporal_weights(layout):
 
 def latent_weights(layout):
     weights = temporal_weights(layout)
-    weights[layout["left"] + layout["gap"]:] = 0
     weights = torch.nn.functional.pad(weights, (0, layout["length"] - layout["used"]))
     result, offset, index = [], 0, 0
     while offset < layout["length"]:
@@ -148,7 +147,7 @@ class SimpAIH3TransitionLatent:
         }}
 
     RETURN_TYPES = ("LATENT", "IMAGE", "INT")
-    RETURN_NAMES = ("latent", "following_start", "following_frame")
+    RETURN_NAMES = ("latent", "following_target", "following_frame")
     FUNCTION = "prepare"
     CATEGORY = "SimpAI/MiniMax H3"
 
@@ -156,9 +155,10 @@ class SimpAIH3TransitionLatent:
         data = transition
         left = _resize_images(data["first"][-data["left"]:], data["width"], data["height"])
         right = _resize_images(data["second"][:data["right"]], data["width"], data["height"])
-        blank = left.new_full((data["gap"], data["height"], data["width"], 3), 0.5)
+        # The VAE sees temporal neighbors even where the sampling mask is fully white.
+        middle = right[:1].repeat(data["gap"], 1, 1, 1)
         padding = right[-1:].repeat(data["length"] - data["used"], 1, 1, 1)
-        seed = torch.cat((left, blank, right, padding))
+        seed = torch.cat((left, middle, right, padding))
         LOG.info("[H3 Transition] Encoding %s context/middle frames for temporal repainting.", len(seed))
         encoded = vae.encode(seed)
         streams = list(latent["samples"].unbind())
@@ -171,7 +171,7 @@ class SimpAIH3TransitionLatent:
         output["noise_mask"] = comfy.nested_tensor.NestedTensor((
             mask, audio_mask,
         ))
-        return output, right[:1].clone(), data["left"] + data["gap"]
+        return output, right[-1:].clone(), data["used"] - 1
 
 
 def _audio_window(decoded, rate, channels, start_seconds, count):
@@ -296,12 +296,10 @@ class SimpAIH3TransitionOutput:
         images = _generated_output_frames(data, images)
         images = _resize_images(images, first.shape[2], first.shape[1]).to(first)
         left, gap, right = data["left"], data["gap"], data["right"]
-        weights = temporal_weights(data)[:data["used"]].to(images).reshape(-1, 1, 1, 1)
-        start = first[-left:] * (1 - weights[:left]) + images[:left] * weights[:left]
-        # The following context is preserved conditioning, not editable output.
-        # Boundary-token decoding can discolor it even with a zero latent mask.
-        end = second[:right]
-        bridge = torch.cat((start, images[left:left + gap], end))
+        # The H3 sampler has already applied this fractional mask in latent space.
+        # Blending decoded source frames again mixes different motion phases and
+        # softens fast movement at the handoff.
+        bridge = images[:data["used"]]
         result = torch.cat((first[:-left], bridge, second[right:])) if append_original else bridge
         return result, transition_audio(data, audio, append_original)
 
