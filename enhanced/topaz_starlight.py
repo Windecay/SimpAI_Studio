@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import queue
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Mapping
@@ -22,6 +24,7 @@ from typing import Any, Callable
 TOPAZ_STARLIGHT_METHOD = "topaz_starlight"
 NATIVE_PROCESS = "studio"
 TOPAZ_MODEL_ID = "slp-26"
+# SLP-26 resources are installed in the topaz_engine model store.
 TOPAZ_MODEL_DIR_NAME = "slp26"
 NEUROSERVER_DIR_NAME = "neuroserver171"
 FFMPEG_DIR_NAME = "bin171"
@@ -39,6 +42,11 @@ TOPAZ_ENGINE_PROGRESS_MAX = 93.0
 TOPAZ_ENGINE_FINALIZING_PROGRESS = 94.0
 TOPAZ_ENGINE_FINALIZING_THRESHOLD = 99.5
 TOPAZ_PROGRESS_HEARTBEAT_SECONDS = 2.0
+TOPAZ_SEGMENT_REFERENCE_FRAMES = 96
+TOPAZ_SEGMENT_REFERENCE_GPU_MEM_GIB = 14.0
+TOPAZ_SEGMENT_REFERENCE_OUTPUT_PIXELS = 2560 * 1440
+TOPAZ_SEGMENT_MIN_FRAMES = 24
+TOPAZ_SEGMENT_MAX_FRAMES = 240
 logger = logging.getLogger(__name__)
 _TOPAZ_EXECUTION_LOCK = threading.Lock()
 
@@ -60,6 +68,7 @@ class TopazStarlightParams:
     enhancement_strength: float = 1.0
     max_gpu_mem: float | None = None
     duration_limit: float = 0.0
+    segment_frames: int | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,17 @@ class VideoInfo:
     fps: float
     frames: int
     has_audio: bool
+
+
+@dataclass(frozen=True)
+class TopazFrameSegment:
+    index: int
+    start_frame: int
+    end_frame: int
+
+    @property
+    def frame_count(self) -> int:
+        return max(0, self.end_frame - self.start_frame)
 
 
 def _value(source: Any, *names: str, default: Any = None) -> Any:
@@ -123,6 +143,31 @@ def _bounded_float(value: Any, default: float, minimum: float, maximum: float) -
     return max(minimum, min(maximum, _number(value, default)))
 
 
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(round(float(value)))
+    except (TypeError, ValueError, OverflowError):
+        number = int(default)
+    return max(int(minimum), min(int(maximum), number))
+
+
+def _optional_segment_frames(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        number = int(round(float(value)))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if number <= 0:
+        return None
+    return _bounded_int(
+        number,
+        TOPAZ_SEGMENT_REFERENCE_FRAMES,
+        TOPAZ_SEGMENT_MIN_FRAMES,
+        TOPAZ_SEGMENT_MAX_FRAMES,
+    )
+
+
 def _format_number(value: float) -> str:
     text = f"{float(value):.6f}".rstrip("0").rstrip(".")
     return text or "0"
@@ -135,6 +180,12 @@ def normalize_topaz_starlight_params(source: Any) -> TopazStarlightParams:
         source,
         "topaz_max_gpu_mem",
         "max_gpu_mem",
+        default=None,
+    )
+    requested_segment_frames = _first_value(
+        source,
+        "topaz_segment_frames",
+        "segment_frames",
         default=None,
     )
     return TopazStarlightParams(
@@ -188,6 +239,7 @@ def normalize_topaz_starlight_params(source: Any) -> TopazStarlightParams:
                 0.0,
             ),
         ),
+        segment_frames=_optional_segment_frames(requested_segment_frames),
     )
 
 
@@ -280,6 +332,15 @@ def is_native_topaz_starlight_task(task: Any) -> bool:
 def localized_text(language: Any, english: str, chinese: str) -> str:
     normalized = str(language or "").strip().casefold()
     return chinese if normalized in {"cn", "zh", "zh-cn", "中文", "chinese"} else english
+
+
+def _localized_catalog_text(language: Any, english: str) -> str:
+    try:
+        from modules.localization import localized_text as localized_ui_text
+
+        return localized_ui_text({"__lang": language}, english)
+    except Exception:
+        return english
 
 
 def _emit_progress(
@@ -476,7 +537,7 @@ def _model_store_candidates(source: Any, package_root: Path) -> list[Path]:
 
 
 def resolve_engine_config(source: Any = None) -> TopazEngineConfig:
-    """Find Neuroserver 1.7.1 and the external slp26 model store."""
+    """Find Neuroserver 1.7.1 and its SLP-26 runtime model store."""
 
     attempted: list[str] = []
     for package_root in _engine_root_candidates(source):
@@ -506,6 +567,13 @@ def resolve_engine_config(source: Any = None) -> TopazEngineConfig:
             )
         for model_store in _model_store_candidates(source, package_root):
             if (model_store / TOPAZ_MODEL_DIR_NAME).is_dir():
+                logger.info(
+                    "Topaz resources resolved: package_root=%s server=%s model_store=%s model_dir=%s",
+                    package_root,
+                    server,
+                    model_store,
+                    model_store / TOPAZ_MODEL_DIR_NAME,
+                )
                 return TopazEngineConfig(
                     package_root=str(package_root),
                     server_path=str(server),
@@ -515,7 +583,7 @@ def resolve_engine_config(source: Any = None) -> TopazEngineConfig:
                 )
         raise TopazStarlightDependencyError(
             "Topaz Neuroserver was found, but the slp26 model directory is missing. "
-            "Set TOPAZ_MODEL_STORE to the directory containing models\\slp26."
+            "Set TVAI_MODEL_DIR or TOPAZ_MODEL_STORE to the directory containing models\\slp26."
         )
     attempted_text = "; ".join(attempted[:4])
     raise TopazStarlightDependencyError(
@@ -553,7 +621,6 @@ def _probe_json(ffprobe: str, args: list[str], input_path: str) -> dict[str, Any
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=60,
         check=False,
     )
     if result.returncode != 0:
@@ -639,6 +706,55 @@ def _frame_limit(info: VideoInfo, duration_limit: float) -> int:
     return max(1, min(info.frames, int(duration_limit * info.fps)))
 
 
+def resolve_topaz_segment_frame_budget(
+    info: VideoInfo,
+    params: TopazStarlightParams,
+    max_gpu_mem: float,
+) -> int:
+    """Choose a conservative frame count for one SLP-26 process."""
+
+    if params.segment_frames is not None:
+        return _bounded_int(
+            params.segment_frames,
+            TOPAZ_SEGMENT_REFERENCE_FRAMES,
+            TOPAZ_SEGMENT_MIN_FRAMES,
+            TOPAZ_SEGMENT_MAX_FRAMES,
+        )
+
+    output_width, output_height = _output_dimensions(info, params.upscale_factor)
+    output_pixels = max(1, output_width * output_height)
+    pixel_factor = math.sqrt(TOPAZ_SEGMENT_REFERENCE_OUTPUT_PIXELS / output_pixels)
+    memory_factor = math.sqrt(
+        max(
+            0.5,
+            min(2.0, float(max_gpu_mem) / TOPAZ_SEGMENT_REFERENCE_GPU_MEM_GIB),
+        )
+    )
+    budget = round(TOPAZ_SEGMENT_REFERENCE_FRAMES * pixel_factor * memory_factor)
+    return _bounded_int(
+        budget,
+        TOPAZ_SEGMENT_REFERENCE_FRAMES,
+        TOPAZ_SEGMENT_MIN_FRAMES,
+        TOPAZ_SEGMENT_MAX_FRAMES,
+    )
+
+
+def plan_topaz_segments(frame_count: int, segment_frame_budget: int) -> list[TopazFrameSegment]:
+    """Split a limited source range into balanced, non-overlapping frame ranges."""
+
+    total_frames = max(1, int(frame_count))
+    budget = max(1, int(segment_frame_budget))
+    segment_count = max(1, int(math.ceil(total_frames / budget)))
+    balanced_size = int(math.ceil(total_frames / segment_count))
+    segments: list[TopazFrameSegment] = []
+    start_frame = 0
+    for index in range(segment_count):
+        end_frame = min(total_frames, start_frame + balanced_size)
+        segments.append(TopazFrameSegment(index, start_frame, end_frame))
+        start_frame = end_frame
+    return segments
+
+
 def _frame_end_index(frame_count: int) -> int:
     """Neuroserver's end-frame-idx is inclusive."""
 
@@ -665,9 +781,16 @@ def build_neuroserver_command(
     info: VideoInfo,
     frame_count: int,
     params: TopazStarlightParams,
+    *,
+    start_frame_idx: int = 0,
+    end_frame_idx: int | None = None,
 ) -> list[str]:
     output_width, output_height = _output_dimensions(info, params.upscale_factor)
     max_gpu_mem = resolve_topaz_max_gpu_mem_gib(params.max_gpu_mem)
+    start_frame_idx = max(0, int(start_frame_idx))
+    if end_frame_idx is None:
+        end_frame_idx = start_frame_idx + _frame_end_index(frame_count)
+    end_frame_idx = max(start_frame_idx, int(end_frame_idx))
     return [
         config.server_path,
         "--once",
@@ -678,9 +801,9 @@ def build_neuroserver_command(
         "--input-frame-rate",
         _format_number(info.fps),
         "--start-frame-idx",
-        "0",
+        str(start_frame_idx),
         "--end-frame-idx",
-        str(_frame_end_index(frame_count)),
+        str(end_frame_idx),
         "--max-gpu-mem",
         _format_number(max_gpu_mem),
         "--filters",
@@ -814,10 +937,66 @@ def _progress_title(language: Any, percentage: float, message: str | None) -> st
     return localized_text(language, "Topaz Starlight processing...", "正在处理 Topaz 星光...")
 
 
+def _topaz_runtime_directories(config: TopazEngineConfig) -> list[str]:
+    server_root = Path(config.server_path).resolve().parent
+    site_packages = server_root / "Lib" / "site-packages"
+    model_store = Path(config.model_store).resolve()
+    model_dir = model_store / TOPAZ_MODEL_DIR_NAME
+    candidates = [
+        server_root,
+        server_root / "DLLs",
+        server_root / "Lib",
+        site_packages,
+        site_packages / "torch" / "lib",
+        site_packages / "torchvision",
+        site_packages / "starlight_utils",
+        site_packages / "OpenImageIO" / "bin",
+        site_packages / "numpy.libs",
+        site_packages / "scipy.libs",
+        model_store,
+        model_dir,
+        Path(config.ffmpeg_path).resolve().parent,
+    ]
+    directories: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        resolved = str(candidate)
+        key = os.path.normcase(os.path.normpath(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        directories.append(resolved)
+    return directories
+
+
 def _subprocess_environment(config: TopazEngineConfig) -> dict[str, str]:
     env = os.environ.copy()
-    env["TOPAZ_MODEL_STORE"] = config.model_store
-    env["PATH"] = str(Path(config.ffmpeg_path).parent) + os.pathsep + env.get("PATH", "")
+    runner_dir = Path(config.server_path).resolve().parent
+    model_store = Path(config.model_store).resolve()
+    existing_path = env.get("PATH", "")
+    runtime_directories = _topaz_runtime_directories(config)
+    env["TOPAZ_RUNNER_DIR"] = str(runner_dir)
+    env["TOPAZ_MODEL_STORE"] = str(model_store)
+    # The native SLP loader expects the selected model directory.
+    model_dir = model_store / TOPAZ_MODEL_DIR_NAME
+    env["TVAI_MODEL_DIR"] = str(model_dir if model_dir.is_dir() else model_store)
+    env["PATH"] = os.pathsep.join(
+        runtime_directories + ([existing_path] if existing_path else [])
+    )
+    for key in tuple(env):
+        normalized = key.upper()
+        if normalized in {"PYTHONHOME", "PYTHONPATH", "CUDA_HOME", "CUDA_ROOT", "CUDA_PATH"}:
+            env.pop(key, None)
+        elif normalized.startswith("CUDA_PATH_"):
+            env.pop(key, None)
+    env["PYTHONNOUSERSITE"] = "1"
+    logger.info(
+        "Topaz subprocess environment: model_dir=%s runtime_dirs=%s",
+        model_store,
+        len(runtime_directories),
+    )
     return env
 
 
@@ -966,6 +1145,276 @@ def _run_neuroserver_exclusive(
         _TOPAZ_EXECUTION_LOCK.release()
 
 
+def _run_topaz_segment(
+    config: TopazEngineConfig,
+    input_path: str,
+    output_path: str,
+    info: VideoInfo,
+    params: TopazStarlightParams,
+    segment: TopazFrameSegment,
+    language: Any,
+    progress_callback: ProgressCallback | None,
+    cancel_callback: CancelCallback | None,
+) -> tuple[list[str], bool]:
+    command = build_neuroserver_command(
+        config,
+        input_path,
+        output_path,
+        info,
+        segment.frame_count,
+        params,
+        start_frame_idx=segment.start_frame,
+        end_frame_idx=segment.end_frame - 1,
+    )
+    return _run_neuroserver_exclusive(
+        command,
+        config,
+        segment.frame_count,
+        language,
+        progress_callback,
+        cancel_callback,
+    )
+
+
+def _segment_progress_title(language: Any, segment_number: int, segment_total: int, title: str) -> str:
+    template = _localized_catalog_text(
+        language,
+        "Topaz Starlight segment {current}/{total}: {title}",
+    )
+    return template.format(current=segment_number, total=segment_total, title=title)
+
+
+def _concat_topaz_segments(
+    segment_paths: list[str],
+    output_path: str,
+    ffmpeg: str,
+) -> None:
+    if not segment_paths:
+        raise RuntimeError("No Topaz segment outputs were produced.")
+
+    output_path = os.path.abspath(output_path)
+    list_path = f"{output_path}.concat_{os.getpid()}_{time.time_ns()}.txt"
+    temp_path = f"{output_path}.concat_{os.getpid()}_{time.time_ns()}.mp4"
+    try:
+        lines = []
+        for segment_path in segment_paths:
+            normalized = os.path.abspath(segment_path).replace("\\", "/")
+            escaped = normalized.replace("'", "'\\\\''")
+            lines.append(f"file '{escaped}'")
+        Path(list_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                list_path,
+                "-map",
+                "0:v:0",
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                temp_path,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if result.returncode != 0 or not os.path.isfile(temp_path):
+            detail = (result.stderr or result.stdout or "").strip()[-1200:]
+            raise RuntimeError(f"Topaz segment merge failed: {detail}")
+        os.replace(temp_path, output_path)
+    finally:
+        for path in (list_path, temp_path):
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except OSError:
+                pass
+
+
+def _run_segmented_topaz(
+    input_path: str,
+    output_path: str,
+    config: TopazEngineConfig,
+    info: VideoInfo,
+    frame_count: int,
+    params: TopazStarlightParams,
+    language: Any,
+    progress_callback: ProgressCallback | None,
+    cancel_callback: CancelCallback | None,
+) -> dict[str, Any]:
+    max_gpu_mem = resolve_topaz_max_gpu_mem_gib(params.max_gpu_mem)
+    segment_budget = resolve_topaz_segment_frame_budget(info, params, max_gpu_mem)
+    segments = plan_topaz_segments(frame_count, segment_budget)
+    output_width, output_height = _output_dimensions(info, params.upscale_factor)
+    work_dir = tempfile.mkdtemp(
+        prefix="SimpAI_TopazStarlight_segments_",
+        dir=os.path.dirname(output_path),
+    )
+    segment_paths: list[str] = []
+    watermark_required = False
+    audio_muxed = False
+    success = False
+
+    logger.info(
+        "Topaz segmented execution: frames=%s segments=%s budget=%s output=%sx%s max_gpu_mem=%.2f",
+        frame_count,
+        len(segments),
+        segment_budget,
+        output_width,
+        output_height,
+        max_gpu_mem,
+    )
+    try:
+        if progress_callback is not None:
+            progress_callback(
+                0,
+                _localized_catalog_text(language, "Preparing Topaz segments..."),
+            )
+        for segment in segments:
+            if cancel_callback and cancel_callback():
+                raise TopazStarlightCancelled()
+            segment_path = os.path.join(work_dir, f"segment_{segment.index + 1:04d}.mp4")
+
+            def report_segment_progress(
+                local_percentage: int,
+                title: str,
+                *,
+                segment_index: int = segment.index,
+            ) -> None:
+                if progress_callback is None:
+                    return
+                local_fraction = max(0.0, min(94.0, float(local_percentage))) / 94.0
+                overall = 2.0 + 90.0 * (
+                    (segment_index + local_fraction) / max(1, len(segments))
+                )
+                progress_callback(
+                    int(round(overall)),
+                    _segment_progress_title(
+                        language,
+                        segment_index + 1,
+                        len(segments),
+                        title,
+                    ),
+                )
+
+            segment_started = time.monotonic()
+            _lines, segment_watermark = _run_topaz_segment(
+                config,
+                input_path,
+                segment_path,
+                info,
+                replace(params, max_gpu_mem=max_gpu_mem),
+                segment,
+                language,
+                report_segment_progress,
+                cancel_callback,
+            )
+            watermark_required = watermark_required or segment_watermark
+            if not os.path.isfile(segment_path):
+                raise RuntimeError(
+                    f"Topaz segment {segment.index + 1}/{len(segments)} produced no output file."
+                )
+            segment_info = _probe_video(segment_path, config.ffprobe_path)
+            if segment_info.frames != segment.frame_count:
+                raise RuntimeError(
+                    f"Topaz segment {segment.index + 1}/{len(segments)} returned "
+                    f"{segment_info.frames} frames; expected {segment.frame_count}."
+                )
+            segment_paths.append(segment_path)
+            logger.info(
+                "Topaz segment finished: segment=%s/%s start=%s end=%s frames=%s elapsed=%.2fs",
+                segment.index + 1,
+                len(segments),
+                segment.start_frame,
+                segment.end_frame - 1,
+                segment.frame_count,
+                time.monotonic() - segment_started,
+            )
+            if progress_callback is not None:
+                progress_callback(
+                    int(round(2.0 + 90.0 * (segment.index + 1) / len(segments))),
+                    _segment_progress_title(
+                        language,
+                        segment.index + 1,
+                        len(segments),
+                        _localized_catalog_text(language, "Topaz segment completed"),
+                    ),
+                )
+
+        if cancel_callback and cancel_callback():
+            raise TopazStarlightCancelled()
+        stitched_path = os.path.join(work_dir, "stitched.mp4")
+        if progress_callback is not None:
+            progress_callback(
+                94,
+                _localized_catalog_text(language, "Combining Topaz segments..."),
+            )
+        _concat_topaz_segments(segment_paths, stitched_path, config.ffmpeg_path)
+        if info.has_audio:
+            if progress_callback is not None:
+                progress_callback(
+                    96,
+                    _localized_catalog_text(language, "Muxing source audio..."),
+                )
+            audio_muxed = _mux_source_audio(stitched_path, input_path, config.ffmpeg_path)
+        if watermark_required:
+            logger.warning("Topaz Neuroserver reported that a watermark is required.")
+        os.replace(stitched_path, output_path)
+        if progress_callback is not None:
+            progress_callback(
+                99,
+                _localized_catalog_text(language, "Verifying Topaz output..."),
+            )
+        output_info = _probe_video(output_path, config.ffprobe_path)
+        if output_info.frames != frame_count:
+            raise RuntimeError(
+                f"Topaz merged output returned {output_info.frames} frames; expected {frame_count}."
+            )
+        success = True
+        if progress_callback is not None:
+            progress_callback(
+                100,
+                _localized_catalog_text(language, "Topaz Starlight finished"),
+            )
+        return {
+            "output_path": output_path,
+            "model_id": TOPAZ_MODEL_ID,
+            "source_fps": info.fps,
+            "output_fps": output_info.fps,
+            "source_frames": frame_count,
+            "output_frames": output_info.frames,
+            "source_width": info.width,
+            "source_height": info.height,
+            "output_width": output_info.width or output_width,
+            "output_height": output_info.height or output_height,
+            "audio_muxed": audio_muxed,
+            "watermark_required": watermark_required,
+            "engine_path": config.server_path,
+            "model_store": config.model_store,
+            "segment_count": len(segments),
+            "segment_frame_budget": segment_budget,
+        }
+    finally:
+        if not success:
+            try:
+                if os.path.isfile(output_path):
+                    os.remove(output_path)
+            except OSError:
+                pass
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 def _mux_source_audio(output_path: str, source_path: str, ffmpeg: str) -> bool:
     temp_path = f"{output_path}.audio_{os.getpid()}_{time.time_ns()}.mp4"
     base = [
@@ -997,7 +1446,7 @@ def _mux_source_audio(output_path: str, source_path: str, ffmpeg: str) -> bool:
     ]
     try:
         for command in commands:
-            result = subprocess.run(command, capture_output=True, timeout=300, check=False)
+            result = subprocess.run(command, capture_output=True, check=False)
             if result.returncode == 0 and os.path.isfile(temp_path):
                 os.replace(temp_path, output_path)
                 return True
@@ -1035,6 +1484,24 @@ def run_topaz_starlight(
         settings,
         max_gpu_mem=resolve_topaz_max_gpu_mem_gib(settings.max_gpu_mem),
     )
+    segment_budget = resolve_topaz_segment_frame_budget(
+        info,
+        settings,
+        settings.max_gpu_mem or TOPAZ_SEGMENT_REFERENCE_GPU_MEM_GIB,
+    )
+    segments = plan_topaz_segments(frame_count, segment_budget)
+    if len(segments) > 1:
+        return _run_segmented_topaz(
+            input_path,
+            output_path,
+            config,
+            info,
+            frame_count,
+            settings,
+            language,
+            progress_callback,
+            cancel_callback,
+        )
     command = build_neuroserver_command(config, input_path, output_path, info, frame_count, settings)
     output_width, output_height = _output_dimensions(info, settings.upscale_factor)
     _emit_progress(
@@ -1112,6 +1579,8 @@ def run_topaz_starlight(
             "watermark_required": watermark_required,
             "engine_path": config.server_path,
             "model_store": config.model_store,
+            "segment_count": 1,
+            "segment_frame_budget": segment_budget,
         }
     finally:
         if not success:

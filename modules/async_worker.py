@@ -1029,7 +1029,7 @@ def worker():
             logger.info(
                 "Native Topaz Starlight finished: task_id=%s input=%s output=%s model=%s "
                 "source_frames=%s output_frames=%s source_fps=%s output_fps=%s size=%sx%s "
-                "audio_muxed=%s watermark_required=%s engine=%s",
+                "audio_muxed=%s watermark_required=%s segments=%s segment_budget=%s engine=%s",
                 async_task.task_id,
                 source_path,
                 result["output_path"],
@@ -1042,6 +1042,8 @@ def worker():
                 result["output_height"],
                 result["audio_muxed"],
                 result["watermark_required"],
+                result.get("segment_count", 1),
+                result.get("segment_frame_budget"),
                 result["engine_path"],
             )
         except topaz_starlight.TopazStarlightCancelled:
