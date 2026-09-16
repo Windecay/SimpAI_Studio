@@ -216,18 +216,18 @@
       "target_preset_id": "vsr_preset",
       "config": {
         "defaults": {
-          "scene_var_number": 0,
+          "scene_var_number": 2,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number8": 2,
+          "scene_var_number8": 0,
           "scene_switch_option1": false,
           "image_number": 1
         },
         "values": {
-          "scene_var_number": 0,
+          "scene_var_number": 2,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number8": 2,
+          "scene_var_number8": 0,
           "scene_switch_option1": false,
           "image_number": 1
         },
@@ -279,9 +279,11 @@
           "scene_audio",
           "scene_input_image1",
           "scene_input_image2",
+          "scene_video_duration",
           "scene_var_number4",
           "scene_var_number5",
           "scene_var_number6",
+          "scene_var_number7",
           "scene_var_number9",
           "scene_var_number10",
           "scene_switch_option2",
@@ -356,14 +358,14 @@
         ],
         "params": [
           {
-            "key": "scene_video_duration",
-            "label": "Duration limit (seconds) [0 = no limit]",
+            "key": "scene_var_number",
+            "label": "Upscale factor",
             "type": "number",
-            "default": 0,
+            "default": 2,
             "visible": true,
             "interactive": true,
-            "min": 0,
-            "max": 120
+            "min": 1,
+            "max": 4
           },
           {
             "key": "scene_var_number2",
@@ -387,13 +389,13 @@
           },
           {
             "key": "scene_var_number8",
-            "label": "Upscale factor",
+            "label": "Duration limit (seconds) [0 = no limit]",
             "type": "number",
-            "default": 2,
+            "default": 0,
             "visible": true,
             "interactive": true,
-            "min": 1,
-            "max": 4
+            "min": 0,
+            "max": 120
           },
           {
             "key": "scene_switch_option1",
@@ -408,10 +410,10 @@
           "Nvidia-VSR Super Resolution": {
             "task_method": "nvidia_vsr",
             "defaults": {
-              "scene_var_number": 0,
+              "scene_var_number": 2,
               "scene_var_number2": 19,
               "scene_var_number3": 30,
-              "scene_var_number8": 2,
+              "scene_var_number8": 0,
               "scene_switch_option1": false,
               "scene_aspect_ratio": "origin|Original"
             },
@@ -473,18 +475,18 @@
       "generation_config": {
         "mode": "external_override",
         "defaults": {
-          "scene_var_number": 0,
+          "scene_var_number": 2,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number8": 2,
+          "scene_var_number8": 0,
           "scene_switch_option1": false,
           "image_number": 1
         },
         "overrides": {
-          "scene_var_number": 0,
+          "scene_var_number": 2,
           "scene_var_number2": 19,
           "scene_var_number3": 30,
-          "scene_var_number8": 2,
+          "scene_var_number8": 0,
           "scene_switch_option1": false,
           "image_number": 1
         },
@@ -510,11 +512,11 @@
       "params": {
         "seed_random": true,
         "image_seed": 0,
+        "scene_var_number": 2,
         "scene_var_number2": 19,
         "scene_var_number3": 30,
-        "scene_var_number8": 2,
-        "scene_switch_option1": false,
-        "scene_video_duration": 0
+        "scene_var_number8": 0,
+        "scene_switch_option1": false
       },
       "status": "idle",
       "collapsed": false,

@@ -47,6 +47,7 @@
                 "scene_audio",
                 "scene_input_image1",
                 "scene_input_image2",
+                "scene_video_duration",
                 "scene_var_number4",
                 "scene_var_number5",
                 "scene_var_number6",
@@ -60,18 +61,17 @@
                 "scene_base_model",
                 "scene_refiner_model",
                 "sam3_input_video",
-                "sam3_mask_video",
-                "scene_var_number"
+                "sam3_mask_video"
             ],
             "task_method": {
                 "Nvidia-VSR Super Resolution": "nvidia_vsr"
             },
-            "var_number_title": "Duration limit (seconds) [0 = no limit]",
+            "var_number_title": "Upscale factor",
             "var_number": {
-                "Nvidia-VSR Super Resolution": 0
+                "Nvidia-VSR Super Resolution": 2
             },
-            "var_number_min": 0,
-            "var_number_max": 120,
+            "var_number_min": 1,
+            "var_number_max": 4,
             "var_number2_title": "Save quality (lower = better, larger file size)",
             "var_number2": {
                 "Nvidia-VSR Super Resolution": 19
@@ -90,12 +90,12 @@
             },
             "var_number7_min": 60,
             "var_number7_max": 600,
-            "var_number8_title": "Upscale factor",
+            "var_number8_title": "Duration limit (seconds) [0 = no limit]",
             "var_number8": {
-                "Nvidia-VSR Super Resolution": 2
+                "Nvidia-VSR Super Resolution": 0
             },
-            "var_number8_min": 1,
-            "var_number8_max": 4,
+            "var_number8_min": 0,
+            "var_number8_max": 120,
             "switch_option1_title": "Enable frame interpolation",
             "switch_option1": {
                 "Nvidia-VSR Super Resolution": false

@@ -4699,6 +4699,18 @@ function getSimpleAIElementById(id) {
     }
 }
 
+function reconcileSceneParameterLayoutForPreset(system_params) {
+    const durationRoot = getSimpleAIElementById("scene_video_duration");
+    const factorRoot = getSimpleAIElementById("scene_var_number");
+    const durationRow = getSimpleAIElementById("scene_duration_row");
+    const rowForm = durationRow?.querySelector?.(":scope > .form") || durationRow?.querySelector?.(".form") || durationRow;
+    return !!durationRoot
+        && !!factorRoot
+        && !!rowForm
+        && durationRoot.parentNode === rowForm
+        && factorRoot.parentNode === rowForm;
+}
+
 function isStaleSystemParamsForPreset(system_params) {
     if (!system_params || typeof system_params !== "object") return false;
     if (system_params.__regen_preset_restore) return false;
@@ -5449,6 +5461,7 @@ function reconcileSceneVisibilityForPreset(system_params) {
         const shouldHide = !isScene || controls.every((name) => hidden.has(name));
         setForcedHidden(id, shouldHide);
     }
+    reconcileSceneParameterLayoutForPreset(system_params);
     reconcileSceneAuxControlsFromValues(isScene, system_params["__scene_theme"], system_params["__scene_task_method"], system_params["__scene_disvisible"], system_params);
     reconcileMainModelDropdownVisibilityForPreset(system_params, "scene_visibility");
 }

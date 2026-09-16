@@ -78,7 +78,7 @@
     "inputs": {
       "value": [
         "23",
-        17
+        10
       ]
     },
     "class_type": "JWIntegerToFloat",
@@ -124,14 +124,14 @@
       "height": 512,
       "cfg": 8,
       "steps": 20,
-      "var_number": 0,
+      "var_number": 2,
       "var_number2": 19,
       "var_number3": 30,
       "var_number4": 0,
       "var_number5": 0,
       "var_number6": 0,
       "var_number7": 300,
-      "var_number8": 2,
+      "var_number8": 0,
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
@@ -330,7 +330,7 @@
       "comparison": "a == b",
       "a": [
         "23",
-        32
+        17
       ],
       "b": [
         "34",
@@ -351,7 +351,7 @@
       ],
       "b": [
         "23",
-        32
+        17
       ]
     },
     "class_type": "SimpleMath+",

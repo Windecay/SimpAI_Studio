@@ -114,7 +114,7 @@ def normalize_vsr_params(source: Any) -> NvidiaVSRParams:
             600,
         ),
         upscale_factor=_bounded_float(
-            _value(source, "scene_var_number8", "var_number8", default=2),
+            _value(source, "scene_var_number", "var_number", default=2),
             2.0,
             1.0,
             4.0,
@@ -125,16 +125,18 @@ def normalize_vsr_params(source: Any) -> NvidiaVSRParams:
         ),
         duration_limit=max(
             0.0,
-            _number(
+            _bounded_float(
                 _value(
                     source,
+                    "scene_var_number8",
+                    "var_number8",
                     "scene_video_duration",
                     "video_duration",
-                    "scene_var_number",
-                    "var_number",
                     default=0,
                 ),
                 0.0,
+                0.0,
+                120.0,
             ),
         ),
         scene_detect=_bool_value(

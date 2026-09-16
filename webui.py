@@ -13016,8 +13016,20 @@ with shared.gradio_root:
         return fast_updates + after_identity_updates + [model_state_update]
 
     reset_image_params_outputs = reset_preset_layout + reset_preset_func + scene_frontend_ctrls + load_data_outputs + [state_topbar, params_note_regen_button, params_note_box]
-    parameter_profile_snapshot_names = ["params_backend", "state_topbar", "model_params_state"] + reset_preset_func_names + load_data_output_names + ["random_aspect_ratio", "use_resolution_override", "resolution_original_input"] + scene_preset_save_names
-    parameter_profile_snapshot_inputs = [params_backend, state_topbar, model_params_state] + reset_preset_func + load_data_outputs + [random_aspect_ratio_checkbox, use_resolution_override_checkbox, resolution_original_input_checkbox] + scene_preset_save_ctrls
+    parameter_profile_excluded_snapshot_names = {
+        "progress_window",
+        "progress_gallery",
+        "progress_video",
+        "gallery",
+        "gallery_index",
+    }
+    parameter_profile_snapshot_named_inputs = [
+        (name, output)
+        for name, output in load_data_named_outputs
+        if name not in parameter_profile_excluded_snapshot_names
+    ]
+    parameter_profile_snapshot_names = ["params_backend", "state_topbar", "model_params_state"] + reset_preset_func_names + [name for name, _ in parameter_profile_snapshot_named_inputs] + ["random_aspect_ratio", "use_resolution_override", "resolution_original_input"] + scene_preset_save_names
+    parameter_profile_snapshot_inputs = [params_backend, state_topbar, model_params_state] + reset_preset_func + [output for _, output in parameter_profile_snapshot_named_inputs] + [random_aspect_ratio_checkbox, use_resolution_override_checkbox, resolution_original_input_checkbox] + scene_preset_save_ctrls
 
     def _normalize_reset_params_model_bridge_result(result, state_params):
         if not isinstance(result, (list, tuple)):
