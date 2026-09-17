@@ -433,7 +433,7 @@
       "format": "MP4",
       "codec": "h264",
       "fps": 24,
-      "crf": 18,
+      "crf": 16,
       "images": [
         "35",
         0

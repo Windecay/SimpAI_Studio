@@ -1376,6 +1376,14 @@ def _scene_bool_value(value):
     return bool(value)
 
 
+def model_download_notifications_disabled(state_params=None, explicit_value=None):
+    if explicit_value is not None:
+        return _scene_bool_value(explicit_value)
+    if isinstance(state_params, dict) and "no_model_modal_checkbox" in state_params:
+        return _scene_bool_value(state_params.get("no_model_modal_checkbox"))
+    return _scene_bool_value(ads.get_user_default("no_model_modal_checkbox", state_params, False))
+
+
 def _resolve_scene_canvas_mask_disabled(scene_frontend, theme=None):
     value = _canvas_scene_value(scene_frontend, "disable_canvas_mask", theme, None)
     if value is None:
@@ -2514,7 +2522,41 @@ def _apply_scene_video_backend_params(backend_params, video, mask_video, referen
         backend_params.pop("reference_video2", None)
 
 
-def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None, scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None, scene_reference_video2=None, scene_reference_video2_original_path=None, scene_reference_video2_trim_payload=None, scene_audio2=None, scene_audio3=None):
+_GENERATION_MODEL_STATE_FIELDS = (
+    "base_model",
+    "refiner_model",
+    "refiner_switch",
+    "clip_model",
+    "vae_name",
+    "upscale_model",
+)
+
+
+def _generation_model_state_with_payload(current_state=None, payload=None):
+    result = dict(current_state) if isinstance(current_state, dict) else {}
+    data = payload
+    if isinstance(payload, str):
+        try:
+            data = json.loads(payload or "{}")
+        except Exception:
+            data = None
+    if isinstance(data, dict):
+        for key in _GENERATION_MODEL_STATE_FIELDS:
+            value = data.get(key)
+            if value not in (None, ""):
+                result[key] = value
+        if isinstance(data.get("loras"), list) and data.get("loras"):
+            result["loras"] = data["loras"]
+    if not result or not (
+        result.get("__model_params_state")
+        or any(key in result for key in _GENERATION_MODEL_STATE_FIELDS)
+    ):
+        return None
+    result["__model_params_state"] = True
+    return result
+
+
+def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None, scene_video_trim_payload=None, scene_reference_video_trim_payload=None, scene_input_image5=None, scene_input_image6=None, scene_input_image7=None, scene_input_image8=None, scene_reference_video2=None, scene_reference_video2_original_path=None, scene_reference_video2_trim_payload=None, scene_audio2=None, scene_audio3=None, current_model_params_state=None, models_js_payload=None, no_model_modal_checkbox=None):
     regen_scene_additional_prompt = scene_additional_prompt
     regen_scene_additional_prompt_2 = scene_additional_prompt_2
     user_did = _state_user_did(state_params)
@@ -3103,11 +3145,27 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             (regen_data.get("ui_values") or {}).get("scene_theme"),
             (regen_data.get("backend_params") or {}).get("task_method"),
         )
-    state_params["absent_model"] = False
-    if not args_manager.args.disable_backend and is_models_file_absent(state_params["__preset"], user_did):
-        if not ads.get_user_default("no_model_modal_checkbox", state_params, False):
+    selected_model_state = _generation_model_state_with_payload(
+        current_model_params_state or state_params.get("__model_params_state"),
+        models_js_payload,
+    )
+    try:
+        selected_model_status = model_loader.selected_model_missing_status(
+            selected_model_state,
+            backend_params,
+        )
+    except Exception:
+        logger.debug("Selected model availability check failed", exc_info=True)
+        selected_model_status = None
+    model_absent = (
+        is_models_file_absent(state_params["__preset"], user_did)
+        if selected_model_status is None
+        else selected_model_status
+    ) if not args_manager.args.disable_backend else False
+    state_params["absent_model"] = bool(model_absent)
+    if model_absent:
+        if not model_download_notifications_disabled(state_params, no_model_modal_checkbox):
             gr.Info(preset_absent_model_note_info)
-        state_params["absent_model"] = True
         # if shared.token.is_admin(state_params["user"].get_did()):
         #     download_model_files(state_params["__preset"], state_params["user"].get_did(), True)
     elif not args_manager.args.disable_backend:
@@ -3395,7 +3453,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     resolved_preset = _resolve_preset_storage_name(preset, current_user_did)
     logger.info(f'Reset_context: preset={state_params.get("__preset", None)}-->{preset}, theme={state_params.get("__theme", None)}, lang={state_params.get("__lang", None)}')
     if not args_manager.args.disable_backend and '\u2B07' in state_params["bar_button"]:
-        if not ads.get_user_default("no_model_modal_checkbox", state_params, False):
+        if not model_download_notifications_disabled(state_params):
             gr.Info(preset_down_note_info)
 
     state_params.update({"__preset": preset})
@@ -5068,7 +5126,10 @@ def get_all_user_default(state):
     results += [ads.get_user_default("save_metadata_to_images", state, config.default_save_metadata_to_images)]
     results += [ads.get_user_default("metadata_scheme", state, config.default_metadata_scheme)]
     results += [ads.get_user_default("gallery_frost_enabled", state, True)]
-    results += [ads.get_user_default("no_model_modal_checkbox", state, False)]
+    no_model_modal_disabled = ads.get_user_default("no_model_modal_checkbox", state, False)
+    if isinstance(state, dict):
+        state["no_model_modal_checkbox"] = _scene_bool_value(no_model_modal_disabled)
+    results += [no_model_modal_disabled]
     results += [ads.get_user_default("lora_auto_send_trigger_words", state, False)]
     use_model_filter = ads.get_user_default("use_model_filter_checkbox", state, True)
     results += [use_model_filter, use_model_filter]

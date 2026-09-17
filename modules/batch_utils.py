@@ -680,6 +680,11 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
     resolution_multiplier = args[-3]
     ctrls_values = list(args[:-3])
     ctrls_values = _ensure_backend_ctrl(ctrls_values, state)
+    current_model_params_state = (
+        ctrls_values[-1]
+        if ctrls_values and isinstance(ctrls_values[-1], dict) and ctrls_values[-1].get("__model_params_state")
+        else None
+    )
     target_slot = normalize_scene_batch_target_slot(target, state)
     current_source_size = _image_size_from_value(_scene_batch_source_value(target_slot, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8))
     current_target_size = _positive_size_pair(overwrite_width, overwrite_height)
@@ -830,6 +835,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
                 scene_reference_video2_trim_payload=scene_reference_video2_trim_payload,
                 scene_audio2=scene_audio2,
                 scene_audio3=scene_audio3,
+                current_model_params_state=current_model_params_state,
             )
         except Exception:
             bp = {} if backend_params is None else copy.deepcopy(backend_params)

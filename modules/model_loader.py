@@ -1491,6 +1491,120 @@ def _resolve_model_filepath(cata: str, path_file: str) -> str:
 
     return ''
 
+
+_SELECTED_MODEL_CATALOGS = {
+    "base_model": ("diffusion_models", "checkpoints", "unet"),
+    "refiner_model": ("diffusion_models", "checkpoints", "unet"),
+    "clip_model": ("text_encoders", "clip"),
+    "vae_name": ("vae",),
+}
+_MODEL_SELECTION_SENTINELS = frozenset({
+    "",
+    "none",
+    "auto",
+    "default",
+    "default (model)",
+    "default (vae)",
+    "default (clip)",
+})
+
+
+def _selected_model_text(value):
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("name") or value.get("model") or value.get("filename")
+    return str(value or "").strip()
+
+
+def _selected_model_path_exists(catalogs, value):
+    model_name = _selected_model_text(value)
+    if not model_name:
+        return False
+
+    if model_name.startswith("[") and model_name.endswith("]"):
+        filter_name = model_name[1:-1].strip().strip("/")
+        if not filter_name:
+            return False
+        for cata in catalogs:
+            try:
+                names = shared.modelsinfo.get_model_names(
+                    cata,
+                    [f"{filter_name}/"],
+                    casesensitive=True,
+                )
+            except Exception:
+                names = None
+            if names:
+                return True
+        return False
+
+    for cata in catalogs:
+        file_path = _resolve_model_filepath(cata, model_name)
+        if file_path and os.path.exists(file_path):
+            return True
+    return False
+
+
+def selected_model_missing_status(model_state, backend_params=None):
+    """Return True/False for concrete selections, or None when none are available."""
+    if not isinstance(model_state, dict):
+        return None
+    if not model_state.get("__model_params_state") and not any(
+        key in model_state for key in _SELECTED_MODEL_CATALOGS
+    ):
+        return None
+
+    backend_params = backend_params if isinstance(backend_params, dict) else {}
+    selections = []
+
+    def add_selection(field, value, catalogs=None):
+        model_name = _selected_model_text(value)
+        if model_name.casefold() in _MODEL_SELECTION_SENTINELS:
+            return
+        selections.append((field, tuple(catalogs or _SELECTED_MODEL_CATALOGS[field]), model_name))
+
+    add_selection("base_model", model_state.get("base_model"))
+    add_selection("refiner_model", model_state.get("refiner_model"))
+
+    clip_model = model_state.get("clip_model")
+    if _selected_model_text(clip_model).casefold() in _MODEL_SELECTION_SENTINELS:
+        clip_model = backend_params.get("clip_model")
+    add_selection("clip_model", clip_model)
+
+    vae_name = model_state.get("vae_name")
+    if _selected_model_text(vae_name).casefold() in _MODEL_SELECTION_SENTINELS:
+        vae_name = backend_params.get("vae_model")
+    add_selection("vae_name", vae_name)
+
+    raw_loras = model_state.get("loras")
+    if isinstance(raw_loras, (list, tuple)):
+        for index, raw_lora in enumerate(raw_loras):
+            enabled = True
+            model_name = "None"
+            if isinstance(raw_lora, dict):
+                enabled = raw_lora.get("enabled", True)
+                model_name = raw_lora.get("model") or raw_lora.get("name") or raw_lora.get("filename")
+            elif isinstance(raw_lora, (list, tuple)):
+                if len(raw_lora) >= 3:
+                    enabled, model_name = raw_lora[0], raw_lora[1]
+                elif len(raw_lora) >= 2:
+                    model_name = raw_lora[0]
+                elif len(raw_lora) == 1:
+                    model_name = raw_lora[0]
+            if isinstance(enabled, str):
+                enabled = enabled.strip().lower() not in ("", "0", "false", "no", "off")
+            if enabled:
+                add_selection(f"lora[{index}]", model_name, ("loras",))
+
+    if not selections:
+        return None
+
+    for field, catalogs, model_name in selections:
+        if not _selected_model_path_exists(catalogs, model_name):
+            logger.debug("Missing selected model: %s=%s", field, model_name)
+            return True
+    return False
+
+
 def refresh_model_list(presets, user_did=None):
     from enhanced.simpleai import get_path_in_user_dir
     global presets_model_list, presets_resource_bundles, presets_mtime

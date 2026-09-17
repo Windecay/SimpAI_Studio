@@ -4026,7 +4026,7 @@ with shared.gradio_root:
                 def check_and_show_missing_models(button_value, state_params):
                     """Check whether models are missing and show the prompt modal."""
 
-                    if ads.get_user_default("no_model_modal_checkbox", state_params, False):
+                    if topbar.model_download_notifications_disabled(state_params):
                         util.log_ui_trace(logger, "[UI-TRACE] missing_model_modal.skip_disabled | button=%r", button_value)
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value=""), gr_update(visible=False)]
                     request_payload = _parse_missing_model_request(button_value)
@@ -9075,7 +9075,10 @@ with shared.gradio_root:
                                     no_welcome_checkbox = gr.Checkbox(label="Hide welcome picture", value=False)
                                     missing_model_filter_checkbox = gr.Checkbox(label="Missing model filter", value=False, info="Filtering presets with missing models")
                                     gallery_frost_enabled = gr.Checkbox(label="Blur gallery media by default", value=True, elem_id="gallery_frost_enabled_checkbox", info="Blur gallery thumbnails until clicked. Applies to Infinite Canvas media browsers too.")
-                                    no_model_modal_checkbox = gr.Checkbox(label="Disable model download notification", value=False)
+                                    no_model_modal_checkbox = gr.Checkbox(
+                                        label="Disable model download notification",
+                                        value=ads.get_user_default("no_model_modal_checkbox", {}, False),
+                                    )
 
                                 with gr.Group():
                                     image_tools_checkbox = gr.Checkbox(label='Enable ParamsTools', value=True, info='Management of published image sets, located in the middle toolbox on the right side of the image set.', elem_id='image_tools_checkbox')
@@ -9122,10 +9125,19 @@ with shared.gradio_root:
                                 outputs=None,
                                 queue=False
                             )
+                            def _set_no_model_modal_checkbox(value, state_params):
+                                if not isinstance(state_params, dict):
+                                    return state_params
+                                updated_state = dict(state_params)
+                                value = _as_bool(value, False)
+                                ads.set_user_default_value("no_model_modal_checkbox", value, updated_state)
+                                updated_state["no_model_modal_checkbox"] = value
+                                return updated_state
+
                             no_model_modal_checkbox.change(
-                                lambda x, y: ads.set_user_default_value("no_model_modal_checkbox", x, y),
+                                _set_no_model_modal_checkbox,
                                 inputs=[no_model_modal_checkbox, state_topbar],
-                                outputs=None,
+                                outputs=state_topbar,
                                 queue=False
                             )
 
@@ -11837,6 +11849,7 @@ with shared.gradio_root:
             scene_input_image5, scene_input_image6, scene_input_image7, scene_input_image8,
             scene_reference_video2, scene_reference_video2_original_path, scene_reference_video2_trim_payload,
             scene_audio2, scene_audio3,
+            model_params_state, models_js_payload, no_model_modal_checkbox,
         ]
         scene_switch_option3_input_index = scene_generation_inputs.index(scene_switch_option3)
         scene_region_submit_indices = {
@@ -11847,6 +11860,7 @@ with shared.gradio_root:
             "scene_var_number7": scene_generation_inputs.index(scene_var_number7),
         }
         scene_generation_sync_js = """(...args) => {
+            %s
             try {
                 if (typeof window.syncSimpleAISceneModeCheckbox === "function") {
                     const value = window.syncSimpleAISceneModeCheckbox(args[0]);
@@ -11856,7 +11870,11 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] scene_mode_checkbox_submit_sync_failed", e);
             }
             return window.SimpAIVideoRegionSelector?.applySubmitValues(args, %s) || args;
-        }""" % (scene_switch_option3_input_index, json.dumps(scene_region_submit_indices))
+        }""" % (
+            _models_payload_submit_body(scene_generation_inputs),
+            scene_switch_option3_input_index,
+            json.dumps(scene_region_submit_indices),
+        )
 
         uov_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
             .then(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_batch"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_batch");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: !(state && state.__skip_gallery_browser_refresh_once), syncSwitch:false});}')
