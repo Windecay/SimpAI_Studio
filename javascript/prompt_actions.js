@@ -22,6 +22,9 @@
     let presetPromptAgentHintResizeObserver = null;
     let presetPromptAgentHintMutationObserver = null;
     let presetPromptAgentHintObservedAnchor = null;
+    let presetPromptAgentHintAutoHideTimer = 0;
+    let presetPromptAgentHintDismissedForPage = false;
+    const PRESET_PROMPT_AGENT_HINT_AUTO_HIDE_MS = 10000;
 
     function catalogItems() {
         const catalog = window.SimpAIPromptActionCatalog;
@@ -130,6 +133,21 @@
         presetPromptAgentHintInitialSyncTimer = 0;
     }
 
+    function cancelPresetPromptAgentHintAutoHide() {
+        window.clearTimeout(presetPromptAgentHintAutoHideTimer);
+        presetPromptAgentHintAutoHideTimer = 0;
+    }
+
+    function schedulePresetPromptAgentHintAutoHide(preset) {
+        cancelPresetPromptAgentHintAutoHide();
+        presetPromptAgentHintAutoHideTimer = window.setTimeout(() => {
+            presetPromptAgentHintAutoHideTimer = 0;
+            const hint = presetPromptAgentHint;
+            if (!hint?.classList.contains("is-open") || hint.dataset.preset !== preset) return;
+            hidePresetPromptAgentHint();
+        }, PRESET_PROMPT_AGENT_HINT_AUTO_HIDE_MS);
+    }
+
     function cancelPresetPromptAgentHintReposition() {
         const frame = presetPromptAgentHintRepositionFrame;
         if (!frame) return;
@@ -144,6 +162,12 @@
         presetPromptAgentHintResizeObserver = null;
         presetPromptAgentHintMutationObserver = null;
         presetPromptAgentHintObservedAnchor = null;
+    }
+
+    function dismissPresetPromptAgentHint() {
+        presetPromptAgentHintDismissedForPage = true;
+        cancelPresetPromptAgentHintInitialSync();
+        hidePresetPromptAgentHint();
     }
 
     function repositionPresetPromptAgentHint() {
@@ -235,8 +259,7 @@
         presetPromptAgentHint.querySelector('[data-role="close"]')?.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            cancelPresetPromptAgentHintInitialSync();
-            hidePresetPromptAgentHint();
+            dismissPresetPromptAgentHint();
         });
         host.appendChild(presetPromptAgentHint);
         return presetPromptAgentHint;
@@ -245,6 +268,7 @@
     function hidePresetPromptAgentHint() {
         window.clearTimeout(presetPromptAgentHintRetryTimer);
         presetPromptAgentHintRetryTimer = 0;
+        cancelPresetPromptAgentHintAutoHide();
         cancelPresetPromptAgentHintReposition();
         disconnectPresetPromptAgentHintObservers();
         if (!presetPromptAgentHint) return;
@@ -285,7 +309,12 @@
     }
 
     function showPresetPromptAgentHint(params, attempt = 0) {
-        if (!promptAgentRequired(params)) {
+        if (!promptAgentRequired(params) || presetPromptAgentHintDismissedForPage) {
+            hidePresetPromptAgentHint();
+            return;
+        }
+        const preset = presetPromptAgentName(params);
+        if (!preset) {
             hidePresetPromptAgentHint();
             return;
         }
@@ -303,11 +332,7 @@
 
         const hint = ensurePresetPromptAgentHint();
         if (!hint) return;
-        const preset = presetPromptAgentName(params);
-        if (!preset) {
-            hidePresetPromptAgentHint();
-            return;
-        }
+        const wasOpenForPreset = hint.classList.contains("is-open") && hint.dataset.preset === preset;
         const message = text(
             "This preset works better with a detailed prompt. Click Prompt Tools and choose Smart Expand.",
             "这个预置使用更详细的提示词效果更好。点击提示工具，使用智能扩写。",
@@ -323,6 +348,7 @@
         observePresetPromptAgentHintAnchor(button);
         positionPresetPromptAgentHint(button, hint);
         schedulePresetPromptAgentHintReposition();
+        if (!wasOpenForPreset) schedulePresetPromptAgentHintAutoHide(preset);
         window.requestAnimationFrame?.(() => {
             if (hint.classList.contains("is-open") && hint.dataset.preset === preset) {
                 positionPresetPromptAgentHint(promptButton(), hint);
