@@ -1487,6 +1487,7 @@
   "SuperPrompt": "提示扩展",
   "PromptAgent": "提示助手",
   "Prompt Tools": "提示工具",
+  "This preset works better with a detailed prompt. Click Prompt Tools and choose Smart Expand.": "这个预置使用更详细的提示词效果更好。点击提示工具，使用智能扩写。",
   "Prompt prefix": "扩展提示前缀",
   "OneButtonPrompt": "一键提示",
   "RandomPrompt": "一键提示",

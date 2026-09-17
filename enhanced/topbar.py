@@ -1112,6 +1112,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, dy
     initial_user_did = _state_user_did(state_params)
     resolved_initial_preset = _resolve_preset_storage_name(state_params.get("__preset", initial_preset), initial_user_did)
     initial_config_preset = config.try_get_preset_content(resolved_initial_preset, initial_user_did)
+    state_params["__prompt_agent_required"] = config.resolve_preset_prompt_agent_required(initial_config_preset)
     initial_preset_prepared = meta_parser.parse_meta_from_preset(initial_config_preset)
     initial_engine = initial_preset_prepared.get('engine', {}).get('backend_engine', 'Z-image')
     initial_engine_type = initial_preset_prepared.get('engine', {}).get('engine_type', 'image')
@@ -3467,6 +3468,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     gallery_util.clear_post_generation_compare_state(state_params)
 
     config_preset = config.try_get_preset_content(resolved_preset, current_user_did)
+    state_params["__prompt_agent_required"] = config.resolve_preset_prompt_agent_required(config_preset)
     preset_prepared = meta_parser.parse_meta_from_preset(config_preset)
 
     engine = preset_prepared.get('engine', {}).get('backend_engine', 'Fooocus')
@@ -4548,6 +4550,11 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
     preset_prepared = state.get("__preset_prepared", {}) if isinstance(state, dict) else {}
     if not isinstance(preset_prepared, dict):
         preset_prepared = {}
+    prompt_agent_required = (
+        state.get("__prompt_agent_required") is True
+        or state.get("prompt_agent_required") is True
+        or preset_prepared.get("prompt_agent_required") is True
+    )
     scene_frontend = state.get("scene_frontend", {}) if isinstance(state, dict) else {}
     scene_disvisible = _scene_disvisible_with_optional_inputs(scene_frontend)
     engine_disvisible = _resolve_engine_disvisible_for_state(state)
@@ -4688,6 +4695,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
     system_params= dict(
         __preset=state.get("__preset"),
         __preset_missing=current_preset_missing,
+        __prompt_agent_required=prompt_agent_required,
         __preset_switched=bool(state.get("__preset_switched", False)),
         __regen_preset_restore=regen_preset_restore,
         __identity_session_seq=int(state.get("__identity_session_seq", 0) or 0),

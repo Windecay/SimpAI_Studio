@@ -95,11 +95,11 @@ in English and Chinese stages.
   it. Do not remove the environment-preservation instruction during rewriting.
   修改姿势时仍须保留图 1 的背景、人群、物体、视角和光照，并延续动作后露出的
   背景。不能因为要求改变姿势，就省略背景保留要求。
-- Preserve character identity, face, hairstyle, body proportions, clothing, and
-  worn accessories. Name visible headwear, glasses, and equipment from picture 1
-  when writing an image-grounded prompt; generic identity-preservation wording
-  alone can omit accessories. Do not invent an item that is absent from the source.
-  有实际图片时，明确描述可见的帽子、眼镜和穿戴装备；源图没有的物品不要添加。
+- Preserve the character identity, visible appearance, body proportions, clothing,
+  and worn accessories from `<Picture 1>`. When writing an image-grounded prompt,
+  describe only visible attributes needed for the requested edit; do not invent,
+  enumerate, or name absent items.
+  保留 `<Picture 1>` 中角色的身份、可见外观、身体比例、服装和穿戴配饰；只描述本次编辑需要的可见属性，不要臆造、罗列或命名源图中没有的物品。
 - Apply the H3 skill's source-grounding and reference-retention principles.
   This preset still uses one self-contained R2I image-editing instruction, not
   the Ref2VA video timeline. Its two image labels remain unchanged, and it does

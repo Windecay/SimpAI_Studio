@@ -1219,6 +1219,8 @@ def _concat_topaz_segments(
                 "0:v:0",
                 "-c",
                 "copy",
+                "-vsync",
+                "0",
                 "-movflags",
                 "+faststart",
                 temp_path,
@@ -1377,15 +1379,30 @@ def _run_segmented_topaz(
                 _localized_catalog_text(language, "Verifying Topaz output..."),
             )
         output_info = _probe_video(output_path, config.ffprobe_path)
-        if output_info.frames != frame_count:
-            raise RuntimeError(
-                f"Topaz merged output returned {output_info.frames} frames; expected {frame_count}."
+        frame_count_mismatch = output_info.frames != frame_count
+        frame_count_delta = output_info.frames - frame_count
+        if frame_count_mismatch:
+            logger.warning(
+                "Topaz merged output frame count differs; keeping readable output: "
+                "actual=%s expected=%s delta=%s path=%s",
+                output_info.frames,
+                frame_count,
+                frame_count_delta,
+                output_path,
             )
         success = True
         if progress_callback is not None:
             progress_callback(
                 100,
-                _localized_catalog_text(language, "Topaz Starlight finished"),
+                (
+                    localized_text(
+                        language,
+                        "Topaz Starlight finished with a frame-count warning.",
+                        "Topaz 星光处理完成，但合并后帧数与源视频不一致。",
+                    )
+                    if frame_count_mismatch
+                    else _localized_catalog_text(language, "Topaz Starlight finished")
+                ),
             )
         return {
             "output_path": output_path,
@@ -1404,6 +1421,8 @@ def _run_segmented_topaz(
             "model_store": config.model_store,
             "segment_count": len(segments),
             "segment_frame_budget": segment_budget,
+            "frame_count_mismatch": frame_count_mismatch,
+            "frame_count_delta": frame_count_delta,
         }
     finally:
         if not success:

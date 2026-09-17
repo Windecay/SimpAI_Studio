@@ -1,5 +1,6 @@
 {
     "supported_tasks": ["video_motion_transfer", "video_person_replace"],
+    "prompt_agent_required": true,
     "default_engine": {
         "backend_engine": "Wan",
         "engine_type": "video",

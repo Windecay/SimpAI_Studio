@@ -51,7 +51,7 @@
             "var_number4_min": 0,
             "var_number4_max": 1.0,
             "var_number4": {
-                "Krea2 A2R": 0.5
+                "Krea2 A2R": 0.25
             },
             "resolution_control": {
                 "mode": "image_keep_input_area",

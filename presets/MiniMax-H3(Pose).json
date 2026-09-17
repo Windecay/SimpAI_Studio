@@ -1,5 +1,6 @@
 {
   "supported_tasks": ["image_pose_transfer"],
+  "prompt_agent_required": true,
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
@@ -45,10 +46,10 @@
       "task_method": {"H3 Pose": "minimax_h3_r2i_cn"},
       "prompt_compiler": {"H3 Pose": "minimax_h3_r2i"},
       "prompt": {
-        "H3 Pose": "Edit <Picture 1> while keeping its original background, surrounding people and objects, camera view, perspective, lighting, and visual style. Keep the same character, face, hairstyle, body proportions, clothing, and every worn accessory, including any hat, glasses, and equipment visible in <Picture 1>. Change only the character's body pose to match <Picture 2>: follow its head direction, torso angle, arm and leg positions, and visible hand gestures. Adapt the body and clothing to the new pose, and reconstruct the original background where the moved body reveals it. Use <Picture 2> only as a pose guide; keep all appearance and scene details from <Picture 1>."
+        "H3 Pose": "Use <Picture 1> as the only source for the output character and scene. Transfer only the pose from <Picture 2> to the character in <Picture 1>. Preserve its identity, appearance, clothing, accessories, background, composition, camera, lighting, and style. Do not transfer any other content from <Picture 2>. Make no other changes."
       },
       "agent_prompt": {
-        "H3 Pose": "Write one self-contained still-image pose-editing instruction using exactly two ordered pictures. <Picture 1> is the source image to edit. Explicitly preserve its original background, surrounding people and objects, camera view, perspective, lighting, and visual style unless the user explicitly requests a change. Preserve the character's identity, face, hairstyle, body proportions, clothing, and worn accessories; name visible headwear, glasses, and equipment rather than relying only on generic identity-preservation wording. Describe the original setting using visible evidence from <Picture 1>, without inventing a different scene. <Picture 2> is the target pose exported from Pose Editor and supplies only pose and body orientation. Describe visible pose details from <Picture 2>; do not invent occluded details. Redraw the body and clothing for the requested pose, and reconstruct the original background where the moved body reveals it. Do not transfer the pose mannequin's appearance or plain background. Apply additional user instructions without swapping the picture roles. Do not request a mask, additional pose-specific LoRA, video, audio, or more reference pictures."
+        "H3 Pose": "Write one self-contained MiniMax H3 R2I still-image pose-editing instruction using exactly two ordered pictures and return only the final prompt. Treat <Picture 1> as the sole source for the output character and original scene. Treat <Picture 2> as a pose reference only; transfer only its visible pose, orientation, limb positions, and gestures. Preserve <Picture 1>'s identity, appearance, clothing, worn accessories, original background, surrounding people and objects, composition, camera view, perspective, lighting, and visual style. If the references conflict, follow <Picture 1> for the character and scene, and follow <Picture 2> only for pose. Do not copy the pose reference's character, appearance, clothing, background, or lighting. Do not invent absent details, extra subjects, objects, scene changes, or text. Do not request a mask, additional pose-specific LoRA, video, audio, or more reference pictures, and do not use a Ref2VA timeline."
       },
       "overwrite_step": {"H3 Pose": 10},
       "aspect_ratio": ["1024|1:1", "1536|1:1", "2048|1:1", "origin|Original"],
@@ -91,7 +92,7 @@
   "default_aspect_ratio": "1024*1024",
   "default_image_number": 1,
   "default_overwrite_step": 10,
-  "default_prompt": "Edit <Picture 1> while keeping its original background, surrounding people and objects, camera view, perspective, lighting, and visual style. Keep the same character, face, hairstyle, body proportions, clothing, and every worn accessory, including any hat, glasses, and equipment visible in <Picture 1>. Change only the character's body pose to match <Picture 2>: follow its head direction, torso angle, arm and leg positions, and visible hand gestures. Adapt the body and clothing to the new pose, and reconstruct the original background where the moved body reveals it. Use <Picture 2> only as a pose guide; keep all appearance and scene details from <Picture 1>.",
+  "default_prompt": "Use <Picture 1> as the only source for the output character and scene. Transfer only the pose from <Picture 2> to the character in <Picture 1>. Preserve its identity, appearance, clothing, accessories, background, composition, camera, lighting, and style. Do not transfer any other content from <Picture 2>. Make no other changes.",
   "default_prompt_negative": "",
   "checkpoint_downloads": {},
   "embeddings_downloads": {},

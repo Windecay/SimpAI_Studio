@@ -18,6 +18,10 @@ def install_template_response_hook(*, js: str, css: str) -> None:
         res.body = res.body.replace(b"</head>", f"{js}</head>".encode("utf8"))
         res.body = res.body.replace(b"</body>", f"{css}</body>".encode("utf8"))
         res.init_headers()
+        try:
+            res.headers["Cache-Control"] = "no-store"
+        except (AttributeError, TypeError):
+            pass
         return res
 
     templates.TemplateResponse = template_response

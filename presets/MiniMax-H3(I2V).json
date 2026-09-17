@@ -1,5 +1,6 @@
 {
   "supported_tasks": ["image_to_video", "multi_image_to_video"],
+  "prompt_agent_required": true,
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",

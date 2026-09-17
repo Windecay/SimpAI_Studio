@@ -1,5 +1,6 @@
 {
   "supported_tasks": ["video_motion_transfer"],
+  "prompt_agent_required": true,
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",

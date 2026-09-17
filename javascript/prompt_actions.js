@@ -15,6 +15,9 @@
     let pendingDirectRequest = null;
     let lastAppliedPromptField = null;
     let lastAppliedPreviousPrompt = "";
+    let presetPromptAgentHint = null;
+    let presetPromptAgentHintRetryTimer = 0;
+    let presetPromptAgentHintInitialSyncTimer = 0;
 
     function catalogItems() {
         const catalog = window.SimpAIPromptActionCatalog;
@@ -104,6 +107,209 @@
 
     function currentPrompt() {
         return String(promptField(activePromptField)?.value || "");
+    }
+
+    function promptAgentRequired(params = paramsSource()) {
+        return !!(params && typeof params === "object"
+            && (params.__prompt_agent_required === true
+                || params.__prompt_agent_required === "true"
+                || params.prompt_agent_required === true
+                || params.prompt_agent_required === "true"));
+    }
+
+    function presetPromptAgentName(params = paramsSource()) {
+        return String(params?.__preset || params?.preset || "").trim();
+    }
+
+    function cancelPresetPromptAgentHintInitialSync() {
+        window.clearTimeout(presetPromptAgentHintInitialSyncTimer);
+        presetPromptAgentHintInitialSyncTimer = 0;
+    }
+
+    function schedulePresetPromptAgentHintInitialSync(attempt = 0) {
+        cancelPresetPromptAgentHintInitialSync();
+        if (attempt > 12) return;
+        const delay = attempt === 0 ? 0 : Math.min(120 + attempt * 180, 800);
+        presetPromptAgentHintInitialSyncTimer = window.setTimeout(() => {
+            presetPromptAgentHintInitialSyncTimer = 0;
+            const params = paramsSource();
+            if (promptAgentRequired(params) && promptButton() && presetPromptAgentName(params)) {
+                syncPresetPromptAgentHint(params);
+                return;
+            }
+            schedulePresetPromptAgentHintInitialSync(attempt + 1);
+        }, delay);
+    }
+
+    function ensurePresetPromptAgentHint() {
+        if (presetPromptAgentHint?.isConnected) {
+            return presetPromptAgentHint;
+        }
+        const host = document.body || document.documentElement;
+        if (!host) return null;
+        presetPromptAgentHint = document.createElement("div");
+        presetPromptAgentHint.id = "simpleai_prompt_agent_hint";
+        presetPromptAgentHint.className = "simpleai-prompt-agent-hint";
+        presetPromptAgentHint.hidden = true;
+        presetPromptAgentHint.setAttribute("role", "status");
+        presetPromptAgentHint.innerHTML = `
+            <span class="simpleai-prompt-agent-hint-icon" aria-hidden="true"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <span class="simpleai-prompt-agent-hint-message" data-role="message"></span>
+            <button type="button" class="simpleai-prompt-agent-hint-close" data-role="close" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>`;
+        presetPromptAgentHint.querySelector('[data-role="close"]')?.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelPresetPromptAgentHintInitialSync();
+            hidePresetPromptAgentHint();
+        });
+        host.appendChild(presetPromptAgentHint);
+        return presetPromptAgentHint;
+    }
+
+    function hidePresetPromptAgentHint() {
+        window.clearTimeout(presetPromptAgentHintRetryTimer);
+        presetPromptAgentHintRetryTimer = 0;
+        if (!presetPromptAgentHint) return;
+        presetPromptAgentHint.classList.remove("is-open");
+        presetPromptAgentHint.hidden = true;
+        presetPromptAgentHint.removeAttribute("data-preset");
+    }
+
+    function positionPresetPromptAgentHint(button, hint) {
+        if (!button || !hint || !hint.classList.contains("is-open")) return;
+        const buttonRect = button.getBoundingClientRect?.();
+        if (!buttonRect) return;
+
+        const margin = 10;
+        const gap = 9;
+        hint.style.visibility = "hidden";
+        const hintRect = hint.getBoundingClientRect?.();
+        const hintWidth = Number(hintRect?.width || 280);
+        const hintHeight = Number(hintRect?.height || 60);
+        const viewportWidth = Math.max(Number(window.innerWidth || 0), hintWidth + margin * 2);
+        const viewportHeight = Math.max(Number(window.innerHeight || 0), hintHeight + margin * 2);
+        const buttonCenter = buttonRect.left + buttonRect.width / 2;
+        const left = Math.max(
+            margin,
+            Math.min(viewportWidth - margin - hintWidth, buttonCenter - hintWidth / 2),
+        );
+        const belowTop = buttonRect.bottom + gap;
+        const aboveTop = buttonRect.top - gap - hintHeight;
+        const placeBelow = belowTop + hintHeight <= viewportHeight - margin || aboveTop < margin;
+        const top = placeBelow ? belowTop : aboveTop;
+        const arrowLeft = Math.max(16, Math.min(hintWidth - 16, buttonCenter - left));
+
+        hint.dataset.placement = placeBelow ? "below" : "above";
+        hint.style.left = `${left}px`;
+        hint.style.top = `${Math.max(margin, top)}px`;
+        hint.style.setProperty("--sai-prompt-agent-hint-arrow-left", `${arrowLeft}px`);
+        hint.style.visibility = "";
+    }
+
+    function showPresetPromptAgentHint(params, attempt = 0) {
+        if (!promptAgentRequired(params)) {
+            hidePresetPromptAgentHint();
+            return;
+        }
+        const button = promptButton();
+        if (!button) {
+            if (attempt < 12) {
+                window.clearTimeout(presetPromptAgentHintRetryTimer);
+                presetPromptAgentHintRetryTimer = window.setTimeout(
+                    () => showPresetPromptAgentHint(params, attempt + 1),
+                    Math.min(80 + attempt * 80, 500),
+                );
+            }
+            return;
+        }
+
+        const hint = ensurePresetPromptAgentHint();
+        if (!hint) return;
+        const preset = presetPromptAgentName(params);
+        if (!preset) {
+            hidePresetPromptAgentHint();
+            return;
+        }
+        const message = text(
+            "This preset works better with a detailed prompt. Click Prompt Tools and choose Smart Expand.",
+            "这个预置使用更详细的提示词效果更好。点击提示工具，使用智能扩写。",
+        );
+        const messageNode = hint.querySelector('[data-role="message"]');
+        if (messageNode) messageNode.textContent = message;
+        const close = hint.querySelector('[data-role="close"]');
+        if (close) close.setAttribute("aria-label", text("Close", "关闭"));
+        hint.dataset.preset = preset;
+        hint.setAttribute("aria-label", message);
+        hint.hidden = false;
+        hint.classList.add("is-open");
+        positionPresetPromptAgentHint(button, hint);
+        window.requestAnimationFrame?.(() => {
+            if (hint.classList.contains("is-open") && hint.dataset.preset === preset) {
+                positionPresetPromptAgentHint(promptButton(), hint);
+            }
+        });
+
+    }
+
+    function syncPresetPromptAgentHint(params = paramsSource()) {
+        const source = params && typeof params === "object" ? params : paramsSource();
+        showPresetPromptAgentHint(source);
+    }
+
+    function handlePresetSystemParamsUpdated(event) {
+        const detail = event?.detail && typeof event.detail === "object" ? event.detail : null;
+        syncPresetPromptAgentHint(detail || paramsSource());
+    }
+
+    function handlePresetNavigationCompleted(event) {
+        const detail = event?.detail && typeof event.detail === "object" ? event.detail : {};
+        const currentPreset = presetPromptAgentName();
+        const completedPreset = String(detail.preset || "").trim();
+        if (completedPreset && currentPreset && completedPreset !== currentPreset) return;
+        window.setTimeout(() => {
+            const latestParams = paramsSource();
+            const latestPreset = presetPromptAgentName(latestParams);
+            if (completedPreset && latestPreset && completedPreset !== latestPreset) {
+                hidePresetPromptAgentHint();
+                return;
+            }
+            syncPresetPromptAgentHint(latestParams);
+        }, 80);
+    }
+
+    function handleWorkspaceRestored() {
+        window.setTimeout(() => schedulePresetPromptAgentHintInitialSync(), 80);
+    }
+
+    function presetNavigationButtonFromEvent(event) {
+        const target = event?.target;
+        const candidate = target?.closest?.('[id^="bar"]');
+        if (!candidate || !/^bar\d+$/.test(String(candidate.id || ""))) return null;
+        return candidate.matches?.("button") ? candidate : candidate.querySelector?.("button");
+    }
+
+    function presetNameFromNavigationButton(button) {
+        return String(
+            button?.getAttribute?.("data-original-text")
+            || button?.querySelector?.("[data-original-text]")?.getAttribute?.("data-original-text")
+            || button?.textContent
+            || "",
+        ).replace(/\s*\u2B07\s*$/, "").trim();
+    }
+
+    function handlePresetNavigationButtonClick(event) {
+        const button = presetNavigationButtonFromEvent(event);
+        const requestedPreset = presetNameFromNavigationButton(button);
+        if (!requestedPreset) return;
+        const syncWhenSelected = () => {
+            const latestParams = paramsSource();
+            if (presetPromptAgentName(latestParams) !== requestedPreset) return;
+            syncPresetPromptAgentHint(latestParams);
+        };
+        window.setTimeout(syncWhenSelected, 100);
+        window.setTimeout(syncWhenSelected, 600);
     }
 
     function isSceneMode() {
@@ -750,6 +956,8 @@
     function onButtonClick(event) {
         const button = promptButton();
         if (!button || (event.target !== button && !button.contains(event.target))) return;
+        cancelPresetPromptAgentHintInitialSync();
+        hidePresetPromptAgentHint();
         event.preventDefault();
         event.stopPropagation();
         if (button.disabled || button.getAttribute("aria-disabled") === "true") return;
@@ -852,6 +1060,14 @@
         // instructions before an empty prompt is sent to the LLM.
         return !!promptButton();
     };
-    if (typeof onUiLoaded === "function") onUiLoaded(bindButton);
+    window.addEventListener("simpai:system-params-updated", handlePresetSystemParamsUpdated);
+    window.addEventListener("simpai:preset-nav-completed", handlePresetNavigationCompleted);
+    window.addEventListener("simpai:workspace-restored", handleWorkspaceRestored);
+    document.addEventListener("click", handlePresetNavigationButtonClick, true);
+    if (typeof onUiLoaded === "function") onUiLoaded(() => {
+        bindButton();
+        schedulePresetPromptAgentHintInitialSync();
+    });
     if (typeof onAfterUiUpdate === "function") onAfterUiUpdate(bindButton);
+    schedulePresetPromptAgentHintInitialSync();
 })();

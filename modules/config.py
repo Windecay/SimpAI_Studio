@@ -341,6 +341,17 @@ def resolve_preset_interaction_requirements(preset_content, preset_name=""):
     return []
 
 
+def resolve_preset_prompt_agent_required(preset_content):
+    """Return whether a preset should suggest Smart Expand after navigation."""
+    content = preset_content if isinstance(preset_content, dict) else {}
+    engine = content.get("default_engine") if isinstance(content.get("default_engine"), dict) else {}
+    scene = engine.get("scene_frontend") if isinstance(engine.get("scene_frontend"), dict) else {}
+    for source in (content, engine, scene):
+        if source.get("prompt_agent_required") is True:
+            return True
+    return False
+
+
 def resolve_preset_supported_tasks(preset_content, preset_name=""):
     content = preset_content if isinstance(preset_content, dict) else {}
     engine = content.get("default_engine") if isinstance(content.get("default_engine"), dict) else {}

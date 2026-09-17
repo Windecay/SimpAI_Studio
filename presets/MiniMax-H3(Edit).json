@@ -1,5 +1,6 @@
 {
   "supported_tasks": ["video_edit", "video_object_replace", "video_face_swap", "video_person_replace"],
+  "prompt_agent_required": true,
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
