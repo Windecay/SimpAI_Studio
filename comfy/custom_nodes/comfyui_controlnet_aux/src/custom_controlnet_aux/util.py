@@ -288,6 +288,44 @@ def custom_torch_download(filename, ckpts_dir=annotator_ckpts_path):
     print(f"model_path is {model_path}")
     return model_path
 
+
+def _find_existing_controlnet_model(pretrained_model_or_path, filename, subfolder=''):
+    rel_parts = [str(pretrained_model_or_path or "").strip("/")]
+    if subfolder:
+        rel_parts.append(str(subfolder).strip("/"))
+    rel_parts.append(str(filename or "").strip("/"))
+    repo_relative = "/".join(part for part in rel_parts if part)
+    search_candidates = [repo_relative, str(filename or "").strip("/")]
+
+    for relative_path in search_candidates:
+        if not relative_path:
+            continue
+        try:
+            resolved = folder_paths.get_full_path("controlnet", relative_path)
+        except Exception:
+            resolved = None
+        if resolved and os.path.exists(resolved):
+            return resolved
+
+    try:
+        from modules.config import find_model_in_dirs, paths_controlnet
+    except Exception:
+        find_model_in_dirs = None
+        paths_controlnet = []
+
+    if find_model_in_dirs:
+        for relative_path in search_candidates:
+            if not relative_path:
+                continue
+            try:
+                resolved = find_model_in_dirs(paths_controlnet, relative_path)
+            except Exception:
+                resolved = None
+            if resolved and os.path.exists(resolved):
+                return resolved
+
+    return None
+
 def custom_hf_download(pretrained_model_or_path, filename, cache_dir=temp_dir, ckpts_dir=annotator_ckpts_path, subfolder='', use_symlinks=USE_SYMLINKS, repo_type="model"):
 
     local_dir = os.path.join(ckpts_dir, pretrained_model_or_path)
@@ -295,6 +333,10 @@ def custom_hf_download(pretrained_model_or_path, filename, cache_dir=temp_dir, c
 
     if len(str(model_path)) >= 255:
         warnings.warn(f"Path {model_path} is too long, \n please change annotator_ckpts_path in config.yaml")
+
+    existing_model_path = _find_existing_controlnet_model(pretrained_model_or_path, filename, subfolder=subfolder)
+    if existing_model_path:
+        model_path = existing_model_path
 
     if not os.path.exists(model_path):
         print(f"Failed to find {model_path}.\n Downloading from huggingface.co")

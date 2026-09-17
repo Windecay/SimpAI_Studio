@@ -92,7 +92,7 @@
       "scheduler": ["1", 31],
       "steps": ["1", 9],
       "denoise": 1,
-      "model": ["126", 0]
+      "model": ["134", 0]
     },
     "class_type": "BasicScheduler",
     "_meta": {"title": "H3 Scheduler"}
@@ -123,7 +123,7 @@
       "ref_images.ref_image_6": ["107", 0],
       "ref_images.ref_image_7": ["111", 0],
       "ref_images.ref_image_8": ["115", 0],
-      "ref_videos.ref_video_0": ["128", 0],
+      "ref_videos.ref_video_0": ["135", 0],
       "ref_video_audios.ref_video_audio_0": ["54", 0],
       "ref_videos.ref_video_1": ["50", 0],
       "ref_video_audios.ref_video_audio_1": ["56", 0],
@@ -138,7 +138,7 @@
   },
   "12": {
     "inputs": {
-      "model": ["126", 0],
+      "model": ["134", 0],
       "conditioning": ["11", 0]
     },
     "class_type": "BasicGuider",
@@ -694,13 +694,22 @@
     "class_type": "ModelPatchLoader",
     "_meta": {"title": "H3 Motion ControlNet Patch"}
   },
+  "124": {
+    "inputs": {
+      "boolean": ["1", 20],
+      "on_true": ["121", 0],
+      "on_false": false
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Motion Depth Route"}
+  },
   "125": {
     "inputs": {
       "use_depth": ["1", 20],
       "use_pose": ["1", 21],
       "strength": ["1", 13],
-      "depth_video": ["121", 0],
-      "pose_video": ["122", 0]
+      "depth_video": ["124", 0],
+      "pose_video": ["132", 0]
     },
     "class_type": "SimpAIH3MotionControl",
     "_meta": {"title": "H3 Motion Control Selector"}
@@ -772,6 +781,42 @@
     },
     "class_type": "RIFEInterpolation",
     "_meta": {"title": "H3 Motion RIFE Smoothing"}
+  },
+  "132": {
+    "inputs": {
+      "boolean": ["1", 21],
+      "on_true": ["122", 0],
+      "on_false": false
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Motion Pose Route"}
+  },
+  "133": {
+    "inputs": {
+      "boolean": ["1", 20],
+      "on_true": true,
+      "on_false": ["1", 21]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Motion Control Enabled"}
+  },
+  "134": {
+    "inputs": {
+      "boolean": ["133", 0],
+      "on_true": ["126", 0],
+      "on_false": ["69", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Motion Model Route"}
+  },
+  "135": {
+    "inputs": {
+      "boolean": ["133", 0],
+      "on_true": false,
+      "on_false": ["128", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {"title": "H3 Motion Reference Route"}
   },
   "70": {
     "inputs": {

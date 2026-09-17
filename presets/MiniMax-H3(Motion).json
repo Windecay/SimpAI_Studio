@@ -79,7 +79,7 @@
         "minimax_h3_storyboard_control"
       ],
       "prompt": {
-        "Character Motion Transfer": "Use <Picture 1> as the character identity and appearance source. Use <Video 1> only for motion, body timing, pose transitions, momentum, and compatible camera movement. Additional pictures, when provided, are extra appearance references for the same character. Do not copy the driving video's person, face, hair, body shape, clothing, or accessories. Keep the reference character's identity, outfit, proportions, and overall visual style consistent through the full clip."
+        "Character Motion Transfer": "summary:\nvideo editing、audio reuse：以<Picture 1>作为唯一人物身份与外观来源，将<Video 1>的连续动作、姿态变化、节奏和适配的摄影机运动转移到该人物，输出精确的连续角色动作视频，并沿用<Video 1>的嵌入音轨。\n\nretention_analysis:\n<Picture 1>：fully_preserved，保留人物身份、脸部、发型、身体比例、服装、颜色、配饰和视觉风格，保留人物所在场景，作为全片唯一目标外观来源。\n<Video 1>: partially_preserved; 运动、时序和时间连贯性。\n\noverall_soundscape:\n沿用<Video 1>嵌入的源音轨并与动作时间线保持同步，保留其中已有的环境声、动作声及其他原始声音内容；不臆造对白，不添加新的音效，画面中不显示任何字幕或文字。\n\nnon_diegetic_music:\nN/A"
       },
       "task_method": {
         "Character Motion Transfer": "minimax_h3_motion_cn"
@@ -94,7 +94,7 @@
         "Character Motion Transfer": ""
       },
       "agent_prompt": {
-        "Character Motion Transfer": "You write generator-ready MiniMax H3 motion-transfer prompts. Refer to uploaded media only as <Picture 1>, <Picture 2>, and <Video 1>, using only labels that exist. <Picture 1> is the primary character identity and appearance source. Additional pictures, if present, are supporting appearance references for the same character and may reinforce face, hair, clothing, accessories, body proportions, or style details that stay consistent with <Picture 1>. <Video 1> provides only motion, timing, body orientation, pose changes, action trajectory, momentum, interaction timing, and compatible camera movement. Never copy the driving video's actor identity, face, hair, skin tone, body shape, clothing, or accessories. When <Video 1> shows a different performer, apply its motion to the character from <Picture 1> instead of preserving the video's performer. Keep subject identity, outfit, proportions, and visual style stable across the full clip. Describe the action continuously over time so the result behaves like motion transfer rather than a frozen first-frame pose. Preserve the exact requested duration. Do not invent dialogue, extra reference media, or unrelated scene changes. Return only the final prompt."
+        "Character Motion Transfer": "你负责生成可直接用于 MiniMax H3 的动作迁移提示词。只能使用实际存在的媒体标签，如 <Picture 1>、<Picture 2>、<Video 1>，不要虚构不存在的标签。必须严格遵守以下规则：1. <Picture 1> 是唯一的人物身份与外观主来源，必须优先完整提炼并锁定其人物身份、脸部特征、发型、发色、身体比例、服装、颜色、配饰、材质、整体视觉风格，以及图中已经出现的场景信息。2. 额外图片仅可作为同一人物的补充外观参考，只能补充 <Picture 1> 中不够清晰的细节；如果额外图片与 <Picture 1> 冲突，始终以 <Picture 1> 为准，不得让额外图片覆盖主身份。3. <Video 1> 只提供连续动作、姿态变化、节奏、时序、运动幅度、重心变化、交互时机和适配的摄影机运动；绝不能继承 <Video 1> 中人物的脸、发型、体型、服装、颜色、配饰、身份或场景外观。4. 输出应强调这是将 <Video 1> 的动作迁移到 <Picture 1> 对应人物身上的连续角色动作视频，而不是复刻 <Video 1> 的演员。5. 默认保留并复用 <Video 1> 的嵌入音轨，使其与动作时间线同步；保留已有环境声、动作声及原始声音内容；不臆造对白，不添加新的音效，不显示字幕或文字。6. 若存在额外图片，可在 retention_analysis 中简要说明其只用于补充同一角色细节，但不要削弱 <Picture 1> 的唯一主导地位。7. 不要添加无关镜头变化、无关场景改写、无关角色，也不要引入未提供的参考内容。请按以下结构输出最终提示词，并只返回最终提示词本身：summary:\nvideo editing、audio reuse：...\n\nretention_analysis:\n<Picture 1>：fully_preserved，...\n<Picture 2>：supplementary_only，...（仅在存在时写）\n<Video 1>: partially_preserved; 运动、时序和时间连贯性。\n\noverall_soundscape:\n...\n\nnon_diegetic_music:\nN/A"
       },
       "video_duration_title": "Video Duration(s)",
       "video_duration_min": 0.2,
@@ -115,31 +115,13 @@
       "var_number4": {
         "Character Motion Transfer": 0.8
       },
-      "switch_option1_title": "Reference to Depth",
+      "switch_option1_title": "Depth ControlNet",
       "switch_option1": false,
-      "switch_option2_title": "Reference to Pose",
+      "switch_option2_title": "Pose ControlNet",
       "switch_option2": false,
       "switch_option3_title": "RIFE Motion Smoothing",
       "switch_option3": false,
-      "aspect_ratio": [
-        "origin|Original",
-        "640*640",
-        "864*480",
-        "480*864",
-        "736*576",
-        "576*736",
-        "800*544",
-        "544*800",
-        "1024*576",
-        "576*1024",
-        "1024*1024",
-        "832*1216",
-        "1216*832",
-        "736*1280",
-        "1280*736",
-        "768*1344",
-        "1344*768"
-      ],
+      "aspect_ratio" : ["640|1:1", "720|1:1", "832|1:1", "960|1:1", "1024|1:1", "1280|1:1", "origin|Original"],
       "resolution_control": {
         "mode": "video_keep_input_area",
         "source": "scene_video",
@@ -183,7 +165,7 @@
   "default_aspect_ratio": "origin|Original",
   "default_image_number": 1,
   "default_overwrite_step": 8,
-  "default_prompt": "Use <Picture 1> as the character identity and appearance source. Use <Video 1> only for motion, body timing, pose transitions, momentum, and compatible camera movement. Additional pictures, when provided, are extra appearance references for the same character. Do not copy the driving video's person, face, hair, body shape, clothing, or accessories. Keep the reference character's identity, outfit, proportions, and overall visual style consistent through the full clip.",
+  "default_prompt": "summary:\nvideo editing、audio reuse：以<Picture 1>作为唯一人物身份与外观来源，将<Video 1>的连续动作、姿态变化、节奏和适配的摄影机运动转移到该人物，输出精确的连续角色动作视频，并沿用<Video 1>的嵌入音轨。\n\nretention_analysis:\n<Picture 1>：fully_preserved，保留人物身份、脸部、发型、身体比例、服装、颜色、配饰和视觉风格，保留人物所在场景，作为全片唯一目标外观来源。\n<Video 1>: partially_preserved; 运动、时序和时间连贯性。\n\noverall_soundscape:\n沿用<Video 1>嵌入的源音轨并与动作时间线保持同步，保留其中已有的环境声、动作声及其他原始声音内容；不臆造对白，不添加新的音效，画面中不显示任何字幕或文字。\n\nnon_diegetic_music:\nN/A",
   "default_prompt_negative": "",
   "checkpoint_downloads": {},
   "embeddings_downloads": {},
