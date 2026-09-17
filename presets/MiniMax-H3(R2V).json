@@ -108,7 +108,7 @@
       ],
       "resolution_control": {
         "mode": "standard",
-        "source": "none",
+        "source": "scene_canvas",
         "base_width": 864,
         "base_height": 480,
         "quantize": 32,

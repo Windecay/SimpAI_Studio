@@ -18,6 +18,10 @@
     let presetPromptAgentHint = null;
     let presetPromptAgentHintRetryTimer = 0;
     let presetPromptAgentHintInitialSyncTimer = 0;
+    let presetPromptAgentHintRepositionFrame = 0;
+    let presetPromptAgentHintResizeObserver = null;
+    let presetPromptAgentHintMutationObserver = null;
+    let presetPromptAgentHintObservedAnchor = null;
 
     function catalogItems() {
         const catalog = window.SimpAIPromptActionCatalog;
@@ -126,6 +130,76 @@
         presetPromptAgentHintInitialSyncTimer = 0;
     }
 
+    function cancelPresetPromptAgentHintReposition() {
+        const frame = presetPromptAgentHintRepositionFrame;
+        if (!frame) return;
+        window.cancelAnimationFrame?.(frame);
+        window.clearTimeout(frame);
+        presetPromptAgentHintRepositionFrame = 0;
+    }
+
+    function disconnectPresetPromptAgentHintObservers() {
+        presetPromptAgentHintResizeObserver?.disconnect?.();
+        presetPromptAgentHintMutationObserver?.disconnect?.();
+        presetPromptAgentHintResizeObserver = null;
+        presetPromptAgentHintMutationObserver = null;
+        presetPromptAgentHintObservedAnchor = null;
+    }
+
+    function repositionPresetPromptAgentHint() {
+        const hint = presetPromptAgentHint;
+        if (!hint?.classList.contains("is-open")) return;
+        const button = promptButton();
+        if (!button) return;
+        positionPresetPromptAgentHint(button, hint);
+    }
+
+    function schedulePresetPromptAgentHintReposition() {
+        if (!presetPromptAgentHint?.classList.contains("is-open")) return;
+        if (presetPromptAgentHintRepositionFrame) return;
+        const update = () => {
+            presetPromptAgentHintRepositionFrame = 0;
+            repositionPresetPromptAgentHint();
+        };
+        if (typeof window.requestAnimationFrame === "function") {
+            presetPromptAgentHintRepositionFrame = window.requestAnimationFrame(update);
+        } else {
+            presetPromptAgentHintRepositionFrame = window.setTimeout(update, 16);
+        }
+    }
+
+    function observePresetPromptAgentHintAnchor(button) {
+        if (!button) return;
+        const anchor = button.closest?.("#prompt_action_row") || button.parentElement || button;
+        if (anchor === presetPromptAgentHintObservedAnchor
+            && (presetPromptAgentHintResizeObserver || presetPromptAgentHintMutationObserver)) {
+            return;
+        }
+        disconnectPresetPromptAgentHintObservers();
+        presetPromptAgentHintObservedAnchor = anchor;
+
+        if (typeof ResizeObserver === "function") {
+            const observed = [button, anchor, anchor.parentElement].filter(
+                (element, index, list) => element && list.indexOf(element) === index,
+            );
+            presetPromptAgentHintResizeObserver = new ResizeObserver(() => {
+                schedulePresetPromptAgentHintReposition();
+            });
+            observed.forEach((element) => presetPromptAgentHintResizeObserver.observe(element));
+        }
+        if (typeof MutationObserver === "function" && anchor) {
+            presetPromptAgentHintMutationObserver = new MutationObserver(() => {
+                schedulePresetPromptAgentHintReposition();
+            });
+            presetPromptAgentHintMutationObserver.observe(anchor, {
+                attributes: true,
+                attributeFilter: ["class", "style", "hidden", "aria-hidden"],
+                childList: true,
+                subtree: true,
+            });
+        }
+    }
+
     function schedulePresetPromptAgentHintInitialSync(attempt = 0) {
         cancelPresetPromptAgentHintInitialSync();
         if (attempt > 12) return;
@@ -171,6 +245,8 @@
     function hidePresetPromptAgentHint() {
         window.clearTimeout(presetPromptAgentHintRetryTimer);
         presetPromptAgentHintRetryTimer = 0;
+        cancelPresetPromptAgentHintReposition();
+        disconnectPresetPromptAgentHintObservers();
         if (!presetPromptAgentHint) return;
         presetPromptAgentHint.classList.remove("is-open");
         presetPromptAgentHint.hidden = true;
@@ -244,7 +320,9 @@
         hint.setAttribute("aria-label", message);
         hint.hidden = false;
         hint.classList.add("is-open");
+        observePresetPromptAgentHintAnchor(button);
         positionPresetPromptAgentHint(button, hint);
+        schedulePresetPromptAgentHintReposition();
         window.requestAnimationFrame?.(() => {
             if (hint.classList.contains("is-open") && hint.dataset.preset === preset) {
                 positionPresetPromptAgentHint(promptButton(), hint);
@@ -281,6 +359,10 @@
 
     function handleWorkspaceRestored() {
         window.setTimeout(() => schedulePresetPromptAgentHintInitialSync(), 80);
+    }
+
+    function handlePresetPromptAgentHintViewportChange() {
+        schedulePresetPromptAgentHintReposition();
     }
 
     function presetNavigationButtonFromEvent(event) {
@@ -1063,6 +1145,10 @@
     window.addEventListener("simpai:system-params-updated", handlePresetSystemParamsUpdated);
     window.addEventListener("simpai:preset-nav-completed", handlePresetNavigationCompleted);
     window.addEventListener("simpai:workspace-restored", handleWorkspaceRestored);
+    window.addEventListener("resize", handlePresetPromptAgentHintViewportChange, { passive: true });
+    window.addEventListener("scroll", handlePresetPromptAgentHintViewportChange, { capture: true, passive: true });
+    window.visualViewport?.addEventListener("resize", handlePresetPromptAgentHintViewportChange, { passive: true });
+    window.visualViewport?.addEventListener("scroll", handlePresetPromptAgentHintViewportChange, { passive: true });
     document.addEventListener("click", handlePresetNavigationButtonClick, true);
     if (typeof onUiLoaded === "function") onUiLoaded(() => {
         bindButton();

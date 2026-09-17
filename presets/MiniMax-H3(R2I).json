@@ -1,5 +1,6 @@
 {
   "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit", "image_object_transfer"],
+  "prompt_agent_required": true,
   "preset_category": "H3",
   "default_engine": {
     "backend_engine": "Comfy",
