@@ -63,6 +63,11 @@ def _valid_reference_video_frames(frame_count, available_frames):
     return frames
 
 
+def _has_reference_video(video):
+    # Some control branches use False as an explicit "no reference video" value.
+    return video is not None and not isinstance(video, bool)
+
+
 def _qwen_video_blocks(frame_count):
     if frame_count <= 0:
         return 0
@@ -276,7 +281,7 @@ def _plan_references(
         items.append(item)
 
     for name, video in (ref_videos or {}).items():
-        if video is None:
+        if not _has_reference_video(video):
             continue
         source_height, source_width = map(int, video.shape[1:3])
         item_width, item_height = _candidate_video_dimensions(
@@ -528,7 +533,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
 
         ref_video_audios = ref_video_audios or {}
         for name, video_frames in (ref_videos or {}).items():
-            if video_frames is None:
+            if not _has_reference_video(video_frames):
                 continue
             item = item_map[("video", name)]
             frame_total = int(item["frames"])

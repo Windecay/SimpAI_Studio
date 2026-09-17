@@ -114,7 +114,7 @@
       "var_number4_max": 2.0,
       "var_number4_step": 0.05,
       "var_number4": {
-        "Character Motion Transfer": 0.8
+        "Character Motion Transfer": 1.0
       },
       "switch_option1_title": "Depth ControlNet",
       "switch_option1": false,
