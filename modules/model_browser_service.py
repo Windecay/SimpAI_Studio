@@ -8,6 +8,7 @@ import logging
 import mimetypes
 import os
 import re
+import socket
 import struct
 import tempfile
 import threading
@@ -1717,9 +1718,84 @@ def _civitai_headers() -> Dict[str, str]:
     return headers
 
 
+_CIVITAI_AUTO_PROXY_PORTS = (7890, 7897, 7898, 10808, 10809)
+
+
+def _civitai_proxy_setting() -> str:
+    """Return an explicit proxy URL, auto mode, or an empty system-proxy setting."""
+    if "CIVITAI_PROXY" in os.environ:
+        value = os.environ.get("CIVITAI_PROXY", "")
+    else:
+        value = getattr(config, "civitai_proxy", "auto")
+    text = str(value or "").strip()
+    if text.lower() in {"none", "system", "default"}:
+        return ""
+    return text
+
+
+def _civitai_auto_proxy_urls() -> List[str]:
+    urls: List[str] = []
+    for port in _CIVITAI_AUTO_PROXY_PORTS:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.15):
+                urls.append(f"http://127.0.0.1:{port}")
+        except (OSError, TimeoutError):
+            continue
+    return urls
+
+
+def _civitai_proxy_opener(proxy: str):
+    parsed = urllib.parse.urlparse(proxy)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("CIVITAI_PROXY must be auto, empty, or an http:// or https:// proxy URL")
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+    )
+
+
+def _open_civitai_request(request: urllib.request.Request, timeout: int = 30):
+    setting = _civitai_proxy_setting()
+    if not setting:
+        return urllib.request.urlopen(request, timeout=timeout)
+
+    if setting.lower() != "auto":
+        return _civitai_proxy_opener(setting).open(request, timeout=timeout)
+
+    attempts: List[Optional[str]] = []
+    try:
+        system_proxies = urllib.request.getproxies()
+    except Exception:
+        system_proxies = {}
+    has_system_proxy = any(
+        str(system_proxies.get(key) or "").strip()
+        for key in ("http", "https")
+    )
+    if has_system_proxy:
+        attempts.append(None)
+    attempts.extend(_civitai_auto_proxy_urls())
+    if not has_system_proxy:
+        attempts.append(None)
+
+    last_error: Optional[BaseException] = None
+    for proxy in attempts:
+        try:
+            if proxy is None:
+                return urllib.request.urlopen(request, timeout=timeout)
+            return _civitai_proxy_opener(proxy).open(request, timeout=timeout)
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
 def _fetch_civitai_json(url: str, timeout: int = 30) -> Dict[str, Any]:
     request = urllib.request.Request(url, headers=_civitai_headers())
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with _open_civitai_request(request, timeout=timeout) as response:
         payload = response.read()
     data = json.loads(payload.decode("utf-8", errors="replace"))
     return data if isinstance(data, dict) else {}
@@ -1907,7 +1983,7 @@ def _download_preview_to_model(model_path: str, image_url: str, force: bool = Fa
     headers = _civitai_headers()
     headers["Accept"] = "image/avif,image/webp,image/*,video/*,*/*"
     request = urllib.request.Request(image_url, headers=headers)
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with _open_civitai_request(request, timeout=30) as response:
         content_type = response.headers.get("Content-Type", "")
         raw = response.read()
 

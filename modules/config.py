@@ -1083,6 +1083,17 @@ default_engine = get_config_item_or_set_default(
     expected_type=dict
 )
 backend_engine = "Remote" if args_manager.args.disable_backend else default_engine.get("backend_engine", "Z-image")
+civitai_proxy = get_config_item_or_set_default(
+    key='civitai_proxy',
+    default_value='auto',
+    validator=lambda value: isinstance(value, str) and (
+        not value.strip()
+        or value.strip().lower() == 'auto'
+        or re.match(r"^https?://\S+$", value.strip(), re.IGNORECASE) is not None
+    ),
+    disable_empty_as_none=True,
+    expected_type=str,
+)
 
 default_base_model_name = default_model = get_config_item_or_set_default(
     key='default_model',
@@ -2004,6 +2015,44 @@ def _match_model_filter_name(name: str, patterns) -> bool:
     return False
 
 
+def _compact_model_identity(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _lora_folder_scope(
+    engine: str,
+    task_method: Optional[str] = None,
+    base_model: Optional[str] = None,
+) -> Optional[str]:
+    """Return the strict LoRA folder scope for Krea2 and Z-image models."""
+    for value in (base_model, engine, task_method):
+        identity = _compact_model_identity(value)
+        if "krea2" in identity:
+            return "krea2"
+        if "zimage" in identity:
+            return "zimage"
+    return None
+
+
+def _filter_loras_by_folder(names: List[str], scope: Optional[str]) -> List[str]:
+    if not scope:
+        return list(names)
+    expected = _compact_model_identity(scope)
+    if not expected:
+        return list(names)
+
+    filtered: List[str] = []
+    for name in names:
+        normalized = _normalize_model_name(name)
+        parts = [part for part in normalized.split("/") if part]
+        if len(parts) < 2:
+            continue
+        if _compact_model_identity(parts[0]) == expected:
+            filtered.append(normalized)
+    return filtered
+
+
 def _model_arch_family_allows(entry: Any, families: set) -> bool:
     decision = _model_arch_family_decision(entry, families)
     return True if decision is None else decision
@@ -2170,13 +2219,24 @@ def _ensure_weight_inspector_cache_for_keys(models_root: str, model_keys: List[s
         _save_models_info_json(info_path, data)
 
 
-def _refine_names_by_catalog(models_root: str, engine: str, catalog: str, names: List[str], task_method: Optional[str] = None) -> List[str]:
+def _refine_names_by_catalog(
+    models_root: str,
+    engine: str,
+    catalog: str,
+    names: List[str],
+    task_method: Optional[str] = None,
+    base_model: Optional[str] = None,
+) -> List[str]:
+    names = [_normalize_model_name(n) for n in names]
+    if catalog == "loras":
+        folder_scope = _lora_folder_scope(engine, task_method, base_model)
+        if folder_scope:
+            return _filter_loras_by_folder(names, folder_scope)
+
     families = _get_filter_arch_families(engine, task_method)
     if not families:
         return names
     families = {str(item).lower() for item in families}
-
-    names = [_normalize_model_name(n) for n in names]
 
     _, data = _load_models_info_json(models_root)
     if not data:
@@ -2273,7 +2333,7 @@ def get_base_model_list(engine='Z-image', task_method=None, use_model_filter: bo
     base_model_list = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in base_model_list]
     return base_model_list
 
-def update_files(engine='Z-image', task_method=None, use_model_filter: bool = True):
+def update_files(engine='Z-image', task_method=None, use_model_filter: bool = True, base_model: Optional[str] = None):
     global modelsinfo, model_filenames, lora_filenames, vae_filenames, clip_filenames, upscale_model_filenames, wildcard_filenames
     modelsinfo.refresh_from_path()
     _apply_builtin_model_arch_family_cache(path_models_root)
@@ -2282,7 +2342,14 @@ def update_files(engine='Z-image', task_method=None, use_model_filter: bool = Tr
     lora_filenames_norm = [_normalize_model_name(n) for n in lora_filenames]
     lora_filenames_norm = [n for n in lora_filenames_norm if not _is_placeholder_model_name(n)]
     if use_model_filter:
-        lora_filenames_norm = _refine_names_by_catalog(path_models_root, engine, "loras", lora_filenames_norm, task_method)
+        lora_filenames_norm = _refine_names_by_catalog(
+            path_models_root,
+            engine,
+            "loras",
+            lora_filenames_norm,
+            task_method,
+            base_model,
+        )
     lora_filenames = [str(n).replace("/", os.sep).replace("\\", os.sep).lstrip(os.sep) for n in lora_filenames_norm]
     vae_filenames = [n for n in modelsinfo.get_model_names('vae') if not _is_placeholder_model_name(n)]
     clip_names = []

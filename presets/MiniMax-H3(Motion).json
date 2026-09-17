@@ -1,0 +1,205 @@
+{
+  "supported_tasks": ["video_motion_transfer"],
+  "preset_category": "H3",
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "disinteractive": [
+      "input_image_checkbox",
+      "prompt_panel_checkbox",
+      "performance_selection"
+    ],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["Character Motion Transfer"],
+      "theme_title": "MiniMax H3 Character Motion Transfer",
+      "director_capability": {
+        "image_policy": "required",
+        "audio_policy": "forbidden",
+        "video_policy": "required",
+        "max_images": 5,
+        "min_images": 1,
+        "max_audios": 0,
+        "min_videos": 1,
+        "max_videos": 1,
+        "image_modes": ["reference_set"],
+        "video_modes": ["explicit"],
+        "duration_strategy": "shot",
+        "audio_output": "source_audio",
+        "mixed_segments": false
+      },
+      "prompt_action_media": {
+        "image_roles": [
+          "character_reference",
+          "character_reference",
+          "character_reference",
+          "character_reference",
+          "character_reference"
+        ],
+        "video_visual_position": "after_images",
+        "video_frame_mode": "contact_sheet",
+        "video_role": "motion_only"
+      },
+      "disable_canvas_mask": true,
+      "divisible": [
+        "scene_input_image3",
+        "scene_input_image4"
+      ],
+      "disvisible": [
+        "scene_additional_prompt",
+        "scene_input_image5",
+        "scene_input_image6",
+        "scene_input_image7",
+        "scene_input_image8",
+        "scene_additional_prompt_2",
+        "scene_reference_video",
+        "scene_reference_video2",
+        "scene_audio",
+        "scene_audio2",
+        "scene_audio3",
+        "scene_var_number",
+        "scene_var_number2",
+        "scene_var_number5",
+        "scene_var_number6",
+        "scene_var_number7",
+        "scene_var_number8",
+        "scene_var_number9",
+        "scene_var_number10",
+        "scene_switch_option4",
+        "scene_refiner_model",
+        "sam3_input_video",
+        "sam3_mask_video",
+        "scene_batch",
+        "minimax_h3_storyboard_control"
+      ],
+      "prompt": {
+        "Character Motion Transfer": "Use <Picture 1> as the character identity and appearance source. Use <Video 1> only for motion, body timing, pose transitions, momentum, and compatible camera movement. Additional pictures, when provided, are extra appearance references for the same character. Do not copy the driving video's person, face, hair, body shape, clothing, or accessories. Keep the reference character's identity, outfit, proportions, and overall visual style consistent through the full clip."
+      },
+      "task_method": {
+        "Character Motion Transfer": "minimax_h3_motion_cn"
+      },
+      "prompt_compiler": {
+        "Character Motion Transfer": "minimax_h3_ref2va"
+      },
+      "overwrite_step": {
+        "Character Motion Transfer": 8
+      },
+      "multimodal_prompt": {
+        "Character Motion Transfer": ""
+      },
+      "agent_prompt": {
+        "Character Motion Transfer": "You write generator-ready MiniMax H3 motion-transfer prompts. Refer to uploaded media only as <Picture 1>, <Picture 2>, and <Video 1>, using only labels that exist. <Picture 1> is the primary character identity and appearance source. Additional pictures, if present, are supporting appearance references for the same character and may reinforce face, hair, clothing, accessories, body proportions, or style details that stay consistent with <Picture 1>. <Video 1> provides only motion, timing, body orientation, pose changes, action trajectory, momentum, interaction timing, and compatible camera movement. Never copy the driving video's actor identity, face, hair, skin tone, body shape, clothing, or accessories. When <Video 1> shows a different performer, apply its motion to the character from <Picture 1> instead of preserving the video's performer. Keep subject identity, outfit, proportions, and visual style stable across the full clip. Describe the action continuously over time so the result behaves like motion transfer rather than a frozen first-frame pose. Preserve the exact requested duration. Do not invent dialogue, extra reference media, or unrelated scene changes. Return only the final prompt."
+      },
+      "video_duration_title": "Video Duration(s)",
+      "video_duration_min": 0.2,
+      "video_duration_max": 30,
+      "video_duration": {
+        "Character Motion Transfer": 5
+      },
+      "var_number3_title": "Video Shift",
+      "var_number3_min": 0.01,
+      "var_number3_max": 100.0,
+      "var_number3": {
+        "Character Motion Transfer": 12.0
+      },
+      "var_number4_title": "ControlNet Strength",
+      "var_number4_min": 0.0,
+      "var_number4_max": 2.0,
+      "var_number4_step": 0.05,
+      "var_number4": {
+        "Character Motion Transfer": 0.8
+      },
+      "switch_option1_title": "Reference to Depth",
+      "switch_option1": false,
+      "switch_option2_title": "Reference to Pose",
+      "switch_option2": false,
+      "switch_option3_title": "RIFE Motion Smoothing",
+      "switch_option3": false,
+      "aspect_ratio": [
+        "origin|Original",
+        "640*640",
+        "864*480",
+        "480*864",
+        "736*576",
+        "576*736",
+        "800*544",
+        "544*800",
+        "1024*576",
+        "576*1024",
+        "1024*1024",
+        "832*1216",
+        "1216*832",
+        "736*1280",
+        "1280*736",
+        "768*1344",
+        "1344*768"
+      ],
+      "resolution_control": {
+        "mode": "video_keep_input_area",
+        "source": "scene_video",
+        "base_width": 640,
+        "base_height": 640,
+        "quantize": 32,
+        "interactive": true,
+        "frontend_preprocess": true,
+        "preprocess_target": "video",
+        "preprocess_fit": "proportional",
+        "preprocess_duration_limit": false,
+        "preserve_audio": true
+      },
+      "image_preprocessor_method": [["-normalization"]],
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 50
+    }
+  },
+  "default_model": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+  "previous_default_models": [
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+  ],
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  "default_loras": [
+    ["minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", 1.0],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1],
+    ["None", 1]
+  ],
+  "default_cfg_scale": 1,
+  "default_vae": "minimax_h3_video_vae_int8_convrot.safetensors",
+  "default_sample_sharpness": 2,
+  "default_sampler": "er_sde",
+  "default_scheduler": "beta57",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_image_number": 1,
+  "default_overwrite_step": 8,
+  "default_prompt": "Use <Picture 1> as the character identity and appearance source. Use <Video 1> only for motion, body timing, pose transitions, momentum, and compatible camera movement. Additional pictures, when provided, are extra appearance references for the same character. Do not copy the driving video's person, face, hair, body shape, clothing, or accessories. Keep the reference character's identity, outfit, proportions, and overall visual style consistent through the full clip.",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "controlnet,depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth,1341395338,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth",
+    "controlnet/yzd-v/DWPose,yolox_l.onnx,216746733,0,https://www.modelscope.cn/models/zhangjin/DWPose/resolve/master/yolox_l.onnx",
+    "controlnet,dw-ll_ucoco_384.onnx,134399116,0,https://www.modelscope.cn/models/zhangjin/DWPose/resolve/master/dw-ll_ucoco_384.onnx,https://huggingface.co/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx",
+    "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl",
+    "model_patches,minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors,2296635360,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/model_patches/minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
+    "diffusion_models,minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,20970379632,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors,https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+    "loras,minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,1956193000,0,https://modelscope.cn/models/lightx2v/Minimax-h3-Turbo/resolve/master/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors,https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "text_encoders,qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,15687142551,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae,minimax_h3_video_vae_int8_convrot.safetensors,3171670912,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/minimax_h3_video_vae_int8_convrot.safetensors,https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors",
+    "vae_approx,taeh3.safetensors,9791388,0,https://modelscope.cn/models/Kijai/MiniMax-H3-TAE/resolve/master/vae_approx/taeh3.safetensors,https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
+    "vae,minimax_h3_audio_vae_fp32.safetensors,605254808,0,https://modelscope.cn/models/Comfy-Org/MiniMax-H3/resolve/master/vae/minimax_h3_audio_vae_fp32.safetensors,https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors"
+  ]
+}

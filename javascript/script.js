@@ -765,15 +765,111 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         return lazyGroupsLoaded.has(String(groupName || '').trim());
     }
 
-    async function simpleaiAutoSendLoraTriggerWords(modelName, autoSend) {
+    let simpleaiLoraTriggerRequestId = 0;
+
+    function simpleaiLoraGradioRoot() {
+        const elements = document.getElementsByTagName?.('gradio-app') || [];
+        const element = elements.length ? elements[0] : document;
+        return element?.shadowRoot || element;
+    }
+
+    function simpleaiLoraTriggerRoots() {
+        const roots = [];
         try {
-            if (!window.SimpAIModelBrowser?.autoSendTriggerWordsForModel) {
-                await loadSimpleAILazyAssetGroup('modelBrowser');
-            }
-            window.SimpAIModelBrowser?.autoSendTriggerWordsForModel?.(modelName, autoSend);
+            const root = simpleaiLoraGradioRoot();
+            if (root) roots.push(root);
+        } catch (e) {}
+        if (!roots.includes(document)) roots.push(document);
+        return roots;
+    }
+
+    function simpleaiFindLoraPromptField() {
+        for (const root of simpleaiLoraTriggerRoots()) {
+            const node = root.querySelector?.('#positive_prompt textarea, #positive_prompt [data-testid="textbox"]');
+            if (!node) continue;
+            if (node.matches?.('textarea, input') || typeof node.value !== 'undefined') return node;
+            const field = node.querySelector?.('textarea, input');
+            if (field) return field;
+        }
+        return null;
+    }
+
+    function simpleaiLoraAutoSendEnabled(fallback) {
+        for (const root of simpleaiLoraTriggerRoots()) {
+            const node = root.getElementById?.('lora_auto_send_trigger_words')
+                || root.querySelector?.('#lora_auto_send_trigger_words');
+            const field = node?.matches?.('input')
+                ? node
+                : node?.querySelector?.('input[type="checkbox"]');
+            if (field) return !!field.checked;
+        }
+        return fallback === true || fallback === 1 || String(fallback || '').toLowerCase() === 'true';
+    }
+
+    function simpleaiLoraSelectionStillMatches(modelName) {
+        const fields = [];
+        for (const root of simpleaiLoraTriggerRoots()) {
+            root.querySelectorAll?.('[data-simpai-lora-model]').forEach((field) => fields.push(field));
+        }
+        if (!fields.length) return true;
+        const target = String(modelName || '').trim();
+        return fields.some((field) => String(field.value || '').trim() === target);
+    }
+
+    function simpleaiAppendLoraTriggerWords(text) {
+        const field = simpleaiFindLoraPromptField();
+        if (!field) return false;
+        const incoming = String(text || '')
+            .split(/[,\n]/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+        if (!incoming.length) return true;
+
+        const current = String(field.value || '').trim();
+        const existing = new Set(current.split(/[,\n]/).map((item) => item.trim().toLowerCase()).filter(Boolean));
+        const additions = incoming.filter((item) => {
+            const key = item.toLowerCase();
+            if (existing.has(key)) return false;
+            existing.add(key);
+            return true;
+        });
+        if (!additions.length) return true;
+
+        const next = current ? `${current}, ${additions.join(', ')}` : additions.join(', ');
+        const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
+        if (descriptor?.set) descriptor.set.call(field, next);
+        else field.value = next;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+
+    async function simpleaiAutoSendLoraTriggerWords(modelName, autoSend) {
+        const requestId = ++simpleaiLoraTriggerRequestId;
+        const enabled = autoSend === true || autoSend === 1 || String(autoSend || '').toLowerCase() === 'true';
+        const name = String(modelName || '').trim();
+        if (!enabled || !name || name.toLowerCase() === 'none') return;
+
+        try {
+            const response = await fetch('/model-browser/detail', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'lora', name })
+            });
+            const result = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(result?.error || result?.details || `HTTP ${response.status}`);
+
+            if (requestId !== simpleaiLoraTriggerRequestId) return;
+            if (!simpleaiLoraAutoSendEnabled(autoSend)) return;
+            if (!simpleaiLoraSelectionStillMatches(name)) return;
+
+            const item = result?.item || {};
+            const triggerText = typeof item.trigger_words_text === 'string'
+                ? item.trigger_words_text
+                : (Array.isArray(item.trained_words) ? item.trained_words.join(', ') : '');
+            simpleaiAppendLoraTriggerWords(triggerText);
         } catch (e) {
             console.warn('lora.auto_trigger_send_failed', e);
-            showLazyAssetLoadMessage('modelBrowser');
         }
     }
 
@@ -1229,12 +1325,15 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const taskMethod = String(params.task_method || params.__scene_task_method || '').trim();
         const sceneFrontend = !!params.__is_scene_frontend;
         const useModelFilter = modelsPanelUseModelFilter();
+        const baseModelField = document.querySelector('[data-simpai-models-js-root] [data-simpai-model-field="base_model"]');
+        const baseModel = String(baseModelField?.value || params.__base_model || params.base_model || '').trim();
         return {
             engine,
             taskMethod,
             sceneFrontend,
             useModelFilter,
-            key: `${engine}::${taskMethod}::${sceneFrontend ? 'scene' : 'main'}::${useModelFilter ? 'filter' : 'all'}`
+            baseModel,
+            key: JSON.stringify([engine, taskMethod, sceneFrontend, useModelFilter, baseModel])
         };
     }
 
@@ -1246,6 +1345,8 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const catalogTask = String(catalog.task_method || catalog.__scene_task_method || '').trim();
         if (catalogTask !== signature.taskMethod) return false;
         if (Object.prototype.hasOwnProperty.call(catalog, 'use_model_filter') && !!catalog.use_model_filter !== signature.useModelFilter) return false;
+        const catalogBaseModel = String(catalog.base_model || '').trim();
+        if (catalogBaseModel !== signature.baseModel) return false;
         return true;
     }
 
@@ -1262,11 +1363,13 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 runtime: {
                     backend_engine: signature.engine,
                     task_method: signature.taskMethod,
-                    scene_frontend: signature.sceneFrontend
+                    scene_frontend: signature.sceneFrontend,
+                    base_model: signature.baseModel
                 },
                 preset: {
                     backend_engine: signature.engine,
-                    task_method: signature.taskMethod
+                    task_method: signature.taskMethod,
+                    base_model: signature.baseModel
                 }
             }
         };
@@ -1288,6 +1391,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         catalog.__simpai_signature_key = signature.key;
         catalog.engine = catalog.engine || signature.engine;
         catalog.backend_engine = catalog.backend_engine || signature.engine;
+        catalog.base_model = String(catalog.base_model || signature.baseModel).trim();
         if (catalog.task_method && catalog.task_method !== signature.taskMethod) {
             catalog.catalog_task_method = catalog.task_method;
         }
@@ -1299,6 +1403,15 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         window.simpleaiTopbarSystemParams.__canvas_model_catalog = catalog;
         modelsPanelCatalogCache.set(signature.key, catalog);
         return catalog;
+    }
+
+    function loraChoiceMatchesFolderScope(value, scope) {
+        const text = String(value || '').trim();
+        if (!text || text.toLowerCase() === 'none') return true;
+        const parts = text.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (parts.length < 2) return false;
+        const compact = (item) => String(item || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        return compact(parts[0]) === compact(scope);
     }
 
     async function refreshModelsPanelCatalog(options = {}) {
@@ -1356,7 +1469,12 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         if (type === 'clip') return uniqueModelChoices(catalog.clip_filenames || [], currentValue);
         if (type === 'vae') return uniqueModelChoices(catalog.vae_filenames || [], currentValue);
         if (type === 'upscale') return uniqueModelChoices(catalog.upscale_model_filenames || [], currentValue);
-        if (type === 'lora') return uniqueModelChoices(catalog.lora_filenames || ['None'], currentValue);
+        if (type === 'lora') {
+            const scope = String(catalog.lora_folder_scope || '').trim();
+            const strictFolder = !!scope && catalog.use_model_filter !== false;
+            const current = strictFolder && !loraChoiceMatchesFolderScope(currentValue, scope) ? '' : currentValue;
+            return uniqueModelChoices(catalog.lora_filenames || ['None'], current);
+        }
         return uniqueModelChoices(modelChoices, currentValue);
     }
 
@@ -1815,6 +1933,9 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 }
                 syncModelsPanelControls(panel);
             });
+            if (Object.prototype.hasOwnProperty.call(modelState, 'base_model')) {
+                markModelsPanelCatalogDirty();
+            }
         };
         window.requestAnimationFrame(apply);
         return true;
@@ -2088,6 +2209,9 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             syncSliderPair(event.target);
             if (event.target.matches('[data-simpai-lora-enabled]')) syncLoraRowInteractivity(event.target);
             syncModelsPanelBridgeField(event.target, panel);
+            if (event.target.matches('[data-simpai-model-field="base_model"]')) {
+                markModelsPanelCatalogDirty();
+            }
             const applyDelay = isModelsPanelNumberField(event.target) ? 0 : 80;
             applyModelsPanel(panel, applyDelay);
             if (event.target.matches('[data-simpai-lora-model]')) {

@@ -182,15 +182,80 @@ def face_crop(images, bboxes, fps, resolution, feather):
     return result
 
 
-def _interpolate(images, region):
+def _interpolate(images, region, target_count=None):
+    target_count = (int(len(images) / region["fps"] * region["rate"])
+                    if target_count is None else int(target_count))
+    if target_count < 1:
+        raise ValueError("Frame interpolation requires a positive target frame count.")
     if abs(region["fps"] - region["rate"]) < 0.01:
-        return images
+        if len(images) < target_count:
+            images = torch.cat((images, images[-1:].expand(target_count - len(images), -1, -1, -1)))
+        return images[:target_count]
     import nodes
 
-    return nodes.NODE_CLASS_MAPPINGS["RIFEInterpolation"]().interpolate(
-        images=images, source_fps=region["fps"], target_fps=region["rate"], scale=2.0,
+    # RIFE calculates its output count from len(images) / source_fps and floors
+    # it. Add one held endpoint when the caller needs the exact source count
+    # after a rate round trip (for example 24fps -> 30fps).
+    source = images
+    while int(len(source) / region["fps"] * region["rate"]) < target_count:
+        source = torch.cat((source, source[-1:]), dim=0)
+    result = nodes.NODE_CLASS_MAPPINGS["RIFEInterpolation"]().interpolate(
+        images=source, source_fps=region["fps"], target_fps=region["rate"], scale=2.0,
         model_name="flownet.pkl", batch_size=2, use_fp16=True,
         scene_detect=True, scene_threshold=0.15,
+    )[0]
+    if len(result) < target_count:
+        raise ValueError("Frame interpolation returned fewer frames than requested.")
+    return result[:target_count]
+
+
+def _generation_source_indices(region):
+    return [
+        min(region["input_frames"] - 1,
+            round(index * region["fps"] / region["rate"]))
+        for index in range(region["used"])
+    ]
+
+
+def _generation_stitcher(stitcher, source_indices, source_frames):
+    frame_keys = (
+        "canvas_to_orig_x", "canvas_to_orig_y", "canvas_to_orig_w", "canvas_to_orig_h",
+        "canvas_image", "cropped_to_canvas_x", "cropped_to_canvas_y",
+        "cropped_to_canvas_w", "cropped_to_canvas_h", "cropped_mask_for_blend",
+    )
+    result = {
+        key: stitcher[key]
+        for key in ("downscale_algorithm", "upscale_algorithm", "blend_pixels")
+    }
+    result.update({key: [] for key in frame_keys})
+    for generation_index, source_index in enumerate(source_indices):
+        if not 0 <= source_index < len(stitcher["canvas_image"]):
+            raise ValueError("Face generation stitcher index is outside the source window.")
+        canvas = stitcher["canvas_image"][source_index].clone()
+        cto_x = stitcher["canvas_to_orig_x"][source_index]
+        cto_y = stitcher["canvas_to_orig_y"][source_index]
+        cto_w = stitcher["canvas_to_orig_w"][source_index]
+        cto_h = stitcher["canvas_to_orig_h"][source_index]
+        source = source_frames[generation_index:generation_index + 1]
+        if tuple(source.shape[1:]) != (cto_h, cto_w, canvas.shape[-1]):
+            raise ValueError("Generation source frame size does not match the face stitcher.")
+        canvas[:, cto_y:cto_y + cto_h, cto_x:cto_x + cto_w] = source
+        for key in frame_keys:
+            result[key].append(canvas if key == "canvas_image" else stitcher[key][source_index])
+    return result
+
+
+def _face_backfill_at_generation_rate(stitcher, source_frames, decoded, region):
+    source_indices = _generation_source_indices(region)
+    if len(source_frames) != len(source_indices):
+        raise ValueError("Generation source frames do not match the H3 frame count.")
+    if len(decoded) < len(source_indices):
+        raise ValueError("H3 face generation returned fewer frames than the generation source.")
+    import nodes
+
+    generation_stitcher = _generation_stitcher(stitcher, source_indices, source_frames)
+    return nodes.NODE_CLASS_MAPPINGS["InpaintStitchImproved"]().inpaint_stitch(
+        generation_stitcher, decoded[:len(source_indices)],
     )[0]
 
 
@@ -327,7 +392,7 @@ class SimpAIH3DetailRefine:
 
     def _generate(self, images, region, model, model_patch, clip, vae, prompt,
                   steps, sampler_name, scheduler, denoise_percent, control_strength, seed, references,
-                  generation_mask=None):
+                  generation_mask=None, interpolated_images=None):
         from comfy_extras.nodes_minimax_h3 import MiniMaxH3FunControlNetApply
         from .SimpAIH3UpscaleLoop import (
             _node_result, _sample_advanced, _sampler, _scheduler,
@@ -336,7 +401,10 @@ class SimpAIH3DetailRefine:
 
         _throw_if_interrupted()
         data = dict(region, width=images.shape[2], height=images.shape[1])
-        frames = _interpolate(images, data)
+        frames = (_interpolate(images, data) if interpolated_images is None
+                  else interpolated_images)
+        if len(frames) != data["used"]:
+            raise ValueError("Interpolated frame count does not match the selected source interval.")
         control_inputs = {}
         if generation_mask is not None:
             if tuple(generation_mask.shape) != tuple(images.shape[:3]):
@@ -404,8 +472,6 @@ class SimpAIH3DetailRefine:
         progress = ProgressBar(len(plan))
         _throw_if_interrupted()
         if mode == "face":
-            import nodes
-
             stitcher, cropped, mask = face_crop(images, bboxes, region["fps"], resolution, feather)
             preserved = preserved_face_intervals(bboxes, region)
             if preserved:
@@ -415,13 +481,24 @@ class SimpAIH3DetailRefine:
             description = (prompt + "\nThe supplied video is a tracked face crop of the original person. "
                            "Refine that same person's facial details without changing identity, expression, "
                            "head pose, gaze, motion or crop framing. Optional pictures depict the original identity.")
+            generation_cropped = _interpolate(cropped, region)
+            generation_source = _interpolate(images, region)
             decoded = self._generate(cropped, prompt=description, seed=seed,
-                                     generation_mask=mask, **arguments)
-            indices = [min(region["used"] - 1, round(i / region["fps"] * region["rate"]))
-                       for i in range(len(images))]
-            restored = nodes.NODE_CLASS_MAPPINGS["InpaintStitchImproved"]().inpaint_stitch(
-                stitcher, decoded[indices],
-            )[0]
+                                     generation_mask=mask,
+                                     interpolated_images=generation_cropped, **arguments)
+            # H3 operates at its native rate. First stitch each generated frame
+            # onto its matching generation-rate source frame, then restore the
+            # original source FPS on the already-composited video.
+            backfilled = _face_backfill_at_generation_rate(
+                stitcher, generation_source, decoded, region,
+            )
+            LOG.info("H3 face refinement backfilled %d generation frames at %.3ffps before restoring %.3ffps source frames.",
+                     len(backfilled), region["rate"], region["fps"])
+            restored = _interpolate(
+                backfilled,
+                {"fps": region["rate"], "rate": region["fps"]},
+                target_count=len(images),
+            )
             for index, box in enumerate(bboxes):
                 if box is None:
                     restored[index].copy_(images[index])

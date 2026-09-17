@@ -228,7 +228,15 @@ def get_model_catalog_for_preset(payload):
     task_method = runtime.get("task_method") or preset.get("task_method") or None
     if runtime.get("scene_frontend") and task_method and not str(task_method).startswith("scene_"):
         task_method = f"scene_{task_method}"
-    signature = (str(engine), str(task_method or ""), use_model_filter)
+    model_config = _merged_model_config_values(_model_config_from_node(preset_node))
+    base_model = _model_value(
+        runtime.get("base_model")
+        or preset.get("base_model")
+        or model_config.get("base_model")
+        or ""
+    )
+    lora_folder_scope = config._lora_folder_scope(engine, task_method, base_model)
+    signature = (str(engine), str(task_method or ""), use_model_filter, base_model.casefold())
     force_refresh = bool(payload.get("force_refresh") or payload.get("__force_refresh"))
 
     if not force_refresh and signature in MODEL_CATALOG_CACHE:
@@ -238,12 +246,15 @@ def get_model_catalog_for_preset(payload):
             engine,
             task_method,
             use_model_filter=use_model_filter,
+            base_model=base_model,
         )
         catalog = {
             "engine": engine,
             "backend_engine": engine,
             "task_method": task_method,
             "use_model_filter": use_model_filter,
+            "base_model": base_model,
+            "lora_folder_scope": lora_folder_scope or "",
             "model_filenames": _normalize_list(model_filenames),
             "refiner_filenames": ["None"] + _normalize_list(model_filenames),
             "lora_filenames": ["None"] + _normalize_list(lora_filenames),
@@ -256,6 +267,15 @@ def get_model_catalog_for_preset(payload):
     for name in _preset_lora_names(preset_node):
         if name not in catalog["lora_filenames"]:
             catalog["lora_filenames"].append(name)
+
+    if use_model_filter and lora_folder_scope:
+        lora_names = config._filter_loras_by_folder(catalog.get("lora_filenames") or [], lora_folder_scope)
+        catalog["lora_filenames"] = [
+            "None",
+            *[name for name in lora_names if str(name).strip().lower() != "none"],
+        ]
+    catalog["base_model"] = base_model
+    catalog["lora_folder_scope"] = lora_folder_scope or ""
 
     return {"ok": True, "catalog": catalog}
 

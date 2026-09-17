@@ -1019,6 +1019,9 @@
     }
 
     async function autoSendTriggerWordsForModel(modelName, enabled) {
+        if (typeof window.simpleaiAutoSendLoraTriggerWords === 'function') {
+            return window.simpleaiAutoSendLoraTriggerWords(modelName, enabled);
+        }
         const shouldSend = enabled === true || enabled === 1 || String(enabled || '').toLowerCase() === 'true';
         if (!shouldSend) return;
         if (isPresetNavActive()) return;
