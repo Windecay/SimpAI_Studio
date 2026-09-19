@@ -12,6 +12,87 @@ from .SimpAIMiniMaxH3AdaptiveReference import (
 )
 
 
+def _execute_hybrid_conditioning(
+    clip,
+    vae,
+    prompt,
+    width,
+    height,
+    length,
+    first=None,
+    last=None,
+    audio_vae=None,
+    reference_token_budget=0,
+    max_image_long_edge=DEFAULT_MAX_IMAGE_LONG_EDGE,
+    ref_images=None,
+    ref_audios=None,
+):
+    images = {name: image for name, image in (ref_images or {}).items() if image is not None}
+    audios = {name: audio for name, audio in (ref_audios or {}).items() if audio is not None}
+    if not images and not audios:
+        return MiniMaxH3ImageToVideo.execute(
+            clip=clip,
+            vae=vae,
+            prompt=prompt,
+            width=width,
+            height=height,
+            length=length,
+            first_frame=first,
+            last_frame=last,
+        )
+
+    plan = _plan_references(
+        width,
+        height,
+        length,
+        images,
+        None,
+        max_image_long_edge,
+        reference_token_budget,
+    )
+    item_map = {item["name"]: item for item in plan["items"]}
+    ref_items, ref_blocks = [], []
+    for name, image in images.items():
+        item = item_map[name]
+        resized = _resize_reference_images(image[:1], item["width"], item["height"])
+        ref_items.append({"type": "image", "data": resized})
+        ref_blocks.append({
+            "kind": "image",
+            "latent_h": item["height"] // 16,
+            "latent_w": item["width"] // 16,
+            "latent": vae.encode(resized),
+        })
+
+    # Optional pictures keep their UI numbering; endpoint pictures follow them.
+    for image in (first, last):
+        if image is not None:
+            ref_items.append({"type": "image", "data": image})
+    for audio in audios.values():
+        if audio_vae is None:
+            raise ValueError("audio_vae is required when an audio reference is provided")
+        audio_latent, ref_audio_t = _encode_ref_audio(audio_vae, audio)
+        ref_items.append({"type": "audio"})
+        ref_blocks.append({
+            "kind": "audio",
+            "ref_audio_t": ref_audio_t,
+            "audio_latent": audio_latent,
+        })
+
+    latent, frame_count = _empty_av_latent(width, height, length)
+    tokens = clip.tokenize(prompt, minimax_ref_items=ref_items)
+    positive = clip.encode_from_tokens_scheduled(tokens)
+    keyframes = []
+    if first is not None:
+        keyframes.append({"resolved_frame_index": 0, "latent": vae.encode(first)})
+    if last is not None:
+        keyframes.append({"resolved_frame_index": frame_count - 1, "latent": vae.encode(last)})
+    values = {"minimax_refs": ref_blocks}
+    if keyframes:
+        values["minimax_keyframes"] = keyframes
+    positive = node_helpers.conditioning_set_values(positive, values)
+    return io.NodeOutput(positive, latent)
+
+
 class SimpAIH3TransitionConditioning(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -39,49 +120,21 @@ class SimpAIH3TransitionConditioning(io.ComfyNode):
         width, height, length = (data[key] for key in ("width", "height", "length"))
         first = _resize_images(data["first"][-data["left"]:][:1], width, height)
         last = _resize_images(data["second"][data["right"] - 1:data["right"]], width, height)
-        images = {name: image for name, image in (ref_images or {}).items() if image is not None}
-        audios = {name: audio for name, audio in (ref_audios or {}).items() if audio is not None}
-        if not images and not audios:
-            return MiniMaxH3ImageToVideo.execute(
-                clip=clip, vae=vae, prompt=prompt, width=width, height=height,
-                length=length, first_frame=first, last_frame=last,
-            )
-
-        plan = _plan_references(
-            width, height, length, images, None,
-            max_image_long_edge, reference_token_budget,
+        return _execute_hybrid_conditioning(
+            clip=clip,
+            vae=vae,
+            prompt=prompt,
+            width=width,
+            height=height,
+            length=length,
+            first=first,
+            last=last,
+            audio_vae=audio_vae,
+            reference_token_budget=reference_token_budget,
+            max_image_long_edge=max_image_long_edge,
+            ref_images=ref_images,
+            ref_audios=ref_audios,
         )
-        item_map = {item["name"]: item for item in plan["items"]}
-        ref_items, ref_blocks = [], []
-        for name, image in images.items():
-            item = item_map[name]
-            resized = _resize_reference_images(image[:1], item["width"], item["height"])
-            ref_items.append({"type": "image", "data": resized})
-            ref_blocks.append({
-                "kind": "image", "latent_h": item["height"] // 16,
-                "latent_w": item["width"] // 16, "latent": vae.encode(resized),
-            })
-        # Optional pictures keep their UI numbering; endpoint pictures follow them.
-        ref_items.extend({"type": "image", "data": image} for image in (first, last))
-        for audio in audios.values():
-            if audio_vae is None:
-                raise ValueError("audio_vae is required when an audio reference is provided")
-            audio_latent, ref_audio_t = _encode_ref_audio(audio_vae, audio)
-            ref_items.append({"type": "audio"})
-            ref_blocks.append({
-                "kind": "audio", "ref_audio_t": ref_audio_t, "audio_latent": audio_latent,
-            })
-        latent, frame_count = _empty_av_latent(width, height, length)
-        tokens = clip.tokenize(prompt, minimax_ref_items=ref_items)
-        positive = clip.encode_from_tokens_scheduled(tokens)
-        positive = node_helpers.conditioning_set_values(positive, {
-            "minimax_refs": ref_blocks,
-            "minimax_keyframes": [
-                {"resolved_frame_index": 0, "latent": vae.encode(first)},
-                {"resolved_frame_index": frame_count - 1, "latent": vae.encode(last)},
-            ],
-        })
-        return io.NodeOutput(positive, latent)
 
 
 NODE_CLASS_MAPPINGS = {"SimpAIH3TransitionConditioning": SimpAIH3TransitionConditioning}

@@ -131,6 +131,7 @@
         "quantize": 32,
         "interactive": true,
         "frontend_preprocess": true,
+        "downscale_only": true,
         "preprocess_target": "video",
         "preprocess_fit": "proportional",
         "preprocess_duration_limit": false,

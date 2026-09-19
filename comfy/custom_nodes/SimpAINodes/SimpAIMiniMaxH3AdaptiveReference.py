@@ -167,6 +167,19 @@ def _candidate_video_dimensions(width, height):
     return canvas_width, canvas_height
 
 
+def _limit_video_long_edge(width, height, max_long_edge):
+    width = int(width)
+    height = int(height)
+    max_long_edge = max(CANVAS_MULTIPLE, int(max_long_edge))
+    scale = min(1.0, float(max_long_edge) / float(max(width, height)))
+    if scale >= 1.0:
+        return _align_dimension(width), _align_dimension(height)
+    return (
+        _floor_dimension(width * scale),
+        _floor_dimension(height * scale),
+    )
+
+
 def _item_cost(item, width=None, height=None):
     width = int(item["width"] if width is None else width)
     height = int(item["height"] if height is None else height)
@@ -245,6 +258,7 @@ def _plan_references(
     max_image_long_edge,
     reference_token_budget,
     total_vram_gib=None,
+    reference_video_max_long_edge_ratio=1.0,
 ):
     budget, target_tokens, frame_count, profile = _automatic_reference_budget(
         width,
@@ -288,6 +302,15 @@ def _plan_references(
             source_width,
             source_height,
         )
+        max_video_long_edge = int(
+            max(width, height) * max(0.0, float(reference_video_max_long_edge_ratio))
+        )
+        if max_video_long_edge > 0:
+            item_width, item_height = _limit_video_long_edge(
+                item_width,
+                item_height,
+                max_video_long_edge,
+            )
         item = {
             "kind": "video",
             "name": name,
@@ -395,6 +418,15 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
                     advanced=True,
                     tooltip="Maximum image-reference long edge used by auto mode.",
                 ),
+                io.Float.Input(
+                    "reference_video_max_long_edge_ratio",
+                    default=1.0,
+                    min=0.0,
+                    max=1.0,
+                    step=0.05,
+                    advanced=True,
+                    tooltip="Maximum reference-video long edge as a ratio of the output long edge. Motion uses 0.5 to reduce encoder tokens.",
+                ),
                 io.Autogrow.Input(
                     "ref_images",
                     optional=True,
@@ -451,6 +483,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
         ref_image_size="auto",
         reference_token_budget=0,
         max_image_long_edge=DEFAULT_MAX_IMAGE_LONG_EDGE,
+        reference_video_max_long_edge_ratio=1.0,
         audio_vae=None,
         ref_images=None,
         ref_videos=None,
@@ -481,6 +514,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
             ref_videos,
             max_image_long_edge,
             reference_token_budget,
+            reference_video_max_long_edge_ratio=reference_video_max_long_edge_ratio,
         )
         profile = plan["profile"]
         LOG.info(

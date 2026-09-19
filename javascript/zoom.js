@@ -131,6 +131,17 @@ onUiLoaded(async() => {
             return !!el.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]');
         }
 
+        function isPointerCurrentlyInsideCanvas() {
+            try {
+                if (targetElement.matches?.(":hover")) return true;
+                const floatingSketch = document.querySelector?.(".simpai-sketch--pan-floating, .simpai-sketch--fullscreen");
+                if (floatingSketch?.matches?.(":hover")) return true;
+                if (typeof targetElement.matches === "function") return false;
+            } catch {
+            }
+            return isPointerInside;
+        }
+
         function shouldHandleCanvasHotkeys(event) {
             if (document.querySelector?.('.sai-h3sb-modal')) return false;
             const sketch = getSimpAISketchApi();
@@ -607,6 +618,13 @@ onUiLoaded(async() => {
 
             if (!shouldHandleCanvasHotkeys(event)) return;
             const sketch = getSimpAISketchApi();
+            if (
+                event.code === hotkeysConfig.canvas_hotkey_fullscreen
+                && !isPointerCurrentlyInsideCanvas()
+                && !sketch?.isFullscreen?.()
+            ) {
+                return;
+            }
             if (sketch && event.code === hotkeysConfig.canvas_hotkey_fullscreen) {
                 return;
             }

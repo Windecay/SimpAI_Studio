@@ -2776,6 +2776,13 @@
             lastVisibilityResult = visible;
             return visible;
         };
+        const isPointerCurrentlyInsideEditor = () => {
+            try {
+                if (typeof editor.matches === "function") return editor.matches(":hover");
+            } catch {
+            }
+            return pointerInsideEditor;
+        };
         const isSketchHotkeyActive = (event) => {
             if (!isSketchVisible()) {
                 releaseTransientState();
@@ -2934,7 +2941,8 @@
                 : fullscreenMode
                 || panFloatingMode
                 || (historyAction && hasImage && (pointerInsideEditor || event.target?.closest?.(".simpai-sketch")))
-                || ((event.code === "KeyS" || event.code === "KeyF" || event.code === "KeyQ") && sketchHotkeyActive && pointerInsideEditor && hasImage);
+                || (event.code === "KeyS" && sketchHotkeyActive && isPointerCurrentlyInsideEditor() && hasImage)
+                || ((event.code === "KeyF" || event.code === "KeyQ") && sketchHotkeyActive && pointerInsideEditor && hasImage);
             if (!wantsSketchHotkey) return;
             if (shouldHandleSketchHistoryHotkey(event, historyAction)) {
                 event.preventDefault();

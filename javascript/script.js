@@ -1408,10 +1408,29 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     function loraChoiceMatchesFolderScope(value, scope) {
         const text = String(value || '').trim();
         if (!text || text.toLowerCase() === 'none') return true;
-        const parts = text.replace(/\\/g, '/').split('/').filter(Boolean);
-        if (parts.length < 2) return false;
         const compact = (item) => String(item || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-        return compact(parts[0]) === compact(scope);
+        const expected = compact(scope);
+        if (!expected) return true;
+        const markers = {
+            sd3: ['sd3'],
+            sdxl: ['sdxl', 'sd-xl', 'xl'],
+            flux: ['flux', 'f.1', 'klein'],
+            hunyuan: ['hunyuan'],
+            wan: ['wan'],
+            ltx: ['ltx'],
+            anima: ['anima'],
+            qwen: ['qwen'],
+            zimage: ['z_image', 'z-image', 'zimage', 'zit', 'zib'],
+            krea2: ['krea2']
+        };
+        const hasMarker = (marker) => {
+            if (marker === 'xl') return /(^|[^a-z0-9])xl([^a-z0-9]|$)/i.test(text);
+            return compact(text).includes(compact(marker));
+        };
+        const recognized = Object.entries(markers)
+            .filter(([, aliases]) => aliases.some(hasMarker))
+            .map(([family]) => family);
+        return recognized.length === 0 || recognized.includes(expected);
     }
 
     async function refreshModelsPanelCatalog(options = {}) {

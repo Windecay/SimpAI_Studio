@@ -2031,6 +2031,37 @@ def _compact_model_identity(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
+_LORA_RECOGNITION_MARKERS = {
+    "sd3": ("sd3",),
+    "sdxl": ("sdxl", "sd-xl", "xl"),
+    "flux": ("flux", "f.1", "klein"),
+    "hunyuan": ("hunyuan",),
+    "wan": ("wan",),
+    "ltx": ("ltx",),
+    "anima": ("anima",),
+    "qwen": ("qwen",),
+    "zimage": ("z_image", "z-image", "zimage", "zit", "zib"),
+    "krea2": ("krea2",),
+}
+
+
+def _model_name_has_marker(name: str, marker: str) -> bool:
+    text = _normalize_model_name(name).lower()
+    if marker == "xl":
+        return re.search(r"(?<![a-z0-9])xl(?![a-z0-9])", text) is not None
+    compact_name = _compact_model_identity(text)
+    compact_marker = _compact_model_identity(marker)
+    return bool(compact_marker and compact_marker in compact_name)
+
+
+def _recognized_lora_marker_families(name: str) -> set:
+    return {
+        family
+        for family, markers in _LORA_RECOGNITION_MARKERS.items()
+        if any(_model_name_has_marker(name, marker) for marker in markers)
+    }
+
+
 def _lora_folder_scope(
     engine: str,
     task_method: Optional[str] = None,
@@ -2047,6 +2078,7 @@ def _lora_folder_scope(
 
 
 def _filter_loras_by_folder(names: List[str], scope: Optional[str]) -> List[str]:
+    """Keep unmarked LoRAs and the current family; remove known other families."""
     if not scope:
         return list(names)
     expected = _compact_model_identity(scope)
@@ -2056,10 +2088,8 @@ def _filter_loras_by_folder(names: List[str], scope: Optional[str]) -> List[str]
     filtered: List[str] = []
     for name in names:
         normalized = _normalize_model_name(name)
-        parts = [part for part in normalized.split("/") if part]
-        if len(parts) < 2:
-            continue
-        if _compact_model_identity(parts[0]) == expected:
+        marker_families = _recognized_lora_marker_families(normalized)
+        if not marker_families or expected in marker_families:
             filtered.append(normalized)
     return filtered
 

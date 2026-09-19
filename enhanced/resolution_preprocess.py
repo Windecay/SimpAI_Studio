@@ -993,6 +993,7 @@ def apply_scene_resolution_preprocess(
                 mode,
                 preserve_audio=bool(profile.get("preserve_audio", True)),
                 duration_limit=duration_limit,
+                downscale_only=bool(profile.get("downscale_only", False)),
             )
             if did:
                 scene_original_video_path = out
@@ -1016,6 +1017,7 @@ def apply_scene_resolution_preprocess(
                 mode,
                 preserve_audio=bool(profile.get("preserve_audio", True)),
                 duration_limit=duration_limit,
+                downscale_only=bool(profile.get("downscale_only", False)),
             )
             if did:
                 sam3_original_video_path = out
@@ -1031,6 +1033,7 @@ def apply_scene_resolution_preprocess(
                 preserve_audio=False,
                 is_mask=True,
                 duration_limit=duration_limit,
+                downscale_only=bool(profile.get("downscale_only", False)),
             )
             if mask_did:
                 sam3_mask_video = mask_out
