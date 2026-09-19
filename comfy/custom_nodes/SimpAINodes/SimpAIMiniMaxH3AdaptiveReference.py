@@ -424,6 +424,7 @@ class SimpAIMiniMaxH3AdaptiveReference(io.ComfyNode):
                     min=0.0,
                     max=1.0,
                     step=0.05,
+                    optional=True,
                     advanced=True,
                     tooltip="Maximum reference-video long edge as a ratio of the output long edge. Motion uses 0.5 to reduce encoder tokens.",
                 ),
