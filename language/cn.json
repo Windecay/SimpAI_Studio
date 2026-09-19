@@ -409,6 +409,8 @@
   "Enhance": "启用增强修图(对新生图片或上传图片增强修图)",
   "Enhance+": "增强修图",
   "Advanced+": "高级选项",
+  "Show advanced settings": "显示高级设置",
+  "Resize advanced settings panel": "调整高级设置面板宽度",
   "🔧 Advanced Parameters": "🔧 高级参数",
   "Advanced Control": "高级提示：风格迁移-ImagePrompt，边缘检测-PyraCanny，结构深度-Depth，脸部迁移-FaceSwap，身体姿态-OpenPose",
   "ImagePrompt": "风格迁移",

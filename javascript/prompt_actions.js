@@ -14,7 +14,10 @@
     let pendingPromptField = null;
     let pendingDirectRequest = null;
     let lastAppliedPromptField = null;
-    let lastAppliedPreviousPrompt = "";
+    let lastAppliedHistory = null;
+    let mainPromptHistory = null;
+    const promptHistories = new WeakMap();
+    const PROMPT_HISTORY_LIMIT = 100;
     let presetPromptAgentHint = null;
     let presetPromptAgentHintRetryTimer = 0;
     let presetPromptAgentHintInitialSyncTimer = 0;
@@ -111,6 +114,159 @@
         target.dispatchEvent(new Event("change", { bubbles: true }));
         return true;
     }
+
+    function promptSnapshot(field) {
+        return {
+            value: String(field.value ?? ""),
+            start: field.selectionStart ?? 0,
+            end: field.selectionEnd ?? 0,
+            scrollTop: field.scrollTop || 0,
+        };
+    }
+
+    function promptHistory(field, create = false) {
+        if (!usablePromptField(field)) return null;
+        const main = field === fieldById("positive_prompt");
+        const context = String(paramsSource().__preset || paramsSource().preset || "");
+        let history = main ? mainPromptHistory : promptHistories.get(field);
+        if (history?.context !== context) history = null;
+        if (!history && create) {
+            history = { context, entries: [promptSnapshot(field)], index: 0, applying: false, composing: false };
+            if (main) mainPromptHistory = history;
+            else promptHistories.set(field, history);
+        }
+        return history;
+    }
+
+    function rememberPrompt(field, history, inputType = "") {
+        if (!history || history.applying || history.composing) return;
+        const snapshot = promptSnapshot(field);
+        const current = history.entries[history.index];
+        if (current.value === snapshot.value) return;
+        const now = Date.now();
+        const typing = ["insertText", "deleteContentBackward", "deleteContentForward"].includes(inputType);
+        const group = typing && history.editType === inputType && now - history.editTime < 800
+            && history.index === history.entries.length - 1 && history.index > 0
+            && history.beforeInput?.value === current.value
+            && history.beforeInput.start === current.start && history.beforeInput.end === current.end;
+        history.entries.splice(history.index + 1);
+        if (group) history.entries[history.index] = snapshot;
+        else {
+            if (history.beforeInput?.value === current.value) history.entries[history.index] = history.beforeInput;
+            history.entries.push(snapshot);
+            if (history.entries.length > PROMPT_HISTORY_LIMIT) history.entries.shift();
+            history.index = history.entries.length - 1;
+        }
+        history.beforeInput = null;
+        history.editType = typing ? inputType : "";
+        history.editTime = now;
+    }
+
+    function toastPromptField() {
+        if (usablePromptField(lastAppliedPromptField)) return lastAppliedPromptField;
+        // The main Gradio textbox can be remounted without changing its editing context.
+        if (lastAppliedHistory && lastAppliedHistory === mainPromptHistory) return fieldById("positive_prompt");
+        return null;
+    }
+
+    function historyAvailability(field, expectedHistory = null) {
+        const history = promptHistory(field);
+        if (!history || (expectedHistory && expectedHistory !== history) || history.composing) {
+            return { undo: false, redo: false };
+        }
+        const changed = String(field.value ?? "") !== history.entries[history.index].value;
+        return { undo: changed || history.index > 0, redo: !changed && history.index < history.entries.length - 1 };
+    }
+
+    function updatePromptHistoryControls() {
+        const groups = [
+            { node: modal, state: historyAvailability(promptField(activePromptField)), attribute: "data-prompt-action" },
+            { node: toast, state: historyAvailability(toastPromptField(), lastAppliedHistory), attribute: "data-role" },
+        ];
+        for (const { node, state, attribute } of groups) {
+            for (const action of ["undo", "redo"]) {
+                const button = node?.querySelector(`[${attribute}="${action}"]`);
+                if (!button) continue;
+                const label = action === "undo" ? text("Undo prompt change", "撤销提示词修改") : text("Redo prompt change", "重做提示词修改");
+                button.disabled = !state[action];
+                button.title = label;
+                button.setAttribute("aria-label", label);
+            }
+        }
+    }
+
+    function restorePromptHistory(field, direction, expectedHistory = null) {
+        const history = promptHistory(field);
+        if (!history || history.composing || (expectedHistory && history !== expectedHistory)) return false;
+        rememberPrompt(field, history);
+        const index = history.index + direction;
+        if (index < 0 || index >= history.entries.length) return false;
+        const snapshot = history.entries[index];
+        history.applying = true;
+        try {
+            if (!setPromptFieldValue(field, snapshot.value)) return false;
+            history.index = index;
+            history.editType = "";
+            history.beforeInput = null;
+            field.setSelectionRange?.(snapshot.start, snapshot.end);
+            field.scrollTop = snapshot.scrollTop;
+        } finally {
+            history.applying = false;
+        }
+        if (typeof syncPositivePromptMetaState === "function") {
+            try { syncPositivePromptMetaState(); } catch (error) {}
+        }
+        if (toast?.classList.contains("is-open") && history === lastAppliedHistory) {
+            toast.querySelector('[data-role="message"]').textContent = direction < 0
+                ? text("Prompt change undone", "已撤销提示词修改")
+                : text("Prompt change redone", "已重做提示词修改");
+        }
+        updatePromptHistoryControls();
+        return true;
+    }
+
+    function handlePromptHistoryKeydown(event) {
+        if (event.defaultPrevented || event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+        const key = String(event.key || "").toLowerCase();
+        if (key !== "z" && key !== "y") return;
+        const field = event.target;
+        const history = promptHistory(field);
+        if (!history || history.composing || field.readOnly || field.disabled) return;
+        // Once an assistant write occurs, native undo no longer contains a coherent timeline.
+        event.preventDefault();
+        event.stopPropagation();
+        restorePromptHistory(field, key === "y" || event.shiftKey ? 1 : -1);
+    }
+
+    document.addEventListener("keydown", handlePromptHistoryKeydown, true);
+    document.addEventListener("beforeinput", (event) => {
+        const history = promptHistory(event.target);
+        if (!history || history.applying) return;
+        if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+            if (!event.cancelable || history.composing || event.target.readOnly || event.target.disabled) return;
+            event.preventDefault();
+            restorePromptHistory(event.target, event.inputType === "historyRedo" ? 1 : -1);
+            return;
+        }
+        history.beforeInput = promptSnapshot(event.target);
+    }, true);
+    document.addEventListener("compositionstart", (event) => {
+        const history = promptHistory(event.target);
+        if (history) history.composing = true;
+    }, true);
+    document.addEventListener("compositionend", (event) => {
+        const history = promptHistory(event.target);
+        if (!history) return;
+        history.composing = false;
+        rememberPrompt(event.target, history);
+        updatePromptHistoryControls();
+    }, true);
+    document.addEventListener("input", (event) => {
+        const history = promptHistory(event.target);
+        if (!history || history.applying || event.isComposing) return;
+        rememberPrompt(event.target, history, event.inputType);
+        updatePromptHistoryControls();
+    }, true);
 
     function currentPrompt() {
         return String(promptField(activePromptField)?.value || "");
@@ -636,10 +792,18 @@
                         <h2 id="simpleai-prompt-action-title" data-role="title"></h2>
                         <p data-role="context"></p>
                     </div>
-                    ${window.SimpAIStudioHelp?.button('prompt') || ''}
-                    <button type="button" class="simpleai-prompt-action-icon-button" data-prompt-action="close" aria-label="Close">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
+                    <div class="simpleai-prompt-action-header-tools">
+                        <button type="button" class="simpleai-prompt-action-icon-button" data-prompt-action="undo" disabled>
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                        <button type="button" class="simpleai-prompt-action-icon-button" data-prompt-action="redo" disabled>
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                        ${window.SimpAIStudioHelp?.button('prompt') || ''}
+                        <button type="button" class="simpleai-prompt-action-icon-button" data-prompt-action="close" aria-label="Close">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
                 </header>
                 <label class="simpleai-prompt-action-video-option" data-role="video-option">
                     <span>
@@ -663,6 +827,10 @@
             const action = control?.getAttribute?.("data-prompt-action");
             if (action === "close") {
                 closeModal();
+                return;
+            }
+            if (action === "undo" || action === "redo") {
+                restorePromptHistory(promptField(activePromptField), action === "undo" ? -1 : 1);
                 return;
             }
             if (action === "run") {
@@ -794,6 +962,10 @@
         const node = ensureModal();
         node.querySelector('[data-role="title"]').textContent = text("Prompt Tools", "提示工具");
         node.querySelector('[data-role="context"]').textContent = currentContextText();
+        updatePromptHistoryControls();
+        const closeButton = node.querySelector('button[data-prompt-action="close"]');
+        closeButton.title = text("Close", "关闭");
+        closeButton.setAttribute("aria-label", closeButton.title);
         const videoSlot = preferredVideoSlot();
         const hasVideo = mainVideoContextAvailable();
         const videoOption = node.querySelector('[data-role="video-option"]');
@@ -974,15 +1146,20 @@
         toast = document.createElement("div");
         toast.className = "simpleai-prompt-action-toast";
         toast.innerHTML = `
-            <span data-role="message"></span>
-            <button type="button" data-role="undo"></button>`;
+            <span data-role="message" role="status" aria-live="polite"></span>
+            <div class="simpleai-prompt-action-toast-tools">
+                <button type="button" data-role="undo"><i class="fa-solid fa-rotate-left"></i></button>
+                <button type="button" data-role="redo"><i class="fa-solid fa-rotate-right"></i></button>
+                <button type="button" data-role="dismiss"><i class="fa-solid fa-xmark"></i></button>
+            </div>`;
         toast.querySelector('[data-role="undo"]').addEventListener("click", () => {
-            if (setPromptFieldValue(lastAppliedPromptField, lastAppliedPreviousPrompt)) {
-                toast.classList.remove("is-open");
-                if (typeof syncPositivePromptMetaState === "function") {
-                    try { syncPositivePromptMetaState(); } catch (error) {}
-                }
-            }
+            restorePromptHistory(toastPromptField(), -1, lastAppliedHistory);
+        });
+        toast.querySelector('[data-role="redo"]').addEventListener("click", () => {
+            restorePromptHistory(toastPromptField(), 1, lastAppliedHistory);
+        });
+        toast.querySelector('[data-role="dismiss"]').addEventListener("click", () => {
+            toast.classList.remove("is-open");
         });
         document.body.appendChild(toast);
         return toast;
@@ -998,10 +1175,11 @@
         const messageNode = node.querySelector('[data-role="message"]');
         messageNode.textContent = message;
         messageNode.setAttribute("title", `${message} · ${agentServiceTitle(service)}`);
-        node.querySelector('[data-role="undo"]').textContent = text("Undo", "撤销");
+        const dismiss = node.querySelector('[data-role="dismiss"]');
+        dismiss.title = text("Dismiss notification", "关闭提示");
+        dismiss.setAttribute("aria-label", dismiss.title);
+        updatePromptHistoryControls();
         node.classList.add("is-open");
-        window.clearTimeout(node.__simpleaiHideTimer);
-        node.__simpleaiHideTimer = window.setTimeout(() => node.classList.remove("is-open"), 7000);
     }
 
     function parseResult(value) {
@@ -1030,14 +1208,27 @@
             return;
         }
         if (result.ok) {
-            if (!setPromptFieldValue(target, String(result.text ?? previousPrompt))) {
+            const history = promptHistory(target, true);
+            if (history) {
+                rememberPrompt(target, history);
+                history.entries[history.index] = promptSnapshot(target);
+                history.applying = true;
+            }
+            let applied = false;
+            try {
+                applied = setPromptFieldValue(target, String(result.text ?? previousPrompt));
+            } finally {
+                if (history) history.applying = false;
+            }
+            if (!applied) {
                 pendingPromptField = null;
                 renderModal();
                 setAgentStatus(service, "error", text("The target prompt is no longer available.", "目标提示词已不可用。"));
                 return;
             }
+            rememberPrompt(target, history);
             lastAppliedPromptField = target;
-            lastAppliedPreviousPrompt = previousPrompt;
+            lastAppliedHistory = history;
             pendingPromptField = null;
             closeModal();
             showSuccessToast(result, service);
@@ -1075,6 +1266,7 @@
     function bindButton() {
         const button = promptButton();
         setButtonLabel();
+        updatePromptHistoryControls();
         if (!button || boundButton === button) return;
         if (boundButton) boundButton.removeEventListener("click", onButtonClick, true);
         button.addEventListener("click", onButtonClick, true);

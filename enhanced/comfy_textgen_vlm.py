@@ -14,6 +14,11 @@ import logging
 logger = logging.getLogger(format_name(__name__))
 
 
+_QWEN3VL_IM_START = "<|im_start|>"
+_QWEN3VL_IM_END = "<|im_end|>"
+_QWEN3VL_IMAGE_BLOCK = "<|vision_start|><|image_pad|><|vision_end|>"
+
+
 class ComfyTextgenVLM:
     def __init__(self):
         self.lock = threading.RLock()
@@ -107,6 +112,39 @@ class ComfyTextgenVLM:
         uploaded = comfyclient_pipeline.images_upload(container)
         return [uploaded[f"vlm_{index}"] for index in range(len(images))]
 
+    def _image_count(self, image):
+        if image is None:
+            return 0
+        if isinstance(image, (list, tuple)):
+            return sum(item is not None for item in image)
+        return 1
+
+    def _build_chat_prompt(self, system_prompt, history, prompt, image_count=0, thinking=False):
+        sections = []
+        system_prompt = str(system_prompt or "").strip()
+        if system_prompt:
+            sections.append(
+                f"{_QWEN3VL_IM_START}system\n{system_prompt}{_QWEN3VL_IM_END}\n"
+            )
+        for message in history or []:
+            if not isinstance(message, dict):
+                continue
+            role = str(message.get("role") or "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content:
+                continue
+            sections.append(
+                f"{_QWEN3VL_IM_START}{role}\n{content}{_QWEN3VL_IM_END}\n"
+            )
+        image_prefix = _QWEN3VL_IMAGE_BLOCK * max(0, int(image_count or 0))
+        sections.append(
+            f"{_QWEN3VL_IM_START}user\n{image_prefix}{str(prompt or '').strip()}"
+            f"{_QWEN3VL_IM_END}\n{_QWEN3VL_IM_START}assistant\n"
+        )
+        return "".join(sections)
+
     def build_workflow(
         self,
         clip_name,
@@ -120,6 +158,7 @@ class ComfyTextgenVLM:
         repetition_penalty=1.05,
         seed=-1,
         thinking=False,
+        use_default_template=True,
     ):
         image_names = list(image_names or [])
         workflow = {
@@ -171,7 +210,7 @@ class ComfyTextgenVLM:
             "sampling_mode.seed": seed_value if seed_value >= 0 else 0,
             "sampling_mode.presence_penalty": 0.0,
             "thinking": bool(thinking),
-            "use_default_template": True,
+            "use_default_template": bool(use_default_template),
         }
         if image_output is not None:
             textgen_inputs["image"] = image_output
@@ -262,6 +301,7 @@ class ComfyTextgenVLM:
         seed=-1,
         system_prompt=None,
         thinking=False,
+        use_default_template=True,
     ):
         with self.lock:
             self._ensure_server()
@@ -281,6 +321,7 @@ class ComfyTextgenVLM:
                 repetition_penalty=repetition_penalty,
                 seed=seed,
                 thinking=thinking,
+                use_default_template=use_default_template,
             )
             return self._execute_workflow(workflow, preview_id)
 
@@ -305,25 +346,21 @@ class ComfyTextgenVLM:
             self.conversation_system_prompts[key] = system_prompt
             history = list(self.conversation_messages.get(key, []))
             history = history[-max(0, int(max_history or 24)) * 2:]
-            lines = []
-            for message in history:
-                role = "Assistant" if message.get("role") == "assistant" else "User"
-                content = str(message.get("content") or "").strip()
-                if content:
-                    lines.append(f"{role}: {content}")
-            sections = []
-            if system_prompt:
-                sections.append(f"System instruction:\n{system_prompt}")
-            if lines:
-                sections.append("Conversation so far:\n" + "\n".join(lines))
-            sections.append(f"Current user request:\n{str(prompt or '').strip()}")
-            sections.append("Answer the current user request directly.")
+            thinking = bool(sampling.get("thinking", False))
+            chat_prompt = self._build_chat_prompt(
+                system_prompt=system_prompt,
+                history=history,
+                prompt=prompt,
+                image_count=self._image_count(image),
+                thinking=thinking,
+            )
             result = self.inference(
                 clip_name=clip_name,
                 clip_type=clip_type,
                 image=image,
-                prompt="\n\n".join(sections),
+                prompt=chat_prompt,
                 system_prompt=None,
+                use_default_template=False,
                 **sampling,
             )
             if save_state:

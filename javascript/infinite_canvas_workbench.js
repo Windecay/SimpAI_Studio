@@ -13580,10 +13580,12 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
                 const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset;
                 const preview = kind === 'image'
                     ? safeAssetFullDisplaySrc(asset || {}, asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '')
-                    : '';
+                    : (asset?.preview_url || asset?.data_url || asset?.url || '');
                 const label = String(sourceNode?.title || sourceNode?.name || edge?.slot || `${kind} ${refs[kind].length + 1}`).trim();
                 refs[kind].push({
                     slot: edge?.slot || '',
+                    asset_id: asset?.asset_id || '',
+                    source_id: sourceNode?.id || '',
                     label_en: label,
                     label_cn: label,
                     preview
@@ -13619,6 +13621,46 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         if (compact.includes('i2va')) return 'I2VA';
         if (compact.includes('i2v')) return inventory.image_count >= 2 ? 'FL2VA' : 'I2VA';
         return 'T2VA';
+    }
+
+    async function attachCharacterMediaToPreset(nodeId, card) {
+        const target = getNode(nodeId);
+        if (!target || isNodeLocked(target)) throw new Error(t('Node is locked or missing.', '节点已锁定或不存在。'));
+        const api = window.SimpAIVisualPromptEditor;
+        const mode = h3StoryboardModeForPreset(target);
+        const limits = mode === 'T2VA' ? { image: 0, audio: 0 }
+            : mode === 'Ref2VA' ? { image: 9, audio: 3 }
+                : { image: mode === 'FL2VA' ? 2 : 1, audio: 0 };
+        const slots = getVisibleUploadSlots(target)
+            .slice().sort((a, b) => SLOT_ORDER.indexOf(a.key) - SLOT_ORDER.indexOf(b.key))
+            .map(slot => ({ key: slot.key, kind: getUploadSlotMediaKind(slot.key), occupied: !!target.upload_slots?.[slot.key] }));
+        const allowed = ['image', 'audio'].flatMap(kind => slots.filter(slot => slot.kind === kind).slice(0, limits[kind]));
+        const plan = api.planMediaAttachments(card.media, h3StoryboardInventoryForPreset(target), allowed);
+        if (!plan.assignments.length) return { inventory: h3StoryboardInventoryForPreset(target), skipped: plan.skipped };
+        const response = await api.request('resolve', { asset_ids: plan.assignments.map(item => item.asset_id) }, window.simpleaiTopbarSystemParams || {});
+        const current = getNode(nodeId);
+        if (!current || isNodeLocked(current)) throw new Error(t('Node is locked or missing.', '节点已锁定或不存在。'));
+        const stillVisible = new Set(getVisibleUploadSlots(current).map(slot => slot.key));
+        if (h3StoryboardModeForPreset(current) !== mode || plan.assignments.some(item =>
+            !stillVisible.has(item.slot) || current.upload_slots?.[item.slot]
+                || project.edges.some(edge => edge.type === 'upload' && edge.to === nodeId && edge.slot === item.slot))) {
+            throw new Error('media_slot_occupied');
+        }
+        const mediaNodes = plan.assignments.map((item, index) => {
+            const asset = response.assets.find(ref => ref.asset_id === item.asset_id);
+            const world = { x: current.x - 320, y: current.y + index * 220 };
+            const node = asset && buildMediaNodeFromAsset(asset, world, `${card.name} - ${asset.name || item.slot}`);
+            if (!node || !canNodeConnectToUploadSlot(node, item.slot)) throw new Error('media_kind_mismatch');
+            return { node, slot: item.slot, world };
+        });
+        pushHistory('Add character reference media');
+        for (const item of mediaNodes) {
+            placeNodeAvoidingOverlap(item.node, item.world);
+            Object.assign(project, buildProjectNodeAppendPatch(project, item.node));
+            createUploadEdge(item.node.id, nodeId, item.slot, { silent: true });
+        }
+        mutate({ inspector: true });
+        return { inventory: h3StoryboardInventoryForPreset(current), skipped: plan.skipped };
     }
 
     function h3StoryboardOptionsForPreset(node) {
@@ -25537,6 +25579,12 @@ ${renderGenerationMetadataInspectorSection(node)}
         return window.SimpAIH3StoryboardEditor.open(Object.assign({}, options, {
             title: t('MiniMax H3 Storyboard', 'MiniMax H3 分镜表'),
             context: 'canvas',
+            getInventory: () => h3StoryboardInventoryForPreset(getNode(node.id) || node),
+            onAttachMedia: async card => {
+                const result = await attachCharacterMediaToPreset(node.id, card);
+                options.inventory = result.inventory;
+                return result;
+            },
             prompt: node.params?.prompt || '',
             storyboardState: h3StoryboardStateForPreset(node),
             modalMount: canvasOverlayHost(),
@@ -28759,6 +28807,43 @@ ${renderGenerationMetadataInspectorSection(node)}
             openLivePortraitVideoExpressionPresetEditor(node);
         } else if (action === 'edit-ltx23-guides' && node.type === 'preset') {
             openLtx23GuidePresetEditor(node);
+        } else if (action === 'edit-visual-prompt' && node.type === 'preset') {
+            const openVisualPrompt = () => window.SimpAIVisualPromptEditor?.open({
+                value: node.params?.prompt || '',
+                definitionTarget: h3StoryboardOptionsForPreset(node).mode === 'Ref2VA' ? 'prompt' : '',
+                langState: window.simpleaiTopbarSystemParams || {},
+                inventory: h3StoryboardInventoryForPreset(node),
+                getInventory: () => h3StoryboardInventoryForPreset(getNode(node.id) || node),
+                onAttachMedia: card => attachCharacterMediaToPreset(node.id, card),
+                bindings: node.h3_storyboard?.character_bindings || [],
+                onApply: async result => {
+                    const current = getNode(node.id);
+                    if (!current) return false;
+                    if (!window.SimpAIH3StoryboardEditor) {
+                        await window.SimpAILazyAssetLoader?.loadGroup('h3StoryboardEditor');
+                    }
+                    if (!window.SimpAIH3StoryboardEditor) {
+                        throw new Error(t('H3 storyboard editor is not loaded.', 'H3 分镜表编辑器尚未加载。'));
+                    }
+                    const nextStoryboard = window.SimpAIH3StoryboardEditor.parsePrompt(
+                        result.value, h3StoryboardOptionsForPreset(current)
+                    );
+                    pushHistory('Update visual prompt');
+                    Object.assign(current, buildNodeParamsPatch(current, { paramsPatch: { prompt: result.value } }));
+                    Object.assign(current, buildH3StoryboardStatePatch(current, {
+                        statePatch: Object.assign({}, nextStoryboard, {
+                            character_bindings: result.bindings,
+                            prompt_snapshot: result.value
+                        }), updatedAt: nowIso()
+                    }));
+                    mutate({ inspector: true });
+                    return true;
+                }
+            });
+            if (window.SimpAIH3StoryboardEditor) openVisualPrompt();
+            else Promise.resolve(window.SimpAILazyAssetLoader?.loadGroup('h3StoryboardEditor'))
+                .then(openVisualPrompt)
+                .catch(error => window.alert(error?.message || t('Prompt editor could not be opened.', '无法打开提示词编辑器。')));
         } else if (action === 'edit-h3-storyboard' && node.type === 'preset') {
             openMiniMaxH3StoryboardPresetEditor(node);
         } else if (action === 'apply-style-selector' && node.type === 'style_selector') {

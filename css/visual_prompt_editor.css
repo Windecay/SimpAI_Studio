@@ -1,0 +1,130 @@
+html:has(body > .sai-vpe-backdrop), body:has(> .sai-vpe-backdrop) { overflow: hidden !important; overscroll-behavior: none; }
+html:has(body > .sai-vpe-backdrop) { scrollbar-gutter: stable; }
+.sai-vpe-backdrop { position: fixed; inset: 0; z-index: 2147483500; background: color-mix(in srgb, var(--background-fill-secondary) 75%, transparent); display: grid; place-items: center; padding: 16px; color: var(--body-text-color); accent-color: var(--button-primary-background-fill); font: 14px/1.5 var(--font, sans-serif); letter-spacing: 0; overflow: auto; overscroll-behavior: contain; }
+.sai-vpe-backdrop * { box-sizing: border-box; }
+.sai-vpe-backdrop [hidden] { display: none !important; }
+.sai-vpe-dialog { width: min(1480px, 100%); height: min(900px, 94dvh); background: var(--background-fill-primary); border: 1px solid var(--border-color-primary); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.sai-vpe-dialog header, .sai-vpe-dialog footer { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+.sai-vpe-dialog header { border-bottom: 1px solid var(--border-color-primary); }
+.sai-vpe-dialog footer { border-top: 1px solid var(--border-color-primary); }
+.sai-vpe-dialog strong { font-size: 14px; }
+.sai-vpe-body { display: flex; flex: 1; min-height: 0; }
+.sai-vpe-library { flex: 0 0 300px; min-width: 0; overflow-y: auto; padding: 16px; border-right: 1px solid var(--border-color-primary); display: flex; flex-direction: column; gap: 12px; }
+.sai-vpe-main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; position: relative; }
+.sai-vpe-detail { flex: 0 0 320px; min-width: 0; padding: 16px; overflow-y: auto; border-left: 1px solid var(--border-color-primary); }
+.sai-vpe-body, .sai-vpe-library, .sai-vpe-detail, .sai-vpe-rich, .sai-vpe-raw, .sai-vpe-bindings, .sai-vpe-mentions { overscroll-behavior: contain; }
+.sai-vpe-dialog button { cursor: pointer; border: 1px solid var(--border-color-primary); color: var(--button-secondary-text-color, var(--body-text-color)); background: var(--button-secondary-background-fill); border-radius: 4px; padding: 6px 9px; min-height: 34px; overflow-wrap: anywhere; }
+.sai-vpe-dialog button:disabled { cursor: default; opacity: .45; }
+.sai-vpe-dialog button:hover:not(:disabled) { border-color: var(--button-primary-background-fill); }
+.sai-vpe-dialog button:focus-visible, .sai-vpe-dialog [contenteditable]:focus-visible, .sai-vpe-dialog input:focus-visible, .sai-vpe-dialog select:focus-visible, .sai-vpe-dialog textarea:focus-visible, .sai-vpe-entry:focus-visible { outline: 2px solid var(--button-primary-background-fill); outline-offset: 2px; }
+.sai-vpe-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sai-vpe-actions strong { flex: 1; }
+.sai-vpe-actions button[aria-label]:has(> i:only-child) { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; }
+.sai-vpe-actions button[data-vpe-action="apply"] { flex: none; white-space: nowrap; min-width: 72px; }
+.sai-vpe-dialog label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.sai-vpe-dialog input, .sai-vpe-dialog select, .sai-vpe-dialog textarea { width: 100%; min-width: 0; border: 1px solid var(--border-color-primary); border-radius: 4px; padding: 7px; background: var(--input-background-fill); color: inherit; font: inherit; }
+.sai-vpe-dialog textarea { resize: vertical; }
+.sai-vpe-rich, .sai-vpe-raw { flex: 1; min-height: 180px; margin: 0; padding: 18px !important; border: 1px solid var(--border-color-primary); background: var(--input-background-fill); color: var(--body-text-color); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; line-height: 2; font-size: 15px; }
+.sai-vpe-token { border-radius: 3px; color: var(--body-text-color); background: color-mix(in srgb, var(--button-primary-background-fill) 16%, var(--input-background-fill)); border-bottom: 1px solid var(--button-primary-background-fill); padding: 1px 4px; box-decoration-break: clone; }
+.sai-vpe-token.is-dialogue { background: var(--background-fill-secondary); border-bottom-style: dashed; font-weight: 600; }
+.sai-vpe-token.is-marker { color: var(--body-text-color-subdued); background: var(--background-fill-secondary); border-bottom-color: var(--border-color-primary); }
+.sai-vpe-token.is-media, .sai-vpe-token.is-character { display: inline-flex; align-items: center; gap: .25em; vertical-align: middle; height: 1.5em; max-width: 100%; padding: 0 .25em; line-height: 1.2; white-space: nowrap; }
+.sai-vpe-token.is-character { font-weight: 600; }
+.sai-vpe-token img { display: block; flex: 0 0 1.1em; width: 1.1em; height: 1.1em; object-fit: contain; margin: 0; }
+.sai-vpe-image-preview { position: fixed; z-index: 3; pointer-events: none; overflow: hidden; border: 1px solid var(--border-color-primary); border-radius: 6px; background: var(--background-fill-primary); color: var(--body-text-color); box-shadow: 0 6px 24px color-mix(in srgb, var(--body-text-color) 15%, transparent); }
+.sai-vpe-image-preview > img { display: block; width: 100%; object-fit: contain; }
+.sai-vpe-image-preview > span { display: block; height: 36px; padding: 7px 10px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sai-vpe-mode { display: flex; gap: 4px; }
+.sai-vpe-mode [aria-pressed="true"], .sai-vpe-dialog .is-primary { background: var(--button-primary-background-fill); border-color: var(--button-primary-border-color, var(--button-primary-background-fill)); color: var(--button-primary-text-color); }
+.sai-vpe-mode [aria-pressed="true"]:hover:not(:disabled), .sai-vpe-dialog .is-primary:hover:not(:disabled) { background: var(--button-primary-background-fill-hover, var(--button-primary-background-fill)); }
+.sai-vpe-cards { display: grid; gap: 14px; }
+.sai-vpe-character { min-width: 0; padding: 10px; border: 1px solid var(--border-color-primary); border-radius: 8px; background: var(--block-background-fill, var(--background-fill-secondary)); display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.sai-vpe-character.is-used { border-color: var(--button-primary-background-fill); }
+.sai-vpe-dialog .sai-vpe-portrait { width: 100%; aspect-ratio: 16 / 10; padding: 0; display: grid; place-items: center; overflow: hidden; background: var(--background-fill-secondary); }
+.sai-vpe-portrait img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.sai-vpe-monogram { font-size: 36px; font-weight: 600; color: var(--body-text-color-subdued); }
+.sai-vpe-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.sai-vpe-card-heading strong { font-size: 16px; overflow-wrap: anywhere; }
+.sai-vpe-card-heading button { width: 32px; height: 32px; flex: 0 0 32px; padding: 0; }
+.sai-vpe-character small { color: var(--body-text-color-subdued); }
+.sai-vpe-card-description { font-size: 13px; margin: 0; line-height: 1.6; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.sai-vpe-use { width: 100%; display: flex; justify-content: center; align-items: center; gap: 6px; }
+.sai-vpe-detail > .sai-vpe-use { margin: 12px 0; }
+.sai-vpe-dialog details { border-top: 1px solid var(--border-color-primary); margin-top: 10px; padding-top: 8px; }
+.sai-vpe-dialog summary { cursor: pointer; padding: 4px 0 10px; font-size: 13px; }
+.sai-vpe-target select { min-height: 38px; }
+.sai-vpe-dialog .sai-vpe-target { flex-direction: row; align-items: center; gap: 12px; margin: 0; white-space: nowrap; }
+.sai-vpe-refs { display: flex; flex-direction: column; gap: 8px; }
+.sai-vpe-ref-row { display: flex; flex-direction: column; gap: 4px; }
+.sai-vpe-ref-row img, .sai-vpe-ref-row video { width: 100%; max-height: 100px; object-fit: contain; }
+.sai-vpe-audio { --vpe-playhead: 0%; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 3px 8px; width: 100%; min-width: 0; }
+.sai-vpe-audio > button { width: 32px; height: 34px; padding: 0; grid-row: 1 / 3; }
+.sai-vpe-wave-track { position: relative; height: 38px; min-width: 0; overflow: hidden; background: var(--input-background-fill); border: 1px solid var(--border-color-primary); border-radius: 3px; }
+.sai-vpe-wave-bars { position: absolute; inset: 4px; display: flex; align-items: center; gap: 1px; color: var(--body-text-color-subdued); }
+.sai-vpe-wave-bars:empty { top: 50%; bottom: auto; border-top: 1px solid var(--border-color-primary); }
+.sai-vpe-wave-bars > i { flex: 1 1 0; min-width: 0; background: currentColor; }
+.sai-vpe-wave-bars.is-played { color: var(--button-primary-background-fill); clip-path: inset(0 calc(100% - var(--vpe-playhead)) 0 0); pointer-events: none; }
+.sai-vpe-wave-bars.is-played:empty { border: 0; }
+.sai-vpe-wave-cursor { position: absolute; top: 0; bottom: 0; left: clamp(0px, var(--vpe-playhead), calc(100% - 2px)); width: 2px; background: var(--button-primary-background-fill); pointer-events: none; }
+.sai-vpe-dialog input[data-vpe-audio-seek] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: ew-resize; }
+.sai-vpe-wave-track:focus-within { outline: 2px solid var(--button-primary-background-fill); outline-offset: -2px; }
+.sai-vpe-audio > output { grid-column: 2; font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; color: var(--body-text-color-subdued); }
+.sai-vpe-audio > [role="status"] { grid-column: 1 / -1; font-size: 12px; overflow-wrap: anywhere; }
+.sai-vpe-media-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border-color-primary); }
+.sai-vpe-media-row > img, .sai-vpe-media-row > .sai-vpe-audio { grid-column: 1 / -1; width: 100%; max-height: 160px; object-fit: contain; }
+.sai-vpe-media-row > span { overflow-wrap: anywhere; font-size: 12px; }
+.sai-vpe-audio-tools { grid-column: 1 / -1; }
+.sai-vpe-trim { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 5px; }
+.sai-vpe-trim label { flex: 1 1 80px; min-width: 0; margin: 0; font-size: 12px; }
+.sai-vpe-trim button { width: 34px; flex: 0 0 34px; }
+.sai-vpe-voice { min-width: 0; margin: 12px 0; padding: 10px 0; border: 0; border-top: 1px solid var(--border-color-primary); }
+.sai-vpe-voice legend { font-weight: 600; padding: 0 6px 0 0; }
+.sai-vpe-voice > button { margin-bottom: 10px; }
+.sai-vpe-voice-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sai-vpe-voice-actions progress { width: 100%; height: 8px; appearance: none; border: 0; color: var(--button-primary-background-fill); background: var(--background-fill-secondary); accent-color: var(--button-primary-background-fill); }
+.sai-vpe-voice-actions progress::-webkit-progress-bar { background: var(--background-fill-secondary); }
+.sai-vpe-voice-actions progress::-webkit-progress-value { background: var(--button-primary-background-fill); }
+.sai-vpe-voice-actions progress::-moz-progress-bar { background: var(--button-primary-background-fill); }
+.sai-vpe-detail-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.sai-vpe-sheet { border-block: 1px solid var(--border-color-primary); padding: 12px 0; margin-bottom: 12px; }
+.sai-vpe-sheet > .sai-vpe-actions { margin-bottom: 10px; }
+.sai-vpe-sheet-layout { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--body-text-color-subdued); margin-bottom: 10px; }
+.sai-vpe-sheet [data-vpe-image-status] { margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; color: var(--body-text-color); }
+.sai-vpe-bindings { display: flex; gap: 12px; flex-wrap: wrap; max-height: 200px; overflow-y: auto; flex-shrink: 0; }
+.sai-vpe-binding { min-width: 0; flex: 1 1 240px; padding: 8px 0; border-top: 1px solid var(--border-color-primary); }
+.sai-vpe-binding-title { display: flex; align-items: center; gap: 8px; }
+.sai-vpe-binding-title strong { flex: 1; overflow-wrap: anywhere; }
+.sai-vpe-binding-title > button { border: 0; background: none; }
+.sai-vpe-binding-media { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 12px; }
+.sai-vpe-binding-media > span { min-width: 56px; color: var(--body-text-color-subdued); }
+.sai-vpe-binding-media button { display: inline-flex; align-items: center; gap: 6px; }
+.sai-vpe-binding-media img { width: 30px; height: 30px; object-fit: contain; }
+.sai-vpe-mentions { flex: none; max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color-primary); padding: 4px; }
+.sai-vpe-mentions button { display: block; width: 100%; text-align: left; }
+.sai-vpe-dialog [data-vpe-status] { min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--body-text-color); }
+.sai-vpe-entry { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 24px; height: 24px; border: 1px solid var(--border-color-primary); border-radius: 4px; background: var(--button-secondary-background-fill); color: inherit; cursor: pointer; }
+.sai-vpe-entry i { font-size: 12px; line-height: 1; }
+#prompt_text_column { --sai-prompt-scrollbar-space: 0px; }
+.sai-vpe-input-host { position: relative; min-width: 0; }
+.sai-vpe-input-host > textarea { box-sizing: border-box; width: 100%; min-width: 0; padding-bottom: 48px !important; }
+.sai-vpe-input-host > .sai-vpe-entry { position: absolute; right: calc(var(--sai-prompt-scrollbar-space, 0px) + 8px); bottom: 8px; z-index: 7; width: 24px; min-width: 24px; max-width: 24px; height: 24px; min-height: 24px; max-height: 24px; margin: 0; padding: 0; background: var(--button-secondary-background-fill); color: var(--body-text-color); }
+#positive_prompt textarea { padding-bottom: 48px !important; padding-right: 40px !important; scrollbar-gutter: auto; }
+/* The Gradio 6 group extends one pixel below the textbox host. */
+#prompt_text_column:has(.sai-vpe-entry) #tag_helper_btn.block { right: calc(var(--sai-prompt-scrollbar-space) + 40px) !important; bottom: 9px !important; box-sizing: border-box; height: 24px !important; min-height: 24px !important; max-height: 24px !important; }
+#prompt_text_column .clear-prompt-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; right: calc(var(--sai-prompt-scrollbar-space) + 8px); top: 8px; width: 24px; min-width: 24px; max-width: 24px; height: 24px; min-height: 24px; max-height: 24px; margin: 0; padding: 0; transform: none; opacity: 0.6; border-radius: 4px; background: var(--button-secondary-background-fill); color: var(--body-text-color); }
+#prompt_text_column .clear-prompt-btn:hover { transform: none; opacity: 1; }
+.sai-h3sb-speaker { display: flex; flex-direction: column; min-width: 0; gap: 3px; font-size: 11px; }
+.sai-h3sb-speaker select { width: 100%; min-width: 0; min-height: 30px; color: inherit; background: var(--input-background-fill); border: 1px solid var(--border-color-primary); border-radius: 4px; }
+@media (max-width: 800px) {
+    .sai-vpe-backdrop { padding: 6px; }
+    .sai-vpe-dialog { height: 97dvh; }
+    .sai-vpe-body { flex-wrap: wrap; overflow-y: auto; display: block; }
+    .sai-vpe-library { max-height: 400px; width: 100%; border-right: 0; border-bottom: 1px solid var(--border-color-primary); }
+    .sai-vpe-cards { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+    .sai-vpe-refs { flex-direction: row; flex-wrap: wrap; }
+    .sai-vpe-ref-row { width: 100px; }
+    .sai-vpe-main { height: 380px; }
+    .sai-vpe-detail { width: 100%; border-left: 0; border-top: 1px solid var(--border-color-primary); }
+    .sai-vpe-dialog footer { padding: 8px; align-items: flex-start; }
+    .sai-vpe-dialog footer .sai-vpe-actions { flex-shrink: 0; }
+}

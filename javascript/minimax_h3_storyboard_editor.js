@@ -422,6 +422,8 @@
                 index: number,
                 token: `<${title} ${number}>`,
                 slot: cleanText(raw.slot || raw.key || ''),
+                asset_id: cleanText(raw.asset_id || ''),
+                source_id: cleanText(raw.source_id || ''),
                 label_en: cleanText(raw.label_en || raw.label || `${title} ${number}`),
                 label_cn: cleanText(raw.label_cn || raw.label_zh || referenceLabelCn(kind, number)),
                 preview: cleanText(raw.preview || raw.thumb || raw.src || raw.data_url || '')
@@ -455,7 +457,7 @@
         if (parsed) raw = parsed.mode || parsed.route || parsed.id || parsed.compiler || parsed.name || '';
         const text = String(raw || '').trim();
         const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v') || compact.includes('r2c') || compact.includes('minimaxh3avatar')) return MODE_REF2VA;
+        if (compact.includes('ref2va') || compact.includes('reference') || compact.includes('ref2v') || compact.includes('r2v') || compact.includes('r2c') || compact.includes('minimaxh3avatar') || compact.includes('minimaxh3motion')) return MODE_REF2VA;
         if (compact.includes('fl2va') || compact.includes('firstlast')) return MODE_FL2VA;
         if (compact.includes('l2va') || compact.includes('lastframe')) return MODE_L2VA;
         if (compact.includes('frameanchor')) return inventory.image_count >= 2 ? MODE_FL2VA : MODE_I2VA;
@@ -937,7 +939,16 @@
         return (meaningful.length ? meaningful : values).join(separator).trim();
     }
 
-    function mergeShotIntoState(state, index) {
+    function mergeDialogueWithSpeakers(current, next, state, options) {
+        if (current.dialogue_speaker_id || next.dialogue_speaker_id) {
+            const context = { ...options, character_bindings: state.character_bindings };
+            current.dialogue = mergeTextValues(formatBoundDialogue(current, context), formatBoundDialogue(next, context));
+            delete current.dialogue_speaker_id;
+            delete current.dialogue_audio_asset_id;
+        } else current.dialogue = mergeTextValues(current.dialogue, next.dialogue);
+    }
+
+    function mergeShotIntoState(state, index, options) {
         const shots = Array.isArray(state?.shots) ? state.shots : [];
         const sourceIndex = Number(index);
         if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= shots.length - 1) return { merged: false, index: -1 };
@@ -945,7 +956,7 @@
         const next = shots[sourceIndex + 1];
         current.description = mergeTextValues(current.description, next.description);
         current.camera = mergeTextValues(current.camera, next.camera, '; ');
-        current.dialogue = mergeTextValues(current.dialogue, next.dialogue);
+        mergeDialogueWithSpeakers(current, next, state, options);
         current.sound = mergeTextValues(current.sound, next.sound);
         shots.splice(sourceIndex + 1, 1);
         return { merged: true, index: sourceIndex };
@@ -954,7 +965,7 @@
     function mergeShot(value, index, options) {
         const opts = options && typeof options === 'object' ? options : {};
         const state = normalize(value, opts);
-        const result = mergeShotIntoState(state, index);
+        const result = mergeShotIntoState(state, index, opts);
         return { state, intervals: timelineIntervals(state, opts), result };
     }
 
@@ -1011,7 +1022,7 @@
             if (last && overflow) {
                 last.description = mergeTextValues(last.description, overflow.description);
                 last.camera = mergeTextValues(last.camera, overflow.camera, '; ');
-                last.dialogue = mergeTextValues(last.dialogue, overflow.dialogue);
+                mergeDialogueWithSpeakers(last, overflow, state, opts);
                 last.sound = mergeTextValues(last.sound, overflow.sound);
             }
         }
@@ -1025,6 +1036,8 @@
                 description: cleanText(shot.description) || templateText(blueprint?.description, lang),
                 camera: cleanText(shot.camera) || templateText(blueprint?.camera, lang),
                 dialogue: cleanText(shot.dialogue) || templateText(blueprint?.dialogue, lang),
+                dialogue_speaker_id: shot.dialogue_speaker_id,
+                dialogue_audio_asset_id: shot.dialogue_audio_asset_id,
                 sound: cleanText(shot.sound) || templateText(blueprint?.sound, lang),
                 reference_binding: shot.reference_binding
             }, index, starts);
@@ -1055,6 +1068,10 @@
             description: cleanText(source.description ?? source.visual ?? source.action ?? ''),
             camera: cleanText(source.camera ?? ''),
             dialogue: cleanText(source.dialogue ?? source.text ?? ''),
+            ...(source.dialogue_speaker_id ? {
+                dialogue_speaker_id: cleanText(source.dialogue_speaker_id),
+                dialogue_audio_asset_id: cleanText(source.dialogue_audio_asset_id || '')
+            } : {}),
             sound: cleanText(source.sound ?? source.audio ?? ''),
             narrative: source.narrative === true,
             reference_binding: normalizeShotBinding(source.reference_binding ?? source.referenceBinding ?? '')
@@ -1200,6 +1217,8 @@
             subject_definitions: cleanText(source.subject_definitions ?? source.subjectDefinitions ?? ''),
             summary: cleanText(source.summary ?? ''),
             retention_analysis: cleanText(source.retention_analysis ?? source.retentionAnalysis ?? ''),
+            character_bindings: Array.isArray(source.character_bindings)
+                ? JSON.parse(JSON.stringify(source.character_bindings)).slice(0, 100) : [],
             timeline_preamble: cleanText(source.timeline_preamble || ''),
             prompt_snapshot: cleanText(source.prompt_snapshot ?? source.promptSnapshot ?? '')
         }), opts);
@@ -1353,6 +1372,115 @@
         return `${text}${t('.', '。', lang)}`;
     }
 
+    function speakerBindings(state) {
+        const bindings = Array.isArray(state?.character_bindings) ? state.character_bindings : [];
+        return bindings.filter(item => item?.card?.id).map((item, index) => ({
+            ...item, speaker_id: /^S[1-9]\d*$/.test(item.speaker_id || '') ? item.speaker_id : `S${index + 1}`,
+            references: Array.isArray(item.references) ? item.references : []
+        }));
+    }
+
+    function characterSubjectDefinitions(value, bindings, lang, replace = false) {
+        const lines = String(value || '').trim().split('\n');
+        const entries = [];
+        for (const binding of speakerBindings({ character_bindings: bindings })) {
+            const card = binding.card;
+            const pictures = [...new Set(binding.references.map(ref => ref.token).filter(token => /^<Picture \d+>$/.test(token)))];
+            const audios = [...new Set(binding.references.map(ref => ref.token).filter(token => /^<Audio \d+>$/.test(token)))];
+            for (const token of pictures) {
+                const number = token.match(/\d+/)[0];
+                const prefix = `<Subject ${number}> (${token}):`;
+                entries.push({
+                    matches: line => new RegExp(`^<Subject\\s+${number}>\\s*\\(<Picture\\s+${number}>\\)\\s*[:：]`).test(line.trim()),
+                    text: `${prefix} ${[card.name, card.appearance].filter(Boolean).join(' - ')}`,
+                    name: card.name,
+                });
+            }
+            if (audios.length) {
+                const prefix = `(${binding.speaker_id})`;
+                entries.push({
+                    matches: line => line.trim().startsWith(prefix),
+                    text: `${prefix} ${card.name}${pictures.length ? ` (${pictures.join(' ')})` : ''}: ${t(
+                        `${audios.join(' ')} defines this character's reference voice.`,
+                        `${audios.join(' ')} 为该角色的参考声音。`, lang)}${card.voice_description ? ` ${card.voice_description}` : ''}`,
+                    name: card.name,
+                    tokens: audios,
+                });
+            }
+        }
+        if (!entries.length) return cleanText(value);
+        const result = lines.filter(line => !/^N\/A(?:\s*\([^\n]*\))?[.]?$/i.test(line.trim()));
+        for (const entry of entries) {
+            const index = result.findIndex(entry.matches);
+            if (index < 0) result.push(entry.text);
+            else if (replace || !result[index].includes(entry.name) || entry.tokens?.some(token => !result[index].includes(token))) result[index] = entry.text;
+        }
+        return result.join('\n').trim();
+    }
+
+    function definePromptCharacters(value, bindings, lang, replace = false) {
+        const source = String(value || '');
+        if (!characterSubjectDefinitions('', bindings, lang)) return source;
+        const section = /^subject_definitions:[ \t]*([\s\S]*?)(?=^(?:summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music):|(?![\s\S]))/m;
+        const match = source.match(section);
+        if (match) return source.replace(section, () => `subject_definitions: ${characterSubjectDefinitions(match[1], bindings, lang, replace)}\n\n`);
+        // Keep existing prose intact when promoting a plain prompt to structured H3 text.
+        return `subject_definitions: ${characterSubjectDefinitions('', bindings, lang)}\n\n${/^(?:summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music):/m.test(source) ? '' : 'detailed_description: '}${source}`;
+    }
+
+    function hasMultipleSpeakers(value) {
+        const prose = String(value || '').replace(/<d\b[^>]*>[\s\S]*?<\/d>/gi, '');
+        const markers = Array.from(prose.matchAll(/\(\s*(S\d+(?:\s*,\s*S\d+)*)\s*\)|\b(S\d+)\s*[:：]/gi))
+            .flatMap(match => String(match[1] || match[2]).toUpperCase().split(/\s*,\s*/));
+        return new Set(markers).size > 1;
+    }
+
+    function formatBoundDialogue(shot, options) {
+        const lang = options?.langState;
+        const dialogue = formatShotDialogue(shot.dialogue, lang);
+        if (!shot.dialogue_speaker_id || !dialogueTextForTiming(shot.dialogue)) return dialogue;
+        const binding = speakerBindings(options).find(item => item.card.id === shot.dialogue_speaker_id);
+        if (!binding || hasMultipleSpeakers(shot.dialogue)) return dialogue;
+        const pictures = binding.references.filter(ref => /^<Picture \d+>$/.test(ref.token)).map(ref => ref.token).join(' ');
+        const audio = shot.dialogue_audio_asset_id === 'none' ? null
+            : binding.references.find(ref => /^<Audio \d+>$/.test(ref.token)
+                && (!shot.dialogue_audio_asset_id || ref.asset_id === shot.dialogue_audio_asset_id));
+        const identity = [binding.card.name, pictures].filter(Boolean).join(' ');
+        const definition = t(
+            `${identity} is speaker (${binding.speaker_id}).`,
+            `${identity} 为说话人 (${binding.speaker_id})。`, lang);
+        const voice = audio ? t(` ${audio.token} defines this speaker's voice.`, ` ${audio.token} 为该角色的参考声音。`, lang) : '';
+        // Speaker changes affect only prose outside the exact spoken <d> content.
+        const spoken = dialogue.split(/(<d\b[^>]*>[\s\S]*?<\/d>)/gi).map((part, index) => index % 2
+            ? part : part.replace(/\(\s*S\d+\s*\)/gi, `(${binding.speaker_id})`)).join('');
+        return `${definition}${voice} ${spoken}`;
+    }
+
+    function validateSpeakers(state, options) {
+        const bindings = speakerBindings(state);
+        for (const shot of state.shots || []) {
+            if (!shot.dialogue_speaker_id) continue;
+            const binding = bindings.find(item => item.card.id === shot.dialogue_speaker_id);
+            if (!binding) return { ok: false, error: t('A dialogue character is missing. Select its speaker again.', '对白角色已缺失，请重新选择说话人。', options?.langState) };
+            if (hasMultipleSpeakers(shot.dialogue)) return { ok: false, error: t('Multiple-speaker dialogue must keep its original speaker markers.', '多人对白需要保留原有说话人标记，请取消单个角色选择。', options?.langState) };
+            if (shot.dialogue_audio_asset_id && shot.dialogue_audio_asset_id !== 'none'
+                    && !binding.references.some(ref => ref.asset_id === shot.dialogue_audio_asset_id && /^<Audio \d+>$/.test(ref.token))) {
+                return { ok: false, error: t('The dialogue reference voice is missing.', '对白的参考声音已缺失。', options?.langState) };
+            }
+        }
+        return { ok: true };
+    }
+
+    function speakerControlsHtml(shot, state, lang) {
+        const bindings = speakerBindings(state);
+        if (!bindings.length && !shot.dialogue_speaker_id) return '';
+        const binding = bindings.find(item => item.card.id === shot.dialogue_speaker_id);
+        const voices = binding?.references.filter(ref => /^<Audio \d+>$/.test(ref.token)) || [];
+        const missing = shot.dialogue_speaker_id && !binding
+            ? `<option value="${escapeHtml(shot.dialogue_speaker_id)}" selected>${escapeHtml(t('Missing character', '角色已缺失', lang))}</option>` : '';
+        return `<label class="sai-h3sb-speaker"><span>${escapeHtml(t('Speaker', '说话人', lang))}</span><select data-h3sb-speaker aria-label="${escapeHtml(t('Speaker', '说话人', lang))}"><option value="">${escapeHtml(t('Original dialogue', '原有对白', lang))}</option>${missing}${bindings.map(item => `<option value="${escapeHtml(item.card.id)}"${item.card.id === shot.dialogue_speaker_id ? ' selected' : ''}>${escapeHtml(item.card.name)} (${item.speaker_id})</option>`).join('')}</select></label>${binding ? `<label class="sai-h3sb-speaker"><span>${escapeHtml(t('Reference voice', '参考声音', lang))}</span><select data-h3sb-voice aria-label="${escapeHtml(t('Reference voice', '参考声音', lang))}"><option value="">${escapeHtml(t('Character default', '角色默认', lang))}</option><option value="none"${shot.dialogue_audio_asset_id === 'none' ? ' selected' : ''}>${escapeHtml(t('None', '无', lang))}</option>${voices.map(ref => `<option value="${escapeHtml(ref.asset_id)}"${ref.asset_id === shot.dialogue_audio_asset_id ? ' selected' : ''}>${escapeHtml(ref.token)}</option>`).join('')}</select></label>` : ''}`;
+    }
+
     function shotBody(shot, options) {
         const lang = options?.langState;
         const description = stripDefaultSubtitleInstruction(shot.description);
@@ -1361,7 +1489,7 @@
             '镜头采用固定机位，保持主体和场景清晰。',
             lang
         ));
-        const dialogue = formatShotDialogue(shot.dialogue, lang);
+        const dialogue = formatBoundDialogue(shot, options);
         const sound = cleanText(shot.sound);
         return [description, camera, dialogue, sound]
             .map((part) => narrativeSentence(part, lang)).filter(Boolean).join(' ');
@@ -1373,7 +1501,7 @@
             const interval = intervals[index] || { start: 0, end: finiteNumber(options?.duration, 5) };
             const marker = index === 0 ? '[Shot 1]' : `[Shot ${index + 1}] At ${formatSeconds(interval.start)},`;
             const constraint = index === 0 ? t(NO_SUBTITLES_EN, NO_SUBTITLES_CN, options?.langState) : '';
-            return `${marker} ${[shotBody(shot, options), constraint].filter(Boolean).join(' ')}`.trim();
+            return `${marker} ${[shotBody(shot, { ...options, character_bindings: state.character_bindings }), constraint].filter(Boolean).join(' ')}`.trim();
         }).join('\n');
     }
 
@@ -1789,6 +1917,8 @@
     }
 
     function validateReferences(state, options) {
+        const speakerCheck = validateSpeakers(state, options);
+        if (!speakerCheck.ok) return speakerCheck;
         const inventory = inventoryFromOptions(options);
         const mode = normalizeMode(state.mode || options?.mode, options);
         if ((mode === MODE_I2VA || mode === MODE_L2VA) && inventory.image_count < 1) {
@@ -1804,7 +1934,8 @@
             };
         }
         const limits = referenceLimitForMode(mode, inventory);
-        const matches = stateReferenceText(state).matchAll(/<(Picture|Video|Audio)\s+(\d+)>/gi);
+        const spoken = state.shots.map(shot => formatBoundDialogue(shot, { ...options, character_bindings: state.character_bindings })).join('\n');
+        const matches = (stateReferenceText(state) + '\n' + spoken).matchAll(/<(Picture|Video|Audio)\s+(\d+)>/gi);
         for (const match of matches) {
             const rawKind = String(match[1] || '').toLowerCase();
             const kind = rawKind === 'picture' ? 'image' : rawKind;
@@ -1878,8 +2009,9 @@
         const music = cleanText(state.non_diegetic_music) || 'N/A';
         if (mode === MODE_REF2VA) {
             const inventory = inventoryFromOptions(opts);
-            const subjects = cleanText(state.subject_definitions)
-                || defaultReferenceSubjects(inventory, opts.langState);
+            const subjects = characterSubjectDefinitions(
+                cleanText(state.subject_definitions) || defaultReferenceSubjects(inventory, opts.langState),
+                state.character_bindings, opts.langState);
             const summary = cleanText(state.summary) || defaultReferenceSummary(inventory);
             const retention = cleanText(state.retention_analysis) || referenceRetention(inventory, opts.langState);
             return [
@@ -2036,6 +2168,8 @@
             if (optimizedShot.narrative && cleanText(optimizedShot.description)) {
                 return normalizeShot({
                     ...optimizedShot,
+                    dialogue_speaker_id: previousShot.dialogue_speaker_id,
+                    dialogue_audio_asset_id: previousShot.dialogue_audio_asset_id,
                     description: preserveFieldReferenceBindings(
                         [previousShot.description, previousShot.camera, previousShot.dialogue, previousShot.sound].join(' '),
                         sanitizeOptimizedSubjectLanguage(optimizedShot.description),
@@ -2049,6 +2183,8 @@
                 : cleanText(previousShot.description);
             return normalizeShot({
                 start: index === 0 ? 0 : finiteNumber(optimizedShot.start, previousShot.start),
+                dialogue_speaker_id: previousShot.dialogue_speaker_id,
+                dialogue_audio_asset_id: previousShot.dialogue_audio_asset_id,
                 description: preserveFieldReferenceBindings(
                     previousShot.description,
                     description,
@@ -2240,6 +2376,10 @@
     }
 
     function audioSourceFromHost(host) {
+        // Gradio 6's waveform player exposes the file via its download link.
+        const download = host?.querySelector?.('a[download][href],a[href*="/gradio_api/file="],a[href*="/file="]');
+        const downloadedSource = validMediaSource(download?.href || download?.getAttribute?.('href'));
+        if (downloadedSource) return downloadedSource;
         const source = mediaSourceFromHost(host, 'audio');
         if (source) return source;
         const waveform = host?.querySelector?.('[data-testid^="waveform-"]');
@@ -2338,13 +2478,95 @@
         ].flatMap((item) => {
             if (hidden.has(item.slot)) return [];
             const info = sceneMediaInfo(item.id, 'audio');
-            return info.available ? [Object.assign({}, item, { preview: '' })] : [];
+            return info.available ? [Object.assign({}, item, { preview: info.preview })] : [];
         });
-        return inventoryFromOptions({ inventory: {
+        const inventory = inventoryFromOptions({ inventory: {
             image_refs: imageRefs,
             video_refs: videoRefs,
             audio_refs: audioRefs
         } });
+        const saved = parseJsonObject(readBridgeValue('visual_character_scene_result'));
+        const mappings = Array.isArray(saved?.references) ? saved.references : [];
+        for (const ref of [...inventory.image_refs, ...inventory.audio_refs]) {
+            const mapping = mappings.find(item => item.slot === ref.slot
+                && item.source_identity && item.source_identity === root.SimpAIVisualPromptEditor?.sourceIdentity(ref));
+            if (mapping) ref.asset_id = mapping.asset_id;
+        }
+        return inventory;
+    }
+
+    function sceneCharacterSlots(source) {
+        const options = currentSceneOptions(source);
+        const hidden = sceneHiddenSlots(source);
+        const limits = options.mode === MODE_T2VA ? { image: 0, audio: 0 }
+            : options.mode === MODE_REF2VA ? { image: 9, audio: 3 }
+                : { image: options.mode === MODE_FL2VA ? 2 : 1, audio: 0 };
+        const images = ['scene_canvas_image', ...Array.from({ length: 8 }, (_, index) => `scene_input_image${index + 1}`)];
+        const audios = ['scene_audio', 'scene_audio2', 'scene_audio3'];
+        return [
+            ...images.filter(key => !hidden.has(key)).slice(0, limits.image).map(key => ({ key, kind: 'image' })),
+            ...audios.filter(key => !hidden.has(key)).slice(0, limits.audio).map(key => ({ key, kind: 'audio' }))
+        ];
+    }
+
+    function waitForSceneMedia(check, timeout = 20000) {
+        return new Promise((resolve, reject) => {
+            const deadline = Date.now() + timeout;
+            const timer = root.setInterval(() => {
+                try {
+                    const value = check();
+                    if (value) { root.clearInterval(timer); resolve(value); }
+                    else if (Date.now() >= deadline) throw new Error('media_apply_timeout');
+                } catch (error) { root.clearInterval(timer); reject(error); }
+            }, 80);
+        });
+    }
+
+    let attachingSceneCharacter = false;
+    async function attachSceneCharacterMedia(card) {
+        if (attachingSceneCharacter) throw new Error('media_slot_occupied');
+        const source = languageState();
+        const api = root.SimpAIVisualPromptEditor;
+        const inventory = currentSceneInventory(source);
+        const plan = api.planMediaAttachments(card.media, inventory, sceneCharacterSlots(source));
+        if (!plan.assignments.length) return { inventory, skipped: plan.skipped };
+        const target = findById('visual_character_scene_apply');
+        const button = target?.matches?.('button') ? target : target?.querySelector('button');
+        if (!button || !bridgeInput('visual_character_scene_payload')) throw new Error('media_apply_unavailable');
+        const previous = parseJsonObject(readBridgeValue('visual_character_scene_result'))?.references || [];
+        const requestId = `character_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        attachingSceneCharacter = true;
+        try {
+            setNativeValue(bridgeInput('visual_character_scene_payload'), JSON.stringify({
+                request_id: requestId, assignments: plan.assignments
+            }));
+            button.click();
+            await waitForSceneMedia(() => {
+                const response = parseJsonObject(readBridgeValue('visual_character_scene_result'));
+                if (response?.request_id !== requestId) return null;
+                if (!response.ok) throw new Error(response.error || 'media_apply_failed');
+                return response;
+            });
+            const updated = await waitForSceneMedia(() => {
+                const candidate = currentSceneInventory(source);
+                const available = api.references(candidate);
+                return plan.assignments.every(item => available.some(ref => ref.slot === item.slot && ref.preview))
+                    ? candidate : null;
+            });
+            const available = api.references(updated);
+            const mappings = previous.filter(item => !plan.assignments.some(next => next.slot === item.slot));
+            for (const assignment of plan.assignments) {
+                const ref = available.find(item => item.slot === assignment.slot);
+                const identity = api.sourceIdentity({ ...ref, asset_id: '' });
+                if (identity) mappings.push({ ...assignment, source_identity: identity });
+            }
+            setNativeValue(bridgeInput('visual_character_scene_result'), JSON.stringify({
+                ok: true, request_id: requestId, references: mappings
+            }));
+            return { inventory: currentSceneInventory(source), skipped: plan.skipped };
+        } finally {
+            attachingSceneCharacter = false;
+        }
     }
 
     function currentSceneOptions(source) {
@@ -2366,7 +2588,9 @@
         const stored = normalize(storedText, options);
         if (prompt) {
             if (stored.prompt_snapshot === prompt) return stored;
-            return parsePrompt(prompt, Object.assign({}, options, { optimize: stored.optimize }));
+            return Object.assign(parsePrompt(prompt, Object.assign({}, options, { optimize: stored.optimize })), {
+                character_bindings: stored.character_bindings || []
+            });
         }
         return defaultState(options);
     }
@@ -2444,7 +2668,7 @@
   <td><div class="sai-h3sb-time-fields"><div class="sai-h3sb-time-range"><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(formatPromptSeconds(interval.start))}" data-h3sb-shot-field="start" aria-label="${escapeHtml(t('Shot start time', '\u955c\u5934\u5f00\u59cb\u65f6\u95f4', lang))}" ${index === 0 ? 'disabled' : ''}><span class="sai-h3sb-time-separator">-</span><output data-h3sb-time-view="end">${escapeHtml(formatPromptSeconds(interval.end))}</output></div><label class="sai-h3sb-time-duration-line"><span class="sai-h3sb-time-caption">${escapeHtml(t('Duration', '\u65f6\u957f', lang))}</span><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(formatPromptSeconds(interval.duration))}" data-h3sb-shot-field="duration" aria-label="${escapeHtml(t('Shot duration', '\u955c\u5934\u65f6\u957f', lang))}"></label></div></td>
   <td><div class="sai-h3sb-description-cell"><textarea data-h3sb-shot-field="description" placeholder="${escapeHtml(storyboardShotDescriptionPlaceholder(lang, state.mode))}">${escapeHtml(descriptionValue)}</textarea></div></td>
   <td><div class="sai-h3sb-camera-cell">${cameraPresetSelectHtml(shot, lang)}<textarea data-h3sb-shot-field="camera" placeholder="${escapeHtml(storyboardFieldPlaceholder('camera', lang))}">${escapeHtml(shot.camera)}</textarea></div></td>
-  <td><div class="sai-h3sb-dialogue-cell"><textarea data-h3sb-shot-field="dialogue" placeholder="${escapeHtml(storyboardFieldPlaceholder('dialogue', lang))}">${escapeHtml(shot.dialogue)}</textarea><div class="sai-h3sb-dialogue-meta" data-h3sb-dialogue-meta data-tone="${dialogueTimingTone(dialogue)}"><i class="fa-solid fa-comments"></i><span>${escapeHtml(dialogueTimingLabel(dialogue, lang))}</span></div></div></td>
+  <td><div class="sai-h3sb-dialogue-cell">${speakerControlsHtml(shot, state, lang)}<textarea data-h3sb-shot-field="dialogue" placeholder="${escapeHtml(storyboardFieldPlaceholder('dialogue', lang))}">${escapeHtml(shot.dialogue)}</textarea><div class="sai-h3sb-dialogue-meta" data-h3sb-dialogue-meta data-tone="${dialogueTimingTone(dialogue)}"><i class="fa-solid fa-comments"></i><span>${escapeHtml(dialogueTimingLabel(dialogue, lang))}</span></div></div></td>
   <td><textarea data-h3sb-shot-field="sound" placeholder="${escapeHtml(storyboardFieldPlaceholder('sound', lang))}">${escapeHtml(shot.sound)}</textarea></td>
   <td><div class="sai-h3sb-shot-actions"><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="up" title="${escapeHtml(t('Move up', '\u4e0a\u79fb', lang))}" ${index === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="down" title="${escapeHtml(t('Move down', '\u4e0b\u79fb', lang))}" ${index === state.shots.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-down"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="copy" title="${escapeHtml(t('Duplicate shot', '\u590d\u5236\u955c\u5934', lang))}" ${state.shots.length >= MAX_SHOTS ? 'disabled' : ''}><i class="fa-solid fa-copy"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="split" title="${escapeHtml(t('Split shot', '\u62c6\u5206\u955c\u5934', lang))}" ${interval.duration < MIN_SHOT_DURATION * 2 || state.shots.length >= MAX_SHOTS ? 'disabled' : ''}><i class="fa-solid fa-code-branch"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="merge" title="${escapeHtml(t('Merge with next shot', '\u4e0e\u4e0b\u4e00\u4e2a\u955c\u5934\u5408\u5e76', lang))}" ${index >= state.shots.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-object-group"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="fit-dialogue" title="${escapeHtml(t('Give dialogue enough time', '\u6309\u5bf9\u767d\u5efa\u8bae\u9884\u7559\u65f6\u957f', lang))}" ${dialogue.estimated > 0 ? '' : 'disabled'}><i class="fa-solid fa-comments"></i></button><button type="button" class="sai-h3sb-icon" data-h3sb-row-action="delete" title="${escapeHtml(t('Delete shot', '\u5220\u9664\u955c\u5934', lang))}" ${state.shots.length <= 1 ? 'disabled' : ''}><i class="fa-solid fa-trash"></i></button></div></td>
  </tr>`;
@@ -2548,7 +2772,9 @@
         };
         let state = normalize(opts.storyboardState ?? opts.state ?? opts.value ?? opts.prompt ?? '', editorOptions);
         if (opts.prompt && state.prompt_snapshot !== cleanText(opts.prompt) && !parseJsonObject(opts.storyboardState)) {
-            state = parsePrompt(opts.prompt, Object.assign({}, editorOptions, { optimize: state.optimize }));
+            state = Object.assign(parsePrompt(opts.prompt, Object.assign({}, editorOptions, { optimize: state.optimize })), {
+                character_bindings: state.character_bindings || []
+            });
         }
         state.mode = editorOptions.mode;
         // The table has no editable preamble column; imported prose must not be written back.
@@ -2578,6 +2804,12 @@
   </div>
   <footer class="sai-h3sb-footer"><span class="sai-h3sb-message" data-h3sb-message data-tone="info" aria-live="polite"></span><div class="sai-h3sb-footer-actions"><button type="button" class="sai-h3sb-button" data-h3sb-action="reset" title="${escapeHtml(t('Reset storyboard', '\u91cd\u7f6e\u5206\u955c\u8868', lang))}"><i class="fa-solid fa-arrow-rotate-left"></i></button><button type="button" class="sai-h3sb-button" data-h3sb-action="cancel">${escapeHtml(t('Cancel', '\u53d6\u6d88', lang))}</button><button type="button" class="sai-h3sb-button is-primary" data-h3sb-action="apply"><i class="fa-solid fa-check"></i><span>${escapeHtml(t('Apply to Prompt', '\u5199\u5165 Prompt', lang))}</span></button></div></footer>
         </section>`;
+        const characterEntry = document.createElement('button');
+        characterEntry.type = 'button';
+        characterEntry.className = 'sai-h3sb-button';
+        characterEntry.dataset.h3sbAction = 'characters';
+        characterEntry.innerHTML = `<i class="fa-solid fa-address-card"></i><span>${escapeHtml(t('Characters & prompts', '角色与提示词', lang))}</span>`;
+        backdrop.querySelector('.sai-h3sb-toolbar').prepend(characterEntry);
         let activeTextTarget = null;
         let aiTarget = { scope: 'shot', index: 0, field: 'description' };
         let activeShotIndex = 0;
@@ -2872,6 +3104,45 @@
             renderAiTarget();
             updateHistoryControls();
         };
+        const openCharacters = () => {
+            commitPendingTextEdit();
+            const fields = [
+                ['description', t('Scene / action', '画面 / 动作', lang)],
+                ['camera', t('Camera', '运镜', lang)],
+                ['dialogue', t('Dialogue / text', '对白 / 画面文字', lang)],
+                ['sound', t('Sound', '声音', lang)],
+            ];
+            const targets = state.shots.flatMap((shot, index) => fields.map(([key, label]) => ({
+                id: `shot:${index}:${key}`, label: `${t('Shot', '镜头', lang)} ${index + 1} · ${label}`, value: shot[key] || '',
+            })));
+            backdrop.querySelectorAll('textarea[data-h3sb-global]:not([readonly])').forEach(field => {
+                const key = field.getAttribute('data-h3sb-global');
+                targets.push({ id: `global:${key}`, label: field.closest('label')?.querySelector('span')?.textContent || key, value: state[key] });
+            });
+            root.SimpAIVisualPromptEditor?.open({
+                targets, activeTarget: `shot:${activeShotIndex}:description`,
+                definitionTarget: state.mode === MODE_REF2VA ? 'global:subject_definitions' : '',
+                inventory: opts.getInventory?.() || editorOptions.inventory,
+                getInventory: () => opts.getInventory?.() || editorOptions.inventory,
+                onAttachMedia: opts.onAttachMedia ? async card => {
+                    const result = await opts.onAttachMedia(card);
+                    editorOptions.inventory = inventoryFromOptions(result);
+                    return { ...result, inventory: editorOptions.inventory };
+                } : undefined,
+                langState: lang, bindings: state.character_bindings || [],
+                onApply: result => {
+                    const before = stateSnapshot();
+                    for (const target of targets) {
+                        const [scope, index, field] = target.id.split(':');
+                        if (scope === 'shot') state.shots[Number(index)][field] = result.targets[target.id];
+                        else state[index] = result.targets[target.id];
+                    }
+                    state.character_bindings = result.bindings;
+                    renderState(); syncRetentionEditor(); recordStateChange(before);
+                    setMessage(t('Characters and prompts updated.', '角色与提示词已更新。', lang), 'info');
+                },
+            });
+        };
         const setMessage = (message, tone) => {
             const output = backdrop.querySelector('[data-h3sb-message]');
             if (!output) return;
@@ -2954,6 +3225,26 @@
         });
         backdrop.addEventListener('change', (event) => {
             const target = event.target;
+            if (target.matches?.('[data-h3sb-speaker],[data-h3sb-voice]')) {
+                const row = target.closest('[data-h3sb-shot-row]');
+                const index = Number(row?.getAttribute('data-h3sb-shot-row'));
+                const shot = state.shots[index];
+                if (!shot) return;
+                commitPendingTextEdit();
+                if (target.matches('[data-h3sb-speaker]') && target.value && hasMultipleSpeakers(shot.dialogue)) {
+                    target.value = shot.dialogue_speaker_id || '';
+                    setMessage(t('Keep the original markers for multiple-speaker dialogue.', '多人对白请保留原有说话人标记。', lang), 'error');
+                    return;
+                }
+                const before = stateSnapshot();
+                if (target.matches('[data-h3sb-speaker]')) {
+                    shot.dialogue_speaker_id = target.value;
+                    shot.dialogue_audio_asset_id = '';
+                } else shot.dialogue_audio_asset_id = target.value;
+                recordStateChange(before);
+                renderState();
+                return;
+            }
             if (target.matches?.('[data-h3sb-retention-level],[data-h3sb-retention-content]')) {
                 commitPendingTextEdit();
                 const before = stateSnapshot();
@@ -3171,7 +3462,7 @@
                 }
                 if (action === 'merge') {
                     const before = stateSnapshot();
-                    const result = mergeShotIntoState(state, index);
+                    const result = mergeShotIntoState(state, index, editorOptions);
                     if (result.merged) {
                         recordStateChange(before);
                         renderState();
@@ -3216,6 +3507,10 @@
             }
             const action = event.target.closest?.('[data-h3sb-action]')?.getAttribute('data-h3sb-action');
             if (!action) return;
+            if (action === 'characters') {
+                openCharacters();
+                return;
+            }
             if (action === 'close' || action === 'cancel') {
                 close();
                 return;
@@ -3384,6 +3679,7 @@
             if (action !== 'apply') return;
             commitPendingTextEdit();
             setMessage('');
+            if (opts.getInventory) editorOptions.inventory = inventoryFromOptions({ inventory: opts.getInventory() });
             backdrop.querySelectorAll('[data-h3sb-shot-field="start"],[data-h3sb-shot-field="duration"]').forEach((control) => {
                 commitTimeInput(control);
             });
@@ -3454,6 +3750,12 @@
         const state = sceneStateFromPrompt(source);
         return open(Object.assign({}, options, {
             context: 'scene_preset',
+            getInventory: () => currentSceneInventory(languageState()),
+            onAttachMedia: async card => {
+                const result = await attachSceneCharacterMedia(card);
+                options.inventory = result.inventory;
+                return result;
+            },
             prompt: currentPrompt,
             storyboardState: state,
             onOptimize: async (response) => {
@@ -3496,7 +3798,40 @@
         }));
     }
 
+    function visualPromptContext(field) {
+        const source = languageState();
+        const options = currentSceneOptions(source);
+        const stored = parseJsonObject(readBridgeValue('minimax_h3_storyboard_scene_state')) || {};
+        return {
+            langState: source,
+            definitionTarget: options.mode === MODE_REF2VA ? 'prompt' : '',
+            inventory: options.inventory,
+            getInventory: () => currentSceneInventory(languageState()),
+            onAttachMedia: attachSceneCharacterMedia,
+            bindings: stored.character_bindings || [],
+            onApply: result => {
+                if (!field?.isConnected) return false;
+                setNativeValue(field, result.value);
+                const next = Object.assign(parsePrompt(result.value, currentSceneOptions(languageState())), {
+                    character_bindings: result.bindings, prompt_snapshot: result.value
+                });
+                setNativeValue(bridgeInput('minimax_h3_storyboard_scene_state'), serialize(next, options));
+                syncSceneControl(source);
+                return true;
+            }
+        };
+    }
+
     const api = {
+        characterSubjectDefinitions,
+        definePromptCharacters,
+        formatBoundDialogue,
+        validateSpeakers,
+        hasMultipleSpeakers,
+        speakerControlsHtml,
+        visualPromptContext,
+        sceneCharacterSlots,
+        attachSceneCharacterMedia,
         createHistory,
         MODE_T2VA,
         MODE_I2VA,
@@ -3524,6 +3859,7 @@
         normalizeMode,
         sceneModeFromSource,
         currentSceneInventory,
+        audioSourceFromHost,
         normalize,
         parse: normalize,
         parsePrompt,

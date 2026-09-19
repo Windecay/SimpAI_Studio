@@ -672,10 +672,12 @@ def control_qwen_tts(payload, state_params):
             return {"ok": False, "error": "run not found", "run_id": run_id, "job_id": run_id}
         if record.get("state") in QWEN_TTS_TERMINAL_STATES:
             return _public_record(record)
+        should_interrupt = record.get("state") == "running"
         record["cancel_action"] = "stop"
         record["state"] = "cancelling"
         record["message"] = "Stop requested. Waiting for Qwen TTS interruption."
         record["updated_ts"] = time.time()
         _add_event(record, "warn", record["message"], {"action": action})
-    _set_interrupt(True)
+    if should_interrupt:
+        _set_interrupt(True)
     return _public_record(record)

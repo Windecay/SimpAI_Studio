@@ -187,6 +187,7 @@ def javascript_html():
     viewer_js_path = webpath('javascript/viewer.js')
     image_viewer_js_path = webpath('javascript/imageviewer.js')
     topbar_js_path = webpath('javascript/topbar.js')
+    advanced_column_drawer_js_path = webpath('javascript/advanced_column_drawer.js')
     canvg_min_js_path = webpath('javascript/umd.min.js')
     workspace_recovery_path = webpath('javascript/workspace_recovery.js')
     status_monitor_path = webpath('javascript/status_monitor.js') 
@@ -203,6 +204,8 @@ def javascript_html():
     webui_danbooru_autocomplete_path = webpath('javascript/webui_danbooru_autocomplete.js')
     scene_prompt_recommendations_path = webpath('javascript/scene_prompt_recommendations.js')
     prompt_actions_path = webpath('javascript/prompt_actions.js')
+    visual_prompt_editor_path = webpath('javascript/visual_prompt_editor.js')
+    visual_prompt_editor_css_path = webpath('css/visual_prompt_editor.css')
     canvas_workbench_registry_path = webpath('javascript/canvas_workbench/registry.js')
     canvas_workbench_vlm_chat_path = webpath('javascript/canvas_workbench/vlm_chat.js')
     canvas_workbench_canvas_agent_path = webpath('javascript/canvas_workbench/canvas_agent.js')
@@ -779,6 +782,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{viewer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{image_viewer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{topbar_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{advanced_column_drawer_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_utils_path}"></script>\n'
     head += f'<script type="text/javascript" src="{canvas_workbench_api_path}"></script>\n'
     head += f'<script type="text/javascript" src="{workspace_recovery_path}"></script>\n'
@@ -787,6 +791,8 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{webui_danbooru_autocomplete_path}"></script>\n'
     head += f'<script type="text/javascript" src="{scene_prompt_recommendations_path}"></script>\n'
     head += f'<script type="text/javascript" src="{prompt_actions_path}"></script>\n'
+    head += f'<link rel="stylesheet" href="{visual_prompt_editor_css_path}">\n'
+    head += f'<script type="text/javascript" src="{visual_prompt_editor_path}"></script>\n'
     head += f'<meta name="samples-path" content="{samples_path}">\n'
     head += f'<meta name="preset-samples-path" content="{preset_samples_path}">\n'
     head += f'<meta name="model-path" content="{model_path}">\n'

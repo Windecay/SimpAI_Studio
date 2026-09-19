@@ -358,7 +358,7 @@
     }
 
     async function requestAutocomplete(field, token) {
-        if (!field || !token) {
+        if (!field || !token || !field.isConnected || currentActiveElement() !== field) {
             hideDropdown();
             return;
         }

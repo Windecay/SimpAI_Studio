@@ -162,7 +162,10 @@
             const autocompleteAttrs = shouldEnableDanbooruAutocomplete(rawKey, rawTarget, opts)
                 ? danbooruAutocompleteAttrs(opts.autocompleteRole || rawKey || rawTarget || 'prompt')
                 : '';
-            const tools = [wildcardButton, tagButton, `<button type="button" class="sai-prompt-tool-btn sai-translate-btn is-${state}" data-translate-action="replace" data-translate-target="${target}" data-translate-key="${key}" data-translate-state="${state}" ${disabled} title="${escapeHtml(title)}"><i class="fa-solid fa-language"></i>${label ? `<span>${escapeHtml(label)}</span>` : ''}</button>`].filter(Boolean).join('');
+            const visualButton = rawKey === 'prompt' && rawTarget === 'node-param'
+                ? `<button type="button" class="sai-prompt-tool-btn" data-node-action="edit-visual-prompt" ${disabled} title="${escapeHtml(t('Visual prompt and characters', '可视化提示词与角色'))}" aria-label="${escapeHtml(t('Visual prompt and characters', '可视化提示词与角色'))}"><i class="fa-solid fa-address-card"></i></button>`
+                : '';
+            const tools = [visualButton, wildcardButton, tagButton, `<button type="button" class="sai-prompt-tool-btn sai-translate-btn is-${state}" data-translate-action="replace" data-translate-target="${target}" data-translate-key="${key}" data-translate-state="${state}" ${disabled} title="${escapeHtml(title)}"><i class="fa-solid fa-language"></i>${label ? `<span>${escapeHtml(label)}</span>` : ''}</button>`].filter(Boolean).join('');
             return `<div class="sai-translate-wrap"><textarea ${attrs}${autocompleteAttrs}>${escapeHtml(value || '')}</textarea>${tools ? `<div class="sai-prompt-textarea-tools">${tools}</div>` : ''}</div>`;
         }
 

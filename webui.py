@@ -4887,6 +4887,9 @@ with shared.gradio_root:
                                 elem_id="minimax_h3_storyboard_scene_state",
                                 elem_classes=["sai-gradio-hidden-bridge"],
                             )
+                            visual_character_scene_payload = gr.Textbox(value="", visible="hidden", show_label=False, container=False, elem_id="visual_character_scene_payload", elem_classes=["sai-gradio-hidden-bridge"])
+                            visual_character_scene_result = gr.Textbox(value="", visible="hidden", show_label=False, container=False, elem_id="visual_character_scene_result", elem_classes=["sai-gradio-hidden-bridge"])
+                            visual_character_scene_apply = gr.Button("Apply character media", visible="hidden", elem_id="visual_character_scene_apply", elem_classes=["sai-gradio-hidden-bridge"])
 
                         with gr.Group(visible=True, elem_id="relight_light_control", elem_classes=['simpai-mounted-hidden', 'sai-relight-light-scene-entry']) as relight_light_control:
                             gr.HTML(
@@ -6159,7 +6162,15 @@ with shared.gradio_root:
                         skip_button.click(skip_clicked, inputs=currentTask, outputs=currentTask, queue=False, show_progress=False)
 
                 with gr.Accordion(label='Parallel Translation', visible=True, open=False, elem_id='translation_preview_accordion', elem_classes='translation_preview_accordion') as translation_preview:
-                    translated_prompt = gr.HTML(value="", elem_classes='translation-preview')
+                    translated_prompt = gr.Textbox(
+                        value="",
+                        show_label=False,
+                        container=False,
+                        lines=8,
+                        max_lines=24,
+                        interactive=False,
+                        elem_classes='translation-preview',
+                    )
                     translation_preview_open = gr.Checkbox(value=False, elem_id="translation_preview_open", visible="hidden", container=False, elem_classes=["sai-gradio-hidden-bridge"])
                     def translate_prompt(text):
                         from modules.util import is_chinese
@@ -12437,6 +12448,48 @@ with shared.gradio_root:
                 queue=False,
             )
 
+        visual_character_scene_components = [
+            scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3,
+            scene_input_image4, scene_input_image5, scene_input_image6, scene_input_image7,
+            scene_input_image8, scene_audio, scene_audio2, scene_audio3,
+        ]
+
+        def apply_visual_character_scene_media(payload, state_params, *values):
+            from modules import visual_character_library
+            request_id = ""
+            try:
+                data = json.loads(payload or "{}")
+                if not isinstance(data, dict):
+                    raise ValueError("invalid_media_assignments")
+                state_params = state_params if isinstance(state_params, dict) else {}
+                request_id = str(data.get("request_id") or "")[:100]
+                user_did = _get_state_user_did(state_params) or shared.token.get_guest_did()
+                current = dict(zip(visual_character_library.SCENE_SLOTS, values))
+                hidden = state_params.get("__scene_disvisible") or []
+                hidden = hidden if isinstance(hidden, list) else str(hidden).split(",")
+                updates, refs = visual_character_library.prepare_scene_assignments(
+                    data.get("assignments"), current, user_did,
+                    lambda path: util.normalize_gradio_image_value(path, image_mode="RGBA"),
+                    allowed_slots=set(visual_character_library.SCENE_SLOTS) - set(hidden),
+                )
+                result = {"ok": True, "request_id": request_id, "references": refs}
+                if "scene_canvas_image" in updates:
+                    # Gradio 6 reconstructs Textbox on gr.update and loses its instance-bound image serializer.
+                    updates["scene_canvas_image"] = scene_canvas_image.postprocess(updates["scene_canvas_image"])
+                outputs = [gr_update(value=updates[slot]) if slot in updates else skip_component_update()
+                           for slot in visual_character_library.SCENE_SLOTS]
+            except (ValueError, TypeError, OSError) as error:
+                result = {"ok": False, "request_id": request_id, "error": str(error)}
+                outputs = [skip_component_update() for _ in visual_character_library.SCENE_SLOTS]
+            return (*outputs, json.dumps(result, ensure_ascii=False))
+
+        visual_character_scene_apply.click(
+            apply_visual_character_scene_media,
+            inputs=[visual_character_scene_payload, state_topbar, *visual_character_scene_components],
+            outputs=[*visual_character_scene_components, visual_character_scene_result],
+            queue=False, show_progress=False,
+        )
+
         scene_video.upload(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "ready");}')
         scene_video.clear(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
@@ -16929,6 +16982,68 @@ async def describe_image_vlm_roleplay_import_endpoint(payload: dict = Body(defau
     else:
         result = await run_in_threadpool(vlm_roleplay.import_tavern_character_card, raw, filename)
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+
+@app.post("/describe-image/visual-characters/{action}")
+async def describe_image_visual_characters_endpoint(action: str, request: Request, payload: dict = Body(default={})):
+    from modules import visual_character_library
+
+    user_did = _roleplay_endpoint_user_did(payload, request)
+    if any(part in user_did for part in ("/", "\\", "..")):
+        return JSONResponse({"ok": False, "error": "invalid_user_id"}, status_code=400)
+
+    def perform():
+        if action in {"image-start", "image-poll", "image-stop"}:
+            from modules import visual_character_image
+            if action == "image-start":
+                return visual_character_image.start_image(payload, user_did)
+            return visual_character_image.image_status(payload, user_did, stop=action == "image-stop")
+        if action in {"voice-style", "voice-start", "voice-poll", "voice-stop"}:
+            from modules import visual_character_voice
+            if action == "voice-style":
+                return visual_character_voice.expand_style(payload.get("character"))
+            if action == "voice-start":
+                return visual_character_voice.start_voice(payload, user_did)
+            return visual_character_voice.voice_status(payload, user_did, stop=action == "voice-stop")
+        if action == "resolve":
+            return {"ok": True, "assets": visual_character_library.resolve_media_list(
+                payload.get("asset_ids"), user_did)}
+        if action == "trim":
+            return {"ok": True, "asset": visual_character_library.trim_audio(
+                payload.get("asset_id"), payload.get("start"), payload.get("end"), user_did)}
+        if action == "list":
+            return {"ok": True, "characters": visual_character_library.list_characters(
+                user_did, str(payload.get("category") or "audiovisual"))}
+        if action == "save":
+            return {"ok": True, "character": visual_character_library.save_character(
+                payload.get("character"), user_did)}
+        if action == "delete":
+            removed = visual_character_library.delete_character(payload.get("character_id"), user_did)
+            return {"ok": removed, "error": "" if removed else "character_not_found"}
+        if action == "upload":
+            data_url = str(payload.get("data_url") or "")
+            allowed = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,",
+                       "data:audio/wav;base64,", "data:audio/x-wav;base64,", "data:audio/mpeg;base64,",
+                       "data:audio/ogg;base64,", "data:audio/flac;base64,", "data:audio/mp4;base64,")
+            if not data_url.startswith(allowed) or len(data_url) > 28_000_000:
+                raise ValueError("unsupported_or_oversized_media")
+            ref = canvas_workbench_assets.save_data_url_asset(
+                data_url, "character_library", {"user_did": user_did, "__user_did": user_did},
+                node_id="visual_character", role="reference",
+                metadata={"name": str(payload.get("name") or "")[:200]})
+            if not ref:
+                raise ValueError("invalid_media")
+            ref["name"] = str(payload.get("name") or "")[:200]
+            return {"ok": True, "asset": visual_character_library.register_media(ref, user_did)}
+        raise ValueError("unknown_character_action")
+
+    try:
+        result = await run_in_threadpool(perform)
+    except (ValueError, TypeError) as error:
+        code = str(error)
+        return JSONResponse({"ok": False, "error": code},
+                            status_code=409 if code == "character_revision_conflict" else 400)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 404)
 
 
 @app.post("/describe-image/vlm-roleplay/characters/list")
