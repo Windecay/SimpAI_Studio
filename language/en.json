@@ -796,5 +796,11 @@
     "Tile Working Sizes": "Tile Working Sizes",
     "Tile Budget Exceeded": "Tile Budget Exceeded",
     "Invalid Tile Source Size": "Invalid Tile Source Size",
-    "tiles": "tiles"
+    "tiles": "tiles",
+    "Qwen2.1-Edit": "Qwen2.1-Edit",
+    "Qwen2.1-Edit\u2B07": "Qwen2.1-Edit\u2B07",
+    "Qwen Image 2.1 Edit": "Qwen Image 2.1 Edit",
+    "Qwen Image 2.1 Edit [Preview, up to 9 images]": "Qwen Image 2.1 Edit [Preview, up to 9 images]",
+    "Reference Resolution (0 = Original)": "Reference Resolution (0 = Original)",
+    "Custom Canvas Size": "Custom Canvas Size"
 }

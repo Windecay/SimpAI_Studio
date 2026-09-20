@@ -2354,5 +2354,11 @@
   "Face Track Source Changed": "视频、处理范围或目标人脸已改变，请重新预览轨迹",
   "Face Track Has Unreviewed Frames": "仍有缺失帧未处理，请修正脸框或明确选择保留原画",
   "No Face Boxes in Interval": "处理范围内没有需要修复的脸框",
-  "Face Preview Video Failed": "预览视频读取失败"
+  "Face Preview Video Failed": "预览视频读取失败",
+  "Qwen2.1-Edit": "Qwen2.1-编辑",
+  "Qwen2.1-Edit\u2B07": "Qwen2.1-编辑\u2B07",
+  "Qwen Image 2.1 Edit": "Qwen Image 2.1 编辑",
+  "Qwen Image 2.1 Edit [Preview, up to 9 images]": "Qwen Image 2.1 编辑 [预备版，最多9张图]",
+  "Reference Resolution (0 = Original)": "参考图分辨率（0 = 原始尺寸）",
+  "Custom Canvas Size": "自定义画布尺寸"
 }

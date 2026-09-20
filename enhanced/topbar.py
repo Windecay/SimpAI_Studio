@@ -280,6 +280,7 @@ PRESET_STORE_ORDER = [
     "Flux1-dev",
     "FluxKontext",
     "Swap+",
+    "Qwen2.1-Edit",
     "QwenEdit+",
     "Qwen2512",
     "QwenA2R",

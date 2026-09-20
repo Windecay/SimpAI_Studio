@@ -692,7 +692,7 @@
         0
       ],
       "source_latent": [
-        "204",
+        "235",
         0
       ],
       "source_latent_b": [
@@ -928,7 +928,7 @@
   "226": {
     "inputs": {
       "boolean": [
-        "225",
+        "236",
         0
       ],
       "on_true": [
@@ -948,7 +948,7 @@
   "227": {
     "inputs": {
       "boolean": [
-        "225",
+        "236",
         0
       ],
       "on_true": [
@@ -968,7 +968,7 @@
   "228": {
     "inputs": {
       "boolean": [
-        "225",
+        "236",
         0
       ],
       "on_true": [
@@ -988,7 +988,7 @@
   "229": {
     "inputs": {
       "boolean": [
-        "225",
+        "236",
         0
       ],
       "on_true": [
@@ -1008,7 +1008,7 @@
   "230": {
     "inputs": {
       "boolean": [
-        "225",
+        "236",
         0
       ],
       "on_true": [
@@ -1036,6 +1036,40 @@
     "class_type": "DifferentialDiffusion",
     "_meta": {
       "title": "Differential Diffusion"
+    }
+  },
+  "236": {
+    "inputs": {
+      "boolean": ["185", 0],
+      "on_true": ["185", 0],
+      "on_false": ["225", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Krea2 No Source Or No Mask"
+    }
+  },
+  "234": {
+    "inputs": {
+      "width": ["2", 6],
+      "height": ["2", 7],
+      "length": 1,
+      "batch_size": 1
+    },
+    "class_type": "EmptyHunyuanLatentVideo",
+    "_meta": {
+      "title": "Krea2 Empty Source Latent"
+    }
+  },
+  "235": {
+    "inputs": {
+      "boolean": ["185", 0],
+      "on_true": ["234", 0],
+      "on_false": ["204", 0]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Krea2 Source Latent"
     }
   },
   "233": {

@@ -4064,6 +4064,14 @@ packages = {'base_package': {'id': 1,
                              ],
                              'info_links': ['https://www.topazlabs.com/'],
                              'preset_sample': []},
+ 'qwen_image21_package': {'id': 45,
+                          'name': '[45]Qwen2.1-Edit',
+                          'note': 'Qwen2.1 图像编辑模型包，支持最多九图，包含 INT8 主模型、Qwen3-VL 8B INT8 编码器和 VAE / Qwen2.1 9-image editing package with INT8 diffusion model, Qwen3-VL 8B INT8 encoder and VAE.',
+                          'files': ['diffusion_models,qwen_image_2.1_int8_convrot.safetensors,7256783064,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/diffusion_models/qwen_image_2.1_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors',
+                                    'text_encoders,qwen3vl_8b_int8_convrot.safetensors,9350798360,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/text_encoders/qwen3vl_8b_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors',
+                                    'vae,qwen_image_2.1_vae_bf16.safetensors,675509688,0,https://modelscope.cn/models/Comfy-Org/Qwen-Image-2.1/resolve/master/vae/qwen_image_2.1_vae_bf16.safetensors,https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors'],
+                          'info_links': ['https://modelscope.cn/models/Qwen/Qwen-Image-2.1/summary'],
+                          'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
 }

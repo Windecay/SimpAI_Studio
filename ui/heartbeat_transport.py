@@ -8,10 +8,58 @@ class GradioHeartbeatWebSocketMiddleware:
 
     def __init__(self, app: ASGIApp):
         self.app = app
+        self._active_sessions: dict[str, int] = {}
+
+    async def _serve_heartbeat(self, scope: Scope, receive: Receive, send: Send):
+        session_hash = scope["path"].rsplit("/", 1)[-1]
+        registered = False
+        successful = False
+
+        def reopen_session():
+            holder = getattr(scope.get("app"), "state_holder", None)
+            session = holder.session_data.get(session_hash) if holder is not None else None
+            if session is not None:
+                session.is_closed = False
+
+        async def heartbeat_send(message):
+            nonlocal registered, successful
+            if message["type"] == "http.response.start":
+                successful = message["status"] == 200
+            elif (
+                successful
+                and message["type"] == "http.response.body"
+                and b"data: ALIVE" in message.get("body", b"")
+            ):
+                if not registered:
+                    self._active_sessions[session_hash] = self._active_sessions.get(session_hash, 0) + 1
+                    registered = True
+                # Gradio marks disconnected sessions closed, but does not reopen
+                # them on heartbeat reconnect, leaving their state subject to GC.
+                reopen_session()
+            await send(message)
+
+        try:
+            await self.app(scope, receive, heartbeat_send)
+        finally:
+            if registered:
+                remaining = self._active_sessions[session_hash] - 1
+                if remaining:
+                    self._active_sessions[session_hash] = remaining
+                    # An older connection can finish its cleanup after a new one
+                    # has already started for this same session.
+                    reopen_session()
+                else:
+                    del self._active_sessions[session_hash]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         path = scope.get("path", "")
-        if scope["type"] != "websocket" or "/gradio_api/heartbeat/" not in path:
+        if "/gradio_api/heartbeat/" not in path:
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "http" and scope.get("method") == "GET":
+            await self._serve_heartbeat(scope, receive, send)
+            return
+        if scope["type"] != "websocket":
             await self.app(scope, receive, send)
             return
 
@@ -68,4 +116,4 @@ class GradioHeartbeatWebSocketMiddleware:
                     closed = True
                     await send({"type": "websocket.close", "code": 1000})
 
-        await self.app(http_scope, http_receive, http_send)
+        await self._serve_heartbeat(http_scope, http_receive, http_send)
