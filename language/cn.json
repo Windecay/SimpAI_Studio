@@ -2358,7 +2358,7 @@
   "Qwen2.1-Edit": "Qwen2.1-编辑",
   "Qwen2.1-Edit\u2B07": "Qwen2.1-编辑\u2B07",
   "Qwen Image 2.1 Edit": "Qwen Image 2.1 编辑",
-  "Qwen Image 2.1 Edit [Preview, up to 9 images]": "Qwen Image 2.1 编辑 [预备版，最多9张图]",
+  "Qwen Image 2.1 Edit [up to 9 images]": "Qwen Image 2.1 编辑 [最多9张图]",
   "Reference Resolution (0 = Original)": "参考图分辨率（0 = 原始尺寸）",
   "Custom Canvas Size": "自定义画布尺寸"
 }

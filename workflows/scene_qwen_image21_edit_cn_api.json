@@ -55,18 +55,13 @@
   "8": {
     "inputs": {"width": ["14", 1], "height": ["15", 1], "batch_size": 1},
     "class_type": "EmptyLatentImage",
-    "_meta": {"title": "Custom Canvas"}
-  },
-  "9": {
-    "inputs": {"boolean": ["1", 20], "on_true": ["8", 0], "on_false": ["7", 2]},
-    "class_type": "easy ifElse",
-    "_meta": {"title": "Custom Canvas or First Reference Size"}
+    "_meta": {"title": "Output Canvas"}
   },
   "10": {
     "inputs": {
       "model": ["6", 0], "seed": ["2", 0], "steps": ["1", 9], "cfg": ["1", 8],
       "sampler_name": ["1", 30], "scheduler": ["1", 31], "denoise": 1,
-      "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["9", 0]
+      "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["8", 0]
     },
     "class_type": "KSampler",
     "_meta": {"title": "Qwen Image 2.1 Sampler"}

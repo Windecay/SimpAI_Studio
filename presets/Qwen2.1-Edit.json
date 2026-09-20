@@ -1,5 +1,5 @@
 {
-  "supported_tasks": ["image_edit", "multi_image_edit", "image_object_transfer"],
+  "supported_tasks": ["text_to_image", "image_edit", "multi_image_edit", "image_object_transfer"],
   "prompt_agent_required": true,
   "default_engine": {
     "backend_engine": "Qwen",
@@ -13,15 +13,15 @@
       "theme_labels": {
         "Qwen Image 2.1 Edit": {"en": "Qwen Image 2.1 Edit", "zh": "Qwen Image 2.1 \u7f16\u8f91"}
       },
-      "theme_title": "Qwen Image 2.1 Edit [Preview, up to 9 images]",
+      "theme_title": "Qwen Image 2.1 Edit [up to 9 images]",
       "disable_canvas_mask": true,
       "director_capability": {
-        "image_policy": "required",
+        "image_policy": "optional",
         "audio_policy": "forbidden",
         "video_policy": "forbidden",
-        "min_images": 1,
+        "min_images": 0,
         "max_images": 9,
-        "image_modes": ["reference_set"],
+        "image_modes": ["none", "reference_set"],
         "audio_output": "silent",
         "mixed_segments": false
       },
@@ -34,7 +34,7 @@
         "scene_var_number2", "scene_var_number3", "scene_var_number4",
         "scene_var_number5", "scene_var_number6", "scene_var_number7",
         "scene_var_number8", "scene_var_number9", "scene_var_number10",
-        "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
         "scene_refiner_model", "scene_video", "scene_reference_video", "scene_audio",
         "scene_video_duration", "sam3_input_video", "sam3_mask_video", "scene_batch",
         "minimax_h3_storyboard_control"
@@ -42,15 +42,13 @@
       "task_method": {"Qwen Image 2.1 Edit": "qwen_image21_edit_cn"},
       "prompt": {"Qwen Image 2.1 Edit": ""},
       "agent_prompt": {
-        "Qwen Image 2.1 Edit": "Write a direct image-editing instruction for Qwen Image 2.1. Use <image1>, <image2>, and so on for the actual uploaded images, up to <image9>. The canvas comes first when present, followed by non-empty reference slots in upload order; empty slots do not consume a number. The first actual image is the source being edited. Preserve everything not requested to change, including identity, pose, composition, background and lighting. Keep quoted text in its original language. Do not invent missing reference images, H3 <Picture N> labels, masks, audio or video. This route has no mask input. Return only the editing instruction."
+        "Qwen Image 2.1 Edit": "Write a direct image-generation or image-editing instruction for Qwen Image 2.1. When no images are uploaded, describe the requested new image without referring to a source image or image labels. Otherwise use <image1>, <image2>, and so on for the actual uploaded images, up to <image9>. The canvas comes first when present, followed by non-empty reference slots in upload order; empty slots do not consume a number. The first actual image is the source being edited. Preserve everything not requested to change, including identity, pose, composition, background and lighting. Keep quoted text in its original language. Do not invent missing reference images, H3 <Picture N> labels, masks, audio or video. This route has no mask input. Return only the generation or editing instruction."
       },
       "var_number_title": "Reference Resolution (0 = Original)",
       "var_number_min": 0,
       "var_number_max": 4096,
       "var_number_step": 32,
       "var_number": {"Qwen Image 2.1 Edit": 1024},
-      "switch_option1_title": "Custom Canvas Size",
-      "switch_option1": {"Qwen Image 2.1 Edit": false},
       "resolution_control": {
         "mode": "image_keep_input_area",
         "source": "scene_canvas",
