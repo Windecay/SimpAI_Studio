@@ -69,6 +69,7 @@ root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root)
 os.chdir(root)
 
+PYPI_INDEX_URL = "https://pypi.org/simple"
 ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
     "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
@@ -144,28 +145,29 @@ def _package_install_spec(pkg_name, pkg_version=None, version_specifier=None):
     return pkg_name
 
 def install_package_with_retry(pkg_name, pkg_version=None, description=None, version_specifier=None):
-    """尝试安装包，先使用阿里源，如果失败则尝试使用清华源"""
     install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
     desc = description or f'Installing {install_spec}'
     errdesc = f"Couldn't install {install_spec}"
 
-    try:
-        pkg_command = f'pip install -U "{install_spec}" -i {index_url}'
+    indexes = []
+    for label, package_index in (
+        ("首选源 / Primary index", index_url),
+        ("清华大学 / Tsinghua University", extra_index_url),
+        ("官方 PyPI / Official PyPI", PYPI_INDEX_URL),
+    ):
+        if package_index and package_index not in {item[1] for item in indexes}:
+            indexes.append((label, package_index))
 
-        run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
-        return True
-    except Exception as e:
-        logger.warning(f"阿里源安装{install_spec}失败: {str(e)}")
-        logger.info("尝试使用清华源镜像...")
-
-    try:
-        pkg_command = f'pip install -U "{install_spec}" -i {extra_index_url}'
-
-        run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
-        return True
-    except Exception as e:
-        logger.error(f"使用清华源安装{install_spec}失败: {str(e)}")
-        return False
+    for label, package_index in indexes:
+        logger.info(f"从 {label} 安装 {install_spec} / Installing {install_spec} from {label}")
+        try:
+            pkg_command = f'pip install -U "{install_spec}" -i {package_index}'
+            run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
+            return True
+        except Exception as e:
+            logger.warning(f"{label} 安装失败 / Installation failed: {str(e)}")
+    logger.error(f"所有源均无法安装 {install_spec} / All indexes failed to install {install_spec}")
+    return False
 
 def _simpleai_base_wheel_filename(ver_required):
     current_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
@@ -700,11 +702,11 @@ def check_base_environment():
     ensure_llama_cpp_runtime(runtime_profile)
 
     update_pkgs = [
-        ('comfyui-frontend-package', '1.51.10', None),
-        ('comfyui-workflow-templates', '0.11.59', None),
-        ('comfyui-embedded-docs', '0.5.11', None),
-        ('comfy-kitchen', '0.2.33', None),
-        ('comfy-aimdo', '0.5.3', None),
+        ('comfyui-frontend-package', '1.53.6', None),
+        ('comfyui-workflow-templates', '0.11.65', None),
+        ('comfyui-embedded-docs', '0.5.12', None),
+        ('comfy-kitchen', '0.2.35', None),
+        ('comfy-aimdo', '0.5.5', None),
         ('av', '17.0.0', None),
         ('PyOpenGL', None, '>=3.1.8'),
         ('comfy-angle', None, None),

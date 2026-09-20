@@ -31,14 +31,15 @@ DEPENDENCY_UPDATE_FAILED = 6
 ROOT_REQUIREMENTS_FILE = STUDIO_ROOT / "requirements.txt"
 DEFAULT_INDEX_URL = os.environ.get("INDEX_URL", "https://mirrors.aliyun.com/pypi/simple")
 EXTRA_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+PYPI_INDEX_URL = "https://pypi.org/simple"
 
 # Keep this list aligned with launch.py's startup package checks.
 RUNTIME_UPDATE_PACKAGES = (
-    ("comfyui-frontend-package", "1.51.10", None),
-    ("comfyui-workflow-templates", "0.11.59", None),
-    ("comfyui-embedded-docs", "0.5.11", None),
-    ("comfy-kitchen", "0.2.33", None),
-    ("comfy-aimdo", "0.5.3", None),
+    ("comfyui-frontend-package", "1.53.6", None),
+    ("comfyui-workflow-templates", "0.11.65", None),
+    ("comfyui-embedded-docs", "0.5.12", None),
+    ("comfy-kitchen", "0.2.35", None),
+    ("comfy-aimdo", "0.5.5", None),
     ("av", "17.0.0", None),
     ("PyOpenGL", None, ">=3.1.8"),
     ("comfy-angle", None, None),
@@ -313,8 +314,9 @@ def _pip_command(pip_args: list[str], index_url: str) -> list[str]:
 def pip_install_with_retry(pip_args: list[str], *, description: str) -> bool:
     indexes = []
     for label, index_url in (
-        ("阿里云 / Alibaba Cloud", DEFAULT_INDEX_URL),
+        ("首选源 / Primary index", DEFAULT_INDEX_URL),
         ("清华大学 / Tsinghua University", EXTRA_INDEX_URL),
+        ("官方 PyPI / Official PyPI", PYPI_INDEX_URL),
     ):
         if index_url and index_url not in {item[1] for item in indexes}:
             indexes.append((label, index_url))
@@ -334,7 +336,7 @@ def pip_install_with_retry(pip_args: list[str], *, description: str) -> bool:
         except (OSError, subprocess.CalledProcessError) as exc:
             last_error = exc
             print(
-                f"{description}失败，正在尝试{label}。 / {description} failed; retrying with {label}."
+                f"{description}在 {label} 安装失败。 / {description} failed using {label}."
             )
 
     if last_error is not None:

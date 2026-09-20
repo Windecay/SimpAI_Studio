@@ -93,7 +93,7 @@ def concat_lora_weights(
 
 
 class ZImageModelPatcher(ModelPatcher):
-    def __init__(self, model, load_device, offload_device, size=0, weight_inplace_update=False):
+    def __init__(self, model, load_device, offload_device, size=0, weight_inplace_update=False, fast_disk=False):
         """
         Adapted from comfy.model_patcher.ModelPatcher#clone
 
@@ -102,7 +102,7 @@ class ZImageModelPatcher(ModelPatcher):
         + Always set `weight_inplace_update` to False
         + Add `svdq_backup` dict for loading/unloading lora weights for Nunchaku Z-Image model.
         """
-        super().__init__(model, load_device, offload_device, size, weight_inplace_update=False)
+        super().__init__(model, load_device, offload_device, size, weight_inplace_update=False, fast_disk=fast_disk)
         self.svdq_backup = {}
 
     def clone(self):
