@@ -289,6 +289,9 @@ def _superprompt_target_from_state(state):
     }
     if prompt_compiler:
         target["prompt_compiler"] = prompt_compiler
+    prompt_skill_docs = scene_frontend.get("prompt_skill_docs") if isinstance(scene_frontend, dict) else None
+    if isinstance(prompt_skill_docs, dict) and prompt_skill_docs:
+        target["prompt_skill_docs"] = copy.deepcopy(prompt_skill_docs)
     capability = prompt_actions.prompt_action_capability_from_state(scene_state)
     if capability:
         target["director_capability"] = capability
@@ -298,7 +301,13 @@ def _superprompt_target_from_state(state):
     return target, str(agent_prompt or "").strip()
 
 
-def _superprompt_payload_from_state(state, target_override=None, use_scene_agent_prompt=True):
+def _superprompt_input_image_count(input_images):
+    if isinstance(input_images, (list, tuple)):
+        return sum(1 for image in input_images if image is not None)
+    return 1 if input_images is not None else 0
+
+
+def _superprompt_payload_from_state(state, target_override=None, use_scene_agent_prompt=True, input_image_count=0):
     target, agent_prompt = _superprompt_target_from_state(state)
     if isinstance(target_override, dict) and target_override:
         target = dict(target_override)
@@ -311,6 +320,9 @@ def _superprompt_payload_from_state(state, target_override=None, use_scene_agent
         "agent_context": {
             "prompt_generation_targets": {
                 "text_to_image": target,
+            },
+            "media_inventory": {
+                "image_count": max(0, int(input_image_count or 0)),
             },
         },
     }, agent_prompt
@@ -1826,6 +1838,7 @@ class VLM:
                 state,
                 target_override=target_override,
                 use_scene_agent_prompt=bool(use_scene_agent_prompt),
+                input_image_count=_superprompt_input_image_count(input_images),
             )
             if action_id != "smart_expand":
                 payload["node_id"] = f"canvas_agent_prompt_rewrite:main_webui_{action_id}"

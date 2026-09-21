@@ -69,6 +69,8 @@
         return {
             CANVAS_PROJECT_PERSISTENCE_CONTROLLER: persistence,
             browserBackendProjectDecision: persistenceMethod.bind(null, 'browserBackendProjectDecision'),
+            scheduleSave: persistenceMethod.bind(null, 'scheduleSave'),
+            scheduleViewportSave: persistenceMethod.bind(null, 'scheduleViewportSave'),
             saveProject: persistenceMethod.bind(null, 'saveProject'),
             saveProjectToBrowserCache: persistenceMethod.bind(null, 'saveProjectToBrowserCache'),
             buildProjectStorageInfo: persistenceMethod.bind(null, 'buildProjectStorageInfo'),

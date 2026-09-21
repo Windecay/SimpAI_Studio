@@ -83,7 +83,7 @@
             'bindResultPreviewAspectFromImage', 'bindResultNodePreviewAspect', 'resultPreviewLastSerial',
             'stopResultPreviewPlayer', 'ensureResultPreviewStreamDom', 'updateResultPreviewPlayerDom',
             'startResultPreviewPlayback', 'syncResultPreviewPlayerDom', 'resultPreviewFreshFrames',
-            'applyResultPreviewStream', 'appendResultNodePreviewFrames'
+            'applyResultPreviewStream', 'appendResultNodePreviewFrames', 'refreshResultNodePreviewDom'
         ]);
         const nodeApi = expose('nodeRenderer', [
             'renderNodeHtml', 'overviewNodeKindLabel', 'overviewNodeAsset', 'overviewInputPorts',
@@ -365,6 +365,7 @@
             boundedImageNodeSizeForAsset: layoutMethod('boundedImageNodeSizeForAsset'),
             fitImageNodeToAssetBounds: layoutMethod('fitImageNodeToAssetBounds'),
             ensureResultNodeReadableSize: layoutMethod('ensureResultNodeReadableSize'),
+            ensureVlmNodeModeSize: layoutMethod('ensureVlmNodeModeSize'),
             ensureMediaBrowserNodeReadableSize: layoutMethod('ensureMediaBrowserNodeReadableSize'),
             findOpenNodePosition: layoutMethod('findOpenNodePosition'),
             getNodeRect: layoutMethod('getNodeRect'),

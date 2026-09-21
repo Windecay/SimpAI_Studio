@@ -971,6 +971,9 @@
             const promptCompilerText = typeof promptCompiler === 'string' ? promptCompiler : JSON.stringify(promptCompiler || {});
             const hasH3Compiler = /minimax[_\s-]*h3/i.test(promptCompilerText);
             const name = normalizePresetName(data.name || data.display_name || data.preset || '');
+            const promptSkillDocs = data.prompt_skill_docs && typeof data.prompt_skill_docs === 'object'
+                ? data.prompt_skill_docs
+                : null;
             const backend = String(data.backend_engine || '').trim();
             const taskMethod = String(data.task_method || '').trim();
             const source = String(data.source || data.workflow || '').trim();
@@ -994,7 +997,9 @@
             if (key === 'unknown_default' && isH3ImageEdit) key = 'minimax_h3_image_edit';
             if (key === 'unknown_default' && hasH3Compiler) key = 'minimax_h3';
             if (key === 'unknown_default') {
-                if (/(^|[^a-z0-9])anima(?:[_\s-]?aio|-base|$|[^a-z0-9])|anima-base-v/i.test(haystack)) key = 'anima';
+                if (/(?:qwen(?:[\s_-]*image)?[\s_-]*2[._-]?1|qwen_image21)/i.test(haystack)) {
+                    key = purposeText.includes('edit') ? 'qwen_image21_i2i' : 'qwen_image21_t2i';
+                } else if (/(^|[^a-z0-9])anima(?:[_\s-]?aio|-base|$|[^a-z0-9])|anima-base-v/i.test(haystack)) key = 'anima';
                 else if (taskMethodIsChinese && (purposeText.includes('video') || /wan|umt5/i.test(haystack))) key = 'wan_video_cn';
                 else if (taskMethodIsChinese) key = 'qwen_natural';
                 else if (/(qwen|z[-_ ]?image|zimage|lumina2|flux2|flux[-_ ]?2)/i.test(haystack)) key = 'qwen_natural';
@@ -1022,6 +1027,7 @@
                 model_list: modelList.slice(0, 8)
             };
             if (hasH3Compiler) target.prompt_compiler = promptCompiler;
+            if (promptSkillDocs) target.prompt_skill_docs = promptSkillDocs;
             target.label = canvasAgentPromptTargetLabel(target);
             return target;
         }
@@ -1040,7 +1046,8 @@
                 task_method: canvasAgentPresetTaskMethod(entry),
                 source: entry.source || (entry.name ? `presets/${entry.name}.json` : ''),
                 model_list: canvasAgentPresetModelList(entry),
-                prompt_compiler: entry.prompt_compiler || entry.schema?.prompt_compiler || ''
+                prompt_compiler: entry.prompt_compiler || entry.schema?.prompt_compiler || '',
+                prompt_skill_docs: entry.prompt_skill_docs || entry.schema?.prompt_skill_docs || null
             }, purpose), entry);
         }
 
@@ -1056,7 +1063,8 @@
                     task_method: node.runtime?.task_method || canvasAgentPresetTaskMethod(entry),
                     source: node.model_requirements?.source || entry?.source || '',
                     model_list: canvasAgentPresetModelList(node),
-                    prompt_compiler: entry?.prompt_compiler || node.schema?.prompt_compiler || ''
+                    prompt_compiler: entry?.prompt_compiler || node.schema?.prompt_compiler || '',
+                    prompt_skill_docs: entry?.prompt_skill_docs || node.schema?.prompt_skill_docs || null
                 }, purpose), node);
             }
             if (node.type === 'classic') {

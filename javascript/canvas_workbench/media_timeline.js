@@ -102,6 +102,7 @@
             serializeAssetForRun: resolve(assetSource, 'serializeAssetForRun'),
             assetMediaKind: resolve(assetSource, 'assetMediaKind'),
             getNode: resolve(nodeSource, 'getNode'),
+            getSelectedResultAsset: resolve(nodeSource, 'getSelectedResultAsset'),
             getTimelineSourceAsset: resolve(nodeSource, 'getTimelineSourceAsset'),
             readAssetSize: resolve(nodeSource, 'readAssetSize'),
             renderNodeStateBadges: resolve(nodeSource, 'renderNodeStateBadges'),
@@ -254,6 +255,10 @@
 
     function sourceAsset(source, context) {
         if (!source) return null;
+        if (source.type === 'result') {
+            const selected = call(context, 'getSelectedResultAsset', null, source);
+            if (selected) return selected;
+        }
         return call(context, 'getTimelineSourceAsset', null, source) || source.asset || null;
     }
 
@@ -1432,6 +1437,7 @@ ${renderRuler(node, context)}
         nextStartForTrack,
         isTimelineSource,
         sourceAsset,
+        getTimelineSourceAsset: sourceAsset,
         assetMediaKind,
         defaultTrackId,
         createClipFromSource,

@@ -236,6 +236,96 @@
 .sai-help-notice [data-studio-help-download-model] .fa-download {
     font-size: 12px;
 }
+.sai-help-model-download {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+.sai-help-model-download-title,
+.sai-help-model-download-row-head,
+.sai-help-model-download-row-meta,
+.sai-help-model-download-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.sai-help-model-download-title {
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+.sai-help-model-download-title span,
+.sai-help-model-download-title small,
+.sai-help-model-download-row-head span,
+.sai-help-model-download-row-meta span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sai-help-model-download-title span {
+    flex: 1 1 auto;
+}
+.sai-help-model-download-title small {
+    color: var(--body-text-color-subdued, #737985);
+    font-weight: 400;
+}
+.sai-help-model-download-list {
+    display: grid;
+    gap: 6px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.sai-help-model-download-row {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+.sai-help-model-download-row-head {
+    font-size: 11px;
+}
+.sai-help-model-download-row-head span {
+    flex: 1 1 auto;
+}
+.sai-help-model-download-row-head b {
+    flex: 0 0 auto;
+    font-weight: 600;
+}
+.sai-help-model-download-row-head button,
+.sai-help-model-download-actions button {
+    width: auto;
+    min-width: 24px !important;
+    padding: 0 5px !important;
+}
+.sai-help-model-download-progress-bar progress {
+    display: block;
+    width: 100%;
+    height: 7px;
+    accent-color: #3b82f6;
+}
+.sai-help-model-download-row-meta {
+    justify-content: space-between;
+    color: var(--body-text-color-subdued, #737985);
+    font-size: 10px;
+}
+.sai-help-model-download-row-meta span:last-child {
+    text-align: right;
+}
+.sai-help-model-download-error {
+    margin-top: 5px;
+    color: #b42318;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+.sai-help-model-download-actions {
+    justify-content: flex-end;
+    margin-top: 5px;
+}
+.sai-help-model-download-empty {
+    color: var(--body-text-color-subdued, #737985);
+    font-size: 11px;
+}
 #describe_vlm_model_status .sai-help-notice {
     flex-wrap: nowrap;
     min-width: 0;

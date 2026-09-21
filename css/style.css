@@ -12,6 +12,30 @@
   --simpai-dark-text-faint: #8f9aaa;
 }
 
+@media (min-width: 641px) {
+  .gradio-container > .main.fillable.app {
+    width: 100% !important;
+    max-width: none !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .gradio-container > .main.fillable.app > .wrap {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 1921px) {
+  .gradio-container > .main.fillable.app {
+    width: min(2000px, calc(100% - 128px)) !important;
+    max-width: min(2000px, calc(100% - 128px)) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    flex: 0 1 auto !important;
+  }
+}
+
 :root[data-theme="dark"],
 html[data-theme="dark"],
 body[data-theme="dark"],

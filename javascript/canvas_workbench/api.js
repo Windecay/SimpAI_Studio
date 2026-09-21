@@ -803,6 +803,20 @@
         });
     }
 
+    function vlmModelDownloadStatus(payload) {
+        return postJson('/canvas-workbench/vlm-model-download-status', payload, {
+            emptyError: 'empty VLM model download status response',
+            requestError: 'VLM model download status failed'
+        });
+    }
+
+    function vlmModelDownloadCancel(payload) {
+        return postJson('/canvas-workbench/vlm-model-download-cancel', payload, {
+            emptyError: 'empty VLM model download cancel response',
+            requestError: 'VLM model download cancel failed'
+        });
+    }
+
     function customLlmModels(payload) {
         return postJson('/canvas-workbench/custom-llm-models', payload, {
             emptyError: 'empty custom LLM model response',
@@ -985,6 +999,8 @@
         vlmCancel,
         vlmModelStatus,
         vlmModelDownloads,
+        vlmModelDownloadStatus,
+        vlmModelDownloadCancel,
         customLlmModels,
         vlmSkills,
         vlmSystemPromptTemplates,

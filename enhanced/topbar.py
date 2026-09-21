@@ -1680,6 +1680,7 @@ def _build_canvas_scene_schema(scene_frontend):
         "theme_labels": copy.deepcopy(scene_frontend.get("theme_labels") or {}),
         "theme_title": scene_frontend.get("theme_title", "Theme"),
         "prompt_compiler": copy.deepcopy(_canvas_scene_value(scene_frontend, "prompt_compiler", default_theme, "")),
+        "prompt_skill_docs": copy.deepcopy(scene_frontend.get("prompt_skill_docs") or {}),
         "director_capability": copy.deepcopy(scene_frontend.get("director_capability") or {}),
         "disvisible": disvisible,
         "disinteractive": disinteractive,

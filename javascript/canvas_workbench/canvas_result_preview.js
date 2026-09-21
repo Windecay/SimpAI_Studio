@@ -11,6 +11,9 @@
         const nodeSource = sourceObject('nodeSource');
         const statusSource = sourceObject('statusSource');
         const resultSource = sourceObject('resultSource');
+        const renderSource = sourceObject('renderSource');
+        const assetSource = sourceObject('assetSource');
+        const eventSource = sourceObject('eventSource');
         const utilitySource = sourceObject('utilitySource');
         const runtimeSource = sourceObject('runtimeSource');
         const escapeHtml = typeof utilitySource.escapeHtml === 'function'
@@ -33,6 +36,18 @@
         const renderPreviewStrip = (...args) => typeof previewSource.renderResultPreviewStripHtml === 'function'
             ? previewSource.renderResultPreviewStripHtml(...args)
             : '';
+        const renderResultMediaHtml = (...args) => typeof renderSource.renderResultMediaHtml === 'function'
+            ? renderSource.renderResultMediaHtml(...args)
+            : '';
+        const safeAssetFallbackSrc = (...args) => typeof assetSource.safeAssetFallbackSrc === 'function'
+            ? assetSource.safeAssetFallbackSrc(...args)
+            : '';
+        const safeAssetFullDisplaySrc = (...args) => typeof assetSource.safeAssetFullDisplaySrc === 'function'
+            ? assetSource.safeAssetFullDisplaySrc(...args)
+            : '';
+        const bindNodeMediaControlEvents = (...args) => typeof eventSource.bindNodeMediaControlEvents === 'function'
+            ? eventSource.bindNodeMediaControlEvents(...args)
+            : undefined;
         const getNode = (id) => typeof nodeSource.getNode === 'function' ? nodeSource.getNode(id) : null;
         const getNodeElement = (id) => typeof nodeSource.getNodeElement === 'function'
             ? nodeSource.getNodeElement(id)
@@ -203,6 +218,44 @@
             return true;
         }
 
+        function refreshResultNodePreviewDom(resultNode, nodeEl) {
+            if (!resultNode || resultNode.type !== 'result' || !nodeEl) return false;
+            const previewPlayerHandled = syncResultPreviewPlayerDom(resultNode, nodeEl);
+            const mediaEl = nodeEl.querySelector?.('.sai-result-media');
+            if (!mediaEl || previewPlayerHandled) return previewPlayerHandled;
+            const showRunningPreview = shouldShowResultRunningPreview(resultNode);
+            const hasMediaRendered = !!mediaEl.querySelector?.('img,video,audio');
+            const hasPreviewStream = !!mediaEl.querySelector?.('.sai-result-preview-stream, [data-result-preview-player]');
+            const selectedAsset = resultMediaDisplayAsset(resultNode);
+            const previewSourceValue = aspectSource(resultNode);
+            const previewThumb = frameSrc(previewSourceValue, resultNode.preview?.data_url || resultNode.preview?.thumb || '');
+            const shouldRebuildMedia = (showRunningPreview && !hasPreviewStream) || (!hasMediaRendered && (selectedAsset || previewThumb));
+            if (shouldRebuildMedia) {
+                mediaEl.innerHTML = renderResultMediaHtml(
+                    resultNode,
+                    selectedAsset,
+                    safeAssetFallbackSrc(selectedAsset || previewSourceValue || resultNode.preview, previewThumb)
+                );
+                bindNodeMediaControlEvents(nodeEl);
+                const sourceAsset = selectedAsset || previewSourceValue;
+                applyResultPreviewAspect(mediaEl, sourceAsset);
+                bindResultPreviewAspectFromImage(mediaEl.querySelector?.('[data-result-preview-player], img'), mediaEl, sourceAsset);
+                return true;
+            }
+            if (selectedAsset || previewThumb) {
+                const src = selectedAsset
+                    ? safeAssetFullDisplaySrc(selectedAsset, '')
+                    : previewThumb;
+                const img = mediaEl.querySelector?.('img');
+                if (img && src && img.getAttribute?.('src') !== src) img.src = src;
+                const sourceAsset = selectedAsset || previewSourceValue;
+                applyResultPreviewAspect(mediaEl, sourceAsset);
+                bindResultPreviewAspectFromImage(img, mediaEl, sourceAsset);
+                return true;
+            }
+            return false;
+        }
+
         function resultPreviewFreshFrames(response) {
             const stream = response?.preview_stream;
             if (!stream || typeof stream !== 'object') return [];
@@ -308,6 +361,7 @@
             resultPreviewFreshFrames,
             resultPreviewHasRenderableSource,
             resultPreviewLastSerial,
+            refreshResultNodePreviewDom,
             shouldShowResultRunningPreview,
             startResultPreviewPlayback,
             stopResultPreviewPlayer,

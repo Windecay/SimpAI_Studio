@@ -123,6 +123,7 @@ VLM_PERSONA_LOOKUP_MAX_CANDIDATES = 6
 VLM_SKILL_INDEX_FILE = "skill_index.json"
 VLM_IMAGE_PROMPT_SKILL_FILE = "image_prompting.md"
 VLM_IMAGE_EDIT_SKILL_FILE = "image_editing.md"
+VLM_PROMPT_SKILL_DOCS_FIELD = "prompt_skill_docs"
 VLM_DANBOORU_TAG_PROMPT_SKILL_FILE = "danbooru_tag_prompting.md"
 VLM_ANIMA_PROMPT_SKILL_FILE = "anima_prompting.md"
 VLM_NATURAL_PROMPT_ACTION_SKILL_FILE = "natural_prompt_action.md"
@@ -362,6 +363,67 @@ def _canvas_vlm_prompt_rewrite_is_image_edit(payload, target=None):
         or _canvas_target_is_image_edit(target)
     )
 
+
+def _canvas_vlm_payload_has_image_references(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    context = payload.get("agent_context") if isinstance(payload.get("agent_context"), dict) else {}
+
+    def has_image_kind(items):
+        if not isinstance(items, (list, tuple)):
+            return False
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("kind") or item.get("media_type") or "").strip().lower()
+            if kind in {"image", "images", "picture"}:
+                return True
+        return False
+
+    if has_image_kind(payload.get("asset_sources")) or has_image_kind(context.get("agent_references")):
+        return True
+    for container in (payload, context):
+        inventory = container.get("media_inventory") if isinstance(container, dict) else None
+        if isinstance(inventory, dict):
+            try:
+                if int(inventory.get("image_count") or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        try:
+            if int(container.get("image_count") or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+        if container.get("image_descriptors"):
+            return True
+    return False
+
+
+def _canvas_prompt_skill_docs_for_target(target=None, mode="text_to_image", language=None):
+    target = target if isinstance(target, dict) else {}
+    raw = target.get(VLM_PROMPT_SKILL_DOCS_FIELD)
+    if not isinstance(raw, dict):
+        return []
+    branch = raw.get(str(mode or "text_to_image"))
+    if branch is None:
+        branch = raw.get("default")
+    if branch is None and any(key in raw for key in ("en", "cn")):
+        branch = raw
+    if isinstance(branch, dict):
+        selected = branch.get(_canvas_normalize_skill_language(language) or "en")
+    else:
+        selected = branch
+    if isinstance(selected, str):
+        selected = [selected]
+    if not isinstance(selected, (list, tuple)):
+        return []
+    result = []
+    for item in selected:
+        clean = str(item or "").replace("\\", "/").strip()
+        if clean and clean not in result:
+            result.append(clean)
+    return result
+
 def _canvas_vlm_prompt_rewrite_target_summary(payload):
     if not isinstance(payload, dict):
         return "unknown/default"
@@ -504,6 +566,16 @@ def _canvas_vlm_prompt_rewrite_required_docs(payload):
     if not target_key:
         target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
         target = _canvas_prompt_target_for_payload(payload, target_key)
+    language = _canvas_vlm_skill_language(payload=payload, target=target)
+    skill_mode = (
+        "image_edit"
+        if _canvas_vlm_prompt_rewrite_is_image_edit(payload, target)
+        or _canvas_vlm_payload_has_image_references(payload)
+        else "text_to_image"
+    )
+    preset_skill_docs = _canvas_prompt_skill_docs_for_target(target, skill_mode, language)
+    if preset_skill_docs:
+        return preset_skill_docs
     required = [VLM_IMAGE_EDIT_SKILL_FILE] if _canvas_vlm_prompt_rewrite_is_image_edit(payload, target) else []
     if minimax_h3_prompt_compiler.target_compiler(target):
         return required + _canvas_h3_prompt_writing_skill_files(payload=payload, target=target)
@@ -4600,6 +4672,7 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
     payload_text_target = payload_targets.get("text_to_image") if isinstance(payload_targets.get("text_to_image"), dict) else {}
     payload_edit_target = payload_targets.get("image_edit") if isinstance(payload_targets.get("image_edit"), dict) else {}
     image_edit_request = _canvas_vlm_image_edit_intent(effective_prompt)
+    has_image_references = _canvas_vlm_payload_has_image_references(payload)
     preferred_edit_target = payload_text_target if _canvas_target_is_image_edit(payload_text_target) else payload_edit_target
     h3_target = preferred_edit_target if image_edit_request and preferred_edit_target else payload_text_target
     target_key = str(h3_target.get("key") or "").strip()
@@ -4607,6 +4680,12 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
         target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
     h3_target = h3_target or {"key": target_key}
     image_edit_request = image_edit_request or _canvas_target_is_image_edit(h3_target)
+    prompt_skill_mode = "image_edit" if image_edit_request or has_image_references else "text_to_image"
+    prompt_skill_files = _canvas_prompt_skill_docs_for_target(
+        h3_target,
+        prompt_skill_mode,
+        _canvas_vlm_skill_language(params=params, payload=payload, target=h3_target),
+    )
     h3_prompt_required = bool(minimax_h3_prompt_compiler.target_compiler(h3_target))
     h3_skill_files = _canvas_h3_prompt_writing_skill_files(
         params=params,
@@ -4793,7 +4872,9 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
             required_docs.extend(h3_skill_files)
         elif anima_prompt_required and not preset_guide_only:
             required_docs.append(VLM_ANIMA_PROMPT_SKILL_FILE)
-        if image_edit_request and not preset_guide_only:
+        if prompt_skill_files and not preset_guide_only:
+            required_docs.extend(prompt_skill_files)
+        elif image_edit_request and not preset_guide_only:
             required_docs.append(VLM_IMAGE_EDIT_SKILL_FILE)
         if not prompt_rewrite_request and prompt_skill_intent and not preset_guide_only:
             required_docs.append(VLM_PRESET_TOOL_CALLING_SKILL_FILE)
@@ -4811,6 +4892,8 @@ def _canvas_build_vlm_agent_system_prompt(params, payload, prompt):
             doc_budget = max(doc_budget, 7000 if compact_prompt else 10000)
         elif anima_prompt_required:
             doc_budget = max(doc_budget, 18000 if compact_prompt else 20000)
+        elif prompt_skill_files:
+            doc_budget = max(doc_budget, 7000 if compact_prompt else 10000)
         if not prompt_rewrite_request and VLM_PRESET_TOOL_CALLING_SKILL_FILE in required_docs:
             doc_budget = max(doc_budget, 10000 if compact_prompt else 14000)
         docs = []

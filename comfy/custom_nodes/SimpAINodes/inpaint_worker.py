@@ -59,6 +59,52 @@ def _blend_parameters_for_mask(mask):
     return blur_kernel_size, max(0.2, blur_kernel_size / 5)
 
 
+def _blend_extent(area, processing_shape=None):
+    top, bottom, left, right = area
+    height, width = max(1, bottom - top), max(1, right - left)
+    sample_height, sample_width = processing_shape[:2] if processing_shape is not None else (height, width)
+    dilation, _, sigma = mask_blend_parameters(sample_height, sample_width)
+    scale = max(height / sample_height, width / sample_width)
+    # Keep the sampling mask's grown region, then transition beyond its blur.
+    inner = ((dilation - 1) / 2 + sigma) * scale
+    transition = max(2.0, 4 * sigma * scale)
+    return inner, inner + transition
+
+
+def _blend_inpaint(foreground, background, mask, area, processing_shape=None):
+    import cv2
+
+    inner, outer = _blend_extent(area, processing_shape)
+    weight = mask.astype(np.float32) / 255.0
+    core = mask == 255
+    if core.any():
+        distance = cv2.distanceTransform((~core).astype(np.uint8), cv2.DIST_L2, 5)
+        t = np.clip((outer - distance) / (outer - inner), 0.0, 1.0)
+        # The decoded continuation outside the user's mask belongs to the edit too.
+        weight = np.maximum(weight, t * t * (3.0 - 2.0 * t))
+    else:
+        distance = None
+
+    fg = foreground.astype(np.float32)
+    bg = background.astype(np.float32)
+    top, bottom, left, right = _clip_area_to_image(*area, background.shape)
+    valid = np.zeros(mask.shape, dtype=bool)
+    valid[top:bottom, left:right] = True
+    weight *= valid
+    if distance is not None:
+        context = valid & (mask == 0) & (distance > outer) & (distance <= outer + (outer - inner))
+        if np.count_nonzero(context) >= 64:
+            # Only unchanged context can identify a common decode colour offset.
+            delta = bg[context] - fg[context]
+            offset = np.median(delta, axis=0)
+            residual = np.percentile(np.abs(delta - offset), 80, axis=0)
+            if np.max(np.abs(offset)) <= 24 and np.max(residual) <= 12:
+                fg = fg + offset
+
+    weight = weight[:, :, None]
+    return np.rint(fg.clip(0, 255) * weight + bg * (1.0 - weight)).clip(0, 255).astype(np.uint8)
+
+
 def _mask_to_image_shape(mask, image):
     import cv2
 
@@ -183,18 +229,15 @@ class InpaintWorker:
         self.image = image
 
     def color_correction(self, image):
-        import cv2
-
         image_height, image_width = self.image.shape[:2]
         if image.shape[:2] != (image_height, image_width):
             image = resample_image(image, image_width, image_height)
-        foreground = image.astype(np.float32)
-        background = self.image.astype(np.float32)
         mask = _mask_to_image_shape(getattr(self, 'blend_mask', self.mask), self.image)
-        blur_kernel_size, sigma = _blend_parameters_for_mask(mask)
-        weight = cv2.GaussianBlur(mask, (blur_kernel_size, blur_kernel_size), sigma,
-                                  borderType=cv2.BORDER_REPLICATE)[:, :, None].astype(np.float32) / 255.0
-        return (foreground * weight + background * (1 - weight)).clip(0, 255).astype(np.uint8)
+        return _blend_inpaint(
+            image, self.image, mask,
+            getattr(self, 'interested_area', (0, image_height, 0, image_width)),
+            getattr(self, 'interested_image', image).shape,
+        )
 
     def post_process(self, image):
         top, bottom, left, right = _clip_area_to_image(*self.interested_area, self.image.shape)

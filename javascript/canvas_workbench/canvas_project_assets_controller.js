@@ -11,21 +11,40 @@
         const domSource = scope.domSource || {};
         const renderSource = scope.renderSource || {};
         const uiSource = scope.uiSource || {};
+        const serializationSource = scope.serializationSource || {};
+        const batchSource = scope.batchSource || {};
+        const selectionSource = scope.selectionSource || {};
+        const timeSource = scope.timeSource || {};
+        const viewerSource = scope.viewerSource || {};
         const callbackSources = {
             getProject: projectSource,
+            getNode: projectSource,
             setProject: projectSource,
             getProjectId: projectSource,
             buildProjectStoragePatch: patchSource,
+            buildMaterializedAsset: patchSource,
+            buildResultMaterializationPatch: patchSource,
+            buildMediaNodeStatePatch: patchSource,
+            buildMediaNodeSourcePatch: patchSource,
+            buildBatchAnyItemStatePatch: patchSource,
             getStorageScope: storageSource,
             getStorageKey: storageSource,
             buildProjectStorageInfo: storageSource,
             assetDisplaySrc: assetSource,
             sendCanvasListAssetsRequest: assetSource,
-            materializeNodeAssetForStorage: assetSource,
+            sendCanvasMaterializeAssetRequest: assetSource,
+            serializeAssetSourceForRun: serializationSource,
+            serializeAssetForRun: serializationSource,
+            batchAnyMediaKind: batchSource,
+            applyBatchAnyStatePatch: batchSource,
+            getSelectedNodeId: selectionSource,
+            nowIso: timeSource,
             saveProjectToBrowserCache: persistenceSource,
             loadProjectFromBackend: persistenceSource,
             getRoot: domSource,
             renderAll: renderSource,
+            invalidateRenderedNode: renderSource,
+            syncPresetSpecialViewersForAssetNode: viewerSource,
             warn: uiSource
         };
         const call = (name, fallback, ...args) => {
@@ -343,13 +362,95 @@
             return loaded;
         }
 
+        async function materializeNodeAssetForStorage(nodeId) {
+            const node = call('getNode', null, nodeId);
+            if (!node || !node.asset?.data_url) return { ok: false, error: 'node has no inline asset' };
+            const response = await call('sendCanvasMaterializeAssetRequest', null, {
+                project_id: project().id || call('getProjectId', 'default'),
+                asset_source: call('serializeAssetSourceForRun', null, node)
+            });
+            const current = call('getNode', null, nodeId);
+            if (!current || !response?.ok || !response.asset_ref) return response;
+            const ref = response.asset_ref || {};
+            const materializedAsset = call('buildMaterializedAsset', {}, current.asset, ref);
+            if (ref.asset_root) setCanvasProjectAssetRoot(ref.asset_root);
+            const deleteAssetKeys = materializedAsset.path || materializedAsset.preview_url ? ['data_url'] : [];
+            if (current.type === 'result') {
+                Object.assign(current, call('buildResultMaterializationPatch', {}, current, {
+                    assetRef: ref,
+                    asset: materializedAsset,
+                    deleteAssetKeys
+                }));
+            } else {
+                Object.assign(current, call('buildMediaNodeStatePatch', {}, current, {
+                    asset: materializedAsset,
+                    deleteAssetKeys
+                }));
+                Object.assign(current, call('buildMediaNodeSourcePatch', {}, current, {
+                    materialized_asset_id: ref.asset_id || '',
+                    materialized_path: ref.path || '',
+                    materialized_at: call('nowIso', '')
+                }));
+            }
+            call('saveProjectToBrowserCache', undefined);
+            call('invalidateRenderedNode', undefined, current.id);
+            call('renderAll', undefined, { inspector: false });
+            call('syncPresetSpecialViewersForAssetNode', undefined, current.id);
+            return response;
+        }
+
+        async function materializeBatchAnyItemForStorage(nodeId, itemId) {
+            const node = call('getNode', null, nodeId);
+            if (!node || node.type !== 'batch_any') return { ok: false, error: 'batch node not found' };
+            const index = (node.items || []).findIndex(item => item.id === itemId);
+            const item = index >= 0 ? node.items[index] : null;
+            if (!item || !item.asset?.data_url) return { ok: false, error: 'item has no inline asset' };
+            const response = await call('sendCanvasMaterializeAssetRequest', null, {
+                project_id: project().id || call('getProjectId', 'default'),
+                asset_source: {
+                    node_id: `${node.id}:item:${item.id}`,
+                    type: item.media_kind || call('batchAnyMediaKind', '', node) || 'image',
+                    title: item.name || '',
+                    asset: call('serializeAssetForRun', null, item.asset),
+                    mask: null,
+                    source: {
+                        kind: 'batch_any_item',
+                        batch_node_id: node.id,
+                        batch_item_id: item.id,
+                        batch_index: index
+                    }
+                }
+            });
+            const currentNode = call('getNode', null, nodeId);
+            const currentIndex = currentNode?.items?.findIndex(entry => entry.id === itemId) ?? -1;
+            const currentItem = currentIndex >= 0 ? currentNode.items[currentIndex] : null;
+            if (!currentNode || !currentItem || !response?.ok || !response.asset_ref) return response;
+            const ref = response.asset_ref || {};
+            const materializedAsset = call('buildMaterializedAsset', {}, currentItem.asset, ref);
+            if (ref.asset_root) setCanvasProjectAssetRoot(ref.asset_root);
+            const updatedItem = call('buildBatchAnyItemStatePatch', null, currentItem, {
+                asset: materializedAsset,
+                deleteAssetKeys: materializedAsset.path || materializedAsset.preview_url ? ['data_url'] : [],
+                materializedAt: call('nowIso', '')
+            });
+            if (!updatedItem || typeof updatedItem !== 'object') return response;
+            const items = Array.isArray(currentNode.items) ? currentNode.items.slice() : [];
+            items[currentIndex] = updatedItem;
+            const statePatch = { items };
+            if (Number(currentNode.current_index || 0) === currentIndex) statePatch.asset = updatedItem.asset;
+            call('applyBatchAnyStatePatch', undefined, currentNode, { statePatch });
+            call('saveProjectToBrowserCache', undefined);
+            call('renderAll', undefined, { inspector: call('getSelectedNodeId', null) === currentNode.id });
+            return response;
+        }
+
         async function materializeInlineProjectAssets() {
             const currentProject = project();
             const nodes = (Array.isArray(currentProject.nodes) ? currentProject.nodes : [])
                 .filter(node => node && ['image', 'video', 'audio'].includes(node.type) && node.asset?.data_url && !(node.asset.path || node.asset.preview_url));
             for (const node of nodes) {
                 try {
-                    await call('materializeNodeAssetForStorage', null, node.id);
+                    await materializeNodeAssetForStorage(node.id);
                 } catch (err) {
                     warn('[SimpAI Canvas] asset materialize before save skipped:', err);
                 }
@@ -372,6 +473,8 @@
             normalizeProjectAssetReferences,
             refreshCanvasProjectAssetRoot,
             refreshCanvasProjectFromBackendOnOpen,
+            materializeNodeAssetForStorage,
+            materializeBatchAnyItemForStorage,
             materializeInlineProjectAssets,
             getAssetCatalog: () => canvasProjectAssetCatalog.slice()
         };

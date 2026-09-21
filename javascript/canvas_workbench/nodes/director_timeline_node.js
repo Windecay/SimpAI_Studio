@@ -816,18 +816,30 @@ ${renderTimelinePreview(timeline, node, ctx)}
         return node;
     }
 
-    function mediaSourceKind(source) {
+    function mediaSourceKind(source, context) {
         if (!source) return '';
         if (source.type === 'image' || source.type === 'mask' || source.type === 'pose_studio' || source.type === 'gaussian_studio') return 'image';
         if (source.type === 'video' || source.type === 'sam3_video_mask') return 'video';
         if (source.type === 'audio') return 'audio';
-        const asset = source.type === 'result' && source.asset ? source.asset : source.asset;
+        const asset = source.type === 'result'
+            ? call(context, 'getSelectedResultAsset', source.asset || null, source)
+            : source.asset;
         const mime = String(asset?.mime || '').toLowerCase();
         if (mime.startsWith('image/')) return 'image';
         if (mime.startsWith('video/')) return 'video';
         if (mime.startsWith('audio/')) return 'audio';
-        if (source.type === 'result') return 'result';
+        if (source.type === 'result') return call(context, 'assetMediaKind', 'image', asset);
         return '';
+    }
+
+    function isMediaSourceForSlot(source, slot, context) {
+        const kind = mediaSourceKind(source, context);
+        if (!kind) return false;
+        const slotText = String(slot || '');
+        if (slotText.startsWith('image_')) return kind === 'image';
+        if (slotText.startsWith('audio_')) return kind === 'audio';
+        if (slotText.startsWith('video_')) return kind === 'video';
+        return ['image', 'audio', 'video'].includes(kind);
     }
 
     function serializeForRun(node, context) {
@@ -888,6 +900,7 @@ ${renderTimelinePreview(timeline, node, ctx)}
         normalizeTimeline,
         promptOverrideForTimeline,
         mediaSourceKind,
+        isMediaSourceForSlot,
         renderTimelinePreview,
         createNode,
         renderInspector,

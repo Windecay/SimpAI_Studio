@@ -115,6 +115,8 @@
             escapeHtml: pick(utilitySource, 'escapeHtml'),
             t: pick(utilitySource, 't'),
             getProject: pick(scope, 'getProject'),
+            getSelectedResultAsset: pick(scope, 'getSelectedResultAsset'),
+            assetMediaKind: pick(scope, 'assetMediaKind'),
             uid: pick(scope, 'uid'),
             defaultNodeSize: pick(scope, 'defaultNodeSize'),
             buildQwenTtsStatePatch: pick(scope, 'buildQwenTtsStatePatch'),
@@ -323,6 +325,15 @@
 
     function isNode(node) {
         return !!(node && TYPE_MODES[node.type]);
+    }
+
+    function isAudioSource(node, context) {
+        if (!node) return false;
+        if (node.type === 'audio') return true;
+        if (node.type !== 'result') return false;
+        const ctx = contextOf(context);
+        const asset = call(ctx, 'getSelectedResultAsset', null, node);
+        return !!asset && call(ctx, 'assetMediaKind', '', asset) === 'audio';
     }
 
     function isRunning(node) {
@@ -575,6 +586,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtmlValue(ctx, status)}</div>` : 
         createNode,
         defaultParams,
         isNode,
+        isAudioSource,
         modeFromNode,
         stylePresetInstruction,
         renderInspector,

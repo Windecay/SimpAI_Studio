@@ -192,8 +192,10 @@
                 }
                 const mutate = pick(runtimeSource, 'mutate');
                 if (typeof mutate === 'function') mutate({ inspector: true });
+                showToast(t('Danbooru media added to canvas.', 'Danbooru 媒体已加入画布。'));
+            } else {
+                showToast(t('Media import failed.', '媒体导入失败。'));
             }
-            showToast(t('Danbooru media added to canvas.', 'Danbooru 媒体已加入画布。'));
             return node;
         }
 

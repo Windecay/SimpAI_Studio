@@ -462,6 +462,54 @@ def canvas_queue_vlm_model_downloads(payload):
     return dict(refreshed, ok=True, state="queued", queued_count=len(queued), queued=queued, message=f"Queued {len(queued)} VLM model download task(s).")
 
 
+def canvas_vlm_model_download_status(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    status = canvas_vlm_model_status(payload)
+    requested = payload.get("task_ids")
+    task_ids = {
+        str(task_id or "").replace("\\", "/").strip("/")
+        for task_id in (requested if isinstance(requested, list) else [])
+        if str(task_id or "").strip()
+    }
+    rows = model_loader.get_download_queue_snapshot()
+    if task_ids:
+        rows = [row for row in rows if str(row.get("task_id") or "").replace("\\", "/").strip("/") in task_ids]
+    active_count = sum(1 for row in rows if row.get("active"))
+    return dict(
+        status or {},
+        ok=bool((status or {}).get("ok", True)),
+        download_tasks=rows,
+        active_download_count=active_count,
+    )
+
+
+def canvas_cancel_vlm_model_download(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    raw_task_ids = payload.get("task_ids") if isinstance(payload.get("task_ids"), list) else [payload.get("task_id")]
+    task_ids = []
+    for raw_task_id in raw_task_ids:
+        task_id = str(raw_task_id or "").replace("\\", "/").strip("/")
+        if task_id and task_id not in task_ids:
+            task_ids.append(task_id)
+    if not task_ids:
+        return {"ok": False, "error": "download task id is required"}
+    stopped = []
+    for task_id in task_ids:
+        if model_loader.cancel_download_task(task_id):
+            stopped.append(task_id)
+    rows = [
+        row for row in model_loader.get_download_queue_snapshot()
+        if str(row.get("task_id") or "").replace("\\", "/").strip("/") in set(task_ids)
+    ]
+    return {
+        "ok": True,
+        "stopped": bool(stopped),
+        "task_ids": task_ids,
+        "stopped_task_ids": stopped,
+        "download_tasks": rows,
+    }
+
+
 def canvas_custom_llm_url(base_url, suffix):
     return custom_llm_url(base_url, suffix)
 

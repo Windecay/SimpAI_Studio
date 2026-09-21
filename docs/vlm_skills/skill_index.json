@@ -265,6 +265,66 @@
       "reason": "Source-image preservation, ordered picture references, edit scope, and the MiniMax-H3(R2I) still-image route require owner-reviewed behavior."
     },
     {
+      "key": "qwen_image21_t2i_en",
+      "title": "Qwen Image 2.1 PE Text-to-Image Prompt Skill (English)",
+      "doc": "qwen_image21_t2i_en.md",
+      "language": "en",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/qwen_image21_t2i_en.md",
+      "source": {
+        "shared_skill": "image-prompt-t2i",
+        "source_files": ["SKILL.md", "references/system_prompt.txt"]
+      },
+      "reason": "Qwen Image 2.1 PE text-to-image structure and visible-text rules, adapted to SimpAI's plain prompt and action contracts."
+    },
+    {
+      "key": "qwen_image21_t2i_cn",
+      "title": "Qwen Image 2.1 PE 文生图提示词技能",
+      "doc": "qwen_image21_t2i_cn.md",
+      "language": "cn",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/qwen_image21_t2i_cn.md",
+      "source": {
+        "shared_skill": "image-prompt-t2i",
+        "source_files": ["SKILL.md", "references/system_prompt.txt"]
+      },
+      "reason": "Qwen Image 2.1 PE 文生图结构和画面文字规则，按 SimpAI 的纯提示词与 action 合同整理。"
+    },
+    {
+      "key": "qwen_image21_i2i_en",
+      "title": "Qwen Image 2.1 PE Image-Editing Prompt Skill (English)",
+      "doc": "qwen_image21_i2i_en.md",
+      "language": "en",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/qwen_image21_i2i_en.md",
+      "source": {
+        "shared_skill": "image-prompt-i2i",
+        "source_files": ["SKILL.md", "references/system_prompt.txt"]
+      },
+      "reason": "Qwen Image 2.1 PE image-editing scope, ordered image roles, source preservation, and ratio decisions adapted to SimpAI."
+    },
+    {
+      "key": "qwen_image21_i2i_cn",
+      "title": "Qwen Image 2.1 PE 图像编辑提示词技能",
+      "doc": "qwen_image21_i2i_cn.md",
+      "language": "cn",
+      "ownership": "manual_review",
+      "manual_required": true,
+      "auto_generated": false,
+      "edit_target": "docs/vlm_skills/qwen_image21_i2i_cn.md",
+      "source": {
+        "shared_skill": "image-prompt-i2i",
+        "source_files": ["SKILL.md", "references/system_prompt.txt"]
+      },
+      "reason": "Qwen Image 2.1 PE 图像编辑范围、多图角色、源图保留和比例规则，按 SimpAI 运行时整理。"
+    },
+    {
       "key": "runtime_canvas_snapshot",
       "title": "Runtime Canvas Snapshot",
       "doc": "",

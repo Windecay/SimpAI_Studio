@@ -20,6 +20,9 @@
             const size = sourceCall(nodeSource, 'defaultNodeSize', null, type);
             return size && typeof size === 'object' ? size : { w: 220, h: 250 };
         };
+        const buildVlmNodeSizePatch = typeof nodeSource.buildVlmNodeSizePatch === 'function'
+            ? nodeSource.buildVlmNodeSizePatch
+            : () => ({});
         const supportsCollapsedPromptHeight = (node) => !!sourceCall(
             nodeSource,
             'supportsCollapsedPromptHeight',
@@ -146,6 +149,15 @@
             return changed;
         }
 
+        function ensureVlmNodeModeSize(node) {
+            if (!node || node.type !== 'vlm') return false;
+            const sizePatch = buildVlmNodeSizePatch(node);
+            if (!sizePatch || typeof sizePatch !== 'object' || !Object.keys(sizePatch).length) return false;
+            Object.assign(node, sizePatch);
+            scheduleSave();
+            return true;
+        }
+
         function minResizableNodeSize(node) {
             if (supportsCollapsedPromptHeight(node)) {
                 return { w: 260, h: collapsedPromptMinHeight };
@@ -254,6 +266,7 @@
             boundedImageNodeSizeForAsset,
             defaultResultNodeSize,
             ensureResultNodeReadableSize,
+            ensureVlmNodeModeSize,
             ensureMediaBrowserNodeReadableSize,
             fitImageNodeToAssetBounds,
             findOpenNodePosition,

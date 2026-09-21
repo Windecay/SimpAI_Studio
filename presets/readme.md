@@ -191,6 +191,7 @@
 | `additional_prompt_title` / `additional_prompt_title_2` | 额外文本输入标题。 |
 | `multimodal_prompt` | VLM 反推或改写提示词。 |
 | `agent_prompt` | Canvas Agent / VLM 提示增强规则。 |
+| `prompt_skill_docs` | 按 `text_to_image` / `image_edit` 和 `stage.__lang` 选择提示词 skill 文档。 |
 | `disvisible` | 隐藏的场景控件。 |
 | `disinteractive` | 显示但不可编辑的场景控件。 |
 | `image_preprocessor_method` | 输入图预处理规则。可按主题配置。 |

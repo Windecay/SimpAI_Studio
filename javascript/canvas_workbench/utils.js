@@ -1,9 +1,12 @@
 (function () {
     'use strict';
 
-    function uid(prefix) {
+    function uid(prefix, options) {
         const rnd = Math.random().toString(16).slice(2, 8);
-        return `${prefix}_${Date.now().toString(36)}_${rnd}`;
+        const nowSource = options && typeof options === 'object' ? options.now : null;
+        const timestamp = typeof nowSource === 'function' ? Number(nowSource()) : Date.now();
+        const safeTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now();
+        return `${prefix}_${safeTimestamp.toString(36)}_${rnd}`;
     }
 
     function nowIso() {

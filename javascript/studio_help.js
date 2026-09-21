@@ -43,7 +43,15 @@
     }
 
     function modelNotice(version, apiMissing = false) {
-        return `<span data-studio-help-model="${escape(version || '')}" data-help-api-missing="${apiMissing ? 'true' : 'false'}">${notice(modelReason(version, apiMissing), 'canvas', version)}</span>`;
+        const downloadNotice = modelDownloadNotice(version, apiMissing);
+        return `<div data-studio-help-model="${escape(version || '')}" data-help-api-missing="${apiMissing ? 'true' : 'false'}">${downloadNotice || notice(modelReason(version, apiMissing), 'canvas', version)}</div>`;
+    }
+
+    function modelDownloadNotice(version, apiMissing = false) {
+        const runtime = window.SimpAICanvasWorkbenchVlmModelDownloadRuntime;
+        return typeof runtime?.renderModelNotice === 'function'
+            ? runtime.renderModelNotice(version, apiMissing)
+            : '';
     }
 
     function sectionsHtml(topic) {
@@ -342,7 +350,9 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
             replaceHtml(slot, notice(slot.dataset.studioHelpNotice, slot.dataset.studioHelpSource, slot.dataset.studioHelpVersion));
         });
         document.querySelectorAll('[data-studio-help-model]').forEach(slot => {
-            replaceHtml(slot, notice(modelReason(slot.dataset.studioHelpModel, slot.dataset.helpApiMissing === 'true'), 'canvas', slot.dataset.studioHelpModel));
+            const version = slot.dataset.studioHelpModel;
+            const apiMissing = slot.dataset.helpApiMissing === 'true';
+            replaceHtml(slot, modelDownloadNotice(version, apiMissing) || notice(modelReason(version, apiMissing), 'canvas', version));
         });
         document.querySelectorAll('[data-studio-help]').forEach(node => {
             if (!node.classList.contains('sai-help-button')) return;
@@ -391,16 +401,41 @@ ${topic.actions?.includes('settings') ? `<footer><button type="button" data-help
     }
 
     document.addEventListener('click', event => {
+        const cancel = event.target.closest?.('[data-studio-help-cancel-model-download]');
+        if (cancel) {
+            const version = String(cancel.dataset.studioHelpCancelModelDownload || '').trim();
+            const taskId = String(cancel.dataset.studioHelpCancelTask || '').trim();
+            const runtime = window.SimpAICanvasWorkbenchVlmModelDownloadRuntime;
+            let triggered = false;
+            if (version && typeof runtime?.cancelModelDownload === 'function') {
+                triggered = runtime.cancelModelDownload(version, taskId);
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            if (!triggered) console.warn('[UI-TRACE] studio_help.model_download_cancel_unavailable', version, taskId);
+            if (triggered && typeof triggered.catch === 'function') triggered.catch(error => {
+                console.warn('[UI-TRACE] studio_help.model_download_cancel_failed', error);
+            });
+            return;
+        }
         const download = event.target.closest?.('[data-studio-help-download-model]');
         if (download) {
             const version = String(download.dataset.studioHelpDownloadModel || '').trim();
-            const triggered = version && typeof window.triggerMissingModelCheck === 'function'
-                ? window.triggerMissingModelCheck({ kind: 'vlm', version })
-                : false;
+            const source = String(download.dataset.studioHelpDownloadSource || '').trim();
+            let triggered = false;
+            if (version && source === 'canvas' && typeof window.SimpAIInfiniteCanvasWorkbench?.downloadCanvasAgentModel === 'function') {
+                triggered = window.SimpAIInfiniteCanvasWorkbench.downloadCanvasAgentModel(version);
+            } else if (version && typeof window.triggerMissingModelCheck === 'function') {
+                triggered = window.triggerMissingModelCheck({ kind: 'vlm', version });
+            }
             event.preventDefault();
             event.stopPropagation();
             if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
             if (!triggered) console.warn('[UI-TRACE] studio_help.missing_model_download_unavailable', version);
+            if (triggered && typeof triggered.then === 'function') triggered.catch(error => {
+                console.warn('[UI-TRACE] studio_help.missing_model_download_failed', error);
+            });
             return;
         }
         const target = event.target.closest?.('[data-studio-help]');

@@ -23,6 +23,20 @@
         return isImageFile(file) || isVideoFile(file) || isAudioFile(file);
     }
 
+    function isBatchTextFile(file) {
+        if (!file) return false;
+        const name = String(file.name || '').toLowerCase();
+        const type = String(file.type || '').toLowerCase();
+        if (name.endsWith('.canvas.json') || name.endsWith('.workbench.json')) return false;
+        return type.startsWith('text/') || name.endsWith('.txt') || name.endsWith('.md');
+    }
+
+    function isWorkbenchProjectFile(file) {
+        if (!file) return false;
+        const name = String(file.name || '').toLowerCase();
+        return name.endsWith('.canvas.json') || name.endsWith('.workbench.json') || (name.endsWith('.json') && !file.type.startsWith('image/'));
+    }
+
     function roundMediaTime(value) {
         const num = Number(value || 0);
         if (!Number.isFinite(num)) return 0;
@@ -52,6 +66,36 @@
         const clearTimeoutFn = (...args) => typeof timingSource.clearTimeout === 'function'
             ? timingSource.clearTimeout(...args)
             : undefined;
+
+        function pickLocalFile(accept, acceptsFile) {
+            const doc = getDocument();
+            const input = doc?.createElement?.('input');
+            if (!input || !doc?.body) return Promise.resolve(null);
+            input.type = 'file';
+            input.accept = accept;
+            input.style.display = 'none';
+            doc.body.appendChild(input);
+            return new Promise((resolve) => {
+                input.addEventListener('change', () => {
+                    const file = input.files && input.files[0] ? input.files[0] : null;
+                    input.remove();
+                    resolve(file && acceptsFile(file) ? file : null);
+                }, { once: true });
+                input.click();
+            });
+        }
+
+        function pickLocalVideoFile() {
+            return pickLocalFile('video/*,.mp4,.webm,.mov,.m4v,.avi,.mkv', isVideoFile);
+        }
+
+        function pickLocalImageFile() {
+            return pickLocalFile('image/*', isImageFile);
+        }
+
+        function pickLocalAudioFile() {
+            return pickLocalFile('audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac,.opus', isAudioFile);
+        }
 
         function waitForMediaElementEvent(target, eventName, timeoutMs) {
             return new Promise((resolve) => {
@@ -354,6 +398,11 @@
             isVideoFile,
             isAudioFile,
             isMediaFile,
+            isBatchTextFile,
+            isWorkbenchProjectFile,
+            pickLocalVideoFile,
+            pickLocalImageFile,
+            pickLocalAudioFile,
             readFileAsDataUrl,
             readFileAsText,
             loadImageElementForCanvas,
@@ -395,6 +444,11 @@
             isVideoFile: defaultContext.isVideoFile,
             isAudioFile: defaultContext.isAudioFile,
             isMediaFile: defaultContext.isMediaFile,
+            isBatchTextFile: defaultContext.isBatchTextFile,
+            isWorkbenchProjectFile: defaultContext.isWorkbenchProjectFile,
+            pickLocalVideoFile: defaultContext.pickLocalVideoFile,
+            pickLocalImageFile: defaultContext.pickLocalImageFile,
+            pickLocalAudioFile: defaultContext.pickLocalAudioFile,
             readFileAsDataUrl: defaultContext.readFileAsDataUrl,
             readFileAsText: defaultContext.readFileAsText,
             loadImageElementForCanvas: defaultContext.loadImageElementForCanvas,

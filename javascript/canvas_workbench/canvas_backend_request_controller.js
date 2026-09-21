@@ -139,6 +139,29 @@
             });
         }
 
+        async function sendCanvasVlmModelDownloadStatusRequest(node, options) {
+            const opts = options || {};
+            return apiCall('vlmModelDownloadStatus', {
+                project_id: projectId(),
+                node_id: node?.id || '',
+                params: call(vlmSource, 'getVlmCustomRuntimeParams', {}, node),
+                api_key: call(vlmSource, 'getVlmCustomApiKey', '', node),
+                user_context: getWorkbenchUserContext(),
+                task_ids: Array.isArray(opts.taskIds) ? opts.taskIds : []
+            });
+        }
+
+        async function sendCanvasVlmModelDownloadCancelRequest(node, taskId) {
+            return apiCall('vlmModelDownloadCancel', {
+                project_id: projectId(),
+                node_id: node?.id || '',
+                params: call(vlmSource, 'getVlmCustomRuntimeParams', {}, node),
+                api_key: call(vlmSource, 'getVlmCustomApiKey', '', node),
+                user_context: getWorkbenchUserContext(),
+                task_id: taskId || ''
+            });
+        }
+
         async function sendCanvasCustomLlmModelsRequest(node) {
             return apiCall('customLlmModels', {
                 project_id: projectId(),
@@ -274,6 +297,8 @@
             sendCanvasPresetModelDownloadsRequest,
             sendCanvasVlmModelStatusRequest,
             sendCanvasVlmModelDownloadsRequest,
+            sendCanvasVlmModelDownloadStatusRequest,
+            sendCanvasVlmModelDownloadCancelRequest,
             sendCanvasCustomLlmModelsRequest,
             sendVlmSystemPromptTemplatesRequest,
             sendCanvasListAssetsRequest,

@@ -54,6 +54,8 @@
             sendCanvasPresetModelDownloadsRequest: backendMethod('sendCanvasPresetModelDownloadsRequest'),
             sendCanvasVlmModelStatusRequest: backendMethod('sendCanvasVlmModelStatusRequest'),
             sendCanvasVlmModelDownloadsRequest: backendMethod('sendCanvasVlmModelDownloadsRequest'),
+            sendCanvasVlmModelDownloadStatusRequest: backendMethod('sendCanvasVlmModelDownloadStatusRequest'),
+            sendCanvasVlmModelDownloadCancelRequest: backendMethod('sendCanvasVlmModelDownloadCancelRequest'),
             sendCanvasCustomLlmModelsRequest: backendMethod('sendCanvasCustomLlmModelsRequest'),
             sendVlmSystemPromptTemplatesRequest: backendMethod('sendVlmSystemPromptTemplatesRequest'),
             sendCanvasListAssetsRequest: backendMethod('sendCanvasListAssetsRequest'),

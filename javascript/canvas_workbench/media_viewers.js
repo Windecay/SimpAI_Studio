@@ -27,8 +27,6 @@
 
     function scheduleFrame(context, callback) {
         if (typeof context?.requestAnimationFrame === 'function') return context.requestAnimationFrame(callback);
-        const win = getWindow(context);
-        if (typeof win?.requestAnimationFrame === 'function') return win.requestAnimationFrame(callback);
         return undefined;
     }
 
@@ -63,6 +61,7 @@
         const utilitySource = scope.utilitySource || {};
         const domSource = scope.domSource || {};
         const browserSource = scope.browserSource || {};
+        const timingSource = scope.timingSource || {};
         const assetSource = scope.assetSource || {};
         const nodeSource = scope.nodeSource || {};
         const compareSource = scope.compareSource || {};
@@ -78,7 +77,7 @@
             getWindow: () => typeof browserSource.getWindow === 'function'
                 ? browserSource.getWindow()
                 : browserSource.window || null,
-            requestAnimationFrame: delegate(browserSource, 'requestAnimationFrame'),
+            requestAnimationFrame: delegate(timingSource, 'requestAnimationFrame'),
             getInnerWidth: delegate(browserSource, 'getInnerWidth'),
             getInnerHeight: delegate(browserSource, 'getInnerHeight'),
             assetDisplaySrc: delegate(assetSource, 'assetDisplaySrc'),

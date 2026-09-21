@@ -37,13 +37,13 @@
     "_meta": {"title": "vae_model"}
   },
   "6": {
-    "inputs": {"model": ["3", 0], "device": "auto", "dtype": "default"},
+    "inputs": {"model": ["50", 0], "device": "auto", "dtype": "default"},
     "class_type": "QwenImage21Cache",
     "_meta": {"title": "Qwen Image 2.1 Cache"}
   },
   "7": {
     "inputs": {
-      "clip": ["4", 0], "vae": ["5", 0],
+      "clip": ["54", 0], "vae": ["5", 0],
       "prompt": ["1", 0], "negative_prompt": ["1", 29], "resolution": ["1", 10],
       "images.image_1": ["22", 0], "images.image_2": ["25", 0], "images.image_3": ["28", 0],
       "images.image_4": ["31", 0], "images.image_5": ["34", 0], "images.image_6": ["37", 0],
@@ -212,5 +212,45 @@
   "46": {
     "inputs": {"boolean": ["45", 0], "on_true": ["17", 0], "on_false": ["44", 0]},
     "class_type": "easy ifElse"
+  },
+  "47": {
+    "inputs": {"unet_name": "placeholder.gguf"},
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {"title": "base_model_gguf"}
+  },
+  "48": {
+    "inputs": {"comparison": "a == b", "a": ["1", 24], "b": ["49", 0]},
+    "class_type": "easy compare",
+    "_meta": {"title": "Compare model type"}
+  },
+  "49": {
+    "inputs": {"value": 1},
+    "class_type": "easy int",
+    "_meta": {"title": "Safetensors model type"}
+  },
+  "50": {
+    "inputs": {"boolean": ["48", 0], "on_true": ["3", 0], "on_false": ["47", 0]},
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Select model loader"}
+  },
+  "51": {
+    "inputs": {"comparison": "a == b", "a": ["1", 26], "b": ["52", 0]},
+    "class_type": "easy compare",
+    "_meta": {"title": "Compare clip type"}
+  },
+  "52": {
+    "inputs": {"value": 1},
+    "class_type": "easy int",
+    "_meta": {"title": "Safetensors clip type"}
+  },
+  "53": {
+    "inputs": {"clip_name": "placeholder.safetensors", "type": "qwen_image"},
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {"title": "clip_model"}
+  },
+  "54": {
+    "inputs": {"boolean": ["51", 0], "on_true": ["4", 0], "on_false": ["53", 0]},
+    "class_type": "easy ifElse",
+    "_meta": {"title": "Select clip loader"}
   }
 }

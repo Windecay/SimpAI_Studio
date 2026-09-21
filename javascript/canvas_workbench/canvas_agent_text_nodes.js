@@ -15,7 +15,7 @@
         const getProject = () => call(projectSource, 'getProject', {}) || {};
         const getNode = (...args) => call(nodeSource, 'getNode', null, ...args);
         const applyTextMergeStatePatch = (node, options) => {
-            const patch = call(patchSource, 'buildTextMergeStatePatch', node, options || {});
+            const patch = call(patchSource, 'buildTextMergeStatePatch', {}, node, options || {});
             if (patch && typeof patch === 'object') Object.assign(node, patch);
         };
         const batchAnyMediaKind = (...args) => call(batchSource, 'batchAnyMediaKind', '', ...args);

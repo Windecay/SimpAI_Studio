@@ -47,6 +47,7 @@ import modules.vlm_api_profiles as vlm_api_profiles
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 import modules.canvas_workbench_media_gallery as canvas_workbench_media_gallery
 import modules.canvas_workbench_danbooru_gallery as canvas_workbench_danbooru_gallery
+import modules.canvas_workbench_request_identity as canvas_workbench_request_identity
 import modules.scene_prompt_recommendations as scene_prompt_recommendations
 import copy
 import args_manager
@@ -13715,9 +13716,15 @@ async def simpai_sketch_cache_check_endpoint(payload: dict = Body(...)):
 def _canvas_workbench_standalone_system_params(request: Request):
     query = request.query_params if request is not None else {}
     try:
-        user_did = shared.token.get_guest_did() if shared.token is not None else ""
+        user_did = str(_get_request_identity_did(request) or "").strip()
     except Exception:
         user_did = ""
+    try:
+        if not user_did:
+            user_did = shared.token.get_guest_did() if shared.token is not None else ""
+    except Exception:
+        if not user_did:
+            user_did = ""
     if not user_did:
         user_did = "local" if is_local_mode() else "guest"
     theme = str(query.get("__theme") or args_manager.args.theme or "light").strip() or "light"
@@ -13795,6 +13802,8 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_agent_settings.js"),
         webpath("javascript/canvas_workbench/canvas_agent_input_controller.js"),
         webpath("javascript/canvas_workbench/canvas_scroll_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_edge_runtime_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_vlm_chat_scroll_controller.js"),
         webpath("javascript/canvas_workbench/canvas_mode_controller.js"),
         webpath("javascript/canvas_workbench/canvas_status_controller.js"),
         webpath("javascript/canvas_workbench/canvas_render_controller.js"),
@@ -13808,6 +13817,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_node_spatial_index.js"),
         webpath("javascript/canvas_workbench/canvas_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_result_preview.js"),
+        webpath("javascript/canvas_workbench/canvas_result_status_dom_controller.js"),
         webpath("javascript/canvas_workbench/canvas_lifecycle_controller.js"),
         webpath("javascript/canvas_workbench/canvas_lifecycle_context.js"),
         webpath("javascript/canvas_workbench/canvas_action_controller.js"),
@@ -13831,6 +13841,41 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_batch_any_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_mask_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_result_node_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_asset_media_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_connection_media_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_upload_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_special_result_bridge_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_special_image_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_config_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_model_config_catalog_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_config_edit_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_config_values_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_config_creation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_text_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_input_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timeline_creation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_input_creation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_import_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_browser_state_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_browser_interaction_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_browser_data_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_generation_metadata_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_generation_metadata_inspector_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_note_geometry_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_note_renderer.js"),
+        webpath("javascript/canvas_workbench/canvas_note_edit_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_note_inspector_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_aux_node_creation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_browser_action_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_browser_panel_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_creation_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_edit_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_queries.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_inspector_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_special_media_source_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_asset_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_input_node_factory.js"),
         webpath("javascript/canvas_workbench/canvas_upload_node_factory.js"),
@@ -13840,6 +13885,11 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_group_factory.js"),
         webpath("javascript/canvas_workbench/canvas_run_record_factory.js"),
         webpath("javascript/canvas_workbench/canvas_batch_job_factory.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_runtime_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_batch_any_connection_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_preset_run_serialization_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_preset_run_fingerprint_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_staleness_controller.js"),
         webpath("javascript/canvas_workbench/canvas_edge_factory.js"),
         webpath("javascript/canvas_workbench/canvas_project_patch_factory.js"),
         webpath("javascript/canvas_workbench/canvas_asset_factory.js"),
@@ -13877,7 +13927,9 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_project_actions_controller.js"),
         webpath("javascript/canvas_workbench/canvas_project_assets_controller.js"),
         webpath("javascript/canvas_workbench/canvas_backend_request_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_vlm_model_download_controller.js"),
         webpath("javascript/canvas_workbench/canvas_qwen_tts_presets_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_qwen_tts_runtime_controller.js"),
         webpath("javascript/canvas_workbench/canvas_backend_context.js"),
         webpath("javascript/canvas_workbench/canvas_project_persistence_controller.js"),
         webpath("javascript/canvas_workbench/canvas_bridge_transport.js"),
@@ -13960,8 +14012,24 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/canvas_resolution_drag_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_browser_drag_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_browser_paint_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_run_state_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_node_state_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_scheduler_state_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_scheduler_step_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_scheduler_run_controller.js"),
         webpath("javascript/canvas_workbench/canvas_run_status_controller.js"),
         webpath("javascript/canvas_workbench/canvas_run_polling_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_preset_run_runtime_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_run_action_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_media_conversion_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_metadata_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_inspector_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_result_context_menu_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_run_refresh_wait_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_pose_studio_smoke_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_timing_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_workspace_recovery_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_performance_diagnostics_controller.js"),
         webpath("javascript/canvas_workbench/canvas_gallery_refresh_controller.js"),
         webpath("javascript/canvas_workbench/run_history_panel.js"),
         webpath("javascript/canvas_workbench/run_queue_panel.js"),
@@ -13999,11 +14067,14 @@ def _canvas_workbench_standalone_html(request: Request):
          webpath("javascript/canvas_workbench/canvas_runtime_context.js"),
         webpath("javascript/canvas_workbench/canvas_input_context.js"),
         webpath("javascript/canvas_workbench/canvas_textarea_editor_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_translation_controller.js"),
         webpath("javascript/canvas_workbench/canvas_media_seek_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_media_edit_controller.js"),
         webpath("javascript/canvas_workbench/canvas_preset_special_viewer_controller.js"),
         webpath("javascript/canvas_workbench/canvas_preset_model_status_controller.js"),
         webpath("javascript/canvas_workbench/canvas_toast_controller.js"),
         webpath("javascript/canvas_workbench/canvas_wildcards_v2_controller.js"),
+        webpath("javascript/canvas_workbench/canvas_viewport_render_scheduler_controller.js"),
         webpath("javascript/infinite_canvas_workbench.js"),
     ]
     meta_values = {
@@ -14043,7 +14114,13 @@ body.simpai-canvas-standalone-loading::before {{ content: "Loading Infinite Canv
     }} catch (err) {{
         stored = {{}};
     }}
-    window.simpleaiTopbarSystemParams = Object.assign({{}}, fallback, stored, {{ __canvas_standalone: true }});
+    window.simpleaiTopbarSystemParams = Object.assign({{}}, fallback, stored, {{
+        access_mode: fallback.access_mode,
+        user_role: fallback.user_role,
+        user_did: fallback.user_did,
+        __user_did: fallback.__user_did,
+        __canvas_standalone: true
+    }});
     var standaloneTheme = String((window.simpleaiTopbarSystemParams && window.simpleaiTopbarSystemParams.__theme) || fallback.__theme || document.documentElement.getAttribute('data-theme') || 'light').toLowerCase();
     standaloneTheme = standaloneTheme.indexOf('dark') >= 0 ? 'dark' : 'light';
     window.simpleaiTopbarSystemParams.__theme = standaloneTheme;
@@ -14085,6 +14162,39 @@ window.addEventListener('load', function () {{
 
 def _canvas_workbench_state_params(payload):
     return canvas_workbench_project._state_params_for_payload(payload if isinstance(payload, dict) else {}, {})
+
+
+def _canvas_workbench_payload_for_request(request, payload):
+    if not isinstance(payload, dict) or is_local_mode():
+        return payload
+
+    request_did = str(_get_request_identity_did(request) or "").strip()
+    token = getattr(shared, "token", None)
+    if request_did:
+        user_role = "user"
+        try:
+            if token is not None and hasattr(token, "is_admin") and token.is_admin(request_did):
+                user_role = "admin"
+        except Exception:
+            pass
+        effective_did = request_did
+    else:
+        effective_did = ""
+        try:
+            if token is not None and hasattr(token, "get_guest_did"):
+                effective_did = str(token.get_guest_did() or "").strip()
+        except Exception:
+            effective_did = ""
+        effective_did = effective_did or "guest"
+        user_role = "guest"
+
+    return canvas_workbench_request_identity.normalize_payload_identity(
+        payload,
+        effective_did,
+        access_mode="multi",
+        user_role=user_role,
+    )
+
 
 def _canvas_wildcards_user_did(payload=None):
     payload = payload if isinstance(payload, dict) else {}
@@ -14926,13 +15036,14 @@ async def canvas_agent_prompt_preflight_acceptance(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": "Prompt Preflight Acceptance Error", "details": str(e)}, status_code=500)
 
 @app.post("/canvas-workbench/project-save")
-async def canvas_workbench_project_save_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_project_save_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_project.save_project(payload, {})
@@ -14952,13 +15063,14 @@ async def canvas_workbench_project_save_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/project-load")
-async def canvas_workbench_project_load_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_project_load_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_project.load_project(payload, {})
@@ -14978,13 +15090,14 @@ async def canvas_workbench_project_load_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/project-list")
-async def canvas_workbench_project_list_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_project_list_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_project.list_projects(payload, {})
@@ -15004,13 +15117,14 @@ async def canvas_workbench_project_list_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/project-delete")
-async def canvas_workbench_project_delete_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_project_delete_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_project.delete_project(payload, {})
@@ -15030,13 +15144,14 @@ async def canvas_workbench_project_delete_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/project-clear")
-async def canvas_workbench_project_clear_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_project_clear_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_project.clear_project(payload, {})
@@ -15181,13 +15296,14 @@ async def canvas_workbench_special_viewer_endpoint(viewer_kind: str):
         return PlainTextResponse(f"Canvas Workbench Viewer Error: {e}", status_code=500)
 
 @app.post("/canvas-workbench/dry-run")
-async def canvas_workbench_dry_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_dry_run_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_runner.dry_run_node(payload, _canvas_workbench_state_params(payload))
@@ -15207,13 +15323,14 @@ async def canvas_workbench_dry_run_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/run-node")
-async def canvas_workbench_run_node_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_run_node_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_runner.run_node(payload, _canvas_workbench_state_params(payload))
@@ -15234,13 +15351,14 @@ async def canvas_workbench_run_node_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/poll-run")
-async def canvas_workbench_poll_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_poll_run_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_runner.poll_run(payload, _canvas_workbench_state_params(payload))
@@ -15261,13 +15379,14 @@ async def canvas_workbench_poll_run_endpoint(payload: dict = Body(...)):
         )
 
 @app.post("/canvas-workbench/control-run")
-async def canvas_workbench_control_run_endpoint(payload: dict = Body(...)):
+async def canvas_workbench_control_run_endpoint(request: Request, payload: dict = Body(...)):
     try:
         if not isinstance(payload, dict):
             return JSONResponse(
                 {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
                 status_code=400,
             )
+        payload = _canvas_workbench_payload_for_request(request, payload)
 
         def safe_process():
             return canvas_workbench_runner.control_run(payload, _canvas_workbench_state_params(payload))
@@ -15676,6 +15795,8 @@ async def canvas_workbench_preset_model_downloads_endpoint(payload: dict = Body(
 
 _canvas_vlm_model_status = canvas_vlm_runtime.canvas_vlm_model_status
 _canvas_queue_vlm_model_downloads = canvas_vlm_runtime.canvas_queue_vlm_model_downloads
+_canvas_vlm_model_download_status = canvas_vlm_runtime.canvas_vlm_model_download_status
+_canvas_cancel_vlm_model_download = canvas_vlm_runtime.canvas_cancel_vlm_model_download
 _canvas_vlm_status_log_signatures = {}
 _missing_model_vlm_check_log_signatures = {}
 
@@ -15766,6 +15887,52 @@ async def canvas_workbench_vlm_model_downloads_endpoint(payload: dict = Body(...
             {
                 "ok": False,
                 "error": "Canvas Workbench VLM Model Download Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
+@app.post("/canvas-workbench/vlm-model-download-status")
+async def canvas_workbench_vlm_model_download_status_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
+                status_code=400,
+            )
+
+        result = await run_in_threadpool(lambda: _canvas_vlm_model_download_status(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Canvas Workbench VLM Model Download Status Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
+@app.post("/canvas-workbench/vlm-model-download-cancel")
+async def canvas_workbench_vlm_model_download_cancel_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
+                status_code=400,
+            )
+
+        result = await run_in_threadpool(lambda: _canvas_cancel_vlm_model_download(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Canvas Workbench VLM Model Download Cancel Error",
                 "details": str(e),
             },
             status_code=500,

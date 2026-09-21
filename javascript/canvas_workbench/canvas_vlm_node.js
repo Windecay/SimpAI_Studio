@@ -193,6 +193,10 @@
             };
         }
 
+        function isVlmMediaSource(node) {
+            return !!node && ['image', 'result', 'video'].includes(node.type);
+        }
+
         function buildVlmNodeSizePatch(node, options) {
             if (!node || node.type !== 'vlm') return {};
             const config = options || {};
@@ -714,6 +718,7 @@
 
         return {
             buildVlmNode,
+            isVlmMediaSource,
             buildVlmNodeSizePatch,
             buildVlmModelUnknownStatus,
             buildVlmModelCheckingStatus,

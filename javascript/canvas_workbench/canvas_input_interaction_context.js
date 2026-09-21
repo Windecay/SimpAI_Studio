@@ -55,7 +55,6 @@
                 mediaBrowserSource: Object.assign({}, viewportDropSource.mediaBrowserSource || {}, {
                     mediaBrowserPayloadFromDataTransfer: (...args) => mediaBrowserDragMethod('mediaBrowserPayloadFromDataTransfer')?.(...args),
                     clearMediaBrowserDragPayload: (...args) => mediaBrowserDragMethod('clearMediaBrowserDragPayload')?.(...args),
-                    addMediaBrowserPayloadToCanvas: (...args) => mediaBrowserDragMethod('addMediaBrowserPayloadToCanvas')?.(...args),
                 })
             })
         );

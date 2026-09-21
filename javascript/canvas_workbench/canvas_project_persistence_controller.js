@@ -17,6 +17,8 @@
         const modelSource = scope.modelSource || {};
         const uiSource = scope.uiSource || {};
         const timeSource = scope.timeSource || {};
+        const interactionSource = scope.interactionSource || {};
+        const runtimeSource = scope.runtimeSource || {};
         const callbackSources = {
             getProject: projectSource,
             setProject: projectSource,
@@ -62,7 +64,10 @@
             showToast: uiSource,
             warn: uiSource,
             nowIso: timeSource,
-            parseDate: timeSource
+            parseDate: timeSource,
+            performanceNow: timeSource,
+            hasActivePointerInteraction: interactionSource,
+            getSuppressWheelUntil: interactionSource
         };
         const t = typeof languageSource.t === 'function' ? languageSource.t : ((en, cn) => cn || en);
         const call = (name, fallback, ...args) => {
@@ -74,6 +79,47 @@
             : (...args) => {
                 if (typeof console !== 'undefined' && console.warn) console.warn(...args);
             };
+        let saveTimer = 0;
+        let viewportSaveTimer = 0;
+
+        function scheduleSave() {
+            if (saveTimer && typeof runtimeSource.clearTimeout === 'function') {
+                runtimeSource.clearTimeout(saveTimer);
+            }
+            if (typeof runtimeSource.setTimeout !== 'function') {
+                saveTimer = 0;
+                return saveTimer;
+            }
+            saveTimer = runtimeSource.setTimeout(() => {
+                const activePointerInteraction = !!call('hasActivePointerInteraction', false, []);
+                const suppressUntil = Number(call('getSuppressWheelUntil', 0, [])) || 0;
+                const currentTime = Number(call('performanceNow', 0, [])) || 0;
+                if (activePointerInteraction || currentTime < suppressUntil) {
+                    scheduleSave();
+                    return;
+                }
+                saveTimer = 0;
+                return Promise.resolve(saveProject(true)).catch((err) => {
+                    warn('[SimpAI Canvas] autosave failed:', err);
+                });
+            }, 320);
+            return saveTimer;
+        }
+
+        function scheduleViewportSave() {
+            if (viewportSaveTimer && typeof runtimeSource.clearTimeout === 'function') {
+                runtimeSource.clearTimeout(viewportSaveTimer);
+            }
+            if (typeof runtimeSource.setTimeout !== 'function') {
+                viewportSaveTimer = 0;
+                return viewportSaveTimer;
+            }
+            viewportSaveTimer = runtimeSource.setTimeout(() => {
+                viewportSaveTimer = 0;
+                scheduleSave();
+            }, 1500);
+            return viewportSaveTimer;
+        }
 
         function getProject() {
             return call('getProject', {}, []) || {};
@@ -433,6 +479,8 @@
 
         return {
             browserBackendProjectDecision,
+            scheduleSave,
+            scheduleViewportSave,
             saveProject,
             saveProjectToBrowserCache,
             buildProjectStorageInfo,
