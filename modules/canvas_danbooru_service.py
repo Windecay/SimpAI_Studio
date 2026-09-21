@@ -492,7 +492,7 @@ def _canvas_danbooru_fast_signature_item(path):
         stat = os.stat(path)
     except OSError:
         return None
-    return (os.path.normcase(path), int(stat.st_mtime), int(stat.st_size))
+    return (os.path.normcase(path), int(stat.st_mtime_ns), int(stat.st_size))
 
 
 def _canvas_danbooru_fast_runtime_cache_signature():
@@ -908,7 +908,7 @@ def _canvas_danbooru_cache_signature(paths):
     for path in paths:
         try:
             stat = os.stat(path)
-            parts.append((path, int(stat.st_mtime), int(stat.st_size)))
+            parts.append((path, int(stat.st_mtime_ns), int(stat.st_size)))
         except OSError:
             parts.append((path, 0, 0))
     return tuple(parts)

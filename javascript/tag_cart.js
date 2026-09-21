@@ -753,6 +753,7 @@ function initializeTagAssistantLogic() {
                 customTagsReloadBtn.addEventListener('click', async () => {
                     try {
                         await loadCustomTagsEditorContent();
+                        await refreshTagData({ preserveSelection: true });
                     } catch (error) {
                         console.error('Failed to reload custom tag editor:', error);
                         setCustomTagsStatus(error.message || customTagsEditorText('reloadFailed'), 'error');
@@ -1473,7 +1474,7 @@ function initializeTagAssistantLogic() {
         console.log("加载自定义标签 custom_tags.csv...");
         const customTags = [];
         try {
-            const response = await fetch(customCsvUrl);
+            const response = await fetch(customCsvUrl, { cache: 'no-store' });
             if (!response.ok) {
                 console.warn("custom_tags.csv 未找到或加载失败，跳过。");
                 return []; 
