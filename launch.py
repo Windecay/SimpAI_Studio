@@ -151,8 +151,8 @@ def install_package_with_retry(pkg_name, pkg_version=None, description=None, ver
 
     indexes = []
     for label, package_index in (
-        ("首选源 / Primary index", index_url),
         ("清华大学 / Tsinghua University", extra_index_url),
+        ("备用源 / Fallback index", index_url),
         ("官方 PyPI / Official PyPI", PYPI_INDEX_URL),
     ):
         if package_index and package_index not in {item[1] for item in indexes}:

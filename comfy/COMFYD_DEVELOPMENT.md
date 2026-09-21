@@ -93,3 +93,9 @@
 - 本机五个主要运行依赖及 workflow templates 八个必需子包共 13 项版本校验通过，包括主包 `0.11.65` 和 `media-assets-02==0.1.2`；Nunchaku 已安装 `1.2.1+cu13.0torch2.9`。本次没有执行依赖安装。
 - 仅作 CPU 合同验证，没有导入 Nunchaku CUDA 内核或加载真实量化模型，未验证 GPU 生成、显存表现及完整工作流。三个 pytest 插件仍缺失；测试只有 Triton 弃用提示，未出现新的失败。
 - 节点修复和回归测试留在 Studio，集成仓库仅同步本条开发记录；改动加入暂存区，不提交、不重启服务。
+
+## 2026-09-21 上游同步与 Studio 后端更新
+
+- 合并上游至 `c194dd00`（ComfyUI `0.37.0`），保留未提交 merge；同步 Qwen Image 2.1、模型指定 attention、MiniMax Music 3 CUDA graph、fast-disk 参数和 Meshy 7.1 相关公共后端改动。
+- 保留 Comfyd 私有入口、默认关闭 Memory compiler、`--disable-offload-from-vram` 不映射为 `--disable-smart-memory`，以及 Studio 私有的 Qwen 缓存和 pinned-memory 行为。
+- Studio 后端依赖更新为 workflow templates `0.11.66`，其他 frontend、embedded docs、Kitchen 和 aimdo 版本保持当前声明；未安装依赖、未启动服务、未执行 GPU 或完整工作流验证。

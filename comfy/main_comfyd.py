@@ -458,6 +458,15 @@ def install_requirements_sequential():
     timeout_seconds = int(os.environ.get("COMFY_REQUIREMENTS_INSTALL_TIMEOUT", "300"))
     index_url = os.environ.get("INDEX_URL", "https://mirrors.aliyun.com/pypi/simple")
     extra_index_url = os.environ.get("EXTRA_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    pypi_index_url = "https://pypi.org/simple"
+    install_sources = []
+    for source_name, source_url in (
+        ("清华源", extra_index_url),
+        ("备用源", index_url),
+        ("官方 PyPI", pypi_index_url),
+    ):
+        if source_url and source_url not in {item[1] for item in install_sources}:
+            install_sources.append((source_name, source_url))
 
     force_reinstall_names = set()
     try:
@@ -506,26 +515,30 @@ def install_requirements_sequential():
         return None
 
     for req_line, force_reinstall in requirements_to_install:
-        try:
-            print(f"[Comfyd] Installing requirement: {req_line}")
-            cmd = [python_exe]
-            if sys.flags.no_user_site or ("python_embeded" in python_exe) or ("python_embedded" in python_exe):
-                cmd.append("-s")
-            cmd += ["-m", "pip", "install", "-U", "--upgrade-strategy", "only-if-needed"]
-            if force_reinstall:
-                cmd.append("--force-reinstall")
-            cmd += [req_line, "--prefer-binary"]
+        installed = False
+        for source_name, source_url in install_sources:
+            try:
+                print(f"[Comfyd] Installing requirement from {source_name}: {req_line}")
+                cmd = [python_exe]
+                if sys.flags.no_user_site or ("python_embeded" in python_exe) or ("python_embedded" in python_exe):
+                    cmd.append("-s")
+                cmd += ["-m", "pip", "install", "-U", "--upgrade-strategy", "only-if-needed"]
+                if force_reinstall:
+                    cmd.append("--force-reinstall")
+                cmd += [req_line, "--prefer-binary", "--index-url", source_url]
 
-            if index_url:
-                cmd += ["--index-url", index_url]
-            if extra_index_url:
-                cmd += ["--extra-index-url", extra_index_url]
+                result = subprocess.run(cmd, check=False, timeout=timeout_seconds)
+                if result.returncode == 0:
+                    installed = True
+                    break
+                print(f"[Comfyd] Requirement source failed: {source_name} / {req_line}")
+            except subprocess.TimeoutExpired:
+                print(f"[Comfyd] Requirement install timed out from {source_name}: {req_line}")
+            except Exception as e:
+                print(f"[Comfyd] Requirement install failed from {source_name}: {req_line} / {e}")
 
-            subprocess.run(cmd, check=False, timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            print(f"[Comfyd] Requirement install timed out: {req_line}")
-        except Exception as e:
-            print(f"[Comfyd] Requirement install failed: {req_line} / {e}")
+        if not installed:
+            print(f"[Comfyd] Requirement install failed from all sources: {req_line}")
 
     return None
 
