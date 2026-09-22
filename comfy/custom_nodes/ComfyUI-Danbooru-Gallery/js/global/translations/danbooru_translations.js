@@ -10,6 +10,10 @@ export const danbooruTranslations = {
         categories: "类别",
         formatting: "格式",
         all: "全部",
+        sourceTooltip: "选择图片和标签来源站点",
+        sourceFavoritesUnsupported: "当前来源不支持收藏夹功能",
+        displayAllSiteContent: "全部内容",
+        displayAllSiteContentTooltip: "Gelbooru: Display all site content，开启后显示更多边缘内容",
         general: "普通",
         sensitive: "敏感",
         questionable: "可疑",
@@ -39,6 +43,9 @@ export const danbooruTranslations = {
         authDescription: "请输入您的Danbooru用户名和API Key来使用收藏功能",
         authPlaceholderUsername: "输入您的Danbooru用户名",
         authPlaceholderApiKey: "输入您的API Key",
+        gelbooruAuthDescription: "Gelbooru API 需要 User ID 和 API Key；可在 Gelbooru 账户选项中获取",
+        gelbooruUserIdPlaceholder: "输入 Gelbooru User ID",
+        gelbooruApiKeyPlaceholder: "输入 Gelbooru API Key",
         authRequired: "请先在设置中配置用户名和API Key",
         apiKeyHelp: "如何获取API Key？",
         apiKeyTooltip: "点击查看如何获取Danbooru API Key和用户名",
@@ -128,6 +135,15 @@ export const danbooruTranslations = {
         filterActive: "筛选已生效",
         currentPage: "当前页",
         totalPages: "总页数",
+        pagination: "翻页",
+        previousPage: "上一页",
+        nextPage: "下一页",
+        pageNumber: "页码",
+        jumpToPage: "跳转",
+        invalidPage: "请输入大于 0 的整数页码",
+        queuePostMissing: "找不到所选图片数据",
+        queueHydrationFailed: "无法取得所选 Gelbooru 图片的原图或精确标签",
+        queueBlocked: "图片准备失败，本次工作流未入队",
 
         // 多选模式
         selectionModeSettings: "选择模式设置",
@@ -142,6 +158,10 @@ export const danbooruTranslations = {
         categories: "Categories",
         formatting: "Formatting",
         all: "ALL",
+        sourceTooltip: "Select image and tag source",
+        sourceFavoritesUnsupported: "Favorites are not supported for this source",
+        displayAllSiteContent: "All content",
+        displayAllSiteContentTooltip: "Gelbooru: Display all site content, enabling more fringe results",
         general: "General",
         sensitive: "Sensitive",
         questionable: "Questionable",
@@ -171,6 +191,9 @@ export const danbooruTranslations = {
         authDescription: "Please enter your Danbooru username and API Key to use favorite features",
         authPlaceholderUsername: "Enter your Danbooru username",
         authPlaceholderApiKey: "Enter your API Key",
+        gelbooruAuthDescription: "Gelbooru API requires User ID and API Key; get them from Gelbooru account options",
+        gelbooruUserIdPlaceholder: "Enter Gelbooru User ID",
+        gelbooruApiKeyPlaceholder: "Enter Gelbooru API Key",
         authRequired: "Please configure username and API Key in settings first",
         apiKeyHelp: "How to get API Key?",
         apiKeyTooltip: "Click to see how to get Danbooru API Key and username",
@@ -260,6 +283,15 @@ export const danbooruTranslations = {
         filterActive: "Filter is active",
         currentPage: "Current Page",
         totalPages: "Total Pages",
+        pagination: "Pagination",
+        previousPage: "Previous Page",
+        nextPage: "Next Page",
+        pageNumber: "Page Number",
+        jumpToPage: "Go",
+        invalidPage: "Enter a positive integer page number",
+        queuePostMissing: "Selected post data is unavailable",
+        queueHydrationFailed: "Could not load the original image or exact tags for the selected Gelbooru post",
+        queueBlocked: "Image preparation failed; the workflow was not queued",
 
         // Multi-select mode
         selectionModeSettings: "Selection Mode Settings",
@@ -268,5 +300,12 @@ export const danbooruTranslations = {
         clearAllSelection: "Clear Selection",
         selectedCount: "{count} selected",
     }
+};
+
+danbooruTranslations.ko = {
+    ...danbooruTranslations.en,
+    queuePostMissing: "선택한 이미지 데이터를 찾을 수 없습니다",
+    queueHydrationFailed: "선택한 Gelbooru 이미지의 원본 또는 정확한 태그를 불러올 수 없습니다",
+    queueBlocked: "이미지 준비에 실패하여 워크플로를 대기열에 추가하지 않았습니다",
 };
 

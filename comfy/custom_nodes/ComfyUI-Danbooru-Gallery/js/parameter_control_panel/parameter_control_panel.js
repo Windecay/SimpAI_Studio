@@ -179,7 +179,8 @@ const translations = {
         clipboardEmpty: "剪贴板为空",
         clipboardInvalid: "剪贴板数据无效",
         copyFailed: "复制失败",
-        lockedModeNoPaste: "锁定模式下无法粘贴"
+        lockedModeNoPaste: "锁定模式下无法粘贴",
+        invalidImageFile: "仅支持拖入图像文件"
     },
     en: {
         title: "Parameter Control Panel",
@@ -255,7 +256,8 @@ const translations = {
         clipboardEmpty: "Clipboard is empty",
         clipboardInvalid: "Invalid clipboard data",
         copyFailed: "Copy failed",
-        lockedModeNoPaste: "Cannot paste in locked mode"
+        lockedModeNoPaste: "Cannot paste in locked mode",
+        invalidImageFile: "Only image files can be dropped here"
     }
 };
 
@@ -3586,10 +3588,16 @@ app.registerExtension({
                 fileInput.click();
             });
 
-            // 文件选择事件
-            fileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
+            // 拖拽与点击选择共用的上传入口
+            const handleFileUpload = async (file) => {
                 if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    if (globalToastManager) {
+                        globalToastManager.showToast(t('invalidImageFile'), 'warning');
+                    }
+                    return;
+                }
 
                 try {
                     // 显示上传中状态
@@ -3632,8 +3640,44 @@ app.registerExtension({
                     }
                 }
 
-                // 重置文件input
+                // 重置文件input，允许重复上传同一文件
                 fileInput.value = '';
+            };
+
+            // 文件选择事件
+            fileInput.addEventListener('change', (e) => {
+                handleFileUpload(e.target.files[0]);
+            });
+
+            // 拖拽外部图像到控件上直接上传
+            container.style.transition = 'all 0.2s ease';
+
+            container.addEventListener('dragover', (e) => {
+                // 必须阻止默认行为，否则不会触发 drop
+                e.preventDefault();
+                e.stopPropagation();
+                container.style.backgroundColor = 'rgba(116, 55, 149, 0.2)';
+                container.style.boxShadow = '0 0 0 1px #743795';
+            });
+
+            container.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                container.style.backgroundColor = '';
+                container.style.boxShadow = '';
+            });
+
+            container.addEventListener('drop', (e) => {
+                // 阻止 ComfyUI 画布级的图像拖放处理，避免重复加载
+                e.preventDefault();
+                e.stopPropagation();
+                container.style.backgroundColor = '';
+                container.style.boxShadow = '';
+
+                const file = e.dataTransfer?.files?.[0];
+                if (file) {
+                    handleFileUpload(file);
+                }
             });
 
             // 悬浮预览功能
@@ -5784,7 +5828,8 @@ app.registerExtension({
             }
 
             // 保存参数配置到工作流
-            info.parameters = this.properties.parameters;
+            // Snapshot reactive properties before LiteGraph clones extension fields.
+            info.parameters = JSON.parse(JSON.stringify(this.properties.parameters ?? []));
             info.currentPreset = this.properties.currentPreset;
 
             logger.info('[PCP] 序列化:', info.parameters?.length || 0, '个参数');

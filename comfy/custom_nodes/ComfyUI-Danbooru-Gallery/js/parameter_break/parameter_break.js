@@ -570,9 +570,10 @@ app.registerExtension({
             }
 
             // 保存参数结构到工作流（不返回，直接修改info对象）
-            info.paramStructure = this.properties.paramStructure;
+            // Snapshot reactive properties before LiteGraph clones extension fields.
+            info.paramStructure = JSON.parse(JSON.stringify(this.properties.paramStructure ?? []));
             info.lastSync = this.properties.lastSync;
-            info.outputIdMap = this.properties.outputIdMap;  // 保存输出引脚映射
+            info.outputIdMap = JSON.parse(JSON.stringify(this.properties.outputIdMap ?? {}));  // 保存输出引脚映射
 
             logger.info('[PB] 序列化:', info.paramStructure?.length || 0, '个参数, 映射:', Object.keys(info.outputIdMap || {}).length, '条');
             // 注意：不返回任何东西，数据已存储在info对象中
