@@ -1112,7 +1112,7 @@
 
     function maybeAutoBuild(reason) {
         if (!state || !state.autoBuild || state.autoBuildStarted || state.autoBuildInFlight) return;
-        if (!state.sharpModelReady || hasPly(state) || !hasReference(state)) return;
+        if (hasPly(state) || !hasReference(state)) return;
         state.autoBuildStarted = true;
         state.autoBuildInFlight = true;
         Promise.resolve()

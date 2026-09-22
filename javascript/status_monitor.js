@@ -5,6 +5,7 @@
     const MAX_RETRY_COUNT = 3;
     const STATUS_DRAG_SAFE_MARGIN = 3;
     const STATUS_EDGE_DOCK_THRESHOLD = 6;
+    const STATUS_DESKTOP_DEFAULT_TOP = 0;
 
     // ==================== 状态管理 ====================
     let state = {
@@ -617,7 +618,7 @@
         #gradio-status-monitor {
             position: fixed;
             top: 0;
-            right: 12px;
+            right: 3px;
             z-index: 2147483647;
             font-family: Arial, sans-serif;
             max-width: min(158px, calc(100vw - 24px));
@@ -1867,6 +1868,25 @@
         statusContainer.style.bottom = '';
     }
 
+    function applyDefaultStatusMonitorDesktopPosition() {
+        if (isMobileStatusLayout()) {
+            clearStatusMonitorInlinePosition();
+            clearStatusMonitorEdgeDock();
+            return;
+        }
+
+        statusContainer.classList.add('edge-docked', 'edge-docked-right');
+        state.statusEdgeDockSide = 'right';
+        statusContainer.style.left = 'auto';
+        statusContainer.style.right = `${STATUS_DRAG_SAFE_MARGIN}px`;
+        statusContainer.style.bottom = 'auto';
+
+        const rect = statusContainer.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || rect.bottom;
+        const maxY = Math.max(STATUS_DRAG_SAFE_MARGIN, viewportHeight - rect.height - STATUS_DRAG_SAFE_MARGIN);
+        statusContainer.style.top = `${clamp(STATUS_DESKTOP_DEFAULT_TOP, 0, maxY)}px`;
+    }
+
     function clampStatusMonitorIntoViewport() {
         const rect = statusContainer.getBoundingClientRect();
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.right;
@@ -1932,8 +1952,7 @@
 
     function preserveStatusMonitorPositionAfterResize() {
         if (!state.initialPositionMoved) {
-            clearStatusMonitorInlinePosition();
-            clearStatusMonitorEdgeDock();
+            applyDefaultStatusMonitorDesktopPosition();
             return;
         }
 
@@ -3171,6 +3190,7 @@
         if (gradioContainer) {
             const host = document.body || gradioContainer;
             host.appendChild(statusContainer);
+            applyDefaultStatusMonitorDesktopPosition();
             
             // 初始化拖拽功能
             initDragFeature();
