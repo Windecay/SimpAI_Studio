@@ -37,7 +37,7 @@
     "_meta": {"title": "vae_model"}
   },
   "6": {
-    "inputs": {"model": ["50", 0], "device": "auto", "dtype": "default"},
+    "inputs": {"model": ["55", 0], "device": "auto", "dtype": "default"},
     "class_type": "QwenImage21Cache",
     "_meta": {"title": "Qwen Image 2.1 Cache"}
   },
@@ -252,5 +252,10 @@
     "inputs": {"boolean": ["51", 0], "on_true": ["4", 0], "on_false": ["53", 0]},
     "class_type": "easy ifElse",
     "_meta": {"title": "Select clip loader"}
+  },
+  "55": {
+    "inputs": {"model": ["50", 0], "attention": "comfy kitchen attention"},
+    "class_type": "ModelAttentionBackend",
+    "_meta": {"title": "Qwen Image 2.1 Kitchen Attention"}
   }
 }

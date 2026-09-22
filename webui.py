@@ -13725,6 +13725,8 @@ def _canvas_workbench_standalone_system_params(request: Request):
     except Exception:
         if not user_did:
             user_did = ""
+    if is_local_mode():
+        user_did = canvas_workbench_request_identity.resolve_local_workspace_did(getattr(shared, "token", None))
     if not user_did:
         user_did = "local" if is_local_mode() else "guest"
     theme = str(query.get("__theme") or args_manager.args.theme or "light").strip() or "light"
@@ -14165,8 +14167,16 @@ def _canvas_workbench_state_params(payload):
 
 
 def _canvas_workbench_payload_for_request(request, payload):
-    if not isinstance(payload, dict) or is_local_mode():
+    if not isinstance(payload, dict):
         return payload
+
+    if is_local_mode():
+        return canvas_workbench_request_identity.normalize_payload_identity(
+            payload,
+            canvas_workbench_request_identity.resolve_local_workspace_did(getattr(shared, "token", None)),
+            access_mode="local",
+            user_role="local",
+        )
 
     request_did = str(_get_request_identity_did(request) or "").strip()
     token = getattr(shared, "token", None)

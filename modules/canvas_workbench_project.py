@@ -55,10 +55,10 @@ def _state_params_for_payload(payload, state_params):
     user_context = payload.get("user_context") if isinstance(payload, dict) and isinstance(payload.get("user_context"), dict) else {}
     scope = str(user_context.get("scope") or "").strip().lower()
     user_did = str(user_context.get("user_did") or "").strip()
-    if scope and scope != "local" and user_did:
+    if scope and user_did and (scope != "local" or is_local_mode()):
         params["user_did"] = user_did
         params["user_role"] = str(user_context.get("role") or user_context.get("scope") or "multi")
-        params["access_mode"] = "multi"
+        params["access_mode"] = "local" if scope == "local" else "multi"
     return params
 
 
