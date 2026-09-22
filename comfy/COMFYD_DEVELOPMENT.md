@@ -99,3 +99,10 @@
 - 合并上游至 `c194dd00`（ComfyUI `0.37.0`），保留未提交 merge；同步 Qwen Image 2.1、模型指定 attention、MiniMax Music 3 CUDA graph、fast-disk 参数和 Meshy 7.1 相关公共后端改动。
 - 保留 Comfyd 私有入口、默认关闭 Memory compiler、`--disable-offload-from-vram` 不映射为 `--disable-smart-memory`，以及 Studio 私有的 Qwen 缓存和 pinned-memory 行为。
 - Studio 后端依赖更新为 workflow templates `0.11.66`，其他 frontend、embedded docs、Kitchen 和 aimdo 版本保持当前声明；未安装依赖、未启动服务、未执行 GPU 或完整工作流验证。
+
+## 2026-09-22 上游同步与 H3 VAE 分块融合
+
+- 合并上游至 `e638023d`，保留未提交 merge；同步 fast-disk、音频解码、H3 VAE 分块融合及相关模型、节点改动。
+- H3 VAE 采用上游的 `strip` 方案：下一行垂直融合时读取上一行已经完成横向融合的对应区域，保留官方对交叉重叠区域的处理；更新空间融合回归测试覆盖批量解码和不同尺寸。
+- 核心 requirements 移除 `torchaudio`，改由 `comfy.audio` 提供音频重采样；Studio 启动器中 PyTorch 家族安装策略暂保留 `torchaudio`。
+- 更新 Studio 嵌入式后端依赖声明和版本标记；未安装依赖、未启动服务、未执行 GPU 或完整工作流验证。
