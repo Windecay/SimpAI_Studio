@@ -26,6 +26,8 @@ else:
     _CANVAS_VLM_IMPORT_ERROR = None
 
 logger = logging.getLogger(__name__)
+VLM_USER_EXTENSION_BEGIN = "[SimpAI user extensions begin]"
+VLM_USER_EXTENSION_END = "[SimpAI user extensions end]"
 
 CANVAS_VLM_LOCAL_LOCK_CACHE_MAX = 256
 _canvas_vlm_current_turn_lock_cache = {}
@@ -3693,7 +3695,9 @@ def _canvas_vlm_int(value, default, min_value=None, max_value=None):
     return number
 
 def _canvas_vlm_text_budget(params, version_name=None):
-    version_cfg = VLM.get_version_config(str(version_name or params.get("version") or "")) or {}
+    version_lookup = getattr(VLM, "get_version_config", None)
+    version_cfg = version_lookup(str(version_name or params.get("version") or "")) if callable(version_lookup) else {}
+    version_cfg = version_cfg or {}
     n_ctx = max(
         1,
         int(params.get("n_ctx") or version_cfg.get("n_ctx", 8192) or 8192),
@@ -3701,6 +3705,27 @@ def _canvas_vlm_text_budget(params, version_name=None):
     default_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     max_chars = 6000 if n_ctx <= 8192 else min(18000, max(8000, int(n_ctx * 0.55)))
     return _canvas_vlm_int(params.get("context_chars") or params.get("rolling_context_chars"), default_chars, 1200, max_chars)
+
+
+def _canvas_vlm_system_prompt_budget(params, version_name=None):
+    version_name = str(version_name or (params or {}).get("version") or "")
+    version_lookup = getattr(VLM, "get_version_config", None)
+    version_cfg = version_lookup(version_name) if callable(version_lookup) else {}
+    version_cfg = version_cfg or {}
+    text_budget = _canvas_vlm_text_budget(params, version_name)
+    chat_mode_key = str((params or {}).get("describe_chat_mode") or "").strip().lower()
+    roleplay_system = bool((params or {}).get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
+    system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
+    system_cap = 16000 if roleplay_system else 5000
+    system_budget = max(1200, min(system_cap, int(text_budget * system_ratio)))
+    return {
+        "enforced": bool(version_cfg.get("is_llamacpp")),
+        "text_budget_chars": int(text_budget),
+        "system_budget_chars": int(system_budget),
+        "system_ratio": float(system_ratio),
+        "system_cap_chars": int(system_cap),
+        "version": version_name,
+    }
 
 
 def _canvas_vlm_stateless_prompt_text(prompt, text_budget, *, preserve_contract=False):
@@ -3741,6 +3766,23 @@ def _canvas_vlm_stateless_system_prompt_text(prompt, max_chars):
         limit = 3000
     if len(current) <= limit:
         return current
+    extension_start = current.find(VLM_USER_EXTENSION_BEGIN)
+    if extension_start >= 0:
+        extension_finish = current.find(VLM_USER_EXTENSION_END, extension_start)
+        if extension_finish >= 0:
+            extension_finish += len(VLM_USER_EXTENSION_END)
+            extension = current[extension_start:extension_finish].strip()
+            if len(extension) >= limit:
+                return extension[:limit].rstrip()
+            marker = "\n\n[Middle of system prompt omitted; user extensions are preserved.]\n\n"
+            head_budget = max(0, limit - len(extension) - len(marker))
+            if head_budget < 200:
+                return extension
+            return (
+                current[:head_budget].rstrip()
+                + marker
+                + extension
+            ).strip()
     marker = "\n\n[Middle of system prompt omitted for the local context window.]\n\n"
     route_begin = "[SimpAI routed Preset Guide begin]"
     route_end = "[SimpAI routed Preset Guide end]"
@@ -8446,6 +8488,7 @@ def _canvas_vlm_skills(payload):
 
 vlm_agent_mode = _canvas_vlm_agent_mode
 vlm_text_budget = _canvas_vlm_text_budget
+vlm_system_prompt_budget = _canvas_vlm_system_prompt_budget
 vlm_rolling_history = _canvas_vlm_rolling_history
 vlm_isolate_rolling_history_for_prompt = _canvas_vlm_isolate_rolling_history_for_prompt
 build_vlm_agent_system_prompt = _canvas_build_vlm_agent_system_prompt

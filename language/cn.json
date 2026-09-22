@@ -2360,5 +2360,13 @@
   "Qwen Image 2.1 Edit": "Qwen Image 2.1 编辑",
   "Qwen Image 2.1 Edit [up to 9 images]": "Qwen Image 2.1 编辑 [最多9张图]",
   "Reference Resolution (0 = Original)": "参考图分辨率（0 = 原始尺寸）",
-  "Custom Canvas Size": "自定义画布尺寸"
+  "Custom Canvas Size": "自定义画布尺寸",
+  "Image context": "图片上下文",
+  "Image attached": "已附带图片",
+  "Thumbnail attached": "已附带缩略图",
+  "Image unavailable": "图片读取失败",
+  "Image selection failed": "图片选择失败",
+  "Selecting conversation images...": "正在选择对话图片……",
+  "Reading conversation image": "正在读取对话图片",
+  "Image generated. The assistant can select it when needed.": "图片已生成，助手可以根据对话需要选择查看。"
 }

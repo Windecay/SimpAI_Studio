@@ -59,6 +59,16 @@
     const VLM_N_CTX_MIN = 512;
     const VLM_N_CTX_MAX = 131072;
     const VLM_N_CTX_STEP = 512;
+    const VLM_SKILLS_ENDPOINT = '/describe-image/vlm-skills';
+    const VLM_SKILL_LIMITS_BY_MODE = Object.freeze({
+        raw: 8,
+        chat: 4,
+        prompt: 3,
+        guide: 2,
+        creative: 2,
+        roleplay: 1
+    });
+    const MAX_VLM_SKILL_UPLOAD_BYTES = 100_000;
     const VLM_VRAM_POLICY_CHOICES = Object.freeze([
         { value: 'relaxed', label: ['Relaxed', '宽松'] },
         { value: 'standard', label: ['Standard', '标准'] },
@@ -3217,6 +3227,24 @@
         return !!fallback;
     }
 
+    function normalizeVlmSkillNames(value) {
+        const values = Array.isArray(value) ? value : [];
+        const seen = new Set();
+        const result = [];
+        for (const raw of values) {
+            const name = String(raw || '').trim().slice(0, 96);
+            const key = name.toLowerCase();
+            if (!name || name === '.' || name === '..' || /[\\/\0\r\n]/.test(name) || seen.has(key)) continue;
+            seen.add(key);
+            result.push(name);
+        }
+        return result;
+    }
+
+    function vlmSkillLimitForMode(mode = 'chat') {
+        return Number(VLM_SKILL_LIMITS_BY_MODE[normalizeChatMode(mode)]) || VLM_SKILL_LIMITS_BY_MODE.chat;
+    }
+
     function storedChatMode(source) {
         return normalizeChatMode(storedText(source, [
             'chatMode', 'chat_mode', 'describeChatMode', 'describe_chat_mode', 'mode'
@@ -3224,7 +3252,7 @@
     }
 
     function defaultAutoAttachPreviousImageForMode(mode) {
-        return normalizeChatMode(mode) !== 'roleplay';
+        return false;
     }
 
     function storedAutoAttachPreviousImage(source) {
@@ -3295,6 +3323,8 @@
                 vramPolicy: normalizeVlmVramPolicy(data.vramPolicy),
                 kvCacheType: normalizeVlmKvCacheType(data.kvCacheType || data.kv_cache_type),
                 nCtx: normalizeVlmNctx(data.nCtx ?? data.n_ctx, 0),
+                customSkillNames: normalizeVlmSkillNames(data.customSkillNames ?? data.skill_names),
+                vlmSkillsExpanded: storedBoolean(data, ['vlmSkillsExpanded', 'vlm_skills_expanded'], true),
                 ...selection,
                 systemPromptManualOverride: storedBoolean(data, [
                     'systemPromptManualOverride', 'system_prompt_manual_override'
@@ -3312,6 +3342,8 @@
                 vramPolicy: 'extreme',
                 kvCacheType: 'f16',
                 nCtx: 0,
+                customSkillNames: [],
+                vlmSkillsExpanded: true,
                 systemPromptTemplateId: '',
                 systemPromptPickerValue: NO_SYSTEM_PROMPT_PICKER_VALUE,
                 baseSystemPromptContent: '',
@@ -3350,6 +3382,16 @@
         activeAbortController: null,
         activeRequestId: '',
         autoAttachPreviousImage: defaultAutoAttachPreviousImageForMode(savedChatSettings.chatMode),
+        // Skill enablement belongs to the active conversation, never to global chat settings.
+        customSkillNames: [],
+        vlmSkillsExpanded: savedChatSettings.vlmSkillsExpanded !== false,
+        vlmSkillCatalog: [],
+        vlmSkillCatalogLoaded: false,
+        vlmSkillCatalogLoading: false,
+        vlmSkillCatalogPromise: null,
+        vlmSkillCatalogError: '',
+        vlmSkillPermissions: { write_scopes: [] },
+        vlmSkillRoots: [],
         pendingImages: [],
         lastAutoReferencedDescribeMediaKey: '',
         describeMediaReferencePromise: null,
@@ -3471,6 +3513,7 @@
             lastAutoReferencedDescribeMediaKey: String(source.lastAutoReferencedDescribeMediaKey || ''),
             describeMediaReferencePromise: source.describeMediaReferencePromise || null,
             chatMode: storedChatMode(source),
+            customSkillNames: normalizeVlmSkillNames(source.customSkillNames ?? source.skill_names),
             roleplaySession: normalizeRoleplaySession(source.roleplaySession || source.roleplay_session, conversationId),
             roleplayBranches: normalizeRoleplayBranches(source.roleplayBranches || source.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(source.roleplayFormDraftUndo),
@@ -3589,6 +3632,7 @@
             lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
             describeMediaReferencePromise: state.describeMediaReferencePromise,
             chatMode: state.chatMode,
+            customSkillNames: state.customSkillNames,
             roleplaySession: state.roleplaySession,
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
@@ -3627,6 +3671,9 @@
         return createConversationRuntime({
             conversationId: conversationId || uid('describe_vlm_chat'),
             chatMode: source.chatMode,
+            customSkillNames: source.copySkillNames
+                ? normalizeVlmSkillNames(source.customSkillNames ?? source.skill_names)
+                : [],
             roleplaySession: source.copyRoleplayState ? source.roleplaySession : null,
             roleplayBranches: source.copyRoleplayState ? source.roleplayBranches : [],
             roleplayTurnIntent: 'auto',
@@ -3689,6 +3736,7 @@
             lastAutoReferencedDescribeMediaKey: state.lastAutoReferencedDescribeMediaKey,
             describeMediaReferencePromise: state.describeMediaReferencePromise,
             chatMode: state.chatMode,
+            customSkillNames: state.customSkillNames,
             roleplaySession,
             roleplayBranches: state.roleplayBranches,
             roleplayPanelOpen: state.roleplayPanelOpen,
@@ -3735,6 +3783,7 @@
         state.lastAutoReferencedDescribeMediaKey = runtime.lastAutoReferencedDescribeMediaKey;
         state.describeMediaReferencePromise = runtime.describeMediaReferencePromise;
         state.chatMode = runtime.chatMode;
+        state.customSkillNames = normalizeVlmSkillNames(runtime.customSkillNames);
         state.roleplaySession = normalizeRoleplaySession(runtime.roleplaySession, runtime.conversationId);
         state.roleplayBranches = normalizeRoleplayBranches(runtime.roleplayBranches, runtime.conversationId);
         state.roleplayPanelOpen = !!runtime.roleplayPanelOpen;
@@ -4198,6 +4247,7 @@
                 vramPolicy: normalizeVlmVramPolicy(state.vramPolicy),
                 kvCacheType: normalizeVlmKvCacheType(state.kvCacheType),
                 nCtx: normalizeVlmNctx(state.nCtx),
+                vlmSkillsExpanded: state.vlmSkillsExpanded !== false,
                 systemPromptTemplateId: state.systemPromptTemplateId,
                 systemPromptPickerValue: state.systemPromptPickerValue,
                 baseSystemPromptContent: state.baseSystemPromptContent,
@@ -4391,7 +4441,647 @@
         return localText(pair[0], pair[1]);
     }
 
+    let vlmSkillDraftRequest = null;
+    let vlmSkillEditorSession = 0;
+    let vlmSkillFileBusy = false;
+
+    function setCurrentConversationSkillNames(names, reason = 'skill_selection') {
+        const nextNames = normalizeVlmSkillNames(names);
+        const runtime = typeof syncCurrentRuntimeFromState === 'function'
+            ? syncCurrentRuntimeFromState()
+            : null;
+        state.customSkillNames = nextNames;
+        syncMountedSkillIndicator(document.getElementById('describe_vlm_chat_modal'));
+        if (runtime) {
+            runtime.customSkillNames = nextNames;
+            runtime.persistenceDirty = true;
+            state.persistenceDirty = true;
+            scheduleConversationPersist(runtime, reason, 'soon');
+        }
+        return nextNames;
+    }
+
+    function syncMountedSkillIndicator(modal) {
+        const indicator = modal?.querySelector?.('[data-describe-vlm-chat-skill-indicator]');
+        if (!indicator) return;
+        const selectedNames = normalizeVlmSkillNames(state.customSkillNames);
+        const count = selectedNames.length;
+        const limit = vlmSkillLimitForMode(state.chatMode);
+        const overLimit = count > limit;
+        const countNode = indicator.querySelector('[data-describe-vlm-chat-skill-indicator-count]');
+        const labelNode = indicator.querySelector('[data-describe-vlm-chat-skill-indicator-label]');
+        const namesNode = indicator.querySelector('[data-describe-vlm-chat-skill-indicator-names]');
+        const namesText = count
+            ? selectedNames.join(localText(', ', '、'))
+            : localText('Choose skills', '点击选择');
+        const labelText = overLimit
+            ? localText('Over limit', '超出上限')
+            : count
+                ? localText('Enabled', '已挂载')
+                : localText('None', '未挂载');
+        if (countNode && countNode.textContent !== String(count)) countNode.textContent = String(count);
+        if (labelNode && labelNode.textContent !== labelText) labelNode.textContent = labelText;
+        if (namesNode && namesNode.textContent !== namesText) namesNode.textContent = namesText;
+        const title = count
+            ? localText(
+                `Conversation skills: ${selectedNames.join(', ')}. Click to manage.`,
+                `当前对话已挂载技能：${selectedNames.join('、')}。点击打开设置。`
+            )
+            : localText(
+                'No skills are enabled for this conversation. Click to choose skills.',
+                '当前对话未挂载技能。点击选择技能。'
+            );
+        if (indicator.title !== title) indicator.title = title;
+        if (indicator.getAttribute('aria-label') !== title) indicator.setAttribute('aria-label', title);
+        indicator.classList.toggle('has-skills', count > 0);
+        indicator.classList.toggle('is-over-limit', overLimit);
+    }
+
+    function vlmSkillWriteScopes() {
+        return (state.vlmSkillPermissions?.write_scopes || [])
+            .filter((scope) => scope === 'project' || scope === 'user');
+    }
+
+    function syncVlmSkillPermissions(modal) {
+        const scopes = vlmSkillWriteScopes();
+        const canWrite = scopes.length > 0 && !state.vlmSkillCatalogLoading;
+        modal?.querySelectorAll?.('[data-describe-vlm-chat-skill-create], [data-describe-vlm-chat-skill-upload]')
+            .forEach((control) => { control.hidden = !canWrite; });
+        const editor = vlmSkillEditor(modal);
+        if (!editor) return;
+        for (const key of ['editor-save', 'draft', 'requirements']) {
+            const control = editor.querySelector(`[data-describe-vlm-chat-skill-${key}]`);
+            if (control) control.hidden = !canWrite;
+            if (key === 'requirements') control?.closest?.('label')?.toggleAttribute('hidden', !canWrite);
+        }
+        const scope = editor.querySelector('[data-describe-vlm-chat-skill-editor-scope]');
+        if (scope) {
+            for (const option of scope.options || []) {
+                option.hidden = !scopes.includes(option.value);
+                option.disabled = option.hidden;
+            }
+            if (!scopes.includes(scope.value)) {
+                scope.value = scopes.includes(editor.skillRecord?.scope) ? editor.skillRecord.scope : scopes[0] || '';
+            }
+            scope.disabled = !canWrite || vlmSkillFileBusy || !!vlmSkillDraftRequest || !!editor.skillRecord?.editable;
+        }
+        const content = editor.querySelector('[data-describe-vlm-chat-skill-editor-content]');
+        if (content) content.readOnly = !canWrite;
+        const name = editor.querySelector('[data-describe-vlm-chat-skill-editor-name]');
+        if (name) name.disabled = !canWrite || vlmSkillFileBusy || !!vlmSkillDraftRequest || !!editor.skillRecord?.editable;
+    }
+
+    function vlmSkillEditor(modal = document.getElementById('describe_vlm_chat_modal')) {
+        return modal?.querySelector?.('[data-describe-vlm-chat-skill-editor]');
+    }
+
+    function setVlmSkillEditorStatus(modal, message, isError = false) {
+        const status = vlmSkillEditor(modal)?.querySelector?.('[data-describe-vlm-chat-skill-editor-status]');
+        if (!status) return;
+        status.textContent = String(message || '');
+        status.hidden = !message;
+        status.classList.toggle('is-error', !!isError);
+    }
+
+    function syncVlmSkillDraftBusy(modal, busy) {
+        const editor = vlmSkillEditor(modal);
+        if (!editor) return;
+        editor.setAttribute('aria-busy', busy ? 'true' : 'false');
+        editor.querySelectorAll('input, textarea, select, [data-describe-vlm-chat-skill-editor-save], [data-describe-vlm-chat-skill-draft]').forEach((control) => {
+            control.disabled = busy;
+        });
+        if (editor.skillRecord?.editable) {
+            editor.querySelector('[data-describe-vlm-chat-skill-editor-name]').disabled = true;
+            editor.querySelector('[data-describe-vlm-chat-skill-editor-scope]').disabled = true;
+        }
+        const stop = editor.querySelector('[data-describe-vlm-chat-skill-draft-stop]');
+        if (stop) stop.hidden = !busy || !vlmSkillDraftRequest;
+        syncVlmSkillPermissions(modal);
+    }
+
+    function cancelVlmSkillDraft(modal) {
+        const request = vlmSkillDraftRequest;
+        if (!request) return;
+        vlmSkillDraftRequest = null;
+        request.controller.abort();
+        notifyBackendChatCancel(request.conversationId, request.requestId).catch(() => {});
+        syncVlmSkillDraftBusy(modal, false);
+        setVlmSkillEditorStatus(modal, localText('Draft generation stopped.', '已停止生成草稿。'));
+    }
+
+    async function generateVlmSkillDraft(modal) {
+        const editor = vlmSkillEditor(modal);
+        if (!editor || editor.hidden || vlmSkillDraftRequest || vlmSkillFileBusy) return;
+        if (!vlmSkillWriteScopes().length) return;
+        const requirements = editor.querySelector('[data-describe-vlm-chat-skill-requirements]');
+        const content = editor.querySelector('[data-describe-vlm-chat-skill-editor-content]');
+        const name = editor.querySelector('[data-describe-vlm-chat-skill-editor-name]');
+        const message = String(requirements?.value || '').trim();
+        const original = String(content?.value || '');
+        if (!message || message.length > 6000 || original.length > 16000) {
+            setVlmSkillEditorStatus(modal, localText(
+                'Enter requirements (up to 6,000 characters); the draft must be under 16,000 characters.',
+                '请填写需求（不超过 6000 字符）；现有草稿不能超过 16000 字符。'
+            ), true);
+            return;
+        }
+        const version = readSelectedVlmVersion();
+        const request = {
+            controller: new AbortController(),
+            requestId: uid('skill_draft'),
+            conversationId: uid('skill_author'),
+        };
+        vlmSkillDraftRequest = request;
+        syncVlmSkillDraftBusy(modal, true);
+        setVlmSkillEditorStatus(modal, localText('Agent is drafting the skill...', 'Agent 正在编写技能草稿...'));
+        try {
+            const response = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'skill_draft',
+                request_id: request.requestId, conversation_id: request.conversationId,
+                message, skill_content: original,
+                version, custom_api: readDescribeCustomApi(version),
+                vram_policy: state.vramPolicy, kv_cache_type: state.kvCacheType,
+                n_ctx: currentVlmNctx(version), load_mtp: !!state.mtpEnabled,
+                unload_after_chat: !!state.unloadAfterChat,
+                user_did: creativeUserContext().user_did,
+                __lang: state.__lang, lang: state.__lang,
+            }, { signal: request.controller.signal });
+            if (vlmSkillDraftRequest !== request || editor.hidden) return;
+            if (response?.code === 'skill_scope_unsupported') {
+                setVlmSkillEditorStatus(modal, localText(
+                    'Only multimedia skills using existing Studio capabilities are supported. System commands, arbitrary file changes and dependency installation are unavailable.',
+                    '仅支持基于 Studio 现有能力的多媒体技能，不支持系统命令、任意文件修改或依赖安装。'
+                ), true);
+                return;
+            }
+            if (!response?.ok || !response.skill_draft?.content || !response.skill_draft?.name) {
+                const invalidDraft = response?.failure_stage === 'skill_draft_parse'
+                    || response?.failure_stage === 'skill_draft_validation'
+                    || response?.code === 'skill_draft_invalid';
+                setVlmSkillEditorStatus(modal, response?.cancelled
+                    ? localText('Draft generation stopped.', '已停止生成草稿。')
+                    : invalidDraft ? localText(
+                        'The model replied, but the draft format or fields failed validation. Your previous draft is unchanged. Retry or use another model.',
+                        '模型已返回内容，但草稿格式或字段未通过校验。原有草稿未修改，可以重试或更换模型。')
+                    : localText('Skill draft generation failed. Check the model connection or revise the requirements and retry.',
+                        '技能草稿生成失败，请检查模型连接，或调整需求后重试。'), true);
+                return;
+            }
+            if (content.value !== original) return;
+            content.value = response.skill_draft.content;
+            if (!editor.skillRecord?.editable) name.value = response.skill_draft.name;
+            setVlmSkillEditorStatus(modal, localText(
+                'Draft validated by vlm.prepare_skill_draft. Not saved or enabled.',
+                '草稿已通过 vlm.prepare_skill_draft 校验，尚未保存或启用。'
+            ));
+        } catch (error) {
+            if (vlmSkillDraftRequest === request) {
+                setVlmSkillEditorStatus(modal, localText('Skill draft generation failed.', '技能草稿生成失败。'), true);
+            }
+        } finally {
+            if (vlmSkillDraftRequest === request) {
+                vlmSkillDraftRequest = null;
+                syncVlmSkillDraftBusy(modal, false);
+            }
+        }
+    }
+
+    function vlmSkillSaveErrorText(response) {
+        const messages = {
+            skill_not_found: localText('This skill no longer exists. Refresh the list.', '技能已不存在，请刷新列表。'),
+            skill_read_failed: localText('The skill could not be read as UTF-8.', '无法读取技能，请检查文件是否为 UTF-8。'),
+            skill_read_only: localText('You cannot modify this shared skill. Save a personal copy if permitted.', '你无权修改这个共享技能，有个人目录权限时可以另存副本。'),
+            skill_forbidden: localText('Your account cannot save to this location.', '当前账号无权保存到这个位置。'),
+            skill_changed: localText('The file changed outside this editor. Reopen it before saving or deleting.', '文件已被外部修改，请重新载入后再保存或删除。'),
+            skill_delete_failed: localText('The skill could not be deleted.', '技能删除失败。'),
+            skill_invalid_metadata: localText('Check the SKILL.md frontmatter, name and description.', '请检查 SKILL.md 的头部格式、名称和简介。'),
+            skill_invalid_name: localText('Use a simple skill folder name without slashes.', '技能目录名称不能包含斜杠等路径字符。'),
+            skill_empty: localText('Enter SKILL.md content first.', '请先填写 SKILL.md 内容。'),
+            skill_too_large: localText('The skill file is larger than 100 KB.', '技能文件不能超过 100 KB。'),
+            skill_invalid_scope: localText('Choose a valid skill location.', '请选择有效的技能保存位置。'),
+            skill_exists: localText('A skill with this name already exists.', '这个技能名称已经存在。'),
+            skill_write_failed: localText('The skill could not be written to disk.', '技能无法写入磁盘。'),
+            skill_root_invalid: localText('The selected skill root is not available.', '所选技能目录不可用。'),
+            skill_directory_invalid: localText('The selected skill folder is not a normal directory.', '所选技能文件夹不是普通目录。'),
+            skill_file_invalid: localText('The selected SKILL.md path is not a normal file.', '所选 SKILL.md 不是普通文件。')
+        };
+        return messages[String(response?.code || '')] || localText('The skill could not be saved.', '技能保存失败。');
+    }
+
+    function openVlmSkillEditor(modal, options = {}) {
+        if (vlmSkillFileBusy) return false;
+        const current = vlmSkillEditor(modal);
+        const currentContent = current?.querySelector('[data-describe-vlm-chat-skill-editor-content]');
+        if (current && !current.hidden && currentContent?.value !== current.skillOriginalContent
+            && !window.confirm(localText('Discard the unsaved draft?', '放弃尚未保存的草稿？'))) return false;
+        vlmSkillEditorSession += 1;
+        cancelVlmSkillDraft(modal);
+        const editor = vlmSkillEditor(modal);
+        if (!editor) return false;
+        editor.skillRecord = options.record || null;
+        editor.skillOriginalContent = String(options.content || '');
+        const name = editor.querySelector('[data-describe-vlm-chat-skill-editor-name]');
+        const scope = editor.querySelector('[data-describe-vlm-chat-skill-editor-scope]');
+        const content = editor.querySelector('[data-describe-vlm-chat-skill-editor-content]');
+        const requirements = editor.querySelector('[data-describe-vlm-chat-skill-requirements]');
+        if (requirements) requirements.value = '';
+        if (name) {
+            name.value = String(options.name || '');
+            name.disabled = !!options.record?.editable;
+        }
+        if (scope) {
+            scope.value = options.scope === 'user' ? 'user' : 'project';
+            scope.disabled = !!options.record?.editable;
+        }
+        if (content) {
+            content.value = String(options.content || '');
+            editor.skillOriginalContent = content.value;
+            content.placeholder = localText('Write the SKILL.md content here...', '在这里编写 SKILL.md 内容...');
+        }
+        editor.hidden = false;
+        syncVlmSkillPermissions(modal);
+        setVlmSkillEditorStatus(modal, options.status || '', false);
+        name?.focus();
+        return true;
+    }
+
+    function closeVlmSkillEditor(modal, discard = false) {
+        if (vlmSkillFileBusy) return;
+        const current = vlmSkillEditor(modal);
+        if (!discard && current && !current.hidden
+            && current.querySelector('[data-describe-vlm-chat-skill-editor-content]')?.value !== current.skillOriginalContent
+            && !window.confirm(localText('Discard the unsaved draft?', '放弃尚未保存的草稿？'))) return;
+        vlmSkillEditorSession += 1;
+        cancelVlmSkillDraft(modal);
+        const editor = vlmSkillEditor(modal);
+        if (!editor) return;
+        editor.hidden = true;
+        setVlmSkillEditorStatus(modal, '', false);
+        const upload = editor.querySelector('[data-describe-vlm-chat-skill-upload-file]');
+        if (upload) upload.value = '';
+    }
+
+    async function editVlmSkill(modal, name) {
+        if (!openVlmSkillEditor(modal, { status: localText('Loading skill...', '正在载入技能...') })) return;
+        const session = vlmSkillEditorSession;
+        vlmSkillFileBusy = true;
+        syncVlmSkillDraftBusy(modal, true);
+        try {
+            const response = await postJson(VLM_SKILLS_ENDPOINT, { action: 'inspect', name });
+            if (session !== vlmSkillEditorSession) return;
+            vlmSkillFileBusy = false;
+            syncVlmSkillDraftBusy(modal, false);
+            if (!response?.ok) {
+                setVlmSkillEditorStatus(modal, vlmSkillSaveErrorText(response), true);
+                return;
+            }
+            openVlmSkillEditor(modal, {
+                name: response.folder_name, scope: response.scope, content: response.content,
+                record: response,
+                status: response.editable
+                    ? localText('Editing existing skill.', '正在编辑已有技能。')
+                    : vlmSkillWriteScopes().length
+                        ? localText('Shared skill: editing a personal copy. The original file will not change.', '共享技能：正在编辑个人副本，不会修改原文件。')
+                        : localText('Read-only skill. Guests cannot save or delete skills.', '只读技能。游客不能保存或删除技能。')
+            });
+        } catch (error) {
+            setVlmSkillEditorStatus(modal, localText('The skill could not be loaded.', '技能载入失败。'), true);
+        } finally {
+            vlmSkillFileBusy = false;
+            syncVlmSkillDraftBusy(modal, false);
+        }
+    }
+
+    async function deleteVlmSkill(modal, name) {
+        if (vlmSkillFileBusy || vlmSkillDraftRequest) return;
+        if (!window.confirm(localText(`Delete skill "${name}"? Only SKILL.md will be removed.`,
+            `删除技能“${name}”？仅删除 SKILL.md 文件。`))) return;
+        const editor = vlmSkillEditor(modal);
+        if (editor?.skillRecord?.skill?.name === name && !editor.hidden
+            && editor.querySelector('[data-describe-vlm-chat-skill-editor-content]')?.value !== editor.skillOriginalContent
+            && !window.confirm(localText('Discard the unsaved draft as well?', '同时放弃尚未保存的草稿？'))) return;
+        vlmSkillFileBusy = true;
+        syncVlmSkillDraftBusy(modal, true);
+        try {
+            const inspected = await postJson(VLM_SKILLS_ENDPOINT, { action: 'inspect', name });
+            const response = inspected?.ok
+                ? await postJson(VLM_SKILLS_ENDPOINT, { action: 'delete', name,
+                    revision: editor?.skillRecord?.skill?.name === name && !editor.hidden
+                        ? editor.skillRecord.revision : inspected.revision })
+                : inspected;
+            if (!response?.ok) {
+                setStatus(vlmSkillSaveErrorText(response));
+                return;
+            }
+            vlmSkillFileBusy = false;
+            if (editor?.skillRecord?.skill?.name === name) closeVlmSkillEditor(modal, true);
+            setCurrentConversationSkillNames(
+                normalizeVlmSkillNames(state.customSkillNames)
+                    .filter((item) => item.toLowerCase() !== name.toLowerCase()),
+                'skill_deleted'
+            );
+            await refreshVlmSkillCatalog(true);
+            setStatus(localText(`Skill deleted: ${name}`, `技能已删除：${name}`));
+        } catch (error) {
+            setStatus(localText('The skill could not be deleted.', '技能删除失败。'));
+        } finally {
+            vlmSkillFileBusy = false;
+            syncVlmSkillDraftBusy(modal, false);
+        }
+    }
+
+    async function saveVlmSkillFromEditor(modal) {
+        if (vlmSkillDraftRequest || vlmSkillFileBusy) return;
+        if (!vlmSkillWriteScopes().length) {
+            setVlmSkillEditorStatus(modal, vlmSkillSaveErrorText({ code: 'skill_forbidden' }), true);
+            return;
+        }
+        const editor = vlmSkillEditor(modal);
+        if (!editor) return;
+        const name = String(editor.querySelector('[data-describe-vlm-chat-skill-editor-name]')?.value || '').trim();
+        const scope = String(editor.querySelector('[data-describe-vlm-chat-skill-editor-scope]')?.value || 'project').trim();
+        const content = String(editor.querySelector('[data-describe-vlm-chat-skill-editor-content]')?.value || '');
+        if (!name) {
+            setVlmSkillEditorStatus(modal, localText('Enter a skill folder name first.', '请先填写技能目录名称。'), true);
+            return;
+        }
+        if (!content.trim()) {
+            setVlmSkillEditorStatus(modal, localText('Enter SKILL.md content first.', '请先填写 SKILL.md 内容。'), true);
+            return;
+        }
+        if (new Blob([content]).size > MAX_VLM_SKILL_UPLOAD_BYTES) {
+            setVlmSkillEditorStatus(modal, localText('The skill file is larger than 100 KB.', '技能文件不能超过 100 KB。'), true);
+            return;
+        }
+        vlmSkillFileBusy = true;
+        syncVlmSkillDraftBusy(modal, true);
+        try {
+            setVlmSkillEditorStatus(modal, localText('Saving skill...', '正在保存技能...'), false);
+            const record = editor.skillRecord;
+            let response = await postJson(VLM_SKILLS_ENDPOINT, {
+                action: record?.editable ? 'update' : 'save',
+                name: record?.editable ? record.skill.name : name,
+                revision: record?.revision,
+                scope,
+                content,
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+            if (response?.code === 'skill_exists') {
+                const replace = window.confirm(localText(
+                    'A skill with this name already exists. Replace it?',
+                    '这个技能名称已经存在，是否覆盖？'
+                ));
+                if (replace) {
+                    response = await postJson(VLM_SKILLS_ENDPOINT, {
+                        action: 'save',
+                        name,
+                        scope,
+                        content,
+                        overwrite: true,
+                        __lang: state.__lang,
+                        lang: state.__lang
+                    });
+                } else {
+                    setVlmSkillEditorStatus(modal, localText('Save cancelled.', '已取消保存。'), false);
+                    return;
+                }
+            }
+            if (!response?.ok) {
+                setVlmSkillEditorStatus(modal, vlmSkillSaveErrorText(response), true);
+                return;
+            }
+            const updatedName = response.skill?.name || name;
+            if (record?.editable && record.skill.name !== updatedName) {
+                setCurrentConversationSkillNames(
+                    normalizeVlmSkillNames(state.customSkillNames)
+                        .map((item) => item === record.skill.name ? updatedName : item),
+                    'skill_renamed'
+                );
+            }
+            vlmSkillFileBusy = false;
+            closeVlmSkillEditor(modal, true);
+            await refreshVlmSkillCatalog(true);
+            setStatus(localText(`Skill saved: ${name}`, `技能已保存：${name}`));
+        } finally {
+            vlmSkillFileBusy = false;
+            syncVlmSkillDraftBusy(modal, false);
+        }
+    }
+
+    async function handleVlmSkillUpload(file, modal) {
+        if (!file) return;
+        if (!openVlmSkillEditor(modal)) return;
+        const session = vlmSkillEditorSession;
+        if (!/\.md$/i.test(String(file.name || ''))) {
+            setVlmSkillEditorStatus(modal, localText('Choose a Markdown skill file.', '请选择 Markdown 技能文件。'), true);
+            return;
+        }
+        if (Number(file.size || 0) > MAX_VLM_SKILL_UPLOAD_BYTES) {
+            setVlmSkillEditorStatus(modal, localText('The skill file is larger than 100 KB.', '技能文件不能超过 100 KB。'), true);
+            return;
+        }
+        try {
+            const content = await file.text();
+            if (session !== vlmSkillEditorSession) return;
+            const fileStem = String(file.name || '').replace(/\.md$/i, '').trim();
+            openVlmSkillEditor(modal, {
+                name: fileStem.toLowerCase() === 'skill' ? '' : fileStem,
+                content,
+                status: localText('Review the name and location, then save.', '请检查名称和保存位置，然后保存。')
+            });
+        } catch (error) {
+            setVlmSkillEditorStatus(modal, localText('The skill file could not be read.', '无法读取技能文件。'), true);
+        }
+    }
+
+    function renderVlmSkillInstallGuide(guide, visible) {
+        if (!guide) return;
+        guide.hidden = !visible;
+        if (!visible) {
+            guide.innerHTML = '';
+            return;
+        }
+        const scopes = vlmSkillWriteScopes();
+        const permission = scopes.includes('project')
+            ? localText('Project and personal skill storage available.', '可保存到项目目录或个人目录。')
+            : scopes.includes('user')
+                ? localText('Personal storage only. Project skills are read-only.', '仅可保存到个人目录，项目技能为只读。')
+                : localText('Read-only access. Guests cannot save skills.', '只读访问，游客不能保存技能。');
+        const roots = (state.vlmSkillRoots || []).map((root) =>
+            `<div class="describe-vlm-chat-skill-guide-row"><span>${escapeHtml(root.scope === 'project'
+                ? localText('Shared project', '项目共享') : localText('Personal', '个人'))}</span><code>${escapeHtml(`${root.path}/<skill-name>/SKILL.md`)}</code></div>`).join('');
+        guide.innerHTML = `<strong>${escapeHtml(localText('Skill storage', '技能存储'))}</strong>
+            <p>${escapeHtml(permission)}</p>${roots}`;
+    }
+
+    function renderVlmSkillControls(modal = document.getElementById('describe_vlm_chat_modal')) {
+        syncVlmSkillPermissions(modal);
+        const container = modal?.querySelector?.('[data-describe-vlm-chat-skills]');
+        if (!container) return;
+        const list = container.querySelector('[data-describe-vlm-chat-skill-list]');
+        const status = container.querySelector('[data-describe-vlm-chat-skill-status]');
+        const active = container.querySelector('[data-describe-vlm-chat-skill-active]');
+        const body = container.querySelector('[data-describe-vlm-chat-skill-body]');
+        const guide = container.querySelector('[data-describe-vlm-chat-skill-guide]');
+        const toggle = container.querySelector('[data-describe-vlm-chat-skill-toggle]');
+        const refresh = container.querySelector('[data-describe-vlm-chat-skill-refresh]');
+        if (!list || !status) return;
+        const selected = new Set(normalizeVlmSkillNames(state.customSkillNames).map((name) => name.toLowerCase()));
+        const selectedNames = normalizeVlmSkillNames(state.customSkillNames);
+        const modeKey = String(state.chatMode || 'chat').trim().toLowerCase().replace(/-/g, '_');
+        const modeLimits = { raw: 8, chat: 4, prompt: 3, guide: 2, creative: 2, roleplay: 1 };
+        const modeLabels = {
+            raw: ['Raw Model', '原始模型'],
+            chat: ['Free Chat', '自由对话'],
+            prompt: ['Prompt Assistant', '提示词助手'],
+            guide: ['Guide Mode', '向导模式'],
+            creative: ['Creative Mode', '创作模式'],
+            roleplay: ['Roleplay', '角色扮演']
+        };
+        const skillLimit = Number(modeLimits[modeKey]) || modeLimits.chat;
+        const modeLabel = localText(...(modeLabels[modeKey] || modeLabels.chat));
+        const modeLimitText = localText(
+            `${modeLabel} allows up to ${skillLimit} skills`,
+            `${modeLabel}最多启用 ${skillLimit} 个技能`
+        );
+        const overLimit = selectedNames.length > skillLimit;
+        if (active) {
+            const activeText = selectedNames.length
+                ? localText(`This conversation: ${selectedNames.length} enabled (limit ${skillLimit})`, `本对话已启用 ${selectedNames.length}/${skillLimit} 个`)
+                : localText(`This conversation: none enabled (limit ${skillLimit})`, `本对话未启用技能 · 当前上限 ${skillLimit}`);
+            active.textContent = activeText;
+            active.title = selectedNames.length ? selectedNames.join(', ') : activeText;
+            active.setAttribute('aria-label', active.title);
+            active.classList.toggle('is-error', overLimit);
+        }
+        const skills = Array.isArray(state.vlmSkillCatalog) ? state.vlmSkillCatalog : [];
+        const expanded = state.vlmSkillsExpanded !== false;
+        if (body) body.hidden = !expanded;
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            toggle.title = localText(
+                expanded ? 'Collapse custom skills' : 'Expand custom skills',
+                expanded ? '折叠自定义技能' : '展开自定义技能'
+            );
+            toggle.setAttribute('aria-label', toggle.title);
+            const icon = toggle.querySelector('i');
+            if (icon) icon.className = expanded ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
+        }
+        if (refresh) refresh.disabled = !!state.vlmSkillCatalogLoading;
+        if (state.vlmSkillCatalogLoading) {
+            renderVlmSkillInstallGuide(guide, false);
+            status.textContent = localText('Reading SKILL.md files...', '正在读取 SKILL.md...');
+            list.innerHTML = `<span class="describe-vlm-chat-skill-empty">${escapeHtml(localText('Loading...', '读取中...'))}</span>`;
+            return;
+        }
+        if (state.vlmSkillCatalogError) {
+            renderVlmSkillInstallGuide(guide, true);
+            status.textContent = localText('Skill list unavailable.', '技能列表不可用。');
+            list.innerHTML = `<span class="describe-vlm-chat-skill-empty is-error">${escapeHtml(state.vlmSkillCatalogError)}</span>`;
+            return;
+        }
+        if (!state.vlmSkillCatalogLoaded) {
+            renderVlmSkillInstallGuide(guide, false);
+            status.textContent = localText('Waiting for SKILL.md list', '等待读取 SKILL.md');
+            list.innerHTML = `<span class="describe-vlm-chat-skill-empty">${escapeHtml(localText('Waiting...', '等待中...'))}</span>`;
+            return;
+        }
+        const selectedCount = skills.filter((item) => selected.has(String(item?.name || '').toLowerCase())).length;
+        const statusText = localText(
+            `${skills.length} custom SKILL.md files · ${selectedCount} selected · ${modeLimitText}`,
+            `${skills.length} 个自定义 SKILL.md · 已启用 ${selectedCount} 个 · ${modeLimitText}`
+        );
+        status.textContent = overLimit
+            ? `${statusText} · ${localText('Reduce before sending', '发送前请减少技能')}`
+            : statusText;
+        if (!skills.length) {
+            renderVlmSkillInstallGuide(guide, true);
+            list.innerHTML = `<span class="describe-vlm-chat-skill-empty">${escapeHtml(localText('No mounted SKILL.md found.', '没有找到已挂载的 SKILL.md。'))}</span>`;
+            return;
+        }
+        renderVlmSkillInstallGuide(guide, false);
+        list.innerHTML = skills.map((item) => {
+            const name = String(item?.name || '').trim();
+            const description = String(item?.description || item?.when_to_use || '').trim();
+            const title = String(item?.path || '').trim();
+            const editLabel = localText('Edit skill', '编辑技能');
+            const viewLabel = vlmSkillWriteScopes().length ? localText('Edit a personal copy', '编辑个人副本') : localText('View skill', '查看技能');
+            const deleteLabel = localText('Delete skill', '删除技能');
+            return `<div class="describe-vlm-chat-skill-option">
+                <input type="checkbox" aria-label="${escapeHtml(localText(`Enable ${name}`, `启用 ${name}`))}" data-describe-vlm-chat-skill="${escapeHtml(name)}" ${selected.has(name.toLowerCase()) ? 'checked' : ''}>
+                <details class="describe-vlm-chat-skill-details"><summary title="${escapeHtml(description)}"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(description || localText('No description', '暂无描述'))}</small></summary>
+                    <p>${escapeHtml(description || localText('No description', '暂无描述'))}</p>
+                    ${item.when_to_use && item.when_to_use !== description ? `<p>${escapeHtml(item.when_to_use)}</p>` : ''}
+                    <code>${escapeHtml(title)}</code>
+                </details>
+                <span class="describe-vlm-chat-skill-actions">
+                    <button type="button" data-describe-vlm-chat-skill-edit="${escapeHtml(name)}" title="${escapeHtml(item.editable ? editLabel : viewLabel)}" aria-label="${escapeHtml(item.editable ? editLabel : viewLabel)}"><i class="fa-solid ${vlmSkillWriteScopes().length ? 'fa-pen' : 'fa-eye'}"></i></button>
+                    ${item.editable ? `<button type="button" data-describe-vlm-chat-skill-delete="${escapeHtml(name)}" title="${escapeHtml(deleteLabel)}" aria-label="${escapeHtml(deleteLabel)}"><i class="fa-solid fa-trash"></i></button>` : ''}
+                </span>
+            </div>`;
+        }).join('');
+    }
+
+    function refreshVlmSkillCatalog(force = false) {
+        if (!force && state.vlmSkillCatalogLoaded) {
+            renderVlmSkillControls();
+            return Promise.resolve(state.vlmSkillCatalog);
+        }
+        if (state.vlmSkillCatalogPromise) return state.vlmSkillCatalogPromise;
+        state.vlmSkillCatalogLoading = true;
+        state.vlmSkillPermissions = { write_scopes: [] };
+        state.vlmSkillRoots = [];
+        state.vlmSkillCatalogError = '';
+        renderVlmSkillControls();
+        state.vlmSkillCatalogPromise = postJson(VLM_SKILLS_ENDPOINT, {
+            action: 'list',
+            include_user: true,
+            max_skills: 128
+        }).then((response) => {
+            if (!response?.ok) throw new Error(String(response?.error || localText('Request failed', '请求失败')));
+            state.vlmSkillPermissions = response.permissions || { write_scopes: [] };
+            state.vlmSkillRoots = Array.isArray(response.roots) ? response.roots : [];
+            state.vlmSkillCatalog = (Array.isArray(response.skills) ? response.skills : [])
+                .filter((item) => item && String(item.name || '').trim())
+                .map((item) => ({
+                    name: String(item.name || '').trim().slice(0, 96),
+                    description: String(item.description || '').trim().slice(0, 1024),
+                    when_to_use: String(item.when_to_use || '').trim().slice(0, 1024),
+                    path: String(item.path || '').trim(),
+                    scope: String(item.scope || '').trim(),
+                    source: String(item.source || '').trim(),
+                    editable: item.editable === true
+                }));
+            const available = new Set(state.vlmSkillCatalog.map((item) => item.name.toLowerCase()));
+            const nextNames = normalizeVlmSkillNames(state.customSkillNames)
+                .filter((name) => available.has(name.toLowerCase()));
+            if (JSON.stringify(nextNames) !== JSON.stringify(state.customSkillNames)) {
+                setCurrentConversationSkillNames(nextNames, 'skill_catalog_refresh');
+            }
+            if (!state.vlmSkillCatalog.length && state.vlmSkillsExpanded !== false) {
+                state.vlmSkillsExpanded = false;
+                saveChatSettings();
+            }
+            state.vlmSkillCatalogLoaded = true;
+            return state.vlmSkillCatalog;
+        }).catch((error) => {
+            state.vlmSkillPermissions = { write_scopes: [] };
+            state.vlmSkillRoots = [];
+            state.vlmSkillCatalog = [];
+            state.vlmSkillCatalogError = String(error?.message || error || localText('Request failed', '请求失败'));
+            return [];
+        }).finally(() => {
+            state.vlmSkillCatalogLoading = false;
+            state.vlmSkillCatalogPromise = null;
+            renderVlmSkillControls();
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
+        });
+        return state.vlmSkillCatalogPromise;
+    }
+
     function syncChatSettingsSummary(modal) {
+        syncMountedSkillIndicator(modal);
         const summary = modal?.querySelector?.('[data-describe-vlm-chat-settings-summary]');
         if (!summary) return;
         const settingsValue = summary.querySelector('[data-describe-vlm-chat-settings-summary-value]');
@@ -4423,7 +5113,11 @@
                 : localText('Keep model loaded', '保持模型加载'),
             state.autoAttachPreviousImage
                 ? localText('Previous image on', '附带上一张图')
-                : localText('Previous image off', '不附带上一张图')
+                : localText('Previous image off', '不附带上一张图'),
+            localText(
+                `Conversation skills ${normalizeVlmSkillNames(state.customSkillNames).length}`,
+                `本对话技能 ${normalizeVlmSkillNames(state.customSkillNames).length}`
+            )
         ].join(' · ');
         if (settingsValue && settingsValue.textContent !== settingsText) settingsValue.textContent = settingsText;
         const runtimeText = formatVlmRuntimeStatus();
@@ -4538,6 +5232,7 @@
             modeHint.hidden = !hint;
         }
         if (input) input.setAttribute('placeholder', chatInputPlaceholder(state.chatMode));
+        renderVlmSkillControls(modal);
         updateAnswerModelIndicator(modal);
         updateVlmRuntimeStatus(modal);
         syncRoleplayControls(modal);
@@ -9042,7 +9737,9 @@
             chatMode: 'roleplay',
             roleplaySession: session,
             roleplayBranches: [],
-            copyRoleplayState: true
+            copyRoleplayState: true,
+            copySkillNames: true,
+            customSkillNames: sourceRuntime.customSkillNames
         }, conversationId);
         nextRuntime.archiveMessages = normalizePersistedMessages(
             Array.isArray(branch.archive_messages) ? branch.archive_messages : branch.messages,
@@ -9196,6 +9893,7 @@
         const stageLabels = {
             payload_validation: t('request validation', '请求校验'),
             payload_build: t('request preparation', '请求准备'),
+            skill_budget_check: t('skill and context budget check', '技能与上下文预算检查'),
             cancel_check: t('cancel check', '取消检查'),
             vlm_runtime: t('VLM runtime', 'VLM 运行'),
             endpoint_exception: t('server endpoint', '服务接口')
@@ -9939,6 +10637,7 @@
                 key: options.key || `${options.name || 'image'}:${main.width}x${main.height}:${main.dataUrl.length}`
             };
         } catch (err) {
+            if (options.strict) throw err;
             const fallbackSize = dataUrlBinarySize(dataUrl);
             return {
                 id: options.id || uid('describe_ref'),
@@ -11598,6 +12297,7 @@
     </div>
     <span class="describe-vlm-chat-head-actions">
       ${window.SimpAIStudioHelp?.button('agent') || ''}
+      <button type="button" class="describe-vlm-chat-skill-indicator" data-describe-vlm-chat-skill-indicator title="${escapeHtml(localText('No skills are enabled for this conversation. Click to choose skills.', '当前对话未挂载技能。点击选择技能。'))}" aria-label="${escapeHtml(localText('No skills are enabled for this conversation. Click to choose skills.', '当前对话未挂载技能。点击选择技能。'))}" aria-live="polite"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span data-describe-vlm-chat-skill-indicator-label>${escapeHtml(localText('None', '未挂载'))}</span><b data-describe-vlm-chat-skill-indicator-count>0</b><span class="describe-vlm-chat-skill-indicator-names" data-describe-vlm-chat-skill-indicator-names>${escapeHtml(localText('Choose skills', '点击选择'))}</span></button>
       <button type="button" data-describe-vlm-chat-settings-toggle title="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-label="${escapeHtml(localText('Open chat settings', '打开对话设置'))}" aria-expanded="false"><i class="fa-solid fa-sliders"></i></button>
       <button type="button" data-describe-vlm-chat-maximize title="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-label="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-pressed="false"><i class="fa-solid fa-maximize"></i></button>
       <button type="button" data-describe-vlm-chat-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -11627,6 +12327,28 @@
     <label class="describe-vlm-chat-max-tokens-field" title="${escapeHtml(localText('Choose the output token budget.', '选择输出 Token 预算。'))}"><span>${escapeHtml(localText('Max output tokens', '最大输出 Token'))}</span><select data-describe-vlm-chat-max-tokens aria-label="${escapeHtml(localText('Max output tokens', '最大输出 Token'))}">${renderChatMaxTokenOptions()}</select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><div class="describe-vlm-chat-template-picker"><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select><button type="button" class="describe-vlm-chat-template-manage" data-describe-vlm-chat-user-template-open title="${escapeHtml(localText('Manage user documents', '管理用户项目'))}" aria-label="${escapeHtml(localText('Manage user documents', '管理用户项目'))}"><i class="fa-solid fa-folder-plus"></i></button></div></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
+    <div class="describe-vlm-chat-skills-field" data-describe-vlm-chat-skills>
+      <div class="describe-vlm-chat-skills-head"><span><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i>${escapeHtml(localText('Custom skills', '自定义技能'))}</span><span class="describe-vlm-chat-skills-active" data-describe-vlm-chat-skill-active aria-live="polite"></span><span class="describe-vlm-chat-skills-head-actions"><button type="button" data-describe-vlm-chat-skill-create title="${escapeHtml(localText('Create a custom skill', '新建自定义技能'))}" aria-label="${escapeHtml(localText('Create a custom skill', '新建自定义技能'))}"><i class="fa-solid fa-file-circle-plus"></i></button><button type="button" data-describe-vlm-chat-skill-upload title="${escapeHtml(localText('Upload SKILL.md', '上传 SKILL.md'))}" aria-label="${escapeHtml(localText('Upload SKILL.md', '上传 SKILL.md'))}"><i class="fa-solid fa-upload"></i></button><button type="button" data-describe-vlm-chat-skill-toggle aria-expanded="true" title="${escapeHtml(localText('Collapse custom skills', '折叠自定义技能'))}" aria-label="${escapeHtml(localText('Collapse custom skills', '折叠自定义技能'))}"><i class="fa-solid fa-chevron-up"></i></button><button type="button" data-describe-vlm-chat-skill-refresh title="${escapeHtml(localText('Refresh SKILL.md list', '刷新 SKILL.md 列表'))}" aria-label="${escapeHtml(localText('Refresh SKILL.md list', '刷新 SKILL.md 列表'))}"><i class="fa-solid fa-rotate"></i></button></span></div>
+      <div class="describe-vlm-chat-skills-body" data-describe-vlm-chat-skill-body>
+        <small data-describe-vlm-chat-skill-status>${escapeHtml(localText('Waiting for SKILL.md list', '等待读取 SKILL.md'))}</small>
+        <div class="describe-vlm-chat-skill-list" data-describe-vlm-chat-skill-list role="group" aria-label="${escapeHtml(localText('Custom skills', '自定义技能'))}"></div>
+      </div>
+      <div class="describe-vlm-chat-skill-guide" data-describe-vlm-chat-skill-guide hidden></div>
+      <div class="describe-vlm-chat-skill-editor" data-describe-vlm-chat-skill-editor hidden>
+        <div class="describe-vlm-chat-skill-editor-head"><strong>${escapeHtml(localText('Multimedia skill', '多媒体技能'))}</strong><button type="button" data-describe-vlm-chat-skill-editor-close title="${escapeHtml(localText('Close skill editor', '关闭技能编辑器'))}" aria-label="${escapeHtml(localText('Close skill editor', '关闭技能编辑器'))}"><i class="fa-solid fa-xmark"></i></button></div>
+        <label><span>${escapeHtml(localText('Multimedia requirements', '多媒体创作需求'))}</span><textarea data-describe-vlm-chat-skill-requirements rows="3" maxlength="6000"></textarea></label>
+        <div class="describe-vlm-chat-skill-editor-actions">
+          <button type="button" data-describe-vlm-chat-skill-draft><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(localText('Agent draft', 'Agent 编写'))}</span></button>
+          <button type="button" data-describe-vlm-chat-skill-draft-stop hidden title="${escapeHtml(localText('Stop drafting', '停止编写'))}" aria-label="${escapeHtml(localText('Stop drafting', '停止编写'))}"><i class="fa-solid fa-stop"></i></button>
+        </div>
+        <label><span>${escapeHtml(localText('Skill folder name', '技能目录名称'))}</span><input data-describe-vlm-chat-skill-editor-name type="text" maxlength="96" placeholder="${escapeHtml(localText('Example: image-review', '例如：image-review'))}"></label>
+        <label><span>${escapeHtml(localText('Save location', '保存位置'))}</span><select data-describe-vlm-chat-skill-editor-scope aria-label="${escapeHtml(localText('Save location', '保存位置'))}"><option value="project">${escapeHtml(localText('Shared project skills', '项目共享技能'))}</option><option value="user">${escapeHtml(localText('Personal account skills', '当前账号的个人技能'))}</option></select></label>
+        <label><span>${escapeHtml(localText('SKILL.md content', 'SKILL.md 内容'))}</span><textarea data-describe-vlm-chat-skill-editor-content rows="10" placeholder="${escapeHtml(localText('Write the SKILL.md content here...', '在这里编写 SKILL.md 内容...'))}"></textarea></label>
+        <input type="file" accept=".md,text/markdown" data-describe-vlm-chat-skill-upload-file hidden>
+        <small data-describe-vlm-chat-skill-editor-status hidden aria-live="polite"></small>
+        <div class="describe-vlm-chat-skill-editor-actions"><button type="button" data-describe-vlm-chat-skill-editor-close>${escapeHtml(localText('Cancel', '取消'))}</button><button type="button" data-describe-vlm-chat-skill-editor-save><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(localText('Save skill', '保存技能'))}</span></button></div>
+      </div>
+    </div>
     <div class="describe-vlm-chat-runtime-status" data-describe-vlm-chat-runtime-status aria-live="polite"><i class="fa-solid fa-memory" aria-hidden="true"></i><select class="describe-vlm-chat-runtime-policy" data-describe-vlm-chat-vram-policy aria-label="${escapeHtml(t('VRAM policy', '显存策略'))}" title="${escapeHtml(t('Choose how much VRAM llama.cpp may use.', '选择 llama.cpp 使用的显存档位。'))}">${renderVlmVramPolicyOptions()}</select><select class="describe-vlm-chat-runtime-kv-cache" data-describe-vlm-chat-kv-cache-type aria-label="${escapeHtml(t('KV cache type', 'KV cache 类型'))}" title="${escapeHtml(t('Choose the llama.cpp KV cache precision.', '选择 llama.cpp KV cache 精度。'))}">${renderVlmKvCacheTypeOptions()}</select><label class="describe-vlm-chat-runtime-n-ctx-field" title="${escapeHtml(localText('Context length for local llama.cpp. Empty uses the model default.', '本地 llama.cpp 上下文长度。留空使用模型默认值。'))}"><span>${escapeHtml(localText('Context', '上下文'))}</span><input class="describe-vlm-chat-runtime-n-ctx" data-describe-vlm-chat-n-ctx type="number" min="${VLM_N_CTX_MIN}" max="${VLM_N_CTX_MAX}" step="${VLM_N_CTX_STEP}" inputmode="numeric" placeholder="${escapeHtml(localText('Auto', '自动'))}" value="" aria-label="${escapeHtml(localText('Context length', '上下文长度'))}"></label><label class="describe-vlm-chat-runtime-mtp" title="${escapeHtml(localText('Use MTP speculative decoding for text-only requests. Image and video requests automatically use standard decoding.', '纯文本请求使用 MTP 推测解码；图片和视频请求会自动使用普通解码。'))}"><input type="checkbox" data-describe-vlm-chat-mtp ${state.mtpEnabled ? 'checked' : ''} aria-label="${escapeHtml(localText('Enable MTP speculative decoding', '开启 MTP 推测解码'))}"><span>MTP</span></label><span data-describe-vlm-chat-runtime-status-value>${escapeHtml(t('Waiting for model status', '等待模型状态'))}</span><button type="button" data-describe-vlm-chat-runtime-status-refresh title="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}" aria-label="${escapeHtml(t('Refresh runtime status', '刷新运行状态'))}"><i class="fa-solid fa-rotate"></i></button></div>
   </div>
   <div class="describe-vlm-chat-roleplay-strip" data-describe-vlm-chat-roleplay-strip hidden>
@@ -11893,6 +12615,7 @@
         renderPendingImages();
         ensureSystemPromptTemplates(modal).catch(() => {});
         refreshDescribeVlmModelCatalog(false, true).catch(() => {});
+        refreshVlmSkillCatalog(false).catch(() => {});
         return modal;
     }
 
@@ -11908,6 +12631,7 @@
         renderMessages();
         ensureSystemPromptTemplates(modal).catch(() => {});
         refreshDescribeVlmModelCatalog(false, true).catch(() => {});
+        refreshVlmSkillCatalog(true).catch(() => {});
         modal.hidden = false;
         autoReferenceDescribeInputMedia().catch(() => {});
         installDescribeFloatingLayer(modal);
@@ -12171,6 +12895,7 @@
             && (!thumbBudget || rawThumb.length <= thumbBudget.remaining);
         if (thumbAllowed && thumbBudget) thumbBudget.remaining -= rawThumb.length;
         return {
+            id: String(image?.id || '').slice(0, 160),
             name: String(image?.name || 'image').slice(0, 200),
             width: Number.isFinite(Number(image?.width)) ? Number(image.width) : null,
             height: Number.isFinite(Number(image?.height)) ? Number(image.height) : null,
@@ -12461,6 +13186,7 @@
             roleplay_control_only: legacyRoleplayControl,
             images,
             media_assets: mediaAssets,
+            image_context_reads: normalizeConversationImageReads(message.image_context_reads),
             image_count: Math.max(0, Number(message.image_count) || images.length || mediaAssets.length),
             variants,
             active_variant_index: Math.max(0, Math.min(Math.max(0, variants.length - 1), Math.round(Number(message.active_variant_index) || 0)))
@@ -13027,6 +13753,7 @@
             title: conversationCatalogTitle(source),
             messages: [message],
             chatMode: normalizeChatMode(source.chatMode),
+            skill_names: normalizeVlmSkillNames(source.skill_names ?? source.customSkillNames),
             customSystemPrompt: String(source.customSystemPrompt || '').slice(0, 480),
             systemPromptTemplateId: String(source.systemPromptTemplateId || '').slice(0, 160),
             systemPromptPickerValue: String(source.systemPromptPickerValue || '').slice(0, 200),
@@ -13035,7 +13762,7 @@
             userSystemPromptTemplateName: String(source.userSystemPromptTemplateName || '').slice(0, 200),
             userSystemPromptContent: String(source.userSystemPromptContent || '').slice(0, 240),
             systemPromptManualOverride: !!source.systemPromptManualOverride,
-            auto_attach_previous_image: source.auto_attach_previous_image !== false,
+            auto_attach_previous_image: storedAutoAttachPreviousImage(source),
             roleplay_panel_open: !!source.roleplay_panel_open,
             roleplay_autoplay_state: normalizePersistedRoleplayAutoplayState(source.roleplay_autoplay_state),
             unload_after_chat: !!source.unload_after_chat,
@@ -13964,6 +14691,7 @@
             title: conversationCatalogTitle(target),
             messages,
             chatMode: mode,
+            skill_names: normalizeVlmSkillNames(read('customSkillNames', 'skill_names', [])),
             customSystemPrompt: String(read('customSystemPrompt', 'custom_system_prompt', '') || '').slice(0, MAX_PERSISTED_TEXT),
             systemPromptTemplateId: selection.systemPromptTemplateId,
             systemPromptPickerValue: selection.systemPromptPickerValue,
@@ -14087,6 +14815,7 @@
                 }))
                 : undefined,
             chatMode: normalizeChatMode(expandedData.chatMode),
+            customSkillNames: normalizeVlmSkillNames(expandedData.customSkillNames ?? expandedData.skill_names),
             roleplaySession: roleplayData?.session || normalizeRoleplaySession(expandedData.roleplay_session, conversationId),
             roleplayBranches: roleplayData?.branches || normalizeRoleplayBranches(expandedData.roleplay_branches, conversationId),
             roleplayFormDraftUndo: normalizeRoleplayFormDraftReview(expandedData.roleplay_form_draft_undo),
@@ -14490,6 +15219,7 @@
             roleplayFormDraftUndo: restored.roleplayFormDraftUndo,
             roleplayPanelOpen: restored.roleplayPanelOpen,
             roleplayAutoplayState: restored.roleplayAutoplayState,
+            customSkillNames: restored.customSkillNames,
             customSystemPrompt: restored.customSystemPrompt,
             systemPromptTemplateId: restored.systemPromptTemplateId,
             systemPromptPickerValue: restored.systemPromptPickerValue,
@@ -14961,6 +15691,7 @@
 
     function closeModal() {
         const modal = ensureModal();
+        cancelVlmSkillDraft(modal);
         closeUserSystemPromptTemplateDialog(modal);
         stopVlmRuntimeStatusPolling();
         modal.hidden = true;
@@ -15876,6 +16607,7 @@
     function imageSummary(image) {
         const kind = mediaKind(image);
         return {
+            id: String(image?.id || '').slice(0, 160),
             name: image?.name || kind,
             width: image?.width || null,
             height: image?.height || null,
@@ -18209,6 +18941,174 @@
         });
     }
 
+    function requestMentionsHistoricalConversationImage(message) {
+        const text = String(message || '').trim().toLocaleLowerCase();
+        if (!text) return false;
+        return /(?:previous|earlier|prior|original|last\s+(?:image|picture|photo)|before|history|another\s+(?:image|picture|photo)|both|compare|comparison|two\s+(?:images|pictures|photos)|first\s+(?:image|picture|photo)|second\s+(?:image|picture|photo)|上一张|之前的?(?:图|图片|照片)|原图|原始图|刚才的?(?:图|图片|照片)|前一张|前面那张|历史(?:图片|图像)?|另一张(?:图|图片|照片)?|两张|这两张|第一张|第二张|对比|比较)/i.test(text);
+    }
+
+    function shouldSelectHistoricalConversationImages(message, attached = []) {
+        return !Array.isArray(attached) || !attached.length
+            || requestMentionsHistoricalConversationImage(message);
+    }
+
+    function conversationImageCandidates(messages, attached = []) {
+        const candidates = [];
+        const attachedIds = new Set(attached.map(item => String(item?.id || '')).filter(Boolean));
+        const attachedKeys = new Set(attached.map(item => String(item?.key || '')).filter(Boolean));
+        const add = (message, slot, source, metadata = {}) => {
+            if (!source || mediaKind(source) !== 'image' || attachedIds.has(String(source.id || ''))
+                || (source.key && attachedKeys.has(String(source.key)))) return;
+            const messageId = String(message.id);
+            const messageRef = /^[A-Za-z0-9_.:-]{1,96}$/.test(messageId) ? messageId : conversationArchiveHash(messageId);
+            const ref = `chat-image:${messageRef}:${slot}`;
+            const payload = source.data_url ? source : null;
+            const asset = metadata.asset || null;
+            const thumb = !payload && !asset && source.thumb !== ONE_PIXEL_IMAGE ? source.thumb : '';
+            if (!payload && !asset && !thumb) return;
+            candidates.push({
+                ref, payload, asset, thumb,
+                name: String(metadata.name || source.name || ref).slice(0, 96),
+                message: String(metadata.message || message.content || '').slice(0, 160),
+                origin: metadata.origin || 'attachment',
+                resolution: thumb ? 'thumbnail' : 'image'
+            });
+        };
+        for (const message of Array.isArray(messages) ? messages : []) {
+            if (!message?.id || message.pending) continue;
+            const payloads = Array.isArray(message._image_payloads) ? message._image_payloads : [];
+            const assets = Array.isArray(message.media_assets) ? message.media_assets : [];
+            const summaries = Array.isArray(message.images) ? message.images : [];
+            const count = Math.max(payloads.length, assets.length, summaries.length);
+            for (let index = 0; index < count; index += 1) {
+                const summary = summaries[index];
+                const id = String(summary?.id || payloads[index]?.id || '');
+                const payload = id ? payloads.find(item => item?.id === id) : payloads[index];
+                const matches = summary?.name ? assets.filter(item => item?.name === summary.name) : [];
+                const media = id ? assets.find(item => item?.ref === id)
+                    : matches.length === 1 ? matches[0]
+                    : !summaries.length || summaries.length === assets.length ? assets[index] : null;
+                if (payload?.data_url) add(message, `input:${index}`, payload);
+                else if (media?.asset) add(message, `input:${index}`, { ...media.asset, id }, {
+                    asset: media.asset, name: media.name
+                });
+                else if (summary) add(message, `input:${index}`, summary);
+            }
+            for (const [actionIndex, action] of (message.actions || []).entries()) {
+                if (action?.generation?.state !== 'finished') continue;
+                for (const [index, asset] of (action.generation.assets || []).entries()) {
+                    add(message, `result:${actionIndex}:${index}`, asset, {
+                        asset, origin: 'generated', message: action.prompt || message.content,
+                        name: asset.name || String(asset.path || asset.output_path || '').split(/[\\/]/).pop()
+                    });
+                }
+            }
+        }
+        return candidates.slice(-48);
+    }
+
+    function normalizeConversationImageReads(value) {
+        return (Array.isArray(value) ? value : []).slice(0, 4).filter(item => item && typeof item === 'object')
+            .map(item => ({
+                ref: String(item.ref || '').slice(0, 160),
+                name: String(item.name || '').slice(0, 96),
+                status: ['attached', 'unavailable', 'selection_failed'].includes(item.status) ? item.status : 'unavailable',
+                resolution: item.resolution === 'thumbnail' ? 'thumbnail' : 'image'
+            }));
+    }
+
+    function renderConversationImageReads(value) {
+        const reads = normalizeConversationImageReads(value);
+        if (!reads.length) return '';
+        const text = roleplayDictionaryText;
+        return `<details class="describe-vlm-chat-image-context"><summary>${escapeHtml(text('Image context'))} (${reads.length})</summary><ul>${reads.map(item => {
+            const label = item.status === 'attached'
+                ? text(item.resolution === 'thumbnail' ? 'Thumbnail attached' : 'Image attached')
+                : text(item.status === 'selection_failed' ? 'Image selection failed' : 'Image unavailable');
+            return `<li>${escapeHtml(item.name)}${item.name ? ': ' : ''}${escapeHtml(label)}</li>`;
+        }).join('')}</ul></details>`;
+    }
+
+    async function readConversationImage(candidate, signal) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const source = candidate.payload?.data_url || candidate.thumb || persistedMediaAssetSource(candidate.asset);
+        if (!source) throw new Error('Image unavailable');
+        let dataUrl = source;
+        if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(source)) {
+            const url = new URL(source, window.location.href);
+            if (url.origin !== window.location.origin
+                || !/^\/(?:gradio_api\/)?file=/.test(url.pathname)) throw new Error('Image source not permitted');
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            signal.addEventListener('abort', cancel, { once: true });
+            const timeout = window.setTimeout(cancel, 20000);
+            try {
+                const response = await fetch(url.href, { credentials: 'same-origin', signal: controller.signal });
+                if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+                const blob = await response.blob();
+                if (!blob.type.startsWith('image/') || blob.size > 40 * 1024 * 1024) throw new Error('Invalid image');
+                dataUrl = await blobToDataUrl(blob);
+            } finally {
+                window.clearTimeout(timeout);
+                signal.removeEventListener('abort', cancel);
+            }
+        }
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        return imagePayloadFromDataUrl(dataUrl, {
+            id: candidate.ref, name: candidate.name, mime: imageMimeFromDataUrl(dataUrl),
+            key: candidate.ref, strict: true
+        });
+    }
+
+    async function prepareConversationImageContext(payload, candidates, runtime, signal, requestToken) {
+        const current = () => !signal.aborted && requestToken === runtime.requestToken;
+        const room = Math.min(4, MAX_REFERENCE_IMAGES - payload.images.filter(item => mediaKind(item) === 'image').length);
+        if (!shouldSelectHistoricalConversationImages(payload.message, payload.images)
+            || !candidates.length || room <= 0 || !current()) return [];
+        setConversationStatus(runtime, roleplayDictionaryText('Selecting conversation images...'));
+        const selection = await postJsonStream('/describe-image/vlm-chat-stream', {
+            ...payload,
+            request_kind: 'image_context_select',
+            images: [],
+            current_attachments: payload.images.map(item => ({
+                name: String(item.name || '').slice(0, 96), type: mediaKind(item)
+            })),
+            image_catalog: candidates.map(({ ref, name, message, origin, resolution }) => ({
+                ref, name, message, origin, resolution
+            }))
+        }, { signal }, event => {
+            if (current() && event?.type === 'status' && event.phase === 'waiting_for_gpu') {
+                setConversationStatus(runtime, busyControlLabel('waiting_for_gpu'));
+            }
+        });
+        if (!current()) return [];
+        if (!selection?.ok || !Array.isArray(selection.image_refs)) {
+            payload.image_context = { selection_failed: true, reads: [] };
+            return [{ status: 'selection_failed' }];
+        }
+        const byRef = new Map(candidates.map(item => [item.ref, item]));
+        const selected = [...new Set(selection.image_refs)].filter(ref => byRef.has(ref)).slice(0, room);
+        const reads = [];
+        for (const ref of selected) {
+            if (!current()) return [];
+            const candidate = byRef.get(ref);
+            setConversationStatus(runtime, `${roleplayDictionaryText('Reading conversation image')}: ${candidate.name}`);
+            const record = { ref, name: candidate.name, resolution: candidate.resolution, status: 'unavailable' };
+            try {
+                const image = await readConversationImage(candidate, signal);
+                if (!current()) return [];
+                payload.images.push(image);
+                record.status = 'attached';
+            } catch (error) {
+                if (!current()) return [];
+            }
+            reads.push(record);
+        }
+        payload.image_context = { reads };
+        setConversationStatus(runtime, '');
+        return reads;
+    }
+
     function renderCreativeFinishedResult(action, actionRef, assets) {
         const rerunTitle = localText('Generate again', '再次生成');
         const copyTitle = localText('Copy prompt', '复制提示词');
@@ -18876,6 +19776,8 @@
                     ))
                 : (generatedVideo
                     ? localText('Video generated. You can play it in this chat window.', '视频已生成，可在当前聊天窗口播放。')
+                    : ['chat', 'creative', 'prompt', 'guide'].includes(normalizeChatMode(target.chatMode))
+                    ? roleplayDictionaryText('Image generated. The assistant can select it when needed.')
                     : localText(
                         'Image generated. To discuss it with the Agent, reference the image before sending your next message.',
                         '图片已生成。需要 Agent 继续看图交流时，请点击图片上的“引用图片”，再发送消息。'
@@ -19626,6 +20528,7 @@
     <button type="button" class="is-danger" data-describe-vlm-chat-delete="${messageIndex}" title="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}" aria-label="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}"><i class="fa-solid fa-trash"></i></button>
   </span></div>
   ${renderMessageImages(message.images, message.media_assets)}
+  ${renderConversationImageReads(message.image_context_reads)}
   ${role === 'assistant' && !pending ? completionReasoningHtml(completion, `${message.id}:${activeVariant?.id || ''}`) : ''}
   ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
   ${stateChangesHtml}
@@ -20169,6 +21072,55 @@
         return true;
     }
 
+    function skillBudgetMediaPlaceholders(images) {
+        return (Array.isArray(images) ? images : []).map((image, index) => {
+            const rawMime = String(image?.mime || '').trim().toLowerCase();
+            const mime = /^(image|video|audio)\//.test(rawMime) ? rawMime : 'image/png';
+            return {
+                id: String(image?.id || `budget-media-${index + 1}`),
+                name: String(image?.name || `${mime.split('/')[0]} ${index + 1}`),
+                mime,
+                width: image?.width || null,
+                height: image?.height || null,
+                duration: image?.duration || null,
+                size: image?.size || 1,
+                data_url: `data:${mime};base64,AA==`
+            };
+        });
+    }
+
+    function skillBudgetWarningText(response) {
+        if (response?.details) return String(response.details);
+        const report = response?.skill_budget && typeof response.skill_budget === 'object'
+            ? response.skill_budget : {};
+        const code = String(response?.code || report.code || '').trim();
+        if (code === 'skill_count_limit_exceeded') {
+            return localText(
+                `${chatModeLabel(state.chatMode)} allows up to ${report.max_skills || vlmSkillLimitForMode(state.chatMode)} skills; ${report.requested_count || 0} were selected. Reduce the skills before sending.`,
+                `${chatModeLabel(state.chatMode)}最多启用 ${report.max_skills || vlmSkillLimitForMode(state.chatMode)} 个技能，本次已选择 ${report.requested_count || 0} 个。请减少技能后再发送。`
+            );
+        }
+        if (code === 'system_prompt_budget_exceeded' || code === 'skill_context_budget_exceeded') {
+            return localText(
+                'The selected skills and system prompt exceed the available context budget. Reduce the skills or shorten the system prompt before sending.',
+                '本次选中的技能和 system prompt 超出可用上下文预算，请减少技能数量或缩短 system prompt 后再发送。'
+            );
+        }
+        return localText(
+            'The skill budget check failed, so this message was not sent. Try again after refreshing the skill list.',
+            '技能预算检查失败，本次消息未发送。请刷新技能列表后重试。'
+        );
+    }
+
+    function releaseBudgetCheckBusy(runtime, modal) {
+        runtime.busy = false;
+        runtime.busyStage = '';
+        if (!isCurrentConversationRuntime(runtime)) return;
+        state.busy = false;
+        state.busyStage = '';
+        syncBusyControls(modal);
+    }
+
     async function sendMessage() {
         const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
         const runtime = options.runtime || syncCurrentRuntimeFromState();
@@ -20326,7 +21278,9 @@
             setStatus('');
         }
 
-        const message = isDirectRun ? directRunPrompt : typed || defaultMessageForMode(selectedMode, pendingImages);
+        // An attachment without text is a media-only turn. Keep the user's
+        // visible message empty instead of inventing an analysis request.
+        const message = isDirectRun ? directRunPrompt : typed;
         const includeCurrentPrompt = !isDirectRun && shouldSendCurrentPromptToVlm(selectedMode, message);
         const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET, messages);
         const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET, messages);
@@ -20361,13 +21315,6 @@
             }
         }
         if (requestToken !== runtime.requestToken) return;
-        if (!hasMessageOverride) {
-            if (isCurrentConversationRuntime(runtime)) {
-                consumeSentComposerState(input, inputSnapshot, sentPendingImages);
-            } else {
-                consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime);
-            }
-        }
         const estimatedUploadBytes = totalImageUploadBytes(images);
         if (images.length) {
             setConversationStatus(runtime, imageUploadStatus(images));
@@ -20397,6 +21344,108 @@
         const roleplaySpeakerId = selectedMode === 'roleplay'
             ? roleplayReplySpeakerIdForRuntime(runtime, roleplaySessionBefore, options.roleplaySpeakerId)
             : '';
+        const roleplaySpeakerMode = selectedMode === 'roleplay'
+            ? normalizeRoleplaySpeakerMode(options.roleplaySpeakerMode || runtime.roleplaySession?.autoplay_config?.speaker_mode)
+            : '';
+        const imageCandidates = !isDirectRun && supportsImageInput
+            && ['chat', 'creative', 'prompt', 'guide'].includes(selectedMode)
+            && shouldSelectHistoricalConversationImages(message, images)
+            ? conversationImageCandidates(messages, images) : [];
+        const promptOptions = readDescribePromptOptions();
+        const creativePreferences = normalizeCreativePreference(runtime.creativePreference);
+        const presetCapabilities = selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [];
+        const parameterProfiles = selectedMode === 'creative' ? creativeParameterProfilesPayload() : [];
+        if (!isDirectRun) {
+            const budgetRequestId = uid('describe_vlm_chat_budget');
+            const budgetResponse = await postJson('/describe-image/vlm-chat-run', {
+                request_kind: 'skill_budget_check',
+                conversation_id: runtime.conversationId,
+                request_id: budgetRequestId,
+                message,
+                current_prompt: includeCurrentPrompt ? readComponentValue('positive_prompt') : '',
+                include_current_prompt: includeCurrentPrompt,
+                history: history.messages,
+                history_full: fullHistory.messages,
+                context: {
+                    omitted: selectedMode === 'roleplay' ? fullHistory.omitted : history.omitted,
+                    chars: history.chars,
+                    budget: history.budget
+                },
+                images: skillBudgetMediaPlaceholders(images),
+                version,
+                vram_policy: normalizeVlmVramPolicy(state.vramPolicy),
+                kv_cache_type: normalizeVlmKvCacheType(state.kvCacheType),
+                n_ctx: currentVlmNctx(version),
+                context_window: vlmContextWindowForVersion(version),
+                load_mtp: !!state.mtpEnabled,
+                custom_api: customApi,
+                chat_mode: selectedMode,
+                roleplay_request_kind: selectedMode === 'roleplay'
+                    ? roleplayRequestKindValue || 'character'
+                    : '',
+                roleplay_turn_intent: selectedMode === 'roleplay' ? roleplayTurnIntent : '',
+                roleplay_speaker_mode: roleplaySpeakerMode,
+                roleplay_speaker_id: selectedMode === 'roleplay' ? roleplaySpeakerId : '',
+                roleplay_last_speaker_id: selectedMode === 'roleplay'
+                    ? String(options.roleplayLastSpeakerId || '').trim()
+                    : '',
+                roleplay_internal_turn: selectedMode === 'roleplay' ? internalRoleplayTurn : false,
+                roleplay_autoplay: selectedMode === 'roleplay' ? !!options.roleplayAutoplay : false,
+                roleplay_autoplay_state: selectedMode === 'roleplay'
+                    ? normalizeRoleplayAutoplayState(runtime.roleplayAutoplayState)
+                    : {},
+                roleplay_session: selectedMode === 'roleplay'
+                    ? roleplayRouting?.roleplay_session || {}
+                    : {},
+                agent_routing: selectedMode === 'roleplay'
+                    ? roleplayRouting?.agent_routing || {}
+                    : {},
+                agent_routing_local_version: selectedMode === 'roleplay'
+                    ? roleplayRouting?.agent_routing_local_version || ''
+                    : '',
+                agent_routing_api_profile: selectedMode === 'roleplay'
+                    ? roleplayRouting?.agent_routing_api_profile || null
+                    : null,
+                agent_routing_api_profile_version: selectedMode === 'roleplay'
+                    ? roleplayRouting?.agent_routing_api_profile_version || ''
+                    : '',
+                user_did: creativeUserContext().user_did,
+                user_system_prompt: customSystemPrompt,
+                system_prompt_template_id: runtime.systemPromptTemplateId,
+                user_system_prompt_template_id: runtime.userSystemPromptTemplateId,
+                base_system_prompt_content: runtime.baseSystemPromptContent,
+                user_system_prompt_content: runtime.userSystemPromptContent,
+                system_prompt_manual_override: !!runtime.systemPromptManualOverride,
+                enable_thinking: !!state.thinkingEnabled,
+                unload_after_chat: !!runtime.unloadAfterChat,
+                free_after: !!runtime.unloadAfterChat,
+                prompt_options: promptOptions,
+                skill_names: normalizeVlmSkillNames(runtime.customSkillNames),
+                max_tokens: effectiveChatMaxTokens(selectedMode),
+                creative_preferences: creativePreferences,
+                preset_capabilities: presetCapabilities,
+                parameter_profiles: parameterProfiles,
+                __lang: state.__lang,
+                lang: state.__lang
+            });
+            if (requestToken !== runtime.requestToken) {
+                releaseBudgetCheckBusy(runtime, modal);
+                return;
+            }
+            if (!budgetResponse?.ok) {
+                const warning = skillBudgetWarningText(budgetResponse);
+                releaseBudgetCheckBusy(runtime, modal);
+                setConversationStatus(runtime, warning, true);
+                return;
+            }
+        }
+        if (!hasMessageOverride) {
+            if (isCurrentConversationRuntime(runtime)) {
+                consumeSentComposerState(input, inputSnapshot, sentPendingImages);
+            } else {
+                consumeSentComposerState(input, inputSnapshot, sentPendingImages, runtime);
+            }
+        }
         let userMessage = {
             id: uid('describe_vlm_chat_user'),
             revision: 1,
@@ -20491,9 +21540,7 @@
                 ? roleplayRequestKindValue || 'character'
                 : '',
             roleplay_turn_intent: selectedMode === 'roleplay' ? roleplayTurnIntent : '',
-            roleplay_speaker_mode: selectedMode === 'roleplay'
-                ? normalizeRoleplaySpeakerMode(options.roleplaySpeakerMode || runtime.roleplaySession?.autoplay_config?.speaker_mode)
-                : '',
+            roleplay_speaker_mode: roleplaySpeakerMode,
             roleplay_speaker_id: selectedMode === 'roleplay'
                 ? roleplaySpeakerId
                 : '',
@@ -20539,12 +21586,19 @@
             unload_after_chat: !!runtime.unloadAfterChat,
             free_after: !!runtime.unloadAfterChat,
             prompt_options: readDescribePromptOptions(),
+            skill_names: normalizeVlmSkillNames(runtime.customSkillNames),
             max_tokens: effectiveChatMaxTokens(selectedMode),
             creative_preferences: normalizeCreativePreference(runtime.creativePreference),
             preset_capabilities: selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [],
             parameter_profiles: selectedMode === 'creative' ? creativeParameterProfilesPayload() : [],
             lang: state.__lang
         };
+        const imageContextReads = await prepareConversationImageContext(
+            payload, imageCandidates, runtime, abortController.signal, requestToken
+        );
+        if (requestToken !== runtime.requestToken || abortController.signal.aborted) return;
+        pendingAssistant.image_context_reads = imageContextReads;
+        if (isCurrentConversationRuntime(runtime)) renderMessages();
         const streamEligible = (
             ['chat', 'creative', 'prompt', 'guide', 'raw'].includes(selectedMode)
             || roleplayTextStream
@@ -20693,6 +21747,7 @@
             revision: Math.max(1, Math.round(Number(pendingIndex >= 0 ? messages[pendingIndex]?.revision : 1) || 1)),
             role: 'assistant',
             content: reply,
+            image_context_reads: imageContextReads,
             completion,
             response_source: normalizeResponseSource(response?.response_source || response, {
                 version,
@@ -20790,7 +21845,8 @@
             }, '', { syncControls: false });
         }
         userMessage.media_assets = Array.isArray(response?.input_media_assets)
-            ? response.input_media_assets.map(normalizeChatMediaInput).filter(Boolean)
+            ? response.input_media_assets.filter(item => userMessage._image_payloads.some(image => image.id === item.ref))
+                .map(normalizeChatMediaInput).filter(Boolean)
             : [];
         if (selectedMode === 'roleplay') {
             const variant = normalizeRoleplayMessageVariant({
@@ -21346,6 +22402,43 @@
     }
 
     document.addEventListener('change', (evt) => {
+        const skillUpload = evt.target.closest?.('[data-describe-vlm-chat-skill-upload-file]');
+        if (skillUpload) {
+            const modal = document.getElementById('describe_vlm_chat_modal');
+            const file = skillUpload.files?.[0];
+            skillUpload.value = '';
+            if (file && modal) handleVlmSkillUpload(file, modal).catch(() => {
+                setVlmSkillEditorStatus(modal, localText('The skill file could not be read.', '无法读取技能文件。'), true);
+            });
+            return;
+        }
+        const skillCheckbox = evt.target.closest?.('[data-describe-vlm-chat-skill]');
+        if (skillCheckbox) {
+            const name = String(skillCheckbox.getAttribute('data-describe-vlm-chat-skill') || '').trim();
+            const selectedNames = normalizeVlmSkillNames(state.customSkillNames);
+            const selected = new Set(selectedNames.map((item) => item.toLowerCase()));
+            const key = name.toLowerCase();
+            if (skillCheckbox.checked && !selected.has(key) && selected.size >= vlmSkillLimitForMode(state.chatMode)) {
+                skillCheckbox.checked = false;
+                setStatus(localText(
+                    `${chatModeLabel(state.chatMode)} allows up to ${vlmSkillLimitForMode(state.chatMode)} enabled skills.`,
+                    `${chatModeLabel(state.chatMode)}最多启用 ${vlmSkillLimitForMode(state.chatMode)} 个技能。`
+                ), true);
+                renderVlmSkillControls(document.getElementById('describe_vlm_chat_modal'));
+                return;
+            }
+            if (skillCheckbox.checked) selected.add(key);
+            else selected.delete(key);
+            const namesByKey = new Map((Array.isArray(state.vlmSkillCatalog) ? state.vlmSkillCatalog : [])
+                .map((item) => [String(item?.name || '').toLowerCase(), String(item?.name || '').trim()]));
+            const nextNames = normalizeVlmSkillNames(
+                [...selected].map((key) => namesByKey.get(key) || key)
+            );
+            setCurrentConversationSkillNames(nextNames, 'skill_selection');
+            renderVlmSkillControls(document.getElementById('describe_vlm_chat_modal'));
+            syncChatSettingsSummary(document.getElementById('describe_vlm_chat_modal'));
+            return;
+        }
         const imageSetting = evt.target.closest?.('[data-roleplay-character-library-image-preset], [data-roleplay-character-library-image-profile]');
         if (imageSetting) {
             const modal = document.getElementById('describe_vlm_chat_roleplay_character_library_modal');
@@ -21596,6 +22689,52 @@
             return;
         }
         if (modal.hidden) return;
+        const skillEdit = evt.target.closest('[data-describe-vlm-chat-skill-edit]');
+        if (skillEdit) {
+            editVlmSkill(modal, skillEdit.getAttribute('data-describe-vlm-chat-skill-edit'));
+            return;
+        }
+        const skillDelete = evt.target.closest('[data-describe-vlm-chat-skill-delete]');
+        if (skillDelete) {
+            deleteVlmSkill(modal, skillDelete.getAttribute('data-describe-vlm-chat-skill-delete'));
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-draft]')) {
+            generateVlmSkillDraft(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-draft-stop]')) {
+            cancelVlmSkillDraft(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-create]')) {
+            openVlmSkillEditor(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-upload]')) {
+            modal.querySelector('[data-describe-vlm-chat-skill-upload-file]')?.click();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-editor-close]')) {
+            closeVlmSkillEditor(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-editor-save]')) {
+            saveVlmSkillFromEditor(modal).catch(() => {
+                setVlmSkillEditorStatus(modal, localText('The skill could not be saved.', '技能保存失败。'), true);
+            });
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-toggle]')) {
+            state.vlmSkillsExpanded = state.vlmSkillsExpanded === false;
+            saveChatSettings();
+            renderVlmSkillControls(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-refresh]')) {
+            refreshVlmSkillCatalog(true).catch(() => {});
+            return;
+        }
         const contextToggle = evt.target.closest?.('[data-describe-vlm-chat-roleplay-context-toggle]');
         if (contextToggle) {
             const viewer = contextToggle.closest('[data-describe-vlm-chat-roleplay-context-viewer]');
@@ -21648,6 +22787,13 @@
             state.thinkingEnabled = !state.thinkingEnabled;
             saveChatSettings();
             syncChatSettingsControls(modal);
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-skill-indicator]')) {
+            state.settingsPanelOpen = true;
+            if (describeCompactViewport()) closeRoleplayPanelForMobile();
+            syncChatSettingsControls(modal);
+            refreshVlmSkillCatalog(false).catch(() => {});
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-settings-toggle]')) {

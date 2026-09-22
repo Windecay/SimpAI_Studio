@@ -9784,6 +9784,13 @@
                 mutate,
             },
             actionSource: {
+                updateTextNodeValue,
+                updateTextMergeSeparator,
+                updateTranslationInput,
+                updateTranslationParam,
+                updateTagCartParam,
+                updateWd14Param,
+                updateWildcardsHelperParam,
                 updateQwenTtsParam,
                 handleInpaintModeChange,
                 handleUovMethodChange,

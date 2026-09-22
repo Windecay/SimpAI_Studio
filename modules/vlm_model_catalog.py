@@ -33,6 +33,8 @@ GGUF_VISION_HANDLERS = frozenset({
     "LFM2.5-VL",
     "LFM2-VL",
 })
+QWEN35_IMAGE_MIN_TOKENS = 1024
+QWEN35_IMAGE_TOKEN_HANDLERS = frozenset({"Qwen3.5", "Qwen3.6", "Qwen3.8"})
 VISION_STATUS_READY = "ready"
 VISION_STATUS_MISSING = "missing"
 VISION_STATUS_TEXT_ONLY = "text_only"
@@ -58,6 +60,13 @@ _CACHE_LOCK = threading.RLock()
 _BUILD_LOCK = threading.Lock()
 _CACHE = {"key": None, "expires_at": 0.0, "payload": None}
 _FILE_CACHE = {"gguf": {}, "safetensors": {}}
+
+
+def default_image_min_tokens_for_handler(handler):
+    """Return the llama.cpp image-token floor required by a known handler family."""
+    if str(handler or "").strip() in QWEN35_IMAGE_TOKEN_HANDLERS:
+        return QWEN35_IMAGE_MIN_TOKENS
+    return 0
 
 
 def _paths(value):
@@ -708,6 +717,10 @@ def _scan_gguf_items(llm_roots, claimed_paths):
                 "mmproj_file": mmproj_relative,
                 "n_ctx": min(context_window, GGUF_RUNTIME_CONTEXT_DEFAULT),
                 "context_window": context_window,
+                "image_min_tokens": (
+                    default_image_min_tokens_for_handler(detected["handler"])
+                    if mmproj_path else 0
+                ),
                 "source_catalog": "LLM",
                 "capabilities": capabilities,
                 "vision_expected": vision_expected,

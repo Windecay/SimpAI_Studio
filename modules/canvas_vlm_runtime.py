@@ -5,6 +5,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import threading
 import time
 
@@ -98,6 +99,52 @@ def request_canvas_vlm_cancel(project_id="", node_id="", conversation_id="", req
         "node_id": key[1],
         "conversation_id": key[2],
         "request_id": key[3],
+    }
+
+
+def _canvas_vlm_describe_system_budget_failure(params, version_name):
+    if not bool((params or {}).get("reject_system_prompt_overflow")):
+        return None
+    budget = canvas_vlm_agent.vlm_system_prompt_budget(params, version_name)
+    if not budget.get("enforced"):
+        return None
+    try:
+        extension_chars = max(0, int((params or {}).get("describe_user_extension_chars") or 0))
+    except (TypeError, ValueError):
+        extension_chars = 0
+    system_limit = int(budget.get("system_budget_chars") or 0)
+    if extension_chars <= system_limit:
+        return None
+    report = dict((params or {}).get("describe_skill_budget") or {})
+    report.update({
+        "code": "system_prompt_budget_exceeded",
+        "user_extension_chars": extension_chars,
+        "system_budget_chars": system_limit,
+        "user_extension_budget_chars": system_limit,
+        "system_budget_enforced": True,
+    })
+    skill_chars = int(report.get("skill_chars") or 0)
+    overflow = extension_chars - system_limit
+    lang = str((params or {}).get("describe_lang") or "").strip().lower()
+    if lang.startswith(("zh", "cn")):
+        details = (
+            f"本次技能与用户 system prompt 的叠加内容约 {extension_chars:,} 字符，当前模式可用预算约 "
+            f"{system_limit:,} 字符，已超出 {overflow:,} 字符。技能正文约 {skill_chars:,} 字符。"
+            "请减少技能数量，或缩短 system prompt 后再发送。"
+        )
+    else:
+        details = (
+            f"The selected skills and user system prompt use about {extension_chars:,} characters, while this "
+            f"local model route allows about {system_limit:,} characters ({overflow:,} over). Skill bodies use "
+            f"about {skill_chars:,} characters. Reduce the skills or shorten the system prompt before sending."
+        )
+    return {
+        "ok": False,
+        "code": "system_prompt_budget_exceeded",
+        "error": "system_prompt_budget_exceeded",
+        "details": details,
+        "failure_stage": "skill_budget_check",
+        "skill_budget": report,
     }
 
 
@@ -250,6 +297,29 @@ def _canvas_vlm_local_completion_stats():
     except Exception:
         return {}
     return dict(stats) if isinstance(stats, dict) else {}
+
+
+def _canvas_vlm_claims_current_media_unavailable(text):
+    value = str(text or "").strip()
+    if not value:
+        return False
+    patterns = (
+        r"(?:没有|未|没)\s*(?:附带|收到|成功发送|发送).{0,24}(?:图|图片|图像|照片|视觉内容)",
+        r"(?:看不到|看不见|无法(?:看到|查看)|暂时看不到).{0,24}(?:图|图片|图像|照片|具体内容|内容)",
+        r"(?:图|图片|图像|照片|视觉内容).{0,24}(?:不可见|无法(?:看到|查看)|没有成功发送|未成功发送)",
+        r"(?:previous image|image|visual input|picture).{0,36}(?:not attached|unavailable|cannot see|can.t see|not visible)",
+    )
+    return any(re.search(pattern, value, flags=re.IGNORECASE | re.DOTALL) for pattern in patterns)
+
+
+def _canvas_vlm_current_media_retry_prompt(prompt):
+    return (
+        "Direct current-image retry. The current user turn includes an attached visual input. "
+        "Ignore any previous assistant statement that an image was missing, unavailable, or not visible. "
+        "Inspect the current visual input now and answer the current user request directly. "
+        "Do not call the current visual input a previous image. If a detail is unclear, state that detail only after inspecting it.\n\n"
+        f"Current user request:\n{str(prompt or '').strip()}"
+    )
 
 
 def _canvas_vlm_store_two_stage_meta(params, meta):
@@ -1233,6 +1303,9 @@ def canvas_vlm_run(payload, stream_callback=None):
     else:
         params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
         agent_system_prompt_built = True
+    system_budget_failure = _canvas_vlm_describe_system_budget_failure(params, version_name)
+    if system_budget_failure:
+        return system_budget_failure
     _canvas_vlm_add_timing(params, "initial_system_prompt_prepare", time.monotonic() - stage_started)
 
     stage_started = time.monotonic()
@@ -1527,6 +1600,9 @@ def canvas_vlm_run(payload, stream_callback=None):
     if (video_decode_warnings or reference_input_warnings) and not two_stage_requested:
         params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
         agent_system_prompt_built = True
+        system_budget_failure = _canvas_vlm_describe_system_budget_failure(params, version_name)
+        if system_budget_failure:
+            return system_budget_failure
 
     if is_custom_api:
         if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):
@@ -1659,15 +1735,28 @@ def canvas_vlm_run(payload, stream_callback=None):
     if not agent_system_prompt_built:
         stage_started = time.monotonic()
         params["system_prompt"] = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, prompt)
+        system_budget_failure = _canvas_vlm_describe_system_budget_failure(params, version_name)
+        if system_budget_failure:
+            return system_budget_failure
         _canvas_vlm_add_timing(params, "final_system_prompt_prepare", time.monotonic() - stage_started)
 
     def build_stateless_llamacpp_chat_prompt(base_prompt, history_budget=None):
         isolate_history = canvas_vlm_agent.vlm_isolate_rolling_history_for_prompt(payload, params, base_prompt)
-        if isolate_history:
+        isolate_current_media_history = bool(
+            image_input is not None
+            and not bool(params.get("describe_image_context"))
+        )
+        if isolate_history or isolate_current_media_history:
             client_history = payload.get("chat_messages") if isinstance(payload.get("chat_messages"), list) else []
             client_full_history = payload.get("chat_messages_full") if isinstance(payload.get("chat_messages_full"), list) else []
             history = []
-            stats = {"omitted": len(client_history) + len(client_full_history), "chars": 0, "max_history": 0, "budget": 0}
+            stats = {
+                "omitted": len(client_history) + len(client_full_history),
+                "chars": 0,
+                "max_history": 0,
+                "budget": 0,
+                "media_history_isolated": isolate_current_media_history,
+            }
         else:
             history, stats = canvas_vlm_agent.vlm_rolling_history(
                 payload,
@@ -1688,7 +1777,7 @@ def canvas_vlm_run(payload, stream_callback=None):
         current_prompt = canvas_vlm_agent._canvas_vlm_stateless_prompt_text(
             base_prompt,
             text_budget,
-            preserve_contract=bool(params.get("describe_roleplay_director")),
+            preserve_contract=bool(params.get("describe_roleplay_director") or params.get("describe_image_context") or params.get("describe_skill_draft")),
         )
         sections = []
         system_text = ""
@@ -1699,17 +1788,28 @@ def canvas_vlm_run(payload, stream_callback=None):
             roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
             system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
             system_cap = 16000 if roleplay_system else 5000
-            max_system = max(1200, min(system_cap, int(text_budget * system_ratio)))
+            system_budget = canvas_vlm_agent.vlm_system_prompt_budget(params, version_name)
+            max_system = int(system_budget.get("system_budget_chars") or 1200)
             system_text = canvas_vlm_agent._canvas_vlm_stateless_system_prompt_text(system_text, max_system)
         if isolate_history:
             sections.append(
                 "This is a standalone current image-generation request. Ignore earlier chat visual traits, old prompt tags, "
                 "and prior generated character appearances unless the current request explicitly says to continue or reuse them."
             )
+        elif isolate_current_media_history:
+            sections.append(
+                "This is an isolated current-image chat turn. Previous chat turns are intentionally omitted. "
+                "Inspect the attached image itself and do not reuse an earlier visual description."
+            )
         else:
             sections.append(
                 "Use the rolling conversation context below. It may omit older turns to fit the local model context window. "
                 "If an image is attached, it is visible only for the current turn; do not assume older images are still visible."
+            )
+        if image_input is not None:
+            sections.append(
+                "The current user turn includes attached visual input. Inspect the current visual input directly before answering. "
+                "It is not a previous image and it is not unavailable; do not repeat an earlier claim that the image was not sent."
             )
         if stats.get("omitted"):
             sections.append(f"[Context manager omitted {stats.get('omitted')} older turn(s) to avoid overflowing n_ctx.]")
@@ -1824,6 +1924,51 @@ def canvas_vlm_run(payload, stream_callback=None):
                     repetition_penalty=repetition_penalty,
                     seed=seed,
                     system_prompt=stateless_system_prompt,
+                    enable_thinking=enable_thinking,
+                )
+            completion_stats = _canvas_vlm_local_completion_stats()
+        if mode == "chat" and image_input is not None and _canvas_vlm_claims_current_media_unavailable(text):
+            logger.warning(
+                "Canvas VLM response claimed that current media was unavailable; retrying with an isolated current-image prompt."
+            )
+            if callable(stream_callback):
+                try:
+                    stream_callback({"type": "reset"})
+                except Exception:
+                    logger.debug("Unable to reset the streamed media fallback response", exc_info=True)
+            if VLM.is_llamacpp:
+                vlm.reset_runtime_context()
+            retry_prompt = _canvas_vlm_current_media_retry_prompt(prompt)
+            retry_system_prompt = (
+                stateless_system_prompt
+                if stateless_llamacpp_chat
+                else str(params.get("system_prompt") or "")
+            )
+            if stateless_llamacpp_chat and callable(stream_callback) and VLM.is_llamacpp:
+                text = vlm.inference_stream(
+                    image_input,
+                    retry_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=retry_system_prompt,
+                    on_delta=stream_callback,
+                    enable_thinking=enable_thinking,
+                )
+            else:
+                text = vlm.inference(
+                    image_input,
+                    retry_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    system_prompt=retry_system_prompt,
                     enable_thinking=enable_thinking,
                 )
             completion_stats = _canvas_vlm_local_completion_stats()

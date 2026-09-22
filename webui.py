@@ -13788,6 +13788,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/utils.js"),
         webpath("javascript/canvas_workbench/api.js"),
         webpath("javascript/model_browser.js"),
+        webpath("javascript/vlm_tool_runtime.js"),
         webpath("javascript/describe_vlm_chat.js"),
         webpath("javascript/webui_danbooru_autocomplete.js"),
         webpath("javascript/papaparse.min_5.4.1.js"),
@@ -15979,6 +15980,38 @@ async def canvas_workbench_vlm_skills_endpoint(payload: dict = Body(default={}))
             status_code=500,
         )
 
+@app.post("/describe-image/vlm-skills")
+async def describe_image_vlm_skills_endpoint(request: Request, payload: dict = Body(default={})):
+    try:
+        payload = payload if isinstance(payload, dict) else {}
+        access = _vlm_skill_access_for_request(request)
+        result = await run_in_threadpool(describe_vlm_chat.list_vlm_skills, payload, access=access)
+        return JSONResponse(result, status_code=200 if result.get("ok") else
+                            403 if result.get("code") in {"skill_forbidden", "skill_read_only"} else 400)
+    except Exception as e:
+        logger.exception("Describe Image VLM skills endpoint failed")
+        return JSONResponse(
+            {"ok": False, "error": "VLM skills error", "details": str(e)},
+            status_code=500,
+        )
+
+
+@app.post("/describe-image/vlm-tools")
+async def describe_image_vlm_tools_endpoint(request: Request, payload: dict = Body(default={})):
+    try:
+        payload = payload if isinstance(payload, dict) else {}
+        result = await run_in_threadpool(
+            describe_vlm_chat.run_vlm_tool, payload, access=_vlm_skill_access_for_request(request),
+        )
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        logger.exception("Describe Image VLM tools endpoint failed")
+        return JSONResponse(
+            {"ok": False, "error": "VLM tools error", "details": str(e)},
+            status_code=500,
+        )
+
+
 @app.post("/canvas-workbench/custom-llm-models")
 async def canvas_workbench_custom_llm_models_endpoint(payload: dict = Body(...)):
     try:
@@ -16001,6 +16034,12 @@ async def canvas_workbench_custom_llm_models_endpoint(payload: dict = Body(...))
             },
             status_code=500,
         )
+
+def _vlm_skill_access_for_request(request):
+    from modules import vlm_skill_runtime
+
+    return vlm_skill_runtime.resolve_skill_access(_get_request_identity_did(request))
+
 
 def _vlm_system_prompt_user_did(request):
     user_did = str(_resolve_cloud_config_user_did({}, request) or "").strip()
@@ -16878,7 +16917,7 @@ async def canvas_workbench_vlm_cancel_endpoint(payload: dict = Body(default={}))
         )
 
 @app.post("/describe-image/vlm-chat-run")
-async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
+async def describe_image_vlm_chat_run_endpoint(request: Request, payload: dict = Body(...)):
     error_id = f"vlm-chat-{uuid.uuid4().hex[:10]}"
     request_meta = {
         "conversation_id": "",
@@ -16930,6 +16969,7 @@ async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
                 status_code=400,
             )
 
+        payload = {**payload, "_skill_access": _vlm_skill_access_for_request(request)}
         request_meta = request_summary(payload)
         started = time.monotonic()
         logger.info(
@@ -17005,11 +17045,12 @@ async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
 
 
 @app.post("/describe-image/vlm-chat-stream")
-async def describe_image_vlm_chat_stream_endpoint(payload: dict = Body(...)):
+async def describe_image_vlm_chat_stream_endpoint(request: Request, payload: dict = Body(...)):
     """Stream free-chat text while keeping the normal final response contract."""
     import queue as _queue
 
     payload = payload if isinstance(payload, dict) else {}
+    payload = {**payload, "_skill_access": _vlm_skill_access_for_request(request)}
     events = _queue.Queue()
     stream_id = f"vlm-chat-stream-{uuid.uuid4().hex[:10]}"
     stream_started = time.monotonic()

@@ -488,7 +488,13 @@ class LlamaCppVLM:
         elif think_mode and (chat_handler_name or "").startswith("MiniCPM-v4"):
             kwargs["enable_thinking"] = True
 
-        if handler_class is MTMDChatHandler:
+        is_mtmd_handler = False
+        if handler_class is not None and MTMDChatHandler is not None:
+            try:
+                is_mtmd_handler = issubclass(handler_class, MTMDChatHandler)
+            except TypeError:
+                is_mtmd_handler = False
+        if is_mtmd_handler:
             kwargs["image_max_tokens"] = int(image_max_tokens or 0)
             kwargs["image_min_tokens"] = int(image_min_tokens or 0)
 
@@ -1095,11 +1101,13 @@ class LlamaCppVLM:
             mmproj_path = self._resolve_mmproj_path(model_path, mmproj_name=mmproj_name) if handler_class else None
             qwen_hybrid_vision = bool(mmproj_path) and is_qwen_hybrid_vision_handler(chat_handler_name)
             logger.info(
-                "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s mtp_requested=%s",
+                "llama.cpp VLM runtime wiring: handler_name=%s handler_class=%s mmproj=%s vision_enabled=%s image_min_tokens=%s image_max_tokens=%s mtp_requested=%s",
                 chat_handler_name or "",
                 getattr(handler_class, "__name__", "") if handler_class else "",
                 mmproj_path or "",
                 bool(handler_class and mmproj_path),
+                int(image_min_tokens or 0),
+                int(image_max_tokens or 0),
                 requested_mtp,
             )
             same_model_identity = (

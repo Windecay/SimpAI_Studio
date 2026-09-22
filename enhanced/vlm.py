@@ -34,6 +34,7 @@ from modules.vlm_model_catalog import (
     read_gguf_metadata,
     runtime_chat_handler_name,
     select_mmproj_for_model,
+    default_image_min_tokens_for_handler,
 )
 import logging
 from enhanced.llamacpp_vlm import llamacpp_vlm
@@ -104,6 +105,7 @@ def _huihui_qwen35_vlm_config(quant):
         "gguf_file": gguf_file,
         "mmproj_file": HUIHUI_QWEN35_MMPROJ,
         "n_ctx": 8192,
+        "image_min_tokens": default_image_min_tokens_for_handler("Qwen3.5"),
         "model_urls": {
             gguf_file: f"{HUIHUI_QWEN35_MODELSCOPE_BASE}/{gguf_file}",
             HUIHUI_QWEN35_MMPROJ: f"{HUIHUI_QWEN35_MODELSCOPE_BASE}/{HUIHUI_QWEN35_MMPROJ}",
@@ -728,6 +730,10 @@ class VLM:
                 "model_file": relative_path,
                 "mmproj_file": mmproj_file,
                 "n_ctx": 8192,
+                "image_min_tokens": (
+                    default_image_min_tokens_for_handler(detected_handler)
+                    if mmproj_file else 0
+                ),
                 "source_catalog": "LLM",
                 "capabilities": capabilities,
                 "vision_expected": vision_expected,
