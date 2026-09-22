@@ -1010,7 +1010,8 @@ def linear_input_act(linear, x, input_act, act_weight=None, act_eps=0.0,
             or getattr(weight._params, "transposed", False)
             or full_precision_mm):
         if (not comfy.model_management.in_training
-                and not isinstance(weight, QuantizedTensor)
+                # Tensor subclasses such as GGUF require their layer's own dequantization.
+                and type(weight) in (torch.Tensor, torch.nn.Parameter)
                 and not full_precision_mm
                 and _fp16_linear_wanted(x)):
             weight, bias, offload_stream = cast_bias_weight(linear, x, offloadable=True)
