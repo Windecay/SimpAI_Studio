@@ -9,7 +9,7 @@ from pathlib import Path
 DEFAULT_TEMPLATE_CSV = Path(__file__).resolve().parent.parent / "docs" / "vlm_system_prompt_templates.csv"
 TEMPLATE_CSV_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_CSV"
 TEMPLATE_DIR_ENV = "SIMPAI_VLM_SYSTEM_PROMPT_TEMPLATE_DIR"
-MAX_TEMPLATE_CHARS = 12000
+MAX_TEMPLATE_CHARS = 72000
 USER_TEMPLATE_CATALOG = "presets/vlm_system_prompts"
 USER_TEMPLATE_SUFFIX = ".md"
 MAX_USER_TEMPLATE_NAME_CHARS = 120

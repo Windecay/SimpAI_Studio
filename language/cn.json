@@ -2368,5 +2368,6 @@
   "Image selection failed": "图片选择失败",
   "Selecting conversation images...": "正在选择对话图片……",
   "Reading conversation image": "正在读取对话图片",
-  "Image generated. The assistant can select it when needed.": "图片已生成，助手可以根据对话需要选择查看。"
+  "Image generated. The assistant can select it when needed.": "图片已生成，助手可以根据对话需要选择查看。",
+  "System prompt is {used} characters; the suggested limit is {budget}. The message will still be sent, but long prompts may leave less room for conversation history and the reply.": "系统提示词约 {used} 个字符，建议不超过 {budget} 个字符。消息仍会发送，但较长的提示词可能减少对话历史和回复的可用空间。"
 }

@@ -1558,6 +1558,11 @@ def _prompt_mode_from_options(options):
 def _prompt_options_from_payload(payload, lang):
     raw_options = payload.get("prompt_options") if isinstance(payload.get("prompt_options"), dict) else {}
     chat_mode = _normalize_chat_mode(payload.get("chat_mode") or payload.get("describe_chat_mode"))
+    prompt_n_ctx = (
+        _n_ctx_override(payload.get("n_ctx") or payload.get("context_window"))
+        or 8192
+    )
+    system_prompt_max_chars = _describe_context_text_budget_chars(prompt_n_ctx)
     options = _merge_prompt_target_options(raw_options, use_runtime_defaults=chat_mode == "prompt")
     output_tags = _truthy(options.get("output_tags", payload.get("output_tags")), False)
     output_chinese = _truthy(options.get("output_chinese", payload.get("output_chinese")), _normalize_lang(lang) != "en")
@@ -1580,18 +1585,24 @@ def _prompt_options_from_payload(payload, lang):
         or ""
     )
     resolved_base_system_prompt = _clean_multiline_text(
-        vlm_system_prompt_templates.resolve_vlm_system_prompt_template(system_prompt_template_id)
+        vlm_system_prompt_templates.resolve_vlm_system_prompt_template(
+            system_prompt_template_id,
+            max_chars=system_prompt_max_chars,
+        ),
+        limit=system_prompt_max_chars,
     ) if system_prompt_template_id else ""
     base_system_prompt_content = _clean_multiline_text(
         resolved_base_system_prompt
         or payload.get("base_system_prompt_content")
         or payload.get("system_prompt_document")
-        or ""
+        or "",
+        limit=system_prompt_max_chars,
     )
     user_system_prompt_content = _clean_multiline_text(
         payload.get("user_system_prompt_content")
         or payload.get("user_prompt_document")
-        or ""
+        or "",
+        limit=system_prompt_max_chars,
     )
     system_prompt_manual_override = _truthy(payload.get("system_prompt_manual_override"), False)
     if system_prompt_manual_override:
@@ -1599,7 +1610,8 @@ def _prompt_options_from_payload(payload, lang):
             payload.get("user_system_prompt")
             or payload.get("custom_system_prompt")
             or payload.get("system_prompt")
-            or ""
+            or "",
+            limit=system_prompt_max_chars,
         )
     else:
         custom_system_prompt = _clean_multiline_text(
@@ -1610,7 +1622,8 @@ def _prompt_options_from_payload(payload, lang):
             or payload.get("user_system_prompt")
             or payload.get("custom_system_prompt")
             or payload.get("system_prompt")
-            or ""
+            or "",
+            limit=system_prompt_max_chars,
         )
     creative_preferences = _normalize_creative_preferences(payload.get("creative_preferences"))
     roleplay_session = vlm_roleplay.normalize_roleplay_session(
@@ -1639,6 +1652,7 @@ def _prompt_options_from_payload(payload, lang):
         "target_text_encoder": _prompt_target_field(options, "text_encoder", "clip_model", "clip"),
         "target_base_model": _prompt_target_field(options, "base_model", "model", "checkpoint"),
         "custom_system_prompt": custom_system_prompt,
+        "system_prompt_max_chars": system_prompt_max_chars,
         "system_prompt_template_id": system_prompt_template_id,
         "user_system_prompt_template_id": user_system_prompt_template_id,
         "base_system_prompt_content": base_system_prompt_content,
@@ -1908,8 +1922,8 @@ def _prompt_skill_section(options, lang):
     )
 
 
-def _user_system_prompt_contract(custom_system_prompt, chat_mode):
-    custom_system_prompt = _clean_multiline_text(custom_system_prompt)
+def _user_system_prompt_contract(custom_system_prompt, chat_mode, max_chars=4000):
+    custom_system_prompt = _clean_multiline_text(custom_system_prompt, limit=max_chars)
     if not custom_system_prompt:
         return ""
     mode = _normalize_chat_mode(chat_mode)
@@ -1933,11 +1947,19 @@ def _user_system_prompt_contract(custom_system_prompt, chat_mode):
 
 def _describe_user_extension_prompt(options, lang):
     options = options if isinstance(options, dict) else {}
-    custom_system_prompt = _clean_multiline_text(options.get("custom_system_prompt"))
+    system_prompt_max_chars = int(options.get("system_prompt_max_chars") or 4000)
+    custom_system_prompt = _clean_multiline_text(
+        options.get("custom_system_prompt"),
+        limit=system_prompt_max_chars,
+    )
     custom_skill_context = _describe_loaded_skill_prompt(options.get("custom_skill_context"), lang)
     sections = []
     if custom_system_prompt:
-        sections.append(_user_system_prompt_contract(custom_system_prompt, options.get("chat_mode")))
+        sections.append(_user_system_prompt_contract(
+            custom_system_prompt,
+            options.get("chat_mode"),
+            max_chars=system_prompt_max_chars,
+        ))
     if custom_skill_context:
         sections.append(custom_skill_context)
     if not sections:
@@ -1959,7 +1981,10 @@ def _describe_user_system_prompt_notice(chat_mode):
 def _describe_chat_system_prompt(options, lang):
     options = options if isinstance(options, dict) else {}
     chat_mode = _normalize_chat_mode(options.get("chat_mode"))
-    custom_system_prompt = _clean_multiline_text(options.get("custom_system_prompt"))
+    custom_system_prompt = _clean_multiline_text(
+        options.get("custom_system_prompt"),
+        limit=int(options.get("system_prompt_max_chars") or 4000),
+    )
     reply_lang = "English" if _normalize_lang(lang) == "en" else "Chinese"
     user_extension = _describe_user_extension_prompt(options, lang)
     media_only = bool(options.get("media_only"))
@@ -2194,6 +2219,16 @@ def _describe_chat_system_prompt(options, lang):
     return "\n\n".join(section for section in sections if section).strip()
 
 
+def _describe_context_text_budget_chars(n_ctx):
+    try:
+        n_ctx = max(1, int(n_ctx or 8192))
+    except (TypeError, ValueError):
+        n_ctx = 8192
+    if n_ctx <= 8192:
+        return 6000
+    return min(72000, max(8000, int(n_ctx * 0.55)))
+
+
 def _describe_system_prompt_budget(params, version_name=""):
     params = params if isinstance(params, dict) else {}
     version = str(version_name or params.get("version") or "").strip()
@@ -2201,12 +2236,8 @@ def _describe_system_prompt_budget(params, version_name=""):
         n_ctx = max(1, int(params.get("n_ctx") or 8192))
     except (TypeError, ValueError):
         n_ctx = 8192
-    if n_ctx <= 8192:
-        default_chars = 6000
-        max_chars = 6000
-    else:
-        default_chars = min(18000, max(8000, int(n_ctx * 0.55)))
-        max_chars = default_chars
+    default_chars = _describe_context_text_budget_chars(n_ctx)
+    max_chars = default_chars
     try:
         requested_chars = int(params.get("context_chars") or params.get("rolling_context_chars") or default_chars)
     except (TypeError, ValueError):
@@ -2215,7 +2246,7 @@ def _describe_system_prompt_budget(params, version_name=""):
     chat_mode_key = str(params.get("describe_chat_mode") or "").strip().lower()
     roleplay_system = bool(params.get("describe_roleplay_enabled")) or chat_mode_key == "roleplay"
     system_ratio = 0.9 if roleplay_system else (0.75 if chat_mode_key == "guide" else 0.5)
-    system_cap = 16000 if roleplay_system else 5000
+    system_cap = 16000 if roleplay_system else max(5000, min(40000, int(n_ctx * 0.3)))
     system_budget = max(1200, min(system_cap, int(text_budget * system_ratio)))
     custom_route = version.casefold() == "custom" or vlm_api_profiles.is_profile_version(version)
     return {
@@ -2378,6 +2409,7 @@ def build_runtime_payload(payload):
     kv_cache_type = normalize_llama_cpp_kv_cache_type(payload.get("kv_cache_type"))
     n_ctx = _n_ctx_override(payload.get("n_ctx"))
     roleplay_context_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
+    budget_n_ctx = n_ctx or _n_ctx_override(payload.get("context_window")) or 8192
     load_mtp = _truthy(payload.get("load_mtp"), False)
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     roleplay_active = prompt_options.get("chat_mode") == "roleplay"
@@ -2554,7 +2586,7 @@ def build_runtime_payload(payload):
         "context_chars": (
             _roleplay_runtime_context_chars(roleplay_context)
             if roleplay_context
-            else (10000 if roleplay_active else 6000)
+            else (10000 if roleplay_active else _describe_context_text_budget_chars(budget_n_ctx))
         ),
         "max_tokens": max_tokens,
         "temperature": 0.82 if roleplay_active else (0.45 if prompt_mode_active else 0.7),
@@ -2571,12 +2603,21 @@ def build_runtime_payload(payload):
         params["version"] = version
     if custom_params:
         params.update(custom_params)
-    system_budget = _describe_system_prompt_budget(params, version)
+    system_budget = _describe_system_prompt_budget(dict(params, n_ctx=budget_n_ctx), version)
+    system_prompt_over_budget = bool(
+        system_budget.get("enforced")
+        and user_extension_chars > int(system_budget.get("system_budget_chars") or 0)
+    )
     skill_budget.update({
         "system_prompt_chars": len(system_prompt),
         "base_system_prompt_chars": len(base_system_prompt),
         "user_extension_chars": user_extension_chars,
         "system_budget_enforced": bool(system_budget.get("enforced")),
+        "system_prompt_budget_warning": system_prompt_over_budget,
+        "system_prompt_overflow_chars": max(
+            0,
+            user_extension_chars - int(system_budget.get("system_budget_chars") or 0),
+        ),
         "context_budget_chars": int(system_budget.get("text_budget_chars") or 0),
         "system_budget_chars": int(system_budget.get("system_budget_chars") or 0),
         "user_extension_budget_chars": (
@@ -2584,16 +2625,8 @@ def build_runtime_payload(payload):
             if system_budget.get("enforced") else None
         ),
     })
-    if (
-        system_budget.get("enforced")
-        and user_extension_chars > int(system_budget.get("system_budget_chars") or 0)
-    ):
-        return _describe_skill_budget_failure(
-            dict(skill_budget, code="system_prompt_budget_exceeded"),
-            lang,
-        )
     params["describe_skill_budget"] = dict(skill_budget)
-    params["reject_system_prompt_overflow"] = True
+    params["reject_system_prompt_overflow"] = False
     image_context = _image_context_runtime_note(payload)
     if image_context:
         params["prompt"] += "\n\n" + image_context

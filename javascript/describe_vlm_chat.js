@@ -120,6 +120,7 @@
     const roleplayCharacterMentionCardCache = new Map();
     const MAX_PERSISTED_MESSAGES = 80;
     const MAX_PERSISTED_TEXT = 12000;
+    const MAX_SYSTEM_PROMPT_CHARS = 72000;
     const MAX_PERSISTED_THUMB_LENGTH = 80000;
     const MAX_PERSISTED_THUMB_TOTAL = 480000;
     const MAX_ROLEPLAY_BRANCH_MESSAGES = 80;
@@ -3291,7 +3292,7 @@
                 userSystemPromptContent: storedText(source, [
                     'userSystemPromptContent', 'user_system_prompt_content', 'userPromptDocument',
                     'user_prompt_document'
-                ]).slice(0, MAX_PERSISTED_TEXT)
+                ]).slice(0, MAX_SYSTEM_PROMPT_CHARS)
             };
         }
         return {
@@ -3302,7 +3303,7 @@
             baseSystemPromptContent: storedText(source, [
                 'baseSystemPromptContent', 'base_system_prompt_content', 'systemPromptDocument',
                 'system_prompt_document'
-            ]).slice(0, MAX_PERSISTED_TEXT),
+            ]).slice(0, MAX_SYSTEM_PROMPT_CHARS),
             userSystemPromptTemplateId: '',
             userSystemPromptTemplateName: '',
             userSystemPromptContent: ''
@@ -21112,6 +21113,22 @@
         );
     }
 
+    function systemPromptBudgetNotice(report) {
+        const english = 'System prompt is {used} characters; the suggested limit is {budget}. The message will still be sent, but long prompts may leave less room for conversation history and the reply.';
+        const lang = String(state.__lang || getUiLang?.(state) || '').toLowerCase();
+        const dictionary = window.localization && typeof window.localization === 'object'
+            ? window.localization : {};
+        const template = lang.startsWith('zh') || lang.startsWith('cn')
+            ? String(dictionary[english] || english)
+            : english;
+        const format = (value) => Math.max(0, Number(value) || 0).toLocaleString(
+            lang.startsWith('en') ? 'en-US' : 'zh-CN'
+        );
+        return template
+            .replace(/\{used\}/g, format(report?.user_extension_chars))
+            .replace(/\{budget\}/g, format(report?.user_extension_budget_chars));
+    }
+
     function releaseBudgetCheckBusy(runtime, modal) {
         runtime.busy = false;
         runtime.busyStage = '';
@@ -21437,6 +21454,10 @@
                 releaseBudgetCheckBusy(runtime, modal);
                 setConversationStatus(runtime, warning, true);
                 return;
+            }
+            const budgetReport = budgetResponse.skill_budget || {};
+            if (budgetReport.system_prompt_budget_warning) {
+                setConversationStatus(runtime, systemPromptBudgetNotice(budgetReport));
             }
         }
         if (!hasMessageOverride) {

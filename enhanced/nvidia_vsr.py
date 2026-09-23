@@ -215,16 +215,24 @@ def _emit_progress(callback: ProgressCallback | None, language: Any, percentage:
     callback(max(0, min(100, int(round(percentage)))), localized_text(language, english, chinese))
 
 
-def _load_video_dependencies():
+def _load_video_dependencies(*, require_vsr: bool = True):
     try:
         import av
         import numpy as np
-        import nvvfx
         import torch
     except Exception as exc:
         raise NvidiaVSRDependencyError(
-            f"NVIDIA VSR requires av, numpy, nvvfx, and torch: {type(exc).__name__}: {exc}"
+            f"NVIDIA VSR requires av, numpy, and torch: {type(exc).__name__}: {exc}"
         ) from exc
+    nvvfx = None
+    if require_vsr:
+        try:
+            import nvvfx
+        except Exception as exc:
+            raise NvidiaVSRDependencyError(
+                f"NVIDIA VSR requires nvvfx when the upscale factor is greater than 1: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
     if not torch.cuda.is_available():
         raise NvidiaVSRDependencyError("NVIDIA VSR requires a CUDA-capable NVIDIA GPU.")
     return av, np, nvvfx, torch
@@ -795,7 +803,8 @@ def run_nvidia_vsr(
         raise FileNotFoundError(input_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    av, np, nvvfx, torch = _load_video_dependencies()
+    should_upscale = config.upscale_factor > 1.0
+    av, np, nvvfx, torch = _load_video_dependencies(require_vsr=should_upscale)
     ffmpeg = _ffmpeg_executable()
     if ffmpeg is None:
         raise NvidiaVSRDependencyError("FFmpeg is required to encode the native VSR output.")
@@ -806,9 +815,18 @@ def run_nvidia_vsr(
         max_source_frames = max(1, int(config.duration_limit * info.source_fps))
         if max_source_frames < info.frame_count:
             info = _inspect_video(input_path, av, max_source_frames)
-    output_width, output_height = resolve_output_dimensions(info.width, info.height, config.upscale_factor)
+    if should_upscale:
+        output_width, output_height = resolve_output_dimensions(info.width, info.height, config.upscale_factor)
+    else:
+        output_width, output_height = info.width, info.height
     output_fps = config.target_fps if config.interpolate else info.source_fps
     should_interpolate = config.interpolate and abs(output_fps - info.source_fps) >= 0.01
+    expected_output_frames = (
+        max(1, int((info.frame_count / info.source_fps) * output_fps))
+        if should_interpolate
+        else info.frame_count
+    )
+    _emit_progress(progress_callback, language, 0, "Loading NVIDIA VSR...", "正在加载 NVIDIA VSR...")
     if should_interpolate:
         rife_path = _rife_model_path(project_root)
         if rife_path is None:
@@ -828,7 +846,6 @@ def run_nvidia_vsr(
     writer_closed = False
     success = False
     processed_source_frames = 0
-    processed_vsr_frames = 0
     output_frames = 0
 
     def source_frames() -> Iterator[Any]:
@@ -844,8 +861,7 @@ def run_nvidia_vsr(
             processed_source_frames += 1
             yield frame
 
-    def upscaled_frames(frame_iter: Iterator[Any], input_frame_count: int) -> Iterator[Any]:
-        nonlocal processed_vsr_frames
+    def upscaled_frames(frame_iter: Iterator[Any]) -> Iterator[Any]:
         with nvvfx.VideoSuperRes(_quality_level(nvvfx, config.quality)) as sr:
             sr.output_width = output_width
             sr.output_height = output_height
@@ -854,23 +870,13 @@ def run_nvidia_vsr(
                 if cancel_callback and cancel_callback():
                     raise NvidiaVSRCancelled()
                 for frame in _upscale_batch(sr, batch, torch):
-                    processed_vsr_frames += 1
-                    _emit_progress(
-                        progress_callback,
-                        language,
-                        (38.0 if should_interpolate else 0.0)
-                        + (58.0 * processed_vsr_frames / max(1, input_frame_count)),
-                        f"Upscaling video {processed_vsr_frames}/{input_frame_count}...",
-                        f"正在放大视频 {processed_vsr_frames}/{input_frame_count}...",
-                    )
                     yield frame
                 del batch
 
     try:
-        _emit_progress(progress_callback, language, 0, "Loading NVIDIA VSR...", "正在加载 NVIDIA VSR...")
         source_frame_iter = source_frames()
         if should_interpolate:
-            interpolated_frames = _iter_interpolated_frames(
+            frames = _iter_interpolated_frames(
                 source_frame_iter,
                 info.frame_count,
                 info.source_fps,
@@ -879,20 +885,33 @@ def run_nvidia_vsr(
                 config,
                 torch,
                 language,
-                progress_callback,
+                None,
                 cancel_callback,
             )
-            frames = upscaled_frames(
-                interpolated_frames,
-                max(1, int((info.frame_count / info.source_fps) * output_fps)),
-            )
         else:
-            frames = upscaled_frames(source_frame_iter, info.frame_count)
+            frames = source_frame_iter
+        if should_upscale:
+            frames = upscaled_frames(frames)
+        if should_upscale and should_interpolate:
+            progress_title = ("Processing video", "正在处理视频")
+        elif should_interpolate:
+            progress_title = ("Interpolating video", "正在插帧")
+        elif should_upscale:
+            progress_title = ("Upscaling video", "正在放大视频")
+        else:
+            progress_title = ("Encoding video", "正在编码视频")
         for frame in frames:
             if cancel_callback and cancel_callback():
                 raise NvidiaVSRCancelled()
             writer.write(frame)
             output_frames += 1
+            _emit_progress(
+                progress_callback,
+                language,
+                2.0 + 94.0 * output_frames / max(1, expected_output_frames),
+                f"{progress_title[0]} {output_frames}/{expected_output_frames}...",
+                f"{progress_title[1]} {output_frames}/{expected_output_frames}...",
+            )
         writer.close()
         writer_closed = True
         if info.has_audio:
